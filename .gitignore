@@ -1,0 +1,12 @@
+netclient
+netclient.syso
+build/*
+!build/netclient.service
+files/netclient
+netclient-amd64
+netclient-arm
+netclient-arm64
+netclient-32
+netclient32
+netclient.exe
+
