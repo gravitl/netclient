@@ -4,7 +4,7 @@ import (
 	"image/color"
 
 	"fyne.io/fyne/v2"
-	"github.com/gravitl/netmaker/netclient/gui/components"
+	"github.com/gravitl/netclient/gui/components"
 )
 
 // GenerateNotification - generates a notification

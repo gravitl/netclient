@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/cloverstd/tcping/ping"
+	"github.com/gravitl/netclient/auth"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/auth"
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 var metricsCache = new(sync.Map)

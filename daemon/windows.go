@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 // SetupWindowsDaemon - sets up the Windows daemon service

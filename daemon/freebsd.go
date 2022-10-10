@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 // SetupFreebsdDaemon -- sets up daemon for freebsd

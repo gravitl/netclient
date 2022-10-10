@@ -6,10 +6,10 @@ package functions
 import (
 	"strconv"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/local"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/local"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 

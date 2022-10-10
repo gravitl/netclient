@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"github.com/c-robinson/iplib"
+	"github.com/gravitl/netclient/global_settings"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/global_settings"
 )
 
 var (

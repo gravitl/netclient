@@ -1,7 +1,7 @@
 package upgrades
 
 import (
-	"github.com/gravitl/netmaker/netclient/config"
+	"github.com/gravitl/netclient/config"
 )
 
 var upgrade0161 = UpgradeInfo{

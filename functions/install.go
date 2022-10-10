@@ -3,11 +3,11 @@ package functions
 import (
 	"time"
 
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/daemon"
 )
 
-//Install - installs binary/daemon
+// Install - installs binary/daemon
 func Install() error {
 	daemon.Stop()
 	if err := daemon.InstallDaemon(); err != nil {

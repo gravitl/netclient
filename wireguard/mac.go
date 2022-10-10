@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 // WgQuickDownMac - bring down mac interface, remove routes, and run post-down commands

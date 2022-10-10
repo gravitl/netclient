@@ -7,12 +7,12 @@ import (
 	"os"
 	"runtime/debug"
 
+	"github.com/gravitl/netclient/cli_options"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/ncwindows"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/cli_options"
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/functions"
-	"github.com/gravitl/netmaker/netclient/ncutils"
-	"github.com/gravitl/netmaker/netclient/ncwindows"
 	"github.com/urfave/cli/v2"
 )
 

@@ -10,10 +10,10 @@ import (
 	"os"
 	"sync"
 
+	"github.com/gravitl/netclient/global_settings"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/global_settings"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
 )

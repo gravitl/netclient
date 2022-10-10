@@ -12,14 +12,14 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/global_settings"
+	"github.com/gravitl/netclient/local"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
-	"github.com/gravitl/netmaker/netclient/auth"
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/global_settings"
-	"github.com/gravitl/netmaker/netclient/local"
-	"github.com/gravitl/netmaker/netclient/ncutils"
-	"github.com/gravitl/netmaker/netclient/wireguard"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 

@@ -1,6 +1,6 @@
 package upgrades
 
-import "github.com/gravitl/netmaker/netclient/config"
+import "github.com/gravitl/netclient/config"
 
 // UpgradeFunction - logic for upgrade
 type UpgradeFunction func(*config.ClientConfig)

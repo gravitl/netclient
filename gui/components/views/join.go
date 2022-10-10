@@ -5,10 +5,10 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/functions"
-	"github.com/gravitl/netmaker/netclient/gui/components"
-	"github.com/gravitl/netmaker/netclient/ncutils"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/gui/components"
+	"github.com/gravitl/netclient/ncutils"
 )
 
 // GetJoinView - get's the join screen where a user inputs an access token

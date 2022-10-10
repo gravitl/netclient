@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/c-robinson/iplib"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 // GetDefaultRoute - Gets the default route (ip and interface) on a linux machine

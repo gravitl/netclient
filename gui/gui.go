@@ -10,11 +10,11 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/gui/components"
+	"github.com/gravitl/netclient/gui/components/views"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/functions"
-	"github.com/gravitl/netmaker/netclient/gui/components"
-	"github.com/gravitl/netmaker/netclient/gui/components/views"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 //go:embed nm-logo-sm.png

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 // GetLocalListenPort - Gets the port running on the local interface

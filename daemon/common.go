@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gravitl/netmaker/netclient/ncutils"
+	"github.com/gravitl/netclient/ncutils"
 )
 
 // InstallDaemon - Calls the correct function to install the netclient as a daemon service on the given operating system.

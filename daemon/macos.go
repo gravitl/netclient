@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 const MAC_SERVICE_NAME = "com.gravitl.netclient"

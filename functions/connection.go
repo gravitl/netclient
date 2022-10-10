@@ -3,10 +3,10 @@ package functions
 import (
 	"fmt"
 
-	"github.com/gravitl/netmaker/netclient/config"
-	"github.com/gravitl/netmaker/netclient/daemon"
-	"github.com/gravitl/netmaker/netclient/ncutils"
-	"github.com/gravitl/netmaker/netclient/wireguard"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/wireguard"
 )
 
 // Connect - will attempt to connect a node on given network

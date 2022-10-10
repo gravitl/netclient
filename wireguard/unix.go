@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 // ApplyWGQuickConf - applies wg-quick commands if os supports
