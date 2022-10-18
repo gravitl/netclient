@@ -1,6 +1,6 @@
 module github.com/gravitl/netclient
 
-go 1.19
+go 1.18
 
 require (
 	github.com/c-robinson/iplib v1.0.3
