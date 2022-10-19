@@ -5,6 +5,12 @@ go 1.18
 require (
 	github.com/c-robinson/iplib v1.0.3
 	github.com/gravitl/netmaker v0.16.1
+	github.com/kr/pretty v0.3.0
+)
+
+require (
+	github.com/kr/text v0.2.0 // indirect
+	github.com/rogpeppe/go-internal v1.9.0 // indirect
 )
 
 require (
