@@ -4,9 +4,11 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
+	"strconv"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +20,9 @@ var installCmd = &cobra.Command{
 
 ./netclient install [command options] [arguments]`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("install called")
+		logger.Verbosity = config.Netclient.Verbosity
+		logger.Log(0, "verbosity ", strconv.Itoa(logger.Verbosity))
+		logger.Log(0, "install called")
 		functions.Install()
 	},
 }

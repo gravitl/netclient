@@ -5,8 +5,11 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -42,10 +45,11 @@ func init() {
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.netclient.yaml)")
+	rootCmd.PersistentFlags().IntP("verbosity", "v", 5, "set loggin verbosity 1-4")
+	viper.BindPFlags(rootCmd.Flags())
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -54,20 +58,27 @@ func initConfig() {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-
-		// Search config in home directory with name ".netclient" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".netclient")
+		viper.AddConfigPath("/etc/netclient/")
+		viper.AddConfigPath("$HOME/.config/netclient/")
+		viper.AddConfigPath(".")
+		viper.SetConfigType("yml")
+		viper.SetConfigName("netclient.conf")
 	}
 
+	viper.BindPFlags(rootCmd.PersistentFlags())
 	viper.AutomaticEnv() // read in environment variables that match
+	//not sure why vebosity not set in AutomaticEnv
+	viper.BindEnv("verbosity", "VERBOSITY")
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
+		fmt.Println("verbosity", viper.GetInt("verbosity"))
+	} else {
+		logger.Log(0, "error reading config file", err.Error())
+	}
+
+	if err := viper.Unmarshal(&config.Netclient); err != nil {
+		log.Fatal(err)
 	}
 }
