@@ -39,13 +39,31 @@ const NO_DB_RECORD = "no result found"
 const NO_DB_RECORDS = "could not find any records"
 
 // LINUX_APP_DATA_PATH - linux path
-const LINUX_APP_DATA_PATH = "/etc/netclient"
+const LINUX_APP_DATA_PATH = "/etc/netclient/"
+
+// LINUX_NODE_DATA_PATH - linux path
+const LINUX_NODE_DATA_PATH = "/etc/netclient/nodes/"
+
+// LINUX_SERVER_DATA_PATH - linux path
+const LINUX_SERVER_DATA_PATH = "/etc/netclient/servers/"
 
 // MAC_APP_DATA_PATH - mac path
-const MAC_APP_DATA_PATH = "/Applications/Netclient"
+const MAC_APP_DATA_PATH = "/Applications/Netclient/"
+
+// MAC_NODE_DATA_PATH - mac path
+const MAC_NODE_DATA_PATH = "/Applications/Netclient/Nodes/"
+
+// MAC_SERVER_DATA_PATH - mac path
+const MAC_SERVER_DATA_PATH = "/Applications/Netclient/Servers/"
 
 // WINDOWS_APP_DATA_PATH - windows path
-const WINDOWS_APP_DATA_PATH = "C:\\Program Files (x86)\\Netclient"
+const WINDOWS_APP_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\"
+
+// WINDOWS_NODE_DATA_PATH - windows path
+const WINDOWS_NODE_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\Nodes\\"
+
+// WINDOWS_SERVER_DATA_PATH - windows path
+const WINDOWS_SERVER_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\Servers\\"
 
 // WINDOWS_SVC_NAME - service name
 const WINDOWS_SVC_NAME = "netclient"
@@ -305,6 +323,28 @@ func GetNetclientPath() string {
 	}
 }
 
+// GetNetclientNodePath - gets path to netclient node configuration files
+func GetNetclientNodePath() string {
+	if IsWindows() {
+		return WINDOWS_NODE_DATA_PATH
+	} else if IsMac() {
+		return MAC_NODE_DATA_PATH
+	} else {
+		return LINUX_NODE_DATA_PATH
+	}
+}
+
+// GetNetclientServerPath - gets path to netclient server configuration files
+func GetNetclientServerPath() string {
+	if IsWindows() {
+		return WINDOWS_SERVER_DATA_PATH
+	} else if IsMac() {
+		return MAC_SERVER_DATA_PATH
+	} else {
+		return LINUX_SERVER_DATA_PATH
+	}
+}
+
 // GetSeparator - gets the separator for OS
 func GetSeparator() string {
 	if IsWindows() {
@@ -328,17 +368,6 @@ func GetFileWithRetry(path string, retryCount int) ([]byte, error) {
 		}
 	}
 	return data, err
-}
-
-// GetNetclientServerPath - gets netclient server path
-func GetNetclientServerPath(server string) string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH + "\\" + server + "\\"
-	} else if IsMac() {
-		return MAC_APP_DATA_PATH + "/" + server + "/"
-	} else {
-		return LINUX_APP_DATA_PATH + "/" + server
-	}
 }
 
 // GetNetclientPathSpecific - gets specific netclient config path
@@ -468,7 +497,7 @@ func FileExists(f string) bool {
 // GetSystemNetworks - get networks locally
 func GetSystemNetworks() ([]string, error) {
 	var networks []string
-	files, err := filepath.Glob(GetNetclientPathSpecific() + "netconfig-*")
+	files, err := filepath.Glob(GetNetclientPath() + "netconfig-*")
 	if err != nil {
 		return nil, err
 	}

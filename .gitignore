@@ -9,4 +9,5 @@ netclient-arm64
 netclient-32
 netclient32
 netclient.exe
+netclient.conf
 
