@@ -15,28 +15,30 @@ import (
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
+	Args:  cobra.ExactArgs(1),
 	Short: "display list of netmaker networks",
 	Long: `display a list of netmaker networks
 long flag provide additional details For example:`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("list called")
-		long, err1 := cmd.Flags().GetBool("long")
-		network, err2 := cmd.Flags().GetString("network")
-		if err1 != nil || err2 != nil {
-			fmt.Println("error getting flags", err1, err2)
+		long, err := cmd.Flags().GetBool("long")
+		if err != nil {
+			logger.Log(0, "error getting flags", err.Error())
 		}
-		fmt.Println(network, long)
-		logger.Log(0, "List called with", network, strconv.FormatBool(long))
-		functions.List(network, long)
+		if args[0] == "" {
+			logger.Log(0, "List called for all networks", strconv.FormatBool(long))
+			functions.List("all", long)
+		} else {
+			logger.Log(0, "List called for network ", args[0], strconv.FormatBool(long))
+			functions.List(args[0], long)
+		}
 	},
 }
 
 func init() {
-	fmt.Println("list init")
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().BoolP("long", "l", false, "display detailed network information")
-	listCmd.Flags().StringP("network", "n", "all", "limit display to specified network")
 
 	// Here you will define your flags and configuration settings.
 
