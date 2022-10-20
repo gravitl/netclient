@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/c-robinson/iplib v1.0.3
 	github.com/devilcove/httpclient v0.0.0-20221010131345-aca83c98e0a7
+	github.com/google/uuid v1.3.0
 	github.com/gravitl/netmaker v0.16.1
 	github.com/guumaster/hostctl v1.1.3
 	github.com/kr/pretty v0.3.0
@@ -13,7 +14,7 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
-	github.com/docker/distribution v2.8.1+incompatible
+	github.com/docker/distribution v2.8.1+incompatible // indirect
 	github.com/docker/docker v20.10.17+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect

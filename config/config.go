@@ -4,7 +4,7 @@ package config
 import (
 	"net"
 
-	"github.com/docker/distribution/uuid"
+	"github.com/google/uuid"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -21,6 +21,7 @@ type Server struct {
 
 type Node struct {
 	ID           uuid.UUID
+	Name         string
 	Server       string
 	Network      string
 	NetworkRange net.IPNet

@@ -43,7 +43,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.netclient.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/netclient.conf)")
 	rootCmd.PersistentFlags().IntP("verbosity", "v", 5, "set loggin verbosity 1-4")
 	viper.BindPFlags(rootCmd.Flags())
 
