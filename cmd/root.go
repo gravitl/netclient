@@ -4,7 +4,6 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -73,7 +72,6 @@ func initConfig() {
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
-		fmt.Println("verbosity", viper.GetInt("verbosity"))
 	} else {
 		logger.Log(0, "error reading config file", err.Error())
 	}
