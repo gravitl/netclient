@@ -2,6 +2,7 @@
 package config
 
 import (
+	"log"
 	"net"
 	"reflect"
 
@@ -130,12 +131,14 @@ func ReadNodeConfig(name string) (*Node, error) {
 	viper.SetConfigType("yml")
 	viper.AddConfigPath("/etc/netclient/nodes")
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
-		}
+		//	if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		log.Println("readconfig", err)
+		return nil, err
+		//}
 	}
 	var node *Node
 	if err := viper.Unmarshal(node); err != nil {
+		log.Println("unmarshal", err)
 		return nil, err
 	}
 	return node, nil
