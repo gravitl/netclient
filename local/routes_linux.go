@@ -59,7 +59,7 @@ func deleteRoute(iface string, addr *net.IPNet) error {
 	return err
 }
 
-func setCidr(iface, address string, addr *net.IPNet) {
+func setCidr(iface string, addr *net.IPNet) {
 	if iplib.Version(addr.IP) == 4 {
 		ncutils.RunCmd("ip -4 route add "+addr.String()+" dev "+iface, false)
 	} else if iplib.Version(addr.IP) == 6 {

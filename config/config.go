@@ -3,10 +3,12 @@ package config
 
 import (
 	"net"
+	"reflect"
 
 	"github.com/google/uuid"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type Config struct {
@@ -20,16 +22,26 @@ type Server struct {
 }
 
 type Node struct {
-	ID           uuid.UUID
-	Name         string
-	Server       string
-	Network      string
-	NetworkRange net.IPNet
-	Interface    string
-	MacAddress   net.HardwareAddr
-	Address      net.IPNet
-	Address6     net.IPNet
-	IsServer     bool
+	ID               uuid.UUID
+	Name             string
+	Network          string
+	NetworkRange     net.IPNet
+	NetworkRange6    net.IPNet
+	Interface        string
+	Server           string
+	Connected        bool
+	MacAddress       net.HardwareAddr
+	Address          net.IPNet
+	Address6         net.IPNet
+	ListenPort       int
+	MTU              int
+	PrivateKey       wgtypes.Key
+	PostUp           string
+	PostDown         string
+	IsServer         bool
+	UDPHolePunch     bool
+	IsEgressGateway  bool
+	IsIngressGateway bool
 }
 
 var Netclient *Config
@@ -134,4 +146,24 @@ func (node *Node) PrimaryAddress() net.IPNet {
 		return node.Address
 	}
 	return node.Address6
+}
+
+func WriteNodeConfig(name string, node *Node) error {
+	viper.SetConfigName(name + ".conf")
+	viper.SetConfigType("yml")
+	viper.AddConfigPath("/etc/netclient/nodes")
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return err
+		}
+	}
+	v := reflect.ValueOf(node)
+	for i := 0; i < v.NumField(); i++ {
+		viper.Set(v.Type().Field(i).Name, v.Field(i))
+	}
+
+	if err := viper.WriteConfig(); err != nil {
+		return err
+	}
+	return nil
 }

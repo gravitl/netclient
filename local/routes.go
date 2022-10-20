@@ -120,8 +120,8 @@ func FlushPeerRoutes(iface string, peers []wgtypes.Peer) {
 }
 
 // SetCIDRRoute - sets the CIDR route, used on join and restarts
-func SetCIDRRoute(iface, currentAddr string, cidr *net.IPNet) {
-	setCidr(iface, currentAddr, cidr)
+func SetCIDRRoute(iface string, cidr *net.IPNet) {
+	setCidr(iface, cidr)
 }
 
 // RemoveCIDRRoute - removes a static cidr route
