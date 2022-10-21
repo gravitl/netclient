@@ -3,7 +3,6 @@ package functions
 import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 )
@@ -20,11 +19,11 @@ func Disconnect(network string) {
 		return
 	}
 	node.Connected = false
-	if err := config.WriteNodeConfig(network, node); err != nil {
+	if err := config.WriteNodeConfig(node); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := ncutils.GetNetclientNodePath() + node.Interface + ".conf"
+	filePath := config.GetNetclientNodePath() + node.Interface + ".conf"
 	wireguard.ApplyConf(node, filePath)
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//return err
@@ -49,11 +48,11 @@ func Connect(network string) {
 		return
 	}
 	node.Connected = true
-	if err := config.WriteNodeConfig(network, node); err != nil {
+	if err := config.WriteNodeConfig(node); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := ncutils.GetNetclientNodePath() + node.Interface + ".conf"
+	filePath := config.GetNetclientNodePath() + node.Interface + ".conf"
 	wireguard.ApplyConf(node, filePath)
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//	return err

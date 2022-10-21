@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
@@ -87,7 +88,7 @@ func CleanupLinux() {
 		logger.Log(0, "failed to stop netclient service", err.Error())
 	}
 	RemoveSystemDServices()
-	if err := os.RemoveAll(ncutils.GetNetclientPath()); err != nil {
+	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		logger.Log(1, "Removing netclient configs: ", err.Error())
 	}
 	if err := os.Remove(EXEC_DIR + "netclient"); err != nil {

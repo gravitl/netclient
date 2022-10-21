@@ -4,6 +4,7 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -57,12 +58,10 @@ func initConfig() {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		viper.AddConfigPath("/etc/netclient/")
-		viper.AddConfigPath("$HOME/.config/netclient/")
-		viper.AddConfigPath(".")
-		viper.SetConfigType("yml")
+		viper.AddConfigPath(config.GetNetclientPath())
 		viper.SetConfigName("netclient.conf")
 	}
+	viper.SetConfigType("yml")
 
 	viper.BindPFlags(rootCmd.PersistentFlags())
 	viper.AutomaticEnv() // read in environment variables that match
@@ -76,7 +75,11 @@ func initConfig() {
 		logger.Log(0, "error reading config file", err.Error())
 	}
 
-	if err := viper.Unmarshal(&config.Netclient); err != nil {
+	var Netclient config.Config
+
+	if err := viper.Unmarshal(&Netclient); err != nil {
 		log.Fatal(err)
 	}
+	logger.Verbosity = Netclient.Verbosity
+	fmt.Println("verbosity set to ", logger.Verbosity)
 }

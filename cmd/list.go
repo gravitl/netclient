@@ -26,13 +26,12 @@ long flag provide additional details For example:`,
 		if err != nil {
 			logger.Log(0, "error getting flags", err.Error())
 		}
-		if args[0] == "" {
+		if args[0] == "all" {
 			logger.Log(0, "List called for all networks", strconv.FormatBool(long))
-			functions.List("all", long)
 		} else {
 			logger.Log(0, "List called for network ", args[0], strconv.FormatBool(long))
-			functions.List(args[0], long)
 		}
+		functions.List(args[0], long)
 	},
 }
 

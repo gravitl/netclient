@@ -85,6 +85,9 @@ func deleteNodeFromServer(node *config.Node) error {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
 	server, err := config.ReadServerConfig(node.Server)
+	if err != nil {
+		return fmt.Errorf("could not read sever config %w", err)
+	}
 	endpoint := httpclient.Endpoint{
 		URL:           "https://" + server.API,
 		Method:        http.MethodPost,
@@ -141,7 +144,7 @@ func WipeLocal(node *config.Node) error {
 	} else {
 		fail = true
 	}
-	if err := os.Remove(ncutils.GetNetclientNodePath() + node.Network + ".conf"); err != nil {
+	if err := os.Remove(config.GetNetclientNodePath() + node.Network + ".conf"); err != nil {
 		logger.Log(0, "failed to delete file", err.Error())
 		fail = true
 	}

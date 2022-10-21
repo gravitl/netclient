@@ -46,7 +46,6 @@ func List(network string, long bool) {
 		node, err := config.ReadNodeConfig(network)
 		if err != nil {
 			logger.Log(1, "error retrieving networks", err.Error())
-			fmt.Println("netclient is not connected to any networks")
 			return
 		}
 		fmt.Println(node.Network, node.ID.String(), node.Name, node.Interface, node.Address.String(), node.Address6.String())

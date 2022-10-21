@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/c-robinson/iplib"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/netclient/global_settings"
@@ -37,33 +38,6 @@ const NO_DB_RECORD = "no result found"
 
 // NO_DB_RECORDS - error record result
 const NO_DB_RECORDS = "could not find any records"
-
-// LINUX_APP_DATA_PATH - linux path
-const LINUX_APP_DATA_PATH = "/etc/netclient/"
-
-// LINUX_NODE_DATA_PATH - linux path
-const LINUX_NODE_DATA_PATH = "/etc/netclient/nodes/"
-
-// LINUX_SERVER_DATA_PATH - linux path
-const LINUX_SERVER_DATA_PATH = "/etc/netclient/servers/"
-
-// MAC_APP_DATA_PATH - mac path
-const MAC_APP_DATA_PATH = "/Applications/Netclient/"
-
-// MAC_NODE_DATA_PATH - mac path
-const MAC_NODE_DATA_PATH = "/Applications/Netclient/Nodes/"
-
-// MAC_SERVER_DATA_PATH - mac path
-const MAC_SERVER_DATA_PATH = "/Applications/Netclient/Servers/"
-
-// WINDOWS_APP_DATA_PATH - windows path
-const WINDOWS_APP_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\"
-
-// WINDOWS_NODE_DATA_PATH - windows path
-const WINDOWS_NODE_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\Nodes\\"
-
-// WINDOWS_SERVER_DATA_PATH - windows path
-const WINDOWS_SERVER_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\Servers\\"
 
 // WINDOWS_SVC_NAME - service name
 const WINDOWS_SVC_NAME = "netclient"
@@ -281,7 +255,7 @@ func GetNetworkIPMask(networkstring string) (string, string, error) {
 }
 
 // GetFreePort - gets free port of machine
-func GetFreePort(rangestart int32) (int32, error) {
+func GetFreePort(rangestart int) (int, error) {
 	addr := net.UDPAddr{}
 	if rangestart == 0 {
 		rangestart = NETCLIENT_DEFAULT_PORT
@@ -312,39 +286,6 @@ func GetHomeDirWindows() string {
 	return os.Getenv("HOME")
 }
 
-// GetNetclientPath - gets netclient path locally
-func GetNetclientPath() string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH
-	} else if IsMac() {
-		return MAC_APP_DATA_PATH
-	} else {
-		return LINUX_APP_DATA_PATH
-	}
-}
-
-// GetNetclientNodePath - gets path to netclient node configuration files
-func GetNetclientNodePath() string {
-	if IsWindows() {
-		return WINDOWS_NODE_DATA_PATH
-	} else if IsMac() {
-		return MAC_NODE_DATA_PATH
-	} else {
-		return LINUX_NODE_DATA_PATH
-	}
-}
-
-// GetNetclientServerPath - gets path to netclient server configuration files
-func GetNetclientServerPath() string {
-	if IsWindows() {
-		return WINDOWS_SERVER_DATA_PATH
-	} else if IsMac() {
-		return MAC_SERVER_DATA_PATH
-	} else {
-		return LINUX_SERVER_DATA_PATH
-	}
-}
-
 // GetSeparator - gets the separator for OS
 func GetSeparator() string {
 	if IsWindows() {
@@ -368,17 +309,6 @@ func GetFileWithRetry(path string, retryCount int) ([]byte, error) {
 		}
 	}
 	return data, err
-}
-
-// GetNetclientPathSpecific - gets specific netclient config path
-func GetNetclientPathSpecific() string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH + "\\"
-	} else if IsMac() {
-		return MAC_APP_DATA_PATH + "/config/"
-	} else {
-		return LINUX_APP_DATA_PATH + "/config/"
-	}
 }
 
 func CheckIPAddress(ip string) error {
@@ -424,7 +354,7 @@ func GetFileAsString(path string) (string, error) {
 // GetNetclientPathSpecific - gets specific netclient config path
 func GetWGPathSpecific() string {
 	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH + "\\"
+		return config.WINDOWS_APP_DATA_PATH + "\\"
 	} else {
 		return "/etc/wireguard/"
 	}
@@ -497,7 +427,7 @@ func FileExists(f string) bool {
 // GetSystemNetworks - get networks locally
 func GetSystemNetworks() ([]string, error) {
 	var networks []string
-	files, err := filepath.Glob(GetNetclientPath() + "netconfig-*")
+	files, err := filepath.Glob(config.GetNetclientNodePath() + "*.conf")
 	if err != nil {
 		return nil, err
 	}
@@ -661,9 +591,9 @@ func GetIPNetFromString(ip string) (net.IPNet, error) {
 }
 
 // ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
-func ModPort(node *models.Node) error {
+func ModPort(node *config.Node) error {
 	var err error
-	if node.UDPHolePunch == "yes" {
+	if node.UDPHolePunch {
 		node.ListenPort = 0
 	} else {
 		node.ListenPort, err = GetFreePort(node.ListenPort)

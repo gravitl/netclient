@@ -29,7 +29,7 @@ func SetPeerRoutes(iface string, oldPeers map[string]bool, newPeers []wgtypes.Pe
 	for _, peer := range newPeers {
 		for _, allowedIP := range peer.AllowedIPs {
 			if !oldPeers[allowedIP.String()] {
-				if err := setRoute(iface, &allowedIP, allowedIP.IP.String()); err != nil {
+				if err := setRoute(iface, &allowedIP); err != nil {
 					logger.Log(1, err.Error())
 				}
 			} else {
@@ -59,7 +59,7 @@ func SetPeerRoutes(iface string, oldPeers map[string]bool, newPeers []wgtypes.Pe
 }
 
 // SetCurrentPeerRoutes - sets all the current peers
-func SetCurrentPeerRoutes(iface, currentAddr string, peers []wgtypes.PeerConfig) {
+func SetCurrentPeerRoutes(iface string, peers []wgtypes.PeerConfig) {
 
 	// get the default route
 	var hasRoute bool
@@ -74,7 +74,7 @@ func SetCurrentPeerRoutes(iface, currentAddr string, peers []wgtypes.PeerConfig)
 	// traverse through all recieved peers
 	for _, peer := range peers {
 		for _, allowedIP := range peer.AllowedIPs {
-			setRoute(iface, &allowedIP, currentAddr)
+			setRoute(iface, &allowedIP)
 		}
 		if peer.Endpoint == nil {
 			continue

@@ -5,27 +5,23 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/models"
 )
 
 // Authenticate authenticates with api to permit subsequent interactions with the api
 func Authenticate(node *config.Node) (string, error) {
-
-	pass, err := os.ReadFile(ncutils.GetNetclientPathSpecific() + "secret-" + node.Network)
-	if err != nil {
-		return "", fmt.Errorf("could not read secrets file %w", err)
-	}
 	data := models.AuthParams{
 		MacAddress: node.MacAddress.String(),
 		ID:         node.ID.String(),
-		Password:   string(pass),
+		Password:   node.Password,
 	}
 	server, err := config.ReadServerConfig(node.Server)
+	if err != nil {
+		return "", fmt.Errorf("could not read server config %w", err)
+	}
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Route:  "/api/nodes/adm" + node.Network + "/authenticate",
