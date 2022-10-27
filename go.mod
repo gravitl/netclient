@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/c-robinson/iplib v1.0.3
 	github.com/devilcove/httpclient v0.3.1
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0
 	github.com/gravitl/netmaker v0.16.1
 	github.com/guumaster/hostctl v1.1.3

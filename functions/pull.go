@@ -64,7 +64,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		if err := wireguard.RemoveConf(node.Interface, false); err != nil {
 			logger.Log(0, "error remove interface", node.Interface, err.Error())
 		}
-		err = ncutils.ModPort(newNode)
+		err = config.ModPort(newNode)
 		if err != nil {
 			return nil, err
 		}

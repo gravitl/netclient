@@ -244,7 +244,7 @@ func (c *Config) Save() error {
 		viper.Set(v.Type().Field(i).Name, v.Field(i))
 	}
 
-	return viper.WriteConfigAs(ncutils.GetNetclientPath() + "netclient.yml")
+	return viper.WriteConfigAs(GetNetclientPath() + "netclient.yml")
 }
 
 func ConvertNode(s *models.Node) *Node {

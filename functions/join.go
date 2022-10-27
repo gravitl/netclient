@@ -346,7 +346,7 @@ func JoinNetwork(flags *viper.Viper) error {
 		logger.Log(0, "network:", newNode.Network, "awaiting approval from Admin before configuring WireGuard.")
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
-	err = ncutils.ModPort(newNode)
+	err = config.ModPort(newNode)
 	if err != nil {
 		return fmt.Errorf("modPort error %w", err)
 	}
