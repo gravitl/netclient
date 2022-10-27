@@ -138,5 +138,5 @@ func GetMacIface(ipstring string) (string, error) {
 
 // HasNetwork - checks if a network exists locally
 func HasNetwork(network string) bool {
-	return ncutils.FileExists(config.GetNetclientNodePath() + network + ".conf")
+	return ncutils.FileExists(config.GetNetclientNodePath() + network + ".yml")
 }

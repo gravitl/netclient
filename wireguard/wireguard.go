@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
@@ -106,7 +107,7 @@ func RemoveConf(iface string, printlog bool) error {
 	case "windows":
 		err = RemoveWindowsConf(iface, printlog)
 	default:
-		confPath := config.GetNetclientInterfacePath() + iface + ".conf"
+		confPath := config.GetNetclientInterfacePath() + iface + ".yml"
 		err = RemoveWGQuickConf(confPath, printlog)
 	}
 	return err
@@ -156,6 +157,7 @@ func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 		return fmt.Errorf("no interface to configure")
 	}
 	if node.PrimaryAddress().IP == nil {
+		pretty.Println(node.PrimaryAddress(), node.Address, node.Address6)
 		return fmt.Errorf("no address to configure")
 	}
 	if err := WriteWgConfig(node, peers); err != nil {
@@ -163,7 +165,7 @@ func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 		return err
 	}
 	// spin up userspace / windows interface + apply the conf file
-	confPath := config.GetNetclientInterfacePath() + ifacename + ".conf"
+	confPath := config.GetNetclientInterfacePath() + ifacename + ".yml"
 	var deviceiface = ifacename
 	var mErr error
 	if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
@@ -509,7 +511,7 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 			wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
 	}
-	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".yml"); err != nil {
 		return err
 	}
 	return nil

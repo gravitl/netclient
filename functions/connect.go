@@ -9,7 +9,7 @@ import (
 
 // Disconnect - disconnects a node from the given network
 func Disconnect(network string) {
-	node, err := config.ReadNodeConfig(network)
+	node, err := config.ReadConfig(network)
 	if err != nil {
 		logger.Log(0, "failed to read node config for network", network, "with error", err.Error())
 		return
@@ -19,11 +19,11 @@ func Disconnect(network string) {
 		return
 	}
 	node.Connected = false
-	if err := config.WriteNodeConfig(node); err != nil {
+	if err := config.WriteNodeConfig(*node); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientNodePath() + node.Interface + ".conf"
+	filePath := config.GetNetclientNodePath() + node.Interface + ".yml"
 	wireguard.ApplyConf(node, filePath)
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//return err
@@ -38,7 +38,7 @@ func Disconnect(network string) {
 
 // Connect - will attempt to connect a node on given network
 func Connect(network string) {
-	node, err := config.ReadNodeConfig(network)
+	node, err := config.ReadConfig(network)
 	if err != nil {
 		logger.Log(0, "failed to read node config for network", network, "with error", err.Error())
 		return
@@ -48,11 +48,11 @@ func Connect(network string) {
 		return
 	}
 	node.Connected = true
-	if err := config.WriteNodeConfig(node); err != nil {
+	if err := config.WriteNodeConfig(*node); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientNodePath() + node.Interface + ".conf"
+	filePath := config.GetNetclientNodePath() + node.Interface + ".yml"
 	wireguard.ApplyConf(node, filePath)
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//	return err

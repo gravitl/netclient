@@ -15,7 +15,7 @@ import (
 func Authenticate(node *config.Node) (string, error) {
 	data := models.AuthParams{
 		MacAddress: node.MacAddress.String(),
-		ID:         node.ID.String(),
+		ID:         node.ID,
 		Password:   node.Password,
 	}
 	server, err := config.ReadServerConfig(node.Server)

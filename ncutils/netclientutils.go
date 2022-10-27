@@ -12,14 +12,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/c-robinson/iplib"
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/netclient/global_settings"
@@ -179,15 +177,15 @@ func GetPublicIP(api string) (string, error) {
 }
 
 // GetMacAddr - get's mac address
-func GetMacAddr() ([]string, error) {
+func GetMacAddr() ([]net.HardwareAddr, error) {
 	ifas, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
-	var as []string
+	var as []net.HardwareAddr
 	for _, ifa := range ifas {
-		a := ifa.HardwareAddr.String()
-		if a != "" {
+		a := ifa.HardwareAddr
+		if a != nil {
 			as = append(as, a)
 		}
 	}
@@ -351,15 +349,6 @@ func GetFileAsString(path string) (string, error) {
 	return string(content), err
 }
 
-// GetNetclientPathSpecific - gets specific netclient config path
-func GetWGPathSpecific() string {
-	if IsWindows() {
-		return config.WINDOWS_APP_DATA_PATH + "\\"
-	} else {
-		return "/etc/wireguard/"
-	}
-}
-
 // Copy - copies a src file to dest
 func Copy(src, dst string) error {
 	sourceFileStat, err := os.Stat(src)
@@ -422,25 +411,6 @@ func FileExists(f string) bool {
 		logger.Log(0, "error reading file: "+f+", "+err.Error())
 	}
 	return !info.IsDir()
-}
-
-// GetSystemNetworks - get networks locally
-func GetSystemNetworks() ([]string, error) {
-	var networks []string
-	files, err := filepath.Glob(config.GetNetclientNodePath() + "*.conf")
-	if err != nil {
-		return nil, err
-	}
-	for _, file := range files {
-		//don't want files such as *.bak, *.swp
-		if filepath.Ext(file) != "" {
-			continue
-		}
-		file := filepath.Base(file)
-		temp := strings.Split(file, "-")
-		networks = append(networks, strings.Join(temp[1:], "-"))
-	}
-	return networks, nil
 }
 
 // ShortenString - Brings string down to specified length. Stops names from being too long
@@ -588,15 +558,4 @@ func GetIPNetFromString(ip string) (net.IPNet, error) {
 		return net.IPNet{}, err
 	}
 	return *ipnet, err
-}
-
-// ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
-func ModPort(node *config.Node) error {
-	var err error
-	if node.UDPHolePunch {
-		node.ListenPort = 0
-	} else {
-		node.ListenPort, err = GetFreePort(node.ListenPort)
-	}
-	return err
 }

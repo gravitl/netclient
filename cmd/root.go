@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/gravitl/netclient/config"
@@ -59,7 +58,7 @@ func initConfig() {
 		viper.SetConfigFile(cfgFile)
 	} else {
 		viper.AddConfigPath(config.GetNetclientPath())
-		viper.SetConfigName("netclient.conf")
+		viper.SetConfigName("netclient.yml")
 	}
 	viper.SetConfigType("yml")
 
@@ -78,7 +77,7 @@ func initConfig() {
 	var Netclient config.Config
 
 	if err := viper.Unmarshal(&Netclient); err != nil {
-		log.Fatal(err)
+		logger.Log(0, "could not read netclient config file", err.Error())
 	}
 	logger.Verbosity = Netclient.Verbosity
 	fmt.Println("verbosity set to ", logger.Verbosity)

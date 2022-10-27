@@ -7,7 +7,6 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -29,7 +28,7 @@ func List(network string, long bool) {
 	var networks []string
 	var err error
 	if network == "all" {
-		networks, err = ncutils.GetSystemNetworks()
+		networks, err = config.GetSystemNetworks()
 		if err != nil {
 			logger.Log(1, "error retrieving networks", err.Error())
 			return
@@ -48,7 +47,7 @@ func List(network string, long bool) {
 			logger.Log(1, "error retrieving networks", err.Error())
 			return
 		}
-		fmt.Println(node.Network, node.ID.String(), node.Name, node.Interface, node.Address.String(), node.Address6.String())
+		fmt.Println(node.Network, node.ID, node.Name, node.Interface, node.Address.String(), node.Address6.String())
 		if long {
 			peers, err := getPeers(node)
 			if err != nil {
@@ -74,14 +73,14 @@ func getPeers(node *config.Node) ([]Peer, error) {
 	if err != nil {
 		return response, err
 	}
-	endpoint := httpclient.Endpoint{
+	endpoint := httpclient.JSONEndpoint[models.NodeGet]{
 		URL:           "https://" + server.API,
-		Route:         "/api/node" + node.Network + "/" + node.ID.String(),
+		Route:         "/api/node" + node.Network + "/" + node.ID,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Response:      models.NodeGet{},
 	}
-	nodeData, err := endpoint.JSON()
+	nodeData, err := endpoint.GetJSON(models.NodeGet{})
 	if err != nil {
 		return response, err
 	}

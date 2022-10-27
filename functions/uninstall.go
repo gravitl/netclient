@@ -20,7 +20,7 @@ import (
 
 // Uninstall - uninstalls networks from client
 func Uninstall() error {
-	networks, err := ncutils.GetSystemNetworks()
+	networks, err := config.GetSystemNetworks()
 	if err != nil {
 		logger.Log(1, "unable to retrieve networks: ", err.Error())
 		logger.Log(1, "continuing uninstall without leaving networks")
@@ -52,7 +52,8 @@ func Uninstall() error {
 
 // LeaveNetwork - client exits a network
 func LeaveNetwork(network string) error {
-	node, err := config.ReadNodeConfig(network)
+	logger.Log(0, "leaving network", network)
+	node, err := config.ReadConfig(network)
 	if err != nil {
 		return err
 	}
@@ -91,7 +92,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	endpoint := httpclient.Endpoint{
 		URL:           "https://" + server.API,
 		Method:        http.MethodPost,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID.String(),
+		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
 		Authorization: "Bearer " + token,
 	}
 	response, err := endpoint.GetResponse()
@@ -144,7 +145,11 @@ func WipeLocal(node *config.Node) error {
 	} else {
 		fail = true
 	}
-	if err := os.Remove(config.GetNetclientNodePath() + node.Network + ".conf"); err != nil {
+	if err := os.Remove(config.GetNetclientNodePath() + node.Network + ".yml"); err != nil {
+		logger.Log(0, "failed to delete file", err.Error())
+		fail = true
+	}
+	if err := os.Remove(config.GetNetclientNodePath() + node.Network + ".yml.bak"); err != nil {
 		logger.Log(0, "failed to delete file", err.Error())
 		fail = true
 	}

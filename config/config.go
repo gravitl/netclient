@@ -2,19 +2,25 @@
 package config
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/yaml.v3"
 )
 
 // LINUX_APP_DATA_PATH - linux path
@@ -27,7 +33,11 @@ const MAC_APP_DATA_PATH = "/Applications/Netclient/"
 const WINDOWS_APP_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\"
 
 type Config struct {
-	Verbosity int `yaml:"verbosity"`
+	Verbosity       int `yaml:"verbosity"`
+	FirewallInUse   string
+	Version         string
+	IPForwarding    bool
+	DaemonInstalled bool
 }
 
 type Server struct {
@@ -40,20 +50,27 @@ type Server struct {
 }
 
 type Node struct {
-	ID                  uuid.UUID
+	ID                  string
 	Name                string
 	OS                  string
 	Network             string
 	Password            string
+	AccessKey           string
 	NetworkRange        net.IPNet
 	NetworkRange6       net.IPNet
 	Interface           string
 	Server              string
 	Connected           bool
+	TrafficKeys         models.TrafficKeys
+	TrafficPrivateKey   *[32]byte
 	MacAddress          net.HardwareAddr
+	Port                int
+	Endpoint            net.IPNet
 	Address             net.IPNet
 	Address6            net.IPNet
 	ListenPort          int
+	LocalAddress        net.IPNet
+	LocalRange          net.IPNet
 	LocalListenPort     int
 	MTU                 int
 	PersistentKeepalive int
@@ -63,9 +80,35 @@ type Node struct {
 	PostDown            string
 	IsServer            bool
 	UDPHolePunch        bool
+	IsLocal             bool
 	IsEgressGateway     bool
 	IsIngressGateway    bool
-	IPForwarding        bool
+	IsStatic            bool
+	IsPending           bool
+	DNSOn               bool
+}
+
+// ReadNetclientConfig reads a configuration file and returns it as an
+// instance. If no configuration file is found, nil and no error will be
+// returned. The configuration must live in one of the directories specified in
+// with AddConfigPath()
+//
+// In case multiple configuration files are found, the one in the most specific
+// or "closest" directory will be preferred.
+func ReadNetclientConfig() (*Config, error) {
+	viper.SetConfigName("netclient.yml")
+	viper.SetConfigType("yml")
+	viper.AddConfigPath(GetNetclientPath())
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, err
+		}
+	}
+	var netclient Config
+	if err := viper.Unmarshal(&netclient); err != nil {
+		return nil, err
+	}
+	return &netclient, nil
 }
 
 // ReadServerConfig reads a server configuration file and returns it as a
@@ -76,19 +119,21 @@ type Node struct {
 // In case multiple configuration files are found, the one in the most specific
 // or "closest" directory will be preferred.
 func ReadServerConfig(name string) (*Server, error) {
-	viper.SetConfigName(name + ".conf")
+	viper.SetConfigName(name + ".yml")
 	viper.SetConfigType("yml")
 	viper.AddConfigPath(GetNetclientServerPath())
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Println("readinConfig")
 			return nil, err
 		}
 	}
-	var server *Server
-	if err := viper.Unmarshal(server); err != nil {
+	var server Server
+	if err := viper.Unmarshal(&server); err != nil {
+		log.Println("unmarshal")
 		return nil, err
 	}
-	return server, nil
+	return &server, nil
 }
 
 // ReadNodeConfig reads a node configuration file and returns it as a
@@ -99,21 +144,21 @@ func ReadServerConfig(name string) (*Server, error) {
 // In case multiple configuration files are found, the one in the most specific
 // or "closest" directory will be preferred.
 func ReadNodeConfig(name string) (*Node, error) {
-	viper.SetConfigName(name + ".conf")
+	viper.SetConfigName(name + ".yml")
 	viper.SetConfigType("yml")
 	viper.AddConfigPath(GetNetclientNodePath())
 	if err := viper.ReadInConfig(); err != nil {
-		//	if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-		log.Println("readconfig", err)
-		return nil, err
-		//}
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Println("readconfig", err)
+			return nil, err
+		}
 	}
-	var node *Node
-	if err := viper.Unmarshal(node); err != nil {
+	var node Node
+	if err := viper.Unmarshal(&node); err != nil {
 		log.Println("unmarshal", err)
 		return nil, err
 	}
-	return node, nil
+	return &node, nil
 }
 
 func (node *Node) PrimaryAddress() net.IPNet {
@@ -123,58 +168,159 @@ func (node *Node) PrimaryAddress() net.IPNet {
 	return node.Address6
 }
 
-func WriteNodeConfig(node *Node) error {
-	viper.SetConfigName(node.Network + ".conf")
+// ReadConfig - reads a config of a client from disk for specified network
+func ReadConfig(network string) (*Node, error) {
+	if network == "" {
+		err := errors.New("no network provided - exiting")
+		return nil, err
+	}
+	file := GetNetclientNodePath() + network + ".yml"
+	f, err := os.Open(file)
+	if err != nil {
+		if err = ReplaceWithBackup(network); err != nil {
+			return nil, err
+		}
+		f, err = os.Open(file)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer f.Close()
+	node := Node{}
+	err = yaml.NewDecoder(f).Decode(&node)
+	if err != nil {
+		if err = ReplaceWithBackup(network); err != nil {
+			return nil, err
+		}
+		f.Close()
+		f, err = os.Open(file)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		if err := yaml.NewDecoder(f).Decode(&node); err != nil {
+			return nil, err
+		}
+	}
+	return &node, err
+}
+
+func WriteNodeConfig(node Node) error {
+	if node.Network == "" {
+		return errors.New("no network provided --- exiting")
+	}
+	file := GetNetclientNodePath() + node.Network + ".yml"
+	if _, err := os.Stat(file); err != nil {
+		if os.IsNotExist(err) {
+			os.MkdirAll(GetNetclientNodePath(), os.ModePerm)
+		} else if err != nil {
+			return err
+		}
+	}
+	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	err = yaml.NewEncoder(f).Encode(node)
+	if err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+func (c *Config) Save() error {
+	viper.SetConfigName("netclient.yml")
 	viper.SetConfigType("yml")
-	viper.AddConfigPath(GetNetclientNodePath())
+	viper.AddConfigPath(GetNetclientPath())
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
 	}
-	v := reflect.ValueOf(node)
+	v := reflect.ValueOf(c)
 	for i := 0; i < v.NumField(); i++ {
 		viper.Set(v.Type().Field(i).Name, v.Field(i))
 	}
 
-	if err := viper.WriteConfig(); err != nil {
-		return err
-	}
-	return nil
+	return viper.WriteConfigAs(ncutils.GetNetclientPath() + "netclient.yml")
 }
 
 func ConvertNode(s *models.Node) *Node {
+	//pretty.Println(s)
 	var n Node
-	var err error
-	n.ID, err = uuid.Parse(s.ID)
-	if err != nil {
-		logger.Log(0, "failed to parse ID", err.Error())
-		return nil
-	}
+	n.ID = s.ID
 	n.Name = s.Name
 	n.Network = s.Network
 	n.Password = s.Password
-	n.NetworkRange = toIPNet(s.NetworkSettings.AddressRange)
-	n.NetworkRange6 = toIPNet(s.NetworkSettings.AddressRange6)
+	n.AccessKey = s.AccessKey
+	n.NetworkRange = ToIPNet(s.NetworkSettings.AddressRange)
+	n.NetworkRange6 = ToIPNet(s.NetworkSettings.AddressRange6)
 	n.Interface = s.Interface
 	n.Server = s.Server
+	n.TrafficKeys = s.TrafficKeys
+	n.Endpoint = ToIPNet(s.Endpoint)
 	n.Connected, _ = strconv.ParseBool(s.Connected)
 	n.MacAddress, _ = net.ParseMAC(s.MacAddress)
-	n.Address = toIPNet(s.Address)
-	n.Address6 = toIPNet(s.Address6)
+	n.Port = int(s.ListenPort)
+	n.Address = ToIPNet(s.Address)
+	n.Address6 = ToIPNet(s.Address6)
 	n.ListenPort = int(s.ListenPort)
+	n.LocalAddress = ToIPNet(s.LocalAddress)
+	n.LocalRange = ToIPNet(s.LocalRange)
 	n.MTU = int(s.MTU)
 	n.PersistentKeepalive = int(s.PersistentKeepalive)
 	n.PublicKey, _ = wgtypes.ParseKey(s.PublicKey)
 	n.PostUp = s.PostUp
 	n.PostDown = s.PostDown
+	n.UDPHolePunch, _ = strconv.ParseBool(s.UDPHolePunch)
+	n.IsLocal, _ = strconv.ParseBool(s.IsLocal)
 	n.IsEgressGateway, _ = strconv.ParseBool(s.IsEgressGateway)
 	n.IsIngressGateway, _ = strconv.ParseBool(s.IsIngressGateway)
-	n.IPForwarding, _ = strconv.ParseBool(s.IPForwarding)
+	n.IsStatic, _ = strconv.ParseBool(s.IsStatic)
+	n.IsPending, _ = strconv.ParseBool(s.IsPending)
+	n.DNSOn, _ = strconv.ParseBool(s.DNSOn)
 	return &n
 }
 
-func toIPNet(cidr string) net.IPNet {
+func ConvertToOldNode(n *Node) *models.Node {
+	var s models.Node
+	s.ID = n.ID
+	s.Name = n.Name
+	s.Network = n.Network
+	s.Password = n.Password
+	s.AccessKey = n.AccessKey
+	s.NetworkSettings.AddressRange = n.NetworkRange.String()
+	s.NetworkSettings.AddressRange6 = n.NetworkRange6.String()
+	s.Interface = n.Interface
+	s.Server = n.Server
+	s.TrafficKeys = n.TrafficKeys
+	s.Endpoint = n.Endpoint.String()
+	s.Connected = strconv.FormatBool(n.Connected)
+	s.MacAddress = n.MacAddress.String()
+	s.ListenPort = int32(n.ListenPort)
+	s.Address = n.Address.String()
+	s.Address6 = n.Address6.String()
+	s.ListenPort = int32(n.ListenPort)
+	s.LocalAddress = n.LocalAddress.String()
+	s.LocalRange = n.LocalRange.String()
+	s.MTU = int32(n.MTU)
+	s.PersistentKeepalive = int32(s.PersistentKeepalive)
+	s.PublicKey = n.PublicKey.String()
+	s.PostUp = n.PostUp
+	s.PostDown = n.PostDown
+	s.UDPHolePunch = strconv.FormatBool(n.UDPHolePunch)
+	s.IsLocal = strconv.FormatBool(n.IsLocal)
+	s.IsEgressGateway = strconv.FormatBool(n.IsEgressGateway)
+	s.IsIngressGateway = strconv.FormatBool(n.IsIngressGateway)
+	s.IsStatic = strconv.FormatBool(n.IsStatic)
+	s.IsPending = strconv.FormatBool(n.IsPending)
+	s.DNSOn = strconv.FormatBool(n.DNSOn)
+	return &s
+}
+
+func ToIPNet(cidr string) net.IPNet {
 	_, response, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return net.IPNet{}
@@ -190,39 +336,42 @@ func WriteServerConfig(cfg *models.ServerConfig) error {
 	s.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
 	s.Version = cfg.Version
 	s.Is_EE = cfg.Is_EE
-
-	viper.SetConfigName(s.Name)
-	viper.SetConfigType("yml")
-	viper.AddConfigPath(GetNetclientServerPath())
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+	file := GetNetclientServerPath() + s.Name + ".yml"
+	if _, err := os.Stat(file); err != nil {
+		if os.IsNotExist(err) {
+			os.MkdirAll(GetNetclientServerPath(), os.ModePerm)
+		} else if err != nil {
 			return err
 		}
 	}
-	v := reflect.ValueOf(s)
-	for i := 0; i < v.NumField(); i++ {
-		viper.Set(v.Type().Field(i).Name, v.Field(i))
-	}
-
-	if err := viper.WriteConfig(); err != nil {
+	f, err := os.Create(file)
+	if err != nil {
 		return err
 	}
-	return nil
+	defer f.Close()
+	err = yaml.NewEncoder(f).Encode(s)
+	if err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func SaveBackups(network string) error {
-	input := GetNetclientNodePath() + network + ".conf"
+	input := GetNetclientNodePath() + network + ".yml"
 	back := input + ".bak"
 	if err := copyFile(input, back); err != nil {
+		log.Println("copyfile err 1")
 		return err
 	}
-	n, err := ReadNodeConfig(network)
+	n, err := ReadConfig(network)
 	if err != nil {
+		log.Println("readNodeConfig", err)
 		return err
 	}
 	input = GetNetclientServerPath() + n.Server
 	back = input + ".bak"
 	if err := copyFile(input, back); err != nil {
+		log.Println("copyfile err 2")
 		return err
 	}
 	return nil
@@ -257,33 +406,33 @@ func GetNetclientPath() string {
 // GetNetclientNodePath - gets path to netclient node configuration files
 func GetNetclientNodePath() string {
 	if runtime.GOOS == "windows" {
-		return WINDOWS_APP_DATA_PATH + "\\nodes\\"
+		return WINDOWS_APP_DATA_PATH + "nodes\\"
 	} else if runtime.GOOS == "darwin" {
-		return MAC_APP_DATA_PATH + "/nodes/"
+		return MAC_APP_DATA_PATH + "nodes/"
 	} else {
-		return LINUX_APP_DATA_PATH + "/nodes/"
+		return LINUX_APP_DATA_PATH + "nodes/"
 	}
 }
 
 // GetNetclientServerPath - gets path to netclient server configuration files
 func GetNetclientServerPath() string {
 	if runtime.GOOS == "windows" {
-		return WINDOWS_APP_DATA_PATH + "\\servers\\"
+		return WINDOWS_APP_DATA_PATH + "servers\\"
 	} else if runtime.GOOS == "darwin" {
-		return MAC_APP_DATA_PATH + "/servers/"
+		return MAC_APP_DATA_PATH + "servers/"
 	} else {
-		return LINUX_APP_DATA_PATH + "/servers/"
+		return LINUX_APP_DATA_PATH + "servers/"
 	}
 }
 
 // GetNetclientInterfacePath- gets path to netclient server configuration files
 func GetNetclientInterfacePath() string {
 	if runtime.GOOS == "windows" {
-		return WINDOWS_APP_DATA_PATH + "\\interfaces\\"
+		return WINDOWS_APP_DATA_PATH + "interfaces\\"
 	} else if runtime.GOOS == "darwin" {
-		return MAC_APP_DATA_PATH + "/interfaces/"
+		return MAC_APP_DATA_PATH + "interfaces/"
 	} else {
-		return LINUX_APP_DATA_PATH + "/interfaces/"
+		return LINUX_APP_DATA_PATH + "interfaces/"
 	}
 }
 
@@ -293,4 +442,100 @@ func fileExists(f string) bool {
 		return false
 	}
 	return !info.IsDir()
+}
+
+// ParseAccessToken - used to parse the base64 encoded access token
+func ParseAccessToken(token string) (*models.AccessToken, error) {
+	tokenbytes, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		logger.Log(0, "error decoding token", err.Error())
+		return nil, err
+	}
+	var accesstoken models.AccessToken
+	if err := json.Unmarshal(tokenbytes, &accesstoken); err != nil {
+		logger.Log(0, "error decoding token", err.Error())
+		return nil, err
+	}
+	return &accesstoken, nil
+}
+
+func ParseJoinFlags(cmd *cobra.Command, node *Node, netclient *Config, server *Server) {
+	temp, _ := cmd.Flags().GetString("address")
+	node.Address = ToIPNet(temp)
+	temp, _ = cmd.Flags().GetString("address6")
+	node.Address6 = ToIPNet(temp)
+	node.DNSOn, _ = cmd.Flags().GetBool("dnson")
+	temp, _ = cmd.Flags().GetString("endpoint")
+	node.Endpoint = ToIPNet(temp)
+	netclient.IPForwarding, _ = cmd.Flags().GetBool("ipforwarding")
+	node.Interface, _ = cmd.Flags().GetString("interface")
+	node.IsLocal, _ = cmd.Flags().GetBool("islocal")
+	node.PersistentKeepalive, _ = cmd.Flags().GetInt("keepalive")
+	node.AccessKey, _ = cmd.Flags().GetString("key")
+	temp, _ = cmd.Flags().GetString("localaddress")
+	node.LocalAddress = ToIPNet(temp)
+	temp, _ = cmd.Flags().GetString("macaddress")
+	node.MacAddress, _ = net.ParseMAC(temp)
+	node.Name, _ = cmd.Flags().GetString("name")
+	node.Network, _ = cmd.Flags().GetString("network")
+	node.Password, _ = cmd.Flags().GetString("password")
+	node.Port, _ = cmd.Flags().GetInt("port")
+}
+
+// ReplaceWithBackup - replaces netconfig file with backup
+func ReplaceWithBackup(network string) error {
+	var backupPath = GetNetclientNodePath() + network + ".yml.back"
+	var configPath = GetNetclientNodePath() + network + ".yml"
+	if FileExists(backupPath) {
+		input, err := os.ReadFile(backupPath)
+		if err != nil {
+			logger.Log(0, "failed to read file ", backupPath, " to backup network: ", network)
+			return err
+		}
+		if err = os.WriteFile(configPath, input, 0600); err != nil {
+			logger.Log(0, "failed backup ", backupPath, " to ", configPath)
+			return err
+		}
+	}
+	logger.Log(0, "used backup file for network: ", network)
+	return nil
+}
+
+// FileExists - checks if a file exists on disk
+func FileExists(f string) bool {
+	info, err := os.Stat(f)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// GetSystemNetworks - get networks locally
+func GetSystemNetworks() ([]string, error) {
+	var networks []string
+	files, err := filepath.Glob(GetNetclientNodePath() + "*.yml")
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		//don't want files such as *.bak, *.swp
+		if filepath.Ext(file) != "" {
+			continue
+		}
+		file := filepath.Base(file)
+		temp := strings.Split(file, "-")
+		networks = append(networks, strings.Join(temp[1:], "-"))
+	}
+	return networks, nil
+}
+
+// ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
+func ModPort(node *Node) error {
+	var err error
+	if node.UDPHolePunch {
+		node.ListenPort = 0
+	} else {
+		node.ListenPort, err = ncutils.GetFreePort(node.ListenPort)
+	}
+	return err
 }

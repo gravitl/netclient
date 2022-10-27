@@ -19,11 +19,15 @@ import (
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(network string, iface bool) (*config.Node, error) {
-	node, err := config.ReadNodeConfig(network)
+	node, err := config.ReadConfig(network)
 	if err != nil {
 		return nil, err
 	}
-	if node.IPForwarding && !ncutils.IsWindows() {
+	netclient, err := config.ReadNetclientConfig()
+	if err != nil {
+		return nil, err
+	}
+	if netclient.IPForwarding && !ncutils.IsWindows() {
 		if err = local.SetIPForwarding(); err != nil {
 			return nil, err
 		}
@@ -32,14 +36,14 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	endpoint := httpclient.Endpoint{
+	endpoint := httpclient.JSONEndpoint[models.NodeGet]{
 		URL:           "https://" + node.Server,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID.String(),
+		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Response:      models.NodeGet{},
 	}
-	response, err := endpoint.JSON()
+	response, err := endpoint.GetJSON(models.NodeGet{})
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +70,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		}
 		informPortChange(newNode)
 	}
-	if err = config.WriteNodeConfig(newNode); err != nil {
+	if err = config.WriteNodeConfig(*newNode); err != nil {
 		return nil, err
 	}
 	if iface {
