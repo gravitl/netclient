@@ -18,10 +18,7 @@ func Authenticate(node *config.Node) (string, error) {
 		ID:         node.ID,
 		Password:   node.Password,
 	}
-	server, err := config.ReadServerConfig(node.Server)
-	if err != nil {
-		return "", fmt.Errorf("could not read server config %w", err)
-	}
+	server := config.Servers[node.Server]
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Route:  "/api/nodes/adm" + node.Network + "/authenticate",

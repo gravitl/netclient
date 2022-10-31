@@ -9,28 +9,19 @@ import (
 
 // Disconnect - disconnects a node from the given network
 func Disconnect(network string) {
-	node, err := config.ReadConfig(network)
-	if err != nil {
-		logger.Log(0, "failed to read node config for network", network, "with error", err.Error())
-		return
-	}
+	node := config.Nodes[network]
 	if !node.Connected {
 		logger.Log(0, "node already disconnected")
 		return
 	}
 	node.Connected = false
-	if err := config.WriteNodeConfig(*node); err != nil {
+	config.Nodes[node.Network] = node
+	if err := config.WriteNodeConfig(node); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientNodePath() + node.Interface + ".yml"
-	wireguard.ApplyConf(node, filePath)
-	//if err := setupMQTTSingleton(cfg); err != nil {
-	//return err
-	//}
-	//if err := PublishNodeUpdate(cfg); err != nil {
-	//return err
-	//}
+	filePath := config.GetNetclientInterfacePath() + node.Interface + ".yml"
+	wireguard.ApplyConf(&node, filePath)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
 	}
@@ -38,22 +29,19 @@ func Disconnect(network string) {
 
 // Connect - will attempt to connect a node on given network
 func Connect(network string) {
-	node, err := config.ReadConfig(network)
-	if err != nil {
-		logger.Log(0, "failed to read node config for network", network, "with error", err.Error())
-		return
-	}
+	node := config.Nodes[network]
 	if node.Connected {
 		logger.Log(0, "node already connected")
 		return
 	}
 	node.Connected = true
-	if err := config.WriteNodeConfig(*node); err != nil {
+	config.Nodes[node.Network] = node
+	if err := config.WriteNodeConfig(node); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientNodePath() + node.Interface + ".yml"
-	wireguard.ApplyConf(node, filePath)
+	filePath := config.GetNetclientInterfacePath() + node.Interface + ".yml"
+	wireguard.ApplyConf(&node, filePath)
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//	return err
 	//}

@@ -184,7 +184,7 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 // JoinNetwork - helps a client join a network
 func JoinNetwork(flags *viper.Viper) error {
 	node := models.Node{}
-	n := config.Node{}
+	netclientNode := config.Node{}
 	node.Network = flags.GetString("network")
 	if node.Network == "" {
 		return errors.New("no network provided")
@@ -193,18 +193,9 @@ func JoinNetwork(flags *viper.Viper) error {
 		return errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + node.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + node.Network + "'. Then re-run the install command.")
 	}
 	node.Server = flags.GetString("server")
-	server, err := config.ReadServerConfig(node.Server)
-	if err != nil {
-		return fmt.Errorf("error reading server config %w", err)
-	}
-	if server == nil {
-		server = &config.Server{}
-	}
-	///if err := config.WriteNodeConfig(node); err != nil {
-	//return fmt.Errorf("error saving node config %w", err)
-	//}
+	server := config.Server{}
+	server = config.Servers[node.Server]
 	node.Password = flags.GetString("password")
-
 	if node.Password == "" {
 		node.Password = logic.GenPassWord()
 	}
@@ -218,7 +209,7 @@ func JoinNetwork(flags *viper.Viper) error {
 		return fmt.Errorf("error generating traffic keys %w", errT)
 	}
 	//handle traffic keys
-	n.TrafficPrivateKey = trafficPrivKey
+	netclientNode.TrafficPrivateKey = trafficPrivKey
 	trafficPubKeyBytes, err := ncutils.ConvertKeyToBytes(trafficPubKey)
 	if err != nil {
 		return fmt.Errorf("error converting traffic key %w", err)
@@ -261,12 +252,12 @@ func JoinNetwork(flags *viper.Viper) error {
 	}
 	// Generate and set public/private WireGuard Keys
 	if flags.GetString("privatekey") == "" {
-		n.PrivateKey, err = wgtypes.GeneratePrivateKey()
+		netclientNode.PrivateKey, err = wgtypes.GeneratePrivateKey()
 		if err != nil {
 			logger.FatalLog(err.Error())
 		}
 	}
-	node.PublicKey = n.PrivateKey.PublicKey().String()
+	node.PublicKey = netclientNode.PrivateKey.PublicKey().String()
 	// Find and set node MacAddress
 	if flags.GetString("macddress") == "" {
 		macs, err := ncutils.GetMacAddr()
@@ -277,30 +268,29 @@ func JoinNetwork(flags *viper.Viper) error {
 			node.MacAddress = macs[0].String()
 		}
 	}
-	netclient, err := config.ReadNetclientConfig()
 	if err != nil {
 		return fmt.Errorf("error reading netclient config %w", err)
 	}
 	if ncutils.IsFreeBSD() {
 		node.UDPHolePunch = "no"
-		netclient.FirewallInUse = models.FIREWALL_IPTABLES // nftables not supported by FreeBSD
+		config.Netclient.FirewallInUse = models.FIREWALL_IPTABLES // nftables not supported by FreeBSD
 	}
-	if netclient.FirewallInUse == "" {
+	if config.Netclient.FirewallInUse == "" {
 		if ncutils.IsNFTablesPresent() {
-			netclient.FirewallInUse = models.FIREWALL_NFTABLES
+			config.Netclient.FirewallInUse = models.FIREWALL_NFTABLES
 		} else if ncutils.IsIPTablesPresent() {
-			netclient.FirewallInUse = models.FIREWALL_IPTABLES
+			config.Netclient.FirewallInUse = models.FIREWALL_IPTABLES
 		} else {
-			netclient.FirewallInUse = models.FIREWALL_NONE
+			config.Netclient.FirewallInUse = models.FIREWALL_NONE
 		}
 	}
 	// make sure name is appropriate, if not, give blank name
 	node.Name = formatName(flags.GetString("name"))
 	node.OS = runtime.GOOS
-	netclient.Version = ncutils.Version
+	config.Netclient.Version = ncutils.Version
 	//   ---- not sure this is required node.AccessKey = cfg.AccessKey
 	//not sure why this is needed ... setnode defaults should take care of this on server
-	netclient.IPForwarding = true
+	config.Netclient.IPForwarding = true
 	server.API = flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+server.API)
@@ -320,8 +310,8 @@ func JoinNetwork(flags *viper.Viper) error {
 	}
 	nodeGET := response.(models.NodeGet)
 	newNode := config.ConvertNode(&nodeGET.Node)
-	newNode.TrafficPrivateKey = n.TrafficPrivateKey
-	newNode.PrivateKey = n.PrivateKey
+	newNode.TrafficPrivateKey = netclientNode.TrafficPrivateKey
+	newNode.PrivateKey = netclientNode.PrivateKey
 
 	/*  not sure the point of following
 	if nodeGET.Peers == nil {
@@ -337,7 +327,7 @@ func JoinNetwork(flags *viper.Viper) error {
 		newNode.UDPHolePunch = false
 		newNode.IsStatic = true
 	}
-	if err := config.WriteServerConfig(&nodeGET.ServerConfig); err != nil {
+	if err := config.WriteInitialServerConfig(&nodeGET.ServerConfig); err != nil {
 		return fmt.Errorf("error wrting sever config %w", err)
 	}
 	if newNode.IsPending {
@@ -353,14 +343,7 @@ func JoinNetwork(flags *viper.Viper) error {
 	informPortChange(newNode)
 	pretty.Println("saving new node")
 	pretty.Println(newNode)
-	if err := config.WriteNodeConfig(*newNode); err != nil {
-		return fmt.Errorf("error saving node config %w", err)
-	}
-	// attempt to make backup
-	if err = config.SaveBackups(node.Network); err != nil {
-		logger.Log(0, "network:", node.Network, "failed to make backup, node will not auto restore if config is corrupted")
-	}
-
+	config.Nodes[newNode.Network] = *newNode
 	local.SetNetmakerDomainRoute(server.API)
 	logger.Log(0, "starting wireguard")
 	err = wireguard.InitWireguard(newNode, nodeGET.Peers[:])
@@ -370,7 +353,7 @@ func JoinNetwork(flags *viper.Viper) error {
 	if server.Broker == "" {
 		return errors.New("did not receive broker address from registration")
 	}
-	if netclient.DaemonInstalled {
+	if config.Netclient.DaemonInstalled {
 		if err := daemon.Restart(); err != nil {
 			logger.Log(3, "daemon restart failed:", err.Error())
 			if err := daemon.Start(); err != nil {
@@ -378,8 +361,7 @@ func JoinNetwork(flags *viper.Viper) error {
 			}
 		}
 	}
-	netclient.Save()
-	return nil
+	return config.WriteNetclientConfig()
 }
 
 func getPrivateAddr() (net.IPNet, error) {

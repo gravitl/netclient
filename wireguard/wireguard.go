@@ -56,7 +56,7 @@ func ApplyWGQuickConf(confPath, ifacename string, isConnected bool) error {
 		logger.Log(0, confPath+" does not exist "+err.Error())
 		return err
 	}
-	if ncutils.IfaceExists(ifacename) {
+	if IfaceExists(ifacename) {
 		ncutils.RunCmd("wg-quick down "+confPath, true)
 	}
 	if !isConnected {
@@ -121,11 +121,8 @@ func RemoveWGQuickConf(confPath string, printlog bool) error {
 
 // SetWGConfig - sets the WireGuard Config of a given network and checks if it needs a peer update
 func SetWGConfig(network string, peerupdate bool, peers []wgtypes.PeerConfig) error {
-
-	node, err := config.ReadNodeConfig(network)
-	if err != nil {
-		return err
-	}
+	node := config.Nodes[network]
+	var err error
 	if peerupdate && !ncutils.IsFreeBSD() && !(ncutils.IsLinux() && !ncutils.IsKernel()) {
 		var iface string
 		iface = node.Interface
@@ -135,9 +132,9 @@ func SetWGConfig(network string, peerupdate bool, peers []wgtypes.PeerConfig) er
 				return err
 			}
 		}
-		err = SetPeers(iface, node, peers)
+		err = SetPeers(iface, &node, peers)
 	} else {
-		err = InitWireguard(node, peers)
+		err = InitWireguard(&node, peers)
 	}
 	return err
 }
@@ -515,4 +512,144 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 		return err
 	}
 	return nil
+}
+
+// UpdatePrivateKey - updates the private key of a wireguard config file
+func UpdatePrivateKey(file, privateKey string) error {
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard, err := ini.LoadSources(options, file)
+	if err != nil {
+		return err
+	}
+	wireguard.Section(section_interface).Key("PrivateKey").SetValue(privateKey)
+	if err := wireguard.SaveTo(file); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateWgInterface - updates the interface section of a wireguard config file
+func UpdateWgInterface(file, nameserver string, node *config.Node) error {
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard, err := ini.LoadSources(options, file)
+	if err != nil {
+		return err
+	}
+	if node.UDPHolePunch {
+		node.ListenPort = 0
+	}
+	wireguard.DeleteSection(section_interface)
+	wireguard.Section(section_interface).Key("PrivateKey").SetValue(node.PrivateKey.String())
+	wireguard.Section(section_interface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
+	addrString := node.Address.String()
+	if node.Address6.IP != nil {
+		if addrString != "" {
+			addrString += ","
+		}
+		addrString += node.Address6.String()
+	}
+	wireguard.Section(section_interface).Key("Address").SetValue(addrString)
+	//if node.DNSOn == "yes" {
+	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
+	//}
+	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
+	if node.PostUp != "" {
+		parts := strings.Split(node.PostUp, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(section_interface).Key("PostUp").SetValue(part)
+			}
+			wireguard.Section(section_interface).Key("PostUp").AddShadow(part)
+		}
+	}
+	if node.PostDown != "" {
+		parts := strings.Split(node.PostDown, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(section_interface).Key("PostDown").SetValue(part)
+			}
+			wireguard.Section(section_interface).Key("PostDown").AddShadow(part)
+		}
+	}
+	if node.MTU != 0 {
+		wireguard.Section(section_interface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
+	}
+	if err := wireguard.SaveTo(file); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateKeepAlive - updates the persistentkeepalive of all peers
+func UpdateKeepAlive(file string, keepalive int) error {
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard, err := ini.LoadSources(options, file)
+	if err != nil {
+		return err
+	}
+	peers, err := wireguard.SectionsByName(section_peers)
+	if err != nil {
+		return err
+	}
+	newvalue := strconv.Itoa(keepalive)
+	for i := range peers {
+		wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepALive").SetValue(newvalue)
+	}
+	if err := wireguard.SaveTo(file); err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpdateWgPeers(file string, peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
+	var internetGateway *net.UDPAddr
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard, err := ini.LoadSources(options, file)
+	if err != nil {
+		return internetGateway, err
+	}
+	//delete the peers sections as they are going to be replaced
+	wireguard.DeleteSection(section_peers)
+	for i, peer := range peers {
+		wireguard.SectionWithIndex(section_peers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
+		if peer.PresharedKey != nil {
+			wireguard.SectionWithIndex(section_peers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+		}
+		if peer.AllowedIPs != nil {
+			var allowedIPs string
+			for i, ip := range peer.AllowedIPs {
+				if i == 0 {
+					allowedIPs = ip.String()
+				} else {
+					allowedIPs = allowedIPs + ", " + ip.String()
+				}
+			}
+			wireguard.SectionWithIndex(section_peers, i).Key("AllowedIps").SetValue(allowedIPs)
+			if strings.Contains(allowedIPs, "0.0.0.0/0") || strings.Contains(allowedIPs, "::/0") {
+				internetGateway = peer.Endpoint
+			}
+		}
+		if peer.Endpoint != nil {
+			wireguard.SectionWithIndex(section_peers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
+		}
+		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
+			wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+		}
+	}
+	if err := wireguard.SaveTo(file); err != nil {
+		return internetGateway, err
+	}
+	return internetGateway, nil
 }

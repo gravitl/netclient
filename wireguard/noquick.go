@@ -89,14 +89,10 @@ func RemoveWithoutWGQuick(ifacename string) error {
 		logger.Log(1, out)
 	}
 	network := strings.ReplaceAll(ifacename, "nm-", "")
-	node, err := config.ReadNodeConfig(network)
-	if err != nil {
-		return err
-	} else {
-		if node.PostDown != "" {
-			if _, err := ncutils.RunCmd(node.PostDown, false); err != nil {
-				return err
-			}
+	node := config.Nodes[network]
+	if node.PostDown != "" {
+		if _, err := ncutils.RunCmd(node.PostDown, false); err != nil {
+			return err
 		}
 	}
 	return nil

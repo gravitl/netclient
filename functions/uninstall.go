@@ -19,21 +19,12 @@ import (
 )
 
 // Uninstall - uninstalls networks from client
-func Uninstall() error {
-	networks, err := config.GetSystemNetworks()
-	if err != nil {
-		logger.Log(1, "unable to retrieve networks: ", err.Error())
-		logger.Log(1, "continuing uninstall without leaving networks")
-	} else {
-		for _, network := range networks {
-			err = LeaveNetwork(network)
-			if err != nil {
-				logger.Log(1, "encounter issue leaving network", network, ":", err.Error())
-			}
+func Uninstall() {
+	for network := range config.Nodes {
+		if err := LeaveNetwork(network); err != nil {
+			logger.Log(1, "encountered issue leaving network", network, ":", err.Error())
 		}
 	}
-	err = nil
-
 	// clean up OS specific stuff
 	if ncutils.IsWindows() {
 		daemon.CleanupWindows()
@@ -46,27 +37,22 @@ func Uninstall() error {
 	} else if !ncutils.IsKernel() {
 		logger.Log(1, "manual cleanup required")
 	}
-
-	return err
 }
 
 // LeaveNetwork - client exits a network
 func LeaveNetwork(network string) error {
 	logger.Log(0, "leaving network", network)
-	node, err := config.ReadConfig(network)
-	if err != nil {
-		return err
-	}
+	node := config.Nodes[network]
 	logger.Log(2, "deleting node from server")
-	if err := deleteNodeFromServer(node); err != nil {
+	if err := deleteNodeFromServer(&node); err != nil {
 		logger.Log(0, "error deleting node from server", err.Error())
 	}
 	logger.Log(2, "deleting wireguard interface")
-	if err := deleteLocalNetwork(node); err != nil {
+	if err := deleteLocalNetwork(&node); err != nil {
 		logger.Log(0, "error deleting wireguard interface", err.Error())
 	}
 	logger.Log(2, "deleting configuration files")
-	if err := WipeLocal(node); err != nil {
+	if err := WipeLocal(&node); err != nil {
 		logger.Log(0, "error deleting local network files", err.Error())
 	}
 	logger.Log(2, "removing dns entries")
@@ -85,7 +71,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
-	server, err := config.ReadServerConfig(node.Server)
+	server := config.Servers[node.Server]
 	if err != nil {
 		return fmt.Errorf("could not read sever config %w", err)
 	}

@@ -19,20 +19,13 @@ import (
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(network string, iface bool) (*config.Node, error) {
-	node, err := config.ReadConfig(network)
-	if err != nil {
-		return nil, err
-	}
-	netclient, err := config.ReadNetclientConfig()
-	if err != nil {
-		return nil, err
-	}
-	if netclient.IPForwarding && !ncutils.IsWindows() {
-		if err = local.SetIPForwarding(); err != nil {
+	node := config.Nodes[network]
+	if config.Netclient.IPForwarding && !ncutils.IsWindows() {
+		if err := local.SetIPForwarding(); err != nil {
 			return nil, err
 		}
 	}
-	token, err := Authenticate(node)
+	token, err := Authenticate(&node)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +49,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 
 	if nodeGet.ServerConfig.API != "" && nodeGet.ServerConfig.MQPort != "" {
-		if err = config.WriteServerConfig(&nodeGet.ServerConfig); err != nil {
+		if err = config.WriteInitialServerConfig(&nodeGet.ServerConfig); err != nil {
 			logger.Log(0, "unable to update server config: "+err.Error())
 		}
 	}

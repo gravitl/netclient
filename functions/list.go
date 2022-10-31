@@ -23,40 +23,22 @@ type CIDR struct {
 
 // List - list network details for specified networks
 // long flag passed passed to cmd line will list additional details about network including peers
-func List(network string, long bool) {
-	logger.Log(0, "List called with", network, strconv.FormatBool(long))
-	var networks []string
-	var err error
-	if network == "all" {
-		networks, err = config.GetSystemNetworks()
-		if err != nil {
-			logger.Log(1, "error retrieving networks", err.Error())
-			return
-		}
-		if networks == nil {
-			fmt.Println("netclient is not connected to any networks")
-			return
-		}
-	} else {
-		networks = append(networks, network)
-	}
-
-	for _, network := range networks {
-		node, err := config.ReadNodeConfig(network)
-		if err != nil {
-			logger.Log(1, "error retrieving networks", err.Error())
-			return
-		}
-		fmt.Println(node.Network, node.ID, node.Name, node.Interface, node.Address.String(), node.Address6.String())
-		if long {
-			peers, err := getPeers(node)
-			if err != nil {
-				continue
-			}
-			for _, peer := range peers {
-				fmt.Println(peer.PublicKey, peer.Endpoint)
-				for _, cidr := range peer.AllowedIPs {
-					fmt.Println(cidr)
+func List(net string, long bool) {
+	logger.Log(0, "List called with", net, strconv.FormatBool(long))
+	for network := range config.Nodes {
+		if network == net || net == "all" {
+			node := config.Nodes[network]
+			fmt.Println(node.Network, node.ID, node.Name, node.Interface, node.Address.String(), node.Address6.String())
+			if long {
+				peers, err := getPeers(&node)
+				if err != nil {
+					continue
+				}
+				for _, peer := range peers {
+					fmt.Println(peer.PublicKey, peer.Endpoint)
+					for _, cidr := range peer.AllowedIPs {
+						fmt.Println(cidr)
+					}
 				}
 			}
 		}
@@ -65,10 +47,7 @@ func List(network string, long bool) {
 
 func getPeers(node *config.Node) ([]Peer, error) {
 	var response []Peer
-	server, err := config.ReadServerConfig(node.Server)
-	if err != nil {
-		return response, err
-	}
+	server := config.Servers[node.Server]
 	token, err := Authenticate(node)
 	if err != nil {
 		return response, err

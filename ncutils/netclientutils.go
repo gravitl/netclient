@@ -193,17 +193,12 @@ func GetMacAddr() ([]net.HardwareAddr, error) {
 }
 
 // GetLocalIP - gets local ip of machine
-func GetLocalIP(localrange string) (string, error) {
-	_, localRange, err := net.ParseCIDR(localrange)
-	if err != nil {
-		return "", err
-	}
+// returns first interface that is up, is not a loopback and is
+func GetLocalIP(localrange net.IPNet) (*net.IPNet, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var local string
-	found := false
 	for _, i := range ifaces {
 		if i.Flags&net.FlagUp == 0 {
 			continue // interface down
@@ -213,30 +208,17 @@ func GetLocalIP(localrange string) (string, error) {
 		}
 		addrs, err := i.Addrs()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				if !found {
-					ip = v.IP
-					local = ip.String()
-					found = localRange.Contains(ip)
-				}
-			case *net.IPAddr:
-				if !found {
-					ip = v.IP
-					local = ip.String()
-					found = localRange.Contains(ip)
+			if net, ok := addr.(*net.IPNet); ok {
+				if localrange.Contains(net.IP) {
+					return net, nil
 				}
 			}
 		}
 	}
-	if !found || local == "" {
-		return "", errors.New("Failed to find local IP in range " + localrange)
-	}
-	return local, nil
+	return nil, errors.New("not found")
 }
 
 // GetNetworkIPMask - Pulls the netmask out of the network
@@ -499,18 +481,6 @@ func ConvertKeyToBytes(key *[32]byte) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// ConvertBytesToKey - util to convert bytes to a key to use elsewhere
-func ConvertBytesToKey(data []byte) (*[32]byte, error) {
-	var buffer = bytes.NewBuffer(data)
-	var dec = gob.NewDecoder(buffer)
-	var result = new([32]byte)
-	var err = dec.Decode(result)
-	if err != nil {
-		return nil, err
-	}
-	return result, err
-}
-
 // ServerAddrSliceContains - sees if a string slice contains a string element
 func ServerAddrSliceContains(slice []models.ServerAddr, item models.ServerAddr) bool {
 	for _, s := range slice {
@@ -558,4 +528,16 @@ func GetIPNetFromString(ip string) (net.IPNet, error) {
 		return net.IPNet{}, err
 	}
 	return *ipnet, err
+}
+
+// ConvertBytesToKey - util to convert bytes to a key to use elsewhere
+func ConvertBytesToKey(data []byte) (*[32]byte, error) {
+	var buffer = bytes.NewBuffer(data)
+	var dec = gob.NewDecoder(buffer)
+	var result = new([32]byte)
+	var err = dec.Decode(result)
+	if err != nil {
+		return nil, err
+	}
+	return result, err
 }

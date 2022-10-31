@@ -80,5 +80,8 @@ func initConfig() {
 		logger.Log(0, "could not read netclient config file", err.Error())
 	}
 	logger.Verbosity = Netclient.Verbosity
+	config.Netclient = Netclient
 	fmt.Println("verbosity set to ", logger.Verbosity)
+	config.GetNodes()
+	config.GetServers()
 }
