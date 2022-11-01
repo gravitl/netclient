@@ -16,11 +16,11 @@ func Disconnect(network string) {
 	}
 	node.Connected = false
 	config.Nodes[node.Network] = node
-	if err := config.WriteNodeConfig(node); err != nil {
+	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientInterfacePath() + node.Interface + ".yml"
+	filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
 	wireguard.ApplyConf(&node, filePath)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
@@ -36,11 +36,11 @@ func Connect(network string) {
 	}
 	node.Connected = true
 	config.Nodes[node.Network] = node
-	if err := config.WriteNodeConfig(node); err != nil {
+	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientInterfacePath() + node.Interface + ".yml"
+	filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
 	wireguard.ApplyConf(&node, filePath)
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//	return err

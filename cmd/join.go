@@ -4,13 +4,9 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -26,68 +22,13 @@ token: netclient join -t <token>
 user: netclient join -s <api endpoint> -n <network name> -u <user>
 additional paramaters can be be specified such as listenport or macaddress -- see help for fulll list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		node := &config.Node{}
-		server := &config.Server{}
-		//config.ParseJoinFlags(cmd)
 		flags := viper.New()
 		flags.BindPFlags(cmd.Flags())
 		if flags.Get("server") == "" && flags.Get("token") == "" && flags.Get("key") == "" {
 			cmd.Usage()
 			return
 		}
-		fmt.Println("join called")
-		//pretty.Println(cmd.Flags())
-		//pretty.Println(viper.AllSettings())
-
-		if flags.Get("server") != "" {
-			//SSO sign on
-			if flags.Get("network") == "" {
-				logger.Log(0, "no network provided")
-			}
-			token, err := functions.JoinViaSSo(flags)
-			if err != nil {
-				logger.Log(0, "Join failed:", err.Error())
-				return
-			}
-			if token.Key == "" {
-				fmt.Println("login failed")
-				return
-			}
-			node.Network = token.ClientConfig.Network
-			node.AccessKey = token.ClientConfig.Key
-			node.LocalRange = config.ToIPNet(token.ClientConfig.LocalRange)
-			server.API = token.APIConnString
-
-		}
-		logger.Log(1, "Joining network: ", node.Network)
-		token := flags.Get("token").(string)
-		if token != "" {
-			logger.Log(3, "parsing token flag")
-			accessToken, err := config.ParseAccessToken(token)
-			if err != nil {
-				logger.Log(0, "failed to parse access token", token, err.Error())
-				return
-			}
-			flags.Set("network", accessToken.ClientConfig.Network)
-			flags.Set("accesskey", accessToken.ClientConfig.Key)
-			flags.Set("localrange", accessToken.ClientConfig.LocalRange)
-			flags.Set("apiconn", accessToken.APIConnString)
-
-		}
-		if err := functions.JoinNetwork(flags); err != nil {
-			if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
-				logger.Log(0, "error installing: ", err.Error())
-				err = functions.WipeLocal(node)
-				if err != nil {
-					logger.Log(1, "error removing artifacts: ", err.Error())
-				}
-			}
-			if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
-				logger.FatalLog(err.Error())
-			}
-			return
-		}
-		logger.Log(1, "joined", node.Network)
+		functions.Join(flags)
 	},
 }
 

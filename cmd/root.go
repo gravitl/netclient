@@ -84,4 +84,15 @@ func initConfig() {
 	fmt.Println("verbosity set to ", logger.Verbosity)
 	config.GetNodes()
 	config.GetServers()
+	//check netclient dirs exist
+	logger.Log(0, "checking netclient paths")
+	if _, err := os.Stat(config.GetNetclientInterfacePath()); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.Mkdir(config.GetNetclientInterfacePath(), os.ModePerm); err != nil {
+				logger.Log(0, "failed to create dirs", err.Error())
+			}
+		} else {
+			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
+		}
+	}
 }

@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
-	"github.com/gravitl/netmaker/netclient/auth"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -35,6 +34,7 @@ type cachedMessage struct {
 
 func Daemon() {
 	logger.Log(0, "netclient daemon started -- version:", ncutils.Version)
+	ServerSet = make(map[string]mqtt.Client)
 	if err := ncutils.SavePID(); err != nil {
 		logger.FatalLog("unable to save PID on daemon startup")
 	}
@@ -182,10 +182,7 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	}
 
 	// setup the keys
-	diskKey, keyErr := auth.RetrieveTrafficKey(node.Network)
-	if keyErr != nil {
-		return nil, keyErr
-	}
+	diskKey := node.TrafficPrivateKey
 
 	serverPubKey, err := ncutils.ConvertBytesToKey(node.TrafficKeys.Server)
 	if err != nil {
@@ -260,7 +257,7 @@ func UpdateKeys(node *config.Node, client mqtt.Client) error {
 	}
 	node.PublicKey = node.PrivateKey.PublicKey()
 	config.Nodes[node.Network] = *node
-	if err := config.WriteNodeConfig(*node); err != nil {
+	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, "error saving node", err.Error())
 	}
 	PublishNodeUpdate(node)

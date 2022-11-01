@@ -45,11 +45,15 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			logger.Log(0, "checkin routine closed")
 			return
 		case <-ticker.C:
-			if mqclient != nil && mqclient.IsConnected() {
-				checkin()
-			} else {
+			if !mqclient.IsConnected() {
 				logger.Log(0, "MQ client is not connected, skipping checkin...")
+				continue
 			}
+			if mqclient == nil {
+				logger.Log(0, "MQ client is not configured, skipping checkin...")
+				continue
+			}
+			checkin()
 
 		}
 	}

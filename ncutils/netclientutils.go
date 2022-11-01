@@ -20,7 +20,6 @@ import (
 	"github.com/c-robinson/iplib"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/global_settings"
 )
 
 var (
@@ -139,12 +138,12 @@ func GetPublicIP(api string) (string, error) {
 
 	iplist := []string{"https://ip.client.gravitl.com", "https://ifconfig.me", "https://api.ipify.org", "https://ipinfo.io/ip"}
 
-	for network, ipService := range global_settings.PublicIPServices {
-		logger.Log(3, "User provided public IP service defined for network", network, "is", ipService)
+	//for network, ipService := range global_settings.PublicIPServices {
+	//logger.Log(3, "User provided public IP service defined for network", network, "is", ipService)
 
-		// prepend the user-specified service so it's checked first
-		iplist = append([]string{ipService}, iplist...)
-	}
+	// prepend the user-specified service so it's checked first
+	//		iplist = append([]string{ipService}, iplist...)
+	//}
 	if api != "" {
 		api = "https://" + api + "/api/getip"
 		iplist = append([]string{api}, iplist...)
@@ -540,4 +539,8 @@ func ConvertBytesToKey(data []byte) (*[32]byte, error) {
 		return nil, err
 	}
 	return result, err
+}
+
+func IpIsPrivate(ipnet net.IP) bool {
+	return ipnet.IsPrivate() || ipnet.IsLoopback()
 }

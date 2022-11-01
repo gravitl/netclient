@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -95,6 +96,11 @@ type Node struct {
 	IsPending           bool
 	DNSOn               bool
 	IsHub               bool
+}
+
+func init() {
+	Servers = make(map[string]Server)
+	Nodes = make(map[string]Node)
 }
 
 // ReadNetclientConfig reads a configuration file and returns it as an
@@ -221,10 +227,7 @@ func ReadConfig(network string) (*Node, error) {
 	return &node, err
 }
 
-func WriteNodeConfig(node Node) error {
-	if node.Network == "" {
-		return errors.New("no network provided --- exiting")
-	}
+func WriteNodeConfig() error {
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -340,14 +343,16 @@ func ConvertNode(s *models.Node) *Node {
 	n.NetworkRange6 = ToIPNet(s.NetworkSettings.AddressRange6)
 	n.InternetGateway = ToUDPAddr(s.InternetGateway)
 	n.Interface = s.Interface
-	n.Server = s.Server
+	n.Server = strings.Replace(s.Server, "api.", "", 1)
 	n.TrafficKeys = s.TrafficKeys
 	n.Endpoint = ToIPNet(s.Endpoint)
 	n.Connected, _ = strconv.ParseBool(s.Connected)
 	n.MacAddress, _ = net.ParseMAC(s.MacAddress)
 	n.Port = int(s.ListenPort)
-	n.Address = ToIPNet(s.Address)
-	n.Address6 = ToIPNet(s.Address6)
+	n.Address.IP = net.ParseIP(s.Address)
+	n.Address.Mask = n.NetworkRange.Mask
+	n.Address6.IP = net.ParseIP(s.Address6)
+	n.Address6.Mask = n.NetworkRange6.Mask
 	n.ListenPort = int(s.ListenPort)
 	n.LocalAddress = ToIPNet(s.LocalAddress)
 	n.LocalRange = ToIPNet(s.LocalRange)
@@ -420,15 +425,20 @@ func ToUDPAddr(address string) *net.UDPAddr {
 	return addr
 }
 
-func WriteInitialServerConfig(cfg *models.ServerConfig) error {
+func WriteInitialServerConfig(cfg *models.ServerConfig, pass string) error {
 	var s Server
 	s.Name = strings.Replace(cfg.Server, "broker.", "", 1)
 	s.Broker = cfg.Server
+	s.MQPort = cfg.MQPort
 	s.API = cfg.API
+	s.Password = pass
 	s.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	s.CoreDNSAddr = cfg.CoreDNSAddr
 	s.Version = cfg.Version
 	s.Is_EE = cfg.Is_EE
 	Servers[s.Name] = s
+	log.Println("server to be saved", s.Name)
+	pretty.Println(Servers[s.Name])
 	return WriteServerConfig()
 }
 

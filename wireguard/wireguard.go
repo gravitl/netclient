@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"runtime"
@@ -26,6 +27,7 @@ const (
 
 // ApplyConf - applys a conf on disk to WireGuard interface
 func ApplyConf(node *config.Node, confPath string) {
+	log.Println("applying wg conf ", node.Network, " using ", confPath)
 	os := runtime.GOOS
 	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
 		os = "nowgquick"
@@ -51,6 +53,7 @@ func ApplyConf(node *config.Node, confPath string) {
 
 // ApplyWGQuickConf - applies wg-quick commands if os supports
 func ApplyWGQuickConf(confPath, ifacename string, isConnected bool) error {
+	log.Println("applying wg quick with args ", confPath, ifacename, isConnected)
 	_, err := os.Stat(confPath)
 	if err != nil {
 		logger.Log(0, confPath+" does not exist "+err.Error())
@@ -62,7 +65,8 @@ func ApplyWGQuickConf(confPath, ifacename string, isConnected bool) error {
 	if !isConnected {
 		return nil
 	}
-	_, err = ncutils.RunCmd("wg-quick up "+confPath, true)
+	out, err := ncutils.RunCmd("wg-quick up "+confPath, true)
+	log.Println("output from wg-quick up\n", out)
 
 	return err
 }
@@ -107,7 +111,7 @@ func RemoveConf(iface string, printlog bool) error {
 	case "windows":
 		err = RemoveWindowsConf(iface, printlog)
 	default:
-		confPath := config.GetNetclientInterfacePath() + iface + ".yml"
+		confPath := config.GetNetclientInterfacePath() + iface + ".conf"
 		err = RemoveWGQuickConf(confPath, printlog)
 	}
 	return err
@@ -162,7 +166,7 @@ func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 		return err
 	}
 	// spin up userspace / windows interface + apply the conf file
-	confPath := config.GetNetclientInterfacePath() + ifacename + ".yml"
+	confPath := config.GetNetclientInterfacePath() + ifacename + ".conf"
 	var deviceiface = ifacename
 	var mErr error
 	if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
@@ -172,7 +176,7 @@ func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 		}
 	}
 	// ensure you clear any existing interface first
-	RemoveConfGraceful(deviceiface)
+	//RemoveConfGraceful(deviceiface)
 	ApplyConf(node, confPath)                 // Apply initially
 	logger.Log(1, "waiting for interface...") // ensure interface is created
 	output, _ := ncutils.RunCmd("wg", false)
@@ -508,7 +512,7 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 			wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
 	}
-	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".yml"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
 		return err
 	}
 	return nil

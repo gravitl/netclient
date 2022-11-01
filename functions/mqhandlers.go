@@ -91,7 +91,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
-	if err := config.WriteNodeConfig(newNode); err != nil {
+	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
 	nameserver := server.CoreDNSAddr
@@ -199,7 +199,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
 		node.InternetGateway = internetGateway
 		config.Nodes[node.Network] = node
-		if err := config.WriteNodeConfig(node); err != nil {
+		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
 		wireguard.ApplyConf(&node, file)

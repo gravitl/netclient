@@ -40,7 +40,7 @@ func UpdateLocalListenPort(node *config.Node) error {
 	} else if node.LocalListenPort != localPort && localPort != 0 {
 		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(node.LocalListenPort), " to ", strconv.Itoa(localPort))
 		node.LocalListenPort = localPort
-		if err := config.WriteNodeConfig(*node); err != nil {
+		if err := config.WriteNodeConfig(); err != nil {
 			return err
 		}
 		if err := PublishNodeUpdate(node); err != nil {
