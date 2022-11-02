@@ -67,7 +67,11 @@ func checkin() {
 
 	netclient := config.Netclient
 	logger.Log(3, "checkin with server(s) for all networks")
-	for _, node := range config.Nodes {
+	if len(config.Nodes) == 0 {
+		logger.Log(0, "skipping checkin: no nodes configured")
+		return
+	}
+	for network, node := range config.Nodes {
 		server := config.Servers[node.Server]
 		// check for nftables present if on Linux
 		if ncutils.IsLinux() {
@@ -87,21 +91,21 @@ func checkin() {
 					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
 				}
 				if node.Endpoint.IP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", node.Network, "endpoint has changed from ", node.Endpoint.String(), " to ", extIP)
+					logger.Log(1, "network:", network, "endpoint has changed from ", node.Endpoint.String(), " to ", extIP)
 					node.Endpoint = config.ToIPNet(extIP)
 					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", node.Network, "could not publish endpoint change")
+						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
 				}
 				intIP, err := getPrivateAddr()
 				if err != nil {
-					logger.Log(1, "network:", node.Network, "error encountered checking private ip addresses: ", err.Error())
+					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
 				}
 				if node.LocalAddress.String() != intIP.String() && intIP.IP != nil {
-					logger.Log(1, "network:", node.Network, "local Address has changed from ", node.LocalAddress.String(), " to ", intIP.String())
+					logger.Log(1, "network:", network, "local Address has changed from ", node.LocalAddress.String(), " to ", intIP.String())
 					node.LocalAddress = intIP
 					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "Network: ", node.Network, " could not publish local address change")
+						logger.Log(0, "Network: ", network, " could not publish local address change")
 					}
 				}
 				_ = UpdateLocalListenPort(&node)
@@ -109,13 +113,13 @@ func checkin() {
 			} else if node.IsLocal && node.LocalRange.IP != nil {
 				localIP, err := ncutils.GetLocalIP(node.LocalRange)
 				if err != nil {
-					logger.Log(1, "network:", node.Network, "error encountered checking local ip addresses: ", err.Error())
+					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
 				}
 				if node.Endpoint.IP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", node.Network, "endpoint has changed from "+node.Endpoint.String()+" to ", localIP.String())
+					logger.Log(1, "network:", network, "endpoint has changed from "+node.Endpoint.String()+" to ", localIP.String())
 					node.Endpoint = *localIP
 					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", node.Network, "could not publish localip change")
+						logger.Log(0, "network:", network, "could not publish localip change")
 					}
 				}
 			}

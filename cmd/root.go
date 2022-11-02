@@ -4,10 +4,12 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -73,17 +75,16 @@ func initConfig() {
 	} else {
 		logger.Log(0, "error reading config file", err.Error())
 	}
-
-	var Netclient config.Config
-
-	if err := viper.Unmarshal(&Netclient); err != nil {
+	var netclient config.Config
+	if err := viper.Unmarshal(&netclient); err != nil {
 		logger.Log(0, "could not read netclient config file", err.Error())
 	}
-	logger.Verbosity = Netclient.Verbosity
-	config.Netclient = Netclient
-	fmt.Println("verbosity set to ", logger.Verbosity)
+	logger.Verbosity = netclient.Verbosity
+	config.Netclient = netclient
+	logger.Log(0, "verbosity set to", strconv.Itoa(logger.Verbosity))
 	config.GetNodes()
 	config.GetServers()
+	checkConfig()
 	//check netclient dirs exist
 	logger.Log(0, "checking netclient paths")
 	if _, err := os.Stat(config.GetNetclientInterfacePath()); err != nil {
@@ -95,4 +96,34 @@ func initConfig() {
 			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
 		}
 	}
+}
+
+func checkConfig() {
+	fail := false
+	netclient := &config.Netclient
+	if netclient.HostID == "" {
+		logger.Log(0, "setting netclient hostid")
+		netclient.HostID = uuid.NewString()
+		netclient.HostPass = ncutils.MakeRandomString(32)
+		if err := config.WriteNetclientConfig(); err != nil {
+			logger.FatalLog("could not save netclient config " + err.Error())
+		}
+	}
+	for _, server := range config.Servers {
+		if server.MQID != config.Netclient.HostID || server.Password != config.Netclient.HostPass {
+			fail = true
+			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+		}
+	}
+	for _, node := range config.Nodes {
+		//make sure server config exists
+		if _, ok := config.Servers[node.Server]; !ok {
+			fail = true
+			logger.Log(0, "configuration for", node.Server, "is missing")
+		}
+	}
+	if fail {
+		logger.FatalLog("configuration is invalid, fix before proceeding")
+	}
+
 }

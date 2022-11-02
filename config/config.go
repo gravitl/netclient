@@ -42,19 +42,22 @@ type Config struct {
 	Version         string
 	IPForwarding    bool
 	DaemonInstalled bool
+	HostID          string
+	HostPass        string
 }
 
 type Server struct {
 	Name        string
-	Broker      string
+	Version     string
 	API         string
 	CoreDNSAddr string
-	Version     string
+	Broker      string
 	MQPort      string
 	MQID        string
 	Password    string
 	DNSMode     bool
 	Is_EE       bool
+	Nodes       []string
 }
 
 type Node struct {
