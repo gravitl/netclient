@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 )
 
@@ -134,9 +133,4 @@ func GetMacIface(ipstring string) (string, error) {
 		err = errors.New("could not find iface for address " + ipstring)
 	}
 	return wgiface, err
-}
-
-// HasNetwork - checks if a network exists locally
-func HasNetwork(network string) bool {
-	return ncutils.FileExists(config.GetNetclientNodePath() + network + ".yml")
 }

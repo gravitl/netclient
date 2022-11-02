@@ -5,11 +5,11 @@ go 1.18
 require (
 	github.com/c-robinson/iplib v1.0.3
 	github.com/devilcove/httpclient v0.3.1
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.16.1
+	github.com/gravitl/netmaker v0.16.2
 	github.com/guumaster/hostctl v1.1.3
-	github.com/kr/pretty v0.3.0
+	github.com/kr/pretty v0.3.1
 	golang.org/x/term v0.0.0-20220722155259-a9ba230a4035
 )
 
@@ -50,7 +50,7 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/txn2/txeh v1.3.0 // indirect
-	github.com/urfave/cli/v2 v2.16.3 // indirect
+	github.com/urfave/cli/v2 v2.20.2 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
@@ -83,3 +83,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace github.com/gravitl/netmaker v0.16.2 => ../netmaker

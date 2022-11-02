@@ -244,27 +244,36 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 
 // JoinNetwork - helps a client join a network
 func JoinNetwork(flags *viper.Viper) (*config.Node, error) {
-	node := models.Node{}
-	netclientNode := config.Node{}
+	netclient := &config.Netclient
+	node := models.Node{}           //node to send to server
+	netclientNode := &config.Node{} //local node
 	node.Network = flags.GetString("network")
 	if node.Network == "" {
 		return nil, errors.New("no network provided")
 	}
-	if local.HasNetwork(node.Network) {
+	if _, ok := config.Nodes[node.Network]; ok {
 		return nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + node.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + node.Network + "'. Then re-run the install command.")
 	}
 	node.Server = flags.GetString("server")
-	server := config.Server{}
-	server = config.Servers[node.Server]
-	node.Password = flags.GetString("password")
-	if node.Password == "" {
-		node.Password = logic.GenPassWord()
+	server := config.Servers[node.Server]
+	// figure out how to handle commmad line passwords
+	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+	//node.Password = flags.GetString("password")
+	//if node.Password == "" {
+	if server.Password == "" {
+		server.Password = logic.GenPassWord()
 	}
+	if server.MQID == "" {
+		server.MQID = netclient.HostID
+	}
+	node.HostID = netclient.HostID
+	//}
 	//check if ListenPort was set on command line
-	node.ListenPort = flags.GetInt32("listenport")
+	node.ListenPort = flags.GetInt32("port")
 	if node.ListenPort != 0 {
 		node.UDPHolePunch = "no"
 	}
+	log.Println("listenport", node.ListenPort)
 	var trafficPubKey, trafficPrivKey, errT = box.GenerateKey(rand.Reader) // generate traffic keys
 	if errT != nil {
 		return nil, fmt.Errorf("error generating traffic keys %w", errT)
@@ -295,7 +304,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, error) {
 	if isLocal {
 		node.IsLocal = "yes"
 	}
-	log.Println(node.Endpoint, node.IsLocal, node.LocalAddress)
 	if node.Endpoint == "" {
 		if node.IsLocal == "yes" && node.LocalAddress != "" {
 			node.Endpoint = node.LocalAddress
@@ -355,7 +363,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, error) {
 	server.API = flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+server.API)
-	//pretty.Println(node)
+	log.Println("node send to server")
+	pretty.Println(node)
 	api := httpclient.JSONEndpoint[models.NodeGet]{
 		URL:           "https://" + server.API,
 		Route:         "/api/nodes/" + node.Network,
@@ -372,6 +381,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, error) {
 	nodeGET := response.(models.NodeGet)
 	newNode := config.ConvertNode(&nodeGET.Node)
 	log.Println("received node & translated node")
+	pretty.Println(nodeGET)
+	pretty.Println(newNode)
 	newNode.TrafficPrivateKey = netclientNode.TrafficPrivateKey
 	newNode.PrivateKey = netclientNode.PrivateKey
 	newNode.Connected = true
@@ -392,7 +403,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, error) {
 	}
 	// save the server config if it doesn't already exist
 	if _, ok := config.Servers[node.Server]; !ok {
-		if err := config.WriteInitialServerConfig(&nodeGET.ServerConfig, newNode.ID, newNode.Password); err != nil {
+		if err := config.WriteInitialServerConfig(&nodeGET.ServerConfig); err != nil {
 			return nil, fmt.Errorf("error wrting sever config %w", err)
 		}
 	}
