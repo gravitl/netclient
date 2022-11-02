@@ -392,7 +392,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, error) {
 	}
 	// save the server config if it doesn't already exist
 	if _, ok := config.Servers[node.Server]; !ok {
-		if err := config.WriteInitialServerConfig(&nodeGET.ServerConfig, newNode.Password); err != nil {
+		if err := config.WriteInitialServerConfig(&nodeGET.ServerConfig, newNode.ID, newNode.Password); err != nil {
 			return nil, fmt.Errorf("error wrting sever config %w", err)
 		}
 	}

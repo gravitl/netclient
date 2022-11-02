@@ -51,6 +51,7 @@ type Server struct {
 	CoreDNSAddr string
 	Version     string
 	MQPort      string
+	MQID        string
 	Password    string
 	DNSMode     bool
 	Is_EE       bool
@@ -425,12 +426,13 @@ func ToUDPAddr(address string) *net.UDPAddr {
 	return addr
 }
 
-func WriteInitialServerConfig(cfg *models.ServerConfig, pass string) error {
+func WriteInitialServerConfig(cfg *models.ServerConfig, id, pass string) error {
 	var s Server
 	s.Name = strings.Replace(cfg.Server, "broker.", "", 1)
 	s.Broker = cfg.Server
 	s.MQPort = cfg.MQPort
 	s.API = cfg.API
+	s.MQID = id
 	s.Password = pass
 	s.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
 	s.CoreDNSAddr = cfg.CoreDNSAddr

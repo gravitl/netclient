@@ -45,13 +45,17 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			logger.Log(0, "checkin routine closed")
 			return
 		case <-ticker.C:
-			if !mqclient.IsConnected() {
-				logger.Log(0, "MQ client is not connected, skipping checkin...")
-				continue
+			for server, mqclient := range ServerSet {
+				if !mqclient.IsConnected() {
+					logger.Log(0, "MQ client is not connected, skipping checkin for server", server)
+					continue
+				}
 			}
-			if mqclient == nil {
-				logger.Log(0, "MQ client is not configured, skipping checkin...")
-				continue
+			for server, mqclient := range ServerSet {
+				if mqclient == nil {
+					logger.Log(0, "MQ client is not configured, skipping checkin for server", server)
+					continue
+				}
 			}
 			checkin()
 
@@ -244,7 +248,8 @@ func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	if err != nil {
 		return err
 	}
-	if mqclient == nil {
+	mqclient, ok := ServerSet[node.Server]
+	if !ok {
 		return errors.New("unable to publish ... no mqclient")
 	}
 	if token := mqclient.Publish(dest, qos, false, encrypted); !token.WaitTimeout(30*time.Second) || token.Error() != nil {

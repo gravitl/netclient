@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
+	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -25,7 +27,8 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet map[string]mqtt.Client
-var mqclient mqtt.Client
+
+//var mqclient mqtt.Client
 
 type cachedMessage struct {
 	Message  string
@@ -53,8 +56,10 @@ func Daemon() {
 			cancel()
 			logger.Log(0, "shutting down netclient daemon")
 			wg.Wait()
-			if mqclient != nil {
-				mqclient.Disconnect(250)
+			for _, mqclient := range ServerSet {
+				if mqclient != nil {
+					mqclient.Disconnect(250)
+				}
 			}
 			logger.Log(0, "shutdown complete")
 			return
@@ -62,8 +67,10 @@ func Daemon() {
 			logger.Log(0, "received reset")
 			cancel()
 			wg.Wait()
-			if mqclient != nil {
-				mqclient.Disconnect(250)
+			for _, mqclient := range ServerSet {
+				if mqclient != nil {
+					mqclient.Disconnect(250)
+				}
 			}
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
@@ -108,12 +115,11 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 // setupMQTT creates a connection to broker
 // this function is used to create a connection to publish to the broker
 func setupMQTT(server *config.Server) error {
-	name, _ := os.Hostname()
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("mqtts://%s:%s", broker, port))
-	opts.SetUsername(name)
+	opts.SetUsername(server.MQID)
 	opts.SetPassword(server.Password)
 	opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetAutoReconnect(true)
@@ -122,7 +128,9 @@ func setupMQTT(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
+		pretty.Println(config.Nodes)
 		for _, node := range config.Nodes {
+			log.Println("setting subscriptions for node ", node.Name, " on network ", node.Network)
 			setSubscriptions(client, &node)
 		}
 	})
@@ -131,7 +139,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
 	})
-	mqclient = mqtt.NewClient(opts)
+	mqclient := mqtt.NewClient(opts)
 	ServerSet[server.Broker] = mqclient
 	var connecterr error
 	for count := 0; count < 3; count++ {

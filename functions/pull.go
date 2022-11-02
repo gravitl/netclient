@@ -49,7 +49,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 
 	if nodeGet.ServerConfig.API != "" && nodeGet.ServerConfig.MQPort != "" {
-		if err = config.WriteInitialServerConfig(&nodeGet.ServerConfig, node.Password); err != nil {
+		if err = config.WriteInitialServerConfig(&nodeGet.ServerConfig, node.ID, node.Password); err != nil {
 			logger.Log(0, "unable to update server config: "+err.Error())
 		}
 	}
