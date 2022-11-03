@@ -143,7 +143,7 @@ func setupMQTT(server *config.Server) error {
 	})
 	pretty.Println("opts for mq\n", opts)
 	mqclient := mqtt.NewClient(opts)
-	ServerSet[server.Broker] = mqclient
+	ServerSet[server.Name] = mqclient
 	var connecterr error
 	for count := 0; count < 3; count++ {
 		connecterr = nil
