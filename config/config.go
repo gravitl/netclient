@@ -341,6 +341,21 @@ func WriteInitialServerConfig(cfg *models.ServerConfig) error {
 	return WriteServerConfig()
 }
 
+func ConvertServerCfg(cfg *models.ServerConfig) Server {
+	var server Server
+	server.Name = cfg.Server
+	server.Version = cfg.Version
+	server.Broker = cfg.Broker
+	server.MQPort = cfg.Broker
+	server.MQID = Netclient.HostID
+	server.Password = Netclient.HostPass
+	server.API = cfg.API
+	server.CoreDNSAddr = cfg.CoreDNSAddr
+	server.Is_EE = cfg.Is_EE
+	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	return server
+}
+
 // GetNetclientPath - gets netclient path locally
 func GetNetclientPath() string {
 	if runtime.GOOS == "windows" {
