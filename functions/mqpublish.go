@@ -66,6 +66,9 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 func checkin() {
 
 	netclient := config.Netclient
+	//should not be required
+	config.GetNodes()
+	config.GetServers()
 	logger.Log(3, "checkin with server(s) for all networks")
 	if len(config.Nodes) == 0 {
 		logger.Log(0, "skipping checkin: no nodes configured")

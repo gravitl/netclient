@@ -27,7 +27,7 @@ const (
 
 // ApplyConf - applys a conf on disk to WireGuard interface
 func ApplyConf(node *config.Node, confPath string) {
-	log.Println("applying wg conf ", node.Network, " using ", confPath)
+	log.Println("applying wg conf ", node.Interface, " using ", confPath)
 	os := runtime.GOOS
 	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
 		os = "nowgquick"

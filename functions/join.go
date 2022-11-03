@@ -22,7 +22,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
 	"github.com/kr/pretty"
@@ -277,8 +276,9 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
 	//node.Password = flags.GetString("password")
 	//if node.Password == "" {
+	node.Password = netclient.HostPass
 	if server.Password == "" {
-		server.Password = logic.GenPassWord()
+		server.Password = netclient.HostPass
 	}
 	if server.MQID == "" {
 		server.MQID = netclient.HostID

@@ -346,7 +346,7 @@ func ConvertServerCfg(cfg *models.ServerConfig) Server {
 	server.Name = cfg.Server
 	server.Version = cfg.Version
 	server.Broker = cfg.Broker
-	server.MQPort = cfg.Broker
+	server.MQPort = cfg.MQPort
 	server.MQID = Netclient.HostID
 	server.Password = Netclient.HostPass
 	server.API = cfg.API

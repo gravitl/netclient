@@ -115,13 +115,15 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 // setupMQTT creates a connection to broker
 // this function is used to create a connection to publish to the broker
 func setupMQTT(server *config.Server) error {
+	pretty.Println("setup mqtt\n", server)
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("mqtts://%s:%s", broker, port))
 	opts.SetUsername(server.MQID)
 	opts.SetPassword(server.Password)
-	opts.SetClientID(ncutils.MakeRandomString(23))
+	//opts.SetClientID(ncutils.MakeRandomString(23))
+	opts.SetClientID(server.MQID)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
@@ -139,6 +141,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
 	})
+	pretty.Println("opts for mq\n", opts)
 	mqclient := mqtt.NewClient(opts)
 	ServerSet[server.Broker] = mqclient
 	var connecterr error
