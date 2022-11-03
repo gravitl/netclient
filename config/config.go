@@ -4,7 +4,6 @@ package config
 import (
 	"encoding/base64"
 	"encoding/json"
-	"log"
 	"net"
 	"os"
 	"runtime"
@@ -14,7 +13,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
@@ -282,12 +280,15 @@ func ConvertToOldNode(n *Node) *models.Node {
 	s.AccessKey = n.AccessKey
 	s.NetworkSettings.AddressRange = n.NetworkRange.String()
 	s.NetworkSettings.AddressRange6 = n.NetworkRange6.String()
-	s.InternetGateway = n.InternetGateway.String()
+	s.InternetGateway = ""
+	if n.InternetGateway != nil {
+		s.InternetGateway = n.InternetGateway.IP.String()
+	}
 	s.Interface = n.Interface
 	s.Server = n.Server
 	s.TrafficKeys = n.TrafficKeys
 	s.Endpoint = n.Endpoint.String()
-	s.Connected = strconv.FormatBool(n.Connected)
+	s.Connected = FormatBool(n.Connected)
 	s.MacAddress = n.MacAddress.String()
 	s.ListenPort = int32(n.ListenPort)
 	s.Address = n.Address.String()
@@ -336,8 +337,6 @@ func WriteInitialServerConfig(cfg *models.ServerConfig) error {
 	s.Version = cfg.Version
 	s.Is_EE = cfg.Is_EE
 	Servers[s.Name] = s
-	log.Println("server to be saved", s.Name)
-	pretty.Println(Servers[s.Name])
 	return WriteServerConfig()
 }
 

@@ -382,8 +382,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	server.API = flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+server.API)
-	log.Println("node send to server")
-	pretty.Println(node)
 	api := httpclient.JSONEndpoint[models.NodeGet]{
 		URL:           "https://" + server.API,
 		Route:         "/api/nodes/" + node.Network,
@@ -399,9 +397,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	nodeGET := response.(models.NodeGet)
 	newNode := config.ConvertNode(&nodeGET.Node)
-	log.Println("received node & translated node")
-	pretty.Println(nodeGET)
-	pretty.Println(newNode)
 	newNode.TrafficPrivateKey = netclientNode.TrafficPrivateKey
 	newNode.PrivateKey = netclientNode.PrivateKey
 	newNode.Connected = true

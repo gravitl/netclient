@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"runtime"
@@ -27,7 +26,6 @@ const (
 
 // ApplyConf - applys a conf on disk to WireGuard interface
 func ApplyConf(node *config.Node, confPath string) {
-	log.Println("applying wg conf ", node.Interface, " using ", confPath)
 	os := runtime.GOOS
 	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
 		os = "nowgquick"
@@ -53,7 +51,6 @@ func ApplyConf(node *config.Node, confPath string) {
 
 // ApplyWGQuickConf - applies wg-quick commands if os supports
 func ApplyWGQuickConf(confPath, ifacename string, isConnected bool) error {
-	log.Println("applying wg quick with args ", confPath, ifacename, isConnected)
 	_, err := os.Stat(confPath)
 	if err != nil {
 		logger.Log(0, confPath+" does not exist "+err.Error())
@@ -65,8 +62,7 @@ func ApplyWGQuickConf(confPath, ifacename string, isConnected bool) error {
 	if !isConnected {
 		return nil
 	}
-	out, err := ncutils.RunCmd("wg-quick up "+confPath, true)
-	log.Println("output from wg-quick up\n", out)
+	_, err = ncutils.RunCmd("wg-quick up "+confPath, true)
 
 	return err
 }

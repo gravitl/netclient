@@ -40,24 +40,25 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err != nil {
 		return
 	}
-	newNode := config.Node{}
-	if err = json.Unmarshal([]byte(data), &newNode); err != nil {
+	nodeUpdate := models.Node{}
+	if err = json.Unmarshal([]byte(data), &nodeUpdate); err != nil {
 		logger.Log(0, "error unmarshalling node update data"+err.Error())
 		return
 	}
 
 	// see if cache hit, if so skip
-	var currentMessage = read(newNode.Network, lastNodeUpdate)
+	var currentMessage = read(nodeUpdate.Network, lastNodeUpdate)
 	if currentMessage == string(data) {
 		return
 	}
+	newNode := config.ConvertNode(&nodeUpdate)
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.Name)
 
 	// ensure that OS never changes
 	newNode.OS = runtime.GOOS
 	// check if interface needs to delta
-	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
+	ifaceDelta := wireguard.IfaceDelta(&node, newNode)
 	shouldDNSChange := node.DNSOn != newNode.DNSOn
 	hubChange := node.IsHub != newNode.IsHub
 	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
@@ -66,7 +67,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	switch newNode.Action {
 	case models.NODE_DELETE:
 		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.Name)
-		unsubscribeNode(client, &newNode)
+		unsubscribeNode(client, newNode)
 		if err = LeaveNetwork(newNode.Network); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
 				logger.Log(0, "failed to leave, please check that local files for network", newNode.Network, "were removed")
@@ -78,7 +79,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.NODE_UPDATE_KEY:
 		// == get the current key for node ==
 		oldPrivateKey := node.PrivateKey
-		if err := UpdateKeys(&newNode, client); err != nil {
+		if err := UpdateKeys(newNode, client); err != nil {
 			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
 			newNode.PrivateKey = oldPrivateKey
 		}
@@ -101,13 +102,13 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err := wireguard.RemoveConf(newNode.Interface, false); err != nil {
 			logger.Log(0, "error remove interface", newNode.Interface, err.Error())
 		}
-		err = config.ModPort(&newNode)
+		err = config.ModPort(newNode)
 		if err != nil {
 			logger.Log(0, "network:", newNode.Network, "error modifying node port on", newNode.Name, "-", err.Error())
 			return
 		}
 		ifaceDelta = true
-		informPortChange(&newNode)
+		informPortChange(newNode)
 	}
 	if err := wireguard.UpdateWgInterface(file, nameserver, &node); err != nil {
 
@@ -118,7 +119,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.UpdateKeepAlive(file, newNode.PersistentKeepalive)
 	}
 	logger.Log(0, "applying WG conf to "+file)
-	wireguard.ApplyConf(&newNode, file)
+	wireguard.ApplyConf(newNode, file)
 	time.Sleep(time.Second)
 	//	if newNode.DNSOn == "yes" {
 	//		for _, server := range newNode.NetworkSettings.DefaultServerAddrs {
@@ -129,14 +130,14 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//		}
 	//	}
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
-		doneErr := publishSignal(&newNode, DONE)
+		doneErr := publishSignal(&node, DONE)
 		if doneErr != nil {
 			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
 		} else {
 			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
 		}
 	} else if hubChange {
-		doneErr := publishSignal(&newNode, DONE)
+		doneErr := publishSignal(&node, DONE)
 		if doneErr != nil {
 			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after hub change")
 		} else {
@@ -154,7 +155,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		//			logger.Log(0, "error applying dns" + err.Error())
 		//		}
 	}
-	_ = UpdateLocalListenPort(&newNode)
+	_ = UpdateLocalListenPort(newNode)
 }
 
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -130,9 +129,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		pretty.Println(config.Nodes)
 		for _, node := range config.Nodes {
-			log.Println("setting subscriptions for node ", node.Name, " on network ", node.Network)
 			setSubscriptions(client, &node)
 		}
 	})

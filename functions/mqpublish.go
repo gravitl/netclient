@@ -142,7 +142,8 @@ func checkin() {
 
 // PublishNodeUpdates -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
-	data, err := json.Marshal(node)
+	oldNode := config.ConvertToOldNode(node)
+	data, err := json.Marshal(oldNode)
 	if err != nil {
 		return err
 	}
