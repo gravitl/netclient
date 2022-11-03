@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 
@@ -374,11 +373,11 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	// make sure name is appropriate, if not, give blank name
 	node.Name = formatName(flags.GetString("name"))
-	node.OS = runtime.GOOS
-	config.Netclient.Version = ncutils.Version
+	//config.Netclient.OS = runtime.GOOS
+	//config.Netclient.Version = ncutils.Version
 	//   ---- not sure this is required node.AccessKey = cfg.AccessKey
 	//not sure why this is needed ... setnode defaults should take care of this on server
-	config.Netclient.IPForwarding = true
+	//config.Netclient.IPForwarding = true
 	server.API = flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+server.API)
@@ -409,7 +408,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
 	if node.IsLocal != "yes" && newNode.IsLocal && newNode.LocalRange.IP != nil {
 		newNode.LocalAddress = newNode.LocalRange
-		newNode.Endpoint = newNode.LocalAddress
+		newNode.EndpointIP = net.ParseIP(newNode.LocalAddress.IP.String())
 	}
 	if ncutils.IsFreeBSD() {
 		newNode.UDPHolePunch = false

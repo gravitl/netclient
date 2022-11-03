@@ -191,7 +191,7 @@ func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 		ifaceReady = strings.Contains(output, deviceiface)
 	}
 	//wgclient does not work well on freebsd
-	if node.OS == "freebsd" {
+	if config.Netclient.OS == "freebsd" {
 		if !ifaceReady {
 			return fmt.Errorf("could not reliably create interface, please check wg installation and retry")
 		}
@@ -456,7 +456,7 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 	//need to split postup/postdown because ini lib adds a ` and the ` breaks freebsd
 	//works fine on others
 	if node.PostUp != "" {
-		if node.OS == "freebsd" {
+		if config.Netclient.OS == "freebsd" {
 			parts := strings.Split(node.PostUp, " ; ")
 			for i, part := range parts {
 				if i == 0 {
@@ -469,7 +469,7 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 		}
 	}
 	if node.PostDown != "" {
-		if node.OS == "freebsd" {
+		if config.Netclient.OS == "freebsd" {
 			parts := strings.Split(node.PostDown, " ; ")
 			for i, part := range parts {
 				if i == 0 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
 )
 
 var metricsCache = new(sync.Map)
@@ -93,9 +95,9 @@ func checkin() {
 				if err != nil {
 					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
 				}
-				if node.Endpoint.IP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", network, "endpoint has changed from ", node.Endpoint.String(), " to ", extIP)
-					node.Endpoint = config.ToIPNet(extIP)
+				if node.EndpointIP.String() != extIP && extIP != "" {
+					logger.Log(1, "network:", network, "endpoint has changed from ", node.EndpointIP.String(), " to ", extIP)
+					node.EndpointIP = net.ParseIP(extIP)
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
@@ -118,9 +120,9 @@ func checkin() {
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
 				}
-				if node.Endpoint.IP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", network, "endpoint has changed from "+node.Endpoint.String()+" to ", localIP.String())
-					node.Endpoint = *localIP
+				if node.EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
+					logger.Log(1, "network:", network, "endpoint has changed from "+node.EndpointIP.String()+" to ", localIP.String())
+					node.EndpointIP = localIP.IP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish localip change")
 					}
@@ -143,6 +145,9 @@ func checkin() {
 // PublishNodeUpdates -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
 	oldNode := config.ConvertToOldNode(node)
+	log.Println("publish node update")
+	pretty.Println("node: ", node)
+	pretty.Println("oldnode: ", oldNode)
 	data, err := json.Marshal(oldNode)
 	if err != nil {
 		return err

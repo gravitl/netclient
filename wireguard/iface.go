@@ -23,7 +23,7 @@ func IfaceExists(ifacename string) bool {
 // IfaceDelta - checks if the new node causes an interface change
 func IfaceDelta(currentNode *config.Node, newNode *config.Node) bool {
 	// single comparison statements
-	if newNode.Endpoint.IP.String() != currentNode.Endpoint.IP.String() ||
+	if newNode.EndpointIP.String() != currentNode.EndpointIP.String() ||
 		newNode.PublicKey != currentNode.PublicKey ||
 		newNode.Address.IP.String() != currentNode.Address.IP.String() ||
 		newNode.Address6.IP.String() != currentNode.Address6.IP.String() ||

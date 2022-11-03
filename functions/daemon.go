@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
-	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -114,7 +113,6 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 // setupMQTT creates a connection to broker
 // this function is used to create a connection to publish to the broker
 func setupMQTT(server *config.Server) error {
-	pretty.Println("setup mqtt\n", server)
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
@@ -138,7 +136,6 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
 	})
-	pretty.Println("opts for mq\n", opts)
 	mqclient := mqtt.NewClient(opts)
 	ServerSet[server.Name] = mqclient
 	var connecterr error

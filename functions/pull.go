@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"runtime"
 	"strconv"
 
 	"github.com/devilcove/httpclient"
@@ -42,8 +41,6 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	nodeGet := response.(models.NodeGet)
 	newNode := config.ConvertNode(&nodeGet.Node)
-	// ensure that the OS never changes
-	newNode.OS = runtime.GOOS
 	if nodeGet.Peers == nil {
 		nodeGet.Peers = []wgtypes.PeerConfig{}
 	}

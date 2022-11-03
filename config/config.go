@@ -39,6 +39,7 @@ type Config struct {
 	DaemonInstalled bool
 	HostID          string
 	HostPass        string
+	OS              string
 }
 
 type Server struct {
@@ -58,7 +59,6 @@ type Server struct {
 type Node struct {
 	ID                  string
 	Name                string
-	OS                  string
 	Network             string
 	Password            string
 	AccessKey           string
@@ -72,7 +72,7 @@ type Node struct {
 	TrafficPrivateKey   *[32]byte
 	MacAddress          net.HardwareAddr
 	Port                int
-	Endpoint            net.IPNet
+	EndpointIP          net.IP
 	Address             net.IPNet
 	Address6            net.IPNet
 	ListenPort          int
@@ -242,7 +242,7 @@ func ConvertNode(s *models.Node) *Node {
 	n.Interface = s.Interface
 	n.Server = strings.Replace(s.Server, "api.", "", 1)
 	n.TrafficKeys = s.TrafficKeys
-	n.Endpoint = ToIPNet(s.Endpoint)
+	n.EndpointIP = net.ParseIP(s.Endpoint)
 	n.Connected, _ = strconv.ParseBool(s.Connected)
 	n.MacAddress, _ = net.ParseMAC(s.MacAddress)
 	n.Port = int(s.ListenPort)
@@ -273,6 +273,7 @@ func ConvertNode(s *models.Node) *Node {
 func ConvertToOldNode(n *Node) *models.Node {
 	var s models.Node
 	s.ID = n.ID
+	s.OS = Netclient.OS
 	s.HostID = Servers[n.Server].MQID
 	s.Name = n.Name
 	s.Network = n.Network
@@ -287,12 +288,14 @@ func ConvertToOldNode(n *Node) *models.Node {
 	s.Interface = n.Interface
 	s.Server = n.Server
 	s.TrafficKeys = n.TrafficKeys
-	s.Endpoint = n.Endpoint.String()
+	//only send ip
+	s.Endpoint = n.EndpointIP.String()
 	s.Connected = FormatBool(n.Connected)
 	s.MacAddress = n.MacAddress.String()
 	s.ListenPort = int32(n.ListenPort)
-	s.Address = n.Address.String()
-	s.Address6 = n.Address6.String()
+	//only send ip
+	s.Address = n.Address.IP.String()
+	s.Address6 = n.Address6.IP.String()
 	s.ListenPort = int32(n.ListenPort)
 	s.LocalAddress = n.LocalAddress.String()
 	s.LocalRange = n.LocalRange.String()

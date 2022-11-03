@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"os"
+	"runtime"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -100,17 +101,30 @@ func initConfig() {
 
 func checkConfig() {
 	fail := false
+	saveRequired := false
 	netclient := &config.Netclient
+	if netclient.OS == "" {
+		netclient.OS = runtime.GOOS
+		saveRequired = true
+	}
+	if netclient.Version == "" {
+		netclient.Version = ncutils.Version
+		saveRequired = true
+	}
+	netclient.IPForwarding = true
 	if netclient.HostID == "" {
 		logger.Log(0, "setting netclient hostid")
 		netclient.HostID = uuid.NewString()
 		netclient.HostPass = ncutils.MakeRandomString(32)
+		saveRequired = true
+	}
+	if saveRequired {
 		if err := config.WriteNetclientConfig(); err != nil {
 			logger.FatalLog("could not save netclient config " + err.Error())
 		}
 	}
 	for _, server := range config.Servers {
-		if server.MQID != config.Netclient.HostID || server.Password != config.Netclient.HostPass {
+		if server.MQID != netclient.HostID || server.Password != netclient.HostPass {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}

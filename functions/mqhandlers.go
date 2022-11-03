@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -55,8 +54,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.Name)
 
-	// ensure that OS never changes
-	newNode.OS = runtime.GOOS
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, newNode)
 	shouldDNSChange := node.DNSOn != newNode.DNSOn
