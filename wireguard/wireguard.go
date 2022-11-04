@@ -13,7 +13,6 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
@@ -154,7 +153,6 @@ func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 		return fmt.Errorf("no interface to configure")
 	}
 	if node.PrimaryAddress().IP == nil {
-		pretty.Println(node.PrimaryAddress(), node.Address, node.Address6)
 		return fmt.Errorf("no address to configure")
 	}
 	if err := WriteWgConfig(node, peers); err != nil {

@@ -32,11 +32,7 @@ import (
 
 func Join(flags *viper.Viper) {
 	//config.ParseJoinFlags(cmd)
-
 	fmt.Println("join called")
-	//pretty.Println(cmd.Flags())
-	//pretty.Println(viper.AllSettings())
-
 	if flags.Get("server") != "" {
 		//SSO sign on
 		if flags.Get("network") == "" {
@@ -49,7 +45,6 @@ func Join(flags *viper.Viper) {
 			return
 		}
 		log.Println("token from SSo")
-		pretty.Println(ssoAccessToken)
 		if ssoAccessToken == nil {
 			fmt.Println("login failed")
 			return
@@ -99,9 +94,9 @@ func Join(flags *viper.Viper) {
 	//save new configurations
 	config.Servers[node.Server] = *server
 	config.Nodes[node.Network] = *node
-	log.Println("configs to be saved")
-	pretty.Println(config.Nodes)
-	pretty.Println(config.Servers)
+	pretty.Println(node.ID)
+	server.Nodes = map[string]bool{node.ID: true}
+	pretty.Println(server.Nodes)
 	config.WriteNetclientConfig()
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
@@ -276,12 +271,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	//node.Password = flags.GetString("password")
 	//if node.Password == "" {
 	node.Password = netclient.HostPass
-	if server.Password == "" {
-		server.Password = netclient.HostPass
-	}
-	if server.MQID == "" {
-		server.MQID = netclient.HostID
-	}
+	server.Password = netclient.HostPass
+	server.MQID = netclient.HostID
 	node.HostID = netclient.HostID
 	//}
 	//check if ListenPort was set on command line
@@ -390,7 +381,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Response:      models.NodeGet{},
 	}
 	response, err := api.GetJSON(models.NodeGet{})
-	//pretty.Println(response)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating node %w", err)
 	}

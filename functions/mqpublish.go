@@ -19,7 +19,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 )
 
 var metricsCache = new(sync.Map)
@@ -146,8 +145,8 @@ func checkin() {
 func PublishNodeUpdate(node *config.Node) error {
 	oldNode := config.ConvertToOldNode(node)
 	log.Println("publish node update")
-	pretty.Println("node: ", node)
-	pretty.Println("oldnode: ", oldNode)
+	//pretty.Println("node: ", node)
+	//pretty.Println("oldnode: ", oldNode)
 	data, err := json.Marshal(oldNode)
 	if err != nil {
 		return err
