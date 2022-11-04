@@ -53,7 +53,7 @@ type Server struct {
 	Password    string
 	DNSMode     bool
 	Is_EE       bool
-	Nodes       []string
+	Nodes       map[string]bool
 }
 
 type Node struct {
@@ -100,6 +100,7 @@ type Node struct {
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
+
 }
 
 // ReadNetclientConfig reads a configuration file and returns it as an

@@ -131,12 +131,20 @@ func WipeLocal(node *config.Node) error {
 	} else {
 		fail = true
 	}
-	config.Nodes[node.Network] = config.Node{}
-	config.WriteNodeConfig()
 	if err := os.Remove(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
 		logger.Log(0, "failed to delete file", err.Error())
 		fail = true
 	}
+	//remove node from map of nodes
+	delete(config.Nodes, node.Network)
+	//remove node from list of nodes that server handles
+	delete(config.Servers[node.Server].Nodes, node.Server)
+	//if server node list is empty delete server from map of servers
+	if len(config.Servers[node.Server].Nodes) == 0 {
+		delete(config.Servers, node.Server)
+	}
+	config.WriteNodeConfig()
+	config.WriteServerConfig()
 	if fail {
 		return errors.New("not all files were deleted")
 	}
