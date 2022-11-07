@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/gravitl/netmaker/models"
 	"github.com/kr/pretty"
@@ -72,22 +71,6 @@ func WriteServerConfig() error {
 		return err
 	}
 	return f.Sync()
-}
-
-func WriteInitialServerConfig(cfg *models.ServerConfig) error {
-	var s Server
-	s.Name = strings.Replace(cfg.Server, "broker.", "", 1)
-	s.Broker = cfg.Server
-	s.MQPort = cfg.MQPort
-	s.API = cfg.API
-	s.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
-	s.CoreDNSAddr = cfg.CoreDNSAddr
-	s.Version = cfg.Version
-	s.Is_EE = cfg.Is_EE
-	s.MQID = Netclient.HostID
-	s.Password = Netclient.HostPass
-	Servers[s.Name] = s
-	return WriteServerConfig()
 }
 
 func ConvertServerCfg(cfg *models.ServerConfig) Server {

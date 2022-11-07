@@ -201,7 +201,7 @@ func ToUDPAddr(address string) *net.UDPAddr {
 	return addr
 }
 
-// ParseAccessToken - used to parse the base64 encoded access token
+// ParseAccessToken - decode base64 encoded access token
 func ParseAccessToken(token string) (*models.AccessToken, error) {
 	tokenbytes, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
