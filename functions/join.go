@@ -94,21 +94,27 @@ func Join(flags *viper.Viper) {
 	log.Println("saving config files after join")
 	config.Nodes[node.Network] = *node
 	//use existing server config if it exists, else use new server data
-	oldServer := config.GetServer(node.Server)
-	server := oldServer
+	server := config.GetServer(node.Server)
 	if server == nil {
+		log.Println("using new server")
 		server = newServer
+		server.Nodes = make(map[string]bool)
 	}
-	server.Nodes = append(server.Nodes, node.Network)
-	//config.Servers[node.Server] = *serv
+	pretty.Println(server)
+	nodes := server.Nodes
+	pretty.Println(nodes)
+	nodes[node.Network] = true
 	pretty.Println(server.Nodes)
+	server.Nodes = nodes
+	pretty.Println(server)
+	if err := config.SaveServer(node.Server, *server); err != nil {
+		logger.Log(0, "failed to save server", err.Error())
+	}
+	config.Servers[node.Network] = *server
 	if err := config.WriteNetclientConfig(); err != nil {
 		log.Println("error saveing netclient config", err)
 	}
 	if err := config.WriteNodeConfig(); err != nil {
-		log.Println("error saveing netclient config", err)
-	}
-	if err := config.WriteServerConfig(); err != nil {
 		log.Println("error saveing netclient config", err)
 	}
 	logger.Log(1, "joined", node.Network)
@@ -276,14 +282,11 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + node.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + node.Network + "'. Then re-run the install command.")
 	}
 	node.Server = flags.GetString("server")
-	server := config.GetServer(node.Server)
 	// figure out how to handle commmad line passwords
 	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
 	//node.Password = flags.GetString("password")
 	//if node.Password == "" {
 	node.Password = netclient.HostPass
-	server.Password = netclient.HostPass
-	server.MQID = netclient.HostID
 	node.HostID = netclient.HostID
 	//}
 	//check if ListenPort was set on command line
@@ -380,11 +383,11 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	//   ---- not sure this is required node.AccessKey = cfg.AccessKey
 	//not sure why this is needed ... setnode defaults should take care of this on server
 	//config.Netclient.IPForwarding = true
-	server.API = flags.GetString("apiconn")
+	url := flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
-	logger.Log(0, "joining "+node.Network+" at "+server.API)
+	logger.Log(0, "joining "+node.Network+" at "+url)
 	api := httpclient.JSONEndpoint[models.NodeGet]{
-		URL:           "https://" + server.API,
+		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,
 		Method:        http.MethodPost,
 		Authorization: "Bearer " + node.AccessKey,
@@ -426,7 +429,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	//log.Println("server", newNode.Server)
 	//pretty.Println(config.Servers[newNode.Server])
 	//pretty.Println(server)
-	server = config.ConvertServerCfg(&nodeGET.ServerConfig)
+	server := config.ConvertServerCfg(&nodeGET.ServerConfig)
 	if newNode.IsPending {
 		logger.Log(0, "network:", newNode.Network, "node is marked as PENDING.")
 		logger.Log(0, "network:", newNode.Network, "awaiting approval from Admin before configuring WireGuard.")

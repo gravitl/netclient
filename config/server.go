@@ -25,7 +25,7 @@ type Server struct {
 	Password    string
 	DNSMode     bool
 	Is_EE       bool
-	Nodes       []string
+	Nodes       map[string]bool
 }
 
 // ReadServerConfig reads a server configuration file and returns it as a
@@ -71,6 +71,10 @@ func WriteServerConfig() error {
 	return f.Sync()
 }
 
+func SaveServer(name string, server Server) error {
+	Servers[name] = server
+	return WriteServerConfig()
+}
 func GetServer(network string) *Server {
 	if server, ok := Servers[network]; ok {
 		return &server
@@ -79,7 +83,7 @@ func GetServer(network string) *Server {
 }
 
 func ConvertServerCfg(cfg *models.ServerConfig) *Server {
-	var server *Server
+	var server Server
 	server.Name = cfg.Server
 	server.Version = cfg.Version
 	server.Broker = cfg.Broker
@@ -92,5 +96,5 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
 	log.Println("server conversion")
 	pretty.Println(cfg, server)
-	return server
+	return &server
 }
