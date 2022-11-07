@@ -138,7 +138,14 @@ func WipeLocal(node *config.Node) error {
 	//remove node from map of nodes
 	delete(config.Nodes, node.Network)
 	//remove node from list of nodes that server handles
-	delete(config.Servers[node.Server].Nodes, node.Server)
+	server := config.Servers[node.Server]
+	for i, net := range server.Nodes {
+		if net == node.Network {
+			server.Nodes[i] = server.Nodes[len(server.Nodes)-1]
+			server.Nodes = server.Nodes[:len(server.Nodes)-1]
+		}
+	}
+	config.Servers[node.Server] = server
 	//if server node list is empty delete server from map of servers
 	if len(config.Servers[node.Server].Nodes) == 0 {
 		delete(config.Servers, node.Server)

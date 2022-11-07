@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net"
 	"os"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
@@ -29,6 +31,7 @@ const WINDOWS_APP_DATA_PATH = "C:\\Program Files (x86)\\Netclient\\"
 
 var Servers map[string]Server
 var Nodes map[string]Node
+var ServerNodes map[string]struct{}
 var Netclient Config
 
 type Config struct {
@@ -53,8 +56,10 @@ type Server struct {
 	Password    string
 	DNSMode     bool
 	Is_EE       bool
-	Nodes       map[string]bool
+	Nodes       []string
 }
+
+type Networks map[string]struct{}
 
 type Node struct {
 	ID                  string
@@ -201,6 +206,8 @@ func WriteServerConfig() error {
 		return err
 	}
 	defer f.Close()
+	log.Println("servers to be saved")
+	pretty.Println(Servers)
 	err = yaml.NewEncoder(f).Encode(Servers)
 	if err != nil {
 		return err

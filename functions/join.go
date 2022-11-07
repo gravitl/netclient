@@ -75,13 +75,12 @@ func Join(flags *viper.Viper) {
 			logger.Log(0, "error installing: ", err.Error())
 			err = WipeLocal(node)
 			if err != nil {
-				logger.Log(1, "error removing artifacts: ", err.Error())
+				logger.FatalLog("error removing artifacts: ", err.Error())
 			}
 		}
 		if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 			logger.FatalLog(err.Error())
 		}
-		return
 	}
 	if config.Netclient.DaemonInstalled {
 		if err := daemon.Restart(); err != nil {
@@ -92,14 +91,28 @@ func Join(flags *viper.Viper) {
 		}
 	}
 	//save new configurations
-	config.Servers[node.Server] = *server
+	log.Println("saving config files after join")
 	config.Nodes[node.Network] = *node
-	pretty.Println(node.ID)
-	server.Nodes = map[string]bool{node.ID: true}
+	//
+	serv := &config.Server{}
+	// use existing server if it exists
+	if s, ok := config.Servers[node.Server]; ok {
+		serv = &s
+	} else {
+		serv = server
+	}
+	serv.Nodes = append(serv.Nodes, node.Network)
+	config.Servers[node.Server] = *serv
 	pretty.Println(server.Nodes)
-	config.WriteNetclientConfig()
-	config.WriteNodeConfig()
-	config.WriteServerConfig()
+	if err := config.WriteNetclientConfig(); err != nil {
+		log.Println("error saveing netclient config", err)
+	}
+	if err := config.WriteNodeConfig(); err != nil {
+		log.Println("error saveing netclient config", err)
+	}
+	if err := config.WriteServerConfig(); err != nil {
+		log.Println("error saveing netclient config", err)
+	}
 	logger.Log(1, "joined", node.Network)
 }
 
