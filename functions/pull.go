@@ -13,12 +13,15 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(network string, iface bool) (*config.Node, error) {
 	node := config.Nodes[network]
+	server := config.Servers[node.Server]
+	pretty.Println(server)
 	if config.Netclient.IPForwarding && !ncutils.IsWindows() {
 		if err := local.SetIPForwarding(); err != nil {
 			return nil, err
@@ -29,7 +32,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, err
 	}
 	endpoint := httpclient.JSONEndpoint[models.NodeGet]{
-		URL:           "https://" + node.Server,
+		URL:           "https://" + server.API,
 		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,

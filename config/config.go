@@ -347,6 +347,8 @@ func WriteInitialServerConfig(cfg *models.ServerConfig) error {
 	s.CoreDNSAddr = cfg.CoreDNSAddr
 	s.Version = cfg.Version
 	s.Is_EE = cfg.Is_EE
+	s.MQID = Netclient.HostID
+	s.Password = Netclient.HostPass
 	Servers[s.Name] = s
 	return WriteServerConfig()
 }

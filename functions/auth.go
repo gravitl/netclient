@@ -16,12 +16,12 @@ func Authenticate(node *config.Node) (string, error) {
 	data := models.AuthParams{
 		MacAddress: node.MacAddress.String(),
 		ID:         node.ID,
-		Password:   node.Password,
+		Password:   config.Netclient.HostPass,
 	}
 	server := config.Servers[node.Server]
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
-		Route:  "/api/nodes/adm" + node.Network + "/authenticate",
+		Route:  "/api/nodes/adm/" + node.Network + "/authenticate",
 		Method: http.MethodPost,
 		Data:   data,
 	}
