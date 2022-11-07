@@ -69,7 +69,7 @@ func Join(flags *viper.Viper) {
 
 	}
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
-	node, server, err := JoinNetwork(flags)
+	node, newServer, err := JoinNetwork(flags)
 	if err != nil {
 		if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 			logger.Log(0, "error installing: ", err.Error())
@@ -93,16 +93,14 @@ func Join(flags *viper.Viper) {
 	//save new configurations
 	log.Println("saving config files after join")
 	config.Nodes[node.Network] = *node
-	//
-	serv := &config.Server{}
-	// use existing server if it exists
-	if s, ok := config.Servers[node.Server]; ok {
-		serv = &s
-	} else {
-		serv = server
+	//use existing server config if it exists, else use new server data
+	oldServer := config.GetServer(node.Server)
+	server := oldServer
+	if server == nil {
+		server = newServer
 	}
-	serv.Nodes = append(serv.Nodes, node.Network)
-	config.Servers[node.Server] = *serv
+	server.Nodes = append(server.Nodes, node.Network)
+	//config.Servers[node.Server] = *serv
 	pretty.Println(server.Nodes)
 	if err := config.WriteNetclientConfig(); err != nil {
 		log.Println("error saveing netclient config", err)
@@ -278,7 +276,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + node.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + node.Network + "'. Then re-run the install command.")
 	}
 	node.Server = flags.GetString("server")
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
 	// figure out how to handle commmad line passwords
 	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
 	//node.Password = flags.GetString("password")
@@ -446,7 +444,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	if err != nil {
 		return newNode, nil, fmt.Errorf("error initializing wireguard %w", err)
 	}
-	return newNode, &server, err
+	return newNode, server, err
 }
 
 func getPrivateAddr() (net.IPNet, error) {

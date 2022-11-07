@@ -69,7 +69,7 @@ func checkin() {
 	netclient := config.Netclient
 	//should not be required
 	config.GetNodes()
-	config.GetServers()
+	config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
 	if len(config.Nodes) == 0 {
 		logger.Log(0, "skipping checkin: no nodes configured")

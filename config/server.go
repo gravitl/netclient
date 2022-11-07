@@ -28,8 +28,6 @@ type Server struct {
 	Nodes       []string
 }
 
-type Networks map[string]struct{}
-
 // ReadServerConfig reads a server configuration file and returns it as a
 // Server instance. If no configuration file is found, nil and no error will be
 // returned. The configuration must live in one of the directories specified in
@@ -37,7 +35,7 @@ type Networks map[string]struct{}
 //
 // In case multiple configuration files are found, the one in the most specific
 // or "closest" directory will be preferred.
-func GetServers() error {
+func ReadServerConf() error {
 	file := GetNetclientPath() + "servers.yml"
 	f, err := os.Open(file)
 	if err != nil {
@@ -73,8 +71,15 @@ func WriteServerConfig() error {
 	return f.Sync()
 }
 
-func ConvertServerCfg(cfg *models.ServerConfig) Server {
-	var server Server
+func GetServer(network string) *Server {
+	if server, ok := Servers[network]; ok {
+		return &server
+	}
+	return nil
+}
+
+func ConvertServerCfg(cfg *models.ServerConfig) *Server {
+	var server *Server
 	server.Name = cfg.Server
 	server.Version = cfg.Version
 	server.Broker = cfg.Broker
@@ -85,5 +90,7 @@ func ConvertServerCfg(cfg *models.ServerConfig) Server {
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	log.Println("server conversion")
+	pretty.Println(cfg, server)
 	return server
 }

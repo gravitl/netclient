@@ -84,7 +84,7 @@ func initConfig() {
 	config.Netclient = netclient
 	logger.Log(0, "verbosity set to", strconv.Itoa(logger.Verbosity))
 	config.GetNodes()
-	config.GetServers()
+	config.ReadServerConf()
 	checkConfig()
 	//check netclient dirs exist
 	logger.Log(0, "checking netclient paths")
