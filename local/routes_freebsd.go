@@ -36,7 +36,7 @@ func GetDefaultRoute() (string, string, error) {
 	return ipaddr, iface, err
 }
 
-func setRoute(iface string, addr *net.IPNet, address string) error {
+func setRoute(iface string, addr *net.IPNet) error {
 	_, err := ncutils.RunCmd("route add -net "+addr.String()+" -interface "+iface, false)
 	return err
 }
@@ -47,13 +47,13 @@ func SetExplicitRoute(iface string, destination *net.IPNet, gateway string) erro
 	return err
 }
 
-func deleteRoute(iface string, addr *net.IPNet, address string) error {
+func deleteRoute(iface string, addr *net.IPNet) error {
 	var err error
 	_, _ = ncutils.RunCmd("route delete -net "+addr.String()+" -interface "+iface, false)
 	return err
 }
 
-func setCidr(iface, address string, addr *net.IPNet) {
+func setCidr(iface string, addr *net.IPNet) {
 	if iplib.Version(addr.IP) == 4 {
 		ncutils.RunCmd("route add -net "+addr.String()+" -interface "+iface, false)
 	} else if iplib.Version(addr.IP) == 6 {
@@ -64,6 +64,6 @@ func setCidr(iface, address string, addr *net.IPNet) {
 	ncutils.RunCmd("route add -net "+addr.String()+" -interface "+iface, false)
 }
 
-func removeCidr(iface string, addr *net.IPNet, address string) {
+func removeCidr(iface string, addr *net.IPNet) {
 	ncutils.RunCmd("route delete -net "+addr.String()+" -interface "+iface, false)
 }
