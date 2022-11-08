@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
@@ -22,14 +23,6 @@ func SetupSystemDDaemon() error {
 	}
 	binarypath, err := os.Executable()
 	if err != nil {
-		return err
-	}
-
-	_, err = os.Stat("/etc/netclient/config")
-	if os.IsNotExist(err) {
-		os.MkdirAll("/etc/netclient/config", 0744)
-	} else if err != nil {
-		log.Println("couldnt find or create /etc/netclient")
 		return err
 	}
 	//install binary
@@ -83,11 +76,13 @@ func RestartSystemD() {
 
 // CleanupLinux - cleans up neclient configs
 func CleanupLinux() {
-	if _, err := ncutils.RunCmd("systemctl stop netclient", false); err != nil {
-		logger.Log(0, "failed to stop netclient service", err.Error())
+	if config.Netclient.DaemonInstalled {
+		if _, err := ncutils.RunCmd("systemctl stop netclient", false); err != nil {
+			logger.Log(0, "failed to stop netclient service", err.Error())
+		}
+		RemoveSystemDServices()
 	}
-	RemoveSystemDServices()
-	if err := os.RemoveAll(ncutils.GetNetclientPath()); err != nil {
+	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		logger.Log(1, "Removing netclient configs: ", err.Error())
 	}
 	if err := os.Remove(EXEC_DIR + "netclient"); err != nil {
@@ -97,6 +92,7 @@ func CleanupLinux() {
 
 // StopSystemD - tells system to stop systemd
 func StopSystemD() {
+	log.Println("calling systemclt stop netclient")
 	ncutils.RunCmd("systemctl stop netclient.service", false)
 }
 

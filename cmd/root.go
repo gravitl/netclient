@@ -4,9 +4,15 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
+	"log"
 	"os"
+	"runtime"
+	"strconv"
 
+	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -41,33 +47,114 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.netclient.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "use specified config file")
+	rootCmd.PersistentFlags().IntP("verbosity", "v", 0, "set loggin verbosity 0-4")
+	viper.BindPFlags(rootCmd.Flags())
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	checkUID()
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-
-		// Search config in home directory with name ".netclient" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".netclient")
+		viper.AddConfigPath(config.GetNetclientPath())
+		viper.SetConfigName("netclient.yml")
 	}
+	viper.SetConfigType("yml")
 
+	viper.BindPFlags(rootCmd.PersistentFlags())
 	viper.AutomaticEnv() // read in environment variables that match
+	//not sure why vebosity not set in AutomaticEnv
+	viper.BindEnv("verbosity", "VERBOSITY")
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
+	} else {
+		logger.Log(0, "error reading config file", err.Error())
+	}
+	var netclient config.Config
+	if err := viper.Unmarshal(&netclient); err != nil {
+		logger.Log(0, "could not read netclient config file", err.Error())
+	}
+	logger.Verbosity = netclient.Verbosity
+	config.Netclient = netclient
+	logger.Log(0, "verbosity set to", strconv.Itoa(logger.Verbosity))
+	config.GetNodes()
+	config.ReadServerConf()
+	checkConfig()
+	//check netclient dirs exist
+	logger.Log(0, "checking netclient paths")
+	if _, err := os.Stat(config.GetNetclientInterfacePath()); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.Mkdir(config.GetNetclientInterfacePath(), os.ModePerm); err != nil {
+				logger.Log(0, "failed to create dirs", err.Error())
+			}
+		} else {
+			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
+		}
+	}
+}
+
+func checkConfig() {
+	fail := false
+	saveRequired := false
+	netclient := &config.Netclient
+	if netclient.OS == "" {
+		netclient.OS = runtime.GOOS
+		saveRequired = true
+	}
+	if netclient.Version == "" {
+		netclient.Version = ncutils.Version
+		saveRequired = true
+	}
+	netclient.IPForwarding = true
+	if netclient.HostID == "" {
+		logger.Log(0, "setting netclient hostid")
+		netclient.HostID = uuid.NewString()
+		netclient.HostPass = ncutils.MakeRandomString(32)
+		saveRequired = true
+	}
+	if saveRequired {
+		if err := config.WriteNetclientConfig(); err != nil {
+			logger.FatalLog("could not save netclient config " + err.Error())
+		}
+	}
+	for _, server := range config.Servers {
+		if server.MQID != netclient.HostID || server.Password != netclient.HostPass {
+			fail = true
+			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+		}
+	}
+	for _, node := range config.Nodes {
+		//make sure server config exists
+		if _, ok := config.Servers[node.Server]; !ok {
+			fail = true
+			logger.Log(0, "configuration for", node.Server, "is missing")
+		}
+	}
+	if fail {
+		logger.FatalLog("configuration is invalid, fix before proceeding")
+	}
+}
+
+// checkUID - Checks to make sure user has root privileges
+func checkUID() {
+	// start our application
+	out, err := ncutils.RunCmd("id -u", true)
+	if err != nil {
+		log.Fatal(out, err)
+	}
+	id, err := strconv.Atoi(string(out[:len(out)-1]))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if id != 0 {
+		log.Fatal("This program must be run with elevated privileges. Please re-run with sudo or as root.")
 	}
 }

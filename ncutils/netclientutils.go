@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -21,7 +20,6 @@ import (
 	"github.com/c-robinson/iplib"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/netclient/global_settings"
 )
 
 var (
@@ -37,15 +35,6 @@ const NO_DB_RECORD = "no result found"
 
 // NO_DB_RECORDS - error record result
 const NO_DB_RECORDS = "could not find any records"
-
-// LINUX_APP_DATA_PATH - linux path
-const LINUX_APP_DATA_PATH = "/etc/netclient"
-
-// MAC_APP_DATA_PATH - mac path
-const MAC_APP_DATA_PATH = "/Applications/Netclient"
-
-// WINDOWS_APP_DATA_PATH - windows path
-const WINDOWS_APP_DATA_PATH = "C:\\Program Files (x86)\\Netclient"
 
 // WINDOWS_SVC_NAME - service name
 const WINDOWS_SVC_NAME = "netclient"
@@ -149,12 +138,12 @@ func GetPublicIP(api string) (string, error) {
 
 	iplist := []string{"https://ip.client.gravitl.com", "https://ifconfig.me", "https://api.ipify.org", "https://ipinfo.io/ip"}
 
-	for network, ipService := range global_settings.PublicIPServices {
-		logger.Log(3, "User provided public IP service defined for network", network, "is", ipService)
+	//for network, ipService := range global_settings.PublicIPServices {
+	//logger.Log(3, "User provided public IP service defined for network", network, "is", ipService)
 
-		// prepend the user-specified service so it's checked first
-		iplist = append([]string{ipService}, iplist...)
-	}
+	// prepend the user-specified service so it's checked first
+	//		iplist = append([]string{ipService}, iplist...)
+	//}
 	if api != "" {
 		api = "https://" + api + "/api/getip"
 		iplist = append([]string{api}, iplist...)
@@ -187,15 +176,15 @@ func GetPublicIP(api string) (string, error) {
 }
 
 // GetMacAddr - get's mac address
-func GetMacAddr() ([]string, error) {
+func GetMacAddr() ([]net.HardwareAddr, error) {
 	ifas, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
-	var as []string
+	var as []net.HardwareAddr
 	for _, ifa := range ifas {
-		a := ifa.HardwareAddr.String()
-		if a != "" {
+		a := ifa.HardwareAddr
+		if a != nil {
 			as = append(as, a)
 		}
 	}
@@ -203,17 +192,12 @@ func GetMacAddr() ([]string, error) {
 }
 
 // GetLocalIP - gets local ip of machine
-func GetLocalIP(localrange string) (string, error) {
-	_, localRange, err := net.ParseCIDR(localrange)
-	if err != nil {
-		return "", err
-	}
+// returns first interface that is up, is not a loopback and is
+func GetLocalIP(localrange net.IPNet) (*net.IPNet, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var local string
-	found := false
 	for _, i := range ifaces {
 		if i.Flags&net.FlagUp == 0 {
 			continue // interface down
@@ -223,30 +207,17 @@ func GetLocalIP(localrange string) (string, error) {
 		}
 		addrs, err := i.Addrs()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				if !found {
-					ip = v.IP
-					local = ip.String()
-					found = localRange.Contains(ip)
-				}
-			case *net.IPAddr:
-				if !found {
-					ip = v.IP
-					local = ip.String()
-					found = localRange.Contains(ip)
+			if net, ok := addr.(*net.IPNet); ok {
+				if localrange.Contains(net.IP) {
+					return net, nil
 				}
 			}
 		}
 	}
-	if !found || local == "" {
-		return "", errors.New("Failed to find local IP in range " + localrange)
-	}
-	return local, nil
+	return nil, errors.New("not found")
 }
 
 // GetNetworkIPMask - Pulls the netmask out of the network
@@ -263,7 +234,7 @@ func GetNetworkIPMask(networkstring string) (string, string, error) {
 }
 
 // GetFreePort - gets free port of machine
-func GetFreePort(rangestart int32) (int32, error) {
+func GetFreePort(rangestart int) (int, error) {
 	addr := net.UDPAddr{}
 	if rangestart == 0 {
 		rangestart = NETCLIENT_DEFAULT_PORT
@@ -294,17 +265,6 @@ func GetHomeDirWindows() string {
 	return os.Getenv("HOME")
 }
 
-// GetNetclientPath - gets netclient path locally
-func GetNetclientPath() string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH
-	} else if IsMac() {
-		return MAC_APP_DATA_PATH
-	} else {
-		return LINUX_APP_DATA_PATH
-	}
-}
-
 // GetSeparator - gets the separator for OS
 func GetSeparator() string {
 	if IsWindows() {
@@ -328,28 +288,6 @@ func GetFileWithRetry(path string, retryCount int) ([]byte, error) {
 		}
 	}
 	return data, err
-}
-
-// GetNetclientServerPath - gets netclient server path
-func GetNetclientServerPath(server string) string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH + "\\" + server + "\\"
-	} else if IsMac() {
-		return MAC_APP_DATA_PATH + "/" + server + "/"
-	} else {
-		return LINUX_APP_DATA_PATH + "/" + server
-	}
-}
-
-// GetNetclientPathSpecific - gets specific netclient config path
-func GetNetclientPathSpecific() string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH + "\\"
-	} else if IsMac() {
-		return MAC_APP_DATA_PATH + "/config/"
-	} else {
-		return LINUX_APP_DATA_PATH + "/config/"
-	}
 }
 
 func CheckIPAddress(ip string) error {
@@ -390,15 +328,6 @@ func GetFileAsString(path string) (string, error) {
 		return "", err
 	}
 	return string(content), err
-}
-
-// GetNetclientPathSpecific - gets specific netclient config path
-func GetWGPathSpecific() string {
-	if IsWindows() {
-		return WINDOWS_APP_DATA_PATH + "\\"
-	} else {
-		return "/etc/wireguard/"
-	}
 }
 
 // Copy - copies a src file to dest
@@ -463,25 +392,6 @@ func FileExists(f string) bool {
 		logger.Log(0, "error reading file: "+f+", "+err.Error())
 	}
 	return !info.IsDir()
-}
-
-// GetSystemNetworks - get networks locally
-func GetSystemNetworks() ([]string, error) {
-	var networks []string
-	files, err := filepath.Glob(GetNetclientPathSpecific() + "netconfig-*")
-	if err != nil {
-		return nil, err
-	}
-	for _, file := range files {
-		//don't want files such as *.bak, *.swp
-		if filepath.Ext(file) != "" {
-			continue
-		}
-		file := filepath.Base(file)
-		temp := strings.Split(file, "-")
-		networks = append(networks, strings.Join(temp[1:], "-"))
-	}
-	return networks, nil
 }
 
 // ShortenString - Brings string down to specified length. Stops names from being too long
@@ -570,18 +480,6 @@ func ConvertKeyToBytes(key *[32]byte) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// ConvertBytesToKey - util to convert bytes to a key to use elsewhere
-func ConvertBytesToKey(data []byte) (*[32]byte, error) {
-	var buffer = bytes.NewBuffer(data)
-	var dec = gob.NewDecoder(buffer)
-	var result = new([32]byte)
-	var err = dec.Decode(result)
-	if err != nil {
-		return nil, err
-	}
-	return result, err
-}
-
 // ServerAddrSliceContains - sees if a string slice contains a string element
 func ServerAddrSliceContains(slice []models.ServerAddr, item models.ServerAddr) bool {
 	for _, s := range slice {
@@ -631,13 +529,18 @@ func GetIPNetFromString(ip string) (net.IPNet, error) {
 	return *ipnet, err
 }
 
-// ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
-func ModPort(node *models.Node) error {
-	var err error
-	if node.UDPHolePunch == "yes" {
-		node.ListenPort = 0
-	} else {
-		node.ListenPort, err = GetFreePort(node.ListenPort)
+// ConvertBytesToKey - util to convert bytes to a key to use elsewhere
+func ConvertBytesToKey(data []byte) (*[32]byte, error) {
+	var buffer = bytes.NewBuffer(data)
+	var dec = gob.NewDecoder(buffer)
+	var result = new([32]byte)
+	var err = dec.Decode(result)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	return result, err
+}
+
+func IpIsPrivate(ipnet net.IP) bool {
+	return ipnet.IsPrivate() || ipnet.IsLoopback()
 }
