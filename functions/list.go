@@ -1,7 +1,10 @@
 package functions
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -9,6 +12,8 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type Peer struct {
@@ -32,44 +37,50 @@ func List(net string, long bool) {
 			if long {
 				peers, err := getPeers(&node)
 				if err != nil {
+					logger.Log(0, "error retrieving peers", err.Error())
+					pretty.Println(peers)
 					continue
 				}
 				for _, peer := range peers {
-					fmt.Println(peer.PublicKey, peer.Endpoint)
+					fmt.Println("  Peers: ", peer.PublicKey, peer.Endpoint, "\n    AllowedIPs:")
 					for _, cidr := range peer.AllowedIPs {
-						fmt.Println(cidr)
+						fmt.Println("    ", cidr.String())
 					}
+					fmt.Println("")
 				}
 			}
 		}
 	}
 }
 
-func getPeers(node *config.Node) ([]Peer, error) {
-	var response []Peer
-	server := config.Servers[node.Server]
+func getPeers(node *config.Node) ([]wgtypes.PeerConfig, error) {
+	server := config.GetServer(node.Server)
 	token, err := Authenticate(node)
 	if err != nil {
-		return response, err
+		return nil, err
 	}
-	endpoint := httpclient.JSONEndpoint[models.NodeGet]{
+	endpoint := httpclient.Endpoint{
 		URL:           "https://" + server.API,
-		Route:         "/api/node" + node.Network + "/" + node.ID,
+		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
-		Response:      models.NodeGet{},
+		//Response:      models.NodeGet{},
 	}
-	nodeData, err := endpoint.GetJSON(models.NodeGet{})
+	response, err := endpoint.GetResponse()
 	if err != nil {
-		return response, err
+		return nil, err
 	}
-	for i, peer := range nodeData.(models.NodeGet).Peers {
-		response[i].PublicKey = peer.PublicKey.String()
-		response[i].Endpoint = peer.Endpoint.String()
-		for j, ip := range peer.AllowedIPs {
-			response[i].AllowedIPs[j] = ip.String()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		bytes, err := io.ReadAll(response.Body)
+		if err == nil {
+			logger.Log(3, "response from getPeers", string(bytes))
 		}
-
+		return nil, errors.New(response.Status)
 	}
-	return response, nil
+	nodeData := models.NodeGet{}
+	if err := json.NewDecoder(response.Body).Decode(&nodeData); err != nil {
+		return nil, err
+	}
+	return nodeData.Peers, nil
 }
