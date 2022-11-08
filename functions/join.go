@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -71,22 +72,21 @@ func Join(flags *viper.Viper) {
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
 	node, newServer, err := JoinNetwork(flags)
 	if err != nil {
-		if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
-			logger.Log(0, "error installing: ", err.Error())
-			err = WipeLocal(node)
-			if err != nil {
-				logger.FatalLog("error removing artifacts: ", err.Error())
-			}
-		}
-		if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
-			logger.FatalLog(err.Error())
-		}
+		//if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
+		//logger.Log(0, "error installing: ", err.Error())
+		//err = WipeLocal(node)
+		//if err != nil {
+		//logger.FatalLog("error removing artifacts: ", err.Error())
+		//}
+		//}
+		//if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
+		logger.FatalLog(err.Error())
 	}
 	if config.Netclient.DaemonInstalled {
 		if err := daemon.Restart(); err != nil {
 			logger.Log(3, "daemon restart failed:", err.Error())
 			if err := daemon.Start(); err != nil {
-				logger.Log(0, "error restarting deamon", err.Error())
+				logger.FatalLog("error restarting deamon", err.Error())
 			}
 		}
 	}
@@ -286,12 +286,12 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	node.HostID = netclient.HostID
 	//}
 	//check if ListenPort was set on command line
-	node.UDPHolePunch = flags.GetString("udpholepunch")
+	node.UDPHolePunch = "yes" // set default
 	node.ListenPort = flags.GetInt32("port")
 	if node.ListenPort != 0 {
 		node.UDPHolePunch = "no"
 	}
-	log.Println("listenport", node.ListenPort)
+	log.Println("listenport", node.ListenPort, node.UDPHolePunch)
 	var trafficPubKey, trafficPrivKey, errT = box.GenerateKey(rand.Reader) // generate traffic keys
 	if errT != nil {
 		return nil, nil, fmt.Errorf("error generating traffic keys %w", errT)
@@ -383,21 +383,38 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	url := flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+url)
-	api := httpclient.JSONEndpoint[models.NodeGet]{
+	api := httpclient.Endpoint{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,
 		Method:        http.MethodPost,
 		Authorization: "Bearer " + node.AccessKey,
 		Data:          node,
-		Response:      models.NodeGet{},
 	}
-	response, err := api.GetJSON(models.NodeGet{})
+	response, err := api.GetResponse()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating node %w", err)
 	}
-	nodeGET := response.(models.NodeGet)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		log.Println("create node failed", response.Status)
+		bytes, err := io.ReadAll(response.Body)
+		if err != nil {
+			log.Fatal("error decoding response", err)
+		}
+		log.Fatal("response: ", string(bytes))
+	}
+	var nodeGET models.NodeGet
+	if err := json.NewDecoder(response.Body).Decode(&nodeGET); err != nil {
+		log.Fatal("error decoding node ", err)
+
+	}
 	newNode := config.ConvertNode(&nodeGET.Node)
-	pretty.Println(node, nodeGET, newNode)
+	log.Println("node")
+	pretty.Println(node)
+	log.Println("nodeGet")
+	pretty.Println(nodeGET)
+	log.Println("newnode")
+	pretty.Println(newNode)
 
 	newNode.TrafficPrivateKey = netclientNode.TrafficPrivateKey
 	newNode.PrivateKey = netclientNode.PrivateKey

@@ -2,12 +2,10 @@
 package config
 
 import (
-	"log"
 	"os"
 	"strconv"
 
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 	"gopkg.in/yaml.v3"
 )
 
@@ -62,8 +60,6 @@ func WriteServerConfig() error {
 		return err
 	}
 	defer f.Close()
-	log.Println("servers to be saved")
-	pretty.Println(Servers)
 	err = yaml.NewEncoder(f).Encode(Servers)
 	if err != nil {
 		return err
@@ -94,7 +90,5 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
-	log.Println("server conversion")
-	pretty.Println(cfg, server)
 	return &server
 }

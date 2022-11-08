@@ -57,11 +57,10 @@ func init() {
 	joinCmd.Flags().Bool("static", false, "netclient will not check for public address changes")
 	joinCmd.Flags().Bool("dnson", true, "use private dns")
 	joinCmd.Flags().Bool("islocal", false, "use localaddress for wg endpoint")
-	joinCmd.Flags().Bool("udpholepunch", false, "use udpholepunching (dynamic listen ports)")
 	joinCmd.Flags().Bool("ipforwarding", true, "set ipforwarding on/off")
 
 	joinCmd.Flags().Int("keepalive", 20, "persistent keepalive for wireguard peers")
-	joinCmd.Flags().Int("port", 0, "port for wireguard interface")
+	joinCmd.Flags().Int("port", 0, "port for wireguard interface, will turn udpholepunching off")
 
 	// Here you will define your flags and configuration settings.
 

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -115,7 +114,7 @@ func ConvertNode(s *models.Node) *Node {
 	n.Server = strings.Replace(s.Server, "api.", "", 1)
 	n.TrafficKeys = s.TrafficKeys
 	n.EndpointIP = net.ParseIP(s.Endpoint)
-	n.Connected, _ = strconv.ParseBool(s.Connected)
+	n.Connected = ParseBool(s.Connected)
 	n.MacAddress, _ = net.ParseMAC(s.MacAddress)
 	n.Port = int(s.ListenPort)
 	n.Address.IP = net.ParseIP(s.Address)
@@ -131,14 +130,14 @@ func ConvertNode(s *models.Node) *Node {
 	n.PostUp = s.PostUp
 	n.PostDown = s.PostDown
 	n.Action = s.Action
-	n.UDPHolePunch, _ = strconv.ParseBool(s.UDPHolePunch)
-	n.IsLocal, _ = strconv.ParseBool(s.IsLocal)
-	n.IsEgressGateway, _ = strconv.ParseBool(s.IsEgressGateway)
-	n.IsIngressGateway, _ = strconv.ParseBool(s.IsIngressGateway)
-	n.IsStatic, _ = strconv.ParseBool(s.IsStatic)
-	n.IsPending, _ = strconv.ParseBool(s.IsPending)
-	n.DNSOn, _ = strconv.ParseBool(s.DNSOn)
-	n.IsHub, _ = strconv.ParseBool(s.IsHub)
+	n.UDPHolePunch = ParseBool(s.UDPHolePunch)
+	n.IsLocal = ParseBool(s.IsLocal)
+	n.IsEgressGateway = ParseBool(s.IsEgressGateway)
+	n.IsIngressGateway = ParseBool(s.IsIngressGateway)
+	n.IsStatic = ParseBool(s.IsStatic)
+	n.IsPending = ParseBool(s.IsPending)
+	n.DNSOn = ParseBool(s.DNSOn)
+	n.IsHub = ParseBool(s.IsHub)
 	return &n
 }
 
@@ -233,4 +232,12 @@ func FormatBool(b bool) string {
 		s = "yes"
 	}
 	return s
+}
+
+func ParseBool(s string) bool {
+	b := false
+	if s == "yes" {
+		b = true
+	}
+	return b
 }
