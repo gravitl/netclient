@@ -292,7 +292,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	//check if ListenPort was set on command line
 	node.ListenPort = flags.GetInt32("port")
 	if node.ListenPort != 0 {
-		node.UDPHolePunch = "no"
+		node.UDPHolePunch = "yes"
 	}
 	log.Println("listenport", node.ListenPort)
 	var trafficPubKey, trafficPrivKey, errT = box.GenerateKey(rand.Reader) // generate traffic keys

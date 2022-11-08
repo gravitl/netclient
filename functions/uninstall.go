@@ -145,10 +145,10 @@ func WipeLocal(node *config.Node) error {
 	delete(server.Nodes, node.Network)
 	//if server node list is empty delete server from map of servers
 	if len(server.Nodes) == 0 {
-		server = nil
+		delete(config.Servers, node.Server)
 	}
 	config.WriteNodeConfig()
-	config.SaveServer(node.Server, *server)
+	config.WriteServerConfig()
 	if fail {
 		return errors.New("not all files were deleted")
 	}
