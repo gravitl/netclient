@@ -59,8 +59,11 @@ func LeaveNetwork(network string) error {
 	if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
 		logger.Log(0, "failed to delete dns entries for", node.Interface, err.Error())
 	}
-	logger.Log(2, "restarting daemon")
-	return daemon.Restart()
+	if config.Netclient.DaemonInstalled {
+		logger.Log(2, "restarting daemon")
+		return daemon.Restart()
+	}
+	return nil
 }
 
 func deleteNodeFromServer(node *config.Node) error {
@@ -138,15 +141,14 @@ func WipeLocal(node *config.Node) error {
 	//remove node from map of nodes
 	delete(config.Nodes, node.Network)
 	//remove node from list of nodes that server handles
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
 	delete(server.Nodes, node.Network)
-	config.Servers[node.Server] = server
 	//if server node list is empty delete server from map of servers
-	if len(config.Servers[node.Server].Nodes) == 0 {
-		delete(config.Servers, node.Server)
+	if len(server.Nodes) == 0 {
+		server = nil
 	}
 	config.WriteNodeConfig()
-	config.WriteServerConfig()
+	config.SaveServer(node.Server, *server)
 	if fail {
 		return errors.New("not all files were deleted")
 	}
