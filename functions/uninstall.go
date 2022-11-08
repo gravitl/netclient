@@ -80,7 +80,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	}
 	endpoint := httpclient.Endpoint{
 		URL:           "https://" + server.API,
-		Method:        http.MethodPost,
+		Method:        http.MethodDelete,
 		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
 		Authorization: "Bearer " + token,
 	}

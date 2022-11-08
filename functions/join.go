@@ -100,13 +100,9 @@ func Join(flags *viper.Viper) {
 		server = newServer
 		server.Nodes = make(map[string]bool)
 	}
-	pretty.Println(server)
 	nodes := server.Nodes
-	pretty.Println(nodes)
 	nodes[node.Network] = true
-	pretty.Println(server.Nodes)
 	server.Nodes = nodes
-	pretty.Println(server)
 	if err := config.SaveServer(node.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
@@ -290,9 +286,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	node.HostID = netclient.HostID
 	//}
 	//check if ListenPort was set on command line
+	node.UDPHolePunch = flags.GetString("udpholepunch")
 	node.ListenPort = flags.GetInt32("port")
 	if node.ListenPort != 0 {
-		node.UDPHolePunch = "yes"
+		node.UDPHolePunch = "no"
 	}
 	log.Println("listenport", node.ListenPort)
 	var trafficPubKey, trafficPrivKey, errT = box.GenerateKey(rand.Reader) // generate traffic keys
@@ -400,6 +397,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	nodeGET := response.(models.NodeGet)
 	newNode := config.ConvertNode(&nodeGET.Node)
+	pretty.Println(node, nodeGET, newNode)
+
 	newNode.TrafficPrivateKey = netclientNode.TrafficPrivateKey
 	newNode.PrivateKey = netclientNode.PrivateKey
 	newNode.Connected = true
@@ -418,17 +417,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		newNode.UDPHolePunch = false
 		newNode.IsStatic = true
 	}
-	// save the server config if it doesn't already exist
-	//if _, ok := config.Servers[node.Server]; !ok {
-	//if err := config.WriteInitialServerConfig(&nodeGET.ServerConfig); err != nil {
-	//return nil, fmt.Errorf("error wrting sever config %w", err)
-	//		}
-	//}
-
-	//server = config.Servers[newNode.Server]
-	//log.Println("server", newNode.Server)
-	//pretty.Println(config.Servers[newNode.Server])
-	//pretty.Println(server)
 	server := config.ConvertServerCfg(&nodeGET.ServerConfig)
 	if newNode.IsPending {
 		logger.Log(0, "network:", newNode.Network, "node is marked as PENDING.")
