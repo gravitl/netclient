@@ -7,7 +7,7 @@ require (
 	github.com/devilcove/httpclient v0.3.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.16.2
+	github.com/gravitl/netmaker v0.16.3-0.20221102220440-07eb6e3e6c2d
 	github.com/guumaster/hostctl v1.1.3
 	github.com/kr/pretty v0.3.1
 	golang.org/x/term v0.0.0-20220722155259-a9ba230a4035
@@ -83,5 +83,3 @@ require (
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-replace github.com/gravitl/netmaker v0.16.2 => ../netmaker
