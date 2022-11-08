@@ -4,6 +4,7 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -56,6 +57,7 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	checkUID()
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
@@ -139,5 +141,20 @@ func checkConfig() {
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
+}
 
+// checkUID - Checks to make sure user has root privileges
+func checkUID() {
+	// start our application
+	out, err := ncutils.RunCmd("id -u", true)
+	if err != nil {
+		log.Fatal(out, err)
+	}
+	id, err := strconv.Atoi(string(out[:len(out)-1]))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if id != 0 {
+		log.Fatal("This program must be run with elevated privileges. Please re-run with sudo or as root.")
+	}
 }
