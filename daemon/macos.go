@@ -9,8 +9,8 @@ import (
 	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
-const MAC_SERVICE_NAME = "com.gravitl.netclient"
-const MAC_EXEC_DIR = "/usr/local/bin/"
+const MacServiceName = "com.gravitl.netclient"
+const MacExecDir = "/usr/local/bin/"
 
 // SetupMacDaemon - Creates a daemon service from the netclient under LaunchAgents for MacOS
 func SetupMacDaemon() error {
@@ -20,47 +20,47 @@ func SetupMacDaemon() error {
 		return err
 	}
 
-	if ncutils.FileExists(MAC_EXEC_DIR + "netclient") {
-		logger.Log(0, "updating netclient binary in", MAC_EXEC_DIR)
+	if ncutils.FileExists(MacExecDir + "netclient") {
+		logger.Log(0, "updating netclient binary in", MacExecDir)
 	}
-	err = ncutils.Copy(binarypath, MAC_EXEC_DIR+"netclient")
+	err = ncutils.Copy(binarypath, MacExecDir+"netclient")
 	if err != nil {
 		logger.Log(0, err.Error())
 		return err
 	}
 
-	err = CreateMacService(MAC_SERVICE_NAME)
+	err = CreateMacService(MacServiceName)
 	if err != nil {
 		return err
 	}
-	_, err = ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MAC_SERVICE_NAME+".plist", true)
+	_, err = ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true)
 	return err
 }
 
 // CleanupMac - Removes the netclient checkin daemon from LaunchDaemons
 func CleanupMac() {
-	_, err := ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MAC_SERVICE_NAME+".plist", true)
-	if ncutils.FileExists("/Library/LaunchDaemons/" + MAC_SERVICE_NAME + ".plist") {
-		err = os.Remove("/Library/LaunchDaemons/" + MAC_SERVICE_NAME + ".plist")
+	_, err := ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MacServiceName+".plist", true)
+	if ncutils.FileExists("/Library/LaunchDaemons/" + MacServiceName + ".plist") {
+		err = os.Remove("/Library/LaunchDaemons/" + MacServiceName + ".plist")
 	}
 	if err != nil {
 		logger.Log(1, err.Error())
 	}
 
 	os.RemoveAll(ncutils.GetNetclientPath())
-	os.Remove(MAC_EXEC_DIR + "netclient")
+	os.Remove(MacExecDir + "netclient")
 }
 
 // RestartLaunchD - restart launch daemon
 func RestartLaunchD() {
-	ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MAC_SERVICE_NAME+".plist", true)
+	ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MacServiceName+".plist", true)
 	time.Sleep(time.Second >> 2)
-	ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MAC_SERVICE_NAME+".plist", true)
+	ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true)
 }
 
 // StopLaunchD - stop launch daemon
 func StopLaunchD() {
-	ncutils.RunCmd("launchctl unload  /Library/LaunchDaemons/"+MAC_SERVICE_NAME+".plist", true)
+	ncutils.RunCmd("launchctl unload  /Library/LaunchDaemons/"+MacServiceName+".plist", true)
 }
 
 // CreateMacService - Creates the mac service file for LaunchDaemons

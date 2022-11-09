@@ -26,13 +26,12 @@ const lastPeerUpdate = "lpu"
 var messageCache = new(sync.Map)
 var ServerSet map[string]mqtt.Client
 
-//var mqclient mqtt.Client
-
 type cachedMessage struct {
 	Message  string
 	LastSeen time.Time
 }
 
+// Daemon runs netclient daemon
 func Daemon() {
 	logger.Log(0, "netclient daemon started -- version:", ncutils.Version)
 	ServerSet = make(map[string]mqtt.Client)

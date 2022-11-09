@@ -31,6 +31,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// Join joins a netmaker network
 func Join(flags *viper.Viper) {
 	//config.ParseJoinFlags(cmd)
 	fmt.Println("join called")

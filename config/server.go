@@ -10,11 +10,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Servers is map of servers indexed by server name
 var Servers map[string]Server
+
+// ServerNodes is a map of node names for a server
 var ServerNodes map[string]struct{}
 
+// ServerLockFile is a lockfile for controlling access to the server map file on disk
 const ServerLockfile = "netclient-servers.lck"
 
+// Server represents a server configuration
 type Server struct {
 	Name        string
 	Version     string
@@ -29,13 +34,7 @@ type Server struct {
 	Nodes       map[string]bool
 }
 
-// ReadServerConf reads a server configuration file and returns it as a
-// Server instance. If no configuration file is found, nil and no error will be
-// returned. The configuration must live in one of the directories specified in
-// with AddConfigPath()
-//
-// In case multiple configuration files are found, the one in the most specific
-// or "closest" directory will be preferred.
+// ReadServerConf reads the servers configuration file and populates the server map
 func ReadServerConf() error {
 	lockfile := filepath.Join(os.TempDir()) + ServerLockfile
 	file := GetNetclientPath() + "servers.yml"
@@ -54,6 +53,7 @@ func ReadServerConf() error {
 	return nil
 }
 
+// WriteServerConfig writes server map to disk
 func WriteServerConfig() error {
 	lockfile := filepath.Join(os.TempDir()) + ServerLockfile
 	file := GetNetclientPath() + "servers.yml"
@@ -80,6 +80,7 @@ func WriteServerConfig() error {
 	return f.Sync()
 }
 
+// SaveServer updates the server map with current server struct and writes map to disk
 func SaveServer(name string, server Server) error {
 	Servers[name] = server
 	return WriteServerConfig()
@@ -91,6 +92,7 @@ func GetServer(network string) *Server {
 	return nil
 }
 
+// ConvertServerCfg converts a netmaker ServerConfig to netclient server struct
 func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	var server Server
 	server.Name = cfg.Server

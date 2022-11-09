@@ -31,8 +31,10 @@ const Timeout = time.Second * 5
 // ConfigLockfile lockfile to control access to config file
 const ConfigLockfile = "config.lck"
 
+// Netclient contains the netclient config
 var Netclient Config
 
+// Config configuration for netclient and host as a whole
 type Config struct {
 	Verbosity       int `yaml:"verbosity"`
 	FirewallInUse   string
@@ -79,6 +81,7 @@ func ReadNetclientConfig() (*Config, error) {
 	return &netclient, nil
 }
 
+// WriteNetclientConfig save the netclient configuration to disk
 func WriteNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
 	file := GetNetclientPath() + "netclient.yml"
@@ -105,7 +108,7 @@ func WriteNetclientConfig() error {
 	return f.Sync()
 }
 
-// GetNetclientPath - gets netclient path locally
+// GetNetclientPath - returns path to netclient config directory
 func GetNetclientPath() string {
 	if runtime.GOOS == "windows" {
 		return WindowsAppDataPath
@@ -116,7 +119,7 @@ func GetNetclientPath() string {
 	}
 }
 
-// GetNetclientInterfacePath gets path to netclient server configuration files
+// GetNetclientInterfacePath returns path to wireguard interface configuration files
 func GetNetclientInterfacePath() string {
 	if runtime.GOOS == "windows" {
 		return WindowsAppDataPath + "interfaces\\"
@@ -195,7 +198,7 @@ func Lock(lockfile string) error {
 }
 
 // Unlock removes a lockfile if contents of lockfile match current pid
-// also remove lockfile if owner process is no longer running
+// also removes lockfile if owner process is no longer running
 // will return TIMEOUT error if timeout exceeded
 func Unlock(lockfile string) error {
 	var pid int
@@ -259,13 +262,13 @@ func Unlock(lockfile string) error {
 	}
 }
 
-// IsPidDead checks if given pid is no longer still running
+// IsPidDead checks if given pid is not running
 func IsPidDead(pid int) bool {
 	process, err := os.FindProcess(pid)
-	//FindProcess always return err = nil on linux
 	if err != nil {
 		return true
 	}
+	//FindProcess always returns err = nil on linux
 	err = process.Signal(syscall.Signal(0))
 	return errors.Is(err, os.ErrProcessDone)
 }
