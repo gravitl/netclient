@@ -20,8 +20,8 @@ import (
 	"github.com/guumaster/hostctl/pkg/types"
 )
 
-// MQ_TIMEOUT - time out for mqtt connections
-const MQ_TIMEOUT = 30
+// MQTimeout - time out for mqtt connections
+const MQTimeout = 30
 
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {

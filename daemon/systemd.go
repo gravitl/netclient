@@ -13,7 +13,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-const EXEC_DIR = "/sbin/"
+const ExecDir = "/sbin/"
 
 // SetupSystemDDaemon - sets system daemon for supported machines
 func SetupSystemDDaemon() error {
@@ -26,10 +26,10 @@ func SetupSystemDDaemon() error {
 		return err
 	}
 	//install binary
-	if ncutils.FileExists(EXEC_DIR + "netclient") {
-		logger.Log(0, "updating netclient binary in", EXEC_DIR)
+	if ncutils.FileExists(ExecDir + "netclient") {
+		logger.Log(0, "updating netclient binary in", ExecDir)
 	}
-	err = ncutils.Copy(binarypath, EXEC_DIR+"netclient")
+	err = ncutils.Copy(binarypath, ExecDir+"netclient")
 	if err != nil {
 		logger.Log(0, err.Error())
 		return err
@@ -85,7 +85,7 @@ func CleanupLinux() {
 	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		logger.Log(1, "Removing netclient configs: ", err.Error())
 	}
-	if err := os.Remove(EXEC_DIR + "netclient"); err != nil {
+	if err := os.Remove(ExecDir + "netclient"); err != nil {
 		logger.Log(1, "Removing netclient binary: ", err.Error())
 	}
 }

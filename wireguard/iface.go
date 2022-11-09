@@ -1,3 +1,4 @@
+// Package wireguard manipulates wireguard interfaces
 package wireguard
 
 import (

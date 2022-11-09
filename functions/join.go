@@ -31,6 +31,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// Join joins a netmaker network
 func Join(flags *viper.Viper) {
 	//config.ParseJoinFlags(cmd)
 	fmt.Println("join called")
@@ -116,7 +117,7 @@ func Join(flags *viper.Viper) {
 	logger.Log(1, "joined", node.Network)
 }
 
-// JoinViaSso - Handles the Single Sign-On flow on the end point VPN client side
+// JoinViaSSo - Handles the Single Sign-On flow on the end point VPN client side
 // Contacts the server provided by the user (and thus specified in cfg.SsoServer)
 // get the URL to authenticate with a provider and shows the user the URL.
 // Then waits for user to authenticate with the URL.
@@ -137,9 +138,9 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	// Notify the interrupt channel for SIGINT
 	signal.Notify(interrupt, os.Interrupt)
 	// Web Socket is used, construct the URL accordingly ...
-	socketUrl := fmt.Sprintf("wss://%s/api/oauth/node-handler", server)
+	socketURL := fmt.Sprintf("wss://%s/api/oauth/node-handler", server)
 	// Dial the netmaker server controller
-	conn, _, err := websocket.DefaultDialer.Dial(socketUrl, nil)
+	conn, _, err := websocket.DefaultDialer.Dial(socketURL, nil)
 	if err != nil {
 		logger.Log(0, fmt.Sprintf("error connecting to %s : %s", server, err.Error()))
 		return nil, err

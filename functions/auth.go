@@ -1,3 +1,4 @@
+// Package functions provides netclient logic
 package functions
 
 import (

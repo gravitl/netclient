@@ -39,7 +39,7 @@ func SetPeerRoutes(iface string, oldPeers map[string]bool, newPeers []wgtypes.Pe
 		if peer.Endpoint == nil {
 			continue
 		}
-		if hasRoute && !ncutils.IpIsPrivate(peer.Endpoint.IP) {
+		if hasRoute && !ncutils.IPIsPrivate(peer.Endpoint.IP) {
 			ipNet, err := ncutils.GetIPNetFromString(peer.Endpoint.IP.String())
 			if err != nil {
 				logger.Log(0, "error parsing ip:", err.Error())
@@ -79,7 +79,7 @@ func SetCurrentPeerRoutes(iface string, peers []wgtypes.PeerConfig) {
 		if peer.Endpoint == nil {
 			continue
 		}
-		if hasRoute && !ncutils.IpIsPrivate(peer.Endpoint.IP) {
+		if hasRoute && !ncutils.IPIsPrivate(peer.Endpoint.IP) {
 			ipNet, err := ncutils.GetIPNetFromString(peer.Endpoint.IP.String())
 			if err != nil {
 				logger.Log(0, "error parsing ip:", err.Error())
@@ -109,7 +109,7 @@ func FlushPeerRoutes(iface string, peers []wgtypes.Peer) {
 		if peer.Endpoint == nil {
 			continue
 		}
-		if hasRoute && !ncutils.IpIsPrivate(peer.Endpoint.IP) {
+		if hasRoute && !ncutils.IPIsPrivate(peer.Endpoint.IP) {
 			ipNet, err := ncutils.GetIPNetFromString(peer.Endpoint.IP.String())
 			if err != nil {
 				logger.Log(0, "error parsing ip:", err.Error())

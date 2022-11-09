@@ -1,3 +1,4 @@
+// Package local provide functions for setting routes
 package local
 
 import (
@@ -29,7 +30,7 @@ func SetIPForwarding() error {
 	return err
 }
 
-// SetIPForwardingLinux - sets the ipforwarding for linux
+// SetIPForwardingUnix - sets the ipforwarding for linux
 func SetIPForwardingUnix() error {
 
 	// ipv4
@@ -67,7 +68,7 @@ func SetIPForwardingUnix() error {
 	return nil
 }
 
-// SetIPForwardingLinux - sets the ipforwarding for linux
+// SetIPForwardingFreeBSD - sets the ipforwarding for freebsd
 func SetIPForwardingFreeBSD() error {
 	out, err := ncutils.RunCmd("sysctl net.inet.ip.forwarding", true)
 	if err != nil {

@@ -1,3 +1,4 @@
+// Package ncutils contains utility functions
 package ncutils
 
 import (
@@ -27,26 +28,26 @@ var (
 	Version = "dev"
 )
 
-// MAX_NAME_LENGTH - maximum node name length
-const MAX_NAME_LENGTH = 62
+// MaxNameLength - maximum node name length
+const MaxNameLength = 62
 
-// NO_DB_RECORD - error message result
-const NO_DB_RECORD = "no result found"
+// NoDBRecord - error message result
+const NoDBRecord = "no result found"
 
-// NO_DB_RECORDS - error record result
-const NO_DB_RECORDS = "could not find any records"
+// NoDBRecords - error record result
+const NoDBRecords = "could not find any records"
 
-// WINDOWS_SVC_NAME - service name
-const WINDOWS_SVC_NAME = "netclient"
+// WindowsSvcName - service name
+const WindowsSvcName = "netclient"
 
-// NETCLIENT_DEFAULT_PORT - default port
-const NETCLIENT_DEFAULT_PORT = 51821
+// NetclientDefaultPort - default port
+const NetclientDefaultPort = 51821
 
-// DEFAULT_GC_PERCENT - garbage collection percent
-const DEFAULT_GC_PERCENT = 10
+// DefaultGCPercent - garbage collection percent
+const DefaultGCPercent = 10
 
-// KEY_SIZE = ideal length for keys
-const KEY_SIZE = 2048
+// KeySize = ideal length for keys
+const KeySize = 2048
 
 // constants for random strings
 const (
@@ -80,7 +81,7 @@ func IsFreeBSD() bool {
 	return runtime.GOOS == "freebsd"
 }
 
-// HasWGQuick - checks if WGQuick command is present
+// HasWgQuick - checks if WGQuick command is present
 func HasWgQuick() bool {
 	cmd, err := exec.LookPath("wg-quick")
 	return err == nil && cmd != ""
@@ -130,7 +131,7 @@ func IsEmptyRecord(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), NO_DB_RECORD) || strings.Contains(err.Error(), NO_DB_RECORDS)
+	return strings.Contains(err.Error(), NoDBRecord) || strings.Contains(err.Error(), NoDBRecords)
 }
 
 // GetPublicIP - gets public ip
@@ -237,7 +238,7 @@ func GetNetworkIPMask(networkstring string) (string, string, error) {
 func GetFreePort(rangestart int) (int, error) {
 	addr := net.UDPAddr{}
 	if rangestart == 0 {
-		rangestart = NETCLIENT_DEFAULT_PORT
+		rangestart = NetclientDefaultPort
 	}
 	for x := rangestart; x <= 65535; x++ {
 		addr.Port = int(x)
@@ -361,7 +362,7 @@ func Copy(src, dst string) error {
 	return err
 }
 
-// RunsCmds - runs cmds
+// RunCmds - runs cmds
 func RunCmds(commands []string, printerr bool) error {
 	var err error
 	for _, command := range commands {
@@ -419,8 +420,8 @@ func GetHostname() string {
 	if err != nil {
 		return ""
 	}
-	if len(hostname) > MAX_NAME_LENGTH {
-		hostname = hostname[0:MAX_NAME_LENGTH]
+	if len(hostname) > MaxNameLength {
+		hostname = hostname[0:MaxNameLength]
 	}
 	return hostname
 }
@@ -541,6 +542,6 @@ func ConvertBytesToKey(data []byte) (*[32]byte, error) {
 	return result, err
 }
 
-func IpIsPrivate(ipnet net.IP) bool {
+func IPIsPrivate(ipnet net.IP) bool {
 	return ipnet.IsPrivate() || ipnet.IsLoopback()
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -15,8 +16,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Nodes provides a map of node configurations indexed by network name
 var Nodes map[string]Node
 
+// NodeLockFile is name of lockfile for controlling access to node config file on disk
+const NodeLockfile = "netclient-nodes.lck"
+
+// Node provides configuration of a node
 type Node struct {
 	ID                  string
 	Name                string
@@ -58,8 +64,14 @@ type Node struct {
 	IsHub               bool
 }
 
-func GetNodes() error {
+// ReadNodeConfig - reads node configuration from disk
+func ReadNodeConfig() error {
+	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
+	if err := Lock(lockfile); err != nil {
+		return err
+	}
+	defer Unlock(lockfile)
 	f, err := os.Open(file)
 	if err != nil {
 		return err
@@ -71,6 +83,7 @@ func GetNodes() error {
 	return nil
 }
 
+// PrimaryAddress returns the primary address of a node
 func (node *Node) PrimaryAddress() net.IPNet {
 	if node.Address.IP != nil {
 		return node.Address
@@ -78,7 +91,9 @@ func (node *Node) PrimaryAddress() net.IPNet {
 	return node.Address6
 }
 
+// writeNodeConfiguation writes the node map to disk
 func WriteNodeConfig() error {
+	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -87,6 +102,10 @@ func WriteNodeConfig() error {
 			return err
 		}
 	}
+	if err := Lock(lockfile); err != nil {
+		return err
+	}
+	defer Unlock(lockfile)
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
 	if err != nil {
 		return err
@@ -99,6 +118,7 @@ func WriteNodeConfig() error {
 	return f.Sync()
 }
 
+// ConvertNode accepts a netmaker node struc and converts to a netclient node struct
 func ConvertNode(s *models.Node) *Node {
 	//pretty.Println(s)
 	var n Node
@@ -141,6 +161,7 @@ func ConvertNode(s *models.Node) *Node {
 	return &n
 }
 
+// ConverttoOldNode converts a netclient node to a netmaker node
 func ConvertToOldNode(n *Node) *models.Node {
 	var s models.Node
 	s.ID = n.ID
@@ -187,6 +208,7 @@ func ConvertToOldNode(n *Node) *models.Node {
 	return &s
 }
 
+// ToIPNet parses a cidr string and returns a net.IPNet
 func ToIPNet(cidr string) net.IPNet {
 	_, response, err := net.ParseCIDR(cidr)
 	if err != nil {
@@ -195,12 +217,13 @@ func ToIPNet(cidr string) net.IPNet {
 	return *response
 }
 
+// ToUDPAddr parses and ip address string to return a pointer to net.UDPAddr
 func ToUDPAddr(address string) *net.UDPAddr {
 	addr, _ := net.ResolveUDPAddr("udp", address)
 	return addr
 }
 
-// ParseAccessToken - decode base64 encoded access token
+// ParseAccessToken - decodes base64 encoded access token
 func ParseAccessToken(token string) (*models.AccessToken, error) {
 	tokenbytes, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
@@ -226,6 +249,7 @@ func ModPort(node *Node) error {
 	return err
 }
 
+// FormatBool converts a boolean to a [yes|no] string
 func FormatBool(b bool) string {
 	s := "no"
 	if b {
@@ -234,6 +258,7 @@ func FormatBool(b bool) string {
 	return s
 }
 
+// ParseBool parses a [yes|no] string to boolean value
 func ParseBool(s string) bool {
 	b := false
 	if s == "yes" {
