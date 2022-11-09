@@ -1,3 +1,4 @@
+// Package daemon provide functions to control execution of deamons
 package daemon
 
 import (

@@ -68,7 +68,7 @@ func checkin() {
 
 	netclient := config.Netclient
 	//should not be required
-	config.GetNodes()
+	config.ReadNodeConfig()
 	config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
 	if len(config.Nodes) == 0 {
@@ -134,14 +134,14 @@ func checkin() {
 		//config.Write(&nodeCfg, nodeCfg.Network)
 		//}
 		Hello(&node)
-		if server.Is_EE && node.Connected {
+		if server.IsEE && node.Connected {
 			logger.Log(0, "collecting metrics for node", node.Name)
 			publishMetrics(&node)
 		}
 	}
 }
 
-// PublishNodeUpdates -- pushes node to broker
+// PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
 	oldNode := config.ConvertToOldNode(node)
 	log.Println("publish node update")

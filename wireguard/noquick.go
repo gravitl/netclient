@@ -16,7 +16,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const disconnect_error = "node disconnected"
+const disconnectError = "node disconnected"
 
 // ApplyWithoutWGQuick - Function for running the equivalent of "wg-quick up" for linux if wg-quick is missing
 func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnected bool) error {
@@ -43,7 +43,7 @@ func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnec
 	}
 	err = setKernelDevice(ifacename, node.Address, node.Address6, isConnected)
 	if err != nil {
-		if err.Error() == disconnect_error {
+		if err.Error() == disconnectError {
 			return nil
 		}
 	}
@@ -106,7 +106,7 @@ func setKernelDevice(ifacename string, address4, address6 net.IPNet, isConnected
 	// == best effort ==
 	ncutils.RunCmd("ip link delete dev "+ifacename, false)
 	if !isConnected {
-		return fmt.Errorf(disconnect_error)
+		return fmt.Errorf(disconnectError)
 	}
 	ncutils.RunCmd(ipExec+" link add dev "+ifacename+" type wireguard", true)
 	if address4.IP != nil {

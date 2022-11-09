@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	section_interface = "Interface"
-	section_peers     = "Peer"
+	sectionInterface = "Interface"
+	sectionPeers     = "Peer"
 )
 
 // ApplyConf - applys a conf on disk to WireGuard interface
@@ -138,7 +138,7 @@ func SetWGConfig(network string, peerupdate bool, peers []wgtypes.PeerConfig) er
 	return err
 }
 
-// Initializes a WireGuard interface
+// InitWireguard initializes a WireGuard interface
 func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
 	wgclient, err := wgctrl.New()
 	if err != nil {
@@ -435,9 +435,9 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 		AllowShadows:           true,
 	}
 	wireguard := ini.Empty(options)
-	wireguard.Section(section_interface).Key("PrivateKey").SetValue(node.PrivateKey.String())
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(node.PrivateKey.String())
 	if node.ListenPort > 0 && !node.UDPHolePunch {
-		wireguard.Section(section_interface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
+		wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
 	}
 	addrString := node.Address.String()
 	if node.Address6.IP != nil {
@@ -446,7 +446,7 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 		}
 		addrString += node.Address6.String()
 	}
-	wireguard.Section(section_interface).Key("Address").SetValue(addrString)
+	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
 	// need to figure out DNS
 	//if node.DNSOn == "yes" {
 	//	wireguard.Section(section_interface).Key("DNS").SetValue(cfg.Server.CoreDNSAddr)
@@ -458,12 +458,12 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 			parts := strings.Split(node.PostUp, " ; ")
 			for i, part := range parts {
 				if i == 0 {
-					wireguard.Section(section_interface).Key("PostUp").SetValue(part)
+					wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
 				}
-				wireguard.Section(section_interface).Key("PostUp").AddShadow(part)
+				wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
 			}
 		} else {
-			wireguard.Section(section_interface).Key("PostUp").SetValue((node.PostUp))
+			wireguard.Section(sectionInterface).Key("PostUp").SetValue((node.PostUp))
 		}
 	}
 	if node.PostDown != "" {
@@ -471,21 +471,21 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 			parts := strings.Split(node.PostDown, " ; ")
 			for i, part := range parts {
 				if i == 0 {
-					wireguard.Section(section_interface).Key("PostDown").SetValue(part)
+					wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
 				}
-				wireguard.Section(section_interface).Key("PostDown").AddShadow(part)
+				wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
 			}
 		} else {
-			wireguard.Section(section_interface).Key("PostDown").SetValue((node.PostDown))
+			wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
 		}
 	}
 	if node.MTU != 0 {
-		wireguard.Section(section_interface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
 	}
 	for i, peer := range peers {
-		wireguard.SectionWithIndex(section_peers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
+		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
 		if peer.PresharedKey != nil {
-			wireguard.SectionWithIndex(section_peers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
 		}
 		if peer.AllowedIPs != nil {
 			var allowedIPs string
@@ -496,14 +496,14 @@ func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
 					allowedIPs = allowedIPs + ", " + ip.String()
 				}
 			}
-			wireguard.SectionWithIndex(section_peers, i).Key("AllowedIps").SetValue(allowedIPs)
+			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
 		}
 		if peer.Endpoint != nil {
-			wireguard.SectionWithIndex(section_peers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
+			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
 		}
 
 		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
-			wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
 	}
 	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
@@ -522,7 +522,7 @@ func UpdatePrivateKey(file, privateKey string) error {
 	if err != nil {
 		return err
 	}
-	wireguard.Section(section_interface).Key("PrivateKey").SetValue(privateKey)
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(privateKey)
 	if err := wireguard.SaveTo(file); err != nil {
 		return err
 	}
@@ -542,9 +542,9 @@ func UpdateWgInterface(file, nameserver string, node *config.Node) error {
 	if node.UDPHolePunch {
 		node.ListenPort = 0
 	}
-	wireguard.DeleteSection(section_interface)
-	wireguard.Section(section_interface).Key("PrivateKey").SetValue(node.PrivateKey.String())
-	wireguard.Section(section_interface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
+	wireguard.DeleteSection(sectionInterface)
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(node.PrivateKey.String())
+	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
 	addrString := node.Address.String()
 	if node.Address6.IP != nil {
 		if addrString != "" {
@@ -552,7 +552,7 @@ func UpdateWgInterface(file, nameserver string, node *config.Node) error {
 		}
 		addrString += node.Address6.String()
 	}
-	wireguard.Section(section_interface).Key("Address").SetValue(addrString)
+	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
 	//if node.DNSOn == "yes" {
 	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
 	//}
@@ -561,22 +561,22 @@ func UpdateWgInterface(file, nameserver string, node *config.Node) error {
 		parts := strings.Split(node.PostUp, " ; ")
 		for i, part := range parts {
 			if i == 0 {
-				wireguard.Section(section_interface).Key("PostUp").SetValue(part)
+				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
 			}
-			wireguard.Section(section_interface).Key("PostUp").AddShadow(part)
+			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
 		}
 	}
 	if node.PostDown != "" {
 		parts := strings.Split(node.PostDown, " ; ")
 		for i, part := range parts {
 			if i == 0 {
-				wireguard.Section(section_interface).Key("PostDown").SetValue(part)
+				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
 			}
-			wireguard.Section(section_interface).Key("PostDown").AddShadow(part)
+			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
 		}
 	}
 	if node.MTU != 0 {
-		wireguard.Section(section_interface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
 	}
 	if err := wireguard.SaveTo(file); err != nil {
 		return err
@@ -594,13 +594,13 @@ func UpdateKeepAlive(file string, keepalive int) error {
 	if err != nil {
 		return err
 	}
-	peers, err := wireguard.SectionsByName(section_peers)
+	peers, err := wireguard.SectionsByName(sectionPeers)
 	if err != nil {
 		return err
 	}
 	newvalue := strconv.Itoa(keepalive)
 	for i := range peers {
-		wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepALive").SetValue(newvalue)
+		wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepALive").SetValue(newvalue)
 	}
 	if err := wireguard.SaveTo(file); err != nil {
 		return err
@@ -619,11 +619,11 @@ func UpdateWgPeers(file string, peers []wgtypes.PeerConfig) (*net.UDPAddr, error
 		return internetGateway, err
 	}
 	//delete the peers sections as they are going to be replaced
-	wireguard.DeleteSection(section_peers)
+	wireguard.DeleteSection(sectionPeers)
 	for i, peer := range peers {
-		wireguard.SectionWithIndex(section_peers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
+		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
 		if peer.PresharedKey != nil {
-			wireguard.SectionWithIndex(section_peers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
 		}
 		if peer.AllowedIPs != nil {
 			var allowedIPs string
@@ -634,16 +634,16 @@ func UpdateWgPeers(file string, peers []wgtypes.PeerConfig) (*net.UDPAddr, error
 					allowedIPs = allowedIPs + ", " + ip.String()
 				}
 			}
-			wireguard.SectionWithIndex(section_peers, i).Key("AllowedIps").SetValue(allowedIPs)
+			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
 			if strings.Contains(allowedIPs, "0.0.0.0/0") || strings.Contains(allowedIPs, "::/0") {
 				internetGateway = peer.Endpoint
 			}
 		}
 		if peer.Endpoint != nil {
-			wireguard.SectionWithIndex(section_peers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
+			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
 		}
 		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
-			wireguard.SectionWithIndex(section_peers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
 	}
 	if err := wireguard.SaveTo(file); err != nil {

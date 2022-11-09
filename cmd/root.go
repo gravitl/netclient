@@ -1,3 +1,4 @@
+// Package cmd command line for netclient
 /*
 Copyright © 2022 Netmaker Team <info@netmaker.io>
 */
@@ -85,7 +86,7 @@ func initConfig() {
 	logger.Verbosity = netclient.Verbosity
 	config.Netclient = netclient
 	logger.Log(0, "verbosity set to", strconv.Itoa(logger.Verbosity))
-	config.GetNodes()
+	config.ReadNodeConfig()
 	config.ReadServerConf()
 	checkConfig()
 	//check netclient dirs exist
