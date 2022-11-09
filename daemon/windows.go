@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
@@ -14,14 +15,14 @@ import (
 // SetupWindowsDaemon - sets up the Windows daemon service
 func SetupWindowsDaemon() error {
 
-	if ncutils.FileExists(ncutils.GetNetclientPathSpecific() + "winsw.xml") {
+	if ncutils.FileExists(config.GetNetclientPath() + "winsw.xml") {
 		logger.Log(0, "updating netclient service")
 	}
 	if err := writeServiceConfig(); err != nil {
 		return err
 	}
 
-	if ncutils.FileExists(ncutils.GetNetclientPathSpecific() + "winsw.exe") {
+	if ncutils.FileExists(config.GetNetclientPath() + "winsw.exe") {
 		logger.Log(0, "updating netclient binary")
 	}
 	err := ncutils.GetEmbedded()
@@ -46,17 +47,17 @@ func RestartWindowsDaemon() {
 
 // CleanupWindows - cleans up windows files
 func CleanupWindows() {
-	if !ncutils.FileExists(ncutils.GetNetclientPathSpecific() + "winsw.xml") {
+	if !ncutils.FileExists(config.GetNetclientPath() + "winsw.xml") {
 		writeServiceConfig()
 	}
 	RunWinSWCMD("stop")
 	RunWinSWCMD("uninstall")
-	os.RemoveAll(ncutils.GetNetclientPath())
+	os.RemoveAll(config.GetNetclientPath())
 	log.Println("Netclient on Windows, uninstalled")
 }
 
 func writeServiceConfig() error {
-	serviceConfigPath := ncutils.GetNetclientPathSpecific() + "winsw.xml"
+	serviceConfigPath := config.GetNetclientPath() + "winsw.xml"
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
 <name>Netclient</name>
@@ -65,7 +66,7 @@ func writeServiceConfig() error {
 <arguments>daemon</arguments>
 <log mode="roll"></log>
 </service>
-`, strings.Replace(ncutils.GetNetclientPathSpecific()+"netclient.exe", `\\`, `\`, -1))
+`, strings.Replace(config.GetNetclientPath()+"netclient.exe", `\\`, `\`, -1))
 	if !ncutils.FileExists(serviceConfigPath) {
 		err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
 		if err != nil {
@@ -92,7 +93,7 @@ func RunWinSWCMD(command string) {
 	}
 
 	// format command
-	dirPath := strings.Replace(ncutils.GetNetclientPathSpecific(), `\\`, `\`, -1)
+	dirPath := strings.Replace(config.GetNetclientPath(), `\\`, `\`, -1)
 	winCmd := fmt.Sprintf(`"%swinsw.exe" "%s"`, dirPath, command)
 	logger.Log(0, "running "+command+" of Windows Netclient daemon")
 
