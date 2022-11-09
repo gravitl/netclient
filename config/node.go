@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -16,6 +17,8 @@ import (
 )
 
 var Nodes map[string]Node
+
+const NodeLockfile = "netclient-nodes.lck"
 
 type Node struct {
 	ID                  string
@@ -58,8 +61,13 @@ type Node struct {
 	IsHub               bool
 }
 
-func GetNodes() error {
+func ReadNodeConfig() error {
+	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
+	if err := Lock(lockfile); err != nil {
+		return err
+	}
+	defer Unlock(lockfile)
 	f, err := os.Open(file)
 	if err != nil {
 		return err
@@ -79,6 +87,7 @@ func (node *Node) PrimaryAddress() net.IPNet {
 }
 
 func WriteNodeConfig() error {
+	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -87,6 +96,10 @@ func WriteNodeConfig() error {
 			return err
 		}
 	}
+	if err := Lock(lockfile); err != nil {
+		return err
+	}
+	defer Unlock(lockfile)
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
 	if err != nil {
 		return err
