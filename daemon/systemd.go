@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
 
-const EXEC_DIR = "/sbin/"
+const ExecDir = "/sbin/"
 
 // SetupSystemDDaemon - sets system daemon for supported machines
 func SetupSystemDDaemon() error {
@@ -24,19 +25,11 @@ func SetupSystemDDaemon() error {
 	if err != nil {
 		return err
 	}
-
-	_, err = os.Stat("/etc/netclient/config")
-	if os.IsNotExist(err) {
-		os.MkdirAll("/etc/netclient/config", 0744)
-	} else if err != nil {
-		log.Println("couldnt find or create /etc/netclient")
-		return err
-	}
 	//install binary
-	if ncutils.FileExists(EXEC_DIR + "netclient") {
-		logger.Log(0, "updating netclient binary in", EXEC_DIR)
+	if ncutils.FileExists(ExecDir + "netclient") {
+		logger.Log(0, "updating netclient binary in", ExecDir)
 	}
-	err = ncutils.Copy(binarypath, EXEC_DIR+"netclient")
+	err = ncutils.Copy(binarypath, ExecDir+"netclient")
 	if err != nil {
 		logger.Log(0, err.Error())
 		return err
@@ -83,20 +76,23 @@ func RestartSystemD() {
 
 // CleanupLinux - cleans up neclient configs
 func CleanupLinux() {
-	if _, err := ncutils.RunCmd("systemctl stop netclient", false); err != nil {
-		logger.Log(0, "failed to stop netclient service", err.Error())
+	if config.Netclient.DaemonInstalled {
+		if _, err := ncutils.RunCmd("systemctl stop netclient", false); err != nil {
+			logger.Log(0, "failed to stop netclient service", err.Error())
+		}
+		RemoveSystemDServices()
 	}
-	RemoveSystemDServices()
-	if err := os.RemoveAll(ncutils.GetNetclientPath()); err != nil {
+	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		logger.Log(1, "Removing netclient configs: ", err.Error())
 	}
-	if err := os.Remove(EXEC_DIR + "netclient"); err != nil {
+	if err := os.Remove(ExecDir + "netclient"); err != nil {
 		logger.Log(1, "Removing netclient binary: ", err.Error())
 	}
 }
 
 // StopSystemD - tells system to stop systemd
 func StopSystemD() {
+	log.Println("calling systemclt stop netclient")
 	ncutils.RunCmd("systemctl stop netclient.service", false)
 }
 

@@ -1,3 +1,4 @@
+// Package daemon provide functions to control execution of deamons
 package daemon
 
 import (
@@ -18,14 +19,14 @@ func InstallDaemon() error {
 	var err error
 
 	switch os {
-	//case "windows":
-	//	err = SetupWindowsDaemon()
-	//case "darwin":
-	//	err = SetupMacDaemon()
+	case "windows":
+		err = SetupWindowsDaemon()
+	case "darwin":
+		err = SetupMacDaemon()
 	case "linux":
 		err = SetupSystemDDaemon()
-	//case "freebsd":
-	//	err = SetupFreebsdDaemon()
+	case "freebsd":
+		err = SetupFreebsdDaemon()
 	default:
 		err = errors.New("this os is not yet supported for daemon mode. Run join cmd with flag '--daemon off'")
 	}

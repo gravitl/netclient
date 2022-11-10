@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-// PIDFILE - path/name of pid file
-const PIDFILE = "/var/run/netclient.pid"
+// PidFile - path/name of pid file
+const PidFile = "/var/run/netclient.pid"
 
 // WindowsPIDError - error returned from pid function on windows
 type WindowsPIDError struct{}
@@ -23,7 +23,7 @@ func SavePID() error {
 		return nil
 	}
 	pid := os.Getpid()
-	if err := os.WriteFile(PIDFILE, []byte(fmt.Sprintf("%d", pid)), 0644); err != nil {
+	if err := os.WriteFile(PidFile, []byte(fmt.Sprintf("%d", pid)), 0644); err != nil {
 		return fmt.Errorf("could not write to pid file %w", err)
 	}
 	return nil
@@ -34,7 +34,7 @@ func ReadPID() (int, error) {
 	if IsWindows() {
 		return 0, nil
 	}
-	bytes, err := os.ReadFile(PIDFILE)
+	bytes, err := os.ReadFile(PidFile)
 	if err != nil {
 		return 0, fmt.Errorf("could not read pid file %w", err)
 	}
