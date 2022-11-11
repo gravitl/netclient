@@ -190,14 +190,15 @@ func publishMetrics(node *config.Node) {
 	}
 	server := config.Servers[node.Server]
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
-	endpoint := httpclient.JSONEndpoint[models.NodeGet]{
+	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           url,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Data:          nil,
 		Response:      models.NodeGet{},
+		ErrorResponse: models.ErrorResponse{},
 	}
-	response, err := endpoint.GetJSON(models.NodeGet{})
+	response, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
 		return

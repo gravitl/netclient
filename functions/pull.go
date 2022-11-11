@@ -19,7 +19,10 @@ import (
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(network string, iface bool) (*config.Node, error) {
-	node := config.Nodes[network]
+	node, ok := config.Nodes[network]
+	if !ok {
+		return nil, errors.New("no such network")
+	}
 	server := config.Servers[node.Server]
 	pretty.Println(server)
 	if config.Netclient.IPForwarding && !ncutils.IsWindows() {
@@ -31,15 +34,20 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	endpoint := httpclient.JSONEndpoint[models.NodeGet]{
+	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Response:      models.NodeGet{},
+		ErrorResponse: models.ErrorResponse{},
 	}
-	response, err := endpoint.GetJSON(models.NodeGet{})
+	response, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
+		if err == httpclient.ErrStatus {
+			errors := response.(models.ErrorResponse)
+			logger.Log(0, "errror getting node", strconv.Itoa(errors.Code), errors.Message)
+		}
 		return nil, err
 	}
 	nodeGet := response.(models.NodeGet)
