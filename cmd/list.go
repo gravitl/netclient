@@ -4,9 +4,6 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
-	"strconv"
-
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
@@ -14,22 +11,21 @@ import (
 
 // listCmd represents the list command
 var listCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [network | all]",
 	Args:  cobra.ExactArgs(1),
 	Short: "display list of netmaker networks",
-	Long: `display a list of netmaker networks
-long flag provide additional details For example:`,
+	Long: `display details of netmaker networks
+long flag provide additional details For example:
+netclient list mynet
+netclient list mynet -l
+netclient list all
+netclient list all -l
+`,
 
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("list called")
 		long, err := cmd.Flags().GetBool("long")
 		if err != nil {
 			logger.Log(0, "error getting flags", err.Error())
-		}
-		if args[0] == "all" {
-			logger.Log(0, "List called for all networks", strconv.FormatBool(long))
-		} else {
-			logger.Log(0, "List called for network ", args[0], strconv.FormatBool(long))
 		}
 		functions.List(args[0], long)
 	},
