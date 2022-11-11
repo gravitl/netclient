@@ -130,6 +130,18 @@ func GetNetclientInterfacePath() string {
 	}
 }
 
+// GetNetclientInstallPath returns the full path where netclient should be installed based on OS
+func GetNetclientInstallPath() string {
+	switch runtime.GOOS {
+	case "windows":
+		return GetNetclientPath() + "netclient.exe"
+	case "macos":
+		return "/usr/local/bin/netclient"
+	default:
+		return "/usr/bin/netclient"
+	}
+}
+
 // FileExists - checks if a file exists on disk
 func FileExists(f string) bool {
 	info, err := os.Stat(f)
