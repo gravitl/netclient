@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -384,31 +384,29 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	url := flags.GetString("apiconn")
 	node.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+url)
-	api := httpclient.Endpoint{
+	api := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,
 		Method:        http.MethodPost,
 		Authorization: "Bearer " + node.AccessKey,
+		Headers: []httpclient.Header{
+			{
+				Name:  "requestfrom",
+				Value: "node",
+			},
+		},
 		Data:          node,
+		Response:      models.NodeGet{},
+		ErrorResponse: models.ErrorResponse{},
 	}
-	response, err := api.GetResponse()
+	response, err := api.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
+		if err == httpclient.ErrStatus {
+			logger.Log(1, "error joining network", strconv.Itoa(response.(models.ErrorResponse).Code), response.(models.ErrorResponse).Message)
+		}
 		return nil, nil, fmt.Errorf("error creating node %w", err)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		log.Println("create node failed", response.Status)
-		bytes, err := io.ReadAll(response.Body)
-		if err != nil {
-			log.Fatal("error decoding response", err)
-		}
-		log.Fatal("response: ", string(bytes))
-	}
-	var nodeGET models.NodeGet
-	if err := json.NewDecoder(response.Body).Decode(&nodeGET); err != nil {
-		log.Fatal("error decoding node ", err)
-
-	}
+	nodeGET := response.(models.NodeGet)
 	newNode := config.ConvertNode(&nodeGET.Node)
 	log.Println("node")
 	pretty.Println(node)
