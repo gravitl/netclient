@@ -79,9 +79,15 @@ func deleteNodeFromServer(node *config.Node) error {
 		return fmt.Errorf("could not read sever config %w", err)
 	}
 	endpoint := httpclient.Endpoint{
-		URL:           "https://" + server.API,
-		Method:        http.MethodDelete,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
+		URL:    "https://" + server.API,
+		Method: http.MethodDelete,
+		Route:  "/api/nodes/" + node.Network + "/" + node.ID,
+		Headers: []httpclient.Header{
+			{
+				Name:  "requestfrom",
+				Value: "node",
+			},
+		},
 		Authorization: "Bearer " + token,
 	}
 	response, err := endpoint.GetResponse()
