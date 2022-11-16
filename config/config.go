@@ -4,7 +4,6 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -194,7 +193,7 @@ func Lock(lockfile string) error {
 			}
 		}
 		if debug {
-			log.Println("unable to get lock")
+			logger.Log(0, "unable to get lock")
 		}
 		if time.Since(start) > Timeout {
 			return errors.New("TIMEOUT")

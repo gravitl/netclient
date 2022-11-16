@@ -13,7 +13,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -24,7 +23,6 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, errors.New("no such network")
 	}
 	server := config.Servers[node.Server]
-	pretty.Println(server)
 	if config.Netclient.IPForwarding && !ncutils.IsWindows() {
 		if err := local.SetIPForwarding(); err != nil {
 			return nil, err

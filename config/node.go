@@ -120,7 +120,6 @@ func WriteNodeConfig() error {
 
 // ConvertNode accepts a netmaker node struc and converts to a netclient node struct
 func ConvertNode(s *models.Node) *Node {
-	//pretty.Println(s)
 	var n Node
 	n.ID = s.ID
 	n.Name = s.Name

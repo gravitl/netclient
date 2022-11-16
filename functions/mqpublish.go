@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -144,7 +143,6 @@ func checkin() {
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
 	oldNode := config.ConvertToOldNode(node)
-	log.Println("publish node update")
 	//pretty.Println("node: ", node)
 	//pretty.Println("oldnode: ", oldNode)
 	data, err := json.Marshal(oldNode)

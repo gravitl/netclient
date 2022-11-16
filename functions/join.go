@@ -24,7 +24,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
-	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/term"
@@ -84,12 +83,10 @@ func Join(flags *viper.Viper) {
 		logger.FatalLog(err.Error())
 	}
 	//save new configurations
-	log.Println("saving config files after join")
 	config.Nodes[node.Network] = *node
 	//use existing server config if it exists, else use new server data
 	server := config.GetServer(node.Server)
 	if server == nil {
-		log.Println("using new server")
 		server = newServer
 		server.Nodes = make(map[string]bool)
 	}
@@ -101,10 +98,10 @@ func Join(flags *viper.Viper) {
 	}
 	config.Servers[node.Network] = *server
 	if err := config.WriteNetclientConfig(); err != nil {
-		log.Println("error saveing netclient config", err)
+		logger.Log(0, "error saveing netclient config", err.Error())
 	}
 	if err := config.WriteNodeConfig(); err != nil {
-		log.Println("error saveing netclient config", err)
+		logger.Log(0, "error saveing netclient config", err.Error())
 	}
 	logger.Log(1, "joined", node.Network)
 	if config.Netclient.DaemonInstalled {
@@ -292,7 +289,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	if nodeForServer.ListenPort != 0 {
 		nodeForServer.UDPHolePunch = "no"
 	}
-	log.Println("listenport", nodeForServer.ListenPort, nodeForServer.UDPHolePunch)
 	var trafficPubKey, trafficPrivKey, errT = box.GenerateKey(rand.Reader) // generate traffic keys
 	if errT != nil {
 		return nil, nil, fmt.Errorf("error generating traffic keys %w", errT)
@@ -417,19 +413,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	newNode.TrafficPrivateKey = clientNode.TrafficPrivateKey
 	newNode.PrivateKey = clientNode.PrivateKey
 	newNode.Connected = true
-
-	log.Println("node")
-	pretty.Println(nodeForServer)
-	log.Println("nodeGet")
-	pretty.Println(nodeGET)
-	log.Println("newnode")
-	pretty.Println(newNode)
-
-	/*  not sure the point of following
-	if nodeGET.Peers == nil {
-		newNode.Peers = []wgtypes.PeerConfig{}
-	}
-	*/
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
 	if nodeForServer.IsLocal != "yes" && newNode.IsLocal && newNode.LocalRange.IP != nil {
 		newNode.LocalAddress = newNode.LocalRange

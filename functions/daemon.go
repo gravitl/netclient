@@ -193,13 +193,11 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	// setup the keys
 	diskKey, err := ncutils.ConvertBytesToKey(node.TrafficPrivateKey)
 	if err != nil {
-		log.Println("error ConvertBytestoKey ", node.TrafficPrivateKey, err)
 		return nil, err
 	}
 
 	serverPubKey, err := ncutils.ConvertBytesToKey(node.TrafficKeys.Server)
 	if err != nil {
-		log.Println("error ConvertBytestoKey ", err)
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)
