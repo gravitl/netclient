@@ -16,10 +16,10 @@ var joinCmd = &cobra.Command{
 	Use:   "join",
 	Short: "join a network",
 
-	Long: `join a netmaker network using: A longer description that spans multiple lines and likely contains examples
+	Long: `join a netmaker network using: 
 
-token: netclient join -t <token>
-user: netclient join -s <api endpoint> -n <network name> -u <user>
+token: netclient join -t <token> // join using token
+user: netclient join -s <api endpoint> -n <network name> [-u <user>] // join by signing in
 additional paramaters can be be specified such as listenport or macaddress -- see help for fulll list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		flags := viper.New()
