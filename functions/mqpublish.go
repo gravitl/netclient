@@ -162,7 +162,7 @@ func PublishNodeUpdate(node *config.Node) error {
 // Hello -- ping the broker to let server know node it's alive and well
 func Hello(node *config.Node) {
 	var checkin models.NodeCheckin
-	checkin.Version = ncutils.Version
+	checkin.Version = config.Version
 	checkin.Connected = config.FormatBool(node.Connected)
 	data, err := json.Marshal(checkin)
 	if err != nil {

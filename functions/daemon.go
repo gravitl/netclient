@@ -34,7 +34,7 @@ type cachedMessage struct {
 
 // Daemon runs netclient daemon
 func Daemon() {
-	logger.Log(0, "netclient daemon started -- version:", ncutils.Version)
+	logger.Log(0, "netclient daemon started -- version:", config.Version)
 	ServerSet = make(map[string]mqtt.Client)
 	if err := ncutils.SavePID(); err != nil {
 		logger.FatalLog("unable to save PID on daemon startup")

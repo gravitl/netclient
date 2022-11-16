@@ -182,8 +182,8 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	}
 	insert(peerUpdate.Network, lastPeerUpdate, string(data))
 	// check version
-	if peerUpdate.ServerVersion != ncutils.Version {
-		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", ncutils.Version)
+	if peerUpdate.ServerVersion != config.Version {
+		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
 	}
 	if peerUpdate.ServerVersion != server.Version {
 		logger.Log(1, "updating server version")

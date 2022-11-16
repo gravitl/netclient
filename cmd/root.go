@@ -106,12 +106,12 @@ func checkConfig() {
 	fail := false
 	saveRequired := false
 	netclient := &config.Netclient
-	if netclient.OS == "" {
+	if netclient.OS != runtime.GOOS {
 		netclient.OS = runtime.GOOS
 		saveRequired = true
 	}
-	if netclient.Version == "" {
-		netclient.Version = ncutils.Version
+	if netclient.Version != config.Version {
+		netclient.Version = config.Version
 		saveRequired = true
 	}
 	netclient.IPForwarding = true

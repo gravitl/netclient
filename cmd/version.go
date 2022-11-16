@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/config"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +25,7 @@ useage:  add flag -l, --long flag for detailed information`,
 			info, _ := debug.ReadBuildInfo()
 			pretty.Println(info.Settings)
 		}
-		fmt.Println(ncutils.Version)
+		fmt.Println(config.Version)
 	},
 }
 
