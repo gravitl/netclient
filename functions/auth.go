@@ -12,7 +12,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
-// Authenticate authenticates with netmaker api to permit subsequent interactions with the api
+// Authenticate authenticates with api to permit subsequent interactions with the api
 func Authenticate(node *config.Node, host *config.Config) (string, error) {
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
