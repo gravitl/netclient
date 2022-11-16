@@ -3,7 +3,6 @@ package functions
 import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -20,8 +19,7 @@ func Disconnect(network string) {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
-	wireguard.ApplyConf(&node, filePath)
+
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
 	}
@@ -40,8 +38,7 @@ func Connect(network string) {
 		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
 		return
 	}
-	filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
-	wireguard.ApplyConf(&node, filePath)
+	// filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
 	//if err := setupMQTTSingleton(cfg); err != nil {
 	//	return err
 	//}

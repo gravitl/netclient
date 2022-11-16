@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
@@ -107,6 +106,7 @@ func deleteLocalNetwork(node *config.Node) error {
 	if wgErr != nil {
 		return wgErr
 	}
+	defer wgClient.Close()
 	removeIface := node.Interface
 	queryAddr := node.PrimaryAddress()
 	if ncutils.IsMac() {
@@ -125,17 +125,13 @@ func deleteLocalNetwork(node *config.Node) error {
 	return nil
 }
 
-// DeleteInterface - delete an interface of a network
-func DeleteInterface(ifacename string, postdown string) error {
-	return wireguard.RemoveConf(ifacename, true)
-}
-
 // WipeLocal - wipes local instance
 func WipeLocal(node *config.Node) error {
 	fail := false
-	if err := wireguard.RemoveConf(node.Interface, true); err == nil {
+	nc := wireguard.NewNCIface(node)
+	if err := nc.Close(); err == nil {
 		logger.Log(1, "network:", node.Network, "removed WireGuard interface: ", node.Interface)
-	} else if strings.Contains(err.Error(), "does not exist") {
+	} else if os.IsNotExist(err) {
 		err = nil
 	} else {
 		fail = true

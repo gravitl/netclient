@@ -95,8 +95,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	nameserver := server.CoreDNSAddr
 	file := config.GetNetclientInterfacePath() + newNode.Interface + ".conf"
 
+	nc := wireguard.NewNCIface(newNode)
 	if newNode.ListenPort != newNode.LocalListenPort {
-		if err := wireguard.RemoveConf(newNode.Interface, false); err != nil {
+		if err := nc.Close(); err != nil {
 			logger.Log(0, "error remove interface", newNode.Interface, err.Error())
 		}
 		err = config.ModPort(newNode)
@@ -116,16 +117,12 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.UpdateKeepAlive(file, newNode.PersistentKeepalive)
 	}
 	logger.Log(0, "applying WG conf to "+file)
-	wireguard.ApplyConf(newNode, file)
+	if err = nc.Create(); err != nil {
+		logger.Log(0, "failed to create WG iface after update")
+	}
+	// wireguard.ApplyConf(newNode, file)
 	time.Sleep(time.Second)
-	//	if newNode.DNSOn == "yes" {
-	//		for _, server := range newNode.NetworkSettings.DefaultServerAddrs {
-	//			if server.IsLeader {
-	//				go local.SetDNSWithRetry(newNode, server.Address)
-	//				break
-	//			}
-	//		}
-	//	}
+
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
 		doneErr := publishSignal(&node, DONE)
 		if doneErr != nil {
@@ -200,7 +197,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
-		wireguard.ApplyConf(&node, file)
+		// wireguard.ApplyConf(&node, file)
 		UpdateLocalListenPort(&node)
 		return
 	}
