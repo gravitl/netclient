@@ -5,6 +5,7 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
+	"crypto/rand"
 	"os"
 	"runtime"
 
@@ -12,8 +13,10 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/nacl/box"
 )
 
 var cfgFile string
@@ -117,6 +120,55 @@ func checkConfig() {
 		netclient.HostPass = ncutils.MakeRandomString(32)
 		saveRequired = true
 	}
+	if netclient.Name == "" {
+		netclient.Name, _ = os.Hostname()
+		saveRequired = true
+	}
+	if netclient.Interface == "" {
+		netclient.Interface = "netmaker"
+		saveRequired = true
+	}
+	if netclient.MacAddress == nil {
+		mac, err := ncutils.GetMacAddr()
+		if err != nil {
+			logger.FatalLog("failed to set macaddress", err.Error())
+		}
+		netclient.MacAddress = mac[0]
+		saveRequired = true
+	}
+	if len(netclient.TrafficKeyPrivate) == 0 {
+		pub, priv, err := box.GenerateKey(rand.Reader)
+		if err != nil {
+			logger.FatalLog("error generating traffic keys", err.Error())
+		}
+		bytes, err := ncutils.ConvertKeyToBytes(priv)
+		if err != nil {
+			logger.FatalLog("error generating traffic keys", err.Error())
+		}
+		netclient.TrafficKeyPrivate = bytes
+		bytes, err = ncutils.ConvertKeyToBytes(pub)
+		if err != nil {
+			logger.FatalLog("error generating traffic keys", err.Error())
+		}
+		netclient.TrafficKeyPublic = bytes
+		logger.Log(0, "set traffic keys")
+		saveRequired = true
+	}
+	// check for nftables present if on Linux
+	if netclient.FirewallInUse == "" {
+		saveRequired = true
+		if ncutils.IsLinux() {
+			if ncutils.IsNFTablesPresent() {
+				netclient.FirewallInUse = models.FIREWALL_NFTABLES
+			} else {
+				netclient.FirewallInUse = models.FIREWALL_IPTABLES
+			}
+		} else {
+			// defaults to iptables for now, may need another default for non-Linux OSes
+			netclient.FirewallInUse = models.FIREWALL_IPTABLES
+		}
+	}
+
 	if saveRequired {
 		if err := config.WriteNetclientConfig(); err != nil {
 			logger.FatalLog("could not save netclient config " + err.Error())
