@@ -83,14 +83,6 @@ func Join(flags *viper.Viper) {
 		//if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 		logger.FatalLog(err.Error())
 	}
-	if config.Netclient.DaemonInstalled {
-		if err := daemon.Restart(); err != nil {
-			logger.Log(3, "daemon restart failed:", err.Error())
-			if err := daemon.Start(); err != nil {
-				logger.FatalLog("error restarting deamon", err.Error())
-			}
-		}
-	}
 	//save new configurations
 	log.Println("saving config files after join")
 	config.Nodes[node.Network] = *node
@@ -115,6 +107,14 @@ func Join(flags *viper.Viper) {
 		log.Println("error saveing netclient config", err)
 	}
 	logger.Log(1, "joined", node.Network)
+	if config.Netclient.DaemonInstalled {
+		if err := daemon.Restart(); err != nil {
+			logger.Log(3, "daemon restart failed:", err.Error())
+			if err := daemon.Start(); err != nil {
+				logger.FatalLog("error restarting deamon", err.Error())
+			}
+		}
+	}
 }
 
 // JoinViaSSo - Handles the Single Sign-On flow on the end point VPN client side
