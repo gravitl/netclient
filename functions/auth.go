@@ -13,9 +13,9 @@ import (
 )
 
 // Authenticate authenticates with api to permit subsequent interactions with the api
-func Authenticate(node *config.Node) (string, error) {
+func Authenticate(node *config.Node, host *config.Config) (string, error) {
 	data := models.AuthParams{
-		MacAddress: node.MacAddress.String(),
+		MacAddress: host.MacAddress.String(),
 		ID:         node.ID,
 		Password:   config.Netclient.HostPass,
 	}

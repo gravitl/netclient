@@ -38,7 +38,7 @@ func List(net string, long bool) {
 				connected = "Connected"
 			}
 			fmt.Println()
-			fmt.Println(node.Network, connected, node.ID, node.Name, node.Interface, node.Address.String(), node.Address6.String())
+			fmt.Println(node.Network, connected, node.ID, node.Address.String(), node.Address6.String())
 			if long {
 				peers, err := getPeers(&node)
 				if err != nil {
@@ -63,7 +63,7 @@ func List(net string, long bool) {
 
 func getPeers(node *config.Node) ([]wgtypes.PeerConfig, error) {
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(node)
+	token, err := Authenticate(node, &config.Netclient)
 	if err != nil {
 		return nil, err
 	}
