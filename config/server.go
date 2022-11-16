@@ -32,6 +32,8 @@ type Server struct {
 	DNSMode     bool
 	IsEE        bool
 	Nodes       map[string]bool
+	TrafficKey  []byte
+	AccessKey   string
 }
 
 // ReadServerConf reads the servers configuration file and populates the server map
