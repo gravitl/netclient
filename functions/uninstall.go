@@ -55,8 +55,8 @@ func LeaveNetwork(network string) error {
 		logger.Log(0, "error deleting local network files", err.Error())
 	}
 	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
-		logger.Log(0, "failed to delete dns entries for", node.Interface, err.Error())
+	if err := removeHostDNS(config.Netclient.Interface, ncutils.IsWindows()); err != nil {
+		logger.Log(0, "failed to delete dns entries", err.Error())
 	}
 	if config.Netclient.DaemonInstalled {
 		logger.Log(2, "restarting daemon")
@@ -69,7 +69,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	if node.IsServer {
 		return errors.New("attempt to delete server node ... not permitted")
 	}
-	token, err := Authenticate(node)
+	token, err := Authenticate(node, &config.Netclient)
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
