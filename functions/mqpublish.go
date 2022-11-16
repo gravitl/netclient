@@ -256,8 +256,11 @@ func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	if err != nil {
 		return err
 	}
-
-	encrypted, err := Chunk(msg, serverPubKey, node.TrafficPrivateKey)
+	privateKey, err := ncutils.ConvertBytesToKey(node.TrafficPrivateKey)
+	if err != nil {
+		return err
+	}
+	encrypted, err := Chunk(msg, serverPubKey, privateKey)
 	if err != nil {
 		return err
 	}

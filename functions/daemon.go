@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -78,6 +79,8 @@ func Daemon() {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	//serverSet := make(map[string]bool)
+	config.ReadNodeConfig()
+	config.ReadServerConf()
 	for _, node := range config.Nodes {
 		if node.Connected {
 			wireguard.ApplyConf(&node, config.GetNetclientInterfacePath()+node.Interface+".conf")
@@ -126,6 +129,8 @@ func setupMQTT(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
+		logger.Log(0, "mqtt connect handler")
+		log.Printf("there are %d nodes to subscribe for ", len(config.Nodes))
 		for _, node := range config.Nodes {
 			setSubscriptions(client, &node)
 		}
@@ -186,10 +191,15 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	}
 
 	// setup the keys
-	diskKey := node.TrafficPrivateKey
+	diskKey, err := ncutils.ConvertBytesToKey(node.TrafficPrivateKey)
+	if err != nil {
+		log.Println("error ConvertBytestoKey ", node.TrafficPrivateKey, err)
+		return nil, err
+	}
 
 	serverPubKey, err := ncutils.ConvertBytesToKey(node.TrafficKeys.Server)
 	if err != nil {
+		log.Println("error ConvertBytestoKey ", err)
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)
@@ -266,4 +276,9 @@ func UpdateKeys(node *config.Node, client mqtt.Client) error {
 	}
 	PublishNodeUpdate(node)
 	return nil
+}
+
+func RemoveServer(node *config.Node) {
+	logger.Log(0, "removing server", node.Server, "from mq")
+	delete(ServerSet, node.Server)
 }

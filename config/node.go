@@ -36,7 +36,7 @@ type Node struct {
 	Server              string
 	Connected           bool
 	TrafficKeys         models.TrafficKeys
-	TrafficPrivateKey   *[32]byte
+	TrafficPrivateKey   []byte
 	MacAddress          net.HardwareAddr
 	Port                int
 	EndpointIP          net.IP
@@ -158,6 +158,9 @@ func ConvertNode(s *models.Node) *Node {
 	n.IsPending = ParseBool(s.IsPending)
 	n.DNSOn = ParseBool(s.DNSOn)
 	n.IsHub = ParseBool(s.IsHub)
+	//add items not provided by server
+	n.TrafficPrivateKey = Nodes[n.Network].TrafficPrivateKey
+	n.Password = Nodes[n.Network].Password
 	return &n
 }
 
@@ -187,7 +190,13 @@ func ConvertToOldNode(n *Node) *models.Node {
 	s.ListenPort = int32(n.ListenPort)
 	//only send ip
 	s.Address = n.Address.IP.String()
+	if n.Address.IP == nil {
+		s.Address = ""
+	}
 	s.Address6 = n.Address6.IP.String()
+	if n.Address6.IP == nil {
+		s.Address6 = ""
+	}
 	s.ListenPort = int32(n.ListenPort)
 	s.LocalAddress = n.LocalAddress.String()
 	s.LocalRange = n.LocalRange.String()
