@@ -18,7 +18,7 @@ var versionCmd = &cobra.Command{
 	Short: "Displays version information",
 	Long: `Displays the current version of netclient
 
-useage:  add flag -l, --long flag for detailed information`,
+-l, --long flag provides detailed information`,
 	Run: func(cmd *cobra.Command, args []string) {
 		long, _ := cmd.Flags().GetBool("long")
 		if long {
