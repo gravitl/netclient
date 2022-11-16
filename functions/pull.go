@@ -72,6 +72,8 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		}
 		informPortChange(newNode)
 	}
+	//update map and save
+	config.Nodes[newNode.Network] = *newNode
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
