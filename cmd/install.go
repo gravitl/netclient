@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"github.com/gravitl/netclient/functions"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +16,6 @@ var installCmd = &cobra.Command{
 
 ./netclient install [command options] [arguments]`,
 	Run: func(cmd *cobra.Command, args []string) {
-		logger.Log(0, "install called")
 		functions.Install()
 	},
 }
