@@ -45,7 +45,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	var nodeGet models.NodeGet
 	nodeGet.Node = nodeUpdate
-	for _, wgnode := range config.GetNodes() {
+	for _, wgnode := range config.Nodes {
 		nodeGet.Peers = append(nodeGet.Peers, wgnode.Peers...)
 	}
 	newNode, _, _ := config.ConvertNode(&nodeGet)
@@ -71,12 +71,12 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	case models.NODE_UPDATE_KEY:
 		// == get the current key for node ==
-		oldPrivateKey := config.Netclient().PrivateKey
-		if err := UpdateKeys(newNode, config.Netclient(), client); err != nil {
+		oldPrivateKey := config.Netclient.PrivateKey
+		if err := UpdateKeys(newNode, &config.Netclient, client); err != nil {
 			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
-			config.Netclient().PrivateKey = oldPrivateKey
+			config.Netclient.PrivateKey = oldPrivateKey
 		}
-		config.Netclient().PublicKey = config.Netclient().PrivateKey.PublicKey()
+		config.Netclient.PublicKey = config.Netclient.PrivateKey.PublicKey()
 		ifaceDelta = true
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
@@ -89,29 +89,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	if err := nc.Create(); err != nil {
 		logger.Log(0, "could not create netmaker interface", err.Error())
 		return
 	}
-	if err := nc.Configure(); err != nil {
-		logger.Log(0, "could not configure netmaker interface", err.Error())
-		return
-	}
-	wireguard.SetPeers()
-	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
-
-		logger.Log(0, "error updating wireguard config "+err.Error())
-		return
-	}
-	if keepaliveChange {
-		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
-	}
-	time.Sleep(time.Second)
-	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
-		doneErr := publishSignal(newNode, DONE)
-		if doneErr != nil {
-			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
 		} else {
 			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
 		}

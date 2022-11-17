@@ -10,7 +10,9 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -114,8 +116,43 @@ func deleteLocalNetwork(node *config.Node) error {
 	if nodetodelete.Network == "" {
 		return errors.New("no such network")
 	}
-	//remove node from nodes map
-	config.DeleteNode(node.Network)
+	defer wgClient.Close()
+	removeIface := node.Interface
+	queryAddr := node.PrimaryAddress()
+	if ncutils.IsMac() {
+		var macIface string
+		macIface, wgErr = local.GetMacIface(queryAddr.IP.String())
+		if wgErr == nil && removeIface != "" {
+			removeIface = macIface
+		}
+	}
+	dev, err := wgClient.Device(removeIface)
+	if err != nil {
+		return fmt.Errorf("error flushing routes %w", err)
+	}
+	local.FlushPeerRoutes(removeIface, dev.Peers[:])
+	local.RemoveCIDRRoute(removeIface, &node.NetworkRange)
+	return nil
+}
+
+// WipeLocal - wipes local instance
+func WipeLocal(node *config.Node) error {
+	fail := false
+	nc := wireguard.NewNCIface(node)
+	if err := nc.Close(); err == nil {
+		logger.Log(1, "network:", node.Network, "removed WireGuard interface: ", node.Interface)
+	} else if os.IsNotExist(err) {
+		err = nil
+	} else {
+		fail = true
+	}
+	if err := os.Remove(config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"); err != nil {
+		logger.Log(0, "failed to delete file", err.Error())
+		fail = true
+	}
+	//remove node from map of nodes
+	delete(config.Nodes, node.Network)
+	//remove node from list of nodes that server handles
 	server := config.GetServer(node.Server)
 	//remove node from server node map
 	if server != nil {

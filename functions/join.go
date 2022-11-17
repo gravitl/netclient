@@ -23,6 +23,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
+	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
@@ -296,6 +297,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if isLocal {
 		nodeForServer.IsLocal = "yes"
 	}
+	var err error
 	if nodeForServer.Endpoint == "" {
 		if nodeForServer.IsLocal == "yes" && nodeForServer.LocalAddress != "" {
 			nodeForServer.Endpoint = nodeForServer.LocalAddress
@@ -344,6 +346,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response.(models.NodeGet)
+	pretty.Println(nodeGET)
+	config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr

@@ -12,7 +12,7 @@ import (
 
 // Servers is map of servers indexed by server name
 var Servers map[string]Server
-
+Interface
 // ServerNodes is a map of node names for a server
 var ServerNodes map[string]struct{}
 

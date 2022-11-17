@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/ini.v1"
 )
 
 var wgMutex = sync.Mutex{} // used to mutex functions of the interface
@@ -251,6 +252,148 @@ func GetPeers(iface string) ([]wgtypes.Peer, error) {
 	}
 
 	return peers, err
+}
+
+// WriteWgConfig - creates a wireguard config file
+func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard := ini.Empty(options)
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(config.Netclient.PrivateKey.String())
+	if config.Netclient.ListenPort > 0 && !node.UDPHolePunch {
+		wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(config.Netclient.ListenPort))
+	}
+	addrString := node.Address.String()
+	if node.Address6.IP != nil {
+		if addrString != "" {
+			addrString += ","
+		}
+		addrString += node.Address6.String()
+	}
+	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
+	// need to figure out DNS
+	//if node.DNSOn == "yes" {
+	//	wireguard.Section(section_interface).Key("DNS").SetValue(cfg.Server.CoreDNSAddr)
+	//}
+	//need to split postup/postdown because ini lib adds a ` and the ` breaks freebsd
+	//works fine on others
+	if node.PostUp != "" {
+		if config.Netclient.OS == "freebsd" {
+			parts := strings.Split(node.PostUp, " ; ")
+			for i, part := range parts {
+				if i == 0 {
+					wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
+				}
+				wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
+			}
+		} else {
+			wireguard.Section(sectionInterface).Key("PostUp").SetValue((node.PostUp))
+		}
+	}
+	if node.PostDown != "" {
+		if config.Netclient.OS == "freebsd" {
+			parts := strings.Split(node.PostDown, " ; ")
+			for i, part := range parts {
+				if i == 0 {
+					wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
+				}
+				wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
+			}
+		} else {
+			wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
+		}
+	}
+	if config.Netclient.MTU != 0 {
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient.MTU), 10))
+	}
+	for i, peer := range peers {
+		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
+		if peer.PresharedKey != nil {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+		}
+		if peer.AllowedIPs != nil {
+			var allowedIPs string
+			for i, ip := range peer.AllowedIPs {
+				if i == 0 {
+					allowedIPs = ip.String()
+				} else {
+					allowedIPs = allowedIPs + ", " + ip.String()
+				}
+			}
+			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
+		}
+		if peer.Endpoint != nil {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
+		}
+
+		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+		}
+	}
+	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"); err != nil {
+		return err
+	}
+
+	for i := range peers {
+		if err := updatePeer(n, &peers[i]); err != nil {
+			logger.Log(0, "failed to update peer", peers[i].PublicKey.String(), err.Error())
+		}
+	}
+
+	return nil
+}
+
+// RemovePeers - removes all peers from a given node config
+func RemovePeers(n *config.Node) error {
+	currPeers, err := getPeers(n)
+	if err != nil || len(currPeers) == 0 {
+		return err
+	}
+	if node.UDPHolePunch {
+		config.Netclient.ListenPort = 0
+	}
+	wireguard.DeleteSection(sectionInterface)
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(config.Netclient.PrivateKey.String())
+	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(config.Netclient.ListenPort))
+	addrString := node.Address.String()
+	if node.Address6.IP != nil {
+		if addrString != "" {
+			addrString += ","
+		}
+		addrString += node.Address6.String()
+	}
+	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
+	//if node.DNSOn == "yes" {
+	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
+	//}
+	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
+	if node.PostUp != "" {
+		parts := strings.Split(node.PostUp, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
+			}
+			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
+		}
+	}
+	if node.PostDown != "" {
+		parts := strings.Split(node.PostDown, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
+			}
+			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
+		}
+	}
+	if config.Netclient.MTU != 0 {
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient.MTU), 10))
+	}
+	if err := wireguard.SaveTo(file); err != nil {
+		return err
+	}
+	return nil
 }
 
 // == private ==

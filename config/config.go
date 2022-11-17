@@ -60,7 +60,6 @@ type Config struct {
 	MacAddress        net.HardwareAddr
 	TrafficKeyPrivate []byte
 	TrafficKeyPublic  []byte
-	InternetGateway   net.UDPAddr
 }
 
 func init() {
