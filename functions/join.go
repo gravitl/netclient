@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,10 +24,9 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
+	"github.com/kr/pretty"
 	"github.com/spf13/viper"
-	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/term"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Join joins a netmaker network
@@ -71,7 +69,7 @@ func Join(flags *viper.Viper) {
 
 	}
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
-	node, newServer, err := JoinNetwork(flags)
+	node, newServer, _, err := JoinNetwork(flags)
 	if err != nil {
 		//if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 		//logger.Log(0, "error installing: ", err.Error())
@@ -83,14 +81,12 @@ func Join(flags *viper.Viper) {
 		//if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 		logger.FatalLog(err.Error())
 	}
-	time.Sleep(time.Minute * 3)
 	//save new configurations
 	config.Nodes[node.Network] = *node
 	//use existing server config if it exists, else use new server data
 	server := config.GetServer(node.Server)
 	if server == nil {
 		server = newServer
-		server.Nodes = make(map[string]bool)
 	}
 	nodes := server.Nodes
 	nodes[node.Network] = true
@@ -266,16 +262,15 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 }
 
 // JoinNetwork - helps a client join a network
-func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
+func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Config, error) {
 	netclient := &config.Netclient
 	nodeForServer := models.Node{} //node to send to server
-	clientNode := &config.Node{}   //local node
 	nodeForServer.Network = flags.GetString("network")
 	if nodeForServer.Network == "" {
-		return nil, nil, errors.New("no network provided")
+		return nil, nil, nil, errors.New("no network provided")
 	}
 	if _, ok := config.Nodes[nodeForServer.Network]; ok {
-		return nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + nodeForServer.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + nodeForServer.Network + "'. Then re-run the install command.")
+		return nil, nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + nodeForServer.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + nodeForServer.Network + "'. Then re-run the install command.")
 	}
 	nodeForServer.Server = flags.GetString("server")
 	// figure out how to handle commmad line passwords
@@ -291,25 +286,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	if nodeForServer.ListenPort != 0 {
 		nodeForServer.UDPHolePunch = "no"
 	}
-	var trafficPubKey, trafficPrivKey, errT = box.GenerateKey(rand.Reader) // generate traffic keys
-	if errT != nil {
-		return nil, nil, fmt.Errorf("error generating traffic keys %w", errT)
-	}
-	//handle traffic keys
-	trafficPrivKeyBytes, err := ncutils.ConvertKeyToBytes(trafficPrivKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error converting traffic key %w", err)
-	} else if trafficPrivKeyBytes == nil {
-		return nil, nil, fmt.Errorf("traffic key is nil")
-	}
-	clientNode.TrafficPrivateKey = trafficPrivKeyBytes
-	trafficPubKeyBytes, err := ncutils.ConvertKeyToBytes(trafficPubKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error converting traffic key %w", err)
-	} else if trafficPubKeyBytes == nil {
-		return nil, nil, fmt.Errorf("traffic key is nil")
-	}
-	nodeForServer.TrafficKeys.Mine = trafficPubKeyBytes
+	nodeForServer.TrafficKeys.Mine = config.Netclient.PublicKey[:]
 	nodeForServer.TrafficKeys.Server = nil
 	// == end handle keys ==
 	if nodeForServer.LocalAddress == "" {
@@ -327,64 +304,26 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	if isLocal {
 		nodeForServer.IsLocal = "yes"
 	}
+	var err error
 	if nodeForServer.Endpoint == "" {
 		if nodeForServer.IsLocal == "yes" && nodeForServer.LocalAddress != "" {
 			nodeForServer.Endpoint = nodeForServer.LocalAddress
 		} else {
 			nodeForServer.Endpoint, err = ncutils.GetPublicIP(flags.GetString("apiconn"))
 			if err != nil {
-				return nil, nil, fmt.Errorf("error setting public ip %w", err)
+				return nil, nil, nil, fmt.Errorf("error setting public ip %w", err)
 			}
 		}
 		if err != nil || nodeForServer.Endpoint == "" {
-
 			logger.Log(0, "network:", nodeForServer.Network, "error setting node.Endpoint.")
-			return nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", nodeForServer.Network, err)
+			return nil, nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", nodeForServer.Network, err)
 		}
 	}
-	// Generate and set public/private WireGuard Keys
-	if flags.GetString("privatekey") == "" {
-		clientNode.PrivateKey, err = wgtypes.GeneratePrivateKey()
-		if err != nil {
-			logger.FatalLog(err.Error())
-		}
-	}
-	nodeForServer.PublicKey = clientNode.PrivateKey.PublicKey().String()
+	nodeForServer.PublicKey = config.Netclient.PublicKey.String()
 	// Find and set node MacAddress
-	if flags.GetString("macddress") == "" {
-		macs, err := ncutils.GetMacAddr()
-		if err != nil || len(macs) == 0 {
-			//if macaddress can't be found set to random string
-			nodeForServer.MacAddress = ncutils.MakeRandomString(18)
-		} else {
-			nodeForServer.MacAddress = macs[0].String()
-		}
-	}
-	/////ToDO !!!!!!!!!!!!!!!!!!!!!!!
-	// what is this check for
-	if err != nil {
-		return nil, nil, fmt.Errorf("error reading netclient config %w", err)
-	}
-	if ncutils.IsFreeBSD() {
-		nodeForServer.UDPHolePunch = "no"
-		config.Netclient.FirewallInUse = models.FIREWALL_IPTABLES // nftables not supported by FreeBSD
-	}
-	if config.Netclient.FirewallInUse == "" {
-		if ncutils.IsNFTablesPresent() {
-			config.Netclient.FirewallInUse = models.FIREWALL_NFTABLES
-		} else if ncutils.IsIPTablesPresent() {
-			config.Netclient.FirewallInUse = models.FIREWALL_IPTABLES
-		} else {
-			config.Netclient.FirewallInUse = models.FIREWALL_NONE
-		}
-	}
+	nodeForServer.MacAddress = config.Netclient.MacAddress.String()
 	// make sure name is appropriate, if not, give blank name
-	nodeForServer.Name = formatName(flags.GetString("name"))
-	//config.Netclient.OS = runtime.GOOS
-	//config.Netclient.Version = ncutils.Version
-	//   ---- not sure this is required node.AccessKey = cfg.AccessKey
-	//not sure why this is needed ... setnode defaults should take care of this on server
-	//config.Netclient.IPForwarding = true
+	nodeForServer.Name = config.Netclient.Name
 	url := flags.GetString("apiconn")
 	nodeForServer.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+nodeForServer.Network+" at "+url)
@@ -408,35 +347,35 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		if err == httpclient.ErrStatus {
 			logger.Log(1, "error joining network", strconv.Itoa(response.(models.ErrorResponse).Code), response.(models.ErrorResponse).Message)
 		}
-		return nil, nil, fmt.Errorf("error creating node %w", err)
+		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response.(models.NodeGet)
-	newNode := config.ConvertNode(&nodeGET.Node)
-	newNode.TrafficPrivateKey = clientNode.TrafficPrivateKey
-	newNode.PrivateKey = clientNode.PrivateKey
+	pretty.Println(nodeGET)
+	config.UpdateServerConfig(&nodeGET.ServerConfig)
+	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
-	if nodeForServer.IsLocal != "yes" && newNode.IsLocal && newNode.LocalRange.IP != nil {
-		newNode.LocalAddress = newNode.LocalRange
-		newNode.EndpointIP = net.ParseIP(newNode.LocalAddress.IP.String())
-	}
+	// TODO ----- figure out what this is really trying to do and uncomment
+	//if nodeForServer.IsLocal != "yes" && newNode.IsLocal && newHostConfig.LocalRange.IP != nil {
+	//newHostConfig.LocalAddress = newNode.LocalRange
+	//newNode.EndpointIP = net.ParseIP(newNode.LocalAddress.IP.String())
+	//}
 	if ncutils.IsFreeBSD() {
 		newNode.UDPHolePunch = false
 		newNode.IsStatic = true
 	}
-	server := config.ConvertServerCfg(&nodeGET.ServerConfig)
 	if newNode.IsPending {
 		logger.Log(0, "network:", newNode.Network, "node is marked as PENDING.")
 		logger.Log(0, "network:", newNode.Network, "awaiting approval from Admin before configuring WireGuard.")
 	}
 	logger.Log(1, "network:", nodeForServer.Network, "node created on remote server...updating configs")
-	err = config.ModPort(newNode)
+	err = config.ModPort(newNode, newHostConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("modPort error %w", err)
+		return nil, nil, nil, fmt.Errorf("modPort error %w", err)
 	}
 	informPortChange(newNode)
 	config.Nodes[newNode.Network] = *newNode
-	local.SetNetmakerDomainRoute(server.API)
+	local.SetNetmakerDomainRoute(newServer.API)
 	logger.Log(0, "starting wireguard")
 	nc := wireguard.NewNCIface(newNode)
 	err = nc.Create()

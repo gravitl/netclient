@@ -33,12 +33,12 @@ func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnec
 	var conf wgtypes.Config
 	if node.UDPHolePunch && !node.IsServer && !node.IsIngressGateway {
 		conf = wgtypes.Config{
-			PrivateKey: &node.PrivateKey,
+			PrivateKey: &config.Netclient.PrivateKey,
 		}
 	} else {
 		conf = wgtypes.Config{
-			PrivateKey: &node.PrivateKey,
-			ListenPort: &node.ListenPort,
+			PrivateKey: &config.Netclient.PrivateKey,
+			ListenPort: &config.Netclient.ListenPort,
 		}
 	}
 	err = setKernelDevice(ifacename, node.Address, node.Address6, isConnected)
@@ -67,8 +67,8 @@ func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnec
 		ncutils.RunCmd(node.PostDown, false)
 	}
 	// set MTU of node interface
-	if _, err := ncutils.RunCmd(ipExec+" link set mtu "+strconv.Itoa(node.MTU)+" up dev "+ifacename, true); err != nil {
-		logger.Log(1, "failed to create interface with mtu ", strconv.Itoa(node.MTU), "-", ifacename)
+	if _, err := ncutils.RunCmd(ipExec+" link set mtu "+strconv.Itoa(config.Netclient.MTU)+" up dev "+ifacename, true); err != nil {
+		logger.Log(1, "failed to create interface with mtu ", strconv.Itoa(config.Netclient.MTU), "-", ifacename)
 		return err
 	}
 	if node.PostUp != "" {

@@ -39,29 +39,28 @@ var (
 
 // Config configuration for netclient and host as a whole
 type Config struct {
-	Verbosity           int `yaml:"verbosity"`
-	FirewallInUse       string
-	Version             string
-	IPForwarding        bool
-	DaemonInstalled     bool
-	HostID              string
-	HostPass            string
-	Name                string
-	OS                  string
-	Debug               bool
-	NodePassword        string
-	Interface           string
-	ListenPort          int
-	LocalAddress        net.IPNet
-	LocalRange          net.IPNet
-	LocalListenPort     int
-	MTU                 int
-	PersistentKeepalive int
-	PrivateKey          wgtypes.Key
-	PublicKey           wgtypes.Key
-	MacAddress          net.HardwareAddr
-	TrafficKeyPrivate   []byte
-	TrafficKeyPublic    []byte
+	Verbosity         int `yaml:"verbosity"`
+	FirewallInUse     string
+	Version           string
+	IPForwarding      bool
+	DaemonInstalled   bool
+	HostID            string
+	HostPass          string
+	Name              string
+	OS                string
+	Debug             bool
+	NodePassword      string
+	Interface         string
+	ListenPort        int
+	LocalAddress      net.IPNet
+	LocalRange        net.IPNet
+	LocalListenPort   int
+	MTU               int
+	PrivateKey        wgtypes.Key
+	PublicKey         wgtypes.Key
+	MacAddress        net.HardwareAddr
+	TrafficKeyPrivate []byte
+	TrafficKeyPublic  []byte
 }
 
 func init() {

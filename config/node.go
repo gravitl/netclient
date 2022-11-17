@@ -24,29 +24,31 @@ const NodeLockfile = "netclient-nodes.lck"
 
 // Node provides configuration of a node
 type Node struct {
-	ID               string
-	Network          string
-	NetworkRange     net.IPNet
-	NetworkRange6    net.IPNet
-	InternetGateway  *net.UDPAddr
-	Server           string
-	Connected        bool
-	Port             int
-	EndpointIP       net.IP
-	Address          net.IPNet
-	Address6         net.IPNet
-	PostUp           string
-	PostDown         string
-	Action           string
-	IsServer         bool
-	UDPHolePunch     bool
-	IsLocal          bool
-	IsEgressGateway  bool
-	IsIngressGateway bool
-	IsStatic         bool
-	IsPending        bool
-	DNSOn            bool
-	IsHub            bool
+	ID                  string
+	Network             string
+	NetworkRange        net.IPNet
+	NetworkRange6       net.IPNet
+	InternetGateway     *net.UDPAddr
+	Server              string
+	Connected           bool
+	Port                int
+	EndpointIP          net.IP
+	Address             net.IPNet
+	Address6            net.IPNet
+	PostUp              string
+	PostDown            string
+	Action              string
+	IsServer            bool
+	UDPHolePunch        bool
+	IsLocal             bool
+	IsEgressGateway     bool
+	IsIngressGateway    bool
+	IsStatic            bool
+	IsPending           bool
+	DNSOn               bool
+	IsHub               bool
+	PersistentKeepalive int
+	Peers               []wgtypes.PeerConfig
 }
 
 // ReadNodeConfig - reads node configuration from disk
@@ -103,10 +105,14 @@ func WriteNodeConfig() error {
 	return f.Sync()
 }
 
-// ConvertNode accepts a netmaker node struc and converts to a netclient node struct
-func ConvertNode(netmakerNode *models.Node) (*Node, *Server, *Config) {
+// ConvertNode accepts a netmaker node struc and converts to the structs used by netclient
+func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient
-	server := Servers[netmakerNode.Network]
+	netmakerNode := nodeGet.Node
+	server, ok := Servers[netmakerNode.Network]
+	if !ok {
+		server = *ConvertServerCfg(&nodeGet.ServerConfig)
+	}
 	var node Node
 	node.ID = netmakerNode.ID
 	//n.Name = s.Name
@@ -118,7 +124,7 @@ func ConvertNode(netmakerNode *models.Node) (*Node, *Server, *Config) {
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	//n.Interface = s.Interface
 	node.Server = strings.Replace(netmakerNode.Server, "api.", "", 1)
-	server.TrafficKeys = netmakerNode.TrafficKeys
+	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
@@ -131,7 +137,7 @@ func ConvertNode(netmakerNode *models.Node) (*Node, *Server, *Config) {
 	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
 	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)
-	host.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
+	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
@@ -144,6 +150,7 @@ func ConvertNode(netmakerNode *models.Node) (*Node, *Server, *Config) {
 	node.IsPending = ParseBool(netmakerNode.IsPending)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
 	node.IsHub = ParseBool(netmakerNode.IsHub)
+	node.Peers = nodeGet.Peers
 	//add items not provided by server
 	return &node, &server, &host
 }
@@ -166,7 +173,8 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	}
 	netmakerNode.Interface = host.Interface
 	netmakerNode.Server = node.Server
-	netmakerNode.TrafficKeys = server.TrafficKeys
+	netmakerNode.TrafficKeys.Mine = Netclient.TrafficKeyPublic
+	netmakerNode.TrafficKeys.Server = server.TrafficKey
 	//only send ip
 	netmakerNode.Endpoint = node.EndpointIP.String()
 	netmakerNode.Connected = FormatBool(node.Connected)
@@ -185,7 +193,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	netmakerNode.LocalAddress = host.LocalAddress.String()
 	netmakerNode.LocalRange = host.LocalRange.String()
 	netmakerNode.MTU = int32(host.MTU)
-	netmakerNode.PersistentKeepalive = int32(netmakerNode.PersistentKeepalive)
+	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive)
 	netmakerNode.PublicKey = host.PublicKey.String()
 	netmakerNode.PostUp = node.PostUp
 	netmakerNode.PostDown = node.PostDown

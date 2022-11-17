@@ -18,7 +18,7 @@ func Disconnect(network string) {
 	node.Connected = false
 	config.Nodes[node.Network] = node
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
+		logger.Log(0, "failed to write node config for", node.ID, "on network", network, "with error", err.Error())
 		return
 	}
 
@@ -38,16 +38,9 @@ func Connect(network string) {
 	node.Connected = true
 	config.Nodes[node.Network] = node
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
+		logger.Log(0, "failed to write node config for", node.ID, "on network", network, "with error", err.Error())
 		return
 	}
-	// filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
-	//if err := setupMQTTSingleton(cfg); err != nil {
-	//	return err
-	//}
-	//if err := PublishNodeUpdate(cfg); err != nil {
-	//	return err
-	//}
 
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
