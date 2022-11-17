@@ -28,8 +28,10 @@ type CIDR struct {
 // List - list network details for specified networks
 // long flag passed passed to cmd line will list additional details about network including peers
 func List(net string, long bool) {
+	found := false
 	for network := range config.Nodes {
 		if network == net || net == "all" {
+			found = true
 			node := config.Nodes[network]
 			connected := "Not Connected"
 			if node.Connected {
@@ -53,6 +55,9 @@ func List(net string, long bool) {
 				}
 			}
 		}
+	}
+	if !found {
+		fmt.Println("\nno such network")
 	}
 }
 

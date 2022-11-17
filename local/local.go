@@ -3,7 +3,6 @@ package local
 
 import (
 	"errors"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // SetIPForwarding - Sets IP forwarding if it's mac or linux
@@ -36,14 +36,14 @@ func SetIPForwardingUnix() error {
 	// ipv4
 	out, err := ncutils.RunCmd("sysctl net.ipv4.ip_forward", true)
 	if err != nil {
-		log.Println("WARNING: Error encountered setting ip forwarding. This can break functionality.")
+		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
 	} else {
 		s := strings.Fields(string(out))
 		if s[2] != "1" {
 			_, err = ncutils.RunCmd("sysctl -w net.ipv4.ip_forward=1", true)
 			if err != nil {
-				log.Println("WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
+				logger.Log(0, "WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
 				return err
 			}
 		}
@@ -52,14 +52,14 @@ func SetIPForwardingUnix() error {
 	// ipv6
 	out, err = ncutils.RunCmd("sysctl net.ipv6.conf.all.forwarding", true)
 	if err != nil {
-		log.Println("WARNING: Error encountered setting ipv6 forwarding. This can break functionality.")
+		logger.Log(0, "WARNING: Error encountered setting ipv6 forwarding. This can break functionality.")
 		return err
 	} else {
 		s := strings.Fields(string(out))
 		if s[2] != "1" {
 			_, err = ncutils.RunCmd("sysctl -w  net.ipv6.conf.all.forwarding=1", true)
 			if err != nil {
-				log.Println("WARNING: Error encountered setting ipv6 forwarding. You may want to investigate this.")
+				logger.Log(0, "WARNING: Error encountered setting ipv6 forwarding. You may want to investigate this.")
 				return err
 			}
 		}
@@ -72,14 +72,14 @@ func SetIPForwardingUnix() error {
 func SetIPForwardingFreeBSD() error {
 	out, err := ncutils.RunCmd("sysctl net.inet.ip.forwarding", true)
 	if err != nil {
-		log.Println("WARNING: Error encountered setting ip forwarding. This can break functionality.")
+		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
 	} else {
 		s := strings.Fields(string(out))
 		if s[1] != "1" {
 			_, err = ncutils.RunCmd("sysctl -w net.inet.ip.forwarding=1", true)
 			if err != nil {
-				log.Println("WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
+				logger.Log(0, "WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
 				return err
 			}
 		}
@@ -91,7 +91,7 @@ func SetIPForwardingFreeBSD() error {
 func SetIPForwardingMac() error {
 	_, err := ncutils.RunCmd("sysctl -w net.inet.ip.forwarding=1", true)
 	if err != nil {
-		log.Println("WARNING: Error encountered setting ip forwarding. This can break functionality.")
+		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 	}
 	return err
 }

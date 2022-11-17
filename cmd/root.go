@@ -85,12 +85,10 @@ func initConfig() {
 	}
 	logger.Verbosity = netclient.Verbosity
 	config.Netclient = netclient
-	logger.Log(0, "verbosity set to", strconv.Itoa(logger.Verbosity))
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	checkConfig()
 	//check netclient dirs exist
-	logger.Log(0, "checking netclient paths")
 	if _, err := os.Stat(config.GetNetclientInterfacePath()); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.Mkdir(config.GetNetclientInterfacePath(), os.ModePerm); err != nil {
@@ -106,12 +104,12 @@ func checkConfig() {
 	fail := false
 	saveRequired := false
 	netclient := &config.Netclient
-	if netclient.OS == "" {
+	if netclient.OS != runtime.GOOS {
 		netclient.OS = runtime.GOOS
 		saveRequired = true
 	}
-	if netclient.Version == "" {
-		netclient.Version = ncutils.Version
+	if netclient.Version != config.Version {
+		netclient.Version = config.Version
 		saveRequired = true
 	}
 	netclient.IPForwarding = true

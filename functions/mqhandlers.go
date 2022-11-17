@@ -33,10 +33,12 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
+	logger.Log(0, "processing node update for network", network)
 	node := config.Nodes[network]
 	server := config.Servers[node.Server]
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
+		logger.Log(0, "error decrypting message", err.Error())
 		return
 	}
 	nodeUpdate := models.Node{}
@@ -48,6 +50,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	// see if cache hit, if so skip
 	var currentMessage = read(nodeUpdate.Network, lastNodeUpdate)
 	if currentMessage == string(data) {
+		logger.Log(3, "cache hit on node update ... skipping")
 		return
 	}
 	newNode := config.ConvertNode(&nodeUpdate)
@@ -89,6 +92,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
+	config.Nodes[network] = *newNode
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
@@ -107,7 +111,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		ifaceDelta = true
 		informPortChange(newNode)
 	}
-	if err := wireguard.UpdateWgInterface(file, nameserver, &node); err != nil {
+	if err := wireguard.UpdateWgInterface(file, nameserver, newNode); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
@@ -127,14 +131,14 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//		}
 	//	}
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
-		doneErr := publishSignal(&node, DONE)
+		doneErr := publishSignal(newNode, DONE)
 		if doneErr != nil {
 			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
 		} else {
 			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
 		}
 	} else if hubChange {
-		doneErr := publishSignal(&node, DONE)
+		doneErr := publishSignal(newNode, DONE)
 		if doneErr != nil {
 			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after hub change")
 		} else {
@@ -178,8 +182,8 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	}
 	insert(peerUpdate.Network, lastPeerUpdate, string(data))
 	// check version
-	if peerUpdate.ServerVersion != ncutils.Version {
-		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", ncutils.Version)
+	if peerUpdate.ServerVersion != config.Version {
+		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
 	}
 	if peerUpdate.ServerVersion != server.Version {
 		logger.Log(1, "updating server version")

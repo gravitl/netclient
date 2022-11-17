@@ -1,6 +1,8 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
@@ -11,7 +13,7 @@ import (
 func Disconnect(network string) {
 	node := config.Nodes[network]
 	if !node.Connected {
-		logger.Log(0, "node already disconnected")
+		fmt.Println("\nnode already disconnected from", network)
 		return
 	}
 	node.Connected = false
@@ -25,13 +27,14 @@ func Disconnect(network string) {
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
 	}
+	fmt.Println("\nnode is disconnected from", network)
 }
 
 // Connect - will attempt to connect a node on given network
 func Connect(network string) {
 	node := config.Nodes[network]
 	if node.Connected {
-		logger.Log(0, "node already connected")
+		fmt.Println("\nnode already connected to", network)
 		return
 	}
 	node.Connected = true
@@ -42,13 +45,8 @@ func Connect(network string) {
 	}
 	filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
 	wireguard.ApplyConf(&node, filePath)
-	//if err := setupMQTTSingleton(cfg); err != nil {
-	//	return err
-	//}
-	//if err := PublishNodeUpdate(cfg); err != nil {
-	//	return err
-	//}
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
 	}
+	fmt.Println("\nnode is connected to", network)
 }
