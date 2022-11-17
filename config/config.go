@@ -4,7 +4,6 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,23 +15,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LinuxAppDataPath - linux path
-const LinuxAppDataPath = "/etc/netclient/"
+const (
+	// LinuxAppDataPath - linux path
+	LinuxAppDataPath = "/etc/netclient/"
+	// MacAppDataPath - mac path
+	MacAppDataPath = "/Applications/Netclient/"
+	// WindowsAppDataPath - windows path
+	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
+	// Timeout timelimit for obtaining/releasing lockfile
+	Timeout = time.Second * 5
+	// ConfigLockfile lockfile to control access to config file
+	ConfigLockfile = "config.lck"
+)
 
-// MacAppDataPath - mac path
-const MacAppDataPath = "/Applications/Netclient/"
-
-// WindowsAppDataPath - windows path
-const WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
-
-// Timeout timelimit for obtaining/releasing lockfile
-const Timeout = time.Second * 5
-
-// ConfigLockfile lockfile to control access to config file
-const ConfigLockfile = "config.lck"
-
-// Netclient contains the netclient config
-var Netclient Config
+var (
+	// Netclient contains the netclient config
+	Netclient Config
+	// Version - default version string
+	Version = "dev"
+)
 
 // Config configuration for netclient and host as a whole
 type Config struct {
@@ -50,7 +51,11 @@ type Config struct {
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
+}
 
+// SetVersion - sets version for use by other packages
+func SetVersion(ver string) {
+	Version = ver
 }
 
 // ReadNetclientConfig reads a configuration file and returns it as an
@@ -188,7 +193,7 @@ func Lock(lockfile string) error {
 			}
 		}
 		if debug {
-			log.Println("unable to get lock")
+			logger.Log(0, "unable to get lock")
 		}
 		if time.Since(start) > Timeout {
 			return errors.New("TIMEOUT")

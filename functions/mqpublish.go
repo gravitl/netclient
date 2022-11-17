@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -144,7 +143,6 @@ func checkin() {
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
 	oldNode := config.ConvertToOldNode(node)
-	log.Println("publish node update")
 	//pretty.Println("node: ", node)
 	//pretty.Println("oldnode: ", oldNode)
 	data, err := json.Marshal(oldNode)
@@ -162,7 +160,7 @@ func PublishNodeUpdate(node *config.Node) error {
 // Hello -- ping the broker to let server know node it's alive and well
 func Hello(node *config.Node) {
 	var checkin models.NodeCheckin
-	checkin.Version = ncutils.Version
+	checkin.Version = config.Version
 	checkin.Connected = config.FormatBool(node.Connected)
 	data, err := json.Marshal(checkin)
 	if err != nil {
@@ -256,8 +254,11 @@ func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	if err != nil {
 		return err
 	}
-
-	encrypted, err := Chunk(msg, serverPubKey, node.TrafficPrivateKey)
+	privateKey, err := ncutils.ConvertBytesToKey(node.TrafficPrivateKey)
+	if err != nil {
+		return err
+	}
+	encrypted, err := Chunk(msg, serverPubKey, privateKey)
 	if err != nil {
 		return err
 	}
