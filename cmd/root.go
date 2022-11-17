@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
@@ -100,6 +101,7 @@ func initConfig() {
 			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
 		}
 	}
+	wireguard.WriteWgConfig(&config.Netclient, config.Nodes)
 }
 
 func checkConfig() {
@@ -107,10 +109,12 @@ func checkConfig() {
 	saveRequired := false
 	netclient := &config.Netclient
 	if netclient.OS != runtime.GOOS {
+		logger.Log(0, "setting OS")
 		netclient.OS = runtime.GOOS
 		saveRequired = true
 	}
 	if netclient.Version != config.Version {
+		logger.Log(0, "setting version")
 		netclient.Version = config.Version
 		saveRequired = true
 	}
@@ -122,14 +126,17 @@ func checkConfig() {
 		saveRequired = true
 	}
 	if netclient.Name == "" {
+		logger.Log(0, "setting name")
 		netclient.Name, _ = os.Hostname()
 		saveRequired = true
 	}
 	if netclient.Interface == "" {
+		logger.Log(0, "setting interface name")
 		netclient.Interface = "netmaker"
 		saveRequired = true
 	}
 	if netclient.MacAddress == nil {
+		logger.Log(0, "setting macAddress")
 		mac, err := ncutils.GetMacAddr()
 		if err != nil {
 			logger.FatalLog("failed to set macaddress", err.Error())
@@ -137,16 +144,18 @@ func checkConfig() {
 		netclient.MacAddress = mac[0]
 		saveRequired = true
 	}
-	if len(netclient.PrivateKey) == 0 {
-		key, err := wgtypes.GeneratePrivateKey()
+	if (netclient.PrivateKey == wgtypes.Key{}) {
+		logger.Log(0, "setting wireguard keys")
+		var err error
+		netclient.PrivateKey, err = wgtypes.GeneratePrivateKey()
 		if err != nil {
 			logger.FatalLog("failed to generate wg key", err.Error())
 		}
-		netclient.PrivateKey = key
-		netclient.PublicKey = key.PublicKey()
+		netclient.PublicKey = netclient.PrivateKey.PublicKey()
 		saveRequired = true
 	}
 	if len(netclient.TrafficKeyPrivate) == 0 {
+		logger.Log(0, "setting traffic keys")
 		pub, priv, err := box.GenerateKey(rand.Reader)
 		if err != nil {
 			logger.FatalLog("error generating traffic keys", err.Error())
@@ -161,7 +170,6 @@ func checkConfig() {
 			logger.FatalLog("error generating traffic keys", err.Error())
 		}
 		netclient.TrafficKeyPublic = bytes
-		logger.Log(0, "set traffic keys")
 		saveRequired = true
 	}
 	// check for nftables present if on Linux
