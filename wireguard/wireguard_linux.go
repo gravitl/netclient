@@ -8,7 +8,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// Create - creates a linux WG interface based on a node's given config
+// NCIface.Create - creates a linux WG interface based on a node's given config
 func (nc *NCIface) Create() error {
 
 	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
