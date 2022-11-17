@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var cfgFile string
@@ -134,6 +135,15 @@ func checkConfig() {
 			logger.FatalLog("failed to set macaddress", err.Error())
 		}
 		netclient.MacAddress = mac[0]
+		saveRequired = true
+	}
+	if len(netclient.PrivateKey) == 0 {
+		key, err := wgtypes.GeneratePrivateKey()
+		if err != nil {
+			logger.FatalLog("failed to generate wg key", err.Error())
+		}
+		netclient.PrivateKey = key
+		netclient.PublicKey = key.PublicKey()
 		saveRequired = true
 	}
 	if len(netclient.TrafficKeyPrivate) == 0 {

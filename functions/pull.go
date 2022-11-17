@@ -27,7 +27,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 			return nil, err
 		}
 	}
-	token, err := Authenticate(&node)
+	token, err := Authenticate(&node, &config.Netclient)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, err
 	}
 	nodeGet := response.(models.NodeGet)
-	newNode := config.ConvertNode(&nodeGet.Node)
+	newNode, _, _ := config.ConvertNode(&nodeGet)
 	if nodeGet.Peers == nil {
 		nodeGet.Peers = []wgtypes.PeerConfig{}
 	}
@@ -64,7 +64,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		if err := nc.Close(); err != nil {
 			logger.Log(0, "error remove interface", node.Interface, err.Error())
 		}
-		err = config.ModPort(newNode)
+		err = config.ModPort(newNode, &config.Netclient)
 		if err != nil {
 			return nil, err
 		}
@@ -80,9 +80,9 @@ func Pull(network string, iface bool) (*config.Node, error) {
 }
 
 func informPortChange(node *config.Node) {
-	if node.ListenPort == 0 {
-		logger.Log(0, "network:", node.Network, "UDP hole punching enabled for node", node.Name)
+	if config.Netclient.ListenPort == 0 {
+		logger.Log(0, "network:", node.Network, "UDP hole punching enabled for node", config.Netclient.Name)
 	} else {
-		logger.Log(0, "network:", node.Network, "node", node.Name, "is using port", strconv.Itoa(int(node.ListenPort)))
+		logger.Log(0, "network:", node.Network, "node", config.Netclient.Name, "is using port", strconv.Itoa(int(config.Netclient.ListenPort)))
 	}
 }

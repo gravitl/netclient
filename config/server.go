@@ -107,5 +107,25 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsEE = cfg.Is_EE
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	server.Nodes = make(map[string]bool)
 	return &server
+}
+
+func UpdateServerConfig(cfg *models.ServerConfig) {
+	server, ok := Servers[cfg.Server]
+	if !ok {
+		server = Server{}
+		server.Nodes = make(map[string]bool)
+	}
+	server.Name = cfg.Server
+	server.Version = cfg.Version
+	server.Broker = cfg.Broker
+	server.MQPort = cfg.MQPort
+	server.MQID = Netclient.HostID
+	server.Password = Netclient.HostPass
+	server.API = cfg.API
+	server.CoreDNSAddr = cfg.CoreDNSAddr
+	server.IsEE = cfg.Is_EE
+	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	Servers[cfg.Server] = server
 }

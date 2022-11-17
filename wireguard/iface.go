@@ -25,7 +25,7 @@ func IfaceExists(ifacename string) bool {
 func IfaceDelta(currentNode *config.Node, newNode *config.Node) bool {
 	// single comparison statements
 	if newNode.EndpointIP.String() != currentNode.EndpointIP.String() ||
-		newNode.PublicKey != currentNode.PublicKey ||
+		//newNode.PublicKey != currentNode.PublicKey ||
 		newNode.Address.IP.String() != currentNode.Address.IP.String() ||
 		newNode.Address6.IP.String() != currentNode.Address6.IP.String() ||
 		newNode.IsEgressGateway != currentNode.IsEgressGateway ||
@@ -33,8 +33,8 @@ func IfaceDelta(currentNode *config.Node, newNode *config.Node) bool {
 		//newNode.IsRelay != currentNode.IsRelay ||
 		newNode.UDPHolePunch != currentNode.UDPHolePunch ||
 		newNode.IsPending != currentNode.IsPending ||
-		newNode.ListenPort != currentNode.ListenPort ||
-		newNode.MTU != currentNode.MTU ||
+		//newNode.ListenPort != currentNode.ListenPort ||
+		//newNode.MTU != currentNode.MTU ||
 		newNode.PersistentKeepalive != currentNode.PersistentKeepalive ||
 		newNode.DNSOn != currentNode.DNSOn ||
 		newNode.Connected != currentNode.Connected {

@@ -146,7 +146,7 @@ func WipeLocal(node *config.Node) error {
 	} else {
 		fail = true
 	}
-	if err := os.Remove(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
+	if err := os.Remove(config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"); err != nil {
 		logger.Log(0, "failed to delete file", err.Error())
 		fail = true
 	}
