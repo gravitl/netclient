@@ -21,7 +21,7 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 	logger.Log(3, "creating Windows tunnel")
-	adapter, err := driver.CreateAdapter(nc.Settings.Interface, "WireGuard", &windowsGUID)
+	adapter, err := driver.CreateAdapter(getName(), "WireGuard", &windowsGUID)
 	if err != nil {
 		return err
 	}
