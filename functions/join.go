@@ -349,7 +349,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response.(models.NodeGet)
-	pretty.Println(nodeGET)
 	// TODO ---- don't think we need to do this ... ConvertNode will take care of it
 	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
