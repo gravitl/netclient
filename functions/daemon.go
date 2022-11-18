@@ -83,7 +83,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	for _, node := range config.Nodes {
 		if node.Connected {
 			// wireguard.ApplyConf(&node, config.GetNetclientInterfacePath()+node.Interface+".conf")
-			nc := wireguard.NewNCIface(&node)
+			nc := wireguard.NewNCIface(&node, &config.Netclient)
 			nc.Create()
 		}
 	}

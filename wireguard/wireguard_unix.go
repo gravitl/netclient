@@ -6,6 +6,7 @@ package wireguard
 import (
 	"net"
 
+	"github.com/gravitl/netclient/config"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/ipc"
@@ -16,9 +17,9 @@ import (
 
 func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
-	wgMutex.Unlock()
+	defer wgMutex.Unlock()
 
-	tunIface, err := tun.CreateTUN(getName(), nc.Settings.MTU)
+	tunIface, err := tun.CreateTUN(getName(), config.Netclient.MTU)
 	if err != nil {
 		return err
 	}

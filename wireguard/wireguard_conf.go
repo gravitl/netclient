@@ -6,12 +6,19 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 )
 
+const (
+	sectionInterface = "Interface" // indexes ini section of Interface in WG conf files
+	sectionPeers     = "Peer"      // indexes ini section of Peer in WG conf files
+)
+
 // UpdateWgInterface - updates the interface section of a wireguard config file
-func UpdateWgInterface(file, nameserver string, node *config.Node) error {
+func UpdateWgInterface(node *config.Node, host *config.Config) error {
+	file := config.GetNetclientPath() + "netmaker.conf"
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
@@ -20,12 +27,12 @@ func UpdateWgInterface(file, nameserver string, node *config.Node) error {
 	if err != nil {
 		return err
 	}
-	if node.UDPHolePunch {
-		node.ListenPort = 0
+	if host.UDPHolePunch {
+		host.ListenPort = 0
 	}
 	wireguard.DeleteSection(sectionInterface)
-	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(node.PrivateKey.String())
-	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(host.PrivateKey.String())
+	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(host.ListenPort))
 	addrString := node.Address.String()
 	if node.Address6.IP != nil {
 		if addrString != "" {
@@ -56,8 +63,8 @@ func UpdateWgInterface(file, nameserver string, node *config.Node) error {
 			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
 		}
 	}
-	if node.MTU != 0 {
-		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
+	if host.MTU != 0 {
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))
 	}
 	if err := wireguard.SaveTo(file); err != nil {
 		return err
@@ -66,7 +73,8 @@ func UpdateWgInterface(file, nameserver string, node *config.Node) error {
 }
 
 // UpdateKeepAlive - updates the persistentkeepalive of all peers
-func UpdateKeepAlive(file string, keepalive int) error {
+func UpdateKeepAlive(keepalive int) error {
+	file := config.GetNetclientPath() + "netmaker.conf"
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
@@ -89,13 +97,13 @@ func UpdateKeepAlive(file string, keepalive int) error {
 	return nil
 }
 
-func UpdateWgPeers(file string, peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
+func UpdateWgPeers(peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
 	var internetGateway *net.UDPAddr
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
 	}
-	wireguard, err := ini.LoadSources(options, file)
+	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+"netmaker.conf")
 	if err != nil {
 		return internetGateway, err
 	}
@@ -127,7 +135,7 @@ func UpdateWgPeers(file string, peers []wgtypes.PeerConfig) (*net.UDPAddr, error
 			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
 	}
-	if err := wireguard.SaveTo(file); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
 		return internetGateway, err
 	}
 	return internetGateway, nil
@@ -151,85 +159,102 @@ func UpdatePrivateKey(file, privateKey string) error {
 }
 
 // WriteWgConfig - creates a wireguard config file
-func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
+func WriteWgConfig(host *config.Config, nodes map[string]config.Node) error {
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
 	}
 	wireguard := ini.Empty(options)
-	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(node.PrivateKey.String())
-	if node.ListenPort > 0 && !node.UDPHolePunch {
-		wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(host.PrivateKey.String())
+	if host.ListenPort > 0 && !host.UDPHolePunch {
+		wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(host.ListenPort))
 	}
-	addrString := node.Address.String()
-	if node.Address6.IP != nil {
-		if addrString != "" {
-			addrString += ","
+	for _, node := range nodes {
+		if node.Address.IP != nil {
+			wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address.String())
 		}
-		addrString += node.Address6.String()
-	}
-	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
-	// need to figure out DNS
-	//if node.DNSOn == "yes" {
-	//	wireguard.Section(section_interface).Key("DNS").SetValue(cfg.Server.CoreDNSAddr)
-	//}
-	//need to split postup/postdown because ini lib adds a ` and the ` breaks freebsd
-	//works fine on others
-	if node.PostUp != "" {
-		if config.Netclient.OS == "freebsd" {
-			parts := strings.Split(node.PostUp, " ; ")
-			for i, part := range parts {
-				if i == 0 {
-					wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
+		if node.Address6.IP != nil {
+			wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address6.String())
+		}
+		// need to figure out DNS
+		//if node.DNSOn == "yes" {
+		//	wireguard.Section(section_interface).Key("DNS").SetValue(cfg.Server.CoreDNSAddr)
+		//}
+		//need to split postup/postdown because ini lib adds a ` and the ` breaks freebsd
+		//works fine on others
+		if node.PostUp != "" {
+			if host.OS == "freebsd" {
+				parts := strings.Split(node.PostUp, " ; ")
+				for i, part := range parts {
+					if i == 0 {
+						wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
+					}
+					wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
 				}
-				wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
+			} else {
+				wireguard.Section(sectionInterface).Key("PostUp").SetValue((node.PostUp))
 			}
-		} else {
-			wireguard.Section(sectionInterface).Key("PostUp").SetValue((node.PostUp))
 		}
-	}
-	if node.PostDown != "" {
-		if config.Netclient.OS == "freebsd" {
-			parts := strings.Split(node.PostDown, " ; ")
-			for i, part := range parts {
-				if i == 0 {
-					wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
+		if node.PostDown != "" {
+			if host.OS == "freebsd" {
+				parts := strings.Split(node.PostDown, " ; ")
+				for i, part := range parts {
+					if i == 0 {
+						wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
+					}
+					wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
 				}
-				wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
+			} else {
+				wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
 			}
-		} else {
-			wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
 		}
-	}
-	if node.MTU != 0 {
-		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
-	}
-	for i, peer := range peers {
-		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
-		if peer.PresharedKey != nil {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+		if host.MTU != 0 {
+			wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))
 		}
-		if peer.AllowedIPs != nil {
-			var allowedIPs string
-			for i, ip := range peer.AllowedIPs {
-				if i == 0 {
-					allowedIPs = ip.String()
-				} else {
-					allowedIPs = allowedIPs + ", " + ip.String()
+		for i, peer := range node.Peers {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
+			if peer.PresharedKey != nil {
+				wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+			}
+			if peer.AllowedIPs != nil {
+				var allowedIPs string
+				for i, ip := range peer.AllowedIPs {
+					if i == 0 {
+						allowedIPs = ip.String()
+					} else {
+						allowedIPs = allowedIPs + ", " + ip.String()
+					}
 				}
+				wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
 			}
-			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
-		}
-		if peer.Endpoint != nil {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
-		}
-
-		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+			if peer.Endpoint != nil {
+				wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
+			}
+			if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
+				wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+			}
 		}
 	}
-	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + host.Interface + ".conf"); err != nil {
 		return err
 	}
 	return nil
+}
+
+func AddAddresses(node *config.Node) {
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+"netmaker.conf")
+	if err != nil {
+		logger.Log(0, "could not open the netmaker.conf wireguard file", err.Error())
+	}
+	if node.Address.IP != nil {
+		wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address.IP.String())
+	}
+	if node.Address6.IP != nil {
+		wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address6.IP.String())
+	}
+	wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf")
 }

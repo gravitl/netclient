@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -128,38 +126,6 @@ func deleteLocalNetwork(node *config.Node) error {
 	}
 	if node.NetworkRange6.IP != nil {
 		local.RemoveCIDRRoute(&node.NetworkRange6)
-	}
-	return nil
-}
-
-// WipeLocal - wipes local instance
-func WipeLocal(node *config.Node) error {
-	fail := false
-	nc := wireguard.NewNCIface(node)
-	if err := nc.Close(); err == nil {
-		logger.Log(1, "network:", node.Network, "removed WireGuard interface: ", node.Interface)
-	} else if os.IsNotExist(err) {
-		err = nil
-	} else {
-		fail = true
-	}
-	if err := os.Remove(config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"); err != nil {
-		logger.Log(0, "failed to delete file", err.Error())
-		fail = true
-	}
-	//remove node from map of nodes
-	delete(config.Nodes, node.Network)
-	//remove node from list of nodes that server handles
-	server := config.GetServer(node.Server)
-	delete(server.Nodes, node.Network)
-	//if server node list is empty delete server from map of servers
-	if len(server.Nodes) == 0 {
-		delete(config.Servers, node.Server)
-	}
-	config.WriteNodeConfig()
-	config.WriteServerConfig()
-	if fail {
-		return errors.New("not all files were deleted")
 	}
 	return nil
 }

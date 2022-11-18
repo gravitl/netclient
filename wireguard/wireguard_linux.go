@@ -8,7 +8,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// NCIface.Create - creates a linux WG interface based on a node's given config
+// NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
 
 	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
@@ -40,7 +40,7 @@ func (nc *NCIface) Create() error {
 			return err
 		}
 
-		if err = netlink.LinkSetMTU(newLink, nc.Settings.MTU); err != nil {
+		if err = netlink.LinkSetMTU(newLink, nc.Host.MTU); err != nil {
 			return err
 		}
 
@@ -89,14 +89,14 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 	}
 
-	addr, err := netlink.ParseAddr(nc.Settings.Address.String())
+	addr, err := netlink.ParseAddr(nc.Node.Address.String())
 	if err == nil {
 		err = netlink.AddrAdd(l, addr)
 		if err != nil {
 			return err
 		}
 	}
-	addr6, err := netlink.ParseAddr(nc.Settings.Address6.String())
+	addr6, err := netlink.ParseAddr(nc.Node.Address6.String())
 	if err == nil {
 		err = netlink.AddrAdd(l, addr6)
 		if err != nil {

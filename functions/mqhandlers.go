@@ -34,7 +34,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	logger.Log(0, "processing node update for network", network)
 	node := config.Nodes[network]
-	server := config.Servers[node.Server]
+	//server := config.Servers[node.Server]
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
 		logger.Log(0, "error decrypting message", err.Error())
@@ -100,32 +100,32 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
-	nameserver := server.CoreDNSAddr
-	file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
+	//nameserver := server.CoreDNSAddr
+	//file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
 
-	nc := wireguard.NewNCIface(newNode)
-	if newNode.ListenPort != newNode.LocalListenPort {
-		if err := nc.Close(); err != nil {
-			logger.Log(0, "error remove interface", newNode.Interface, err.Error())
-		}
-		err = config.ModPort(&config.Netclient)
-		if err != nil {
-			logger.Log(0, "network:", newNode.Network, "error modifying node port on", config.Netclient.Name, "-", err.Error())
-
-			return
-		}
-		ifaceDelta = true
-		informPortChange(newNode)
-	}
-	if err := wireguard.UpdateWgInterface(file, nameserver, newNode); err != nil {
+	nc := wireguard.NewNCIface(newNode, &config.Netclient)
+	//if newNode.ListenPort != newNode.LocalListenPort {
+	//	if err := nc.Close(); err != nil {
+	//		logger.Log(0, "error remove interface", newNode.Interface, err.Error())
+	//	}
+	//	err = config.ModPort(&config.Netclient)
+	//	if err != nil {
+	//		logger.Log(0, "network:", newNode.Network, "error modifying node port on", config.Netclient.Name, "-", err.Error())
+	//
+	//	return
+	//	}
+	//	ifaceDelta = true
+	//	informPortChange(newNode)
+	//}
+	if err := wireguard.UpdateWgInterface(newNode, &config.Netclient); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
 	}
 	if keepaliveChange {
-		wireguard.UpdateKeepAlive(file, newNode.PersistentKeepalive)
+		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
 	}
-	logger.Log(0, "applying WG conf to "+file)
+	logger.Log(0, "applying WG conf ")
 	if err = nc.Create(); err != nil {
 		logger.Log(0, "failed to create WG iface after update")
 	}
@@ -207,7 +207,9 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
 	}
-	wireguard.ApplyConf(&node)
+	wireguard.SetPeers()
+	nc := wireguard.NewNCIface(&node, &config.Netclient)
+	nc.Create()
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, config.Netclient.Interface, ncutils.IsWindows()); err != nil {
