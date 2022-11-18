@@ -14,7 +14,9 @@ var installCmd = &cobra.Command{
 	Short: "install netclient binary and daemon",
 	Long: `install netclient binary and daemon. For example:
 
-./netclient install [command options] [arguments]`,
+./netclient install [command options] [arguments]
+
+ensure you specify the full path to then new binary to be installed`,
 	Run: func(cmd *cobra.Command, args []string) {
 		functions.Install()
 	},

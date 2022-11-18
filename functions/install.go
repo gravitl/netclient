@@ -8,6 +8,18 @@ import (
 
 // Install - installs binary/daemon
 func Install() error {
+	source, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	destination := config.GetNetclientInstallPath()
+	if source == destination {
+
+		fmt.Println("attempting to reinstall netclient on top of itself")
+		fmt.Println("  specify the full path of the new binary")
+		fmt.Println("  eg ./netclient install")
+		return errors.New("path error")
+	}
 	daemon.Stop()
 	if err := daemon.InstallDaemon(); err != nil {
 		logger.Log(0, "error installing daemon", err.Error())
