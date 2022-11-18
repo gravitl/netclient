@@ -380,26 +380,19 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	wireguard.AddAddresses(newNode)
 	peers := newNode.Peers
 	for _, node := range config.Nodes {
-		peers = append(peers, node.Peers...)
+		if node.Connected {
+			peers = append(peers, node.Peers...)
+		}
 	}
 	internetGateway, err := wireguard.UpdateWgPeers(peers)
 	if internetGateway != nil {
 		newHostConfig.InternetGateway = *internetGateway
 	}
-
 	//err = wireguard.InitWireguard(newNode, nodeGET.Peers[:])
-	if err != nil {
-		return newNode, nil, fmt.Errorf("error creating interface %w", err)
-	}
-	if err = wireguard.Configure(newNode.PrivateKey.String(), newNode.ListenPort, newNode); err != nil {
-		return newNode, nil, fmt.Errorf("error initializing wireguard %w", err)
-	}
-	if len(nodeGET.Peers) > 0 {
-		if err = wireguard.ApplyPeers(newNode, nodeGET.Peers[:]); err != nil {
-			logger.Log(0, "failed to apply peers", err.Error())
-		}
-	}
-	return newNode, server, err
+	//if err != nil {
+	//return newNode, nil, nil, fmt.Errorf("error initializing wireguard %w", err)
+	//}
+	return newNode, newServer, newHostConfig, err
 }
 
 func getPrivateAddr() (net.IPNet, error) {

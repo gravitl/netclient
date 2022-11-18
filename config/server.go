@@ -87,8 +87,8 @@ func SaveServer(name string, server Server) error {
 	Servers[name] = server
 	return WriteServerConfig()
 }
-func GetServer(network string) *Server {
-	if server, ok := Servers[network]; ok {
+func GetServer(name string) *Server {
+	if server, ok := Servers[name]; ok {
 		return &server
 	}
 	return nil

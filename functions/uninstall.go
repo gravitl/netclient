@@ -14,7 +14,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 // Uninstall - uninstalls networks from client
@@ -41,18 +40,18 @@ func Uninstall() {
 // LeaveNetwork - client exits a network
 func LeaveNetwork(network string) error {
 	logger.Log(0, "leaving network", network)
-	node := config.Nodes[network]
+	node, ok := config.Nodes[network]
+	if !ok {
+		return errors.New("no such network")
+	}
 	logger.Log(2, "deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
 		logger.Log(0, "error deleting node from server", err.Error())
 	}
-	logger.Log(2, "deleting wireguard interface")
+	logger.Log(2, "deleting node from client")
 	if err := deleteLocalNetwork(&node); err != nil {
-		logger.Log(0, "error deleting wireguard interface", err.Error())
-	}
-	logger.Log(2, "deleting configuration files")
-	if err := WipeLocal(&node); err != nil {
-		logger.Log(0, "error deleting local network files", err.Error())
+		logger.Log(0, "error deleting local node", err.Error())
+		return err
 	}
 	logger.Log(2, "removing dns entries")
 	if err := removeHostDNS(config.Netclient.Interface, ncutils.IsWindows()); err != nil {
@@ -102,26 +101,24 @@ func deleteNodeFromServer(node *config.Node) error {
 }
 
 func deleteLocalNetwork(node *config.Node) error {
-	wgClient, wgErr := wgctrl.New()
-	if wgErr != nil {
-		return wgErr
+	if _, ok := config.Nodes[node.Network]; !ok {
+		return errors.New("no such network")
 	}
-	defer wgClient.Close()
-	removeIface := node.Interface
-	queryAddr := node.PrimaryAddress()
-	if ncutils.IsMac() {
-		var macIface string
-		macIface, wgErr = local.GetMacIface(queryAddr.IP.String())
-		if wgErr == nil && removeIface != "" {
-			removeIface = macIface
-		}
+	delete(config.Nodes, node.Network)
+	server := config.GetServer(node.Server)
+	if server != nil {
+		nodes := server.Nodes
+		delete(nodes, node.Network)
 	}
-	dev, err := wgClient.Device(removeIface)
-	if err != nil {
-		return fmt.Errorf("error flushing routes %w", err)
+	config.WriteNodeConfig()
+	config.WriteServerConfig()
+	local.FlushPeerRoutes(node.Peers[:])
+	if node.NetworkRange.IP != nil {
+		local.RemoveCIDRRoute(&node.NetworkRange)
 	}
-	local.FlushPeerRoutes(removeIface, dev.Peers[:])
-	local.RemoveCIDRRoute(removeIface, &node.NetworkRange)
+	if node.NetworkRange6.IP != nil {
+		local.RemoveCIDRRoute(&node.NetworkRange6)
+	}
 	return nil
 }
 
