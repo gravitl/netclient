@@ -10,7 +10,6 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -169,6 +168,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	node := config.Nodes[network]
 	server := config.Servers[node.Server]
+	logger.Log(3, "received peer update for", network)
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
 		return
@@ -193,7 +193,6 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
 	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
@@ -207,25 +206,8 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
-		// wireguard.ApplyConf(&node, file)
-		UpdateLocalListenPort(&node)
-		return
 	}
-	queryAddr := node.PrimaryAddress()
-	//err = wireguard.SyncWGQuickConf(cfg.Node.Interface, file)
-	var iface = config.Netclient.Interface
-	if ncutils.IsMac() {
-		iface, err = local.GetMacIface(queryAddr.IP.String())
-		if err != nil {
-			logger.Log(0, "error retrieving mac iface: "+err.Error())
-			return
-		}
-	}
-	err = wireguard.SetPeers(iface, &node, peerUpdate.Peers)
-	if err != nil {
-		logger.Log(0, "error syncing wg after peer update: "+err.Error())
-		return
-	}
+	wireguard.ApplyConf(&node)
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, config.Netclient.Interface, ncutils.IsWindows()); err != nil {
@@ -238,7 +220,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 			return
 		}
 	}
-	_ = UpdateLocalListenPort(&node)
+	UpdateLocalListenPort(&node)
 }
 
 func setHostDNS(dns, iface string, windows bool) error {
