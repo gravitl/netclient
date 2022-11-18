@@ -109,7 +109,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err := nc.Close(); err != nil {
 			logger.Log(0, "error remove interface", newNode.Interface, err.Error())
 		}
-		err = config.ModPort(newNode, &config.Netclient)
+		err = config.ModPort(&config.Netclient)
 		if err != nil {
 			logger.Log(0, "network:", newNode.Network, "error modifying node port on", config.Netclient.Name, "-", err.Error())
 
@@ -194,7 +194,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 	}
 	file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
-	internetGateway, err := wireguard.UpdateWgPeers(file, peerUpdate.Peers)
+	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return

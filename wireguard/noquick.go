@@ -31,7 +31,7 @@ func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnec
 	}
 	defer wgclient.Close()
 	var conf wgtypes.Config
-	if node.UDPHolePunch && !node.IsServer && !node.IsIngressGateway {
+	if config.Netclient.UDPHolePunch && !node.IsServer && !node.IsIngressGateway {
 		conf = wgtypes.Config{
 			PrivateKey: &config.Netclient.PrivateKey,
 		}

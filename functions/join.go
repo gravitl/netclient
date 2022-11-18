@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gorilla/websocket"
@@ -351,7 +350,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	}
 	nodeGET := response.(models.NodeGet)
 	pretty.Println(nodeGET)
-	config.UpdateServerConfig(&nodeGET.ServerConfig)
+	// TODO ---- don't think we need to do this ... ConvertNode will take care of it
+	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
@@ -361,7 +361,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	//newNode.EndpointIP = net.ParseIP(newNode.LocalAddress.IP.String())
 	//}
 	if ncutils.IsFreeBSD() {
-		newNode.UDPHolePunch = false
+		newHostConfig.UDPHolePunch = false
 		newNode.IsStatic = true
 	}
 	if newNode.IsPending {
@@ -369,16 +369,25 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		logger.Log(0, "network:", newNode.Network, "awaiting approval from Admin before configuring WireGuard.")
 	}
 	logger.Log(1, "network:", nodeForServer.Network, "node created on remote server...updating configs")
-	err = config.ModPort(newNode, newHostConfig)
+	err = config.ModPort(newHostConfig)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("modPort error %w", err)
 	}
 	informPortChange(newNode)
 	config.Nodes[newNode.Network] = *newNode
 	local.SetNetmakerDomainRoute(newServer.API)
-	logger.Log(0, "starting wireguard")
-	nc := wireguard.NewNCIface(newNode)
-	err = nc.Create()
+	logger.Log(0, "update wireguard config")
+	wireguard.AddAddresses(newNode)
+	peers := newNode.Peers
+	for _, node := range config.Nodes {
+		peers = append(peers, node.Peers...)
+	}
+	internetGateway, err := wireguard.UpdateWgPeers(peers)
+	if internetGateway != nil {
+		newHostConfig.InternetGateway = *internetGateway
+	}
+
+	//err = wireguard.InitWireguard(newNode, nodeGET.Peers[:])
 	if err != nil {
 		return newNode, nil, fmt.Errorf("error creating interface %w", err)
 	}

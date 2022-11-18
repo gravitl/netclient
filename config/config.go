@@ -44,6 +44,7 @@ type Config struct {
 	Version           string
 	IPForwarding      bool
 	DaemonInstalled   bool
+	UDPHolePunch      bool
 	HostID            string
 	HostPass          string
 	Name              string
@@ -61,6 +62,7 @@ type Config struct {
 	MacAddress        net.HardwareAddr
 	TrafficKeyPrivate []byte
 	TrafficKeyPublic  []byte
+	InternetGateway   net.UDPAddr
 }
 
 func init() {

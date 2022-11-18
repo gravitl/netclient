@@ -64,7 +64,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		if err := nc.Close(); err != nil {
 			logger.Log(0, "error remove interface", node.Interface, err.Error())
 		}
-		err = config.ModPort(newNode, &config.Netclient)
+		err = config.ModPort(&config.Netclient)
 		if err != nil {
 			return nil, err
 		}
