@@ -4,8 +4,6 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
@@ -21,7 +19,6 @@ For example:
 
 netclient pull my-network --> gets configuration for network my-network`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("pull called")
 		_, err := functions.Pull(args[0], true)
 		if err != nil {
 			logger.Log(0, "failed to update node ", err.Error())

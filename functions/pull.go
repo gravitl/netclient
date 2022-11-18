@@ -7,12 +7,9 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
@@ -22,11 +19,6 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, errors.New("no such network")
 	}
 	server := config.Servers[node.Server]
-	if config.Netclient.IPForwarding && !ncutils.IsWindows() {
-		if err := local.SetIPForwarding(); err != nil {
-			return nil, err
-		}
-	}
 	token, err := Authenticate(&node, &config.Netclient)
 	if err != nil {
 		return nil, err
@@ -48,34 +40,33 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, err
 	}
 	nodeGet := response.(models.NodeGet)
-	newNode, _, _ := config.ConvertNode(&nodeGet)
-	if nodeGet.Peers == nil {
-		nodeGet.Peers = []wgtypes.PeerConfig{}
-	}
-
-	if nodeGet.ServerConfig.API != "" && nodeGet.ServerConfig.MQPort != "" {
-		config.ConvertServerCfg(&nodeGet.ServerConfig)
-		if err := config.WriteServerConfig(); err != nil {
-			logger.Log(0, "unable to update server config: "+err.Error())
-		}
-	}
-	if int(nodeGet.Node.ListenPort) != node.LocalListenPort {
-		nc := wireguard.NewNCIface(newNode)
-		if err := nc.Close(); err != nil {
-			logger.Log(0, "error remove interface", node.Interface, err.Error())
-		}
-		err = config.ModPort(&config.Netclient)
-		if err != nil {
-			return nil, err
-		}
-		informPortChange(newNode)
-	}
+	newNode, newServer, newHost := config.ConvertNode(&nodeGet)
+	//why???
+	//if nodeGet.Peers == nil {
+	//nodeGet.Peers = []wgtypes.PeerConfig{}
+	//}
 	//update map and save
 	config.Nodes[newNode.Network] = *newNode
+	config.Servers[newNode.Server] = *newServer
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
-
+	config.SaveServer(newNode.Server, *newServer)
+	config.WriteNodeConfig()
+	config.WriteNetclientConfig()
+	//update wg config
+	peers := newNode.Peers
+	for _, node := range config.Nodes {
+		if node.Connected {
+			peers = append(peers, node.Peers...)
+		}
+	}
+	internetGateway, err := wireguard.UpdateWgPeers(peers)
+	if internetGateway != nil && err != nil {
+		newHost.InternetGateway = *internetGateway
+		config.WriteNetclientConfig()
+	}
+	logger.Log(1, "node settings for network ", network)
 	return newNode, err
 }
 
