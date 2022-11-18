@@ -80,13 +80,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	//serverSet := make(map[string]bool)
 	config.ReadNodeConfig()
 	config.ReadServerConf()
-	for _, node := range config.Nodes {
-		if node.Connected {
-			// wireguard.ApplyConf(&node, config.GetNetclientInterfacePath()+node.Interface+".conf")
-			nc := wireguard.NewNCIface(&node, &config.Netclient)
-			nc.Create()
-		}
-	}
+	nc := wireguard.NewNCIface(&config.Netclient)
+	nc.Create()
+	wireguard.Configure()
+	wireguard.SetPeers()
+
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
 		local.SetNetmakerDomainRoute(server.API)

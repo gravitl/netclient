@@ -153,23 +153,18 @@ func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {
 }
 
 // Configure - configures a pre-installed network interface with WireGuard
-func Configure(privateKey string, port int, n *config.Node) error {
+func Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-
-	key, err := wgtypes.ParseKey(privateKey)
-	if err != nil {
-		return err
-	}
+	host := config.Netclient
 	firewallMark := 0
 	config := wgtypes.Config{
-		PrivateKey:   &key,
+		PrivateKey:   &host.PrivateKey,
 		ReplacePeers: true,
 		FirewallMark: &firewallMark,
-		ListenPort:   &port,
+		ListenPort:   &host.ListenPort,
 	}
-
-	return apply(n, &config)
+	return apply(nil, &config)
 }
 
 // GetPeers - gets the peers from a given WireGuard interface

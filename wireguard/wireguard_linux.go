@@ -2,9 +2,12 @@ package wireguard
 
 import (
 	"fmt"
+	"log"
 	"os"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
+	"github.com/kr/pretty"
 	"github.com/vishvananda/netlink"
 )
 
@@ -88,19 +91,24 @@ func (nc *NCIface) ApplyAddrs() error {
 			}
 		}
 	}
+	for _, node := range config.Nodes {
+		log.Println("adding address from node ", node.ID)
 
-	addr, err := netlink.ParseAddr(nc.Node.Address.String())
-	if err == nil {
-		err = netlink.AddrAdd(l, addr)
-		if err != nil {
-			return err
+		addr, err := netlink.ParseAddr(node.Address.String())
+		pretty.Println(addr, err)
+		if err == nil {
+			err = netlink.AddrAdd(l, addr)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	addr6, err := netlink.ParseAddr(nc.Node.Address6.String())
-	if err == nil {
-		err = netlink.AddrAdd(l, addr6)
-		if err != nil {
-			return err
+		addr6, err := netlink.ParseAddr(node.Address6.String())
+		pretty.Println(addr6, err)
+		if err == nil {
+			err = netlink.AddrAdd(l, addr6)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
