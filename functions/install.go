@@ -1,6 +1,10 @@
 package functions
 
 import (
+	"errors"
+	"fmt"
+	"os"
+
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netmaker/logger"
