@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/config"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 )
@@ -18,14 +18,14 @@ var versionCmd = &cobra.Command{
 	Short: "Displays version information",
 	Long: `Displays the current version of netclient
 
-useage:  add flag -l, --long flag for detailed information`,
+-l, --long flag provides detailed information`,
 	Run: func(cmd *cobra.Command, args []string) {
 		long, _ := cmd.Flags().GetBool("long")
 		if long {
 			info, _ := debug.ReadBuildInfo()
 			pretty.Println(info.Settings)
 		}
-		fmt.Println(ncutils.Version)
+		fmt.Println(config.Version)
 	},
 }
 

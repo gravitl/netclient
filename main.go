@@ -5,12 +5,12 @@ package main
 
 import (
 	"github.com/gravitl/netclient/cmd"
-	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/config"
 )
 
 var version = "dev"
 
 func main() {
-	ncutils.SetVersion(version)
+	config.SetVersion(version)
 	cmd.Execute()
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
@@ -29,11 +28,17 @@ type CIDR struct {
 // List - list network details for specified networks
 // long flag passed passed to cmd line will list additional details about network including peers
 func List(net string, long bool) {
-	logger.Log(0, "List called with", net, strconv.FormatBool(long))
+	found := false
 	for network := range config.Nodes {
 		if network == net || net == "all" {
+			found = true
 			node := config.Nodes[network]
-			fmt.Println(node.Network, node.ID, node.Name, node.Interface, node.Address.String(), node.Address6.String())
+			connected := "Not Connected"
+			if node.Connected {
+				connected = "Connected"
+			}
+			fmt.Println()
+			fmt.Println(node.Network, connected, node.ID, node.Name, node.Interface, node.Address.String(), node.Address6.String())
 			if long {
 				peers, err := getPeers(&node)
 				if err != nil {
@@ -41,15 +46,18 @@ func List(net string, long bool) {
 					pretty.Println(peers)
 					continue
 				}
+				fmt.Println("  Peers:")
 				for _, peer := range peers {
-					fmt.Println("  Peers: ", peer.PublicKey, peer.Endpoint, "\n    AllowedIPs:")
+					fmt.Println("    ", peer.PublicKey, peer.Endpoint, "\n    AllowedIPs:")
 					for _, cidr := range peer.AllowedIPs {
 						fmt.Println("    ", cidr.String())
 					}
-					fmt.Println("")
 				}
 			}
 		}
+	}
+	if !found {
+		fmt.Println("\nno such network")
 	}
 }
 

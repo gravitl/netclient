@@ -33,7 +33,7 @@ type cachedMessage struct {
 
 // Daemon runs netclient daemon
 func Daemon() {
-	logger.Log(0, "netclient daemon started -- version:", ncutils.Version)
+	logger.Log(0, "netclient daemon started -- version:", config.Version)
 	ServerSet = make(map[string]mqtt.Client)
 	if err := ncutils.SavePID(); err != nil {
 		logger.FatalLog("unable to save PID on daemon startup")
@@ -78,9 +78,13 @@ func Daemon() {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	//serverSet := make(map[string]bool)
+	config.ReadNodeConfig()
+	config.ReadServerConf()
 	for _, node := range config.Nodes {
 		if node.Connected {
-			wireguard.ApplyConf(&node, config.GetNetclientInterfacePath()+node.Interface+".conf")
+			// wireguard.ApplyConf(&node, config.GetNetclientInterfacePath()+node.Interface+".conf")
+			nc := wireguard.NewNCIface(&node)
+			nc.Create()
 		}
 	}
 	for _, server := range config.Servers {
@@ -126,6 +130,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
+		logger.Log(0, "mqtt connect handler")
 		for _, node := range config.Nodes {
 			setSubscriptions(client, &node)
 		}
@@ -186,7 +191,10 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	}
 
 	// setup the keys
-	diskKey := node.TrafficPrivateKey
+	diskKey, err := ncutils.ConvertBytesToKey(node.TrafficPrivateKey)
+	if err != nil {
+		return nil, err
+	}
 
 	serverPubKey, err := ncutils.ConvertBytesToKey(node.TrafficKeys.Server)
 	if err != nil {
@@ -266,4 +274,9 @@ func UpdateKeys(node *config.Node, client mqtt.Client) error {
 	}
 	PublishNodeUpdate(node)
 	return nil
+}
+
+func RemoveServer(node *config.Node) {
+	logger.Log(0, "removing server", node.Server, "from mq")
+	delete(ServerSet, node.Server)
 }

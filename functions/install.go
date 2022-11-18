@@ -1,11 +1,6 @@
 package functions
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"time"
-
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netmaker/logger"
@@ -32,6 +27,5 @@ func Install() error {
 	}
 	config.Netclient.DaemonInstalled = true
 	config.WriteNetclientConfig()
-	time.Sleep(time.Second * 5)
 	return daemon.Restart()
 }
