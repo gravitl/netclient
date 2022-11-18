@@ -1,12 +1,10 @@
 package wireguard
 
 import (
-	"fmt"
 	"net"
-	"os"
-	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -15,212 +13,14 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/ini.v1"
 )
 
 const (
-	sectionInterface = "Interface"
-	sectionPeers     = "Peer"
+	sectionInterface = "Interface" // indexes ini section of Interface in WG conf files
+	sectionPeers     = "Peer"      // indexes ini section of Peer in WG conf files
 )
 
-// ApplyConf - applys a conf on disk to WireGuard interface
-func ApplyConf(node *config.Node, confPath string) {
-	os := runtime.GOOS
-	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
-		os = "nowgquick"
-	}
-	switch os {
-	case "windows":
-		ApplyWindowsConf(confPath, node.Interface, node.Connected)
-	case "nowgquick":
-		ApplyWithoutWGQuick(node, node.Interface, confPath, node.Connected)
-	default:
-		ApplyWGQuickConf(confPath, node.Interface, node.Connected)
-	}
-
-	if !node.IsServer {
-		if node.NetworkRange.IP != nil {
-			local.SetCIDRRoute(node.Interface, &node.NetworkRange)
-		}
-		if node.NetworkRange6.IP != nil {
-			local.SetCIDRRoute(node.Interface, &node.NetworkRange6)
-		}
-	}
-}
-
-// ApplyWGQuickConf - applies wg-quick commands if os supports
-func ApplyWGQuickConf(confPath, ifacename string, isConnected bool) error {
-	_, err := os.Stat(confPath)
-	if err != nil {
-		logger.Log(0, confPath+" does not exist "+err.Error())
-		return err
-	}
-	if IfaceExists(ifacename) {
-		ncutils.RunCmd("wg-quick down "+confPath, true)
-	}
-	if !isConnected {
-		return nil
-	}
-	_, err = ncutils.RunCmd("wg-quick up "+confPath, true)
-
-	return err
-}
-
-// RemoveConfGraceful - Run remove conf and wait for it to actually be gone before proceeding
-func RemoveConfGraceful(ifacename string) {
-	// ensure you clear any existing interface first
-	wgclient, err := wgctrl.New()
-	if err != nil {
-		logger.Log(0, "could not create wgclient")
-		return
-	}
-	defer wgclient.Close()
-	d, _ := wgclient.Device(ifacename)
-	startTime := time.Now()
-	for d != nil && d.Name == ifacename {
-		if err = RemoveConf(ifacename, false); err != nil { // remove interface first
-			if strings.Contains(err.Error(), "does not exist") {
-				err = nil
-				break
-			}
-		}
-		time.Sleep(time.Second >> 2)
-		d, _ = wgclient.Device(ifacename)
-		if time.Now().After(startTime.Add(time.Second << 4)) {
-			break
-		}
-	}
-	time.Sleep(time.Second << 1)
-}
-
-// RemoveConf - removes a configuration for a given WireGuard interface
-func RemoveConf(iface string, printlog bool) error {
-	os := runtime.GOOS
-	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
-		os = "nowgquick"
-	}
-	var err error
-	switch os {
-	case "nowgquick":
-		err = RemoveWithoutWGQuick(iface)
-	case "windows":
-		err = RemoveWindowsConf(iface, printlog)
-	default:
-		confPath := config.GetNetclientInterfacePath() + iface + ".conf"
-		err = RemoveWGQuickConf(confPath, printlog)
-	}
-	return err
-}
-
-// RemoveWGQuickConf - calls wg-quick down
-func RemoveWGQuickConf(confPath string, printlog bool) error {
-	_, err := ncutils.RunCmd(fmt.Sprintf("wg-quick down %s", confPath), printlog)
-	return err
-}
-
-// SetWGConfig - sets the WireGuard Config of a given network and checks if it needs a peer update
-func SetWGConfig(network string, peerupdate bool, peers []wgtypes.PeerConfig) error {
-	node := config.Nodes[network]
-	var err error
-	if peerupdate && !ncutils.IsFreeBSD() && !(ncutils.IsLinux() && !ncutils.IsKernel()) {
-		var iface string
-		iface = node.Interface
-		if ncutils.IsMac() {
-			iface, err = local.GetMacIface(node.PrimaryAddress().IP.String())
-			if err != nil {
-				return err
-			}
-		}
-		err = SetPeers(iface, &node, peers)
-	} else {
-		err = InitWireguard(&node, peers)
-	}
-	return err
-}
-
-// InitWireguard initializes a WireGuard interface
-func InitWireguard(node *config.Node, peers []wgtypes.PeerConfig) error {
-	wgclient, err := wgctrl.New()
-	if err != nil {
-		return err
-	}
-	defer wgclient.Close()
-	//nodecfg := modcfg.Node
-	var ifacename string
-	if node.Interface != "" {
-		ifacename = node.Interface
-	} else {
-		return fmt.Errorf("no interface to configure")
-	}
-	if node.PrimaryAddress().IP == nil {
-		return fmt.Errorf("no address to configure")
-	}
-	if err := WriteWgConfig(node, peers); err != nil {
-		logger.Log(1, "error writing wg conf file: ", err.Error())
-		return err
-	}
-	// spin up userspace / windows interface + apply the conf file
-	confPath := config.GetNetclientInterfacePath() + ifacename + ".conf"
-	var deviceiface = ifacename
-	var mErr error
-	if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
-		deviceiface, mErr = local.GetMacIface(node.PrimaryAddress().IP.String())
-		if mErr != nil || deviceiface == "" {
-			deviceiface = ifacename
-		}
-	}
-	// ensure you clear any existing interface first
-	//RemoveConfGraceful(deviceiface)
-	ApplyConf(node, confPath)                 // Apply initially
-	logger.Log(1, "waiting for interface...") // ensure interface is created
-	output, _ := ncutils.RunCmd("wg", false)
-	starttime := time.Now()
-	ifaceReady := strings.Contains(output, deviceiface)
-	for !ifaceReady && !(time.Now().After(starttime.Add(time.Second << 4))) {
-		if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
-			deviceiface, mErr = local.GetMacIface(node.PrimaryAddress().IP.String())
-			if mErr != nil || deviceiface == "" {
-				deviceiface = ifacename
-			}
-		}
-		output, _ = ncutils.RunCmd("wg", false)
-		ApplyConf(node, confPath)
-		time.Sleep(time.Second)
-		ifaceReady = strings.Contains(output, deviceiface)
-	}
-	//wgclient does not work well on freebsd
-	if config.Netclient.OS == "freebsd" {
-		if !ifaceReady {
-			return fmt.Errorf("could not reliably create interface, please check wg installation and retry")
-		}
-	} else {
-		_, devErr := wgclient.Device(deviceiface)
-		if !ifaceReady || devErr != nil {
-			fmt.Printf("%v\n", devErr)
-			return fmt.Errorf("could not reliably create interface, please check wg installation and retry")
-		}
-	}
-	logger.Log(1, "interface ready - netclient.. ENGAGE")
-
-	if !ncutils.HasWgQuick() && ncutils.IsLinux() {
-		err = SetPeers(ifacename, node, peers)
-		if err != nil {
-			logger.Log(1, "error setting peers: ", err.Error())
-		}
-
-		time.Sleep(time.Second)
-	}
-	//ipv4
-	if node.Address.IP != nil {
-		local.SetCIDRRoute(ifacename, &node.Address)
-	}
-	//ipv6
-	if node.Address6.IP != nil {
-		local.SetCIDRRoute(ifacename, &node.Address6)
-	}
-	local.SetCurrentPeerRoutes(node.Interface, peers)
-	return err
-}
+var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // SetPeers - sets peers on a given WireGuard interface
 func SetPeers(iface string, node *config.Node, peers []wgtypes.PeerConfig) error {
@@ -342,6 +142,24 @@ func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {
 	}
 }
 
+// Configure - configures a pre-installed network interface with WireGuard
+func Configure(privateKey string, port int, n *config.Node) error {
+
+	key, err := wgtypes.ParseKey(privateKey)
+	if err != nil {
+		return err
+	}
+	firewallMark := 0
+	config := wgtypes.Config{
+		PrivateKey:   &key,
+		ReplacePeers: true,
+		FirewallMark: &firewallMark,
+		ListenPort:   &port,
+	}
+
+	return apply(n, &config)
+}
+
 // GetPeers - gets the peers from a given WireGuard interface
 func GetPeers(iface string) ([]wgtypes.Peer, error) {
 
@@ -428,226 +246,76 @@ func GetPeers(iface string) ([]wgtypes.Peer, error) {
 	return peers, err
 }
 
-// WriteWgConfig - creates a wireguard config file
-func WriteWgConfig(node *config.Node, peers []wgtypes.PeerConfig) error {
-	options := ini.LoadOptions{
-		AllowNonUniqueSections: true,
-		AllowShadows:           true,
+// ApplyPeers - used to apply or update given peer configs to a node's interface
+func ApplyPeers(n *config.Node, peers []wgtypes.PeerConfig) error {
+	if err := RemovePeers(n); err != nil {
+		return err
 	}
-	wireguard := ini.Empty(options)
-	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(node.PrivateKey.String())
-	if node.ListenPort > 0 && !node.UDPHolePunch {
-		wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
-	}
-	addrString := node.Address.String()
-	if node.Address6.IP != nil {
-		if addrString != "" {
-			addrString += ","
-		}
-		addrString += node.Address6.String()
-	}
-	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
-	// need to figure out DNS
-	//if node.DNSOn == "yes" {
-	//	wireguard.Section(section_interface).Key("DNS").SetValue(cfg.Server.CoreDNSAddr)
-	//}
-	//need to split postup/postdown because ini lib adds a ` and the ` breaks freebsd
-	//works fine on others
-	if node.PostUp != "" {
-		if config.Netclient.OS == "freebsd" {
-			parts := strings.Split(node.PostUp, " ; ")
-			for i, part := range parts {
-				if i == 0 {
-					wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
-				}
-				wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
-			}
-		} else {
-			wireguard.Section(sectionInterface).Key("PostUp").SetValue((node.PostUp))
-		}
-	}
-	if node.PostDown != "" {
-		if config.Netclient.OS == "freebsd" {
-			parts := strings.Split(node.PostDown, " ; ")
-			for i, part := range parts {
-				if i == 0 {
-					wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
-				}
-				wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
-			}
-		} else {
-			wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
-		}
-	}
-	if node.MTU != 0 {
-		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
-	}
-	for i, peer := range peers {
-		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
-		if peer.PresharedKey != nil {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
-		}
-		if peer.AllowedIPs != nil {
-			var allowedIPs string
-			for i, ip := range peer.AllowedIPs {
-				if i == 0 {
-					allowedIPs = ip.String()
-				} else {
-					allowedIPs = allowedIPs + ", " + ip.String()
-				}
-			}
-			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
-		}
-		if peer.Endpoint != nil {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
-		}
 
-		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
-		}
-	}
-	if err := wireguard.SaveTo(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
-		return err
-	}
-	return nil
-}
-
-// UpdatePrivateKey - updates the private key of a wireguard config file
-func UpdatePrivateKey(file, privateKey string) error {
-	options := ini.LoadOptions{
-		AllowNonUniqueSections: true,
-		AllowShadows:           true,
-	}
-	wireguard, err := ini.LoadSources(options, file)
-	if err != nil {
-		return err
-	}
-	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(privateKey)
-	if err := wireguard.SaveTo(file); err != nil {
-		return err
-	}
-	return nil
-}
-
-// UpdateWgInterface - updates the interface section of a wireguard config file
-func UpdateWgInterface(file, nameserver string, node *config.Node) error {
-	options := ini.LoadOptions{
-		AllowNonUniqueSections: true,
-		AllowShadows:           true,
-	}
-	wireguard, err := ini.LoadSources(options, file)
-	if err != nil {
-		return err
-	}
-	if node.UDPHolePunch {
-		node.ListenPort = 0
-	}
-	wireguard.DeleteSection(sectionInterface)
-	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(node.PrivateKey.String())
-	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(node.ListenPort))
-	addrString := node.Address.String()
-	if node.Address6.IP != nil {
-		if addrString != "" {
-			addrString += ","
-		}
-		addrString += node.Address6.String()
-	}
-	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
-	//if node.DNSOn == "yes" {
-	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
-	//}
-	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
-	if node.PostUp != "" {
-		parts := strings.Split(node.PostUp, " ; ")
-		for i, part := range parts {
-			if i == 0 {
-				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
-			}
-			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
-		}
-	}
-	if node.PostDown != "" {
-		parts := strings.Split(node.PostDown, " ; ")
-		for i, part := range parts {
-			if i == 0 {
-				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
-			}
-			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
-		}
-	}
-	if node.MTU != 0 {
-		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(node.MTU), 10))
-	}
-	if err := wireguard.SaveTo(file); err != nil {
-		return err
-	}
-	return nil
-}
-
-// UpdateKeepAlive - updates the persistentkeepalive of all peers
-func UpdateKeepAlive(file string, keepalive int) error {
-	options := ini.LoadOptions{
-		AllowNonUniqueSections: true,
-		AllowShadows:           true,
-	}
-	wireguard, err := ini.LoadSources(options, file)
-	if err != nil {
-		return err
-	}
-	peers, err := wireguard.SectionsByName(sectionPeers)
-	if err != nil {
-		return err
-	}
-	newvalue := strconv.Itoa(keepalive)
 	for i := range peers {
-		wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepALive").SetValue(newvalue)
+		if err := updatePeer(n, &peers[i]); err != nil {
+			logger.Log(0, "failed to update peer", peers[i].PublicKey.String(), err.Error())
+		}
 	}
-	if err := wireguard.SaveTo(file); err != nil {
+
+	return nil
+}
+
+// RemovePeers - removes all peers from a given node config
+func RemovePeers(n *config.Node) error {
+	currPeers, err := getPeers(n)
+	if err != nil || len(currPeers) == 0 {
 		return err
+	}
+
+	for i := range currPeers {
+		if err = removePeer(n, &wgtypes.PeerConfig{
+			PublicKey: currPeers[i].PublicKey,
+		}); err != nil {
+			logger.Log(0, "failed to remove peer", currPeers[i].PublicKey.String())
+		}
 	}
 	return nil
 }
 
-func UpdateWgPeers(file string, peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
-	var internetGateway *net.UDPAddr
-	options := ini.LoadOptions{
-		AllowNonUniqueSections: true,
-		AllowShadows:           true,
-	}
-	wireguard, err := ini.LoadSources(options, file)
+// == private ==
+
+func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
+	wg, err := wgctrl.New()
 	if err != nil {
-		return internetGateway, err
+		return nil, err
 	}
-	//delete the peers sections as they are going to be replaced
-	wireguard.DeleteSection(sectionPeers)
-	for i, peer := range peers {
-		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
-		if peer.PresharedKey != nil {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
-		}
-		if peer.AllowedIPs != nil {
-			var allowedIPs string
-			for i, ip := range peer.AllowedIPs {
-				if i == 0 {
-					allowedIPs = ip.String()
-				} else {
-					allowedIPs = allowedIPs + ", " + ip.String()
-				}
-			}
-			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
-			if strings.Contains(allowedIPs, "0.0.0.0/0") || strings.Contains(allowedIPs, "::/0") {
-				internetGateway = peer.Endpoint
-			}
-		}
-		if peer.Endpoint != nil {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
-		}
-		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
-		}
+	defer wg.Close()
+	dev, err := wg.Device(n.Interface)
+	if err != nil {
+		return nil, err
 	}
-	if err := wireguard.SaveTo(file); err != nil {
-		return internetGateway, err
+	return dev.Peers, nil
+}
+
+func removePeer(n *config.Node, p *wgtypes.PeerConfig) error {
+	p.Remove = true
+	config := wgtypes.Config{
+		Peers: []wgtypes.PeerConfig{*p},
 	}
-	return internetGateway, nil
+	return apply(n, &config)
+}
+
+func updatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
+	config := wgtypes.Config{
+		Peers: []wgtypes.PeerConfig{*p},
+	}
+	return apply(n, &config)
+}
+
+func apply(n *config.Node, c *wgtypes.Config) error {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	wg, err := wgctrl.New()
+	if err != nil {
+		return err
+	}
+	defer wg.Close()
+
+	return wg.ConfigureDevice(n.Interface, *c)
 }

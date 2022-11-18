@@ -436,9 +436,18 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	config.Nodes[newNode.Network] = *newNode
 	local.SetNetmakerDomainRoute(server.API)
 	logger.Log(0, "starting wireguard")
-	err = wireguard.InitWireguard(newNode, nodeGET.Peers[:])
+	nc := wireguard.NewNCIface(newNode)
+	err = nc.Create()
 	if err != nil {
+		return newNode, nil, fmt.Errorf("error creating interface %w", err)
+	}
+	if err = wireguard.Configure(newNode.PrivateKey.String(), newNode.ListenPort, newNode); err != nil {
 		return newNode, nil, fmt.Errorf("error initializing wireguard %w", err)
+	}
+	if len(nodeGET.Peers) > 0 {
+		if err = wireguard.ApplyPeers(newNode, nodeGET.Peers[:]); err != nil {
+			logger.Log(0, "failed to apply peers", err.Error())
+		}
 	}
 	return newNode, server, err
 }

@@ -3,7 +3,6 @@ package functions
 import (
 	"errors"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/devilcove/httpclient"
@@ -61,7 +60,8 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		}
 	}
 	if int(nodeGet.Node.ListenPort) != node.LocalListenPort {
-		if err := wireguard.RemoveConf(node.Interface, false); err != nil {
+		nc := wireguard.NewNCIface(newNode)
+		if err := nc.Close(); err != nil {
 			logger.Log(0, "error remove interface", node.Interface, err.Error())
 		}
 		err = config.ModPort(newNode)
@@ -75,19 +75,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
-	if iface {
-		if err = wireguard.SetWGConfig(network, false, nodeGet.Peers[:]); err != nil {
-			return nil, err
-		}
-	} else {
-		if err = wireguard.SetWGConfig(network, true, nodeGet.Peers[:]); err != nil {
-			if errors.Is(err, os.ErrNotExist) && !ncutils.IsFreeBSD() {
-				return Pull(network, true)
-			} else {
-				return nil, err
-			}
-		}
-	}
+
 	return newNode, err
 }
 
