@@ -6,14 +6,16 @@ import (
 
 // NCIface - represents a Netclient network interface
 type NCIface struct {
-	Iface    netIface
-	Settings *config.Node
+	Iface netIface
+	Host  *config.Config
+	Node  *config.Node
 }
 
 // NewNCIFace - creates a new Netclient interface in memory
-func NewNCIface(n *config.Node) *NCIface {
+func NewNCIface(n *config.Node, h *config.Config) *NCIface {
 	return &NCIface{
-		Settings: n,
+		Node: n,
+		Host: h,
 	}
 }
 

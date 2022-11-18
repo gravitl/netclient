@@ -92,9 +92,9 @@ func initConfig() {
 	config.ReadServerConf()
 	checkConfig()
 	//check netclient dirs exist
-	if _, err := os.Stat(config.GetNetclientInterfacePath()); err != nil {
+	if _, err := os.Stat(config.GetNetclientPath()); err != nil {
 		if os.IsNotExist(err) {
-			if err := os.Mkdir(config.GetNetclientInterfacePath(), os.ModePerm); err != nil {
+			if err := os.Mkdir(config.GetNetclientPath(), os.ModePerm); err != nil {
 				logger.Log(0, "failed to create dirs", err.Error())
 			}
 		} else {
