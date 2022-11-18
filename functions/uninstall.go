@@ -14,7 +14,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 // Uninstall - uninstalls networks from client
@@ -112,26 +111,24 @@ func deleteNodeFromServer(node *config.Node) error {
 }
 
 func deleteLocalNetwork(node *config.Node) error {
-	wgClient, wgErr := wgctrl.New()
-	if wgErr != nil {
-		return wgErr
+	if _, ok := config.Nodes[node.Network]; !ok {
+		return errors.New("no such network")
 	}
-	defer wgClient.Close()
-	removeIface := node.Interface
-	queryAddr := node.PrimaryAddress()
-	if ncutils.IsMac() {
-		var macIface string
-		macIface, wgErr = local.GetMacIface(queryAddr.IP.String())
-		if wgErr == nil && removeIface != "" {
-			removeIface = macIface
-		}
+	delete(config.Nodes, node.Network)
+	server := config.GetServer(node.Server)
+	if server != nil {
+		nodes := server.Nodes
+		delete(nodes, node.Network)
 	}
-	dev, err := wgClient.Device(removeIface)
-	if err != nil {
-		return fmt.Errorf("error flushing routes %w", err)
+	config.WriteNodeConfig()
+	config.WriteServerConfig()
+	local.FlushPeerRoutes(node.Peers[:])
+	if node.NetworkRange.IP != nil {
+		local.RemoveCIDRRoute(&node.NetworkRange)
 	}
-	local.FlushPeerRoutes(removeIface, dev.Peers[:])
-	local.RemoveCIDRRoute(removeIface, &node.NetworkRange)
+	if node.NetworkRange6.IP != nil {
+		local.RemoveCIDRRoute(&node.NetworkRange6)
+	}
 	return nil
 }
 

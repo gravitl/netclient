@@ -4,12 +4,14 @@ import (
 	//"github.com/davecgh/go-spew/spew"
 
 	"fmt"
+	"log"
 	"net"
 	"strings"
 
 	"github.com/c-robinson/iplib"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/vishvananda/netlink"
 )
 
 // GetDefaultRoute - Gets the default route (ip and interface) on a linux machine
@@ -69,6 +71,19 @@ func setCidr(iface string, addr *net.IPNet) {
 	}
 }
 
-func removeCidr(iface string, addr *net.IPNet) {
-	ncutils.RunCmd("ip route delete "+addr.String()+" dev "+iface, false)
+func removeCidr(addr *net.IPNet) {
+	routes, err := netlink.RouteGet(addr.IP)
+	if err != nil {
+		logger.Log(0, "failed to find route for ", addr.String(), err.Error())
+		return
+	}
+	log.Println(routes)
+	for _, route := range routes {
+		log.Println("deleting route ", route)
+		if err := netlink.RouteDel(&route); err != nil {
+			logger.Log(0, "failed to delete route for", addr.String(), err.Error())
+		} else {
+			logger.Log(3, "deleted route to", addr.String())
+		}
+	}
 }
