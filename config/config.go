@@ -88,7 +88,8 @@ func ReadNetclientConfig() (*Config, error) {
 
 // WriteNetclientConfig save the netclient configuration to disk
 func WriteNetclientConfig() error {
-	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
+	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
+	logger.Log(0, "lock file path: ", lockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {

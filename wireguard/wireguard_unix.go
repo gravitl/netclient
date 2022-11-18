@@ -15,8 +15,10 @@ import (
 // == private ==
 
 func (nc *NCIface) createUserSpaceWG() error {
+	wgMutex.Lock()
+	wgMutex.Unlock()
 
-	tunIface, err := tun.CreateTUN(nc.Settings.Interface, nc.Settings.MTU)
+	tunIface, err := tun.CreateTUN(getName(), nc.Settings.MTU)
 	if err != nil {
 		return err
 	}
@@ -28,7 +30,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-	uapi, err := getUAPIByInterface(nc.Settings.Interface)
+	uapi, err := getUAPIByInterface(getName())
 	if err != nil {
 		return err
 	}
@@ -43,8 +45,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 		}
 	}()
 
-	err = nc.ApplyAddrs()
-	if err != nil {
+	if err = nc.ApplyAddrs(); err != nil {
 		return err
 	}
 	return nil
