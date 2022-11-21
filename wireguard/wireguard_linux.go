@@ -92,21 +92,30 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 	}
 	for _, node := range config.Nodes {
-		log.Println("adding address from node ", node.ID)
+		log.Println("adding address from node ", node.ID, node.Address.String())
 
-		addr, err := netlink.ParseAddr(node.Address.String())
-		pretty.Println(addr, err)
-		if err == nil {
-			err = netlink.AddrAdd(l, addr)
-			if err != nil {
-				return err
-			}
+		var address netlink.Addr
+		log.Println(address, node.Address.IP)
+		address.IPNet = &node.Address
+		pretty.Println(address)
+		if err := netlink.AddrAdd(l, &address); err != nil {
+			return err
 		}
+		//addr, err := netlink.ParseAddr(node.Address.String())
+		//pretty.Println(addr, err)
+		//if err == nil {
+		//	err = netlink.AddrAdd(l, addr)
+		//	if err != nil {
+		//		log.Println("error adding addr", err)
+		//		return err
+		//	}
+		//}
 		addr6, err := netlink.ParseAddr(node.Address6.String())
 		pretty.Println(addr6, err)
 		if err == nil {
 			err = netlink.AddrAdd(l, addr6)
 			if err != nil {
+				log.Println("error adding addr", err)
 				return err
 			}
 		}
