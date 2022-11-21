@@ -207,9 +207,9 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
 	}
+	//nc := wireguard.NewNCIface(&config.Netclient)
+	//nc.Create()
 	wireguard.SetPeers()
-	nc := wireguard.NewNCIface(&config.Netclient)
-	nc.Create()
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, config.Netclient.Interface, ncutils.IsWindows()); err != nil {

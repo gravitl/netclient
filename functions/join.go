@@ -270,6 +270,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if _, ok := config.Nodes[nodeForServer.Network]; ok {
 		return nil, nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + nodeForServer.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + nodeForServer.Network + "'. Then re-run the install command.")
 	}
+	nodeForServer.Version = config.Netclient.Version
 	nodeForServer.Server = flags.GetString("server")
 	// figure out how to handle commmad line passwords
 	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
@@ -284,7 +285,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if nodeForServer.ListenPort != 0 {
 		nodeForServer.UDPHolePunch = "no"
 	}
-	nodeForServer.TrafficKeys.Mine = config.Netclient.PublicKey[:]
+	nodeForServer.TrafficKeys.Mine = config.Netclient.TrafficKeyPublic
 	nodeForServer.TrafficKeys.Server = nil
 	// == end handle keys ==
 	if nodeForServer.LocalAddress == "" {

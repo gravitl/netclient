@@ -131,7 +131,7 @@ func checkin() {
 
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
-	server, ok := config.Servers[node.Network]
+	server, ok := config.Servers[node.Server]
 	if !ok {
 		return errors.New("no server for " + node.Network)
 	}
@@ -241,7 +241,7 @@ func publishMetrics(node *config.Node) {
 // node cfg is required  in order to fetch the traffic keys of that node for encryption
 func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	// setup the keys
-	serverPubKey, err := ncutils.ConvertBytesToKey(config.Servers[node.Network].TrafficKey)
+	serverPubKey, err := ncutils.ConvertBytesToKey(config.Servers[node.Server].TrafficKey)
 	if err != nil {
 		return err
 	}
