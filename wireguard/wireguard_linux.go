@@ -2,12 +2,11 @@ package wireguard
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
-	"github.com/kr/pretty"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
 
@@ -92,30 +91,20 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 	}
 	for _, node := range config.Nodes {
-		log.Println("adding address from node ", node.ID, node.Address.String())
-
 		var address netlink.Addr
-		log.Println(address, node.Address.IP)
+		var address6 netlink.Addr
 		address.IPNet = &node.Address
-		pretty.Println(address)
-		if err := netlink.AddrAdd(l, &address); err != nil {
-			return err
+		if address.IPNet.IP != nil {
+			if err := netlink.AddrAdd(l, &address); err != nil {
+				logger.Log(0, "error adding addr", err.Error())
+				return err
+			}
 		}
-		//addr, err := netlink.ParseAddr(node.Address.String())
-		//pretty.Println(addr, err)
-		//if err == nil {
-		//	err = netlink.AddrAdd(l, addr)
-		//	if err != nil {
-		//		log.Println("error adding addr", err)
-		//		return err
-		//	}
-		//}
-		addr6, err := netlink.ParseAddr(node.Address6.String())
-		pretty.Println(addr6, err)
-		if err == nil {
-			err = netlink.AddrAdd(l, addr6)
+		address6.IPNet = &node.Address6
+		if address6.IPNet.IP != nil {
+			err = netlink.AddrAdd(l, &address6)
 			if err != nil {
-				log.Println("error adding addr", err)
+				logger.Log(0, "error adding addr", err.Error())
 				return err
 			}
 		}

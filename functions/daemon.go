@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -191,11 +192,13 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	// setup the keys
 	diskKey, err := ncutils.ConvertBytesToKey(config.Netclient.TrafficKeyPrivate)
 	if err != nil {
+		log.Println("privatekey", config.Netclient.TrafficKeyPrivate, err)
 		return nil, err
 	}
 
-	serverPubKey, err := ncutils.ConvertBytesToKey(config.Servers[node.Network].TrafficKey)
+	serverPubKey, err := ncutils.ConvertBytesToKey(config.Servers[node.Server].TrafficKey)
 	if err != nil {
+		log.Println("pubkey", config.Servers[node.Network].TrafficKey)
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)

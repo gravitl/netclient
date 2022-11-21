@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log"
 
 	"golang.org/x/crypto/nacl/box"
 )
@@ -65,6 +66,7 @@ func Chunk(message []byte, recipientPubKey *[32]byte, senderPrivateKey *[32]byte
 func DeChunk(chunkedMsg []byte, senderPublicKey *[32]byte, recipientPrivateKey *[32]byte) ([]byte, error) {
 	chunks, err := convertMsgToBytes(chunkedMsg) // convert the message to it's original chunks form
 	if err != nil {
+		log.Println("convert to msgbytes", err)
 		return nil, err
 	}
 
@@ -72,6 +74,7 @@ func DeChunk(chunkedMsg []byte, senderPublicKey *[32]byte, recipientPrivateKey *
 	for i := range chunks {
 		decodedMsg, err := BoxDecrypt(chunks[i], senderPublicKey, recipientPrivateKey)
 		if err != nil {
+			log.Println("boxDecrypt", string(senderPublicKey[:]), string(recipientPrivateKey[:]))
 			return nil, err
 		}
 		totalMsg = append(totalMsg, decodedMsg...)
