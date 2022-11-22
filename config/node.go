@@ -131,7 +131,7 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Address.Mask = node.NetworkRange.Mask
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
 	node.Address6.Mask = node.NetworkRange6.Mask
-	host.ListenPort = int(netmakerNode.ListenPort)
+	host.LocalListenPort = int(netmakerNode.LocalListenPort)
 	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
 	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)
@@ -186,7 +186,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	if node.Address6.IP == nil {
 		netmakerNode.Address6 = ""
 	}
-	netmakerNode.ListenPort = int32(host.ListenPort)
+	netmakerNode.LocalListenPort = int32(host.LocalListenPort)
 	netmakerNode.LocalAddress = host.LocalAddress.String()
 	netmakerNode.LocalRange = host.LocalRange.String()
 	netmakerNode.MTU = int32(host.MTU)
