@@ -12,6 +12,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/vishvananda/netlink"
 )
 
 // Uninstall - uninstalls networks from client
@@ -102,8 +103,17 @@ func deleteLocalNetwork(node *config.Node) error {
 	if _, ok := config.Nodes[node.Network]; !ok {
 		return errors.New("no such network")
 	}
+	local.FlushPeerRoutes(node.Peers[:])
+	if node.NetworkRange.IP != nil {
+		local.RemoveCIDRRoute(&node.NetworkRange)
+	}
+	if node.NetworkRange6.IP != nil {
+		local.RemoveCIDRRoute(&node.NetworkRange6)
+	}
+	//remove node from nodes map
 	delete(config.Nodes, node.Network)
 	server := config.GetServer(node.Server)
+	//remove node from server node map
 	if server != nil {
 		nodes := server.Nodes
 		delete(nodes, node.Network)
@@ -114,12 +124,14 @@ func deleteLocalNetwork(node *config.Node) error {
 	}
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
-	local.FlushPeerRoutes(node.Peers[:])
-	if node.NetworkRange.IP != nil {
-		local.RemoveCIDRRoute(&node.NetworkRange)
-	}
-	if node.NetworkRange6.IP != nil {
-		local.RemoveCIDRRoute(&node.NetworkRange6)
+	if len(config.Nodes) == 0 {
+		netmaker, err := netlink.LinkByName("netmaker")
+		if err != nil {
+			return err
+		}
+		if err := netlink.LinkDel(netmaker); err != nil {
+			return err
+		}
 	}
 	return nil
 }

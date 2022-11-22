@@ -103,7 +103,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//nameserver := server.CoreDNSAddr
 	//file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
 
-	nc := wireguard.NewNCIface(&config.Netclient)
+	nc := wireguard.NewNCIface(config.Netclient.MTU)
 	//if newNode.ListenPort != newNode.LocalListenPort {
 	//	if err := nc.Close(); err != nil {
 	//		logger.Log(0, "error remove interface", newNode.Interface, err.Error())

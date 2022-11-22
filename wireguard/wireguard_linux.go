@@ -19,7 +19,7 @@ func (nc *NCIface) Create() error {
 			return fmt.Errorf("failed to create kernel interface")
 		}
 		nc.Iface = newLink
-		l, err := netlink.LinkByName(nc.Host.Interface)
+		l, err := netlink.LinkByName(nc.Name)
 		if err != nil {
 			switch err.(type) {
 			case netlink.LinkNotFoundError:
@@ -37,12 +37,12 @@ func (nc *NCIface) Create() error {
 		if err = netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
 			return err
 		}
-
+		logger.Log(3, "adding addresses to netmaker interface")
 		if err = nc.ApplyAddrs(); err != nil {
 			return err
 		}
 
-		if err = netlink.LinkSetMTU(newLink, nc.Host.MTU); err != nil {
+		if err = netlink.LinkSetMTU(newLink, nc.MTU); err != nil {
 			return err
 		}
 
@@ -95,6 +95,7 @@ func (nc *NCIface) ApplyAddrs() error {
 		var address6 netlink.Addr
 		address.IPNet = &node.Address
 		if address.IPNet.IP != nil {
+			logger.Log(3, "adding address", address.IP.String(), "to netmaker interface")
 			if err := netlink.AddrAdd(l, &address); err != nil {
 				logger.Log(0, "error adding addr", err.Error())
 				return err
@@ -102,6 +103,7 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 		address6.IPNet = &node.Address6
 		if address6.IPNet.IP != nil {
+			logger.Log(3, "adding address", address6.IP.String(), "to netmaker interface")
 			err = netlink.AddrAdd(l, &address6)
 			if err != nil {
 				logger.Log(0, "error adding addr", err.Error())
@@ -119,7 +121,7 @@ type netLink struct {
 }
 
 func (nc *NCIface) getKernelLink() *netLink {
-	link := getNewLink(nc.Host.Interface)
+	link := getNewLink(nc.Name)
 	return link
 }
 
