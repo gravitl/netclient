@@ -116,20 +116,31 @@ func deleteLocalNetwork(node *config.Node) error {
 	if nodetodelete.Network == "" {
 		return errors.New("no such network")
 	}
-	delete(config.Nodes, node.Network)
-	server := config.GetServer(node.Server)
-	if server != nil {
-		nodes := server.Nodes
-		delete(nodes, node.Network)
-	}
-	config.WriteNodeConfig()
-	config.WriteServerConfig()
 	local.FlushPeerRoutes(node.Peers[:])
 	if node.NetworkRange.IP != nil {
 		local.RemoveCIDRRoute(&node.NetworkRange)
 	}
 	if node.NetworkRange6.IP != nil {
 		local.RemoveCIDRRoute(&node.NetworkRange6)
+	}
+	//remove node from nodes map
+	delete(config.Nodes, node.Network)
+	server := config.GetServer(node.Server)
+	//remove node from server node map
+	if server != nil {
+		nodes := server.Nodes
+		delete(nodes, node.Network)
+	}
+	config.WriteNodeConfig()
+	config.WriteServerConfig()
+	if len(config.Nodes) == 0 {
+		netmaker, err := netlink.LinkByName("netmaker")
+		if err != nil {
+			return err
+		}
+		if err := netlink.LinkDel(netmaker); err != nil {
+			return err
+		}
 	}
 	return nil
 }
