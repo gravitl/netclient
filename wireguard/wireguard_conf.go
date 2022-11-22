@@ -27,9 +27,6 @@ func UpdateWgInterface(node *config.Node, host *config.Config) error {
 	if err != nil {
 		return err
 	}
-	if host.UDPHolePunch {
-		host.ListenPort = 0
-	}
 	wireguard.DeleteSection(sectionInterface)
 	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(host.PrivateKey.String())
 	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(host.ListenPort))
@@ -166,9 +163,7 @@ func WriteWgConfig(host *config.Config, nodes map[string]config.Node) error {
 	}
 	wireguard := ini.Empty(options)
 	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(host.PrivateKey.String())
-	if host.ListenPort > 0 && !host.UDPHolePunch {
-		wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(host.ListenPort))
-	}
+	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(host.ListenPort))
 	for _, node := range nodes {
 		if node.Address.IP != nil {
 			wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address.String())

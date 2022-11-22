@@ -44,7 +44,6 @@ type Config struct {
 	Version           string
 	IPForwarding      bool
 	DaemonInstalled   bool
-	UDPHolePunch      bool
 	HostID            string
 	HostPass          string
 	Name              string
