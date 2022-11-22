@@ -140,7 +140,6 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
-	host.UDPHolePunch = ParseBool(netmakerNode.UDPHolePunch)
 	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
@@ -196,7 +195,6 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	netmakerNode.PostUp = node.PostUp
 	netmakerNode.PostDown = node.PostDown
 	netmakerNode.Action = node.Action
-	netmakerNode.UDPHolePunch = FormatBool(host.UDPHolePunch)
 	netmakerNode.IsLocal = FormatBool(node.IsLocal)
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
@@ -240,11 +238,7 @@ func ParseAccessToken(token string) (*models.AccessToken, error) {
 // ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
 func ModPort(host *Config) error {
 	var err error
-	if host.UDPHolePunch {
-		host.ListenPort = 0
-	} else {
-		host.ListenPort, err = ncutils.GetFreePort(host.ListenPort)
-	}
+	host.ListenPort, err = ncutils.GetFreePort(host.ListenPort)
 	return err
 }
 
