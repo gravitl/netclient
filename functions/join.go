@@ -280,7 +280,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	nodeForServer.HostID = netclient.HostID
 	//}
 	//check if ListenPort was set on command line
-	nodeForServer.UDPHolePunch = "yes" // set default
+	nodeForServer.UDPHolePunch = "" // set default
 	nodeForServer.ListenPort = flags.GetInt32("port")
 	if nodeForServer.ListenPort != 0 {
 		nodeForServer.UDPHolePunch = "no"
@@ -323,6 +323,9 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	nodeForServer.MacAddress = config.Netclient.MacAddress.String()
 	// make sure name is appropriate, if not, give blank name
 	nodeForServer.Name = config.Netclient.Name
+	nodeForServer.FirewallInUse = config.Netclient.FirewallInUse
+	nodeForServer.OS = config.Netclient.OS
+	nodeForServer.IPForwarding = config.FormatBool(config.Netclient.IPForwarding)
 	url := flags.GetString("apiconn")
 	nodeForServer.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+nodeForServer.Network+" at "+url)
