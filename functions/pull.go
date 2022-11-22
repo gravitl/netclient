@@ -69,11 +69,3 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	logger.Log(1, "node settings for network ", network)
 	return newNode, err
 }
-
-func informPortChange(node *config.Node) {
-	if config.Netclient.ListenPort == 0 {
-		logger.Log(0, "network:", node.Network, "UDP hole punching enabled for node", config.Netclient.Name)
-	} else {
-		logger.Log(0, "network:", node.Network, "node", config.Netclient.Name, "is using port", strconv.Itoa(int(config.Netclient.ListenPort)))
-	}
-}

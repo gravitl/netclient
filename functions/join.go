@@ -23,7 +23,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
-	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
@@ -90,7 +89,7 @@ func Join(flags *viper.Viper) {
 	nodes := server.Nodes
 	nodes[node.Network] = true
 	server.Nodes = nodes
-	config.Servers[node.Network] = *server
+	config.Servers[node.Server] = *server
 	if err := config.SaveServer(node.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
@@ -346,8 +345,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		Response:      models.NodeGet{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	log.Println("joing network with data")
-	pretty.Println(api)
 	response, err := api.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
 		if err == httpclient.ErrStatus {
@@ -356,8 +353,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response.(models.NodeGet)
-	log.Println("response from join")
-	pretty.Println(nodeGET)
 	// TODO ---- don't think we need to do this ... ConvertNode will take care of it
 	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
@@ -377,8 +372,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("modPort error %w", err)
 	}
-	// TODO :: why here ... should be in daemon?
-	informPortChange(newNode)
 	config.Nodes[newNode.Network] = *newNode
 	// TODO :: why here ... should be in daemon?
 	local.SetNetmakerDomainRoute(newServer.API)

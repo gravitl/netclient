@@ -118,6 +118,10 @@ func deleteLocalNetwork(node *config.Node) error {
 		nodes := server.Nodes
 		delete(nodes, node.Network)
 	}
+	if len(server.Nodes) == 0 {
+		logger.Log(3, "removing server", server.Name)
+		delete(config.Servers, node.Server)
+	}
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
 	local.FlushPeerRoutes(node.Peers[:])
