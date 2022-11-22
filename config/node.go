@@ -31,7 +31,6 @@ type Node struct {
 	InternetGateway     *net.UDPAddr
 	Server              string
 	Connected           bool
-	Port                int
 	EndpointIP          net.IP
 	Address             net.IPNet
 	Address6            net.IPNet
@@ -127,7 +126,7 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
-	node.Port = int(netmakerNode.ListenPort)
+	host.ListenPort = int(netmakerNode.ListenPort)
 	node.Address.IP = net.ParseIP(netmakerNode.Address)
 	node.Address.Mask = node.NetworkRange.Mask
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
