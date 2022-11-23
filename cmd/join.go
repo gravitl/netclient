@@ -60,7 +60,7 @@ func init() {
 	joinCmd.Flags().Bool("ipforwarding", true, "set ipforwarding on/off")
 
 	joinCmd.Flags().Int("keepalive", 20, "persistent keepalive for wireguard peers")
-	joinCmd.Flags().Int("port", 51820, "port for wireguard interface, will turn udpholepunching off")
+	joinCmd.Flags().Int("port", 51821, "port for wireguard interface, will turn udpholepunching off")
 
 	// Here you will define your flags and configuration settings.
 
