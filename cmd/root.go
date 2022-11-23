@@ -76,18 +76,24 @@ func initConfig() {
 	//not sure why vebosity not set in AutomaticEnv
 	viper.BindEnv("verbosity", "VERBOSITY")
 
-	// If a config file is found, read it in.
+	// If a config file is found, read it in
+	if err := config.Lock(config.ConfigLockfile); err != nil {
+		logger.Log(0, "failed to obtain lockfile", err.Error())
+	}
 	if err := viper.ReadInConfig(); err == nil {
 		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
 	} else {
 		logger.Log(0, "error reading config file", err.Error())
+	}
+	if err := config.Unlock(config.ConfigLockfile); err != nil {
+		logger.Log(0, "failed to releas lockfile", err.Error())
 	}
 	var netclient config.Config
 	if err := viper.Unmarshal(&netclient); err != nil {
 		logger.Log(0, "could not read netclient config file", err.Error())
 	}
 	logger.Verbosity = netclient.Verbosity
-	config.Netclient = netclient
+	config.UpdateNetclient(netclient)
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	checkConfig()
@@ -101,13 +107,13 @@ func initConfig() {
 			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
 		}
 	}
-	wireguard.WriteWgConfig(&config.Netclient, config.Nodes)
+	wireguard.WriteWgConfig(config.Netclient(), config.GetNodes())
 }
 
 func checkConfig() {
 	fail := false
 	saveRequired := false
-	netclient := &config.Netclient
+	netclient := config.Netclient()
 	if netclient.OS != runtime.GOOS {
 		logger.Log(0, "setting OS")
 		netclient.OS = runtime.GOOS
@@ -201,9 +207,11 @@ func checkConfig() {
 		}
 	}
 	config.ReadNodeConfig()
-	for _, node := range config.Nodes {
+	nodes := config.GetNodes()
+	for _, node := range nodes {
 		//make sure server config exists
-		if _, ok := config.Servers[node.Server]; !ok {
+		server := config.GetServer(node.Server)
+		if server.Name == "" {
 			fail = true
 			logger.Log(0, "configuration for", node.Server, "is missing")
 		}
