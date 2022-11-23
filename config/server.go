@@ -49,6 +49,9 @@ func ReadServerConf() error {
 		return err
 	}
 	defer f.Close()
+	for k := range Servers {
+		delete(Servers, k)
+	}
 	if err := yaml.NewDecoder(f).Decode(&Servers); err != nil {
 		return err
 	}

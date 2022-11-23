@@ -79,9 +79,15 @@ func Daemon() {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	//serverSet := make(map[string]bool)
-	config.ReadNetclientConfig()
-	config.ReadNodeConfig()
-	config.ReadServerConf()
+	if _, err := config.ReadNetclientConfig(); err != nil {
+		logger.Log(0, "error reading neclient config file", err.Error())
+	}
+	if err := config.ReadNodeConfig(); err != nil {
+		logger.Log(0, "error reading node map from disk", err.Error())
+	}
+	if err := config.ReadServerConf(); err != nil {
+		logger.Log(0, "errors reading server map from disk", err.Error())
+	}
 	nodes := config.GetNodes()
 	host := config.Netclient()
 	if len(nodes) > 0 {
