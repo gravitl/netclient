@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -79,7 +80,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	if node.IsServer {
 		return errors.New("attempt to delete server node ... not permitted")
 	}
-	token, err := Authenticate(node, &config.Netclient)
+	token, err := Authenticate(node, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
@@ -124,23 +125,31 @@ func deleteLocalNetwork(node *config.Node) error {
 		local.RemoveCIDRRoute(&node.NetworkRange6)
 	}
 	//remove node from nodes map
-	delete(config.Nodes, node.Network)
+	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)
 	//remove node from server node map
 	if server != nil {
 		nodes := server.Nodes
 		delete(nodes, node.Network)
 	}
+	if len(server.Nodes) == 0 {
+		logger.Log(3, "removing server", server.Name)
+		config.DeleteServer(node.Server)
+	}
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
-	if len(config.Nodes) == 0 {
-		netmaker, err := netlink.LinkByName("netmaker")
+	if len(config.GetNodes()) < 1 {
+		logger.Log(0, "removing wireguard config and netmaker interface")
+		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
+		link, err := netlink.LinkByName("netmaker")
 		if err != nil {
 			return err
 		}
-		if err := netlink.LinkDel(netmaker); err != nil {
+		if err := netlink.LinkDel(link); err != nil {
 			return err
 		}
+	} else {
+		log.Println(len(config.GetNodes()), "nodes left, leave netmaker interface up")
 	}
 	return nil
 }

@@ -135,11 +135,11 @@ func WriteNodeConfig() error {
 
 // ConvertNode accepts a netmaker node struc and converts to the structs used by netclient
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
-	host := Netclient
+	host := Netclient()
 	netmakerNode := nodeGet.Node
-	server, ok := Servers[netmakerNode.Network]
-	if !ok {
-		server = *ConvertServerCfg(&nodeGet.ServerConfig)
+	server := GetServer(netmakerNode.Network)
+	if server == nil {
+		server = ConvertServerCfg(&nodeGet.ServerConfig)
 	}
 	var node Node
 	node.ID = netmakerNode.ID

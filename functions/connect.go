@@ -13,7 +13,8 @@ import (
 
 // Disconnect - disconnects a node from the given network
 func Disconnect(network string) {
-	node, ok := config.Nodes[network]
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
 	if !ok {
 		logger.Log(0, "no such network")
 		return
@@ -27,7 +28,7 @@ func Disconnect(network string) {
 		return fmt.Errorf("failed to write node config %w", err)
 	}
 	peers := []wgtypes.PeerConfig{}
-	for _, node := range config.Nodes {
+	for _, node := range nodes {
 		if node.Connected {
 			peers = append(peers, node.Peers...)
 		}
@@ -41,7 +42,8 @@ func Disconnect(network string) {
 
 // Connect - will attempt to connect a node on given network
 func Connect(network string) {
-	node, ok := config.Nodes[network]
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
 	if !ok {
 		logger.Log(0, "no such network")
 		return
@@ -55,7 +57,7 @@ func Connect(network string) {
 		return fmt.Errorf("failed to write node config %w", err)
 	}
 	peers := []wgtypes.PeerConfig{}
-	for _, node := range config.Nodes {
+	for _, node := range nodes {
 		if node.Connected {
 			peers = append(peers, node.Peers...)
 		}

@@ -45,7 +45,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	var nodeGet models.NodeGet
 	nodeGet.Node = nodeUpdate
-	for _, wgnode := range config.Nodes {
+	for _, wgnode := range config.GetNodes() {
 		nodeGet.Peers = append(nodeGet.Peers, wgnode.Peers...)
 	}
 	newNode, _, _ := config.ConvertNode(&nodeGet)
@@ -71,12 +71,12 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	case models.NODE_UPDATE_KEY:
 		// == get the current key for node ==
-		oldPrivateKey := config.Netclient.PrivateKey
-		if err := UpdateKeys(newNode, &config.Netclient, client); err != nil {
+		oldPrivateKey := config.Netclient().PrivateKey
+		if err := UpdateKeys(newNode, config.Netclient(), client); err != nil {
 			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
-			config.Netclient.PrivateKey = oldPrivateKey
+			config.Netclient().PrivateKey = oldPrivateKey
 		}
-		config.Netclient.PublicKey = config.Netclient.PrivateKey.PublicKey()
+		config.Netclient().PublicKey = config.Netclient().PrivateKey.PublicKey()
 		ifaceDelta = true
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
