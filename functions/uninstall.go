@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
@@ -135,6 +136,7 @@ func deleteLocalNetwork(node *config.Node) error {
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
 	if len(config.Nodes) == 0 {
+		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
 		netmaker, err := netlink.LinkByName("netmaker")
 		if err != nil {
 			return err
