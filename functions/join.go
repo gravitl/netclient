@@ -94,6 +94,7 @@ func Join(flags *viper.Viper) {
 		logger.Log(0, "failed to save server", err.Error())
 	}
 	config.Netclient = *newHost
+	log.Println("ListenPort", newHost.ListenPort, newHost.LocalListenPort)
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saveing netclient config", err.Error())
 	}
