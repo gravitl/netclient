@@ -90,7 +90,7 @@ func (nc *NCIface) ApplyAddrs() error {
 			}
 		}
 	}
-	for _, node := range config.Nodes {
+	for _, node := range config.GetNodes() {
 		var address netlink.Addr
 		var address6 netlink.Addr
 		address.IPNet = &node.Address

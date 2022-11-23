@@ -104,7 +104,7 @@ func FlushPeerRoutes(peers []wgtypes.PeerConfig) {
 	}
 	for _, peer := range peers {
 		for _, allowedIP := range peer.AllowedIPs {
-			deleteRoute(config.Netclient.Interface, &allowedIP)
+			deleteRoute(config.Netclient().Interface, &allowedIP)
 		}
 		if peer.Endpoint == nil {
 			continue

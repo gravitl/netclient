@@ -12,7 +12,8 @@ import (
 
 // Disconnect - disconnects a node from the given network
 func Disconnect(network string) {
-	node, ok := config.Nodes[network]
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
 	if !ok {
 		logger.Log(0, "no such network")
 		return
@@ -22,13 +23,13 @@ func Disconnect(network string) {
 		return
 	}
 	node.Connected = false
-	config.Nodes[node.Network] = node
+	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, "failed to write node config for", node.ID, "on network", network, "with error", err.Error())
 		return
 	}
 	peers := []wgtypes.PeerConfig{}
-	for _, node := range config.Nodes {
+	for _, node := range nodes {
 		if node.Connected {
 			peers = append(peers, node.Peers...)
 		}
@@ -42,7 +43,8 @@ func Disconnect(network string) {
 
 // Connect - will attempt to connect a node on given network
 func Connect(network string) {
-	node, ok := config.Nodes[network]
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
 	if !ok {
 		logger.Log(0, "no such network")
 		return
@@ -52,13 +54,13 @@ func Connect(network string) {
 		return
 	}
 	node.Connected = true
-	config.Nodes[node.Network] = node
+	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, "failed to write node config for", node.ID, "on network", network, "with error", err.Error())
 		return
 	}
 	peers := []wgtypes.PeerConfig{}
-	for _, node := range config.Nodes {
+	for _, node := range nodes {
 		if node.Connected {
 			peers = append(peers, node.Peers...)
 		}

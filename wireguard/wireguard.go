@@ -19,7 +19,7 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers() {
-	nodes := config.Nodes
+	nodes := config.GetNodes()
 	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
 		if node.Connected {
@@ -156,7 +156,7 @@ func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {
 func Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-	host := config.Netclient
+	host := config.Netclient()
 	firewallMark := 0
 	config := wgtypes.Config{
 		PrivateKey:   &host.PrivateKey,

@@ -33,13 +33,13 @@ func GetLocalListenPort(ifacename string) (int, error) {
 // UpdateLocalListenPort - check local port, if different, mod config and publish
 func UpdateLocalListenPort(node *config.Node) error {
 	var err error
-	ifacename := getRealIface(config.Netclient.Interface, node.Address)
+	ifacename := getRealIface(config.Netclient().Interface, node.Address)
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "network:", node.Network, "error encountered checking local listen port: ", ifacename, err.Error())
-	} else if config.Netclient.LocalListenPort != localPort && localPort != 0 {
-		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(config.Netclient.LocalListenPort), " to ", strconv.Itoa(localPort))
-		config.Netclient.LocalListenPort = localPort
+	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 {
+		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(config.Netclient().LocalListenPort), " to ", strconv.Itoa(localPort))
+		config.Netclient().LocalListenPort = localPort
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}

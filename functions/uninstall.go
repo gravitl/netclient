@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -18,7 +19,7 @@ import (
 
 // Uninstall - uninstalls networks from client
 func Uninstall() {
-	for network := range config.Nodes {
+	for network := range config.GetNodes() {
 		if err := LeaveNetwork(network); err != nil {
 			logger.Log(1, "encountered issue leaving network", network, ":", err.Error())
 		}
@@ -40,8 +41,8 @@ func Uninstall() {
 // LeaveNetwork - client exits a network
 func LeaveNetwork(network string) error {
 	logger.Log(0, "leaving network", network)
-	node, ok := config.Nodes[network]
-	if !ok {
+	node := config.GetNode(network)
+	if node.Network == "" {
 		return errors.New("no such network")
 	}
 	logger.Log(2, "deleting node from server")
@@ -54,10 +55,10 @@ func LeaveNetwork(network string) error {
 		return err
 	}
 	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(config.Netclient.Interface, ncutils.IsWindows()); err != nil {
+	if err := removeHostDNS(config.Netclient().Interface, ncutils.IsWindows()); err != nil {
 		logger.Log(0, "failed to delete dns entries", err.Error())
 	}
-	if config.Netclient.DaemonInstalled {
+	if config.Netclient().DaemonInstalled {
 		logger.Log(2, "restarting daemon")
 		return daemon.Restart()
 	}
@@ -68,11 +69,11 @@ func deleteNodeFromServer(node *config.Node) error {
 	if node.IsServer {
 		return errors.New("attempt to delete server node ... not permitted")
 	}
-	token, err := Authenticate(node, &config.Netclient)
+	token, err := Authenticate(node, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
 	if err != nil {
 		return fmt.Errorf("could not read sever config %w", err)
 	}
@@ -101,7 +102,8 @@ func deleteNodeFromServer(node *config.Node) error {
 }
 
 func deleteLocalNetwork(node *config.Node) error {
-	if _, ok := config.Nodes[node.Network]; !ok {
+	nodetodelete := config.GetNode(node.Network)
+	if nodetodelete.Network == "" {
 		return errors.New("no such network")
 	}
 	local.FlushPeerRoutes(node.Peers[:])
@@ -112,7 +114,7 @@ func deleteLocalNetwork(node *config.Node) error {
 		local.RemoveCIDRRoute(&node.NetworkRange6)
 	}
 	//remove node from nodes map
-	delete(config.Nodes, node.Network)
+	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)
 	//remove node from server node map
 	if server != nil {
@@ -121,19 +123,22 @@ func deleteLocalNetwork(node *config.Node) error {
 	}
 	if len(server.Nodes) == 0 {
 		logger.Log(3, "removing server", server.Name)
-		delete(config.Servers, node.Server)
+		config.DeleteServer(node.Server)
 	}
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
-	if len(config.Nodes) == 0 {
+	if len(config.GetNodes()) < 1 {
+		logger.Log(0, "removing wireguard config and netmaker interface")
 		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
-		netmaker, err := netlink.LinkByName("netmaker")
+		link, err := netlink.LinkByName("netmaker")
 		if err != nil {
 			return err
 		}
-		if err := netlink.LinkDel(netmaker); err != nil {
+		if err := netlink.LinkDel(link); err != nil {
 			return err
 		}
+	} else {
+		log.Println(len(config.GetNodes()), "nodes left, leave netmaker interface up")
 	}
 	return nil
 }
