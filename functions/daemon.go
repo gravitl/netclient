@@ -204,7 +204,10 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	server := config.GetServer(node.Network)
+	server := config.GetServer(node.Server)
+	if server == nil {
+		return nil, errors.New("nil server for " + node.Server)
+	}
 	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {
 		log.Println("pubkey", server.TrafficKey)
