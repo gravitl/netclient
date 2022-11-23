@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"crypto/rand"
-	"log"
 	"os"
 	"runtime"
 
@@ -197,12 +196,8 @@ func checkConfig() {
 	config.ReadServerConf()
 	for _, server := range config.Servers {
 		if server.MQID != netclient.HostID || server.Password != netclient.HostPass {
-			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password .... updating ")
-			log.Println(server.MQID == netclient.HostID, "\nMQID", server.MQID, "\nHOSTID", netclient.HostID)
-			log.Println(server.Password == netclient.HostPass, "\n", server.Password, "\n", netclient.HostPass)
-			server.MQID = netclient.HostID
-			server.Password = netclient.HostPass
-			config.SaveServer(server.Name, server)
+			fail = true
+			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
 	}
 	config.ReadNodeConfig()
