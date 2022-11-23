@@ -62,6 +62,9 @@ func ReadNodeConfig() error {
 		return err
 	}
 	defer f.Close()
+	for k := range Nodes {
+		delete(Nodes, k)
+	}
 	if err := yaml.NewDecoder(f).Decode(&Nodes); err != nil {
 		return err
 	}
