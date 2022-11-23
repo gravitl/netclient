@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -32,7 +33,7 @@ const (
 
 var (
 	// Netclient contains the netclient config
-	Netclient Config
+	netclient Config
 	// Version - default version string
 	Version = "dev"
 )
@@ -69,6 +70,14 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
+func UpdateNetclient(c Config) {
+	netclient = c
+}
+
+func Netclient() *Config {
+	return &netclient
+}
+
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
@@ -92,11 +101,13 @@ func ReadNetclientConfig() (*Config, error) {
 	defer Unlock(lockfile)
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Println("viper.Read err", err)
 			return nil, err
 		}
 	}
 	var netclient Config
 	if err := viper.Unmarshal(&netclient); err != nil {
+		log.Println("viper unmarshal error", err)
 		return nil, err
 	}
 	return &netclient, nil
@@ -122,7 +133,7 @@ func WriteNetclientConfig() error {
 		return err
 	}
 	defer f.Close()
-	err = yaml.NewEncoder(f).Encode(Netclient)
+	err = yaml.NewEncoder(f).Encode(netclient)
 	if err != nil {
 		return err
 	}
@@ -177,7 +188,7 @@ func FileExists(f string) bool {
 // the existing lockfile will be deleted and new one created
 // if unable to create within TIMEOUT returns error
 func Lock(lockfile string) error {
-	debug := Netclient.Debug
+	debug := netclient.Debug
 	start := time.Now()
 	pid := os.Getpid()
 	if debug {
@@ -235,7 +246,7 @@ func Lock(lockfile string) error {
 // will return TIMEOUT error if timeout exceeded
 func Unlock(lockfile string) error {
 	var pid int
-	debug := Netclient.Debug
+	debug := netclient.Debug
 	start := time.Now()
 	if debug {
 		logger.Log(0, "unlock try")

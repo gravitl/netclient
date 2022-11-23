@@ -14,12 +14,12 @@ import (
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(network string, iface bool) (*config.Node, error) {
-	node, ok := config.Nodes[network]
-	if !ok {
+	node := config.GetNode(network)
+	if node.Network == "" {
 		return nil, errors.New("no such network")
 	}
-	server := config.Servers[node.Server]
-	token, err := Authenticate(&node, &config.Netclient)
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(&node, config.Netclient())
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	//nodeGet.Peers = []wgtypes.PeerConfig{}
 	//}
 	//update map and save
-	config.Nodes[newNode.Network] = *newNode
-	config.Servers[newNode.Server] = *newServer
+	config.UpdateNodeMap(newNode.Network, *newNode)
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
@@ -56,7 +55,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	config.WriteNetclientConfig()
 	//update wg config
 	peers := newNode.Peers
-	for _, node := range config.Nodes {
+	for _, node := range config.GetNodes() {
 		if node.Connected {
 			peers = append(peers, node.Peers...)
 		}

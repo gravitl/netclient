@@ -68,6 +68,25 @@ func ReadNodeConfig() error {
 	return nil
 }
 
+func GetNodes() map[string]Node {
+	return Nodes
+}
+
+func GetNode(k string) Node {
+	if node, ok := Nodes[k]; ok {
+		return node
+	}
+	return Node{}
+}
+
+func UpdateNodeMap(k string, value Node) {
+	Nodes[k] = value
+}
+
+func DeleteNode(k string) {
+	delete(Nodes, k)
+}
+
 // PrimaryAddress returns the primary address of a node
 func (node *Node) PrimaryAddress() net.IPNet {
 	if node.Address.IP != nil {
@@ -105,11 +124,11 @@ func WriteNodeConfig() error {
 
 // ConvertNode accepts a netmaker node struc and converts to the structs used by netclient
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
-	host := Netclient
+	host := Netclient()
 	netmakerNode := nodeGet.Node
-	server, ok := Servers[netmakerNode.Network]
-	if !ok {
-		server = *ConvertServerCfg(&nodeGet.ServerConfig)
+	server := GetServer(netmakerNode.Network)
+	if server == nil {
+		server = ConvertServerCfg(&nodeGet.ServerConfig)
 	}
 	var node Node
 	node.ID = netmakerNode.ID
@@ -149,15 +168,15 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.IsHub = ParseBool(netmakerNode.IsHub)
 	node.Peers = nodeGet.Peers
 	//add items not provided by server
-	return &node, &server, &host
+	return &node, server, host
 }
 
 // ConvertToNetmakerNode converts a netclient node to a netmaker node
 func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Node {
 	var netmakerNode models.Node
 	netmakerNode.ID = node.ID
-	netmakerNode.OS = Netclient.OS
-	netmakerNode.HostID = Servers[node.Server].MQID
+	netmakerNode.OS = host.OS
+	netmakerNode.HostID = server.MQID
 	netmakerNode.Name = host.Name
 	netmakerNode.Network = node.Network
 	netmakerNode.Password = host.NodePassword
@@ -170,7 +189,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	}
 	netmakerNode.Interface = host.Interface
 	netmakerNode.Server = node.Server
-	netmakerNode.TrafficKeys.Mine = Netclient.TrafficKeyPublic
+	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic
 	netmakerNode.TrafficKeys.Server = server.TrafficKey
 	//only send ip
 	netmakerNode.Endpoint = node.EndpointIP.String()
@@ -235,7 +254,7 @@ func ParseAccessToken(token string) (*models.AccessToken, error) {
 	return &accesstoken, nil
 }
 
-// ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
+// ModPort - Change Node Port if ListenPort is not free
 func ModPort(host *Config) error {
 	var err error
 	host.ListenPort, err = ncutils.GetFreePort(host.ListenPort)

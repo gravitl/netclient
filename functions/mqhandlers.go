@@ -33,7 +33,7 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	logger.Log(0, "processing node update for network", network)
-	node := config.Nodes[network]
+	node := config.GetNode(network)
 	//server := config.Servers[node.Server]
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
@@ -54,7 +54,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	var nodeGet models.NodeGet
 	nodeGet.Node = nodeUpdate
-	for _, wgnode := range config.Nodes {
+	for _, wgnode := range config.GetNodes() {
 		nodeGet.Peers = append(nodeGet.Peers, wgnode.Peers...)
 	}
 	newNode, _, _ := config.ConvertNode(&nodeGet)
@@ -82,12 +82,12 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	case models.NODE_UPDATE_KEY:
 		// == get the current key for node ==
-		oldPrivateKey := config.Netclient.PrivateKey
-		if err := UpdateKeys(newNode, &config.Netclient, client); err != nil {
+		oldPrivateKey := config.Netclient().PrivateKey
+		if err := UpdateKeys(newNode, config.Netclient(), client); err != nil {
 			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
-			config.Netclient.PrivateKey = oldPrivateKey
+			config.Netclient().PrivateKey = oldPrivateKey
 		}
-		config.Netclient.PublicKey = config.Netclient.PrivateKey.PublicKey()
+		config.Netclient().PublicKey = config.Netclient().PrivateKey.PublicKey()
 		ifaceDelta = true
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
@@ -96,14 +96,14 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
-	config.Nodes[network] = *newNode
+	config.UpdateNodeMap(network, *newNode)
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
 	//nameserver := server.CoreDNSAddr
 	//file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
 
-	nc := wireguard.NewNCIface(config.Netclient.MTU)
+	nc := wireguard.NewNCIface(config.Netclient().MTU)
 	//if newNode.ListenPort != newNode.LocalListenPort {
 	//	if err := nc.Close(); err != nil {
 	//		logger.Log(0, "error remove interface", newNode.Interface, err.Error())
@@ -117,7 +117,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//	ifaceDelta = true
 	//	informPortChange(newNode)
 	//}
-	if err := wireguard.UpdateWgInterface(newNode, &config.Netclient); err != nil {
+	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
@@ -148,9 +148,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	//deal with DNS
-	if newNode.DNSOn && shouldDNSChange && config.Netclient.Interface != "" {
+	if newNode.DNSOn && shouldDNSChange && config.Netclient().Interface != "" {
 		logger.Log(0, "network:", newNode.Network, "settng DNS off")
-		if err := removeHostDNS(config.Netclient.Interface, ncutils.IsWindows()); err != nil {
+		if err := removeHostDNS(config.Netclient().Interface, ncutils.IsWindows()); err != nil {
 			logger.Log(0, "network:", newNode.Network, "error removing netmaker profile from /etc/hosts "+err.Error())
 		}
 		//		_, err := ncutils.RunCmd("/usr/bin/resolvectl revert "+nodeCfg.Node.Interface, true)
@@ -166,8 +166,8 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.PeerUpdate
 	var err error
 	network := parseNetworkFromTopic(msg.Topic())
-	node := config.Nodes[network]
-	server := config.Servers[node.Server]
+	node := config.GetNode(network)
+	server := config.GetServer(node.Server)
 	logger.Log(3, "received peer update for", network)
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
@@ -202,7 +202,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	oldGateway := node.InternetGateway
 	if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
 		node.InternetGateway = internetGateway
-		config.Nodes[node.Network] = node
+		config.UpdateNodeMap(node.Network, node)
 		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
@@ -212,12 +212,12 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
-		if err := setHostDNS(peerUpdate.DNS, config.Netclient.Interface, ncutils.IsWindows()); err != nil {
+		if err := setHostDNS(peerUpdate.DNS, config.Netclient().Interface, ncutils.IsWindows()); err != nil {
 			logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())
 			return
 		}
 	} else {
-		if err := removeHostDNS(config.Netclient.Interface, ncutils.IsWindows()); err != nil {
+		if err := removeHostDNS(config.Netclient().Interface, ncutils.IsWindows()); err != nil {
 			logger.Log(0, "network:", node.Network, "error removing profile from /etc/hosts "+err.Error())
 			return
 		}

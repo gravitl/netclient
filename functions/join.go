@@ -80,7 +80,7 @@ func Join(flags *viper.Viper) {
 		logger.FatalLog(err.Error())
 	}
 	//save new configurations
-	config.Nodes[node.Network] = *node
+	config.UpdateNodeMap(node.Network, *node)
 	//use existing server config if it exists, else use new server data
 	server := config.GetServer(node.Server)
 	if server == nil {
@@ -89,11 +89,10 @@ func Join(flags *viper.Viper) {
 	nodes := server.Nodes
 	nodes[node.Network] = true
 	server.Nodes = nodes
-	config.Servers[node.Server] = *server
 	if err := config.SaveServer(node.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	config.Netclient = *newHost
+	config.UpdateNetclient(*newHost)
 	log.Println("ListenPort", newHost.ListenPort, newHost.LocalListenPort)
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saveing netclient config", err.Error())
@@ -102,7 +101,7 @@ func Join(flags *viper.Viper) {
 		logger.Log(0, "error saveing netclient config", err.Error())
 	}
 	logger.Log(1, "joined", node.Network)
-	if config.Netclient.DaemonInstalled {
+	if config.Netclient().DaemonInstalled {
 		if err := daemon.Restart(); err != nil {
 			logger.Log(3, "daemon restart failed:", err.Error())
 			if err := daemon.Start(); err != nil {
@@ -263,16 +262,17 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 
 // JoinNetwork - helps a client join a network
 func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Config, error) {
-	netclient := &config.Netclient
+	netclient := config.Netclient()
 	nodeForServer := models.Node{} //node to send to server
 	nodeForServer.Network = flags.GetString("network")
 	if nodeForServer.Network == "" {
 		return nil, nil, nil, errors.New("no network provided")
 	}
-	if _, ok := config.Nodes[nodeForServer.Network]; ok {
+	nodes := config.GetNodes()
+	if _, ok := nodes[nodeForServer.Network]; ok {
 		return nil, nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + nodeForServer.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + nodeForServer.Network + "'. Then re-run the install command.")
 	}
-	nodeForServer.Version = config.Netclient.Version
+	nodeForServer.Version = config.Netclient().Version
 	nodeForServer.Server = flags.GetString("server")
 	// figure out how to handle commmad line passwords
 	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
@@ -287,7 +287,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if nodeForServer.ListenPort != 0 {
 		nodeForServer.UDPHolePunch = "no"
 	}
-	nodeForServer.TrafficKeys.Mine = config.Netclient.TrafficKeyPublic
+	nodeForServer.TrafficKeys.Mine = config.Netclient().TrafficKeyPublic
 	nodeForServer.TrafficKeys.Server = nil
 	// == end handle keys ==
 	if nodeForServer.LocalAddress == "" {
@@ -320,14 +320,14 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 			return nil, nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", nodeForServer.Network, err)
 		}
 	}
-	nodeForServer.PublicKey = config.Netclient.PublicKey.String()
+	nodeForServer.PublicKey = config.Netclient().PublicKey.String()
 	// Find and set node MacAddress
-	nodeForServer.MacAddress = config.Netclient.MacAddress.String()
+	nodeForServer.MacAddress = config.Netclient().MacAddress.String()
 	// make sure name is appropriate, if not, give blank name
-	nodeForServer.Name = config.Netclient.Name
-	nodeForServer.FirewallInUse = config.Netclient.FirewallInUse
-	nodeForServer.OS = config.Netclient.OS
-	nodeForServer.IPForwarding = config.FormatBool(config.Netclient.IPForwarding)
+	nodeForServer.Name = config.Netclient().Name
+	nodeForServer.FirewallInUse = config.Netclient().FirewallInUse
+	nodeForServer.OS = config.Netclient().OS
+	nodeForServer.IPForwarding = config.FormatBool(config.Netclient().IPForwarding)
 	url := flags.GetString("apiconn")
 	nodeForServer.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+nodeForServer.Network+" at "+url)
@@ -373,13 +373,13 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("modPort error %w", err)
 	}
-	config.Nodes[newNode.Network] = *newNode
+	config.UpdateNodeMap(newNode.Network, *newNode)
 	// TODO :: why here ... should be in daemon?
 	local.SetNetmakerDomainRoute(newServer.API)
 	logger.Log(0, "update wireguard config")
 	wireguard.AddAddresses(newNode)
 	peers := newNode.Peers
-	for _, node := range config.Nodes {
+	for _, node := range config.GetNodes() {
 		if node.Connected {
 			peers = append(peers, node.Peers...)
 		}

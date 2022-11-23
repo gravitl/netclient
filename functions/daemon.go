@@ -79,11 +79,14 @@ func Daemon() {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	//serverSet := make(map[string]bool)
+	config.ReadNetclientConfig()
 	config.ReadNodeConfig()
 	config.ReadServerConf()
-	if len(config.Nodes) > 0 {
+	nodes := config.GetNodes()
+	host := config.Netclient()
+	if len(nodes) > 0 {
 		logger.Log(3, "configuring netmaker wireguard interface")
-		nc := wireguard.NewNCIface(config.Netclient.MTU)
+		nc := wireguard.NewNCIface(host.MTU)
 		nc.Create()
 		wireguard.Configure()
 		wireguard.SetPeers()
@@ -133,7 +136,8 @@ func setupMQTT(server *config.Server) error {
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		logger.Log(0, "mqtt connect handler")
-		for _, node := range config.Nodes {
+		nodes := config.GetNodes()
+		for _, node := range nodes {
 			setSubscriptions(client, &node)
 		}
 	})
@@ -178,12 +182,12 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		}
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to node updates for node %s update/%s/%s", config.Netclient.Name, node.Network, node.ID))
+	logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
 	if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "network", node.Network, token.Error().Error())
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to peer updates for node %s peers/%s/%s", config.Netclient.Name, node.Network, node.ID))
+	logger.Log(3, fmt.Sprintf("subscribed to peer updates peers/%s/%s", node.Network, node.ID))
 }
 
 // should only ever use node client configs
@@ -191,17 +195,19 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
 		return nil, fmt.Errorf("recieved invalid message from broker %v", msg)
 	}
+	host := config.Netclient()
 
 	// setup the keys
-	diskKey, err := ncutils.ConvertBytesToKey(config.Netclient.TrafficKeyPrivate)
+	diskKey, err := ncutils.ConvertBytesToKey(host.TrafficKeyPrivate)
 	if err != nil {
-		log.Println("privatekey", config.Netclient.TrafficKeyPrivate, err)
+		log.Println("privatekey", host.TrafficKeyPrivate, err)
 		return nil, err
 	}
 
-	serverPubKey, err := ncutils.ConvertBytesToKey(config.Servers[node.Server].TrafficKey)
+	server := config.GetServer(node.Network)
+	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {
-		log.Println("pubkey", config.Servers[node.Network].TrafficKey)
+		log.Println("pubkey", server.TrafficKey)
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)
@@ -238,40 +244,40 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 	var ok = true
 	if token := client.Unsubscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", config.Netclient.Name, "\n", "connection timeout")
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID, "\n", "connection timeout")
 		} else {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", config.Netclient.Name, "\n", token.Error().Error())
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID, "\n", token.Error().Error())
 		}
 		ok = false
 	}
 	if token := client.Unsubscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", config.Netclient.Name, "\n", "connection timeout")
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID, "\n", "connection timeout")
 		} else {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", config.Netclient.Name, "\n", token.Error().Error())
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID, "\n", token.Error().Error())
 		}
 		ok = false
 	}
 	if ok {
-		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID, " : ", config.Netclient.Name)
+		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID)
 	}
 }
 
 // UpdateKeys -- updates private key and returns new publickey
-func UpdateKeys(node *config.Node, netclient *config.Config, client mqtt.Client) error {
+func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) error {
 	var err error
-	logger.Log(0, "interface:", config.Netclient.Interface, "received message to update wireguard keys for network ", node.Network)
-	netclient.PrivateKey, err = wgtypes.GeneratePrivateKey()
+	logger.Log(0, "received message to update wireguard keys for network ", node.Network)
+	host.PrivateKey, err = wgtypes.GeneratePrivateKey()
 	if err != nil {
 		logger.Log(0, "network:", node.Network, "error generating privatekey ", err.Error())
 		return err
 	}
-	file := config.GetNetclientInterfacePath() + netclient.Interface + ".conf"
-	if err := wireguard.UpdatePrivateKey(file, netclient.PrivateKey.String()); err != nil {
+	file := config.GetNetclientInterfacePath() + host.Interface + ".conf"
+	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
 		logger.Log(0, "network:", node.Network, "error updating wireguard key ", err.Error())
 		return err
 	}
-	netclient.PublicKey = netclient.PrivateKey.PublicKey()
+	host.PublicKey = host.PrivateKey.PublicKey()
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saving netclient config", err.Error())
 	}

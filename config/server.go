@@ -94,6 +94,10 @@ func GetServer(name string) *Server {
 	return nil
 }
 
+func DeleteServer(k string) {
+	delete(Servers, k)
+}
+
 // ConvertServerCfg converts a netmaker ServerConfig to netclient server struct
 func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	var server Server
@@ -101,8 +105,8 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	server.Version = cfg.Version
 	server.Broker = cfg.Broker
 	server.MQPort = cfg.MQPort
-	server.MQID = Netclient.HostID
-	server.Password = Netclient.HostPass
+	server.MQID = netclient.HostID
+	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsEE = cfg.Is_EE
@@ -121,8 +125,8 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.Version = cfg.Version
 	server.Broker = cfg.Broker
 	server.MQPort = cfg.MQPort
-	server.MQID = Netclient.HostID
-	server.Password = Netclient.HostPass
+	server.MQID = netclient.HostID
+	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsEE = cfg.Is_EE

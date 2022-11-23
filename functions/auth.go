@@ -17,9 +17,9 @@ func Authenticate(node *config.Node, host *config.Config) (string, error) {
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
 		ID:         node.ID,
-		Password:   config.Netclient.HostPass,
+		Password:   host.HostPass,
 	}
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Route:  "/api/nodes/adm/" + node.Network + "/authenticate",

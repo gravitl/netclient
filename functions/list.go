@@ -20,10 +20,11 @@ type CIDR struct {
 // long flag passed passed to cmd line will list additional details about network including peers
 func List(net string, long bool) {
 	found := false
-	for network := range config.Nodes {
+	nodes := config.GetNodes()
+	for network := range nodes {
 		if network == net || net == "all" {
 			found = true
-			node := config.Nodes[network]
+			node := nodes[network]
 			connected := "Not Connected"
 			if node.Connected {
 				connected = "Connected"
