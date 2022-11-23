@@ -4,7 +4,6 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/spf13/viper"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -92,26 +90,40 @@ func SetVersion(ver string) {
 // or "closest" directory will be preferred.
 func ReadNetclientConfig() (*Config, error) {
 	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
-	viper.SetConfigName("netclient.yml")
-	viper.SetConfigType("yml")
-	viper.AddConfigPath(GetNetclientPath())
+	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
 		return nil, err
 	}
 	defer Unlock(lockfile)
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			log.Println("viper.Read err", err)
-			return nil, err
-		}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
 	}
-	var netclient Config
-	if err := viper.Unmarshal(&netclient); err != nil {
-		log.Println("viper unmarshal error", err)
+	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
 	return &netclient, nil
 }
+
+//	viper.SetConfigName("netclient.yml")
+//	viper.SetConfigType("yml")
+//	viper.AddConfigPath(GetNetclientPath())
+//	if err := Lock(lockfile); err != nil {
+//		return nil, err
+//	}
+//	defer Unlock(lockfile)
+//	if err := viper.ReadInConfig(); err != nil {
+//		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+//			log.Println("viper.Read err", err)
+//			return nil, err
+//		}
+//	}
+//	var netclient Config
+//	if err := viper.Unmarshal(&netclient); err != nil {
+//		log.Println("viper unmarshal error", err)
+//		return nil, err
+//	}
+//	return &netclient, nil
 
 // WriteNetclientConfig save the netclient configuration to disk
 func WriteNetclientConfig() error {

@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/yaml.v3"
 )
 
 var cfgFile string
@@ -89,9 +90,16 @@ func initConfig() {
 		logger.Log(0, "failed to releas lockfile", err.Error())
 	}
 	var netclient config.Config
-	if err := viper.Unmarshal(&netclient); err != nil {
+	//viper cannot unmarshal net.IPNet so need to do a funky conversion
+	//if err := viper.Unmarshal(&netclient); err != nil {
+	//logger.Log(0, "could not read netclient config file", err.Error())
+	//}
+	c := viper.AllSettings()
+	b, _ := yaml.Marshal(c)
+	if err := yaml.Unmarshal(b, &netclient); err != nil {
 		logger.Log(0, "could not read netclient config file", err.Error())
 	}
+
 	logger.Verbosity = netclient.Verbosity
 	config.UpdateNetclient(netclient)
 	config.ReadNodeConfig()
