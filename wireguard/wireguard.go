@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"net"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,6 +145,8 @@ func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {
 
 // Configure - configures a pre-installed network interface with WireGuard
 func Configure(privateKey string, port int, n *config.Node) error {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 
 	key, err := wgtypes.ParseKey(privateKey)
 	if err != nil {
@@ -248,6 +251,8 @@ func GetPeers(iface string) ([]wgtypes.Peer, error) {
 
 // ApplyPeers - used to apply or update given peer configs to a node's interface
 func ApplyPeers(n *config.Node, peers []wgtypes.PeerConfig) error {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	if err := RemovePeers(n); err != nil {
 		return err
 	}
@@ -286,7 +291,7 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 		return nil, err
 	}
 	defer wg.Close()
-	dev, err := wg.Device(n.Interface)
+	dev, err := wg.Device(getName())
 	if err != nil {
 		return nil, err
 	}
@@ -309,13 +314,19 @@ func updatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 }
 
 func apply(n *config.Node, c *wgtypes.Config) error {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
 	wg, err := wgctrl.New()
 	if err != nil {
 		return err
 	}
 	defer wg.Close()
 
-	return wg.ConfigureDevice(n.Interface, *c)
+	return wg.ConfigureDevice(getName(), *c)
+}
+
+func getName() string {
+	if runtime.GOOS == "darwin" {
+		return "utun69"
+	}
+
+	return "netmaker"
 }

@@ -1,8 +1,11 @@
 package wireguard
 
 import (
+	"fmt"
 	"net"
+	"net/netip"
 
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/driver"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
@@ -13,24 +16,52 @@ func (nc *NCIface) Create() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	WintunStaticRequestedGUID, _ := windows.GenerateGUID()
-	adapter, err := driver.CreateAdapter(nc.Settings.Interface, "WireGuard", &WintunStaticRequestedGUID)
+	windowsGUID, err := windows.GenerateGUID()
 	if err != nil {
 		return err
 	}
+	logger.Log(3, "creating Windows tunnel")
+	adapter, err := driver.CreateAdapter(getName(), "WireGuard", &windowsGUID)
+	if err != nil {
+		return err
+	}
+	logger.Log(3, "created Windows tunnel")
 	nc.Iface = adapter
 	luid := adapter.LUID()
 	err = adapter.SetAdapterState(driver.AdapterStateUp)
 	if err != nil {
 		return err
 	}
-	state, _ := luid.GUID()
-	return nc.applyAddrs(luid)
+	logger.Log(3, "set adapter state")
+	newAddrs := []net.IPNet{}
+	if nc.Settings.NetworkRange.IP != nil {
+		newAddrs = append(newAddrs, net.IPNet{IP: nc.Settings.NetworkRange.IP, Mask: nc.Settings.NetworkRange.Mask})
+	}
+	if nc.Settings.NetworkRange6.IP != nil {
+		newAddrs = append(newAddrs, net.IPNet{IP: nc.Settings.NetworkRange6.IP, Mask: nc.Settings.NetworkRange6.Mask})
+	}
+	return nc.applyAddrs(luid, newAddrs)
 }
 
-func (nc *NCIface) applyAddrs(luid winipcfg.LUID) error {
+func (nc *NCIface) applyAddrs(luid winipcfg.LUID, addrs []net.IPNet) error {
+	if len(addrs) == 0 {
+		return fmt.Errorf("no addresses provided")
+	}
 
-	err := luid.SetIPAddresses([]net.IPNet{{nc.Settings.Address.IP, nc.Settings.NetworkRange.Mask}})
+	prefixAddrs := []netip.Prefix{}
+	for i := range addrs {
+		// ones, bits := addrs[i].Mask.Size()
+		// fmt.Sprintf("%d %d \n", ones, bits)
+		logger.Log(0, "appending addr", addrs[i].String())
+		pre, err := netip.ParsePrefix(addrs[i].String())
+		if err == nil {
+			prefixAddrs = append(prefixAddrs, pre)
+		} else {
+			logger.Log(0, fmt.Sprintf("failed to append addr to Netclient adapter %v", err))
+		}
+	}
+
+	err := luid.SetIPAddresses(prefixAddrs)
 	if err != nil {
 		return err
 	}

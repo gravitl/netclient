@@ -8,7 +8,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// Create - creates a linux WG interface based on a node's given config
+// NCIface.Create - creates a linux WG interface based on a node's given config
 func (nc *NCIface) Create() error {
 
 	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
@@ -17,7 +17,7 @@ func (nc *NCIface) Create() error {
 			return fmt.Errorf("failed to create kernel interface")
 		}
 		nc.Iface = newLink
-		l, err := netlink.LinkByName(nc.Settings.Interface)
+		l, err := netlink.LinkByName(getName())
 		if err != nil {
 			switch err.(type) {
 			case netlink.LinkNotFoundError:
@@ -113,7 +113,7 @@ type netLink struct {
 }
 
 func (nc *NCIface) getKernelLink() *netLink {
-	link := getNewLink(nc.Settings.Interface)
+	link := getNewLink(getName())
 	return link
 }
 

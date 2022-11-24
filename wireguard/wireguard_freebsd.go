@@ -16,7 +16,7 @@ func (nc *NCIface) Create() error {
 		if newLink == nil {
 			return fmt.Errorf("failed to create kernel interface")
 		}
-		l, err := netlink.LinkByName(nc.Settings.Interface)
+		l, err := netlink.LinkByName(getName())
 		if err != nil {
 			switch err.(type) {
 			case netlink.LinkNotFoundError:
@@ -123,7 +123,7 @@ type netLink struct {
 
 func (nc *NCIface) getKernelLink() *netLink {
 	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = nc.Settings.Interface
+	linkAttrs.Name = getName()
 	return &netLink{
 		attrs: &linkAttrs,
 	}

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gorilla/websocket"
@@ -82,6 +83,7 @@ func Join(flags *viper.Viper) {
 		//if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 		logger.FatalLog(err.Error())
 	}
+	time.Sleep(time.Minute * 3)
 	//save new configurations
 	config.Nodes[node.Network] = *node
 	//use existing server config if it exists, else use new server data
@@ -486,7 +488,7 @@ func getPrivateAddrBackup() (net.IPNet, error) {
 			continue // loopback interface
 		}
 		local, err := i.Addrs()
-		if err != nil {
+		if err != nil || len(local) == 0 {
 			continue
 		}
 		return config.ToIPNet(local[0].String()), nil
