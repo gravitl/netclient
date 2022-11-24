@@ -12,7 +12,7 @@ import (
 	"github.com/guumaster/hostctl/pkg/types"
 )
 
-func removeHostDNS(iface string) error {
+func removeHostDNS(network string) error {
 	etchosts := "/etc/hosts"
 	temp := os.TempDir()
 	lockfile := temp + "/netclient-lock"
@@ -33,7 +33,7 @@ func removeHostDNS(iface string) error {
 	if err != nil {
 		return err
 	}
-	if err := hosts.RemoveProfile(strings.ToLower(iface)); err != nil {
+	if err := hosts.RemoveProfile(strings.ToLower(network)); err != nil {
 		if err == types.ErrUnknownProfile {
 			return nil
 		}
