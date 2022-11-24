@@ -12,7 +12,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/local"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -55,7 +54,7 @@ func LeaveNetwork(network string) error {
 		return err
 	}
 	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(config.Netclient().Interface, ncutils.IsWindows()); err != nil {
+	if err := removeHostDNS(network); err != nil {
 		logger.Log(0, "failed to delete dns entries", err.Error())
 	}
 	if config.Netclient().DaemonInstalled {

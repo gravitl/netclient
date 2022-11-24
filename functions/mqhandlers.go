@@ -2,22 +2,15 @@ package functions
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/guumaster/hostctl/pkg/file"
-	"github.com/guumaster/hostctl/pkg/parser"
-	"github.com/guumaster/hostctl/pkg/types"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -151,9 +144,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	//deal with DNS
-	if newNode.DNSOn && shouldDNSChange && config.Netclient().Interface != "" {
+	if newNode.DNSOn && shouldDNSChange {
 		logger.Log(0, "network:", newNode.Network, "settng DNS off")
-		if err := removeHostDNS(config.Netclient().Interface, ncutils.IsWindows()); err != nil {
+		if err := removeHostDNS(newNode.Network); err != nil {
 			logger.Log(0, "network:", newNode.Network, "error removing netmaker profile from /etc/hosts "+err.Error())
 		}
 		//		_, err := ncutils.RunCmd("/usr/bin/resolvectl revert "+nodeCfg.Node.Interface, true)
@@ -223,54 +216,17 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
-		if err := setHostDNS(peerUpdate.DNS, config.Netclient().Interface, ncutils.IsWindows()); err != nil {
+		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {
 			logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())
 			return
 		}
 	} else {
-		if err := removeHostDNS(config.Netclient().Interface, ncutils.IsWindows()); err != nil {
+		if err := removeHostDNS(node.Network); err != nil {
 			logger.Log(0, "network:", node.Network, "error removing profile from /etc/hosts "+err.Error())
 			return
 		}
 	}
 	UpdateLocalListenPort(&node)
-}
-
-func setHostDNS(dns, iface string, windows bool) error {
-	etchosts := "/etc/hosts"
-	temp := os.TempDir()
-	lockfile := temp + "/netclient-lock"
-	if windows {
-		etchosts = "c:\\windows\\system32\\drivers\\etc\\hosts"
-		lockfile = temp + "\\netclient-lock"
-	}
-	if _, err := os.Stat(lockfile); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("/etc/hosts file is locked .... aborting")
-	}
-	lock, err := os.Create(lockfile)
-	if err != nil {
-		return fmt.Errorf("could not create lock file %w", err)
-	}
-	lock.Close()
-	defer os.Remove(lockfile)
-	dnsdata := strings.NewReader(dns)
-	profile, err := parser.ParseProfile(dnsdata)
-	if err != nil {
-		return err
-	}
-	hosts, err := file.NewFile(etchosts)
-	if err != nil {
-		return err
-	}
-	profile.Name = strings.ToLower(iface)
-	profile.Status = types.Enabled
-	if err := hosts.ReplaceProfile(profile); err != nil {
-		return err
-	}
-	if err := hosts.Flush(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func parseNetworkFromTopic(topic string) string {
