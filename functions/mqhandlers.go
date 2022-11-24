@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -103,7 +104,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//nameserver := server.CoreDNSAddr
 	//file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
 
-	nc := wireguard.NewNCIface(config.Netclient().MTU)
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	nc.Configure()
 	//if newNode.ListenPort != newNode.LocalListenPort {
 	//	if err := nc.Close(); err != nil {
 	//		logger.Log(0, "error remove interface", newNode.Interface, err.Error())
@@ -193,6 +196,14 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
+	log.Println("received peer update \n peers:")
+	for _, peer := range peerUpdate.Peers {
+		log.Println(peer.Endpoint, peer.AllowedIPs)
+	}
+	//update peers in node map
+	updateNode := config.GetNode(peerUpdate.Network)
+	updateNode.Peers = peerUpdate.Peers
+	config.UpdateNodeMap(updateNode.Network, updateNode)
 	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
