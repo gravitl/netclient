@@ -16,8 +16,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type NodeMap map[string]Node
+
 // Nodes provides a map of node configurations indexed by network name
-var Nodes map[string]Node
+var Nodes NodeMap
 
 // NodeLockFile is name of lockfile for controlling access to node config file on disk
 const NodeLockfile = "netclient-nodes.lck"
