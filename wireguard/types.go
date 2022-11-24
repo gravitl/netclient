@@ -10,7 +10,7 @@ type NCIface struct {
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(mtu int) *NCIface {
 	return &NCIface{
-		Name: "netmaker",
+		Name: getName(),
 		MTU:  mtu,
 	}
 }
