@@ -7,6 +7,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -66,5 +67,9 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		config.WriteNetclientConfig()
 	}
 	logger.Log(1, "node settings for network ", network)
+	if config.Netclient().DaemonInstalled {
+		logger.Log(3, "restarting daemon")
+		err = daemon.Restart()
+	}
 	return newNode, err
 }
