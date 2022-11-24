@@ -219,7 +219,7 @@ func checkConfig() {
 	for _, node := range nodes {
 		//make sure server config exists
 		server := config.GetServer(node.Server)
-		if server.Name == "" {
+		if server == nil {
 			fail = true
 			logger.Log(0, "configuration for", node.Server, "is missing")
 		}
