@@ -89,12 +89,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
 	nodes := config.GetNodes()
-	host := config.Netclient()
 	if len(nodes) > 0 {
 		logger.Log(3, "configuring netmaker wireguard interface")
-		nc := wireguard.NewNCIface(host.MTU)
+		nc := wireguard.NewNCIface(config.Netclient(), nodes)
 		nc.Create()
-		wireguard.Configure()
+		//wireguard.Configure()
+		nc.Configure()
 		wireguard.SetPeers()
 	}
 
