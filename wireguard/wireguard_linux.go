@@ -12,7 +12,6 @@ import (
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
-
 	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
 		newLink := nc.getKernelLink()
 		if newLink == nil {
