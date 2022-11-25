@@ -2,7 +2,6 @@ package functions
 
 import (
 	"encoding/json"
-	"log"
 	"strings"
 	"time"
 
@@ -20,7 +19,6 @@ const MQTimeout = 30
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	logger.Log(0, "default message handler -- received message but not handling")
 	logger.Log(0, "topic: "+string(msg.Topic()))
-	//logger.Log(0, "Message: " + string(msg.Payload()))
 }
 
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
@@ -39,7 +37,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling node update data"+err.Error())
 		return
 	}
-
 	// see if cache hit, if so skip
 	var currentMessage = read(nodeUpdate.Network, lastNodeUpdate)
 	if currentMessage == string(data) {
@@ -54,13 +51,11 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	newNode, _, _ := config.ConvertNode(&nodeGet)
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID)
-
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, newNode)
 	shouldDNSChange := node.DNSOn != newNode.DNSOn
 	hubChange := node.IsHub != newNode.IsHub
 	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
-
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
@@ -94,26 +89,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
-	//nameserver := server.CoreDNSAddr
-	//file := config.GetNetclientInterfacePath() + config.Netclient.Interface + ".conf"
-
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
 	wireguard.SetPeers()
-	//if newNode.ListenPort != newNode.LocalListenPort {
-	//	if err := nc.Close(); err != nil {
-	//		logger.Log(0, "error remove interface", newNode.Interface, err.Error())
-	//	}
-	//	err = config.ModPort(&config.Netclient)
-	//	if err != nil {
-	//		logger.Log(0, "network:", newNode.Network, "error modifying node port on", config.Netclient.Name, "-", err.Error())
-	//
-	//	return
-	//	}
-	//	ifaceDelta = true
-	//	informPortChange(newNode)
-	//}
 	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
@@ -122,9 +101,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if keepaliveChange {
 		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
 	}
-	// wireguard.ApplyConf(newNode, file)
 	time.Sleep(time.Second)
-
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
 		doneErr := publishSignal(newNode, DONE)
 		if doneErr != nil {
@@ -186,10 +163,6 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	log.Println("received peer update \n peers:")
-	for _, peer := range peerUpdate.Peers {
-		log.Println(peer.Endpoint, peer.AllowedIPs)
-	}
 	//update peers in node map
 	updateNode := config.GetNode(peerUpdate.Network)
 	updateNode.Peers = peerUpdate.Peers
@@ -208,8 +181,6 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
 	}
-	//nc := wireguard.NewNCIface(&config.Netclient)
-	//nc.Create()
 	wireguard.SetPeers()
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {

@@ -90,6 +90,8 @@ func SaveServer(name string, server Server) error {
 	Servers[name] = server
 	return WriteServerConfig()
 }
+
+// GetServer returns the server struct for the given server name
 func GetServer(name string) *Server {
 	if server, ok := Servers[name]; ok {
 		return &server
@@ -97,6 +99,7 @@ func GetServer(name string) *Server {
 	return nil
 }
 
+// DeleteServer deletes the specified server name from the server map
 func DeleteServer(k string) {
 	delete(Servers, k)
 }
@@ -118,6 +121,7 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	return &server
 }
 
+// UpdateServerConfig updates the in memory server map with values provided from netmaker server
 func UpdateServerConfig(cfg *models.ServerConfig) {
 	server, ok := Servers[cfg.Server]
 	if !ok {

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 
@@ -128,8 +127,6 @@ func deleteLocalNetwork(node *config.Node) error {
 		if err := netlink.LinkDel(link); err != nil {
 			return err
 		}
-	} else {
-		log.Println(len(config.GetNodes()), "nodes left, leave netmaker interface up")
 	}
 	return nil
 }

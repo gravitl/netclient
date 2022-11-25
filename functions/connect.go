@@ -10,12 +10,12 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// Disconnect - disconnects a node from the given network
+// Disconnect disconnects a node from the given network
 func Disconnect(network string) {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
-		logger.Log(0, "no such network")
+		fmt.Println("no such network")
 		return
 	}
 	if !node.Connected {
@@ -36,17 +36,20 @@ func Disconnect(network string) {
 	}
 	wireguard.UpdateWgPeers(peers)
 	if err := daemon.Restart(); err != nil {
-		logger.Log(0, "daemon restart failed", err.Error())
+		fmt.Println("daemon restart failed", err)
+		if err := daemon.Start(); err != nil {
+			fmt.Println("daemon failed to start", err)
+		}
 	}
 	fmt.Println("\nnode is disconnected from", network)
 }
 
-// Connect - will attempt to connect a node on given network
+// Connect will attempt to connect a node on given network
 func Connect(network string) {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
-		logger.Log(0, "no such network")
+		fmt.Println("no such network")
 		return
 	}
 	if node.Connected {
@@ -69,5 +72,12 @@ func Connect(network string) {
 	if err := daemon.Restart(); err != nil {
 		logger.Log(0, "daemon restart failed", err.Error())
 	}
-	fmt.Println("\nnode is connected to", network)
+	if err := daemon.Restart(); err != nil {
+		fmt.Println("daemon restart failed", err)
+		if err := daemon.Start(); err != nil {
+			fmt.Println("daemon failed to start", err)
+		}
+
+		fmt.Println("\nnode is connected to", network)
+	}
 }
