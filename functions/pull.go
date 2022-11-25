@@ -69,7 +69,11 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	logger.Log(1, "node settings for network ", network)
 	if config.Netclient().DaemonInstalled {
 		logger.Log(3, "restarting daemon")
-		err = daemon.Restart()
+		if err := daemon.Restart(); err != nil {
+			if err := daemon.Start(); err != nil {
+				return newNode, err
+			}
+		}
 	}
 	return newNode, err
 }

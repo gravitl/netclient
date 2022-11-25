@@ -11,7 +11,6 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -104,13 +103,6 @@ func deleteLocalNetwork(node *config.Node) error {
 	nodetodelete := config.GetNode(node.Network)
 	if nodetodelete.Network == "" {
 		return errors.New("no such network")
-	}
-	local.FlushPeerRoutes(node.Peers[:])
-	if node.NetworkRange.IP != nil {
-		local.RemoveCIDRRoute(&node.NetworkRange)
-	}
-	if node.NetworkRange6.IP != nil {
-		local.RemoveCIDRRoute(&node.NetworkRange6)
 	}
 	//remove node from nodes map
 	config.DeleteNode(node.Network)
