@@ -53,12 +53,10 @@ func init() {
 	joinCmd.Flags().String("postup", "", "wireguard postup command(s)")
 	joinCmd.Flags().String("postdown", "", "wireguard postdown command(s)")
 	joinCmd.Flags().String("publicipservice", "", "service to call to obtain the public ip of machine")
-
 	joinCmd.Flags().Bool("static", false, "netclient will not check for public address changes")
 	joinCmd.Flags().Bool("dnson", true, "use private dns")
 	joinCmd.Flags().Bool("islocal", false, "use localaddress for wg endpoint")
 	joinCmd.Flags().Bool("ipforwarding", true, "set ipforwarding on/off")
-
 	joinCmd.Flags().Int("keepalive", 20, "persistent keepalive for wireguard peers")
 	joinCmd.Flags().Int("port", 51821, "port for wireguard interface, will turn udpholepunching off")
 
