@@ -23,6 +23,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
+	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )

@@ -133,7 +133,7 @@ func WriteNodeConfig() error {
 	return f.Sync()
 }
 
-// ConvertNode accepts a netmaker node struc and converts to the structs used by netclient
+// ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient()
 	netmakerNode := nodeGet.Node
