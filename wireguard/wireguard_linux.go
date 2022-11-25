@@ -12,14 +12,13 @@ import (
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
-
 	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
 		newLink := nc.getKernelLink()
 		if newLink == nil {
 			return fmt.Errorf("failed to create kernel interface")
 		}
 		nc.Iface = newLink
-		l, err := netlink.LinkByName(nc.Name)
+		l, err := netlink.LinkByName(getName())
 		if err != nil {
 			switch err.(type) {
 			case netlink.LinkNotFoundError:
