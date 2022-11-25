@@ -11,15 +11,15 @@ import (
 
 // listCmd represents the list command
 var listCmd = &cobra.Command{
-	Use:   "list [network | all]",
-	Args:  cobra.ExactArgs(1),
+	Use:   "list [network]",
+	Args:  cobra.RangeArgs(0, 1),
 	Short: "display list of netmaker networks",
 	Long: `display details of netmaker networks
 long flag provide additional details For example:
-netclient list mynet
-netclient list mynet -l
-netclient list all
-netclient list all -l
+netclient list mynet    //display details of mynet network
+netclient list mynet -l //display extended details of mynet network
+netclient list          //display details of all networks
+netclient list  -l      //display extented details of all networks
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
@@ -27,7 +27,11 @@ netclient list all -l
 		if err != nil {
 			logger.Log(0, "error getting flags", err.Error())
 		}
-		functions.List(args[0], long)
+		if len(args) > 0 {
+			functions.List(args[0], long)
+		} else {
+			functions.List("all", long)
+		}
 	},
 }
 
