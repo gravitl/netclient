@@ -22,8 +22,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var cfgFile string
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "netclient",
@@ -52,7 +50,6 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "use specified config file")
 	rootCmd.PersistentFlags().IntP("verbosity", "v", 0, "set loggin verbosity 0-4")
 	viper.BindPFlags(rootCmd.Flags())
 
@@ -63,13 +60,8 @@ func init() {
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
 	checkUID()
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		viper.AddConfigPath(config.GetNetclientPath())
-		viper.SetConfigName("netclient.yml")
-	}
+	viper.AddConfigPath(config.GetNetclientPath())
+	viper.SetConfigName("netclient.yml")
 	viper.SetConfigType("yml")
 
 	viper.BindPFlags(rootCmd.PersistentFlags())
