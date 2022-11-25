@@ -100,6 +100,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
+	wireguard.SetPeers()
 	//if newNode.ListenPort != newNode.LocalListenPort {
 	//	if err := nc.Close(); err != nil {
 	//		logger.Log(0, "error remove interface", newNode.Interface, err.Error())
@@ -120,10 +121,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if keepaliveChange {
 		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
-	}
-	logger.Log(0, "applying WG conf ")
-	if err = nc.Create(); err != nil {
-		logger.Log(0, "failed to create WG iface after update")
 	}
 	// wireguard.ApplyConf(newNode, file)
 	time.Sleep(time.Second)
