@@ -42,11 +42,6 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	nodeGet := response.(models.NodeGet)
 	newNode, newServer, newHost := config.ConvertNode(&nodeGet)
-	//why???
-	//if nodeGet.Peers == nil {
-	//nodeGet.Peers = []wgtypes.PeerConfig{}
-	//}
-	//update map and save
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err

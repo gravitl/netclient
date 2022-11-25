@@ -27,7 +27,7 @@ import (
 	"golang.org/x/term"
 )
 
-// Join joins a netmaker network
+// Join joins a netmaker network with flags specified on command line
 func Join(flags *viper.Viper) {
 	//config.ParseJoinFlags(cmd)
 	fmt.Println("join called")
@@ -64,19 +64,10 @@ func Join(flags *viper.Viper) {
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
 		flags.Set("localrange", accessToken.ClientConfig.LocalRange)
 		flags.Set("apiconn", accessToken.APIConnString)
-
 	}
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
 	node, newServer, newHost, err := JoinNetwork(flags)
 	if err != nil {
-		//if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
-		//logger.Log(0, "error installing: ", err.Error())
-		//err = WipeLocal(node)
-		//if err != nil {
-		//logger.FatalLog("error removing artifacts: ", err.Error())
-		//}
-		//}
-		//if strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 		logger.FatalLog(err.Error())
 	}
 	//save new configurations
@@ -152,7 +143,6 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 			macAddress = macs[0].String()
 		}
 	}
-
 	var loginMsg promodels.LoginMsg
 	loginMsg.Mac = macAddress
 	loginMsg.Network = network
@@ -166,7 +156,6 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 		loginMsg.Password = string(pass)
 		fmt.Println("attempting login...")
 	}
-
 	msgTx, err := json.Marshal(loginMsg)
 	if err != nil {
 		logger.Log(0, fmt.Sprintf("failed to marshal message %+v", loginMsg))
@@ -177,7 +166,6 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 		logger.FatalLog("Error during writing to websocket:", err.Error())
 		return nil, err
 	}
-
 	// if user provided, server will handle authentication
 	if loginMsg.User == "" {
 		// We are going to get instructions on how to authenticate
@@ -189,7 +177,6 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 		// Print message from the netmaker controller to the user
 		fmt.Printf("Please visit:\n %s \n to authenticate", string(msg))
 	}
-
 	// Now the user is authenticating and we need to block until received
 	// An answer from the server.
 	// Server waits ~5 min - If takes too long timeout will be triggered by the server
@@ -240,7 +227,6 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 			}
 		}
 	}()
-
 	for {
 		select {
 		case <-done:
@@ -260,7 +246,7 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	}
 }
 
-// JoinNetwork - helps a client join a network
+// JoinNetwork - connects to netamker server to join a network
 func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Config, error) {
 	netclient := config.Netclient()
 	nodeForServer := models.Node{} //node to send to server
@@ -274,13 +260,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	}
 	nodeForServer.Version = config.Netclient().Version
 	nodeForServer.Server = flags.GetString("server")
-	// figure out how to handle commmad line passwords
-	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-	//node.Password = flags.GetString("password")
-	//if node.Password == "" {
 	nodeForServer.Password = netclient.HostPass
 	nodeForServer.HostID = netclient.HostID
-	//}
 	//check if ListenPort was set on command line
 	nodeForServer.UDPHolePunch = "" // set default
 	nodeForServer.ListenPort = flags.GetInt32("port")
@@ -354,8 +335,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response.(models.NodeGet)
-	// TODO ---- don't think we need to do this ... ConvertNode will take care of it
-	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
@@ -388,10 +367,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if internetGateway != nil {
 		newHostConfig.InternetGateway = *internetGateway
 	}
-	//err = wireguard.InitWireguard(newNode, nodeGET.Peers[:])
-	//if err != nil {
-	//return newNode, nil, nil, fmt.Errorf("error initializing wireguard %w", err)
-	//}
 	return newNode, newServer, newHostConfig, err
 }
 
@@ -436,23 +411,4 @@ func getPrivateAddrBackup() (net.IPNet, error) {
 	}
 	err = errors.New("local ip address not found")
 	return address, err
-}
-
-// format name appropriately. Set to blank on failure
-func formatName(name string) string {
-	// Logic to properly format name
-	node := models.Node{}
-	node.Name = name
-	if !node.NameInNodeCharSet() {
-		node.Name = ncutils.DNSFormatString(node.Name)
-	}
-	if len(node.Name) > models.MAX_NAME_LENGTH {
-		node.Name = ncutils.ShortenString(node.Name, models.MAX_NAME_LENGTH)
-	}
-	if !node.NameInNodeCharSet() || len(node.Name) > models.MAX_NAME_LENGTH {
-		logger.Log(1, "network:", node.Network, "could not properly format name: "+node.Name)
-		logger.Log(1, "network:", node.Network, "setting name to blank")
-		node.Name = ""
-	}
-	return node.Name
 }

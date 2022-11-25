@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -76,9 +75,9 @@ func Daemon() {
 	}
 }
 
+// startGoRoutines starts the daemon goroutines
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
-	//serverSet := make(map[string]bool)
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		logger.Log(0, "error reading neclient config file", err.Error())
 	}
@@ -93,11 +92,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(3, "configuring netmaker wireguard interface")
 		nc := wireguard.NewNCIface(config.Netclient(), nodes)
 		nc.Create()
-		//wireguard.Configure()
 		nc.Configure()
 		wireguard.SetPeers()
 	}
-
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
 		local.SetNetmakerDomainRoute(server.API)
@@ -125,7 +122,6 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 }
 
 // setupMQTT creates a connection to broker
-// this function is used to create a connection to publish to the broker
 func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
@@ -173,11 +169,10 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "failed to establish connection to broker: ", connecterr.Error())
 		return connecterr
 	}
-
 	return nil
 }
 
-// sets MQ client subscriptions for a specific node config
+// setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
 	if token := client.Subscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
@@ -202,11 +197,9 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 		return nil, fmt.Errorf("recieved invalid message from broker %v", msg)
 	}
 	host := config.Netclient()
-
 	// setup the keys
 	diskKey, err := ncutils.ConvertBytesToKey(host.TrafficKeyPrivate)
 	if err != nil {
-		log.Println("privatekey", host.TrafficKeyPrivate, err)
 		return nil, err
 	}
 
@@ -216,7 +209,6 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 	}
 	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {
-		log.Println("pubkey", server.TrafficKey)
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)
@@ -281,7 +273,7 @@ func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) erro
 		logger.Log(0, "network:", node.Network, "error generating privatekey ", err.Error())
 		return err
 	}
-	file := config.GetNetclientInterfacePath() + host.Interface + ".conf"
+	file := config.GetNetclientPath() + host.Interface + ".conf"
 	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
 		logger.Log(0, "network:", node.Network, "error updating wireguard key ", err.Error())
 		return err

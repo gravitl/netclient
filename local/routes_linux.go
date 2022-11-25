@@ -4,7 +4,6 @@ import (
 	//"github.com/davecgh/go-spew/spew"
 
 	"fmt"
-	"log"
 	"net"
 	"strings"
 
@@ -77,9 +76,7 @@ func removeCidr(addr *net.IPNet) {
 		logger.Log(0, "failed to find route for ", addr.String(), err.Error())
 		return
 	}
-	log.Println(routes)
 	for _, route := range routes {
-		log.Println("deleting route ", route)
 		if err := netlink.RouteDel(&route); err != nil {
 			logger.Log(0, "failed to delete route for", addr.String(), err.Error())
 		} else {

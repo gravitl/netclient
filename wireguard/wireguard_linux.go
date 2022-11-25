@@ -41,11 +41,9 @@ func (nc *NCIface) Create() error {
 		if err = nc.ApplyAddrs(); err != nil {
 			return err
 		}
-
 		if err = netlink.LinkSetMTU(newLink, nc.MTU); err != nil {
 			return err
 		}
-
 		if err = netlink.LinkSetUp(newLink); err != nil {
 			return err
 		}

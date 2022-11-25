@@ -68,10 +68,12 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
+// UpdateNetcllient updates the in menory version of the host configuration
 func UpdateNetclient(c Config) {
 	netclient = c
 }
 
+// Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
 	return &netclient
 }
@@ -81,13 +83,7 @@ func SetVersion(ver string) {
 	Version = ver
 }
 
-// ReadNetclientConfig reads a configuration file and returns it as an
-// instance. If no configuration file is found, nil and no error will be
-// returned. The configuration mustID live in one of the directories specified in
-// with AddConfigPath()
-//
-// In case multiple configuration files are found, the one in the most specific
-// or "closest" directory will be preferred.
+// ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
 	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
 	file := GetNetclientPath() + "netclient.yml"
@@ -105,27 +101,7 @@ func ReadNetclientConfig() (*Config, error) {
 	return &netclient, nil
 }
 
-//	viper.SetConfigName("netclient.yml")
-//	viper.SetConfigType("yml")
-//	viper.AddConfigPath(GetNetclientPath())
-//	if err := Lock(lockfile); err != nil {
-//		return nil, err
-//	}
-//	defer Unlock(lockfile)
-//	if err := viper.ReadInConfig(); err != nil {
-//		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-//			log.Println("viper.Read err", err)
-//			return nil, err
-//		}
-//	}
-//	var netclient Config
-//	if err := viper.Unmarshal(&netclient); err != nil {
-//		log.Println("viper unmarshal error", err)
-//		return nil, err
-//	}
-//	return &netclient, nil
-
-// WriteNetclientConfig save the netclient configuration to disk
+// WriteNetclientConfiig writes the in memory host configuration to disk
 func WriteNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
@@ -163,17 +139,6 @@ func GetNetclientPath() string {
 	}
 }
 
-// GetNetclientInterfacePath returns path to wireguard interface configuration files
-func GetNetclientInterfacePath() string {
-	if runtime.GOOS == "windows" {
-		return WindowsAppDataPath + "interfaces\\"
-	} else if runtime.GOOS == "darwin" {
-		return MacAppDataPath + "interfaces/"
-	} else {
-		return LinuxAppDataPath + "interfaces/"
-	}
-}
-
 // GetNetclientInstallPath returns the full path where netclient should be installed based on OS
 func GetNetclientInstallPath() string {
 	switch runtime.GOOS {
@@ -184,15 +149,6 @@ func GetNetclientInstallPath() string {
 	default:
 		return "/usr/bin/netclient"
 	}
-}
-
-// FileExists - checks if a file exists on disk
-func FileExists(f string) bool {
-	info, err := os.Stat(f)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
 }
 
 // Lock creates a lockfile with pid as contents

@@ -23,9 +23,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-
 	nc.Iface = tunIface
-
 	tunDevice := device.NewDevice(tunIface, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, "[netclient] "))
 	err = tunDevice.Up()
 	if err != nil {
@@ -35,7 +33,6 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-
 	go func() {
 		for {
 			uapiConn, uapiErr := uapi.Accept()
@@ -45,7 +42,6 @@ func (nc *NCIface) createUserSpaceWG() error {
 			go tunDevice.IpcHandle(uapiConn)
 		}
 	}()
-
 	if err = nc.ApplyAddrs(); err != nil {
 		return err
 	}

@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// NodeMap is an in memory map of the all nodes indexed by network name
 type NodeMap map[string]Node
 
 // Nodes provides a map of node configurations indexed by network name
@@ -51,7 +52,7 @@ type Node struct {
 	Peers               []wgtypes.PeerConfig
 }
 
-// ReadNodeConfig - reads node configuration from disk
+// ReadNodeConfig reads node configuration from disk
 func ReadNodeConfig() error {
 	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
@@ -73,10 +74,12 @@ func ReadNodeConfig() error {
 	return nil
 }
 
-func GetNodes() map[string]Node {
+// GetNodes returns a copy of the NodeMap
+func GetNodes() NodeMap {
 	return Nodes
 }
 
+// GetNode returns returns the node configuation of the specified network name
 func GetNode(k string) Node {
 	if node, ok := Nodes[k]; ok {
 		return node
@@ -84,10 +87,12 @@ func GetNode(k string) Node {
 	return Node{}
 }
 
+// UpdateNodeMap updates the in memory nodemap for the specified network
 func UpdateNodeMap(k string, value Node) {
 	Nodes[k] = value
 }
 
+// DeleteNode deletes the node from the nodemap for the specified network
 func DeleteNode(k string) {
 	delete(Nodes, k)
 }
@@ -100,7 +105,7 @@ func (node *Node) PrimaryAddress() net.IPNet {
 	return node.Address6
 }
 
-// writeNodeConfiguation writes the node map to disk
+// WriteNodeConfiguation writes the node map to disk
 func WriteNodeConfig() error {
 	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
@@ -127,7 +132,7 @@ func WriteNodeConfig() error {
 	return f.Sync()
 }
 
-// ConvertNode accepts a netmaker node struc and converts to the structs used by netclient
+// ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient()
 	netmakerNode := nodeGet.Node
