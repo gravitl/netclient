@@ -48,14 +48,14 @@ func LeaveNetwork(network string) ([]error, error) {
 	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
-	}
+	}nd
 	fmt.Println("deleting wireguard interface")
 	if err := deleteLocalNetwork(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(network); err != nil {
-		logger.Log(0, "failed to delete dns entries", err.Error())
+	fmt.Println("deleting configuration files")
+	if err := WipeLocal(&node); err != nil {
+		faults = append(faults, fmt.Errorf("error deleting local network files %w", err))
 	}
 	fmt.Println("removing dns entries")
 	if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
