@@ -246,7 +246,7 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	}
 }
 
-// JoinNetwork - connects to netamker server to join a network
+// JoinNetwork - connects to netmaker server to join a network
 func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Config, error) {
 	netclient := config.Netclient()
 	nodeForServer := models.Node{} //node to send to server
