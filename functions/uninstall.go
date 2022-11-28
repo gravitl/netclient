@@ -10,6 +10,7 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -36,30 +37,36 @@ func Uninstall() {
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) error {
-	logger.Log(0, "leaving network", network)
-	node := config.GetNode(network)
-	if node.Network == "" {
-		return errors.New("no such network")
-	}
-	logger.Log(2, "deleting node from server")
+func LeaveNetwork(network string) (error, []error) {
+	faults := []error{}
+	fmt.Println("\nleaving network", network)
+	node := config.Nodes[network]
+	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
-		logger.Log(0, "error deleting node from server", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
 	}
-	logger.Log(2, "deleting node from client")
+	fmt.Println("deleting wireguard interface")
 	if err := deleteLocalNetwork(&node); err != nil {
-		logger.Log(0, "error deleting local node", err.Error())
-		return err
+		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(network); err != nil {
-		logger.Log(0, "failed to delete dns entries", err.Error())
+	fmt.Println("deleting configuration files")
+	if err := WipeLocal(&node); err != nil {
+		faults = append(faults, fmt.Errorf("error deleting local network files %w", err))
 	}
-	if config.Netclient().DaemonInstalled {
-		logger.Log(2, "restarting daemon")
-		return daemon.Restart()
+	fmt.Println("removing dns entries")
+	if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
+		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
-	return nil
+	if config.Netclient.DaemonInstalled {
+		fmt.Println("restarting daemon")
+		if err := daemon.Restart(); err != nil {
+			faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
+		}
+	}
+	if len(faults) > 0 {
+		return errors.New("error(s) leaving nework"), faults
+	}
+	return nil, faults
 }
 
 func deleteNodeFromServer(node *config.Node) error {

@@ -4,6 +4,8 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
@@ -20,8 +22,14 @@ For example:
 netclient leave my-network`,
 	Run: func(cmd *cobra.Command, args []string) {
 		logger.Log(0, "leave called")
-		if err := functions.LeaveNetwork(args[0]); err != nil {
-			logger.Log(0, err.Error())
+		err, faults := functions.LeaveNetwork(args[0])
+		if err != nil {
+			fmt.Println(err.Error())
+			for _, fault := range faults {
+				fmt.Println(fault.Error())
+			}
+		} else {
+			fmt.Println("successful left network ", args[0])
 		}
 	},
 }
