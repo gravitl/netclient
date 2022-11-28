@@ -17,7 +17,7 @@ func Disconnect(network string) error {
 	node.Connected = false
 	config.Nodes[node.Network] = node
 	if err := config.WriteNodeConfig(); err != nil {
-		return fmt.Errorf("failed to write node config %w, err")
+		return fmt.Errorf("failed to write node config %w", err)
 	}
 	if err := daemon.Restart(); err != nil {
 		return fmt.Errorf("daemon restart failed %w", err)
