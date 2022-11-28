@@ -21,7 +21,11 @@ For example:
 netclient disconnect my-network`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("disconnect called", args)
-		functions.Disconnect(args[0])
+		if err := functions.Disconnect(args[0]); err != nil {
+			fmt.Println("\nnode disconnect failed: ", err)
+		} else {
+			fmt.Println("\nnode is disconnected from", args[0])
+		}
 	},
 }
 

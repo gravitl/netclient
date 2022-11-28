@@ -1,56 +1,43 @@
 package functions
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netmaker/logger"
 )
 
 // Disconnect - disconnects a node from the given network
-func Disconnect(network string) {
+func Disconnect(network string) error {
 	node := config.Nodes[network]
 	if !node.Connected {
-		fmt.Println("\nnode already disconnected from", network)
-		return
+		return errors.New("node is already disconnected")
 	}
 	node.Connected = false
 	config.Nodes[node.Network] = node
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
-		return
+		return fmt.Errorf("failed to write node config %w, err")
 	}
-
 	if err := daemon.Restart(); err != nil {
-		logger.Log(0, "daemon restart failed", err.Error())
+		return fmt.Errorf("daemon restart failed %w", err)
 	}
-	fmt.Println("\nnode is disconnected from", network)
+	return nil
 }
 
 // Connect - will attempt to connect a node on given network
-func Connect(network string) {
+func Connect(network string) error {
 	node := config.Nodes[network]
 	if node.Connected {
-		fmt.Println("\nnode already connected to", network)
-		return
+		return errors.New("node already connected")
 	}
 	node.Connected = true
 	config.Nodes[node.Network] = node
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
-		return
+		return fmt.Errorf("failed to write node config %w", err)
 	}
-	// filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
-	//if err := setupMQTTSingleton(cfg); err != nil {
-	//	return err
-	//}
-	//if err := PublishNodeUpdate(cfg); err != nil {
-	//	return err
-	//}
-
 	if err := daemon.Restart(); err != nil {
-		logger.Log(0, "daemon restart failed", err.Error())
+		return fmt.Errorf("daemon restart failed %w", err)
 	}
-	fmt.Println("\nnode is connected to", network)
+	return nil
 }
