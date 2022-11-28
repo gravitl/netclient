@@ -39,30 +39,36 @@ func Uninstall() {
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) error {
-	logger.Log(0, "leaving network", network)
+func LeaveNetwork(network string) (error, []error) {
+	faults := []error{}
+	fmt.Println("\nleaving network", network)
 	node := config.Nodes[network]
-	logger.Log(2, "deleting node from server")
+	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
-		logger.Log(0, "error deleting node from server", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
 	}
-	logger.Log(2, "deleting wireguard interface")
+	fmt.Println("deleting wireguard interface")
 	if err := deleteLocalNetwork(&node); err != nil {
-		logger.Log(0, "error deleting wireguard interface", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	logger.Log(2, "deleting configuration files")
+	fmt.Println("deleting configuration files")
 	if err := WipeLocal(&node); err != nil {
-		logger.Log(0, "error deleting local network files", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting local network files %w", err))
 	}
-	logger.Log(2, "removing dns entries")
+	fmt.Println("removing dns entries")
 	if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
-		logger.Log(0, "failed to delete dns entries for", node.Interface, err.Error())
+		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
 	if config.Netclient.DaemonInstalled {
-		logger.Log(2, "restarting daemon")
-		return daemon.Restart()
+		fmt.Println("restarting daemon")
+		if err := daemon.Restart(); err != nil {
+			faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
+		}
 	}
-	return nil
+	if len(faults) > 0 {
+		return errors.New("error(s) leaving nework"), faults
+	}
+	return nil, faults
 }
 
 func deleteNodeFromServer(node *config.Node) error {
