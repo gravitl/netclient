@@ -156,9 +156,12 @@ func Hello(node *config.Node) {
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
 	} else {
-		node.Interfaces = *ip
-		if err := config.WriteNodeConfig(); err != nil {
-			logger.Log(0, "error saving node map", err.Error())
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			node.Interfaces = *ip
+			if err := config.WriteNodeConfig(); err != nil {
+				logger.Log(0, "error saving node map", err.Error())
+			}
 		}
 	}
 	checkin.Ifaces = node.Interfaces

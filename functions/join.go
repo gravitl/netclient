@@ -283,7 +283,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
 	} else {
-		nodeForServer.Interfaces = *ip
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			nodeForServer.Interfaces = *ip
+		}
 	}
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
