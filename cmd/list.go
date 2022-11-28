@@ -30,7 +30,7 @@ netclient list  -l      //display extented details of all networks
 		if len(args) > 0 {
 			functions.List(args[0], long)
 		} else {
-			functions.List("all", long)
+			functions.List("", long)
 		}
 	},
 }

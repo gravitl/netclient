@@ -116,7 +116,7 @@ func (nc *NCIface) ApplyAddrs() error {
 type netLink struct {
 	attrs *netlink.LinkAttrs
 }
-pretty
+
 func (nc *NCIface) getKernelLink() *netLink {
 	link := getNewLink(getName())
 	return link

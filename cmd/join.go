@@ -49,7 +49,6 @@ func init() {
 	joinCmd.Flags().String("localaddress", "", "localaddress for machine. can be used in place of endpoint for machines on same lan")
 	joinCmd.Flags().String("address", "", "wireguard address (ipv4) for machine in netmaker network")
 	joinCmd.Flags().String("address6", "", "wireguard address (ipv6) for machine in netmaker network")
-	joinCmd.Flags().String("interface", "netmaker", "wireguard interface name")
 	joinCmd.Flags().String("postup", "", "wireguard postup command(s)")
 	joinCmd.Flags().String("postdown", "", "wireguard postdown command(s)")
 	joinCmd.Flags().String("publicipservice", "", "service to call to obtain the public ip of machine")
