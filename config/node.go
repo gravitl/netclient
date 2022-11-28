@@ -105,7 +105,7 @@ func (node *Node) PrimaryAddress() net.IPNet {
 	return node.Address6
 }
 
-// WriteNodeConfiguation writes the node map to disk
+// WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
 	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"

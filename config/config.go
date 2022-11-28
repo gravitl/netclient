@@ -68,7 +68,7 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
-// UpdateNetcllient updates the in menory version of the host configuration
+// UpdateNetcllient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
 	netclient = c
 }

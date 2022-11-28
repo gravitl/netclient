@@ -13,6 +13,8 @@ type NCIface struct {
 	Config wgtypes.Config
 }
 
+var netmaker NCIface
+
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := 0
@@ -20,7 +22,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	for _, node := range nodes {
 		peers = append(peers, node.Peers...)
 	}
-	return &NCIface{
+	netmaker := NCIface{
 		Name: getName(),
 		MTU:  host.MTU,
 		Config: wgtypes.Config{
@@ -31,6 +33,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 			Peers:        peers,
 		},
 	}
+	return &netmaker
 }
 
 // Close closes a netclient interface
@@ -45,6 +48,18 @@ func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	return apply(nil, &n.Config)
+}
+
+func GetInterface() *NCIface {
+	return &netmaker
+}
+
+func (n *NCIface) UpdatePeer(p wgtypes.PeerConfig) {
+	peers := []wgtypes.PeerConfig{}
+	peers = append(peers, p)
+	n.Config.ReplacePeers = false
+	n.Config.Peers = peers
+	apply(nil, &n.Config)
 }
 
 // == private ==

@@ -94,6 +94,7 @@ func UpdateKeepAlive(keepalive int) error {
 	return nil
 }
 
+// UpdateWgPeers updates the peers section of wg conf file with a new set of peers
 func UpdateWgPeers(peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
 	var internetGateway *net.UDPAddr
 	options := ini.LoadOptions{
@@ -236,6 +237,7 @@ func WriteWgConfig(host *config.Config, nodes map[string]config.Node) error {
 	return nil
 }
 
+// AddAddress adds a nodes addresses (v4 and v6) to interface section of wg config file
 func AddAddresses(node *config.Node) {
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,

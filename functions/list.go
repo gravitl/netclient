@@ -6,23 +6,13 @@ import (
 	"github.com/gravitl/netclient/config"
 )
 
-type Peer struct {
-	PublicKey  string
-	Endpoint   string
-	AllowedIPs []string
-}
-
-type CIDR struct {
-	CIDR string
-}
-
 // List - list network details for specified networks
 // long flag passed passed to cmd line will list additional details about network including peers
 func List(net string, long bool) {
 	found := false
 	nodes := config.GetNodes()
 	for network := range nodes {
-		if network == net || net == "all" {
+		if network == net || net == "" {
 			found = true
 			node := nodes[network]
 			connected := "Not Connected"
