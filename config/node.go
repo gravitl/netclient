@@ -34,6 +34,7 @@ type Node struct {
 	InternetGateway     *net.UDPAddr
 	Server              string
 	Connected           bool
+	Interfaces          []models.Iface
 	EndpointIP          net.IP
 	Address             net.IPNet
 	Address6            net.IPNet
@@ -149,6 +150,7 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
+	node.Interfaces = netmakerNode.Interfaces
 	//n.Interface = s.Interface
 	node.Server = strings.Replace(netmakerNode.Server, "api.", "", 1)
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
@@ -198,6 +200,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 		netmakerNode.InternetGateway = node.InternetGateway.IP.String()
 	}
 	netmakerNode.Interface = host.Interface
+	netmakerNode.Interfaces = node.Interfaces
 	netmakerNode.Server = node.Server
 	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic
 	netmakerNode.TrafficKeys.Server = server.TrafficKey
