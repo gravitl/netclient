@@ -16,10 +16,13 @@ import (
 )
 
 // Uninstall - uninstalls networks from client
-func Uninstall() {
-	for network := range config.GetNodes() {
-		if err := LeaveNetwork(network); err != nil {
-			logger.Log(1, "encountered issue leaving network", network, ":", err.Error())
+func Uninstall() ([]error, error) {
+	allfaults := []error{}
+	var err error
+	for network := range config.Nodes {
+		faults, err := LeaveNetwork(network)
+		if err != nil {
+			allfaults = append(allfaults, faults...)
 		}
 	}
 	// clean up OS specific stuff
@@ -34,10 +37,11 @@ func Uninstall() {
 	//} else if !ncutils.IsKernel() {
 	//logger.Log(1, "manual cleanup required")
 	//}
+	return allfaults, err
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) (error, []error) {
+func LeaveNetwork(network string) ([]error, error) {
 	faults := []error{}
 	fmt.Println("\nleaving network", network)
 	node := config.Nodes[network]
@@ -64,9 +68,9 @@ func LeaveNetwork(network string) (error, []error) {
 		}
 	}
 	if len(faults) > 0 {
-		return errors.New("error(s) leaving nework"), faults
+		return faults, errors.New("error(s) leaving nework")
 	}
-	return nil, faults
+	return faults, nil
 }
 
 func deleteNodeFromServer(node *config.Node) error {
