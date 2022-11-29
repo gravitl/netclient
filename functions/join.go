@@ -20,58 +20,58 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/local"
+	ncmodels "github.com/gravitl/netclient/models"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
-	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/term"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Join joins a netmaker network
-func Join(flags *viper.Viper) {
+func Join(nwParams *ncmodels.NetworkParams) (*config.Node, *config.Server, error) {
 	//config.ParseJoinFlags(cmd)
 	fmt.Println("join called")
-	if flags.Get("server") != "" {
+	if nwParams.Server != "" {
 		//SSO sign on
-		if flags.Get("network") == "" {
+		if nwParams.Network == "" {
 			logger.Log(0, "no network provided")
 		}
 		log.Println()
-		ssoAccessToken, err := JoinViaSSo(flags)
+		ssoAccessToken, err := JoinViaSSo(nwParams)
 		if err != nil {
 			logger.Log(0, "Join failed:", err.Error())
-			return
+			return nil, nil, err
 		}
 		log.Println("token from SSo")
 		if ssoAccessToken == nil {
 			fmt.Println("login failed")
-			return
+			return nil, nil, err
 		}
-		flags.Set("network", ssoAccessToken.ClientConfig.Network)
-		flags.Set("accesskey", ssoAccessToken.ClientConfig.Key)
-		flags.Set("localrange", ssoAccessToken.ClientConfig.LocalRange)
-		flags.Set("apiconn", ssoAccessToken.APIConnString)
+		nwParams.Network = ssoAccessToken.ClientConfig.Network
+		nwParams.AccessKey = ssoAccessToken.ClientConfig.Key
+		nwParams.LocalRange = ssoAccessToken.ClientConfig.LocalRange
+		nwParams.ApiConn = ssoAccessToken.APIConnString
 	}
-	token := flags.GetString("token")
+	token := nwParams.Token
 	if token != "" {
 		logger.Log(3, "parsing token flag")
 		accessToken, err := config.ParseAccessToken(token)
 		if err != nil {
 			logger.Log(0, "failed to parse access token", token, err.Error())
-			return
+			return nil, nil, err
 		}
-		flags.Set("network", accessToken.ClientConfig.Network)
-		flags.Set("accesskey", accessToken.ClientConfig.Key)
-		flags.Set("localrange", accessToken.ClientConfig.LocalRange)
-		flags.Set("apiconn", accessToken.APIConnString)
+		nwParams.Network = accessToken.ClientConfig.Network
+		nwParams.AccessKey = accessToken.ClientConfig.Key
+		nwParams.LocalRange = accessToken.ClientConfig.LocalRange
+		nwParams.ApiConn = accessToken.APIConnString
 
 	}
-	logger.Log(1, "Joining network: ", flags.GetString("network"))
-	node, newServer, err := JoinNetwork(flags)
+	logger.Log(1, "Joining network: ", nwParams.Network)
+	node, newServer, err := JoinNetwork(nwParams)
 	if err != nil {
 		//if !strings.Contains(err.Error(), "ALREADY_INSTALLED") {
 		//logger.Log(0, "error installing: ", err.Error())
@@ -114,6 +114,8 @@ func Join(flags *viper.Viper) {
 			}
 		}
 	}
+
+	return node, newServer, err
 }
 
 // JoinViaSSo - Handles the Single Sign-On flow on the end point VPN client side
@@ -122,12 +124,12 @@ func Join(flags *viper.Viper) {
 // Then waits for user to authenticate with the URL.
 // Upon user successful auth flow finished - server should return access token to the requested network
 // Otherwise the error message is sent which can be displayed to the user
-func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
+func JoinViaSSo(nwParams *ncmodels.NetworkParams) (*models.AccessToken, error) {
 	var accessToken *models.AccessToken
 	// User must tell us which network he is joining
-	network := flags.GetString("network")
-	server := flags.GetString("server")
-	user := flags.GetString("user")
+	network := nwParams.Network
+	server := nwParams.Server
+	user := nwParams.User
 	if network == "" {
 		return nil, errors.New("no network provided")
 	}
@@ -148,7 +150,7 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	defer conn.Close()
 	// Find and set node MacAddress
 	var macAddress string
-	if flags.GetString("macaddress") != "" {
+	if nwParams.MacAddress != "" {
 		macs, err := ncutils.GetMacAddr()
 		if err != nil {
 			//if macaddress can't be found set to random string
@@ -266,28 +268,28 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 }
 
 // JoinNetwork - helps a client join a network
-func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
+func JoinNetwork(nwParams *ncmodels.NetworkParams) (*config.Node, *config.Server, error) {
 	netclient := &config.Netclient
 	nodeForServer := models.Node{} //node to send to server
 	clientNode := &config.Node{}   //local node
-	nodeForServer.Network = flags.GetString("network")
+	nodeForServer.Network = nwParams.Network
 	if nodeForServer.Network == "" {
 		return nil, nil, errors.New("no network provided")
 	}
 	if _, ok := config.Nodes[nodeForServer.Network]; ok {
 		return nil, nil, errors.New("ALREADY_INSTALLED. Netclient appears to already be installed for " + nodeForServer.Network + ". To re-install, please remove by executing 'sudo netclient leave -n " + nodeForServer.Network + "'. Then re-run the install command.")
 	}
-	nodeForServer.Server = flags.GetString("server")
+	nodeForServer.Server = nwParams.Server
 	// figure out how to handle commmad line passwords
 	//  TOOD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-	//node.Password = flags.GetString("password")
+	//node.Password = nwParams.Password
 	//if node.Password == "" {
 	nodeForServer.Password = netclient.HostPass
 	nodeForServer.HostID = netclient.HostID
 	//}
 	//check if ListenPort was set on command line
 	nodeForServer.UDPHolePunch = "yes" // set default
-	nodeForServer.ListenPort = flags.GetInt32("port")
+	nodeForServer.ListenPort = nwParams.Port
 	if nodeForServer.ListenPort != 0 {
 		nodeForServer.UDPHolePunch = "no"
 	}
@@ -321,8 +323,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		}
 	}
 	// set endpoint if blank. set to local if local net, retrieve from function if not
-	nodeForServer.Endpoint = flags.GetString("endpoint")
-	isLocal := flags.GetBool("islocal")
+	nodeForServer.Endpoint = nwParams.Endpoint
+	isLocal := nwParams.IsLocal
 	nodeForServer.IsLocal = "no"
 	if isLocal {
 		nodeForServer.IsLocal = "yes"
@@ -331,7 +333,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		if nodeForServer.IsLocal == "yes" && nodeForServer.LocalAddress != "" {
 			nodeForServer.Endpoint = nodeForServer.LocalAddress
 		} else {
-			nodeForServer.Endpoint, err = ncutils.GetPublicIP(flags.GetString("apiconn"))
+			nodeForServer.Endpoint, err = ncutils.GetPublicIP(nwParams.ApiConn)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error setting public ip %w", err)
 			}
@@ -343,7 +345,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		}
 	}
 	// Generate and set public/private WireGuard Keys
-	if flags.GetString("privatekey") == "" {
+	if nwParams.PrivateKey == "" {
 		clientNode.PrivateKey, err = wgtypes.GeneratePrivateKey()
 		if err != nil {
 			logger.FatalLog(err.Error())
@@ -351,7 +353,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	nodeForServer.PublicKey = clientNode.PrivateKey.PublicKey().String()
 	// Find and set node MacAddress
-	if flags.GetString("macddress") == "" {
+	if nwParams.MacAddress == "" {
 		macs, err := ncutils.GetMacAddr()
 		if err != nil || len(macs) == 0 {
 			//if macaddress can't be found set to random string
@@ -379,14 +381,14 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		}
 	}
 	// make sure name is appropriate, if not, give blank name
-	nodeForServer.Name = formatName(flags.GetString("name"))
+	nodeForServer.Name = formatName(nwParams.Name)
 	//config.Netclient.OS = runtime.GOOS
 	//config.Netclient.Version = ncutils.Version
 	//   ---- not sure this is required node.AccessKey = cfg.AccessKey
 	//not sure why this is needed ... setnode defaults should take care of this on server
 	//config.Netclient.IPForwarding = true
-	url := flags.GetString("apiconn")
-	nodeForServer.AccessKey = flags.GetString("accesskey")
+	url := nwParams.ApiConn
+	nodeForServer.AccessKey = nwParams.AccessKey
 	logger.Log(0, "joining "+nodeForServer.Network+" at "+url)
 	api := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + url,

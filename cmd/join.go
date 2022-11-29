@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/gravitl/netclient/functions"
+	ncmodels "github.com/gravitl/netclient/models"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,7 +29,8 @@ additional paramaters can be be specified such as listenport or macaddress -- se
 			cmd.Usage()
 			return
 		}
-		functions.Join(flags)
+		nwParams := parseJoinFlags(flags)
+		functions.Join(nwParams)
 	},
 }
 
@@ -71,4 +73,36 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// joinCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+// parseJoinFlags converts join flags into NetworkParams
+func parseJoinFlags(flags *viper.Viper) *ncmodels.NetworkParams {
+	return &ncmodels.NetworkParams{
+		Network:         flags.GetString("network"),
+		Server:          flags.GetString("server"),
+		Port:            flags.GetInt32("port"),
+		Endpoint:        flags.GetString("endpoint"),
+		IsLocal:         flags.GetBool("islocal"),
+		ApiConn:         flags.GetString("apiconn"),
+		PrivateKey:      flags.GetString("privatekey"),
+		MacAddress:      flags.GetString("macaddress"),
+		Name:            flags.GetString("name"),
+		AccessKey:       flags.GetString("accesskey"),
+		Password:        flags.GetString("password"),
+		Key:             flags.GetString("key"),
+		Token:           flags.GetString("token"),
+		User:            flags.GetString("user"),
+		PublicKey:       flags.GetString("publickey"),
+		LocalAddress:    flags.GetString("localaddress"),
+		Address:         flags.GetString("address"),
+		Address6:        flags.GetString("address6"),
+		Interface:       flags.GetString("interface"),
+		PostUp:          flags.GetString("postup"),
+		PostDown:        flags.GetString("postdown"),
+		PublicIpService: flags.GetString("publicipservice"),
+		IsStatic:        flags.GetBool("static"),
+		IsDnsOn:         flags.GetBool("dnson"),
+		IsIpForwarding:  flags.GetBool("ipforwarding"),
+		KeepAlive:       flags.GetInt("keepalive"),
+	}
 }
