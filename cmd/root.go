@@ -19,7 +19,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/yaml.v1"
+	"gopkg.in/yaml.v3"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -150,13 +150,14 @@ func checkConfig() {
 		netclient.MacAddress = mac[0]
 		saveRequired = true
 	}
-	if len(netclient.PrivateKey) == 0 {
-		key, err := wgtypes.GeneratePrivateKey()
+	if (netclient.PrivateKey == wgtypes.Key{}) {
+		logger.Log(0, "setting wireguard keys")
+		var err error
+		netclient.PrivateKey, err = wgtypes.GeneratePrivateKey()
 		if err != nil {
 			logger.FatalLog("failed to generate wg key", err.Error())
 		}
-		netclient.PrivateKey = key
-		netclient.PublicKey = key.PublicKey()
+		netclient.PublicKey = netclient.PrivateKey.PublicKey()
 		saveRequired = true
 	}
 	if len(netclient.TrafficKeyPrivate) == 0 {
@@ -175,7 +176,7 @@ func checkConfig() {
 			logger.FatalLog("error generating traffic keys", err.Error())
 		}
 		netclient.TrafficKeyPublic = bytes
-		saveRequired = truInterfacee
+		saveRequired = true
 	}
 	// check for nftables present if on Linux
 	if netclient.FirewallInUse == "" {

@@ -104,6 +104,14 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
 	}
+	if keepaliveChange {
+		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
+	}
+	time.Sleep(time.Second)
+	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
+		doneErr := publishSignal(newNode, DONE)
+		if doneErr != nil {
+			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
 		} else {
 			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
 		}
