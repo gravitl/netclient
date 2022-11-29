@@ -58,7 +58,6 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				}
 			}
 			checkin()
-
 		}
 	}
 }
@@ -153,6 +152,19 @@ func Hello(node *config.Node) {
 	var checkin models.NodeCheckin
 	checkin.Version = config.Version
 	checkin.Connected = config.FormatBool(node.Connected)
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces", err.Error())
+	} else {
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			node.Interfaces = *ip
+			if err := config.WriteNodeConfig(); err != nil {
+				logger.Log(0, "error saving node map", err.Error())
+			}
+		}
+	}
+	checkin.Ifaces = node.Interfaces
 	data, err := json.Marshal(checkin)
 	if err != nil {
 		logger.Log(0, "unable to marshal checkin data", err.Error())

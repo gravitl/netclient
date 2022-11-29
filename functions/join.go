@@ -279,6 +279,16 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 			logger.Log(1, "network:", nodeForServer.Network, "error retrieving private address: ", err.Error())
 		}
 	}
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces", err.Error())
+	} else {
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			nodeForServer.Interfaces = *ip
+		}
+	}
+
 	// set endpoint if blank. set to local if local net, retrieve from function if not
 	nodeForServer.Endpoint = flags.GetString("endpoint")
 	isLocal := flags.GetBool("islocal")
@@ -286,7 +296,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if isLocal {
 		nodeForServer.IsLocal = "yes"
 	}
-	var err error
 	if nodeForServer.Endpoint == "" {
 		if nodeForServer.IsLocal == "yes" && nodeForServer.LocalAddress != "" {
 			nodeForServer.Endpoint = nodeForServer.LocalAddress

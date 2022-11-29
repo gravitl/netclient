@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -60,4 +61,35 @@ func getRealIface(ifacename string, address net.IPNet) string {
 		}
 	}
 	return deviceiface
+}
+
+func getInterfaces() (*[]models.Iface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	var data []models.Iface
+	var link models.Iface
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			link.Name = iface.Name
+			_, cidr, err := net.ParseCIDR(addr.String())
+			if err != nil {
+				continue
+			}
+			link.Address = *cidr
+			data = append(data, link)
+		}
+	}
+	return &data, nil
 }

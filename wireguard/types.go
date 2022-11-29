@@ -37,11 +37,11 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 }
 
 // Close closes a netclient interface
-func (n *NCIface) Close() error {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	return n.Close()
-}
+//func (n *NCIface) Close() error {
+//	wgMutex.Lock()
+//	defer wgMutex.Unlock()
+//	return n.Close()
+//}
 
 // Configure applies configuration to netmaker wireguard interface
 func (n *NCIface) Configure() error {
