@@ -65,6 +65,12 @@ func (l *netLink) Type() string {
 	return "wireguard"
 }
 
+// NCIface.Close closes netmaker interface
+func (n *NCIface) Close() {
+	link := n.getKernelLink()
+	link.Close()
+}
+
 // netLink.Close - required function to close linux interface
 func (l *netLink) Close() error {
 	return netlink.LinkDel(l)

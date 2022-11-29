@@ -58,6 +58,9 @@ func Daemon() {
 					mqclient.Disconnect(250)
 				}
 			}
+			logger.Log(0, "closing netamaker interface")
+			iface := wireguard.GetInterface()
+			iface.Close()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
