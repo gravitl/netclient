@@ -297,7 +297,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if isLocal {
 		nodeForServer.IsLocal = "yes"
 	}
-	var err error
 	if nodeForServer.Endpoint == "" {
 		if nodeForServer.IsLocal == "yes" && nodeForServer.LocalAddress != "" {
 			nodeForServer.Endpoint = nodeForServer.LocalAddress

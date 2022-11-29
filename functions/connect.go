@@ -56,7 +56,7 @@ func Connect(network string) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	peers := []wgtypes.PeerConfig{DaemonInstalled}
+	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
 		if node.Connected {
 			peers = append(peers, node.Peers...)

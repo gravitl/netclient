@@ -62,25 +62,6 @@ func (n *NCIface) UpdatePeer(p wgtypes.PeerConfig) {
 	apply(nil, &n.Config)
 }
 
-// Configure applies configuration to netmaker wireguard interface
-func (n *NCIface) Configure() error {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	return apply(nil, &n.Config)
-}
-
-func GetInterface() *NCIface {
-	return &netmaker
-}
-
-func (n *NCIface) UpdatePeer(p wgtypes.PeerConfig) {
-	peers := []wgtypes.PeerConfig{}
-	peers = append(peers, p)
-	n.Config.ReplacePeers = false
-	n.Config.Peers = peers
-	apply(nil, &n.Config)
-}
-
 // == private ==
 type netIface interface {
 	Close() error
