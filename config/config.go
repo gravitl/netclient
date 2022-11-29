@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/spf13/viper"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,22 +31,36 @@ const (
 
 var (
 	// Netclient contains the netclient config
-	Netclient Config
+	netclient Config
 	// Version - default version string
 	Version = "dev"
 )
 
 // Config configuration for netclient and host as a whole
 type Config struct {
-	Verbosity       int `yaml:"verbosity"`
-	FirewallInUse   string
-	Version         string
-	IPForwarding    bool
-	DaemonInstalled bool
-	HostID          string
-	HostPass        string
-	OS              string
-	Debug           bool
+	Verbosity         int `yaml:"verbosity"`
+	FirewallInUse     string
+	Version           string
+	IPForwarding      bool
+	DaemonInstalled   bool
+	HostID            string
+	HostPass          string
+	Name              string
+	OS                string
+	Debug             bool
+	NodePassword      string
+	Interface         string
+	ListenPort        int
+	LocalAddress      net.IPNet
+	LocalRange        net.IPNet
+	LocalListenPort   int
+	MTU               int
+	PrivateKey        wgtypes.Key
+	PublicKey         wgtypes.Key
+	MacAddress        net.HardwareAddr
+	TrafficKeyPrivate []byte
+	TrafficKeyPublic  []byte
+	InternetGateway   net.UDPAddr
 }
 
 func init() {
@@ -53,43 +68,42 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
+// UpdateNetcllient updates the in memory version of the host configuration
+func UpdateNetclient(c Config) {
+	netclient = c
+}
+
+// Netclient returns a pointer to the im memory version of the host configuration
+func Netclient() *Config {
+	return &netclient
+}
+
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
 }
 
-// ReadNetclientConfig reads a configuration file and returns it as an
-// instance. If no configuration file is found, nil and no error will be
-// returned. The configuration mustID live in one of the directories specified in
-// with AddConfigPath()
-//
-// In case multiple configuration files are found, the one in the most specific
-// or "closest" directory will be preferred.
+// ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
 	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
-	viper.SetConfigName("netclient.yml")
-	viper.SetConfigType("yml")
-	viper.AddConfigPath(GetNetclientPath())
+	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
 		return nil, err
 	}
 	defer Unlock(lockfile)
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
-		}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
 	}
-	var netclient Config
-	if err := viper.Unmarshal(&netclient); err != nil {
+	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
 	return &netclient, nil
 }
 
-// WriteNetclientConfig save the netclient configuration to disk
+// WriteNetclientConfiig writes the in memory host configuration to disk
 func WriteNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
-	logger.Log(0, "lock file path: ", lockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -107,7 +121,7 @@ func WriteNetclientConfig() error {
 		return err
 	}
 	defer f.Close()
-	err = yaml.NewEncoder(f).Encode(Netclient)
+	err = yaml.NewEncoder(f).Encode(netclient)
 	if err != nil {
 		return err
 	}
@@ -125,17 +139,6 @@ func GetNetclientPath() string {
 	}
 }
 
-// GetNetclientInterfacePath returns path to wireguard interface configuration files
-func GetNetclientInterfacePath() string {
-	if runtime.GOOS == "windows" {
-		return WindowsAppDataPath + "interfaces\\"
-	} else if runtime.GOOS == "darwin" {
-		return MacAppDataPath + "interfaces/"
-	} else {
-		return LinuxAppDataPath + "interfaces/"
-	}
-}
-
 // GetNetclientInstallPath returns the full path where netclient should be installed based on OS
 func GetNetclientInstallPath() string {
 	switch runtime.GOOS {
@@ -148,21 +151,12 @@ func GetNetclientInstallPath() string {
 	}
 }
 
-// FileExists - checks if a file exists on disk
-func FileExists(f string) bool {
-	info, err := os.Stat(f)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
 // Lock creates a lockfile with pid as contents
 // if lockfile exists but belongs to defunct process
 // the existing lockfile will be deleted and new one created
 // if unable to create within TIMEOUT returns error
 func Lock(lockfile string) error {
-	debug := Netclient.Debug
+	debug := netclient.Debug
 	start := time.Now()
 	pid := os.Getpid()
 	if debug {
@@ -220,7 +214,7 @@ func Lock(lockfile string) error {
 // will return TIMEOUT error if timeout exceeded
 func Unlock(lockfile string) error {
 	var pid int
-	debug := Netclient.Debug
+	debug := netclient.Debug
 	start := time.Now()
 	if debug {
 		logger.Log(0, "unlock try")

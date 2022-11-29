@@ -29,7 +29,7 @@ func Install() error {
 		logger.Log(0, "error installing daemon", err.Error())
 		return err
 	}
-	config.Netclient.DaemonInstalled = true
+	config.Netclient().DaemonInstalled = true
 	config.WriteNetclientConfig()
 	return daemon.Restart()
 }

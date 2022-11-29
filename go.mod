@@ -16,6 +16,7 @@ require (
 require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/vishvananda/netlink v1.1.0
 )
 
 require (

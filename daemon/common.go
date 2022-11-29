@@ -62,8 +62,8 @@ func Start() error {
 	//RestartWindowsDaemon()
 	//case "darwin":
 	//RestartLaunchD()
-	//case "linux":
-	//RestartSystemD()
+	case "linux":
+		RestartSystemD()
 	//case "freebsd":
 	//FreebsdDaemon("restart")
 	default:

@@ -20,7 +20,9 @@ For example:
 netclient leave my-network`,
 	Run: func(cmd *cobra.Command, args []string) {
 		logger.Log(0, "leave called")
-		functions.LeaveNetwork(args[0])
+		if err := functions.LeaveNetwork(args[0]); err != nil {
+			logger.Log(0, err.Error())
+		}
 	},
 }
 

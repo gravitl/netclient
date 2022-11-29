@@ -7,27 +7,20 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
-	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(network string, iface bool) (*config.Node, error) {
-	node, ok := config.Nodes[network]
-	if !ok {
+	node := config.GetNode(network)
+	if node.Network == "" {
 		return nil, errors.New("no such network")
 	}
-	server := config.Servers[node.Server]
-	if config.Netclient.IPForwarding && !ncutils.IsWindows() {
-		if err := local.SetIPForwarding(); err != nil {
-			return nil, err
-		}
-	}
-	token, err := Authenticate(&node)
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(&node, config.Netclient())
 	if err != nil {
 		return nil, err
 	}
@@ -48,41 +41,34 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, err
 	}
 	nodeGet := response.(models.NodeGet)
-	newNode := config.ConvertNode(&nodeGet.Node)
-	if nodeGet.Peers == nil {
-		nodeGet.Peers = []wgtypes.PeerConfig{}
-	}
-
-	if nodeGet.ServerConfig.API != "" && nodeGet.ServerConfig.MQPort != "" {
-		config.ConvertServerCfg(&nodeGet.ServerConfig)
-		if err := config.WriteServerConfig(); err != nil {
-			logger.Log(0, "unable to update server config: "+err.Error())
-		}
-	}
-	if int(nodeGet.Node.ListenPort) != node.LocalListenPort {
-		nc := wireguard.NewNCIface(newNode)
-		if err := nc.Close(); err != nil {
-			logger.Log(0, "error remove interface", node.Interface, err.Error())
-		}
-		err = config.ModPort(newNode)
-		if err != nil {
-			return nil, err
-		}
-		informPortChange(newNode)
-	}
-	//update map and save
-	config.Nodes[newNode.Network] = *newNode
+	newNode, newServer, newHost := config.ConvertNode(&nodeGet)
+	config.UpdateNodeMap(newNode.Network, *newNode)
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
-
-	return newNode, err
-}
-
-func informPortChange(node *config.Node) {
-	if node.ListenPort == 0 {
-		logger.Log(0, "network:", node.Network, "UDP hole punching enabled for node", node.Name)
-	} else {
-		logger.Log(0, "network:", node.Network, "node", node.Name, "is using port", strconv.Itoa(int(node.ListenPort)))
+	config.SaveServer(newNode.Server, *newServer)
+	config.WriteNodeConfig()
+	config.WriteNetclientConfig()
+	//update wg config
+	peers := newNode.Peers
+	for _, node := range config.GetNodes() {
+		if node.Connected {
+			peers = append(peers, node.Peers...)
+		}
 	}
+	internetGateway, err := wireguard.UpdateWgPeers(peers)
+	if internetGateway != nil && err != nil {
+		newHost.InternetGateway = *internetGateway
+		config.WriteNetclientConfig()
+	}
+	logger.Log(1, "node settings for network ", network)
+	if config.Netclient().DaemonInstalled {
+		logger.Log(3, "restarting daemon")
+		if err := daemon.Restart(); err != nil {
+			if err := daemon.Start(); err != nil {
+				return newNode, err
+			}
+		}
+	}
+	return newNode, err
 }

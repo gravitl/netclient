@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -91,7 +92,7 @@ func SetCurrentPeerRoutes(iface string, peers []wgtypes.PeerConfig) {
 }
 
 // FlushPeerRoutes - removes all current peer routes
-func FlushPeerRoutes(iface string, peers []wgtypes.Peer) {
+func FlushPeerRoutes(peers []wgtypes.PeerConfig) {
 	// get the default route
 	var hasRoute bool
 	gwIP, gwIface, err := GetDefaultRoute()
@@ -101,10 +102,9 @@ func FlushPeerRoutes(iface string, peers []wgtypes.Peer) {
 	if gwIP != "" && gwIface != "" && err == nil {
 		hasRoute = true
 	}
-
 	for _, peer := range peers {
 		for _, allowedIP := range peer.AllowedIPs {
-			deleteRoute(iface, &allowedIP)
+			deleteRoute(config.Netclient().Interface, &allowedIP)
 		}
 		if peer.Endpoint == nil {
 			continue
@@ -125,8 +125,8 @@ func SetCIDRRoute(iface string, cidr *net.IPNet) {
 }
 
 // RemoveCIDRRoute - removes a static cidr route
-func RemoveCIDRRoute(iface string, cidr *net.IPNet) {
-	removeCidr(iface, cidr)
+func RemoveCIDRRoute(cidr *net.IPNet) {
+	removeCidr(cidr)
 }
 
 // SetNetmakerDomainRoute - sets explicit route over Gateway for a given DNS name

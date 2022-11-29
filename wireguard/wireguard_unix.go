@@ -6,6 +6,7 @@ package wireguard
 import (
 	"net"
 
+	"github.com/gravitl/netclient/config"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/ipc"
@@ -16,15 +17,13 @@ import (
 
 func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
-	wgMutex.Unlock()
+	defer wgMutex.Unlock()
 
-	tunIface, err := tun.CreateTUN(getName(), nc.Settings.MTU)
+	tunIface, err := tun.CreateTUN(getName(), config.Netclient().MTU)
 	if err != nil {
 		return err
 	}
-
 	nc.Iface = tunIface
-
 	tunDevice := device.NewDevice(tunIface, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, "[netclient] "))
 	err = tunDevice.Up()
 	if err != nil {
@@ -34,7 +33,6 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-
 	go func() {
 		for {
 			uapiConn, uapiErr := uapi.Accept()
@@ -44,7 +42,6 @@ func (nc *NCIface) createUserSpaceWG() error {
 			go tunDevice.IpcHandle(uapiConn)
 		}
 	}()
-
 	if err = nc.ApplyAddrs(); err != nil {
 		return err
 	}

@@ -32,7 +32,6 @@ func SetIPForwarding() error {
 
 // SetIPForwardingUnix - sets the ipforwarding for linux
 func SetIPForwardingUnix() error {
-
 	// ipv4
 	out, err := ncutils.RunCmd("sysctl net.ipv4.ip_forward", true)
 	if err != nil {
@@ -48,7 +47,6 @@ func SetIPForwardingUnix() error {
 			}
 		}
 	}
-
 	// ipv6
 	out, err = ncutils.RunCmd("sysctl net.ipv6.conf.all.forwarding", true)
 	if err != nil {
@@ -64,7 +62,6 @@ func SetIPForwardingUnix() error {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -102,7 +99,6 @@ func IsKernelWGInstalled() bool {
 	if err != nil {
 		return false
 	}
-
 	return strings.Contains(out, "Available subcommand") && !IsUserSpaceWGInstalled()
 }
 

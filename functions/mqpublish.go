@@ -65,28 +65,17 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 
 func checkin() {
 
-	netclient := config.Netclient
+	host := config.Netclient()
 	//should not be required
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
-	if len(config.Nodes) == 0 {
+	if len(config.GetNodes()) == 0 {
 		logger.Log(0, "skipping checkin: no nodes configured")
 		return
 	}
-	for network, node := range config.Nodes {
-		server := config.Servers[node.Server]
-		// check for nftables present if on Linux
-		if ncutils.IsLinux() {
-			if ncutils.IsNFTablesPresent() {
-				netclient.FirewallInUse = models.FIREWALL_NFTABLES
-			} else {
-				netclient.FirewallInUse = models.FIREWALL_IPTABLES
-			}
-		} else {
-			// defaults to iptables for now, may need another default for non-Linux OSes
-			netclient.FirewallInUse = models.FIREWALL_IPTABLES
-		}
+	for network, node := range config.GetNodes() {
+		server := config.GetServer(node.Server)
 		if node.Connected {
 			if !node.IsStatic {
 				extIP, err := ncutils.GetPublicIP(server.API)
@@ -104,17 +93,17 @@ func checkin() {
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
 				}
-				if node.LocalAddress.String() != intIP.String() && intIP.IP != nil {
-					logger.Log(1, "network:", network, "local Address has changed from ", node.LocalAddress.String(), " to ", intIP.String())
-					node.LocalAddress = intIP
+				if host.LocalAddress.String() != intIP.String() && intIP.IP != nil {
+					logger.Log(1, "network:", network, "local Address has changed from ", host.LocalAddress.String(), " to ", intIP.String())
+					host.LocalAddress = intIP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "Network: ", network, " could not publish local address change")
 					}
 				}
 				_ = UpdateLocalListenPort(&node)
 
-			} else if node.IsLocal && node.LocalRange.IP != nil {
-				localIP, err := ncutils.GetLocalIP(node.LocalRange)
+			} else if node.IsLocal && host.LocalRange.IP != nil {
+				localIP, err := ncutils.GetLocalIP(host.LocalRange)
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
 				}
@@ -134,7 +123,7 @@ func checkin() {
 		//}
 		Hello(&node)
 		if server.IsEE && node.Connected {
-			logger.Log(0, "collecting metrics for node", node.Name)
+			logger.Log(0, "collecting metrics for node", host.Name)
 			publishMetrics(&node)
 		}
 	}
@@ -142,9 +131,11 @@ func checkin() {
 
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
-	oldNode := config.ConvertToOldNode(node)
-	//pretty.Println("node: ", node)
-	//pretty.Println("oldnode: ", oldNode)
+	server := config.GetServer(node.Server)
+	if server.Name == "" {
+		return errors.New("no server for " + node.Network)
+	}
+	oldNode := config.ConvertToNetmakerNode(node, server, config.Netclient())
 	data, err := json.Marshal(oldNode)
 	if err != nil {
 		return err
@@ -153,7 +144,7 @@ func PublishNodeUpdate(node *config.Node) error {
 		return err
 	}
 
-	logger.Log(0, "network:", node.Network, "sent a node update to server for node", node.Name, ", ", node.ID)
+	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID)
 	return nil
 }
 
@@ -181,12 +172,12 @@ func Hello(node *config.Node) {
 
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
-	token, err := Authenticate(node)
+	token, err := Authenticate(node, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
 	}
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           url,
@@ -203,21 +194,21 @@ func publishMetrics(node *config.Node) {
 	}
 	nodeGET := response.(models.NodeGet)
 
-	metrics, err := metrics.Collect(node.Interface, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(config.Netclient().Interface, nodeGET.PeerIDs)
 	if err != nil {
-		logger.Log(0, "failed metric collection for node", node.Name, err.Error())
+		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 	}
 	metrics.Network = node.Network
-	metrics.NodeName = node.Name
+	metrics.NodeName = config.Netclient().Name
 	metrics.NodeID = node.ID
 	metrics.IsServer = "no"
 	data, err := json.Marshal(metrics)
 	if err != nil {
-		logger.Log(0, "something went wrong when marshalling metrics data for node", node.Name, err.Error())
+		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
 	}
 
 	if err = publish(node, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
-		logger.Log(0, "error occurred during publishing of metrics on node", node.Name, err.Error())
+		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 		logger.Log(0, "aggregating metrics locally until broker connection re-established")
 		val, ok := metricsCache.Load(node.ID)
 		if !ok {
@@ -243,18 +234,19 @@ func publishMetrics(node *config.Node) {
 		}
 	} else {
 		metricsCache.Delete(node.ID)
-		logger.Log(0, "published metrics for node", node.Name)
+		logger.Log(0, "published metrics for node", config.Netclient().Name)
 	}
 }
 
 // node cfg is required  in order to fetch the traffic keys of that node for encryption
 func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	// setup the keys
-	serverPubKey, err := ncutils.ConvertBytesToKey(node.TrafficKeys.Server)
+	server := config.GetServer(node.Server)
+	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {
 		return err
 	}
-	privateKey, err := ncutils.ConvertBytesToKey(node.TrafficPrivateKey)
+	privateKey, err := ncutils.ConvertBytesToKey(config.Netclient().TrafficKeyPrivate)
 	if err != nil {
 		return err
 	}
