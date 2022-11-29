@@ -21,19 +21,19 @@ const ServerLockfile = "netclient-servers.lck"
 
 // Server represents a server configuration
 type Server struct {
-	Name        string
-	Version     string
-	API         string
-	CoreDNSAddr string
-	Broker      string
-	MQPort      string
-	MQID        string
-	Password    string
-	DNSMode     bool
-	IsEE        bool
-	Nodes       map[string]bool
-	TrafficKey  []byte
-	AccessKey   string
+	Name        string          `json:"name" yaml:"name"`
+	Version     string          `json:"verson" yaml:"version"`
+	API         string          `json:"api" yaml:"api"`
+	CoreDNSAddr string          `json:"corednsaddress" yaml:"corednsaddress"`
+	Broker      string          `json:"broker" yaml:"broker"`
+	MQPort      string          `json:"mqport" yaml:"mqport"`
+	MQID        string          `json:"mqid" yaml:"mqid"`
+	Password    string          `json:"password" yaml:"password"`
+	DNSMode     bool            `json:"dnsmode" yaml:"dnsmode"`
+	IsEE        bool            `json:"isee" yaml:"isee"`
+	Nodes       map[string]bool `json:"nodes" yaml:"nodes"`
+	TrafficKey  []byte          `json:"traffickey" yaml:"traffickey"`
+	AccessKey   string          `json:"accesskey" yaml:"accesskey"`
 }
 
 // ReadServerConf reads the servers configuration file and populates the server map

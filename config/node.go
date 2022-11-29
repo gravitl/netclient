@@ -27,30 +27,30 @@ const NodeLockfile = "netclient-nodes.lck"
 
 // Node provides configuration of a node
 type Node struct {
-	ID                  string
-	Network             string
-	NetworkRange        net.IPNet
-	NetworkRange6       net.IPNet
-	InternetGateway     *net.UDPAddr
-	Server              string
-	Connected           bool
-	Interfaces          []models.Iface
-	EndpointIP          net.IP
-	Address             net.IPNet
-	Address6            net.IPNet
-	PostUp              string
-	PostDown            string
-	Action              string
-	IsServer            bool
-	IsLocal             bool
-	IsEgressGateway     bool
-	IsIngressGateway    bool
-	IsStatic            bool
-	IsPending           bool
-	DNSOn               bool
-	IsHub               bool
-	PersistentKeepalive int
-	Peers               []wgtypes.PeerConfig
+	ID                  string               `json:"id" yaml:"id"`
+	Network             string               `json:"network" yaml:"network"`
+	NetworkRange        net.IPNet            `json:"networkrange" yaml:"networkrange"`
+	NetworkRange6       net.IPNet            `json:"networkrange6" yaml:"networkrange6"`
+	InternetGateway     *net.UDPAddr         `json:"internetgateway" yaml:"internetgateway"`
+	Server              string               `json:"server" yaml:"server"`
+	Connected           bool                 `json:"connected" yaml:"connected"`
+	Interfaces          []models.Iface       `json:"interfaces" yaml:"interfaces"`
+	EndpointIP          net.IP               `json:"endpointip" yaml:"endpointip"`
+	Address             net.IPNet            `json:"address" yaml:"address"`
+	Address6            net.IPNet            `json:"address6" yaml:"address6"`
+	PostUp              string               `json:"postup" yaml:"postup"`
+	PostDown            string               `json:"postdown" yaml:"postdown"`
+	Action              string               `json:"action" yaml:"action"`
+	IsServer            bool                 `json:"isserver" yaml:"isserver"`
+	IsLocal             bool                 `json:"islocal" yaml:"islocal"`
+	IsEgressGateway     bool                 `json:"isegressgateway" yaml:"isegressgateway"`
+	IsIngressGateway    bool                 `json:"isingressgateway" yaml:"isingressgateway"`
+	IsStatic            bool                 `json:"isstatic" yaml:"isstatic"`
+	IsPending           bool                 `json:"ispending" yaml:"ispending"`
+	DNSOn               bool                 `json:"dnson" yaml:"dnson"`
+	IsHub               bool                 `json:"ishub" yaml:"ishub"`
+	PersistentKeepalive int                  `json:"persistentkeepalive" yaml:"persistentkeepalive"`
+	Peers               []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
 // ReadNodeConfig reads node configuration from disk
