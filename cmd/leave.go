@@ -29,7 +29,7 @@ netclient leave my-network`,
 				fmt.Println(fault.Error())
 			}
 		} else {
-			fmt.Println("successful left network ", args[0])
+			fmt.Println("successfully left network ", args[0])
 		}
 	},
 }
