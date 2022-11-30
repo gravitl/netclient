@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,7 +29,10 @@ additional paramaters can be be specified such as listenport or macaddress -- se
 			cmd.Usage()
 			return
 		}
-		functions.Join(flags)
+		err := functions.Join(flags)
+		if err != nil {
+			logger.Log(0, "join failed", err.Error())
+		}
 	},
 }
 

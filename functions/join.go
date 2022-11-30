@@ -28,7 +28,7 @@ import (
 )
 
 // Join joins a netmaker network with flags specified on command line
-func Join(flags *viper.Viper) {
+func Join(flags *viper.Viper) error {
 	//config.ParseJoinFlags(cmd)
 	fmt.Println("join called")
 	if flags.Get("server") != "" {
@@ -40,12 +40,12 @@ func Join(flags *viper.Viper) {
 		ssoAccessToken, err := JoinViaSSo(flags)
 		if err != nil {
 			logger.Log(0, "Join failed:", err.Error())
-			return
+			return err
 		}
 		log.Println("token from SSo")
 		if ssoAccessToken == nil {
 			fmt.Println("login failed")
-			return
+			return errors.New("could not get SSO access token")
 		}
 		flags.Set("network", ssoAccessToken.ClientConfig.Network)
 		flags.Set("accesskey", ssoAccessToken.ClientConfig.Key)
@@ -58,7 +58,7 @@ func Join(flags *viper.Viper) {
 		accessToken, err := config.ParseAccessToken(token)
 		if err != nil {
 			logger.Log(0, "failed to parse access token", token, err.Error())
-			return
+			return err
 		}
 		flags.Set("network", accessToken.ClientConfig.Network)
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
@@ -68,7 +68,7 @@ func Join(flags *viper.Viper) {
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
 	node, newServer, newHost, err := JoinNetwork(flags)
 	if err != nil {
-		logger.FatalLog(err.Error())
+		return err
 	}
 	//save new configurations
 	config.UpdateNodeMap(node.Network, *node)
@@ -100,6 +100,8 @@ func Join(flags *viper.Viper) {
 			}
 		}
 	}
+
+	return nil
 }
 
 // JoinViaSSo - Handles the Single Sign-On flow on the end point VPN client side
