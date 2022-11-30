@@ -81,6 +81,7 @@ func Netclient() *Config {
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
+	netclient.Version = ver
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
