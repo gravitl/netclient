@@ -1,32 +1,29 @@
 package functions
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
-	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Disconnect disconnects a node from the given network
-func Disconnect(network string) {
+func Disconnect(network string) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
-		fmt.Println("no such network")
-		return
+		return errors.New("no such network")
 	}
 	if !node.Connected {
-		fmt.Println("\nnode already disconnected from", network)
-		return
+		return errors.New("node is already disconnected")
 	}
 	node.Connected = false
 	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.ID, "on network", network, "with error", err.Error())
-		return
+		return fmt.Errorf("error writing node config %w", err)
 	}
 	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
@@ -41,26 +38,23 @@ func Disconnect(network string) {
 			fmt.Println("daemon failed to start", err)
 		}
 	}
-	fmt.Println("\nnode is disconnected from", network)
+	return nil
 }
 
 // Connect will attempt to connect a node on given network
-func Connect(network string) {
+func Connect(network string) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
-		fmt.Println("no such network")
-		return
+		return errors.New("no such network")
 	}
 	if node.Connected {
-		fmt.Println("\nnode already connected to", network)
-		return
+		return errors.New("node already connected")
 	}
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.ID, "on network", network, "with error", err.Error())
-		return
+		return fmt.Errorf("error writing node config %w", err)
 	}
 	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
@@ -70,14 +64,9 @@ func Connect(network string) {
 	}
 	wireguard.UpdateWgPeers(peers)
 	if err := daemon.Restart(); err != nil {
-		logger.Log(0, "daemon restart failed", err.Error())
-	}
-	if err := daemon.Restart(); err != nil {
-		fmt.Println("daemon restart failed", err)
 		if err := daemon.Start(); err != nil {
-			fmt.Println("daemon failed to start", err)
+			return fmt.Errorf("daemon restart failed %w", err)
 		}
-
-		fmt.Println("\nnode is connected to", network)
 	}
+	return nil
 }

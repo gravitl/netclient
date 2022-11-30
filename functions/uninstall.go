@@ -15,10 +15,13 @@ import (
 )
 
 // Uninstall - uninstalls networks from client
-func Uninstall() {
-	for network := range config.GetNodes() {
-		if err := LeaveNetwork(network); err != nil {
-			logger.Log(1, "encountered issue leaving network", network, ":", err.Error())
+func Uninstall() ([]error, error) {
+	allfaults := []error{}
+	var err error
+	for network := range config.Nodes {
+		faults, err := LeaveNetwork(network)
+		if err != nil {
+			allfaults = append(allfaults, faults...)
 		}
 	}
 	// clean up OS specific stuff
@@ -33,33 +36,36 @@ func Uninstall() {
 	//} else if !ncutils.IsKernel() {
 	//logger.Log(1, "manual cleanup required")
 	//}
+	return allfaults, err
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) error {
-	logger.Log(0, "leaving network", network)
-	node := config.GetNode(network)
-	if node.Network == "" {
-		return errors.New("no such network")
-	}
-	logger.Log(2, "deleting node from server")
+func LeaveNetwork(network string) ([]error, error) {
+	faults := []error{}
+	fmt.Println("\nleaving network", network)
+	node := config.Nodes[network]
+	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
-		logger.Log(0, "error deleting node from server", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
 	}
-	logger.Log(2, "deleting node from client")
+	fmt.Println("deleting wireguard interface")
 	if err := deleteLocalNetwork(&node); err != nil {
-		logger.Log(0, "error deleting local node", err.Error())
-		return err
+		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(network); err != nil {
-		logger.Log(0, "failed to delete dns entries", err.Error())
+	fmt.Println("removing dns entries")
+	if err := removeHostDNS(node.Network); err != nil {
+		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
 	if config.Netclient().DaemonInstalled {
-		logger.Log(2, "restarting daemon")
-		return daemon.Restart()
+		fmt.Println("restarting daemon")
+		if err := daemon.Restart(); err != nil {
+			faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
+		}
 	}
-	return nil
+	if len(faults) > 0 {
+		return faults, errors.New("error(s) leaving nework")
+	}
+	return faults, nil
 }
 
 func deleteNodeFromServer(node *config.Node) error {

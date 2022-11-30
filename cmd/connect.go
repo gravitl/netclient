@@ -4,6 +4,8 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +20,11 @@ For example:
 
 netclient connect my-network`,
 	Run: func(cmd *cobra.Command, args []string) {
-		functions.Connect(args[0])
+		if err := functions.Connect(args[0]); err != nil {
+			fmt.Println("\nconnect failed:", err)
+		} else {
+			fmt.Println("\nnode is connected to", args[0])
+		}
 	},
 }
 

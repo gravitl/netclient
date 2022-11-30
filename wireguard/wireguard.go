@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/ini.v1"
 )
 
 var wgMutex = sync.Mutex{} // used to mutex functions of the interface
@@ -251,6 +252,59 @@ func GetPeers(iface string) ([]wgtypes.Peer, error) {
 	}
 
 	return peers, err
+}
+
+// RemovePeers - removes all peers from a given node config
+func RemovePeers(node *config.Node) error {
+	currPeers, err := getPeers(node)
+	if err != nil || len(currPeers) == 0 {
+		return err
+	}
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard := ini.Empty(options)
+	wireguard.DeleteSection(sectionInterface)
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(config.Netclient().PrivateKey.String())
+	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(config.Netclient().ListenPort))
+	addrString := node.Address.String()
+	if node.Address6.IP != nil {
+		if addrString != "" {
+			addrString += ","
+		}
+		addrString += node.Address6.String()
+	}
+	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
+	//if node.DNSOn == "yes" {
+	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
+	//}
+	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
+	if node.PostUp != "" {
+		parts := strings.Split(node.PostUp, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
+			}
+			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
+		}
+	}
+	if node.PostDown != "" {
+		parts := strings.Split(node.PostDown, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
+			}
+			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
+		}
+	}
+	if config.Netclient().MTU != 0 {
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient().MTU), 10))
+	}
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
+		return err
+	}
+	return nil
 }
 
 // == private ==

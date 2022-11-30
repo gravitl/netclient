@@ -4,8 +4,9 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/gravitl/netclient/functions"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -16,8 +17,14 @@ var uninstallCmd = &cobra.Command{
 	Long:  `uninstall netclient and all files:`,
 
 	Run: func(cmd *cobra.Command, args []string) {
-		logger.Log(2, "uninstall called")
-		functions.Uninstall()
+		fmt.Println("\nremoving netclient binary and supporting files")
+		faults, err := functions.Uninstall()
+		if err != nil {
+			fmt.Println(err.Error())
+			for _, fault := range faults {
+				fmt.Println(fault.Error())
+			}
+		}
 	},
 }
 
