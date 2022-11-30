@@ -338,14 +338,14 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		Response:      models.NodeGet{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, err := api.GetJSON(models.NodeGet{}, models.ErrorResponse{})
+	response, errData, err := api.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
-		if err == httpclient.ErrStatus {
-			logger.Log(1, "error joining network", strconv.Itoa(response.(models.ErrorResponse).Code), response.(models.ErrorResponse).Message)
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(1, "error joining network", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
-	nodeGET := response.(models.NodeGet)
+	nodeGET := response
 	config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true

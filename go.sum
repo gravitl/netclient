@@ -67,8 +67,8 @@ github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ3
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/devilcove/httpclient v0.5.0 h1:ajqVJVNq6UGatuX9WEBjtvj6S4wzJ2DOzNbbm8Lrjdw=
-github.com/devilcove/httpclient v0.5.0/go.mod h1:ctrAO2gRgTT+GxtRdWBp2SMQ+vacuxXlbhmlM4oWhs8=
+github.com/devilcove/httpclient v0.6.0 h1:M5YAfHeNbu+0QxCiOCo/fKN+Hf0BtF/6aovu3NNgcKk=
+github.com/devilcove/httpclient v0.6.0/go.mod h1:ctrAO2gRgTT+GxtRdWBp2SMQ+vacuxXlbhmlM4oWhs8=
 github.com/docker/distribution v2.8.1+incompatible h1:Q50tZOPR6T/hjNsyc9g8/syEs6bk8XXApsHjKukMl68=
 github.com/docker/distribution v2.8.1+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
 github.com/docker/docker v20.10.17+incompatible h1:JYCuMrWaVNophQTOrMMoSwudOVEfcegoZZrleKc1xwE=

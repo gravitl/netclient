@@ -199,12 +199,16 @@ func publishMetrics(node *config.Node) {
 		Response:      models.NodeGet{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
+			return
+		}
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
 		return
 	}
-	nodeGET := response.(models.NodeGet)
+	nodeGET := response
 
 	metrics, err := metrics.Collect(config.Netclient().Interface, nodeGET.PeerIDs)
 	if err != nil {

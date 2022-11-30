@@ -32,15 +32,14 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		Response:      models.NodeGet{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
-		if err == httpclient.ErrStatus {
-			errors := response.(models.ErrorResponse)
-			logger.Log(0, "errror getting node", strconv.Itoa(errors.Code), errors.Message)
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "errror getting node", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return nil, err
 	}
-	nodeGet := response.(models.NodeGet)
+	nodeGet := response
 	newNode, newServer, newHost := config.ConvertNode(&nodeGet)
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	if err = config.WriteNodeConfig(); err != nil {
