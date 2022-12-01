@@ -96,7 +96,7 @@ func initConfig() {
 	config.UpdateNetclient(netclient)
 	config.ReadNodeConfig()
 	config.ReadServerConf()
-	checkConfig()
+	CheckConfig()
 	//check netclient dirs exist
 	if _, err := os.Stat(config.GetNetclientPath()); err != nil {
 		if os.IsNotExist(err) {
@@ -110,7 +110,7 @@ func initConfig() {
 	wireguard.WriteWgConfig(config.Netclient(), config.GetNodes())
 }
 
-func checkConfig() {
+func CheckConfig() {
 	fail := false
 	saveRequired := false
 	netclient := config.Netclient()
