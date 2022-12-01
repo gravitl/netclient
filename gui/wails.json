@@ -1,0 +1,12 @@
+{
+  "name": "netclient-wails",
+  "outputfilename": "netclient-wails",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Matthew R. Kasun",
+    "email": "mkasun@nusak.ca"
+  }
+}
