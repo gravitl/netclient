@@ -3,6 +3,7 @@ package functions
 import (
 	"log"
 	"strings"
+	"unicode"
 
 	"github.com/blang/semver"
 	"github.com/gravitl/netclient/daemon"
@@ -16,9 +17,11 @@ func SelfUpdate(currentVersion string) {
 	if currentVersion == "dev" {
 		return
 	}
-	semVer := strings.Replace(currentVersion, "v", "", -1)
+	semVer := strings.TrimFunc(currentVersion, func(r rune) bool {
+		return !unicode.IsNumber(r)
+	})
 	v := semver.MustParse(semVer)
-	latest, err := selfupdate.UpdateSelf(v, "gravitl/netmaker")
+	latest, err := selfupdate.UpdateSelf(v, "gravitl/netclient")
 	if err != nil {
 		log.Println("Binary update failed:", err)
 		return
