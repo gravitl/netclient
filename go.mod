@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gravitl/netmaker v0.17.2-0.20230130152343-4d4252d271fe
@@ -53,6 +54,7 @@ require (
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
+	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf // indirect
 	github.com/josharian/native v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/echo/v4 v4.9.0 // indirect
@@ -79,6 +81,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tkrajina/go-reflector v0.5.5 // indirect
+	github.com/tcnksm/go-gitconfig v0.1.2 // indirect
 	github.com/txn2/txeh v1.3.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.1 // indirect

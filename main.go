@@ -11,6 +11,7 @@ import (
 
 	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
+	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
 // TODO: use -ldflags to set the right version at build time
@@ -18,12 +19,29 @@ var version = "v0.18.0"
 
 var guiFunc = func() {}
 
+func autoUpdate() {
+	semVer := strings.Replace(version, "v", "", -1)
+	v := semver.MustParse(semVer)
+	latest, err := selfupdate.UpdateSelf(v, "gravitl/netmaker")
+	if err != nil {
+		log.Println("Binary update failed:", err)
+		return
+	}
+	if !latest.Version.Equals(v) {
+		log.Println("Successfully updated to version", latest.Version)
+		log.Println("Release notes:\n", latest.ReleaseNotes)
+	}
+}
+
 func main() {
 
 	ncArgs := os.Args
 	if len(ncArgs) > 1 && ncArgs[1] != "gui" ||
 		len(ncArgs) == 1 && runtime.GOOS != "windows" { // windows by default uses gui
 		config.SetVersion(version)
+		if version != "dev" {
+			autoUpdate()
+		}
 		cmd.Execute()
 	} else {
 		guiFunc()
