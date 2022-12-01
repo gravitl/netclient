@@ -9,6 +9,9 @@ import (
 	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
+// SelfUpdate updates the netclient binary in place to the latest release available on GitHub
+// and reboots the daemon if update is successful
+// All binary names must adhere to the format `netclient-{platform}-{architecture}`
 func SelfUpdate(currentVersion string) {
 	if currentVersion == "dev" {
 		return
