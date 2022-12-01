@@ -44,7 +44,7 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(InitConfig)
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
@@ -57,8 +57,8 @@ func init() {
 	// when this action is called directly.
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
+// InitConfig reads in config file and ENV variables if set.
+func InitConfig() {
 	checkUID()
 	viper.AddConfigPath(config.GetNetclientPath())
 	viper.SetConfigName("netclient.yml")
