@@ -126,7 +126,7 @@ func SetCIDRRoute(iface string, cidr *net.IPNet) {
 
 // RemoveCIDRRoute - removes a static cidr route
 func RemoveCIDRRoute(cidr *net.IPNet) {
-	removeCidr(cidr)
+	//removeCidr(cidr)
 }
 
 // SetNetmakerDomainRoute - sets explicit route over Gateway for a given DNS name

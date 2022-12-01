@@ -1,6 +1,9 @@
 package wireguard
 
 import (
+	"errors"
+	"fmt"
+	"log"
 	"net"
 	"runtime"
 	"strconv"
@@ -353,4 +356,46 @@ func getName() string {
 	}
 
 	return "netmaker"
+}
+
+// GetRealIface - used only for darwin OS retrieves tun iface based on reference iface name from config file
+func GetRealIface(iface string) (string, error) {
+
+	ifacePath := "/var/run/wireguard/" + iface + ".name"
+	if !(ncutils.FileExists(ifacePath)) {
+		return "", errors.New(ifacePath + " does not exist")
+	}
+	realIfaceName, err := ncutils.GetFileAsString(ifacePath)
+	if err != nil {
+		return "", err
+	}
+	realIfaceName = strings.TrimSpace(realIfaceName)
+	if !(ncutils.FileExists(fmt.Sprintf("/var/run/wireguard/%s.sock", realIfaceName))) {
+		return "", errors.New("interface file does not exist")
+	}
+	return realIfaceName, nil
+}
+
+func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
+	wg, err := wgctrl.New()
+	if err != nil {
+		return wgtypes.Peer{}, err
+	}
+	defer func() {
+		err = wg.Close()
+		if err != nil {
+			log.Printf("got error while closing wgctl: %v", err)
+		}
+	}()
+
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return wgtypes.Peer{}, err
+	}
+	for _, peer := range wgDevice.Peers {
+		if peer.PublicKey.String() == peerPubKey {
+			return peer, nil
+		}
+	}
+	return wgtypes.Peer{}, fmt.Errorf("peer not found")
 }
