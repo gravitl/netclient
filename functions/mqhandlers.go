@@ -7,6 +7,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/nm-proxy/manager"
 	"github.com/gravitl/netclient/nm-proxy/peer"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -105,7 +106,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	for _, node := range nodes {
 		if node.Connected {
 			if node.Proxy {
-				node.Peers = peer.SetPeersEndpointToProxy(node.Peers)
+				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 			}
 			peers = append(peers, node.Peers...)
 		}
@@ -147,6 +148,25 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		//		}
 	}
 	_ = UpdateLocalListenPort(newNode)
+}
+
+func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
+
+	var proxyUpdate manager.ProxyManagerPayload
+	var network = parseNetworkFromTopic(msg.Topic())
+	node := config.GetNode(network)
+	logger.Log(0, "---------> Recieved a proxy update")
+	data, dataErr := decryptMsg(&node, msg.Payload())
+	if dataErr != nil {
+		return
+	}
+	err := json.Unmarshal([]byte(data), &proxyUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling proxy update data"+err.Error())
+		return
+	}
+
+	ProxyManagerChan <- &proxyUpdate
 }
 
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
@@ -204,7 +224,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	for _, node := range nodes {
 		if node.Connected {
 			if node.Proxy {
-				node.Peers = peer.SetPeersEndpointToProxy(node.Peers)
+				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 			}
 			peers = append(peers, node.Peers...)
 		}
@@ -223,6 +243,9 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	UpdateLocalListenPort(&node)
+	if node.Proxy {
+		ProxyManagerChan <- &peerUpdate.ProxyUpdate
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {

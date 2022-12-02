@@ -28,7 +28,7 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet map[string]mqtt.Client
-var ProxyManagerChan = make(chan *manager.ManagerAction)
+var ProxyManagerChan = make(chan *manager.ProxyManagerPayload)
 
 type cachedMessage struct {
 	Message  string
@@ -118,7 +118,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		for _, node := range nodes {
 			if node.Connected {
 				if node.Proxy {
-					node.Peers = peer.SetPeersEndpointToProxy(node.Peers)
+					node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 				}
 				peers = append(peers, node.Peers...)
 			}
@@ -156,7 +156,7 @@ func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("mqtts://%s:%s", broker, port))
+	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
 	opts.SetUsername(server.MQID)
 	opts.SetPassword(server.Password)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
