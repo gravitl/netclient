@@ -85,7 +85,6 @@ func (p *Proxy) Close() {
 		}
 
 	}
-	close(p.Config.RecieverChan)
 }
 
 func GetInterfaceListenAddr(port int) (*net.UDPAddr, error) {

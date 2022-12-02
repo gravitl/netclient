@@ -29,7 +29,6 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		IsExtClient:         isExtClient,
 		PeerConf:            peer,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
-		RecieverChan:        make(chan []byte, 1000),
 	}
 	p := proxy.NewProxy(c)
 	peerPort := models.NmProxyPort
@@ -80,6 +79,16 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		Endpoint:            peerEndpoint,
 		IsAttachedExtClient: isAttachedExtClient,
 		LocalConn:           p.LocalConn,
+	}
+	if isAttachedExtClient {
+		common.ExtSourceIpMap[peer.Endpoint.String()] = models.RemotePeer{
+			Interface:           wgInterface.Name,
+			PeerKey:             peer.PublicKey.String(),
+			IsExtClient:         isExtClient,
+			IsAttachedExtClient: isAttachedExtClient,
+			Endpoint:            peer.Endpoint,
+			LocalConn:           p.LocalConn,
+		}
 	}
 	return nil
 }

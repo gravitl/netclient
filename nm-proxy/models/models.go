@@ -21,7 +21,6 @@ type ProxyConfig struct {
 	WgInterface         *wg.WGIface
 	IsExtClient         bool
 	PersistentKeepalive *time.Duration
-	RecieverChan        chan []byte
 	PeerConf            *wgtypes.PeerConfig
 	PeerEndpoint        *net.UDPAddr
 	RemoteConnAddr      *net.UDPAddr
