@@ -176,8 +176,8 @@ github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB7
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/gravitl/netclient v0.0.0-20221201130244-58e81aadf53f h1:ahBqfqRzsWeU/R/3xIrlny9UBmMkGDQq590ZTHf6NJI=
-github.com/gravitl/netclient v0.0.0-20221201130244-58e81aadf53f/go.mod h1:4At9Ir5lbelnseag0o931jBpPcH5BCD+SWJ44o+2IFQ=
+github.com/gravitl/netclient v0.0.0-20221201225625-db2110eaab62 h1:LHXeHZ9a8p21P9MVe0xMl1dIIzDkavvnOPaFKusF/5k=
+github.com/gravitl/netclient v0.0.0-20221201225625-db2110eaab62/go.mod h1:4At9Ir5lbelnseag0o931jBpPcH5BCD+SWJ44o+2IFQ=
 github.com/gravitl/netmaker v0.16.3-0.20221128175824-c5919b347c20 h1:IZSxhM/4Z3QCfk/KMKA8ZlU7vj/89ftAlksHGcU/+Uo=
 github.com/gravitl/netmaker v0.16.3-0.20221128175824-c5919b347c20/go.mod h1:JdKqdqpBcnMhBdoFQGH3m6DSOVCxdwWjAdZ10NoSpdE=
 github.com/guumaster/hostctl v1.1.3 h1:b/yR3svkYsbr5VBdvfdyLXUl2xaKopSzgE/Xi7+1WRo=
