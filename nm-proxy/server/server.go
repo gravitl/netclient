@@ -103,15 +103,15 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		// calc latency
 		if err == nil {
 			log.Printf("------->$$$$$ Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String())
+			network := packet.DecodeNetwork(metricMsg.NetworkEncoded[:])
 			if common.WgIfaceMap.Iface != nil && metricMsg.Sender == common.WgIfaceMap.Iface.PublicKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
-				metrics.MetricsMapLock.Lock()
-				metric := metrics.MetricsMap[metricMsg.Reciever.String()]
+				metric := metrics.GetMetric(network, metricMsg.Reciever.String())
 				metric.LastRecordedLatency = uint64(latency)
 				metric.ConnectionStatus = true
 				metric.TrafficRecieved += float64(n) / (1 << 20)
-				metrics.MetricsMap[metricMsg.Reciever.String()] = metric
-				metrics.MetricsMapLock.Unlock()
+				metrics.UpdateMetric(network, metricMsg.Reciever.String(), &metric)
+
 			} else if common.WgIfaceMap.Iface != nil && metricMsg.Reciever == common.WgIfaceMap.Iface.PublicKey {
 				// proxy it back to the sender
 				log.Println("------------> $$$ SENDING back the metric pkt to the source: ", source.String())
@@ -119,12 +119,12 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				if err != nil {
 					log.Println("Failed to send metric packet to remote: ", err)
 				}
-				metrics.MetricsMapLock.Lock()
-				metric := metrics.MetricsMap[metricMsg.Sender.String()]
+
+				metric := metrics.GetMetric(network, metricMsg.Sender.String())
 				metric.ConnectionStatus = true
 				metric.TrafficRecieved += float64(n) / (1 << 20)
-				metrics.MetricsMap[metricMsg.Sender.String()] = metric
-				metrics.MetricsMapLock.Unlock()
+				metrics.UpdateMetric(network, metricMsg.Sender.String(), &metric)
+
 			}
 		}
 	case packet.MessageProxyUpdateType:
@@ -132,14 +132,15 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		if err == nil {
 			switch msg.Action {
 			case packet.UpdateListenPort:
-				if peerConnMap, found := common.GetNetworkMap(msg.Network); found {
+				network := packet.DecodeNetwork(msg.NetworkEncoded[:])
+				if peerConnMap, found := common.GetNetworkMap(network); found {
 					if peer, ok := peerConnMap[msg.Sender.String()]; ok {
 						peer.Mutex.Lock()
 						if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
 							// update peer conn
 							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
 							peer.Mutex.Unlock()
-							common.UpdatePeer(msg.Network, peer)
+							common.UpdatePeer(network, peer)
 							log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
 							peer.ResetConn()
 							return
@@ -170,12 +171,10 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 			log.Println("Failed to proxy to Wg local interface: ", err)
 			//continue
 		}
-		metrics.MetricsMapLock.Lock()
-		metric := metrics.MetricsMap[peerInfo.PeerKey]
+		metric := metrics.GetMetric(peerInfo.Network, peerInfo.PeerKey)
 		metric.TrafficRecieved += float64(n) / (1 << 20)
 		metric.ConnectionStatus = true
-		metrics.MetricsMap[peerInfo.PeerKey] = metric
-		metrics.MetricsMapLock.Unlock()
+		metrics.UpdateMetric(peerInfo.Network, peerInfo.PeerKey, &metric)
 		isExtClient = true
 	}
 	return isExtClient
@@ -226,14 +225,14 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 			//continue
 		}
 
-		go func(n int, peerKey string) {
-			metrics.MetricsMapLock.Lock()
-			metric := metrics.MetricsMap[peerKey]
+		go func(n int, network, peerKey string) {
+
+			metric := metrics.GetMetric(network, peerKey)
 			metric.TrafficRecieved += float64(n) / (1 << 20)
 			metric.ConnectionStatus = true
-			metrics.MetricsMap[peerKey] = metric
-			metrics.MetricsMapLock.Unlock()
-		}(n, peerInfo.PeerKey)
+			metrics.UpdateMetric(network, peerKey, &metric)
+
+		}(n, peerInfo.Network, peerInfo.PeerKey)
 		return
 
 	}

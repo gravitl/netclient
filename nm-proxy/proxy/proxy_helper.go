@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -49,13 +50,13 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 			// 	p.Close()
 			// 	return
 			// }
-			go func(n int, peerKey string) {
-				metrics.MetricsMapLock.Lock()
-				metric := metrics.MetricsMap[peerKey]
+			go func(n int, network, peerKey string) {
+
+				metric := metrics.GetMetric(p.Config.Network, peerKey)
 				metric.TrafficSent += float64(n) / (1 << 20)
-				metrics.MetricsMap[peerKey] = metric
-				metrics.MetricsMapLock.Unlock()
-			}(n, p.Config.RemoteKey.String())
+				metrics.UpdateMetric(network, peerKey, &metric)
+
+			}(n, p.Config.Network, p.Config.RemoteKey.String())
 
 			//var srcPeerKeyHash, dstPeerKeyHash string
 			if !p.Config.IsExtClient {
@@ -109,15 +110,14 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 		case <-p.Ctx.Done():
 			return
 		case <-ticker.C:
-			metrics.MetricsMapLock.Lock()
-			metric := metrics.MetricsMap[p.Config.RemoteKey.String()]
+
+			metric := metrics.GetMetric(p.Config.Network, p.Config.RemoteKey.String())
 			if metric.ConnectionStatus {
 				rTicker.Reset(*p.Config.PersistentKeepalive)
 			}
 			metric.ConnectionStatus = false
-			metrics.MetricsMap[p.Config.RemoteKey.String()] = metric
-			metrics.MetricsMapLock.Unlock()
-			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.LocalKey, p.Config.RemoteKey)
+			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
+			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
 				log.Printf("-----------> ##### $$$$$ SENDING METRIC PACKET TO: %s\n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
@@ -138,12 +138,19 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			return
 		case <-ticker.C:
 			// send listen port packet
+			var networkEncoded [packet.NetworkNameSize]byte
+			b, err := base64.StdEncoding.DecodeString(p.Config.Network)
+			if err != nil {
+				continue
+			}
+			copy(networkEncoded[:], b[:packet.NetworkNameSize])
 			m := &packet.ProxyUpdateMessage{
-				Type:       packet.MessageProxyType,
-				Action:     packet.UpdateListenPort,
-				Sender:     p.Config.LocalKey,
-				Reciever:   p.Config.RemoteKey,
-				ListenPort: uint32(stun.Host.PrivPort),
+				Type:           packet.MessageProxyType,
+				NetworkEncoded: networkEncoded,
+				Action:         packet.UpdateListenPort,
+				Sender:         p.Config.LocalKey,
+				Reciever:       p.Config.RemoteKey,
+				ListenPort:     uint32(stun.Host.PrivPort),
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {

@@ -32,22 +32,43 @@ const (
 	TrafficRecievedUpdate MetricsUpdateType = 3
 )
 
-var MetricsMapLock = &sync.RWMutex{}
+var metricsMapLock = &sync.RWMutex{}
 
-var MetricsMap = make(map[string]Metric)
+var metricsNetworkMap = make(map[string]map[string]*Metric)
 
 func init() {
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			PrintMetrics()
+			printMetrics()
 		}
 	}()
 }
 
-func PrintMetrics() {
+func GetMetric(network, peerKey string) Metric {
+	metric := Metric{}
+	metricsMapLock.RLock()
+	defer metricsMapLock.RUnlock()
+	if metricsMap, ok := metricsNetworkMap[network]; ok {
+		if m, ok := metricsMap[peerKey]; ok {
+			metric = *m
+		}
+	} else {
+		metricsNetworkMap[network] = make(map[string]*Metric)
+	}
+	return metric
+}
 
-	data, err := json.MarshalIndent(MetricsMap, "", " ")
+func UpdateMetric(network, peerKey string, metric *Metric) {
+	metricsMapLock.Lock()
+	defer metricsMapLock.Unlock()
+	metricsNetworkMap[network][peerKey] = metric
+}
+
+func printMetrics() {
+	metricsMapLock.RLock()
+	defer metricsMapLock.RUnlock()
+	data, err := json.MarshalIndent(metricsNetworkMap, "", " ")
 	if err != nil {
 		return
 	}

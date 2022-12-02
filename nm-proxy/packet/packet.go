@@ -91,23 +91,35 @@ func ConsumeProxyUpdateMsg(buf []byte) (*ProxyUpdateMessage, error) {
 	return &msg, nil
 }
 
-func CreateMetricPacket(id uint32, sender, reciever wgtypes.Key) ([]byte, error) {
+func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key) ([]byte, error) {
+
+	var networkEncoded [NetworkNameSize]byte
+	b, err := base64.StdEncoding.DecodeString(network)
+	if err != nil {
+		return nil, err
+	}
+	copy(networkEncoded[:], b[:NetworkNameSize])
 	msg := MetricMessage{
-		Type:      MessageMetricsType,
-		ID:        id,
-		Sender:    sender,
-		Reciever:  reciever,
-		TimeStamp: time.Now().UnixMilli(),
+		Type:           MessageMetricsType,
+		ID:             id,
+		NetworkEncoded: networkEncoded,
+		Sender:         sender,
+		Reciever:       reciever,
+		TimeStamp:      time.Now().UnixMilli(),
 	}
 	log.Printf("----------> $$$$$$ CREATED PACKET: %+v\n", msg)
 	var buff [MessageMetricSize]byte
 	writer := bytes.NewBuffer(buff[:0])
-	err := binary.Write(writer, binary.LittleEndian, msg)
+	err = binary.Write(writer, binary.LittleEndian, msg)
 	if err != nil {
 		return nil, err
 	}
 	packet := writer.Bytes()
 	return packet, nil
+}
+
+func DecodeNetwork(networkBytes []byte) string {
+	return base64.StdEncoding.EncodeToString(networkBytes[:])
 }
 
 func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {

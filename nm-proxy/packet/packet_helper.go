@@ -30,24 +30,25 @@ type MessageInitiation struct {
 }
 
 type MetricMessage struct {
-	Type      MessageType
-	ID        uint32
-	Sender    wgtypes.Key
-	Reciever  wgtypes.Key
-	TimeStamp int64
+	Type           MessageType
+	ID             uint32
+	NetworkEncoded [NetworkNameSize]byte
+	Sender         wgtypes.Key
+	Reciever       wgtypes.Key
+	TimeStamp      int64
 }
 
 type ProxyMessage struct {
 	Type     MessageType
-	Sender   [16]byte
-	Reciever [16]byte
+	Sender   [PeerKeyHashSize]byte
+	Reciever [PeerKeyHashSize]byte
 }
 
 type ProxyUpdateMessage struct {
-	Type       MessageType
-	Action     ProxyActionType
-	Network    string
-	Sender     wgtypes.Key
-	Reciever   wgtypes.Key
-	ListenPort uint32
+	Type           MessageType
+	Action         ProxyActionType
+	NetworkEncoded [NetworkNameSize]byte
+	Sender         wgtypes.Key
+	Reciever       wgtypes.Key
+	ListenPort     uint32
 }

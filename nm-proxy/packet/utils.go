@@ -24,9 +24,10 @@ const (
 	UpdateListenPort ProxyActionType = 1
 )
 const (
-	NoisePublicKeySize  = 32
-	NoisePrivateKeySize = 32
-
+	NoisePublicKeySize     = 32
+	NoisePrivateKeySize    = 32
+	NetworkNameSize        = 9
+	PeerKeyHashSize        = 16
 	MessageMetricSize      = 148
 	MessageProxyUpdateSize = 148
 	MessageProxySize       = 36
