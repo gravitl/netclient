@@ -20,23 +20,42 @@ jobs:
          env CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build .
          env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build .
          env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build .
- 
   tests:
-    env:
-      DATABASE: sqlite
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v2
         with:
           go-version: 1.19
       - name: run tests
         run: |
-            go test -p 1 ./... -v
-            go install honnef.co/go/tools/cmd/staticcheck@latest
-            { ~/go/bin/staticcheck  -tags=ee ./... ; }
+          sudo apt update
+          go test -p 1 ./... -v
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          { ~/go/bin/staticcheck  -tags=ee ./... ; }
         env:
           DATABASE: sqlite
           CLIENT_MODE: "off"
+  linux-gui:
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [
+          {name: wailsTest, platform: linux/amd64, os: ubuntu-latest},
+          {name: wailsTest, platform: windows/amd64, os: windows-latest},
+          {name: wailsTest, platform: darwin/universal, os: macos-latest},
+          {name: wailsTest, platform: freebsd/amd64, os: ubuntu-latest}
+        ]
+    runs-on: ${{ matrix.build.os }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - uses: dAppServer/wails-build-action@v2
+        with:
+          build-name: ${{ matrix.build.name }}
+          build-platform: ${{ matrix.build.platform }}
+          package: false
+          go-version: 1.19
