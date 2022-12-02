@@ -5,18 +5,28 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func GetPeer(peerKey wgtypes.Key) (*models.Conn, bool) {
+func GetPeer(network string, peerKey wgtypes.Key) (*models.Conn, bool) {
 	var peerInfo *models.Conn
-	var found bool
-	peerInfo, found = WgIfaceMap.PeerMap[peerKey.String()]
-	peerInfo.Mutex.RLock()
-	defer peerInfo.Mutex.RUnlock()
+	found := false
+	peerConnMap, ok := GetNetworkMap(network)
+	if !ok {
+		return nil, found
+	}
+	peerInfo, found = peerConnMap[peerKey.String()]
 	return peerInfo, found
 
 }
 
-func UpdatePeer(peer *models.Conn) {
+func UpdatePeer(network string, peer *models.Conn) {
 	peer.Mutex.Lock()
 	defer peer.Mutex.Unlock()
-	WgIfaceMap.PeerMap[peer.Key.String()] = peer
+	if _, ok := WgIfaceMap.NetworkPeerMap[network]; ok {
+		WgIfaceMap.NetworkPeerMap[network][peer.Key.String()] = peer
+	}
+
+}
+
+func GetNetworkMap(network string) (models.PeerConnMap, bool) {
+	peerConnMap, found := WgIfaceMap.NetworkPeerMap[network]
+	return peerConnMap, found
 }

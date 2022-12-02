@@ -38,11 +38,15 @@ type ProxyServer struct {
 func (p *ProxyServer) Close() {
 	log.Println("--------->### Shutting down Proxy.....")
 	// clean up proxy connections
-	for _, peerI := range common.WgIfaceMap.PeerMap {
-		peerI.Mutex.Lock()
-		peerI.StopConn()
-		peerI.Mutex.Unlock()
+	for _, peerConnMap := range common.WgIfaceMap.NetworkPeerMap {
+		for _, peerConnI := range peerConnMap {
+			peerConnI.Mutex.Lock()
+			peerConnI.StopConn()
+			peerConnI.Mutex.Unlock()
+		}
+
 	}
+	common.WgIfaceMap.NetworkPeerMap = make(map[string]models.PeerConnMap)
 	// close server connection
 	NmProxyServer.Server.Close()
 }
@@ -128,12 +132,12 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		if err == nil {
 			switch msg.Action {
 			case packet.UpdateListenPort:
-				if peer, ok := common.WgIfaceMap.PeerMap[msg.Sender.String()]; ok {
+				if peer, ok := common.WgIfaceMap.NetworkPeerMap[msg.Network][msg.Sender.String()]; ok {
 					peer.Mutex.Lock()
 					if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
 						// update peer conn
 						peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
-						common.WgIfaceMap.PeerMap[msg.Sender.String()] = peer
+						common.WgIfaceMap.NetworkPeerMap[msg.Network][msg.Sender.String()] = peer
 						log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
 						peer.Mutex.Unlock()
 						peer.ResetConn()
@@ -158,7 +162,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	isExtClient := false
 	if peerInfo, ok := common.ExtSourceIpMap[source.String()]; ok {
-		if peerI, ok := common.WgIfaceMap.PeerMap[peerInfo.PeerKey]; ok {
+		if peerI, ok := common.WgIfaceMap.NetworkPeerMap[peerInfo.Network][peerInfo.PeerKey]; ok {
 			peerI.Mutex.RLock()
 			peerI.Config.RecieverChan <- buffer[:n]
 			metrics.MetricsMapLock.Lock()

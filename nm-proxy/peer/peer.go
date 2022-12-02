@@ -16,7 +16,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func AddNewPeer(wgInterface *wg.WGIface, peer *wgtypes.PeerConfig, peerAddr string,
+func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, peerAddr string,
 	isRelayed, isExtClient, isAttachedExtClient bool, relayTo *net.UDPAddr) error {
 	if peer.PersistentKeepaliveInterval == nil {
 		d := time.Second * 25
@@ -68,8 +68,10 @@ func AddNewPeer(wgInterface *wg.WGIface, peer *wgtypes.PeerConfig, peerAddr stri
 		ResetConn:           p.Reset,
 		LocalConn:           p.LocalConn,
 	}
-
-	common.WgIfaceMap.PeerMap[peer.PublicKey.String()] = &connConf
+	if _, ok := common.WgIfaceMap.NetworkPeerMap[network]; !ok {
+		common.WgIfaceMap.NetworkPeerMap[network] = make(models.PeerConnMap)
+	}
+	common.WgIfaceMap.NetworkPeerMap[network][peer.PublicKey.String()] = &connConf
 
 	common.PeerKeyHashMap[fmt.Sprintf("%x", md5.Sum([]byte(peer.PublicKey.String())))] = models.RemotePeer{
 		Interface:           wgInterface.Name,
@@ -82,9 +84,9 @@ func AddNewPeer(wgInterface *wg.WGIface, peer *wgtypes.PeerConfig, peerAddr stri
 	return nil
 }
 
-func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
+func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	for _, peer := range peers {
-		proxyPeer, found := common.GetPeer(peer.PublicKey)
+		proxyPeer, found := common.GetPeer(network, peer.PublicKey)
 		if found {
 			peer.Endpoint = proxyPeer.Config.LocalConnAddr
 		}

@@ -26,7 +26,10 @@ type ProxyConfig struct {
 	PeerEndpoint        *net.UDPAddr
 	RemoteConnAddr      *net.UDPAddr
 	LocalConnAddr       *net.UDPAddr
+	Network             string
 }
+
+type PeerConnMap map[string]*Conn
 
 // Conn is a peer Connection configuration
 type Conn struct {
@@ -45,6 +48,7 @@ type Conn struct {
 }
 
 type RemotePeer struct {
+	Network             string
 	PeerKey             string
 	Interface           string
 	Endpoint            *net.UDPAddr
@@ -59,7 +63,7 @@ type ExtClientPeer struct {
 }
 
 type WgIfaceConf struct {
-	Iface        *wgtypes.Device
-	IfaceKeyHash string
-	PeerMap      map[string]*Conn
+	Iface          *wgtypes.Device
+	IfaceKeyHash   string
+	NetworkPeerMap map[string]PeerConnMap
 }

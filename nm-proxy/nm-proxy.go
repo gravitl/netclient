@@ -12,7 +12,7 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/stun"
 )
 
-func Start(ctx context.Context, mgmChan chan *manager.ManagerAction, apiServerAddr string) {
+func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, apiServerAddr string) {
 	log.Println("Starting Proxy...")
 	common.IsHostNetwork = (os.Getenv("HOST_NETWORK") == "" || os.Getenv("HOST_NETWORK") == "on")
 	hInfo := stun.GetHostInfo(apiServerAddr)
@@ -26,7 +26,7 @@ func Start(ctx context.Context, mgmChan chan *manager.ManagerAction, apiServerAd
 	if err != nil {
 		log.Fatal("failed to create proxy: ", err)
 	}
-	go manager.StartProxyManager(mgmChan)
+	go manager.StartProxyManager(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)
 
 }

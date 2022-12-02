@@ -46,6 +46,7 @@ type ProxyMessage struct {
 type ProxyUpdateMessage struct {
 	Type       MessageType
 	Action     ProxyActionType
+	Network    string
 	Sender     wgtypes.Key
 	Reciever   wgtypes.Key
 	ListenPort uint32
