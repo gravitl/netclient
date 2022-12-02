@@ -103,7 +103,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		// calc latency
 		if err == nil {
 			log.Printf("------->$$$$$ Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String())
-			if metricMsg.Sender == common.WgIfaceMap.Iface.PublicKey {
+			if common.WgIfaceMap.Iface != nil && metricMsg.Sender == common.WgIfaceMap.Iface.PublicKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metrics.MetricsMapLock.Lock()
 				metric := metrics.MetricsMap[metricMsg.Reciever.String()]
@@ -112,7 +112,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.TrafficRecieved += float64(n) / (1 << 20)
 				metrics.MetricsMap[metricMsg.Reciever.String()] = metric
 				metrics.MetricsMapLock.Unlock()
-			} else if metricMsg.Reciever == common.WgIfaceMap.Iface.PublicKey {
+			} else if common.WgIfaceMap.Iface != nil && metricMsg.Reciever == common.WgIfaceMap.Iface.PublicKey {
 				// proxy it back to the sender
 				log.Println("------------> $$$ SENDING back the metric pkt to the source: ", source.String())
 				_, err = NmProxyServer.Server.WriteToUDP(buffer[:n], source)
@@ -132,20 +132,23 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		if err == nil {
 			switch msg.Action {
 			case packet.UpdateListenPort:
-				if peer, ok := common.WgIfaceMap.NetworkPeerMap[msg.Network][msg.Sender.String()]; ok {
-					peer.Mutex.Lock()
-					if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
-						// update peer conn
-						peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
-						common.WgIfaceMap.NetworkPeerMap[msg.Network][msg.Sender.String()] = peer
-						log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
+				if peerConnMap, found := common.GetNetworkMap(msg.Network); found {
+					if peer, ok := peerConnMap[msg.Sender.String()]; ok {
+						peer.Mutex.Lock()
+						if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
+							// update peer conn
+							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
+							peer.Mutex.Unlock()
+							common.UpdatePeer(msg.Network, peer)
+							log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
+							peer.ResetConn()
+							return
+						}
 						peer.Mutex.Unlock()
-						peer.ResetConn()
-						return
-					}
-					peer.Mutex.Unlock()
 
+					}
 				}
+
 			}
 		}
 	// consume handshake message for ext clients
@@ -162,19 +165,18 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	isExtClient := false
 	if peerInfo, ok := common.ExtSourceIpMap[source.String()]; ok {
-		if peerI, ok := common.WgIfaceMap.NetworkPeerMap[peerInfo.Network][peerInfo.PeerKey]; ok {
-			peerI.Mutex.RLock()
-			peerI.Config.RecieverChan <- buffer[:n]
-			metrics.MetricsMapLock.Lock()
-			metric := metrics.MetricsMap[peerInfo.PeerKey]
-			metric.TrafficRecieved += float64(n) / (1 << 20)
-			metric.ConnectionStatus = true
-			metrics.MetricsMap[peerInfo.PeerKey] = metric
-			metrics.MetricsMapLock.Unlock()
-			peerI.Mutex.RUnlock()
-			isExtClient = true
+		_, err := peerInfo.LocalConn.Write(buffer[:n])
+		if err != nil {
+			log.Println("Failed to proxy to Wg local interface: ", err)
+			//continue
 		}
-
+		metrics.MetricsMapLock.Lock()
+		metric := metrics.MetricsMap[peerInfo.PeerKey]
+		metric.TrafficRecieved += float64(n) / (1 << 20)
+		metric.ConnectionStatus = true
+		metrics.MetricsMap[peerInfo.PeerKey] = metric
+		metrics.MetricsMapLock.Unlock()
+		isExtClient = true
 	}
 	return isExtClient
 }
