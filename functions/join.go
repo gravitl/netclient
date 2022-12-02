@@ -317,7 +317,11 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	// Find and set node MacAddress
 	nodeForServer.MacAddress = config.Netclient().MacAddress.String()
 	// make sure name is appropriate, if not, give blank name
-	nodeForServer.Name = config.Netclient().Name
+	nodeForServer.Name = flags.GetString("name")
+	if nodeForServer.Name == "" {
+		nodeForServer.Name = config.Netclient().Name
+	}
+
 	nodeForServer.FirewallInUse = config.Netclient().FirewallInUse
 	nodeForServer.OS = config.Netclient().OS
 	nodeForServer.IPForwarding = config.FormatBool(config.Netclient().IPForwarding)
