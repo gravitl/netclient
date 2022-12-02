@@ -7,9 +7,11 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/nm-proxy/peer"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -98,7 +100,17 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "could not configure netmaker interface", err.Error())
 		return
 	}
-	wireguard.SetPeers()
+	nodes := config.GetNodes()
+	peers := []wgtypes.PeerConfig{}
+	for _, node := range nodes {
+		if node.Connected {
+			if node.Proxy {
+				node.Peers = peer.SetPeersEndpointToProxy(node.Peers)
+			}
+			peers = append(peers, node.Peers...)
+		}
+	}
+	wireguard.SetPeers(peers)
 	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
@@ -187,7 +199,17 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
 	}
-	wireguard.SetPeers()
+	nodes := config.GetNodes()
+	peers := []wgtypes.PeerConfig{}
+	for _, node := range nodes {
+		if node.Connected {
+			if node.Proxy {
+				node.Peers = peer.SetPeersEndpointToProxy(node.Peers)
+			}
+			peers = append(peers, node.Peers...)
+		}
+	}
+	wireguard.SetPeers(peers)
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {

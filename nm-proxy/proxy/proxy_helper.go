@@ -60,7 +60,7 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 			//var srcPeerKeyHash, dstPeerKeyHash string
 			if !p.Config.IsExtClient {
 				buf, n, _, _ = packet.ProcessPacketBeforeSending(buf, n,
-					p.Config.WgInterface.Config.PrivateKey.PublicKey().String(), p.Config.RemoteKey.String())
+					p.Config.WgInterface.Device.PublicKey.String(), p.Config.RemoteKey.String())
 				if err != nil {
 					log.Println("failed to process pkt before sending: ", err)
 				}
@@ -190,7 +190,7 @@ func (p *Proxy) updateEndpoint() error {
 	log.Printf("---> ####### Updating Peer:  %+v\n", p.Config.PeerConf)
 	peer := *p.Config.PeerConf
 	peer.Endpoint = udpAddr
-	p.Config.WgInterface.UpdatePeer(peer)
+	p.Config.WgInterface.UpdatePeerEndpoint(peer)
 
 	return nil
 }

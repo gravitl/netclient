@@ -12,18 +12,18 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/common"
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/proxy"
-	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netclient/nm-proxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func AddNewPeer(wgInterface *wireguard.NCIface, peer *wgtypes.PeerConfig, peerAddr string,
+func AddNewPeer(wgInterface *wg.WGIface, peer *wgtypes.PeerConfig, peerAddr string,
 	isRelayed, isExtClient, isAttachedExtClient bool, relayTo *net.UDPAddr) error {
 	if peer.PersistentKeepaliveInterval == nil {
 		d := time.Second * 25
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.ProxyConfig{
-		LocalKey:            wgInterface.Config.PrivateKey.PublicKey(),
+		LocalKey:            wgInterface.Device.PrivateKey,
 		RemoteKey:           peer.PublicKey,
 		WgInterface:         wgInterface,
 		IsExtClient:         isExtClient,
@@ -80,4 +80,14 @@ func AddNewPeer(wgInterface *wireguard.NCIface, peer *wgtypes.PeerConfig, peerAd
 		LocalConn:           p.LocalConn,
 	}
 	return nil
+}
+
+func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
+	for _, peer := range peers {
+		proxyPeer, found := common.GetPeer(peer.PublicKey)
+		if found {
+			peer.Endpoint = proxyPeer.Config.LocalConnAddr
+		}
+	}
+	return peers
 }

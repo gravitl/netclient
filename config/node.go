@@ -50,6 +50,7 @@ type Node struct {
 	DNSOn               bool                 `json:"dnson" yaml:"dnson"`
 	IsHub               bool                 `json:"ishub" yaml:"ishub"`
 	PersistentKeepalive int                  `json:"persistentkeepalive" yaml:"persistentkeepalive"`
+	Proxy               bool                 `json:"proxy" yaml:"proxy"`
 	Peers               []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 

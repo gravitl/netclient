@@ -94,10 +94,10 @@ func isZero(val []byte) bool {
 }
 
 func GetDeviceKeys(ifaceName string) (NoisePrivateKey, NoisePublicKey, error) {
-	wgPrivKey := common.WgIfaceMap.Iface.Config.PrivateKey
-	wgPubKey := common.WgIfaceMap.Iface.Config.PrivateKey.PublicKey()
+	wgPrivKey := common.WgIfaceMap.Iface.PrivateKey
+	wgPubKey := common.WgIfaceMap.Iface.PublicKey
 
-	return NoisePrivateKey(*wgPrivKey), NoisePublicKey(wgPubKey), nil
+	return NoisePrivateKey(wgPrivKey), NoisePublicKey(wgPubKey), nil
 }
 
 type (

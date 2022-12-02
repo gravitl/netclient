@@ -22,14 +22,8 @@ import (
 var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // SetPeers - sets peers on netmaker WireGuard interface
-func SetPeers() {
-	nodes := config.GetNodes()
-	peers := []wgtypes.PeerConfig{}
-	for _, node := range nodes {
-		if node.Connected {
-			peers = append(peers, node.Peers...)
-		}
-	}
+func SetPeers(peers []wgtypes.PeerConfig) {
+
 	config := wgtypes.Config{
 		ReplacePeers: true,
 		Peers:        peers,
@@ -398,4 +392,16 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 		}
 	}
 	return wgtypes.Peer{}, fmt.Errorf("peer not found")
+}
+
+func GetIfaceConfig(ifacename string) (*wgtypes.Device, error) {
+	wgClient, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+	device, err := wgClient.Device(ifacename)
+	if err != nil {
+		return nil, err
+	}
+	return device, nil
 }

@@ -99,7 +99,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		// calc latency
 		if err == nil {
 			log.Printf("------->$$$$$ Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String())
-			if metricMsg.Sender == common.WgIfaceMap.Iface.Config.PrivateKey.PublicKey() {
+			if metricMsg.Sender == common.WgIfaceMap.Iface.PublicKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metrics.MetricsMapLock.Lock()
 				metric := metrics.MetricsMap[metricMsg.Reciever.String()]
@@ -108,7 +108,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.TrafficRecieved += float64(n) / (1 << 20)
 				metrics.MetricsMap[metricMsg.Reciever.String()] = metric
 				metrics.MetricsMapLock.Unlock()
-			} else if metricMsg.Reciever == common.WgIfaceMap.Iface.Config.PrivateKey.PublicKey() {
+			} else if metricMsg.Reciever == common.WgIfaceMap.Iface.PublicKey {
 				// proxy it back to the sender
 				log.Println("------------> $$$ SENDING back the metric pkt to the source: ", source.String())
 				_, err = NmProxyServer.Server.WriteToUDP(buffer[:n], source)
@@ -148,7 +148,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 	case packet.MessageInitiationType:
 
 		err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n], source,
-			packet.NoisePublicKey(common.WgIfaceMap.Iface.Config.PrivateKey.PublicKey()), packet.NoisePrivateKey(*common.WgIfaceMap.Iface.Config.PrivateKey))
+			packet.NoisePublicKey(common.WgIfaceMap.Iface.PublicKey), packet.NoisePrivateKey(common.WgIfaceMap.Iface.PrivateKey))
 		if err != nil {
 			log.Println("---------> @@@ failed to decode HS: ", err)
 		}

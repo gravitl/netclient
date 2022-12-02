@@ -14,6 +14,9 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	nmproxy "github.com/gravitl/netclient/nm-proxy"
+	"github.com/gravitl/netclient/nm-proxy/manager"
+	"github.com/gravitl/netclient/nm-proxy/peer"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
@@ -25,10 +28,25 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet map[string]mqtt.Client
+var ProxyManagerChan = make(chan *manager.ManagerAction)
 
 type cachedMessage struct {
 	Message  string
 	LastSeen time.Time
+}
+
+func startProxy() (context.CancelFunc, sync.WaitGroup) {
+	wg := sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+	for _, server := range config.Servers {
+		wg.Add(1)
+		go func(server config.Server) {
+			defer wg.Done()
+			nmproxy.Start(ctx, ProxyManagerChan, server.API)
+		}(server)
+		break
+	}
+	return cancel, wg
 }
 
 // Daemon runs netclient daemon
@@ -47,10 +65,13 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
+	stopProxy, proxyWg := startProxy()
 	for {
 		select {
 		case <-quit:
 			cancel()
+			stopProxy()
+			proxyWg.Wait()
 			logger.Log(0, "shutting down netclient daemon")
 			wg.Wait()
 			for _, mqclient := range ServerSet {
@@ -93,7 +114,16 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		nc := wireguard.NewNCIface(config.Netclient(), nodes)
 		nc.Create()
 		nc.Configure()
-		wireguard.SetPeers()
+		peers := []wgtypes.PeerConfig{}
+		for _, node := range nodes {
+			if node.Connected {
+				if node.Proxy {
+					node.Peers = peer.SetPeersEndpointToProxy(node.Peers)
+				}
+				peers = append(peers, node.Peers...)
+			}
+		}
+		wireguard.SetPeers(peers)
 	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)

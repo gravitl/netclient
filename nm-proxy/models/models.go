@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netclient/nm-proxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -18,7 +18,7 @@ const (
 type ProxyConfig struct {
 	RemoteKey           wgtypes.Key
 	LocalKey            wgtypes.Key
-	WgInterface         *wireguard.NCIface
+	WgInterface         *wg.WGIface
 	IsExtClient         bool
 	PersistentKeepalive *time.Duration
 	RecieverChan        chan []byte
@@ -59,7 +59,7 @@ type ExtClientPeer struct {
 }
 
 type WgIfaceConf struct {
-	Iface        *wireguard.NCIface
+	Iface        *wgtypes.Device
 	IfaceKeyHash string
 	PeerMap      map[string]*Conn
 }

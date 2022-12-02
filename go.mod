@@ -1,6 +1,8 @@
 module github.com/gravitl/netclient
 
-go 1.18
+go 1.19
+
+replace github.com/gravitl/netmaker => /Users/abhishekk/go/src/github.com/gravitl/netmaker
 
 require (
 	github.com/c-robinson/iplib v1.0.3
@@ -15,7 +17,7 @@ require (
 
 require (
 	github.com/cloverstd/tcping v0.1.1
-	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/vishvananda/netlink v1.1.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/windows v0.5.3
@@ -42,7 +44,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/lib/pq v1.10.7 // indirect
-	github.com/mattn/go-sqlite3 v1.14.15 // indirect
+	github.com/mattn/go-sqlite3 v1.14.16 // indirect
 	github.com/mdlayher/genetlink v1.2.0 // indirect
 	github.com/mdlayher/netlink v1.6.0 // indirect
 	github.com/mdlayher/socket v0.1.1 // indirect
@@ -55,7 +57,7 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/txn2/txeh v1.3.0 // indirect
-	github.com/urfave/cli/v2 v2.20.2 // indirect
+	github.com/urfave/cli/v2 v2.23.5 // indirect
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
