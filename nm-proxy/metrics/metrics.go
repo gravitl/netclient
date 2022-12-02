@@ -3,8 +3,11 @@ package metrics
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/gravitl/netclient/nm-proxy/common"
 )
 
 /*
@@ -40,7 +43,7 @@ func init() {
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			printMetrics()
+			dumpMetricsToFile()
 		}
 	}()
 }
@@ -65,13 +68,13 @@ func UpdateMetric(network, peerKey string, metric *Metric) {
 	metricsNetworkMap[network][peerKey] = metric
 }
 
-func printMetrics() {
-	metricsMapLock.RLock()
-	defer metricsMapLock.RUnlock()
+func dumpMetricsToFile() {
+	metricsMapLock.Lock()
+	defer metricsMapLock.Unlock()
 	data, err := json.MarshalIndent(metricsNetworkMap, "", " ")
 	if err != nil {
 		return
 	}
-	os.WriteFile("/tmp/metrics.json", data, 0755)
+	os.WriteFile(filepath.Join(common.GetDataPath(), "metrics.json"), data, 0755)
 
 }

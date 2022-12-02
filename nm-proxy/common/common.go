@@ -3,9 +3,19 @@ package common
 import (
 	"log"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/gravitl/netclient/nm-proxy/models"
+)
+
+const (
+	// LinuxAppDataPath - linux path
+	LinuxAppDataPath = "/etc/netclient/"
+	// MacAppDataPath - mac path
+	MacAppDataPath = "/Applications/Netclient/"
+	// WindowsAppDataPath - windows path
+	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
 )
 
 var IsHostNetwork bool
@@ -42,4 +52,15 @@ func RunCmd(command string, printerr bool) (string, error) {
 		log.Println(strings.TrimSuffix(string(out), "\n"))
 	}
 	return string(out), err
+}
+
+// GetDataPath - returns path to netclient config directory
+func GetDataPath() string {
+	if runtime.GOOS == "windows" {
+		return WindowsAppDataPath
+	} else if runtime.GOOS == "darwin" {
+		return MacAppDataPath
+	} else {
+		return LinuxAppDataPath
+	}
 }

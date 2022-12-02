@@ -336,14 +336,6 @@ func (m *ProxyManagerPayload) AddInterfaceToProxy() error {
 					if addExtClient {
 						log.Println("GOT ENDPOINT for Extclient adding peer...")
 
-						common.ExtSourceIpMap[peer.Endpoint.String()] = models.RemotePeer{
-							Interface:           wgInterface.Name,
-							PeerKey:             peer.PublicKey.String(),
-							IsExtClient:         peerConf.IsExtClient,
-							IsAttachedExtClient: peerConf.IsAttachedExtClient,
-							Endpoint:            peer.Endpoint,
-						}
-
 						peerpkg.AddNewPeer(wgInterface, m.Network, peer, peerConf.Address, isRelayed,
 							peerConf.IsExtClient, peerConf.IsAttachedExtClient, relayedTo)
 
