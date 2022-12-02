@@ -13,6 +13,7 @@ import {
 import TablePaginationActions from "@mui/material/TablePagination/TablePaginationActions";
 import React from "react";
 import { Peer } from "../models/Peer";
+import extractPeerEndpoint from "../utils/peers";
 
 interface PeersTableProps {
   peers: Peer[];
@@ -46,8 +47,7 @@ export default function PeersTable(props: PeersTableProps) {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell width={'75%'}>Peer Name</TableCell>
-                <TableCell>Public Address</TableCell>
+                <TableCell>Peer endpoint</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -58,9 +58,8 @@ export default function PeersTable(props: PeersTableProps) {
                   )
                 : props.peers
               ).map((p) => (
-                <TableRow key={`${p.publicKey}${p.endpoint}`}>
-                  <TableCell>{p.publicKey}</TableCell>
-                  <TableCell>{p.endpoint}</TableCell>
+                <TableRow key={`${p.PublicKey}${p.Endpoint}`}>
+                  <TableCell>{extractPeerEndpoint(p)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
