@@ -6,7 +6,7 @@ import NetworkTable from "../components/NetworkTable";
 import { Link } from "react-router-dom";
 import { AppRoutes } from "../routes";
 import { useNetworksContext } from "../store/NetworkContext";
-import { refreshNetworks } from "../store/helpers";
+import { refreshNetworks, updateConnectionStatusAndRefreshNetworks } from "../store/helpers";
 import { main } from "../../wailsjs/go/models";
 
 function Networks() {
@@ -31,17 +31,16 @@ function Networks() {
   }, [setIsLoadingNetworks]);
 
   const changeNetworkStatus = useCallback(
-    (networkName: string, newStatus: boolean) => {
-      // get network
-      const network = networks.find((nw) => (nw?.node?.network ?? '') === networkName);
-      if (!network) return;
-      // check and change status
-      if (network?.node?.connected === newStatus) return;
-      // make API call
-      if (network.node) {
-        network.node.connected = newStatus;
+    async (networkName: string, newStatus: boolean) => {
+      try {
+        if (!networkName) {
+          throw new Error("No network name")
+        }
+        await updateConnectionStatusAndRefreshNetworks(networksDispatch, networkName, newStatus)
+      } catch (err) {
+        // TODO: notify
+        console.error(err);
       }
-      setNetworks([...networks]);
     },
     [networks, setNetworks]
   );
@@ -77,7 +76,7 @@ function Networks() {
           <NetworkTable
             networks={networksState.networks}
             onNetworkStatusChange={changeNetworkStatus}
-            emptyMsg="No recent network"
+            emptyMsg="No joined network"
           />
         )}
       </Grid>
