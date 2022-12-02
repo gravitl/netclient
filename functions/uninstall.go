@@ -43,7 +43,11 @@ func Uninstall() ([]error, error) {
 func LeaveNetwork(network string) ([]error, error) {
 	faults := []error{}
 	fmt.Println("\nleaving network", network)
-	node := config.Nodes[network]
+	node, ok := config.Nodes[network]
+	if !ok {
+		fmt.Printf("\nnot connected to network: %s", network)
+		return faults, fmt.Errorf("not connected to network: %s", network)
+	}
 	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
