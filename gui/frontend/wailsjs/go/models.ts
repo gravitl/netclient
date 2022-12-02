@@ -88,7 +88,7 @@ export namespace config {
 	    internetgateway?: any;
 	    server: string;
 	    connected: boolean;
-	    interfaces: any[];  // models.Iface[]
+	    interfaces: any[]  // Go type: models.Iface[];
 	    endpointip: number[];
 	    // Go type: net.IPNet
 	    address: any;
@@ -106,7 +106,7 @@ export namespace config {
 	    dnson: boolean;
 	    ishub: boolean;
 	    persistentkeepalive: number;
-	    peers: any[];  // wgtypes.PeerConfig[]
+	    peers: any[] // Go type: wgtypes.PeerConfig[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Node(source);

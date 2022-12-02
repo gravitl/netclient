@@ -12,7 +12,7 @@ export class AppRoutes {
   static TOKEN_LOGIN_ROUTE = '/login-token'
   static USERNAME_LOGIN_ROUTE = '/login-username'
   static NETWORKS_ROUTE = '/networks'
-  static NETWORK_DETAILS_ROUTE = '/networks/:networkName'
+  static NETWORK_DETAILS_ROUTE = '/networks/:networkId'
   static LOGS_ROUTE = '/logs'
 }
 

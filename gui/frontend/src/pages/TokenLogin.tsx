@@ -2,15 +2,14 @@ import Grid from "@mui/material/Grid";
 import { Button, TextField, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AppRoutes } from "../routes";
 import { GoJoinNetworkByToken, GoParseAccessToken } from "../../wailsjs/go/main/App";
 import { NetworksContextDispatcherProps, useNetworksContext } from "../store/NetworkContext";
 import { getNetworkDetailsPageUrl } from "../utils/networks";
-import { LoadingButton } from "@mui/lab";
 
 function TokenLogin() {
   const [isFormValid, setIsFormValid] = useState(true);
   const [token, setToken] = useState("");
-  const [isConnecting, setIsConnecting] = useState(false);
   const navigate = useNavigate();
   const { networksDispatch } = useNetworksContext();
 
@@ -32,8 +31,8 @@ function TokenLogin() {
     if (!checkIsFormValid()) return
 
     try {
-      setIsConnecting(true)
       await GoJoinNetworkByToken(token)
+      console.log("tokenLogin:onConnectClick: now after GoJoinNetworkByToken");
 
       // store n/w details in ctx
       const data: NetworksContextDispatcherProps = {
@@ -41,15 +40,19 @@ function TokenLogin() {
       }
       networksDispatch(data)
 
-      const { network: networkName } = await GoParseAccessToken(token)
+      const { network: networkName, ...rest } = await GoParseAccessToken(token)
+      console.log({ network: networkName, ...rest });
+
+      // TODO: notify
+
+      // redirect to n/w details page
+      console.log(networkName)
       navigate(getNetworkDetailsPageUrl(networkName));
     } catch (err) {
-      // TODO: notify
+      console.error("TokenLogin:onConnectClick: error");
       console.error(err);
-    } finally {
-      setIsConnecting(false)
     }
-  }, [navigate, checkIsFormValid, setIsConnecting, networksDispatch]);
+  }, [navigate, checkIsFormValid]);
 
   return (
     <Grid
@@ -80,13 +83,12 @@ function TokenLogin() {
       </Grid>
 
       <Grid item xs={12}>
-        <LoadingButton
-          loading={isConnecting}
+        <Button
           variant="contained"
           onClick={onConnectClick}
         >
           Connect
-        </LoadingButton>
+        </Button>
       </Grid>
     </Grid>
   );

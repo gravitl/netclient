@@ -53,7 +53,7 @@ func main() {
 }
 
 func setupNetclient() {
-	cmd.InitConfig()
+	cmd.CheckConfig()
 	config.SetVersion(NETCLIENT_VERSION)
 	fmt.Printf("wails: netclient version set to: %s\n", NETCLIENT_VERSION)
 }

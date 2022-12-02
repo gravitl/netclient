@@ -1,7 +1,8 @@
 import { createContext, FC, ReactNode, useContext, useReducer } from "react";
 import { main } from "../../wailsjs/go/models";
+import { isConnectedToNetwork } from "./helpers";
 
-type NetworksContextAction = "refresh-networks" | "update-connection-status";
+type NetworksContextAction = "refresh-networks";
 
 export interface NetworksContextType {
   networks: main.Network[];
@@ -27,8 +28,7 @@ function networksContextReducer(
   switch (dispatchProps.action) {
     case "refresh-networks":
       const networks = dispatchProps.data as main.Network[] ?? [];
-      // sort by network name asc
-      networks.sort((a, b) => (a.node!).network.localeCompare((b.node!).network))
+      console.log(networks)
       return { networks };
 
     default:

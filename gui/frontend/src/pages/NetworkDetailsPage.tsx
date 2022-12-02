@@ -1,67 +1,79 @@
-import { Grid, Switch, Typography } from "@mui/material";
-import LoadingButton from '@mui/lab/LoadingButton';
+import { Button, Grid, Switch, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import LoopIcon from "@mui/icons-material/Loop";
 import PeersTable from "../components/PeersTable";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { AppRoutes } from "../routes";
-import { main } from "../../wailsjs/go/models";
-import { useNetworksContext } from "../store/NetworkContext";
-import { getNetwork, leaveAndRefreshNetworks, updateConnectionStatusAndRefreshNetworks } from "../store/helpers";
+
+const mockNetworkDetails = {
+  name: "Test net",
+  isConnected: true,
+  peers: [
+    { name: "Peer 1", addr: "10.0.1.125" },
+    { name: "Peer 2", addr: "10.0.1.12" },
+    { name: "Peer 3", addr: "10.0.1.15" },
+    { name: "Peer 4", addr: "10.0.1.25" },
+    { name: "Peer 5", addr: "10.0.1.1" },
+    { name: "Peer 6", addr: "10.0.1.122" },
+    { name: "Peer 7", addr: "10.0.1.123" },
+    { name: "Peer 8", addr: "10.0.1.124" },
+    { name: "Peer 9", addr: "10.0.1.115" },
+    { name: "Peer 10", addr: "10.0.10.125" },
+    { name: "Peer 11", addr: "10.0.10.125" },
+    { name: "Peer 12", addr: "10.0.10.125" },
+    { name: "Peer 13", addr: "10.0.10.125" },
+    { name: "Peer 14", addr: "10.0.10.125" },
+    { name: "Peer 15", addr: "10.0.10.125" },
+    { name: "Peer 16", addr: "10.0.10.125" },
+    { name: "Peer 17", addr: "10.0.10.125" },
+    { name: "Peer 18", addr: "10.0.10.125" },
+    { name: "Peer 19", addr: "10.0.10.125" },
+    { name: "Peer 20", addr: "10.0.10.125" },
+    { name: "Peer 21", addr: "10.0.10.125" },
+    { name: "Peer 22", addr: "10.0.10.125" },
+    { name: "Peer 23", addr: "10.0.10.125" },
+    { name: "Peer 24", addr: "10.0.10.125" },
+    { name: "Peer 25", addr: "10.0.10.125" },
+    { name: "Peer 26", addr: "10.0.10.125" },
+    { name: "Peer 27", addr: "10.0.10.125" },
+    { name: "Peer 28", addr: "10.0.10.125" },
+    { name: "Peer 29", addr: "10.0.10.125" },
+    { name: "Peer 30", addr: "10.0.10.125" },
+    { name: "Peer 31", addr: "10.0.10.125" },
+    { name: "Peer 32", addr: "10.0.10.125" },
+    { name: "Peer 33", addr: "10.0.10.125" },
+    { name: "Peer 34", addr: "10.0.10.125" },
+    { name: "Peer 35", addr: "10.0.10.125" },
+    { name: "Peer 36", addr: "10.0.10.125" },
+  ],
+};
 
 export default function NetworkDetailsPage() {
-  const [networkDetails, setNetworkDetails] = useState<main.Network | null>(
-    null
-  );
+  const [networkDetails, setNetworkDetils] = useState<any>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
-  const [isLeavingNetwork, setIsLeavingNetwork] = useState(false);
   const navigate = useNavigate();
-  const { networksState, networksDispatch } = useNetworksContext();
-  const { networkName } = useParams();
 
-  const loadNetworkDetails = useCallback(async () => {
-    try {
+  const loadNetworkDetails = useCallback(() => {
+    // TODO: get details from context
+    return setTimeout(() => {
       setIsLoadingDetails(() => true);
-      if (!networkName) {
-        throw new Error("No network name")
-      }
-      const network = await getNetwork(networksState, networkName)
-      setNetworkDetails(network);
-    } catch (err) {
-      // TODO: notify
-      console.error(err)
-    } finally {
+      setNetworkDetils(mockNetworkDetails);
       setIsLoadingDetails(() => false);
-    }
-  }, [setIsLoadingDetails, setNetworkDetails, networksState]);
+    }, 2000);
+  }, [setIsLoadingDetails, setNetworkDetils]);
 
-  const onConnectionStatusChange = useCallback(async (newStatus: boolean) => {
-    try {
-      if (!networkName) {
-        throw new Error("No network name")
-      }
-      await updateConnectionStatusAndRefreshNetworks(networksDispatch, networkName, newStatus)
-    } catch (err) {
-      // TODO: notify
-      console.error(err);
-    }
-  }, [setNetworkDetails, networkDetails, networkName, networksDispatch]);
+  const onConnectionStatusChange = useCallback(() => {
+    // TODO: implementation
+    setNetworkDetils({
+      ...networkDetails,
+      isConnected: !networkDetails.isConnected,
+    });
+  }, [setNetworkDetils, networkDetails]);
 
-  const onLeaveNetwork = useCallback(async () => {
-    try {
-      if (!networkName) {
-        throw new Error("No network name")
-      }
-      setIsLeavingNetwork(true)
-      await leaveAndRefreshNetworks(networksDispatch, networkName)
-      navigate(AppRoutes.NETWORKS_ROUTE, { replace: true });
-    } catch (err) {
-      // TODO: notify
-      console.error(err)
-    } finally {
-      setIsLeavingNetwork(false)
-    }
-  }, [navigate, networksDispatch, setIsLeavingNetwork, networkName]);
+  const onLeaveNetwork = useCallback(() => {
+    // TODO: implement
+    navigate(AppRoutes.NETWORKS_ROUTE, { replace: true })
+  }, [navigate])
 
   useEffect(() => {
     loadNetworkDetails();
@@ -95,7 +107,7 @@ export default function NetworkDetailsPage() {
             <Grid item xs={3}>
               <div>
                 <Typography variant="overline">Network name</Typography>
-                <Typography variant="h4">{networkDetails?.node?.network}</Typography>
+                <Typography variant="h4">{networkDetails?.name}</Typography>
               </div>
 
               <div style={{ marginTop: "4rem" }}>
@@ -104,19 +116,22 @@ export default function NetworkDetailsPage() {
                 </Typography>
                 <br />
                 <Switch
-                  checked={networkDetails?.node?.connected}
-                  onChange={() => onConnectionStatusChange(!networkDetails?.node?.connected)}
+                  checked={networkDetails?.isConnected}
+                  onChange={onConnectionStatusChange}
                 />
               </div>
 
               <div style={{ marginTop: "4rem" }}>
-                <LoadingButton loading={isLeavingNetwork} variant="contained" onClick={onLeaveNetwork}>
+                <Button
+                  variant="contained"
+                  onClick={onLeaveNetwork}
+                >
                   Leave Network
-                </LoadingButton>
+                </Button>
               </div>
             </Grid>
             <Grid item xs={9} style={{ maxHeight: "70vh", overflow: "auto" }}>
-              <PeersTable peers={networkDetails?.node?.peers ?? []} />
+              <PeersTable peers={networkDetails?.peers} />
             </Grid>
           </Grid>
         )}
