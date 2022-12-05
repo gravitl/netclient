@@ -36,6 +36,11 @@ func Uninstall() ([]error, error) {
 	//} else if !ncutils.IsKernel() {
 	//logger.Log(1, "manual cleanup required")
 	//}
+
+	if len(allfaults) > 0 {
+		err = errors.New("failed to uninstall")
+	}
+
 	return allfaults, err
 }
 
