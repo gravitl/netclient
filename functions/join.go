@@ -316,7 +316,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	// Find and set node MacAddress
 	nodeForServer.MacAddress = config.Netclient().MacAddress.String()
 	// make sure name is appropriate, if not, give blank name
-	nodeForServer.Name = config.Netclient().Name
+	nodeForServer.Name = flags.GetString("name")
+	if nodeForServer.Name == "" {
+		nodeForServer.Name = config.Netclient().Name
+	}
 	nodeForServer.FirewallInUse = config.Netclient().FirewallInUse
 	nodeForServer.OS = config.Netclient().OS
 	nodeForServer.IPForwarding = config.FormatBool(config.Netclient().IPForwarding)
@@ -346,7 +349,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response
-	config.UpdateServerConfig(&nodeGET.ServerConfig)
+	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
