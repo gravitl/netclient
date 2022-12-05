@@ -48,7 +48,7 @@ type ProxyMessage struct {
 type ProxyUpdateMessage struct {
 	Type           MessageType
 	Action         ProxyActionType
-	NetworkEncoded [packet.NetworkNameSize]byte
+	NetworkEncoded [NetworkNameSize]byte
 	Sender         wgtypes.Key
 	Reciever       wgtypes.Key
 	ListenPort     uint32
