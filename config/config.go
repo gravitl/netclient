@@ -53,7 +53,6 @@ type Config struct {
 	OS                string           `json:"os" yaml:"os"`
 	Debug             bool             `json:"debug" yaml:"debug"`
 	NodePassword      string           `json:"nodepassword" yaml:"nodepassword"`
-	Interface         string           `json:"interface" yaml:"interface"`
 	ListenPort        int              `json:"listenport" yaml:"listenport"`
 	LocalAddress      net.IPNet        `json:"localaddress" yaml:"localaddress"`
 	LocalRange        net.IPNet        `json:"localrange" yaml:"localrange"`
