@@ -1,9 +1,21 @@
 package wireguard
 
+import "os"
+
 // NCIface.Create - makes a new Wireguard interface for darwin users (userspace)
 func (nc *NCIface) Create() error {
 
 	return nc.createUserSpaceWG()
+}
+func (nc *NCIface) Close() {
+	err := nc.Iface.Close()
+	if err == nil {
+		sockPath := "/var/run/wireguard/" + nc.Name + ".sock"
+		if _, statErr := os.Stat(sockPath); statErr == nil {
+			os.Remove(sockPath)
+		}
+	}
+
 }
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
