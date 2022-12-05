@@ -137,7 +137,7 @@ func WriteNodeConfig() error {
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient()
 	netmakerNode := nodeGet.Node
-	server := GetServer(netmakerNode.Network)
+	server := GetServer(netmakerNode.Server)
 	if server == nil {
 		server = ConvertServerCfg(&nodeGet.ServerConfig)
 	}
