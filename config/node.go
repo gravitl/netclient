@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -138,7 +137,7 @@ func WriteNodeConfig() error {
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient()
 	netmakerNode := nodeGet.Node
-	server := GetServer(netmakerNode.Network)
+	server := GetServer(netmakerNode.Server)
 	if server == nil {
 		server = ConvertServerCfg(&nodeGet.ServerConfig)
 	}
@@ -153,7 +152,7 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	node.Interfaces = netmakerNode.Interfaces
 	//n.Interface = s.Interface
-	node.Server = strings.Replace(netmakerNode.Server, "api.", "", 1)
+	node.Server = netmakerNode.Server
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)

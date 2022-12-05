@@ -122,7 +122,7 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 }
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
-func UpdateServerConfig(serverName string, cfg *models.ServerConfig) {
+func UpdateServerConfig(cfg *models.ServerConfig) {
 	server, ok := Servers[cfg.Server]
 	if !ok {
 		server = Server{}
@@ -138,5 +138,5 @@ func UpdateServerConfig(serverName string, cfg *models.ServerConfig) {
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsEE = cfg.Is_EE
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
-	Servers[serverName] = server
+	Servers[cfg.Server] = server
 }
