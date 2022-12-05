@@ -6,7 +6,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/manager"
 	"github.com/gravitl/netclient/nm-proxy/server"
 	"github.com/gravitl/netclient/nm-proxy/stun"
@@ -14,11 +14,12 @@ import (
 
 func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, apiServerAddr string) {
 	log.Println("Starting Proxy...")
-	common.IsHostNetwork = (os.Getenv("HOST_NETWORK") == "" || os.Getenv("HOST_NETWORK") == "on")
+	config.InitializeGlobalCfg()
+	config.GetGlobalCfg().SetIsHostNetwork((os.Getenv("HOST_NETWORK") == "" || os.Getenv("HOST_NETWORK") == "on"))
 	hInfo := stun.GetHostInfo(apiServerAddr)
 	stun.Host = hInfo
 	log.Printf("HOSTINFO: %+v", hInfo)
-	if IsPublicIP(hInfo.PrivIp) {
+	if hInfo.PrivIp != nil && IsPublicIP(hInfo.PrivIp) {
 		log.Println("Host is public facing!!!")
 	}
 	// start the netclient proxy server

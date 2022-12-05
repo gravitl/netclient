@@ -5,7 +5,7 @@ import (
 	"crypto/subtle"
 	"hash"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
 )
@@ -24,13 +24,13 @@ const (
 	UpdateListenPort ProxyActionType = 1
 )
 const (
-	NoisePublicKeySize     = 32
-	NoisePrivateKeySize    = 32
-	NetworkNameSize        = 9
-	PeerKeyHashSize        = 16
-	MessageMetricSize      = 148
-	MessageProxyUpdateSize = 148
-	MessageProxySize       = 36
+	NoisePublicKeySize         = 32
+	NoisePrivateKeySize        = 32
+	NetworkNameSize        int = 9
+	PeerKeyHashSize            = 16
+	MessageMetricSize          = 148
+	MessageProxyUpdateSize     = 148
+	MessageProxySize           = 45
 
 	NoiseConstruction = "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s"
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
@@ -95,9 +95,7 @@ func isZero(val []byte) bool {
 }
 
 func GetDeviceKeys(ifaceName string) (NoisePrivateKey, NoisePublicKey, error) {
-	wgPrivKey := common.WgIfaceMap.Iface.PrivateKey
-	wgPubKey := common.WgIfaceMap.Iface.PublicKey
-
+	wgPrivKey, wgPubKey := config.GetGlobalCfg().GetDeviceKeys()
 	return NoisePrivateKey(wgPrivKey), NoisePublicKey(wgPubKey), nil
 }
 

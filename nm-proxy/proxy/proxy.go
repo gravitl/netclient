@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/models"
 )
 
@@ -93,7 +94,7 @@ func GetInterfaceListenAddr(port int) (*net.UDPAddr, error) {
 	if err != nil {
 		return udpAddr, err
 	}
-	if !common.IsHostNetwork {
+	if !config.GetGlobalCfg().IsHostNetwork() {
 		addrs, err := getBoardCastAddress()
 		if err != nil {
 			return udpAddr, err

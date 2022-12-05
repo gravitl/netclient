@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/metrics"
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/packet"
@@ -38,7 +38,8 @@ type ProxyServer struct {
 func (p *ProxyServer) Close() {
 	log.Println("--------->### Shutting down Proxy.....")
 	// clean up proxy connections
-	for _, peerConnMap := range common.WgIfaceMap.NetworkPeerMap {
+
+	for _, peerConnMap := range config.GetGlobalCfg().GetNetworkPeerMap() {
 		for _, peerConnI := range peerConnMap {
 			peerConnI.Mutex.Lock()
 			peerConnI.StopConn()
@@ -46,7 +47,7 @@ func (p *ProxyServer) Close() {
 		}
 
 	}
-	common.WgIfaceMap.NetworkPeerMap = make(map[string]models.PeerConnMap)
+	config.GetGlobalCfg().Reset()
 	// close server connection
 	NmProxyServer.Server.Close()
 }
@@ -72,14 +73,14 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 			}
 			//go func(buffer []byte, source *net.UDPAddr, n int) {
 			proxyTransportMsg := true
-			var srcPeerKeyHash, dstPeerKeyHash string
-			n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
+			var srcPeerKeyHash, dstPeerKeyHash, network string
+			n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
 			if err != nil {
 				log.Println("proxy transport message not found: ", err)
 				proxyTransportMsg = false
 			}
 			if proxyTransportMsg {
-				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
+				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash, network)
 				continue
 			} else {
 				// unknown peer to proxy -> check if extclient and handle it
@@ -103,8 +104,9 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		// calc latency
 		if err == nil {
 			log.Printf("------->$$$$$ Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String())
+			_, pubKey := config.GetGlobalCfg().GetDeviceKeys()
 			network := packet.DecodeNetwork(metricMsg.NetworkEncoded[:])
-			if common.WgIfaceMap.Iface != nil && metricMsg.Sender == common.WgIfaceMap.Iface.PublicKey {
+			if metricMsg.Sender == pubKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metric := metrics.GetMetric(network, metricMsg.Reciever.String())
 				metric.LastRecordedLatency = uint64(latency)
@@ -112,7 +114,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.TrafficRecieved += float64(n) / (1 << 20)
 				metrics.UpdateMetric(network, metricMsg.Reciever.String(), &metric)
 
-			} else if common.WgIfaceMap.Iface != nil && metricMsg.Reciever == common.WgIfaceMap.Iface.PublicKey {
+			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
 				log.Println("------------> $$$ SENDING back the metric pkt to the source: ", source.String())
 				_, err = NmProxyServer.Server.WriteToUDP(buffer[:n], source)
@@ -133,39 +135,42 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			switch msg.Action {
 			case packet.UpdateListenPort:
 				network := packet.DecodeNetwork(msg.NetworkEncoded[:])
-				if peerConnMap, found := common.GetNetworkMap(network); found {
-					if peer, ok := peerConnMap[msg.Sender.String()]; ok {
-						peer.Mutex.Lock()
-						if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
-							// update peer conn
-							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
-							peer.Mutex.Unlock()
-							common.UpdatePeer(network, peer)
-							log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
-							peer.ResetConn()
-							return
-						}
-						peer.Mutex.Unlock()
+				if peer, found := config.GetGlobalCfg().GetPeer(network, msg.Sender.String()); found {
 
+					if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
+						// update peer conn
+						peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
+						config.GetGlobalCfg().UpdatePeer(network, &peer)
+						log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
+						config.GetGlobalCfg().ResetPeer(network, peer.Key.String())
+						return
 					}
+
 				}
 
 			}
 		}
 	// consume handshake message for ext clients
 	case packet.MessageInitiationType:
-
-		err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n], source,
-			packet.NoisePublicKey(common.WgIfaceMap.Iface.PublicKey), packet.NoisePrivateKey(common.WgIfaceMap.Iface.PrivateKey))
+		priv, pub := config.GetGlobalCfg().GetDeviceKeys()
+		peerKey, err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n],
+			packet.NoisePublicKey(pub), packet.NoisePrivateKey(priv))
 		if err != nil {
 			log.Println("---------> @@@ failed to decode HS: ", err)
+		} else {
+
+			log.Println("--------> Got HandShake from peer: ", peerKey, source.String())
+			if peerInfo, ok := config.GetGlobalCfg().GetExtClientWaitCfg(peerKey); ok {
+				peerInfo.CommChan <- source
+			}
+
 		}
 	}
 }
 
 func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	isExtClient := false
-	if peerInfo, ok := common.ExtSourceIpMap[source.String()]; ok {
+	if peerInfo, ok := config.GetGlobalCfg().GetExtClientInfo(source); ok {
 		_, err := peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
 			log.Println("Failed to proxy to Wg local interface: ", err)
@@ -180,41 +185,41 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	return isExtClient
 }
 
-func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {
+func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash, network string) {
 	var err error
 	//log.Printf("--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
-	if common.WgIfaceMap.IfaceKeyHash != dstPeerKeyHash && common.IsRelay {
+	if config.GetGlobalCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetGlobalCfg().IsRelay(network) {
 
 		log.Println("----------> Relaying######")
 		// check for routing map and forward to right proxy
-		if remoteMap, ok := common.RelayPeerMap[srcPeerKeyHash]; ok {
-			if conf, ok := remoteMap[dstPeerKeyHash]; ok {
-				log.Printf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
-					source.IP.String(), source.Port, srcPeerKeyHash, conf.Endpoint.String(), conf.Endpoint.Port, dstPeerKeyHash)
-				_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxySize], conf.Endpoint)
+		if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
+
+			log.Printf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
+				source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash)
+			_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxySize], remotePeer.Endpoint)
+			if err != nil {
+				log.Println("Failed to send to remote: ", err)
+			}
+			return
+
+		} else {
+			if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(dstPeerKeyHash, dstPeerKeyHash); ok {
+
+				log.Printf("--------> Relaying BACK TO RELAYED NODE PKT [ SourceIP: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
+					source.String(), srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash)
+				_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxySize], remotePeer.Endpoint)
 				if err != nil {
 					log.Println("Failed to send to remote: ", err)
 				}
 				return
-			}
-		} else {
-			if remoteMap, ok := common.RelayPeerMap[dstPeerKeyHash]; ok {
-				if conf, ok := remoteMap[dstPeerKeyHash]; ok {
-					log.Printf("--------> Relaying BACK TO RELAYED NODE PKT [ SourceIP: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
-						source.String(), srcPeerKeyHash, conf.Endpoint.String(), dstPeerKeyHash)
-					_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxySize], conf.Endpoint)
-					if err != nil {
-						log.Println("Failed to send to remote: ", err)
-					}
-					return
-				}
+
 			}
 
 		}
 	}
 
-	if peerInfo, ok := common.PeerKeyHashMap[srcPeerKeyHash]; ok {
+	if peerInfo, ok := config.GetGlobalCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
 
 		log.Printf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),

@@ -2,6 +2,8 @@ package models
 
 import (
 	"context"
+	"crypto/md5"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -54,15 +56,16 @@ type RemotePeer struct {
 	IsExtClient         bool
 	IsAttachedExtClient bool
 	LocalConn           net.Conn
-}
-
-type ExtClientPeer struct {
-	CancelFunc context.CancelFunc
-	CommChan   chan *net.UDPAddr
+	CancelFunc          context.CancelFunc
+	CommChan            chan *net.UDPAddr
 }
 
 type WgIfaceConf struct {
 	Iface          *wgtypes.Device
 	IfaceKeyHash   string
 	NetworkPeerMap map[string]PeerConnMap
+}
+
+func ConvPeerKeyToHash(peerKey string) string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
 }

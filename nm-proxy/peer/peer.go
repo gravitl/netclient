@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
 	"log"
@@ -9,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/proxy"
 	"github.com/gravitl/netclient/nm-proxy/wg"
@@ -67,12 +66,7 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		ResetConn:           p.Reset,
 		LocalConn:           p.LocalConn,
 	}
-	if _, ok := common.WgIfaceMap.NetworkPeerMap[network]; !ok {
-		common.WgIfaceMap.NetworkPeerMap[network] = make(models.PeerConnMap)
-	}
-	common.WgIfaceMap.NetworkPeerMap[network][peer.PublicKey.String()] = &connConf
-
-	common.PeerKeyHashMap[fmt.Sprintf("%x", md5.Sum([]byte(peer.PublicKey.String())))] = models.RemotePeer{
+	rPeer := models.RemotePeer{
 		Interface:           wgInterface.Name,
 		PeerKey:             peer.PublicKey.String(),
 		IsExtClient:         isExtClient,
@@ -80,22 +74,18 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		IsAttachedExtClient: isAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
+	config.GetGlobalCfg().SavePeer(network, &connConf)
+	config.GetGlobalCfg().SavePeerByHash(&rPeer)
+
 	if isAttachedExtClient {
-		common.ExtSourceIpMap[peer.Endpoint.String()] = models.RemotePeer{
-			Interface:           wgInterface.Name,
-			PeerKey:             peer.PublicKey.String(),
-			IsExtClient:         isExtClient,
-			IsAttachedExtClient: isAttachedExtClient,
-			Endpoint:            peer.Endpoint,
-			LocalConn:           p.LocalConn,
-		}
+		config.GetGlobalCfg().SaveExtClientInfo(&rPeer)
 	}
 	return nil
 }
 
 func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	for _, peer := range peers {
-		proxyPeer, found := common.GetPeer(network, peer.PublicKey)
+		proxyPeer, found := config.GetGlobalCfg().GetPeer(network, peer.PublicKey.String())
 		if found {
 			peer.Endpoint = proxyPeer.Config.LocalConnAddr
 		}

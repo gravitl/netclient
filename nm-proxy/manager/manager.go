@@ -2,14 +2,12 @@ package manager
 
 import (
 	"context"
-	"crypto/md5"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"runtime"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/models"
 	peerpkg "github.com/gravitl/netclient/nm-proxy/peer"
 	"github.com/gravitl/netclient/nm-proxy/wg"
@@ -71,7 +69,7 @@ func StartProxyManager(ctx context.Context, manageChan chan *ProxyManagerPayload
 			return
 		case mI := <-manageChan:
 			log.Printf("-------> PROXY-MANAGER: %+v\n", mI)
-			mI.SetIngressGateway()
+
 			err := mI.AddInterfaceToProxy()
 			if err != nil {
 				log.Printf("failed to add interface: [%s] to proxy: %v\n  ", mI.InterfaceName, err)
@@ -81,50 +79,54 @@ func StartProxyManager(ctx context.Context, manageChan chan *ProxyManagerPayload
 	}
 }
 
-func (m *ProxyManagerPayload) RelayUpdate() {
-	common.IsRelay = m.IsRelay
+func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
+
+	config.GetGlobalCfg().SetRelayStatus(m.Network, m.IsRelay)
+	config.GetGlobalCfg().SetRelayedStatus(m.Network, m.IsRelayed)
+	config.GetGlobalCfg().SetIngressGwStatus(m.Network, m.IsIngress)
+	if config.GetGlobalCfg().GetRelayedStatus(m.Network) != m.IsRelayed {
+		reset = true
+	}
+	if m.IsRelay {
+		m.setRelayedPeers()
+	}
+	return
 }
 
-func (m *ProxyManagerPayload) SetIngressGateway() {
-	common.IsIngressGateway = m.IsIngress
-}
-
-func (m *ProxyManagerPayload) RelayPeers() {
-	common.IsRelay = true
+func (m *ProxyManagerPayload) setRelayedPeers() {
+	g := config.GetGlobalCfg()
 	for relayedNodePubKey, relayedNodeConf := range m.RelayedPeerConf {
-		relayedNodePubKeyHash := fmt.Sprintf("%x", md5.Sum([]byte(relayedNodePubKey)))
-		if _, ok := common.RelayPeerMap[relayedNodePubKeyHash]; !ok {
-			common.RelayPeerMap[relayedNodePubKeyHash] = make(map[string]models.RemotePeer)
-		}
 		for _, peer := range relayedNodeConf.Peers {
 			if peer.Endpoint != nil {
 				peer.Endpoint.Port = models.NmProxyPort
-				remotePeerKeyHash := fmt.Sprintf("%x", md5.Sum([]byte(peer.PublicKey.String())))
-				common.RelayPeerMap[relayedNodePubKeyHash][remotePeerKeyHash] = models.RemotePeer{
+				rPeer := models.RemotePeer{
+					Network:  m.Network,
+					PeerKey:  peer.PublicKey.String(),
 					Endpoint: peer.Endpoint,
 				}
+				g.SaveRelayedPeer(relayedNodePubKey, &rPeer)
+
 			}
 
 		}
 		relayedNodeConf.RelayedPeerEndpoint.Port = models.NmProxyPort
-		common.RelayPeerMap[relayedNodePubKeyHash][relayedNodePubKeyHash] = models.RemotePeer{
+		relayedNode := models.RemotePeer{
+			Network:  m.Network,
+			PeerKey:  relayedNodePubKey,
 			Endpoint: relayedNodeConf.RelayedPeerEndpoint,
 		}
+		g.SaveRelayedPeer(relayedNodePubKey, &relayedNode)
 
 	}
 }
 
 func cleanUpInterface(network string) {
-	log.Println("########------------>  CLEANING UP: ", common.WgIfaceMap.Iface.Name)
-	if peerMap, ok := common.WgIfaceMap.NetworkPeerMap[network]; ok {
-		for _, peerI := range peerMap {
-			peerI.Mutex.Lock()
-			peerI.StopConn()
-			peerI.Mutex.Unlock()
-
-		}
-		delete(common.WgIfaceMap.NetworkPeerMap, network)
+	log.Println("########------------>  CLEANING UP: ", network)
+	peerConnMap := config.GetGlobalCfg().GetNetworkPeers(network)
+	for _, peerI := range peerConnMap {
+		config.GetGlobalCfg().RemovePeer(network, peerI.Key.String())
 	}
+	config.GetGlobalCfg().DeleteNetworkPeers(network)
 
 }
 
@@ -147,60 +149,48 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 			log.Println("failed to get real iface: ", err)
 		}
 	}
-	common.InterfaceName = m.InterfaceName
+	gCfg := config.GetGlobalCfg()
 	wgIface, err = wg.NewWGIFace(m.InterfaceName)
 	if err != nil {
 		log.Println("Failed init new interface: ", err)
 		return nil, err
 	}
-	if common.WgIfaceMap.Iface == nil {
-		common.WgIfaceMap.Iface = wgIface.Device
-		common.WgIfaceMap.IfaceKeyHash = fmt.Sprintf("%x", md5.Sum([]byte(wgIface.Device.PublicKey.String())))
+	if gCfg.IsIfaceNil() {
+		gCfg.SetIface(wgIface)
 	}
 
-	var peerConnMap models.PeerConnMap
-	var found bool
-	if peerConnMap, found = common.WgIfaceMap.NetworkPeerMap[m.Network]; !found {
-
+	if !gCfg.CheckIfNetworkExists(m.Network) {
 		return wgIface, nil
 	}
-	if m.IsRelay {
-		m.RelayPeers()
-	}
-	common.IsRelay = m.IsRelay
+	reset := m.settingsUpdate()
 	// check if node is getting relayed
-	if common.IsRelayed != m.IsRelayed {
-		common.IsRelayed = m.IsRelayed
+	if reset {
 		cleanUpInterface(m.Network)
 		return wgIface, nil
 	}
 
 	// sync map with wg device config
 	// check if listen port has changed
-	if wgIface.Device.ListenPort != common.WgIfaceMap.Iface.ListenPort {
+	if wgIface.Device.ListenPort != gCfg.GetInterfaceListenPort() {
 		// reset proxy for this interface
 		cleanUpInterface(m.Network)
 		return wgIface, nil
 	}
+	peerConnMap := gCfg.GetNetworkPeers(m.Network)
 	// check device conf different from proxy
-	common.WgIfaceMap.Iface = wgIface.Device
+	//update wg device
+	gCfg.UpdateWgIface(wgIface)
 	// sync peer map with new update
 	for peerPubKey, peerConn := range peerConnMap {
 		if _, ok := m.PeerMap[peerPubKey]; !ok {
-			peerConn.Mutex.Lock()
+
 			if peerConn.IsAttachedExtClient {
 				log.Println("------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
-				if val, ok := common.ExtClientsWaitTh[peerConn.Key.String()]; ok {
-					val.CancelFunc()
-					delete(common.ExtClientsWaitTh, peerConn.Key.String())
-				}
-				log.Println("-----> Deleting Ext Client from Src Ip Map: ", peerConn.Key.String())
-				delete(common.ExtSourceIpMap, peerConn.Config.PeerConf.Endpoint.String())
+				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
+				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
 			}
-			peerConn.StopConn()
-			peerConn.Mutex.Unlock()
-			delete(common.PeerKeyHashMap, fmt.Sprintf("%x", md5.Sum([]byte(peerConn.Key.String()))))
-			delete(peerConnMap, peerConn.Key.String())
+			gCfg.DeletePeerHash(peerConn.Key.String())
+			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
 			continue
 		}
 	}
@@ -282,7 +272,7 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 		}
 	}
 
-	common.WgIfaceMap.NetworkPeerMap[m.Network] = peerConnMap
+	gCfg.UpdateNetworkPeers(m.Network, &peerConnMap)
 	log.Println("CLEANED UP..........")
 	return wgIface, nil
 }
@@ -328,10 +318,13 @@ func (m *ProxyManagerPayload) AddInterfaceToProxy() error {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 30)
 				ctx, cancel := context.WithCancel(context.Background())
-				common.ExtClientsWaitTh[peerI.PublicKey.String()] = models.ExtClientPeer{
-					CancelFunc: cancel,
-					CommChan:   commChan,
+				extPeer := models.RemotePeer{
+					PeerKey:             peer.PublicKey.String(),
+					CancelFunc:          cancel,
+					CommChan:            commChan,
+					IsAttachedExtClient: true,
 				}
+				config.GetGlobalCfg().SaveExtClientInfo(&extPeer)
 				defer func() {
 					if addExtClient {
 						log.Println("GOT ENDPOINT for Extclient adding peer...")
@@ -350,7 +343,7 @@ func (m *ProxyManagerPayload) AddInterfaceToProxy() error {
 						if endpoint != nil {
 							addExtClient = true
 							peer.Endpoint = endpoint
-							delete(common.ExtClientsWaitTh, peer.PublicKey.String())
+							config.GetGlobalCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}
 					}

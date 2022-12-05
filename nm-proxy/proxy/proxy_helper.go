@@ -15,6 +15,7 @@ import (
 	"github.com/c-robinson/iplib"
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/metrics"
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/packet"
@@ -60,7 +61,7 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 
 			//var srcPeerKeyHash, dstPeerKeyHash string
 			if !p.Config.IsExtClient {
-				buf, n, _, _ = packet.ProcessPacketBeforeSending(buf, n,
+				buf, n, _, _ = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
 					p.Config.WgInterface.Device.PublicKey.String(), p.Config.RemoteKey.String())
 				if err != nil {
 					log.Println("failed to process pkt before sending: ", err)
@@ -91,7 +92,7 @@ func (p *Proxy) Reset() {
 }
 
 func (p *Proxy) pullLatestConfig() error {
-	peer, found := common.GetPeer(p.Config.Network, p.Config.RemoteKey)
+	peer, found := config.GetGlobalCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
 	if found {
 		p.Config.PeerEndpoint.Port = peer.Config.PeerEndpoint.Port
 	} else {

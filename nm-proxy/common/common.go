@@ -5,8 +5,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-
-	"github.com/gravitl/netclient/nm-proxy/models"
 )
 
 const (
@@ -18,28 +16,28 @@ const (
 	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
 )
 
-var IsHostNetwork bool
-var IsRelay bool
-var IsIngressGateway bool
-var IsRelayed bool
-var IsServer bool
-var InterfaceName string
-var BehindNAT bool
+// var IsHostNetwork bool
+// var IsRelay bool
+// var IsIngressGateway bool
+// var IsRelayed bool
+// var IsServer bool
+// var InterfaceName string
+// var BehindNAT bool
 
-var WgIfaceMap = models.WgIfaceConf{
-	Iface:          nil,
-	NetworkPeerMap: make(map[string]models.PeerConnMap),
-}
+// var WgIfaceMap = models.WgIfaceConf{
+// 	Iface:          nil,
+// 	NetworkPeerMap: make(map[string]models.PeerConnMap), //done
+// }
 
-var PeerKeyHashMap = make(map[string]models.RemotePeer)
+// var PeerKeyHashMap = make(map[string]models.RemotePeer) //done
 
-//var WgIfaceKeyMap = make(map[string]models.RemotePeer)
+// //var WgIfaceKeyMap = make(map[string]models.RemotePeer)
 
-var RelayPeerMap = make(map[string]map[string]models.RemotePeer)
+// var RelayPeerMap = make(map[string]map[string]models.RemotePeer)
 
-var ExtClientsWaitTh = make(map[string]models.ExtClientPeer)
+// var ExtClientsWaitTh = make(map[string]models.ExtClientPeer)
 
-var ExtSourceIpMap = make(map[string]models.RemotePeer)
+// var ExtSourceIpMap = make(map[string]models.RemotePeer)
 
 // RunCmd - runs a local command
 func RunCmd(command string, printerr bool) (string, error) {

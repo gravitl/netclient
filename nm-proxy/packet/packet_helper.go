@@ -40,6 +40,7 @@ type MetricMessage struct {
 
 type ProxyMessage struct {
 	Type     MessageType
+	Network  [NetworkNameSize]byte
 	Sender   [PeerKeyHashSize]byte
 	Reciever [PeerKeyHashSize]byte
 }
@@ -47,7 +48,7 @@ type ProxyMessage struct {
 type ProxyUpdateMessage struct {
 	Type           MessageType
 	Action         ProxyActionType
-	NetworkEncoded [NetworkNameSize]byte
+	NetworkEncoded [packet.NetworkNameSize]byte
 	Sender         wgtypes.Key
 	Reciever       wgtypes.Key
 	ListenPort     uint32

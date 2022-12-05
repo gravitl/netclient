@@ -8,16 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"time"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func ConsumeHandshakeInitiationMsg(initiator bool, buf []byte, src *net.UDPAddr, devicePubKey NoisePublicKey, devicePrivKey NoisePrivateKey) error {
+func ConsumeHandshakeInitiationMsg(initiator bool, buf []byte, devicePubKey NoisePublicKey, devicePrivKey NoisePrivateKey) (string, error) {
 
 	var (
 		hash     [blake2s.Size]byte
@@ -29,11 +27,11 @@ func ConsumeHandshakeInitiationMsg(initiator bool, buf []byte, src *net.UDPAddr,
 	err = binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
 		log.Println("Failed to decode initiation message")
-		return err
+		return "", err
 	}
 
 	if msg.Type != MessageInitiationType {
-		return errors.New("not handshake initiation message")
+		return "", errors.New("not handshake initiation message")
 	}
 	log.Println("-----> ConsumeHandshakeInitiationMsg, Intitator:  ", initiator)
 	mixHash(&hash, &InitialHash, devicePubKey[:])
@@ -45,23 +43,18 @@ func ConsumeHandshakeInitiationMsg(initiator bool, buf []byte, src *net.UDPAddr,
 	var key [chacha20poly1305.KeySize]byte
 	ss := sharedSecret(&devicePrivKey, msg.Ephemeral)
 	if isZero(ss[:]) {
-		return errors.New("no secret")
+		return "", errors.New("no secret")
 	}
 	KDF2(&chainKey, &key, chainKey[:], ss[:])
 	aead, _ := chacha20poly1305.New(key[:])
 	_, err = aead.Open(peerPK[:0], ZeroNonce[:], msg.Static[:], hash[:])
 	if err != nil {
-		return err
+		return "", err
 	}
-	log.Println("--------> Got HandShake from peer: ", base64.StdEncoding.EncodeToString(peerPK[:]), src)
-	if val, ok := common.ExtClientsWaitTh[base64.StdEncoding.EncodeToString(peerPK[:])]; ok {
-		val.CommChan <- src
-		time.Sleep(time.Second * 3)
-	}
-
+	peerKey := base64.StdEncoding.EncodeToString(peerPK[:])
 	setZero(hash[:])
 	setZero(chainKey[:])
-	return nil
+	return peerKey, nil
 }
 
 func CreateProxyUpdatePacket(msg *ProxyUpdateMessage) ([]byte, error) {
@@ -138,20 +131,26 @@ func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
 	return &msg, nil
 }
 
-func ProcessPacketBeforeSending(buf []byte, n int, srckey, dstKey string) ([]byte, int, string, string) {
-
+func ProcessPacketBeforeSending(network string, buf []byte, n int, srckey, dstKey string) ([]byte, int, string, string) {
+	var networkEncoded [NetworkNameSize]byte
+	b, err := base64.StdEncoding.DecodeString(network)
+	if err != nil {
+		return buf, n, "", ""
+	}
+	copy(networkEncoded[:], b[:NetworkNameSize])
 	srcKeymd5 := md5.Sum([]byte(srckey))
 	dstKeymd5 := md5.Sum([]byte(dstKey))
 	m := ProxyMessage{
 		Type:     MessageProxyType,
+		Network:  networkEncoded,
 		Sender:   srcKeymd5,
 		Reciever: dstKeymd5,
 	}
 	var msgBuffer [MessageProxySize]byte
 	writer := bytes.NewBuffer(msgBuffer[:0])
-	err := binary.Write(writer, binary.LittleEndian, m)
+	err = binary.Write(writer, binary.LittleEndian, m)
 	if err != nil {
-		log.Println(err)
+		return buf, n, "", ""
 	}
 	if n > len(buf)-MessageProxySize {
 		buf = append(buf, msgBuffer[:]...)
@@ -164,10 +163,10 @@ func ProcessPacketBeforeSending(buf []byte, n int, srckey, dstKey string) ([]byt
 	return buf, n, fmt.Sprintf("%x", srcKeymd5), fmt.Sprintf("%x", dstKeymd5)
 }
 
-func ExtractInfo(buffer []byte, n int) (int, string, string, error) {
+func ExtractInfo(buffer []byte, n int) (int, string, string, string, error) {
 	data := buffer[:n]
 	if len(data) < MessageProxySize {
-		return n, "", "", errors.New("proxy message not found")
+		return n, "", "", "", errors.New("proxy message not found")
 	}
 	var msg ProxyMessage
 	var err error
@@ -175,12 +174,12 @@ func ExtractInfo(buffer []byte, n int) (int, string, string, error) {
 	err = binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
 		log.Println("Failed to decode proxy message")
-		return n, "", "", err
+		return n, "", "", "", err
 	}
-
+	network := DecodeNetwork(msg.Network[:])
 	if msg.Type != MessageProxyType {
-		return n, "", "", errors.New("not a proxy message")
+		return n, "", "", "", errors.New("not a proxy message")
 	}
 	n -= MessageProxySize
-	return n, fmt.Sprintf("%x", msg.Sender), fmt.Sprintf("%x", msg.Reciever), nil
+	return n, fmt.Sprintf("%x", msg.Sender), fmt.Sprintf("%x", msg.Reciever), network, nil
 }
