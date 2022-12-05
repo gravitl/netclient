@@ -5,7 +5,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -104,7 +103,7 @@ func FlushPeerRoutes(peers []wgtypes.PeerConfig) {
 	}
 	for _, peer := range peers {
 		for _, allowedIP := range peer.AllowedIPs {
-			deleteRoute(config.Netclient().Interface, &allowedIP)
+			deleteRoute(ncutils.GetInterfaceName(), &allowedIP)
 		}
 		if peer.Endpoint == nil {
 			continue

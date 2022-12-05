@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/gravitl/netclient/local"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -16,7 +17,7 @@ func (nc *NCIface) Create() error {
 		if newLink == nil {
 			return fmt.Errorf("failed to create kernel interface")
 		}
-		l, err := netlink.LinkByName(getName())
+		l, err := netlink.LinkByName(ncutils.GetInterfaceName())
 		if err != nil {
 			switch err.(type) {
 			case netlink.LinkNotFoundError:
@@ -123,7 +124,7 @@ type netLink struct {
 
 func (nc *NCIface) getKernelLink() *netLink {
 	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = getName()
+	linkAttrs.Name = ncutils.GetInterfaceName()
 	return &netLink{
 		attrs: &linkAttrs,
 	}

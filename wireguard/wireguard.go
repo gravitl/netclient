@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"net"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -301,7 +300,7 @@ func RemovePeers(node *config.Node) error {
 	if config.Netclient().MTU != 0 {
 		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient().MTU), 10))
 	}
-	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf"); err != nil {
 		return err
 	}
 	return nil
@@ -315,7 +314,7 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 		return nil, err
 	}
 	defer wg.Close()
-	dev, err := wg.Device(getName())
+	dev, err := wg.Device(ncutils.GetInterfaceName())
 	if err != nil {
 		return nil, err
 	}
@@ -344,13 +343,5 @@ func apply(n *config.Node, c *wgtypes.Config) error {
 	}
 	defer wg.Close()
 
-	return wg.ConfigureDevice(getName(), *c)
-}
-
-func getName() string {
-	if runtime.GOOS == "darwin" {
-		return "utun69"
-	}
-
-	return "netmaker"
+	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
 }
