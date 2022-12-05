@@ -134,6 +134,8 @@ func CheckConfig() {
 	if netclient.Name == "" {
 		logger.Log(0, "setting name")
 		netclient.Name, _ = os.Hostname()
+		//make sure hostname is suitable
+		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
 	if netclient.Interface == "" {

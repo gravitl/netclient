@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
@@ -27,6 +29,8 @@ const (
 	Timeout = time.Second * 5
 	// ConfigLockfile lockfile to control access to config file
 	ConfigLockfile = "config.lck"
+	// MaxNameLength maximum length of a node name
+	MaxNameLength = 62
 )
 
 var (
@@ -283,4 +287,31 @@ func IsPidDead(pid int) bool {
 	//FindProcess always returns err = nil on linux
 	err = process.Signal(syscall.Signal(0))
 	return errors.Is(err, os.ErrProcessDone)
+}
+
+// FormatName ensures name is in character set and is proper length
+// Sets name to blank on failure
+func FormatName(name string) string {
+	if !InCharSet(name) {
+		name = ncutils.DNSFormatString(name)
+	}
+	if len(name) > MaxNameLength {
+		name = ncutils.ShortenString(name, MaxNameLength)
+	}
+	if !InCharSet(name) || len(name) > MaxNameLength {
+		logger.Log(1, "could not properly format name, setting to blank")
+		name = ""
+	}
+	return name
+}
+
+// InCharSet verifies if all chars in string are part of defined charset
+func InCharSet(name string) bool {
+	charset := "abcdefghijklmnopqrstuvwxyz1234567890-"
+	for _, char := range name {
+		if !strings.Contains(charset, strings.ToLower(string(char))) {
+			return false
+		}
+	}
+	return true
 }
