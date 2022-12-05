@@ -1,14 +1,21 @@
 package wireguard
 
 import (
+	"os"
+
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
 
+const kernelModule = "/boot/mdodules/if_wg.ko"
+
 // Create - creates a linux WG interface based on a node's given config
 func (nc *NCIface) Create() error {
-	return ApplyWGQuickConf(nc)
+	if _, err := os.Stat(kernelModule); err == nil {
+		return ApplyWGQuickConf(nc)
+	}
+	return ApplyWithoutWGQuick(nc)
 }
 
 // Delete - removes wg network interface from machine
