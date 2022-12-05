@@ -80,14 +80,14 @@ func Stop() error {
 	time.Sleep(time.Second)
 
 	switch os {
-	//case "windows":
-	//RunWinSWCMD("stop")
-	//case "darwin":
-	//StopLaunchD()
+	case "windows":
+		RunWinSWCMD("stop")
+	case "darwin":
+		StopLaunchD()
 	case "linux":
 		StopSystemD()
-	//case "freebsd":
-	//FreebsdDaemon("stop")
+	case "freebsd":
+		FreebsdDaemon("stop")
 	default:
 		err = errors.New("no OS daemon to stop")
 	}
