@@ -1,70 +1,19 @@
 package wireguard
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
 
 // Create - creates a linux WG interface based on a node's given config
 func (nc *NCIface) Create() error {
-
-	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
-		newLink := nc.getKernelLink()
-		if newLink == nil {
-			return fmt.Errorf("failed to create kernel interface")
-		}
-		l, err := netlink.LinkByName(getName())
-		if err != nil {
-			switch err.(type) {
-			case netlink.LinkNotFoundError:
-				break
-			default:
-				return err
-			}
-		}
-		if l != nil {
-			err = netlink.LinkDel(newLink)
-			if err != nil {
-				return err
-			}
-		}
-		if err = netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
-			return err
-		}
-
-		if err = nc.ApplyAddrs(); err != nil {
-			return err
-		}
-
-		if err = netlink.LinkSetMTU(newLink, nc.MTU); err != nil {
-			return err
-		}
-
-		if err = netlink.LinkSetUp(newLink); err != nil {
-			return err
-		}
-		return nil
-	} else if local.IsUserSpaceWGInstalled() {
-		if err := nc.createUserSpaceWG(); err != nil {
-			return err
-		}
-	}
-	return fmt.Errorf("WireGuard not detected")
+	return ApplyConf(nc)
 }
 
 // Delete - removes wg network interface from machine
 func (nc *NCIface) Delete() error {
-	l := nc.getKernelLink()
-	if l == nil {
-		return fmt.Errorf("no associated link found")
-	}
-
-	return netlink.LinkDel(l)
+	return RemoveWGQuickConf()
 }
 
 // netLink.Attrs - implements required function of NetLink package

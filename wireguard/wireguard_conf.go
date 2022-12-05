@@ -1,12 +1,18 @@
 package wireguard
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 )
@@ -254,4 +260,125 @@ func AddAddresses(node *config.Node) {
 		wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address6.IP.String())
 	}
 	wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf")
+}
+
+// ApplyConf - applys a conf on disk to WireGuard interface
+func ApplyConf(nc *NCIface) error {
+	os := runtime.GOOS
+	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
+		os = "nowgquick"
+	}
+	var err error
+	switch os {
+	case "windows":
+		ApplyWindowsConf(nc)
+	case "nowgquick":
+		ApplyWithoutWGQuick(nc)
+	default:
+		ApplyWGQuickConf(nc)
+	}
+	//var nodeCfg config.ClientConfig
+	//nodeCfg.Network = node.Network
+	//if !(node.IsServer == "yes") {
+	//	nodeCfg.ReadConfig()
+	//	if nodeCfg.NetworkSettings.AddressRange != "" {
+	//		ip, cidr, err := net.ParseCIDR(nodeCfg.NetworkSettings.AddressRange)
+	//		if err == nil {
+	//			local.SetCIDRRoute(node.Interface, ip.String(), cidr)
+	//		}
+	//	}
+	//	if nodeCfg.NetworkSettings.AddressRange6 != "" {
+	//		ip, cidr, err := net.ParseCIDR(nodeCfg.NetworkSettings.AddressRange6)
+	//		if err == nil {
+	//			local.SetCIDRRoute(node.Interface, ip.String(), cidr)
+	//		}
+	//	}
+	//}
+	return err
+}
+
+// ApplyWindowsConf - applies the WireGuard configuration file on Windows
+func ApplyWindowsConf(nc *NCIface) error {
+	RemoveConfGraceful(nc.Name) // have to remove gracefully before applying windows conf
+	var commandLine = fmt.Sprintf(`wireguard.exe /installtunnelservice "%s"`, config.GetNetclientPath()+"netmaker.conf")
+	if _, err := ncutils.RunCmdFormatted(commandLine, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RemoveWindowsConf - removes the WireGuard configuration file on Windows and dpapi file
+func RemoveWindowsConf(ifacename string, printlog bool) error {
+	if _, err := ncutils.RunCmd("wireguard.exe /uninstalltunnelservice "+ifacename, printlog); err != nil {
+		logger.Log(1, err.Error())
+	}
+	return nil
+}
+
+// ApplyWGQuickConf - applies wg-quick commands if os supports
+func ApplyWGQuickConf(nc *NCIface) error {
+	confPath := config.GetNetclientPath() + "netmaker.conf"
+	_, err := os.Stat(confPath)
+	if err != nil {
+		logger.Log(0, confPath+" does not exist "+err.Error())
+		return err
+	}
+	if IfaceExists(nc.Name) {
+		ncutils.RunCmd("wg-quick down "+confPath, true)
+	}
+	_, err = ncutils.RunCmd("wg-quick up "+confPath, true)
+
+	return err
+}
+
+// RemoveWGQuickConf - calls wg-quick down
+func RemoveWGQuickConf() error {
+	confPath := config.GetNetclientPath() + "netmaker.conf"
+	_, err := ncutils.RunCmd(fmt.Sprintf("wg-quick down %s", confPath), false)
+	return err
+}
+
+// RemoveConfGraceful - Run remove conf and wait for it to actually be gone before proceeding
+func RemoveConfGraceful(ifacename string) {
+	// ensure you clear any existing interface first
+	wgclient, err := wgctrl.New()
+	if err != nil {
+		logger.Log(0, "could not create wgclient")
+		return
+	}
+	defer wgclient.Close()
+	d, _ := wgclient.Device(ifacename)
+	startTime := time.Now()
+	for d != nil && d.Name == ifacename {
+		if err = RemoveConf(ifacename, false); err != nil { // remove interface first
+			if strings.Contains(err.Error(), "does not exist") {
+				err = nil
+				break
+			}
+		}
+		time.Sleep(time.Second >> 2)
+		d, _ = wgclient.Device(ifacename)
+		if time.Now().After(startTime.Add(time.Second << 4)) {
+			break
+		}
+	}
+	time.Sleep(time.Second << 1)
+}
+
+// RemoveConf - removes a configuration for a given WireGuard interface
+func RemoveConf(iface string, printlog bool) error {
+	os := runtime.GOOS
+	if ncutils.IsLinux() && !ncutils.HasWgQuick() {
+		os = "nowgquick"
+	}
+	var err error
+	switch os {
+	case "nowgquick":
+		err = RemoveWithoutWGQuick(iface)
+	case "windows":
+		err = RemoveWindowsConf(iface, printlog)
+	default:
+		err = RemoveWGQuickConf()
+	}
+	return err
 }
