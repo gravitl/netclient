@@ -10,7 +10,7 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -129,13 +129,16 @@ func deleteLocalNetwork(node *config.Node) error {
 	config.WriteServerConfig()
 	if len(config.GetNodes()) < 1 {
 		logger.Log(0, "removing wireguard config and netmaker interface")
-		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
-		if wireguard.GetInterface() != nil {
+		os.RemoveAll(config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf")
+
+		// Not necessary to remove the interface explicitly
+		/*if wireguard.GetInterface() != nil {
 			wireguard.GetInterface().Close()
 		} else {
-			return errors.New("interface config is nil")
-		}
+			return errors.New("interface is nil")
+		} */
 
 	}
+
 	return nil
 }
