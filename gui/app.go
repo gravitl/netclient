@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/gravitl/netclient/functions"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -52,4 +53,7 @@ func (a *App) openServerLogsPage(callbackData *menu.CallbackData) {
 	runtime.EventsEmit(a.ctx, EV_OPEN_SERVER_LOGS_PAGE)
 }
 
-func (a *App) uninstallApp(callbackData *menu.CallbackData) {}
+func (a *App) uninstallApp(callbackData *menu.CallbackData) {
+	// TODO: notify
+	functions.Uninstall()
+}

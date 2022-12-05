@@ -22,6 +22,18 @@ export function GoGetNetwork(arg1) {
   return window['go']['main']['App']['GoGetNetwork'](arg1);
 }
 
+export function GoGetRecentServerNames() {
+  return window['go']['main']['App']['GoGetRecentServerNames']();
+}
+
+export function GoJoinNetworkByBasicAuth(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GoJoinNetworkByBasicAuth'](arg1, arg2, arg3);
+}
+
+export function GoJoinNetworkBySso(arg1, arg2) {
+  return window['go']['main']['App']['GoJoinNetworkBySso'](arg1, arg2);
+}
+
 export function GoJoinNetworkByToken(arg1) {
   return window['go']['main']['App']['GoJoinNetworkByToken'](arg1);
 }
@@ -32,4 +44,8 @@ export function GoLeaveNetwork(arg1) {
 
 export function GoParseAccessToken(arg1) {
   return window['go']['main']['App']['GoParseAccessToken'](arg1);
+}
+
+export function GoUninstall() {
+  return window['go']['main']['App']['GoUninstall']();
 }

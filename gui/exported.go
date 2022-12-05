@@ -88,3 +88,57 @@ func (app *App) GoLeaveNetwork(networkName string) (any, error) {
 	}
 	return nil, fmt.Errorf("%w: "+errMsgsBuilder.String(), err)
 }
+
+// App.GoGetRecentServerNames returns names of all known (joined) servers
+func (app *App) GoGetRecentServerNames() ([]string, error) {
+	serverNames := []string{}
+	for name, _ := range config.Servers {
+		name := name
+		serverNames = append(serverNames, name)
+	}
+	return serverNames, nil
+}
+
+// App.GoJoinNetworkBySso joins a network by SSO
+func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) {
+	flags := viper.New()
+	flags.Set("server", serverName)
+	flags.Set("network", networkName)
+
+	err := functions.Join(flags)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// App.GoJoinNetworkBySso joins a network by SSO
+func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName string) (any, error) {
+	flags := viper.New()
+	flags.Set("server", serverName)
+	flags.Set("user", username)
+	flags.Set("network", networkName)
+
+	err := functions.Join(flags)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// App.GoUninstall uninstalls netclient form the machine
+func (app *App) GoUninstall() (any, error) {
+	errs, err := functions.Uninstall()
+	if len(errs) == 0 && err == nil {
+		return nil, nil
+	}
+	errMsgsBuilder := strings.Builder{}
+	for _, errMsg := range errs {
+		errMsgsBuilder.WriteString(errMsg.Error() + " ")
+	}
+	return nil, fmt.Errorf("%w: "+errMsgsBuilder.String(), err)
+}
