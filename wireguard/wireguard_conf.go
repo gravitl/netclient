@@ -246,6 +246,7 @@ func AddAddresses(node *config.Node) {
 	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+"netmaker.conf")
 	if err != nil {
 		logger.Log(0, "could not open the netmaker.conf wireguard file", err.Error())
+		return
 	}
 	if node.Address.IP != nil {
 		wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address.IP.String())

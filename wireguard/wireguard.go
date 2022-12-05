@@ -312,7 +312,7 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 		return nil, err
 	}
 	defer wg.Close()
-	dev, err := wg.Device(getName())
+	dev, err := wg.Device(GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -341,14 +341,13 @@ func apply(n *config.Node, c *wgtypes.Config) error {
 	}
 	defer wg.Close()
 
-	return wg.ConfigureDevice(getName(), *c)
+	return wg.ConfigureDevice(GetName(), *c)
 }
 
-func getName() string {
+func GetName() string {
 	if runtime.GOOS == "darwin" {
 		return "utun69"
 	}
-
 	return "netmaker"
 }
 

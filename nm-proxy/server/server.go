@@ -19,7 +19,7 @@ var (
 )
 
 const (
-	defaultBodySize = 10000
+	defaultBodySize = 65045
 	defaultPort     = models.NmProxyPort
 )
 
@@ -56,7 +56,7 @@ func (p *ProxyServer) Close() {
 func (p *ProxyServer) Listen(ctx context.Context) {
 
 	// Buffer with indicated body size
-	buffer := make([]byte, 65036)
+	buffer := make([]byte, p.Config.BodySize)
 	for {
 
 		select {

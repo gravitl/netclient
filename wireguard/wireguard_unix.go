@@ -19,7 +19,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	tunIface, err := tun.CreateTUN(getName(), config.Netclient().MTU)
+	tunIface, err := tun.CreateTUN(GetName(), config.Netclient().MTU)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-	uapi, err := getUAPIByInterface(getName())
+	uapi, err := getUAPIByInterface(GetName())
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -43,8 +42,7 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 		wg.Add(1)
 		go func(server config.Server) {
 			defer wg.Done()
-			domain := strings.Split(server.API, ":")[0]
-			nmproxy.Start(ctx, ProxyManagerChan, domain)
+			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort)
 		}(server)
 		break
 	}
@@ -98,6 +96,7 @@ func Daemon() {
 			}
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
+			stopProxy = startProxy(&proxyWg)
 		}
 	}
 }

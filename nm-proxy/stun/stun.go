@@ -20,9 +20,9 @@ type HostInfo struct {
 
 var Host HostInfo
 
-func GetHostInfo(stunHostAddr string) (info HostInfo) {
+func GetHostInfo(stunHostAddr, stunPort string) (info HostInfo) {
 
-	s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:3478", stunHostAddr))
+	s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%s", stunHostAddr, stunPort))
 	if err != nil {
 		log.Println("Resolve: ", err)
 		return

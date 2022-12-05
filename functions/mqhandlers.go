@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -173,10 +174,16 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.PeerUpdate
 	var err error
+	defer func() {
+		if err != nil {
+			log.Println("failed to update peers: ", err)
+		}
+	}()
 	network := parseNetworkFromTopic(msg.Topic())
 	node := config.GetNode(network)
 	server := config.GetServer(node.Server)
 	logger.Log(3, "received peer update for", network)
+	log.Println("------> NODE.PROXY: ", node.Proxy)
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
 		return

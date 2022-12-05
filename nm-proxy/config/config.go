@@ -17,6 +17,7 @@ type Settings struct {
 }
 
 type GlobalConfig struct {
+	ProxyStatus   bool
 	isHostNetwork bool
 	isServer      bool
 	isBehindNAT   bool
@@ -27,7 +28,8 @@ type GlobalConfig struct {
 
 func InitializeGlobalCfg() {
 	globalConfig = &GlobalConfig{
-		mutex: &sync.RWMutex{},
+		ProxyStatus: true,
+		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:            nil,
 			networkPeerMap:   make(map[string]models.PeerConnMap),
@@ -38,6 +40,10 @@ func InitializeGlobalCfg() {
 		},
 		settings: make(map[string]Settings),
 	}
+}
+
+func (g *GlobalConfig) IsProxyRunning() bool {
+	return g.ProxyStatus
 }
 
 func (g *GlobalConfig) Reset() {

@@ -151,6 +151,7 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	node.Interfaces = netmakerNode.Interfaces
+	node.Proxy = netmakerNode.Proxy
 	//n.Interface = s.Interface
 	node.Server = netmakerNode.Server
 	server.TrafficKey = netmakerNode.TrafficKeys.Server

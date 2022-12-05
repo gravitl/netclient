@@ -34,6 +34,8 @@ type Server struct {
 	Nodes       map[string]bool `json:"nodes" yaml:"nodes"`
 	TrafficKey  []byte          `json:"traffickey" yaml:"traffickey"`
 	AccessKey   string          `json:"accesskey" yaml:"accesskey"`
+	StunPort    string          `json:"stun_port" yaml:"stun_port"`
+	StunHost    string          `json:"stun_host" yaml:"stun_host"`
 }
 
 // ReadServerConf reads the servers configuration file and populates the server map
@@ -116,6 +118,8 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsEE = cfg.Is_EE
+	server.StunHost = cfg.StunHost
+	server.StunPort = cfg.StunPort
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
 	server.Nodes = make(map[string]bool)
 	return &server

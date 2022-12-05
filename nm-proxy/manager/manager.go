@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net"
-	"runtime"
 
 	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/models"
@@ -143,12 +142,12 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 		return nil, errors.New("no peers to add")
 	}
 
-	if runtime.GOOS == "darwin" {
-		m.InterfaceName, err = wg.GetRealIface(m.InterfaceName)
-		if err != nil {
-			log.Println("failed to get real iface: ", err)
-		}
+	// if runtime.GOOS == "darwin" {
+	m.InterfaceName, err = wg.GetRealIface(m.InterfaceName)
+	if err != nil {
+		log.Println("failed to get real iface: ", err)
 	}
+	// }
 	gCfg := config.GetGlobalCfg()
 	wgIface, err = wg.NewWGIFace(m.InterfaceName)
 	if err != nil {

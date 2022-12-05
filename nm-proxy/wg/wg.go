@@ -1,12 +1,12 @@
 package wg
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -170,20 +170,23 @@ func (w *WGIface) GetListenPort() (*int, error) {
 
 // GetRealIface - retrieves tun iface based on reference iface name from config file
 func GetRealIface(iface string) (string, error) {
-	RunCmd("wg show interfaces", false)
-	ifacePath := "/var/run/wireguard/" + iface + ".name"
-	if !(FileExists(ifacePath)) {
-		return "", errors.New(ifacePath + " does not exist")
+	// ifacePath := "/var/run/wireguard/" + iface + ".name"
+	// if !(FileExists(ifacePath)) {
+	// 	return "", errors.New(ifacePath + " does not exist")
+	// }
+	// realIfaceName, err := GetFileAsString(ifacePath)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// realIfaceName = strings.TrimSpace(realIfaceName)
+	// if !(FileExists(fmt.Sprintf("/var/run/wireguard/%s.sock", realIfaceName))) {
+	// 	return "", errors.New("interface file does not exist")
+	// }
+	ifaceName := "netmaker"
+	if runtime.GOOS == "darwin" {
+		ifaceName = "utun69"
 	}
-	realIfaceName, err := GetFileAsString(ifacePath)
-	if err != nil {
-		return "", err
-	}
-	realIfaceName = strings.TrimSpace(realIfaceName)
-	if !(FileExists(fmt.Sprintf("/var/run/wireguard/%s.sock", realIfaceName))) {
-		return "", errors.New("interface file does not exist")
-	}
-	return realIfaceName, nil
+	return ifaceName, nil
 }
 
 // FileExists - checks if file exists locally
