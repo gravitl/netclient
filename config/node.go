@@ -56,7 +56,7 @@ type Node struct {
 
 // ReadNodeConfig reads node configuration from disk
 func ReadNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
+	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if err := Lock(lockfile); err != nil {
 		return err
@@ -109,7 +109,7 @@ func (node *Node) PrimaryAddress() net.IPNet {
 
 // WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
+	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {

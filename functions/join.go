@@ -351,9 +351,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response
-	config.UpdateServerConfig(&nodeGET.ServerConfig)
+
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
+	config.UpdateServerConfig(newNode.Server, &nodeGET.ServerConfig)
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
 	// TODO ----- figure out what this is really trying to do and uncomment
 	//if nodeForServer.IsLocal != "yes" && newNode.IsLocal && newHostConfig.LocalRange.IP != nil {

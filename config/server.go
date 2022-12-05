@@ -38,7 +38,7 @@ type Server struct {
 
 // ReadServerConf reads the servers configuration file and populates the server map
 func ReadServerConf() error {
-	lockfile := filepath.Join(os.TempDir()) + ServerLockfile
+	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
 	file := GetNetclientPath() + "servers.yml"
 	if err := Lock(lockfile); err != nil {
 		return err
@@ -60,7 +60,7 @@ func ReadServerConf() error {
 
 // WriteServerConfig writes server map to disk
 func WriteServerConfig() error {
-	lockfile := filepath.Join(os.TempDir()) + ServerLockfile
+	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
 	file := GetNetclientPath() + "servers.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -122,7 +122,7 @@ func ConvertServerCfg(cfg *models.ServerConfig) *Server {
 }
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
-func UpdateServerConfig(cfg *models.ServerConfig) {
+func UpdateServerConfig(serverName string, cfg *models.ServerConfig) {
 	server, ok := Servers[cfg.Server]
 	if !ok {
 		server = Server{}
@@ -138,5 +138,5 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsEE = cfg.Is_EE
 	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
-	Servers[cfg.Server] = server
+	Servers[serverName] = server
 }

@@ -85,7 +85,7 @@ func SetVersion(ver string) {
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
-	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
+	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ func Lock(lockfile string) error {
 				return nil
 			} else {
 				if debug {
-					logger.Log(0, "unable to write")
+					logger.Log(0, "unable to write: ", err.Error())
 				}
 			}
 		}

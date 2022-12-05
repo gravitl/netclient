@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -35,18 +36,19 @@ type cachedMessage struct {
 	LastSeen time.Time
 }
 
-func startProxy() (context.CancelFunc, sync.WaitGroup) {
-	wg := sync.WaitGroup{}
+func startProxy(wg *sync.WaitGroup) context.CancelFunc {
+
 	ctx, cancel := context.WithCancel(context.Background())
 	for _, server := range config.Servers {
 		wg.Add(1)
 		go func(server config.Server) {
 			defer wg.Done()
-			nmproxy.Start(ctx, ProxyManagerChan, server.API)
+			domain := strings.Split(server.API, ":")[0]
+			nmproxy.Start(ctx, ProxyManagerChan, domain)
 		}(server)
 		break
 	}
-	return cancel, wg
+	return cancel
 }
 
 // Daemon runs netclient daemon
@@ -65,7 +67,8 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy, proxyWg := startProxy()
+	proxyWg := sync.WaitGroup{}
+	stopProxy := startProxy(&proxyWg)
 	for {
 		select {
 		case <-quit:
