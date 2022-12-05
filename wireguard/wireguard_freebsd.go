@@ -8,7 +8,7 @@ import (
 
 // Create - creates a linux WG interface based on a node's given config
 func (nc *NCIface) Create() error {
-	return ApplyConf(nc)
+	return ApplyWGQuickConf(nc)
 }
 
 // Delete - removes wg network interface from machine

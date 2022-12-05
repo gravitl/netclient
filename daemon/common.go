@@ -35,10 +35,10 @@ func InstallDaemon() error {
 
 // Restart - restarts a system daemon
 func Restart() error {
-	//if ncutils.IsWindows() {
-	//RestartWindowsDaemon()
-	//return nil
-	//}
+	if ncutils.IsWindows() {
+		RestartWindowsDaemon()
+		return nil
+	}
 	pid, err := ncutils.ReadPID()
 	if err != nil {
 		return fmt.Errorf("failed to find pid %w", err)
@@ -58,14 +58,14 @@ func Start() error {
 	os := runtime.GOOS
 	var err error
 	switch os {
-	//case "windows":
-	//RestartWindowsDaemon()
-	//case "darwin":
-	//RestartLaunchD()
+	case "windows":
+		RestartWindowsDaemon()
+	case "darwin":
+		RestartLaunchD()
 	case "linux":
 		RestartSystemD()
-	//case "freebsd":
-	//FreebsdDaemon("restart")
+	case "freebsd":
+		FreebsdDaemon("restart")
 	default:
 		err = errors.New("this os is not yet supported for daemon mode. Run join cmd with flag '--daemon off'")
 	}
