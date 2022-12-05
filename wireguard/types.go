@@ -26,10 +26,10 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	addrs := []IfaceAddress{}
 	for _, node := range nodes {
 		addr := IfaceAddress{}
-		addr.IP = node.Address
+		addr.IP = node.Address.IP
 		addr.Network = node.NetworkRange
-		if addr.IP.IP == nil {
-			addr.IP = node.Address6
+		if addr.IP == nil {
+			addr.IP = node.Address6.IP
 			addr.Network = node.NetworkRange6
 		}
 		addrs = append(addrs, addr)
@@ -52,7 +52,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 
 // IfaceAddress - interface parsed address
 type IfaceAddress struct {
-	IP      net.IPNet
+	IP      net.IP
 	Network net.IPNet
 }
 

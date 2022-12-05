@@ -18,7 +18,7 @@ func (nc *NCIface) Create() error {
 // NCIface.ApplyAddrs - applies address for darwin userspace
 func (nc *NCIface) ApplyAddrs() error {
 	for _, address := range nc.Addresses {
-		cmd := exec.Command("ifconfig", ncutils.GetInterfaceName(), "inet", address.IP.IP.String(), address.IP.IP.String())
+		cmd := exec.Command("ifconfig", ncutils.GetInterfaceName(), "inet", address.IP.String(), address.IP.String())
 		if out, err := cmd.CombinedOutput(); err != nil {
 			logger.Log(0, fmt.Sprintf("adding addreess command \"%v\" failed with output %s and error: ", cmd.String(), out))
 			continue
