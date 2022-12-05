@@ -16,9 +16,9 @@ func SetupFreebsdDaemon() error {
 		return err
 	}
 
-	_, err = os.Stat("/etc/netclient/config")
+	_, err = os.Stat("/etc/netclient")
 	if os.IsNotExist(err) {
-		os.MkdirAll("/etc/netclient/config", 0744)
+		os.MkdirAll("/etc/netclient", 0744)
 	} else if err != nil {
 		log.Println("couldnt find or create /etc/netclient")
 		return err
@@ -62,7 +62,6 @@ load_rc_config $name      # Loading rc config vars
 
 # Freebsd Setup
 rcvar=netclient_enable                   # Enables the rc.conf YES/NO flag
-pidfile="/var/run/${program_name}.pid" # File that allows the system to keep track of node-red status
 
 # Env Setup
 #export HOME=$( getent passwd "$netclient_runAs" | cut -d: -f6 ) # Gets the home directory of the runAs user
@@ -73,7 +72,7 @@ output_file="/var/log/${program_name}.log" # Path to netclient logs
 
 # Command
 command="/usr/sbin/daemon"
-command_args="-r -t ${title} -u ${netclient_runAs} -o ${output_file} -P ${pidfile} ${exec_path} ${netclient_args}"
+command_args="-r -t ${title} -u ${netclient_runAs} -o ${output_file} ${exec_path} ${netclient_args}"
 
 # Loading Config
 load_rc_config ${name}
@@ -116,6 +115,9 @@ func CleanupFreebsd() {
 	}
 	if err := os.Remove(ExecDir + "netclient"); err != nil {
 		logger.Log(1, "Removing netclient binary: ", err.Error())
+	}
+	if err := os.Remove("/var/log/netclient.log"); err != nil {
+		logger.Log(1, "error removing netclient log file", err.Error())
 	}
 }
 
