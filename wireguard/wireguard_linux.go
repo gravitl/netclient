@@ -5,14 +5,13 @@ import (
 	"os"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
-	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
+	if isKernelWireGuardPresent() {
 		newLink := nc.getKernelLink()
 		if newLink == nil {
 			return fmt.Errorf("failed to create kernel interface")
@@ -47,7 +46,7 @@ func (nc *NCIface) Create() error {
 			return err
 		}
 		return nil
-	} else if local.IsUserSpaceWGInstalled() {
+	} else if isTunModuleLoaded() {
 		if err := nc.createUserSpaceWG(); err != nil {
 			return err
 		}
@@ -63,6 +62,12 @@ func (l *netLink) Attrs() *netlink.LinkAttrs {
 // netLink.Type - returns type of link i.e wireguard
 func (l *netLink) Type() string {
 	return "wireguard"
+}
+
+// NCIface.Close closes netmaker interface
+func (n *NCIface) Close() {
+	link := n.getKernelLink()
+	link.Close()
 }
 
 // netLink.Close - required function to close linux interface

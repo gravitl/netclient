@@ -11,4 +11,7 @@ netclient32
 netclient.exe
 netclient.yml
 launch.json
-
+**/vendor/
+gui/build/
+**/node_modules/
+gui/**/dist/
