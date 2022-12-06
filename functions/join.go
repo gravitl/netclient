@@ -149,10 +149,16 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	loginMsg.Mac = macAddress
 	loginMsg.Network = network
 	if user != "" {
+		var pass string
 		fmt.Printf("Continuing with user, %s.\nPlease input password:\n", user)
-		pass, err := term.ReadPassword(int(syscall.Stdin))
-		if err != nil || string(pass) == "" {
-			logger.FatalLog("no password provided, exiting")
+		if flags.GetBool("readPassFromStdIn") {
+			passBytes, err := term.ReadPassword(int(syscall.Stdin))
+			pass = string(passBytes)
+			if err != nil || string(pass) == "" {
+				logger.FatalLog("no password provided, exiting")
+			}
+		} else {
+			pass = flags.GetString("pass")
 		}
 		loginMsg.User = user
 		loginMsg.Password = string(pass)
