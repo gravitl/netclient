@@ -1,9 +1,9 @@
 package daemon
 
 import (
+	"errors"
 	"log"
 	"os"
-	"time"
 
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/netclient/ncutils"
@@ -12,59 +12,67 @@ import (
 const MacServiceName = "com.gravitl.netclient"
 const MacExecDir = "/usr/local/bin/"
 
-// SetupMacDaemon - Creates a daemon service from the netclient under LaunchAgents for MacOS
-func SetupMacDaemon() error {
-
+// install- Creates a daemon service from the netclient under LaunchAgents for MacOS
+func install() error {
 	binarypath, err := os.Executable()
 	if err != nil {
 		return err
 	}
-
 	if ncutils.FileExists(MacExecDir + "netclient") {
 		logger.Log(0, "updating netclient binary in", MacExecDir)
 	}
-	err = ncutils.Copy(binarypath, MacExecDir+"netclient")
-	if err != nil {
+	if err := ncutils.Copy(binarypath, MacExecDir+"netclient"); err != nil {
 		logger.Log(0, err.Error())
 		return err
 	}
-
-	err = CreateMacService(MacServiceName)
-	if err != nil {
+	if err := createMacService(MacServiceName); err != nil {
 		return err
 	}
 	_, err = ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true)
 	return err
 }
 
-// CleanupMac - Removes the netclient checkin daemon from LaunchDaemons
-func CleanupMac() {
-	_, err := ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MacServiceName+".plist", true)
+func start() error {
+	if _, err := ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
+		return err
+	}
+	return nil
+}
+
+// stop - stop launch daemon
+func stop() error {
+	if _, err := ncutils.RunCmd("launchctl unload  /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
+		return err
+	}
+	return nil
+}
+
+// cleanUp - Removes the netclient checkin daemon from LaunchDaemons
+func cleanUp() error {
+	var faults bool
+	if _, err := ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
+		faults = true
+	}
 	if ncutils.FileExists("/Library/LaunchDaemons/" + MacServiceName + ".plist") {
-		err = os.Remove("/Library/LaunchDaemons/" + MacServiceName + ".plist")
+		if err := os.Remove("/Library/LaunchDaemons/" + MacServiceName + ".plist"); err != nil {
+			faults = true
+			logger.Log(1, err.Error())
+		}
 	}
-	if err != nil {
-		logger.Log(1, err.Error())
+	if err := os.RemoveAll(ncutils.GetNetclientPath()); err != nil {
+		faults = true
 	}
-
-	os.RemoveAll(ncutils.GetNetclientPath())
-	os.Remove(MacExecDir + "netclient")
+	if err := os.Remove(MacExecDir + "netclient"); err != nil {
+		faults = true
+	}
+	if faults {
+		return errors.New("errors were encountered removing launch daemons")
+	}
+	return nil
 }
 
-// RestartLaunchD - restart launch daemon
-func RestartLaunchD() {
-	ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MacServiceName+".plist", true)
-	time.Sleep(time.Second >> 2)
-	ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true)
-}
-
-// StopLaunchD - stop launch daemon
-func StopLaunchD() {
-	ncutils.RunCmd("launchctl unload  /Library/LaunchDaemons/"+MacServiceName+".plist", true)
-}
-
-// CreateMacService - Creates the mac service file for LaunchDaemons
-func CreateMacService(servicename string) error {
+// createMacService - Creates the mac service file for LaunchDaemons
+func createMacService(servicename string) error {
 	_, err := os.Stat("/Library/LaunchDaemons")
 	if os.IsNotExist(err) {
 		os.Mkdir("/Library/LaunchDaemons", 0755)
@@ -72,7 +80,7 @@ func CreateMacService(servicename string) error {
 		log.Println("couldnt find or create /Library/LaunchDaemons")
 		return err
 	}
-	daemonstring := MacDaemonString()
+	daemonstring := macDaemonString()
 	daemonbytes := []byte(daemonstring)
 
 	if !ncutils.FileExists("/Library/LaunchDaemons/com.gravitl.netclient.plist") {
@@ -81,8 +89,8 @@ func CreateMacService(servicename string) error {
 	return err
 }
 
-// MacDaemonString - the file contents for the mac netclient daemon service (launchdaemon)
-func MacDaemonString() string {
+// macDaemonString - the file contents for the mac netclient daemon service (launchdaemon)
+func macDaemonString() string {
 	return `<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\" >
 <plist version='1.0'>
