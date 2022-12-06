@@ -25,6 +25,8 @@ additional paramaters can be be specified such as listenport or macaddress -- se
 	Run: func(cmd *cobra.Command, args []string) {
 		flags := viper.New()
 		flags.BindPFlags(cmd.Flags())
+		// CLI should always take password from stdin
+		flags.Set("readPassFromStdIn", true)
 		if flags.Get("server") == "" && flags.Get("token") == "" && flags.Get("key") == "" {
 			cmd.Usage()
 			return
