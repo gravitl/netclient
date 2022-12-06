@@ -55,7 +55,7 @@ type Node struct {
 
 // ReadNodeConfig reads node configuration from disk
 func ReadNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
+	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if err := Lock(lockfile); err != nil {
 		return err
@@ -108,7 +108,7 @@ func (node *Node) PrimaryAddress() net.IPNet {
 
 // WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
+	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -137,7 +137,7 @@ func WriteNodeConfig() error {
 func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient()
 	netmakerNode := nodeGet.Node
-	server := GetServer(netmakerNode.Network)
+	server := GetServer(netmakerNode.Server)
 	if server == nil {
 		server = ConvertServerCfg(&nodeGet.ServerConfig)
 	}
@@ -199,7 +199,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	if node.InternetGateway != nil {
 		netmakerNode.InternetGateway = node.InternetGateway.IP.String()
 	}
-	netmakerNode.Interface = host.Interface
+	netmakerNode.Interface = ncutils.GetInterfaceName()
 	netmakerNode.Interfaces = node.Interfaces
 	netmakerNode.Server = node.Server
 	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic

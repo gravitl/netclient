@@ -237,7 +237,7 @@ func WriteWgConfig(host *config.Config, nodes map[string]config.Node) error {
 			}
 		}
 	}
-	if err := wireguard.SaveTo(config.GetNetclientPath() + host.Interface + ".conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
 		return err
 	}
 	return nil

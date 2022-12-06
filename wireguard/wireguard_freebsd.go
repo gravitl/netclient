@@ -91,7 +91,7 @@ type netLink struct {
 
 func (nc *NCIface) getKernelLink() *netLink {
 	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = getName()
+	linkAttrs.Name = nc.Name
 	return &netLink{
 		attrs: &linkAttrs,
 	}
