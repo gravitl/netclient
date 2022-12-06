@@ -128,17 +128,8 @@ func deleteLocalNetwork(node *config.Node) error {
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
 	if len(config.GetNodes()) < 1 {
-		logger.Log(0, "removing wireguard config and netmaker interface")
+		logger.Log(0, "removing wireguard config")
 		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
-
-		// Not necessary to remove the interface explicitly
-		/*if wireguard.GetInterface() != nil {
-			wireguard.GetInterface().Close()
-		} else {
-			return errors.New("interface is nil")
-		} */
-
 	}
-
 	return nil
 }
