@@ -100,7 +100,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
-		local.SetNetmakerDomainRoute(server.API)
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
