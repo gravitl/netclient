@@ -17,7 +17,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -376,7 +375,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	}
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	// TODO :: why here ... should be in daemon?
-	local.SetNetmakerDomainRoute(newServer.API)
 	peers := newNode.Peers
 	for _, node := range config.GetNodes() {
 		if node.Connected {
