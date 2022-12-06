@@ -108,7 +108,7 @@ func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key)
 }
 
 func DecodeNetwork(networkBytes []byte) string {
-	return string(networkBytes[:])
+	return string(bytes.TrimSpace(networkBytes[:]))
 }
 
 func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {

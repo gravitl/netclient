@@ -3,21 +3,12 @@ package wg
 import (
 	"fmt"
 	"log"
-	"net"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-)
-
-const (
-	DefaultMTU         = 1280
-	DefaultWgPort      = 51820
-	DefaultWgKeepAlive = 20 * time.Second
 )
 
 // WGIface represents a interface instance
@@ -27,37 +18,21 @@ type WGIface struct {
 	mu     sync.Mutex
 }
 
-// WGAddress Wireguard parsed address
-type WGAddress struct {
-	IP      net.IP
-	Network *net.IPNet
-}
-
-// NewWGIFace Creates a new Wireguard interface instance
-func NewWGIFace(iface string) (*WGIface, error) {
+// GetWgIface - gets the Wireguard interface config
+func GetWgIface(iface string) (*WGIface, error) {
 	wgIface := &WGIface{
 		Name: iface,
 		mu:   sync.Mutex{},
 	}
-	err := wgIface.GetWgIface(iface)
+	wgClient, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+	wgIface.Device, err = wgClient.Device(iface)
 	if err != nil {
 		return nil, err
 	}
 	return wgIface, nil
-}
-
-func (w *WGIface) GetWgIface(iface string) error {
-	var err error
-	wgClient, err := wgctrl.New()
-	if err != nil {
-		return err
-	}
-	w.Device, err = wgClient.Device(iface)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func GetWgIfacePubKey(iface string) [32]byte {
@@ -136,7 +111,7 @@ func (w *WGIface) configureDevice(config wgtypes.Config) error {
 	return wg.ConfigureDevice(w.Name, config)
 }
 
-// GetListenPort returns the listening port of the Wireguard endpoint
+// WGIface.GetListenPort - returns the listening port of the Wireguard endpoint
 func (w *WGIface) GetListenPort() (*int, error) {
 	log.Printf("getting Wireguard listen port of interface %s", w.Name)
 
@@ -156,30 +131,6 @@ func (w *WGIface) GetListenPort() (*int, error) {
 	return &d.ListenPort, nil
 }
 
-// FileExists - checks if file exists locally
-func FileExists(f string) bool {
-	info, err := os.Stat(f)
-	if os.IsNotExist(err) {
-		return false
-	}
-	if err != nil && strings.Contains(err.Error(), "not a directory") {
-		return false
-	}
-	if err != nil {
-		log.Println(0, "error reading file: "+f+", "+err.Error())
-	}
-	return !info.IsDir()
-}
-
-// GetFileAsString - returns the string contents of a given file
-func GetFileAsString(path string) (string, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return string(content), err
-}
-
 // RunCmd - runs a local command
 func RunCmd(command string, printerr bool) (string, error) {
 	args := strings.Fields(command)
@@ -193,34 +144,7 @@ func RunCmd(command string, printerr bool) (string, error) {
 	return string(out), err
 }
 
-// RemovePeer removes a Wireguard Peer from the interface iface
-func (w *WGIface) RemovePeer(peerKey string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	log.Printf("Removing peer %s from interface %s ", peerKey, w.Name)
-
-	peerKeyParsed, err := wgtypes.ParseKey(peerKey)
-	if err != nil {
-		return err
-	}
-
-	peer := wgtypes.PeerConfig{
-		PublicKey: peerKeyParsed,
-		Remove:    true,
-	}
-
-	config := wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{peer},
-	}
-	err = w.configureDevice(config)
-	if err != nil {
-		return fmt.Errorf("received error \"%v\" while removing peer %s from interface %s", err, peerKey, w.Name)
-	}
-	return nil
-}
-
-// UpdatePeer
+// WGIface.Update - updates peer config
 func (w *WGIface) Update(peerConf wgtypes.PeerConfig) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()

@@ -13,19 +13,10 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-/*
-TODO:-
- 1. ON Ingress node
-    --> for attached ext clients
-    -> start sniffer (will recieve pkts from ext clients (add ebf filter to listen on only ext traffic) if not intended to the interface forward it.)
-    -> start remote conn after endpoint is updated
-    -->
-*/
-var sent bool
-
 type ProxyAction string
 
 type ProxyManagerPayload struct {
+	Action          ProxyAction            `json:"action"`
 	InterfaceName   string                 `json:"interface_name"`
 	Network         string                 `json:"network"`
 	WgAddr          string                 `json:"wg_addr"`
@@ -55,21 +46,20 @@ type PeerConf struct {
 }
 
 const (
-	AddInterface    ProxyAction = "ADD_INTERFACE"
-	DeleteInterface ProxyAction = "DELETE_INTERFACE"
+	AddNetwork    ProxyAction = "ADD_NETWORK_TO_PROXY"
+	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
 )
 
-func StartProxyManager(ctx context.Context, manageChan chan *ProxyManagerPayload) {
+func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayload) {
 	for {
 
 		select {
 		case <-ctx.Done():
 			log.Println("shutting down proxy manager...")
 			return
-		case mI := <-manageChan:
+		case mI := <-managerChan:
 			log.Printf("-------> PROXY-MANAGER: %+v\n", mI)
-
-			err := mI.AddInterfaceToProxy()
+			err := mI.configureProxy()
 			if err != nil {
 				log.Printf("failed to add interface: [%s] to proxy: %v\n  ", mI.InterfaceName, err)
 			}
@@ -120,7 +110,7 @@ func (m *ProxyManagerPayload) setRelayedPeers() {
 }
 
 func cleanUpInterface(network string) {
-	log.Println("########------------>  CLEANING UP: ", network)
+	log.Println("Removing proxy configuration for: ", network)
 	peerConnMap := config.GetGlobalCfg().GetNetworkPeers(network)
 	for _, peerI := range peerConnMap {
 		config.GetGlobalCfg().RemovePeer(network, peerI.Key.String())
@@ -142,9 +132,9 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 		return nil, errors.New("no peers to add")
 	}
 	gCfg := config.GetGlobalCfg()
-	wgIface, err = wg.NewWGIFace(m.InterfaceName)
+	wgIface, err = wg.GetWgIface(m.InterfaceName)
 	if err != nil {
-		log.Println("Failed init new interface: ", err)
+		log.Println("Failed get interface config: ", err)
 		return nil, err
 	}
 	if gCfg.IsIfaceNil() {
@@ -155,7 +145,6 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 		return wgIface, nil
 	}
 	reset := m.settingsUpdate()
-	// check if node is getting relayed
 	if reset {
 		cleanUpInterface(m.Network)
 		return wgIface, nil
@@ -164,14 +153,15 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 	// sync map with wg device config
 	// check if listen port has changed
 	if wgIface.Device.ListenPort != gCfg.GetInterfaceListenPort() {
-		// reset proxy for this interface
+		// reset proxy for this network
 		cleanUpInterface(m.Network)
 		return wgIface, nil
 	}
 	peerConnMap := gCfg.GetNetworkPeers(m.Network)
-	// check device conf different from proxy
+
 	//update wg device
 	gCfg.UpdateWgIface(wgIface)
+	// check device conf different from proxy
 	// sync peer map with new update
 	for peerPubKey, peerConn := range peerConnMap {
 		if _, ok := m.PeerMap[peerPubKey]; !ok {
@@ -269,7 +259,22 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 	return wgIface, nil
 }
 
-func (m *ProxyManagerPayload) AddInterfaceToProxy() error {
+func (m *ProxyManagerPayload) configureProxy() error {
+	switch m.Action {
+	case AddNetwork:
+		m.addNetwork()
+	case DeleteNetwork:
+		m.deleteNetwork()
+
+	}
+	return nil
+}
+
+func (m *ProxyManagerPayload) deleteNetwork() {
+	cleanUpInterface(m.Network)
+}
+
+func (m *ProxyManagerPayload) addNetwork() error {
 	var err error
 
 	wgInterface, err := m.processPayload()
