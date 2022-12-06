@@ -117,7 +117,7 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	return nil, nil
 }
 
-// App.GoJoinNetworkBySso joins a network by SSO
+// App.GoJoinNetworkByBasicAuth joins a network by basic auth
 func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
 	flags := viper.New()
 	flags.Set("server", serverName)
