@@ -14,8 +14,16 @@ export function GoGetNetclientConfig():Promise<config.Config>;
 
 export function GoGetNetwork(arg1:string):Promise<main.Network>;
 
+export function GoGetRecentServerNames():Promise<Array<string>>;
+
+export function GoJoinNetworkByBasicAuth(arg1:string,arg2:string,arg3:string,arg4:string):Promise<any>;
+
+export function GoJoinNetworkBySso(arg1:string,arg2:string):Promise<any>;
+
 export function GoJoinNetworkByToken(arg1:string):Promise<any>;
 
 export function GoLeaveNetwork(arg1:string):Promise<any>;
 
 export function GoParseAccessToken(arg1:string):Promise<models.AccessToken>;
+
+export function GoUninstall():Promise<any>;
