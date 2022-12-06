@@ -37,7 +37,7 @@ func SelfUpdate(currentVersion string, rebootDaemon bool) {
 			logger.Log(0, "Error encountered while stopping daemon:", err.Error())
 			return
 		}
-		if err := daemon.InstallDaemon(); err != nil {
+		if err := daemon.Install(); err != nil {
 			logger.Log(0, "Error encountered while installing daemon:", err.Error())
 			return
 		}

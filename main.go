@@ -6,12 +6,9 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package main
 
 import (
-<<<<<<< HEAD
 	"os"
 	"runtime"
 
-=======
->>>>>>> a24ef9b (move self_update to functions package)
 	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
