@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
@@ -246,7 +245,7 @@ func AddAddresses(node *config.Node) {
 	}
 	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+"netmaker.conf")
 	if err != nil {
-		logger.Log(0, "could not open the %s.conf wireguard file", ncutils.GetInterfaceName(), err.Error())
+		logger.Log(0, "could not open the netmaker.conf wireguard file", err.Error())
 	}
 	if node.Address.IP != nil {
 		wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address.IP.String())
