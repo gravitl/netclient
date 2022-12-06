@@ -26,7 +26,7 @@ additional paramaters can be be specified such as listenport or macaddress -- se
 		flags := viper.New()
 		flags.BindPFlags(cmd.Flags())
 		// CLI should always take password from stdin
-		flags.Set("shouldReadPassFromStdIn", true)
+		flags.Set("readPassFromStdIn", true)
 		if flags.Get("server") == "" && flags.Get("token") == "" && flags.Get("key") == "" {
 			cmd.Usage()
 			return

@@ -151,7 +151,7 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	if user != "" {
 		var pass string
 		fmt.Printf("Continuing with user, %s.\nPlease input password:\n", user)
-		if flags.GetBool("shouldReadPassFromStdIn") {
+		if flags.GetBool("readPassFromStdIn") {
 			passBytes, err := term.ReadPassword(int(syscall.Stdin))
 			pass = string(passBytes)
 			if err != nil || string(pass) == "" {
