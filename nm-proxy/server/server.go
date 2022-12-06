@@ -19,7 +19,7 @@ var (
 )
 
 const (
-	defaultBodySize = 65045
+	defaultBodySize = 65000 + packet.MessageProxySize
 	defaultPort     = models.NmProxyPort
 )
 
@@ -246,7 +246,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 // Create - creats a proxy listener
 // port - port for proxy to listen on localhost
-// bodySize - default 10000, leave 0 to use default
+// bodySize - leave 0 to use default
 // addr - the address for proxy to listen on
 // forwards - indicate address to forward to, {"<address:port>",...} format
 func (p *ProxyServer) CreateProxyServer(port, bodySize int, addr string) (err error) {

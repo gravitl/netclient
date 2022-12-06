@@ -141,13 +141,6 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 	if len(m.Peers) == 0 {
 		return nil, errors.New("no peers to add")
 	}
-
-	// if runtime.GOOS == "darwin" {
-	m.InterfaceName, err = wg.GetRealIface(m.InterfaceName)
-	if err != nil {
-		log.Println("failed to get real iface: ", err)
-	}
-	// }
 	gCfg := config.GetGlobalCfg()
 	wgIface, err = wg.NewWGIFace(m.InterfaceName)
 	if err != nil {
@@ -209,7 +202,7 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 				currentPeer.StopConn()
 				delete(peerConnMap, currentPeer.Key.String())
 				// update the peer with actual endpoint
-				if err := wgIface.Update(m.Peers[i], false); err != nil {
+				if err := wgIface.Update(m.Peers[i]); err != nil {
 					log.Println("falied to update peer: ", err)
 				}
 				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
@@ -264,7 +257,7 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 
 		} else if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
 			log.Println("-----------> skipping peer, proxy is off: ", m.Peers[i].PublicKey)
-			if err := wgIface.Update(m.Peers[i], false); err != nil {
+			if err := wgIface.Update(m.Peers[i]); err != nil {
 				log.Println("falied to update peer: ", err)
 			}
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)

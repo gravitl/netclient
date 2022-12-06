@@ -24,13 +24,13 @@ const (
 	UpdateListenPort ProxyActionType = 1
 )
 const (
-	NoisePublicKeySize         = 32
-	NoisePrivateKeySize        = 32
-	NetworkNameSize        int = 9
-	PeerKeyHashSize            = 16
-	MessageMetricSize          = 148
-	MessageProxyUpdateSize     = 148
-	MessageProxySize           = 45
+	NoisePublicKeySize     = 32
+	NoisePrivateKeySize    = 32
+	NetworkNameSize        = 12
+	PeerKeyHashSize        = 16
+	MessageMetricSize      = 148
+	MessageProxyUpdateSize = 148
+	MessageProxySize       = 48
 
 	NoiseConstruction = "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s"
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"

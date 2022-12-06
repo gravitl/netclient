@@ -87,11 +87,7 @@ func ConsumeProxyUpdateMsg(buf []byte) (*ProxyUpdateMessage, error) {
 func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key) ([]byte, error) {
 
 	var networkEncoded [NetworkNameSize]byte
-	b, err := base64.StdEncoding.DecodeString(network)
-	if err != nil {
-		return nil, err
-	}
-	copy(networkEncoded[:], b[:NetworkNameSize])
+	copy(networkEncoded[:], []byte(network))
 	msg := MetricMessage{
 		Type:           MessageMetricsType,
 		ID:             id,
@@ -103,7 +99,7 @@ func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key)
 	log.Printf("----------> $$$$$$ CREATED PACKET: %+v\n", msg)
 	var buff [MessageMetricSize]byte
 	writer := bytes.NewBuffer(buff[:0])
-	err = binary.Write(writer, binary.LittleEndian, msg)
+	err := binary.Write(writer, binary.LittleEndian, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +108,7 @@ func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key)
 }
 
 func DecodeNetwork(networkBytes []byte) string {
-	return base64.StdEncoding.EncodeToString(networkBytes[:])
+	return string(networkBytes[:])
 }
 
 func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
@@ -133,11 +129,8 @@ func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
 
 func ProcessPacketBeforeSending(network string, buf []byte, n int, srckey, dstKey string) ([]byte, int, string, string) {
 	var networkEncoded [NetworkNameSize]byte
-	b, err := base64.StdEncoding.DecodeString(network)
-	if err != nil {
-		return buf, n, "", ""
-	}
-	copy(networkEncoded[:], b[:NetworkNameSize])
+
+	copy(networkEncoded[:], []byte(network))
 	srcKeymd5 := md5.Sum([]byte(srckey))
 	dstKeymd5 := md5.Sum([]byte(dstKey))
 	m := ProxyMessage{
@@ -148,8 +141,9 @@ func ProcessPacketBeforeSending(network string, buf []byte, n int, srckey, dstKe
 	}
 	var msgBuffer [MessageProxySize]byte
 	writer := bytes.NewBuffer(msgBuffer[:0])
-	err = binary.Write(writer, binary.LittleEndian, m)
+	err := binary.Write(writer, binary.LittleEndian, m)
 	if err != nil {
+		log.Println("errror writing msg to bytes: ", err)
 		return buf, n, "", ""
 	}
 	if n > len(buf)-MessageProxySize {

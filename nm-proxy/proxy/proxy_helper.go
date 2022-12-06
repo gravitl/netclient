@@ -59,17 +59,17 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 
 			}(n, p.Config.Network, p.Config.RemoteKey.String())
 
-			//var srcPeerKeyHash, dstPeerKeyHash string
+			var srcPeerKeyHash, dstPeerKeyHash string
 			if !p.Config.IsExtClient {
-				buf, n, _, _ = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
+				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
 					p.Config.WgInterface.Device.PublicKey.String(), p.Config.RemoteKey.String())
 				if err != nil {
 					log.Println("failed to process pkt before sending: ", err)
 				}
 			}
 
-			// log.Printf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-			// 	p.LocalConn.LocalAddr(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash)
+			log.Printf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
+				p.LocalConn.LocalAddr(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash)
 
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
@@ -144,7 +144,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			if err != nil {
 				continue
 			}
-			copy(networkEncoded[:], b[:packet.NetworkNameSize])
+			copy(networkEncoded[:], b[:])
 			m := &packet.ProxyUpdateMessage{
 				Type:           packet.MessageProxyType,
 				NetworkEncoded: networkEncoded,

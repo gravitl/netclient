@@ -16,7 +16,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	nmproxy "github.com/gravitl/netclient/nm-proxy"
 	"github.com/gravitl/netclient/nm-proxy/manager"
-	"github.com/gravitl/netclient/nm-proxy/peer"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
@@ -119,16 +118,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		nc := wireguard.NewNCIface(config.Netclient(), nodes)
 		nc.Create()
 		nc.Configure()
-		peers := []wgtypes.PeerConfig{}
-		for _, node := range nodes {
-			if node.Connected {
-				if node.Proxy {
-					node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
-				}
-				peers = append(peers, node.Peers...)
-			}
-		}
-		wireguard.SetPeers(peers)
+		wireguard.SetPeers()
 	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
@@ -221,6 +211,15 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 	logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
 	if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "network", node.Network, token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
+	if token := client.Subscribe(fmt.Sprintf("proxy/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(ProxyUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		if token.Error() == nil {
+			logger.Log(0, "###### network:", node.Network, "connection timeout")
+		} else {
+			logger.Log(0, "###### network:", node.Network, token.Error().Error())
+		}
 		return
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to peer updates peers/%s/%s", node.Network, node.ID))

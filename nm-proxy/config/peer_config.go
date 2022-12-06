@@ -85,15 +85,13 @@ func (g *GlobalConfig) SavePeer(network string, connConf *models.Conn) {
 }
 
 func (g *GlobalConfig) GetPeer(network, peerPubKey string) (models.Conn, bool) {
-	var peerConn *models.Conn
-	var found bool
+
 	if g.CheckIfNetworkExists(network) {
-		if peerConn, found = g.ifaceConfig.networkPeerMap[network][peerPubKey]; found {
+		if peerConn, found := g.ifaceConfig.networkPeerMap[network][peerPubKey]; found {
 			return *peerConn, found
 		}
 	}
-
-	return models.Conn{}, found
+	return models.Conn{}, false
 }
 
 func (g *GlobalConfig) UpdatePeer(network string, updatedPeer *models.Conn) {
@@ -149,12 +147,11 @@ func (g *GlobalConfig) SavePeerByHash(peerInfo *models.RemotePeer) {
 }
 
 func (g *GlobalConfig) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer, bool) {
-	var peerInfo *models.RemotePeer
-	var found bool
-	if peerInfo, found = g.ifaceConfig.peerHashMap[peerKeyHash]; found {
+
+	if peerInfo, found := g.ifaceConfig.peerHashMap[peerKeyHash]; found {
 		return *peerInfo, found
 	}
-	return models.RemotePeer{}, found
+	return models.RemotePeer{}, false
 }
 
 func (g *GlobalConfig) DeletePeerHash(peerKey string) {
@@ -162,15 +159,14 @@ func (g *GlobalConfig) DeletePeerHash(peerKey string) {
 }
 
 func (g *GlobalConfig) GetExtClientInfo(udpAddr *net.UDPAddr) (models.RemotePeer, bool) {
-	var peerInfo *models.RemotePeer
-	var found bool
+
 	if udpAddr == nil {
-		return models.RemotePeer{}, found
+		return models.RemotePeer{}, false
 	}
-	if peerInfo, found = g.ifaceConfig.extSrcIpMap[udpAddr.String()]; found {
+	if peerInfo, found := g.ifaceConfig.extSrcIpMap[udpAddr.String()]; found {
 		return *peerInfo, found
 	}
-	return models.RemotePeer{}, found
+	return models.RemotePeer{}, false
 
 }
 
@@ -183,12 +179,11 @@ func (g *GlobalConfig) DeleteExtClientInfo(udpAddr *net.UDPAddr) {
 }
 
 func (g *GlobalConfig) GetExtClientWaitCfg(peerKey string) (models.RemotePeer, bool) {
-	var peerInfo *models.RemotePeer
-	var found bool
-	if peerInfo, found = g.ifaceConfig.extClientWaitMap[peerKey]; found {
+
+	if peerInfo, found := g.ifaceConfig.extClientWaitMap[peerKey]; found {
 		return *peerInfo, found
 	}
-	return *peerInfo, found
+	return models.RemotePeer{}, false
 }
 
 func (g *GlobalConfig) SaveExtclientWaitCfg(extPeer *models.RemotePeer) {
@@ -216,15 +211,13 @@ func (g *GlobalConfig) CheckIfRelayedNodeExists(peerHash string) bool {
 }
 
 func (g *GlobalConfig) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePeer, bool) {
-	var peer *models.RemotePeer
-	var found bool
+
 	if g.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found = g.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
+		if peer, found := g.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
 			return *peer, found
 		}
 	}
-
-	return models.RemotePeer{}, found
+	return models.RemotePeer{}, false
 }
 
 func (g *GlobalConfig) GetInterfaceListenPort() (port int) {

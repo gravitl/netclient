@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -90,18 +89,6 @@ func GetWgIfacePrivKey(iface string) [32]byte {
 	return dev.PrivateKey
 }
 
-// parseAddress parse a string ("1.2.3.4/24") address to WG Address
-func parseAddress(address string) (WGAddress, error) {
-	ip, network, err := net.ParseCIDR(address)
-	if err != nil {
-		return WGAddress{}, err
-	}
-	return WGAddress{
-		IP:      ip,
-		Network: network,
-	}, nil
-}
-
 // UpdatePeer updates existing Wireguard Peer or creates a new one if doesn't exist
 func (w *WGIface) UpdatePeerEndpoint(peer wgtypes.PeerConfig) error {
 	w.mu.Lock()
@@ -117,6 +104,7 @@ func (w *WGIface) UpdatePeerEndpoint(peer wgtypes.PeerConfig) error {
 
 	peerN := wgtypes.PeerConfig{
 		UpdateOnly: true,
+		PublicKey:  peer.PublicKey,
 		Endpoint:   peer.Endpoint,
 	}
 
@@ -166,27 +154,6 @@ func (w *WGIface) GetListenPort() (*int, error) {
 	log.Printf("got Wireguard device listen port %s, %d", w.Name, d.ListenPort)
 
 	return &d.ListenPort, nil
-}
-
-// GetRealIface - retrieves tun iface based on reference iface name from config file
-func GetRealIface(iface string) (string, error) {
-	// ifacePath := "/var/run/wireguard/" + iface + ".name"
-	// if !(FileExists(ifacePath)) {
-	// 	return "", errors.New(ifacePath + " does not exist")
-	// }
-	// realIfaceName, err := GetFileAsString(ifacePath)
-	// if err != nil {
-	// 	return "", err
-	// }
-	// realIfaceName = strings.TrimSpace(realIfaceName)
-	// if !(FileExists(fmt.Sprintf("/var/run/wireguard/%s.sock", realIfaceName))) {
-	// 	return "", errors.New("interface file does not exist")
-	// }
-	ifaceName := "netmaker"
-	if runtime.GOOS == "darwin" {
-		ifaceName = "utun69"
-	}
-	return ifaceName, nil
 }
 
 // FileExists - checks if file exists locally
@@ -254,14 +221,12 @@ func (w *WGIface) RemovePeer(peerKey string) error {
 }
 
 // UpdatePeer
-func (w *WGIface) Update(peerConf wgtypes.PeerConfig, updateOnly bool) error {
+func (w *WGIface) Update(peerConf wgtypes.PeerConfig) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var err error
-	log.Printf("---------> NEWWWWWW Updating peer %+v from interface %s ", peerConf, w.Name)
-
-	peerConf.UpdateOnly = updateOnly
-	peerConf.ReplaceAllowedIPs = true
+	log.Printf("--------->  Updating peer %+v from interface %s ", peerConf, w.Name)
+	peerConf.UpdateOnly = true
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{peerConf},
 	}

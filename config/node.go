@@ -235,6 +235,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	netmakerNode.IsPending = FormatBool(node.IsPending)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
 	netmakerNode.IsHub = FormatBool(node.IsHub)
+	netmakerNode.Proxy = node.Proxy
 	return &netmakerNode
 }
 

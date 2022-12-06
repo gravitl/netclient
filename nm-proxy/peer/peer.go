@@ -22,12 +22,13 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.ProxyConfig{
-		LocalKey:            wgInterface.Device.PrivateKey,
+		LocalKey:            wgInterface.Device.PublicKey,
 		RemoteKey:           peer.PublicKey,
 		WgInterface:         wgInterface,
 		IsExtClient:         isExtClient,
 		PeerConf:            peer,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
+		Network:             network,
 	}
 	p := proxy.NewProxy(c)
 	peerPort := models.NmProxyPort
@@ -84,10 +85,14 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 }
 
 func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
-	for _, peer := range peers {
-		proxyPeer, found := config.GetGlobalCfg().GetPeer(network, peer.PublicKey.String())
+	log.Println("Setting peers endpoints to proxy: ", network)
+	if !config.GetGlobalCfg().ProxyStatus {
+		return peers
+	}
+	for i := range peers {
+		proxyPeer, found := config.GetGlobalCfg().GetPeer(network, peers[i].PublicKey.String())
 		if found {
-			peer.Endpoint = proxyPeer.Config.LocalConnAddr
+			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 		}
 	}
 	return peers
