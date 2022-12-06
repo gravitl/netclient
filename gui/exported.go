@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/models"
@@ -19,6 +20,7 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 	flags.Set("token", token)
 	flags.Set("server", "")
 
+	cmd.InitConfig()
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -92,7 +94,7 @@ func (app *App) GoLeaveNetwork(networkName string) (any, error) {
 // App.GoGetRecentServerNames returns names of all known (joined) servers
 func (app *App) GoGetRecentServerNames() ([]string, error) {
 	serverNames := []string{}
-	for name, _ := range config.Servers {
+	for name := range config.Servers {
 		name := name
 		serverNames = append(serverNames, name)
 	}
@@ -105,6 +107,7 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	flags.Set("server", serverName)
 	flags.Set("network", networkName)
 
+	cmd.InitConfig()
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -115,12 +118,15 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 }
 
 // App.GoJoinNetworkBySso joins a network by SSO
-func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName string) (any, error) {
+func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
 	flags := viper.New()
 	flags.Set("server", serverName)
 	flags.Set("user", username)
 	flags.Set("network", networkName)
+	flags.Set("readPassFromStdIn", false)
+	flags.Set("pass", password)
 
+	cmd.InitConfig()
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)

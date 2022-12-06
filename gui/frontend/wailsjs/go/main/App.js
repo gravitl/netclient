@@ -26,8 +26,8 @@ export function GoGetRecentServerNames() {
   return window['go']['main']['App']['GoGetRecentServerNames']();
 }
 
-export function GoJoinNetworkByBasicAuth(arg1, arg2, arg3) {
-  return window['go']['main']['App']['GoJoinNetworkByBasicAuth'](arg1, arg2, arg3);
+export function GoJoinNetworkByBasicAuth(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GoJoinNetworkByBasicAuth'](arg1, arg2, arg3, arg4);
 }
 
 export function GoJoinNetworkBySso(arg1, arg2) {

@@ -20,11 +20,13 @@ export default function UsernameLogin() {
   const [recentServerNames, setRecentServerNames] = useState<string[]>([]);
   const [serverName, setServerName] = useState("");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [networkName, setNetworkName] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [isServerNameFormValid, setIsServerNameFormValid] = useState(true);
   const [isUsernameFormValid, setIsUsernameFormValid] = useState(true);
   const [isNetworkNameFormValid, setIsNetworkNameFormValid] = useState(true);
+  const [isPasswordFormValid, setIsPasswordFormValid] = useState(true);
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
 
@@ -52,6 +54,10 @@ export default function UsernameLogin() {
         setIsUsernameFormValid(false);
         return false;
       }
+      if (type === "basic-auth" && password.length < 1) {
+        setIsPasswordFormValid(false);
+        return false;
+      }
 
       return true;
     },
@@ -59,9 +65,11 @@ export default function UsernameLogin() {
       setIsServerNameFormValid,
       setIsUsernameFormValid,
       setIsNetworkNameFormValid,
+      setIsPasswordFormValid,
       serverName,
       username,
       networkName,
+      password,
     ]
   );
 
@@ -98,7 +106,7 @@ export default function UsernameLogin() {
 
     setIsConnecting(true);
     try {
-      await GoJoinNetworkByBasicAuth(serverName, username, networkName);
+      await GoJoinNetworkByBasicAuth(serverName, username, networkName, password);
 
       const data: NetworksContextDispatcherProps = {
         action: "refresh-networks",
@@ -121,6 +129,7 @@ export default function UsernameLogin() {
     serverName,
     username,
     networkName,
+    password,
   ]);
 
   // on created
@@ -188,6 +197,19 @@ export default function UsernameLogin() {
           style={{ width: "40vw" }}
           error={!isUsernameFormValid}
           helperText={isUsernameFormValid ? "" : "Username cannot be empty"}
+        />
+      </Grid>
+
+      <Grid item xs={12}>
+        <TextField
+          type="password"
+          label="Password"
+          placeholder="Enter password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ width: "40vw" }}
+          error={!isPasswordFormValid}
+          helperText={isPasswordFormValid ? "" : "Password cannot be empty"}
         />
       </Grid>
 

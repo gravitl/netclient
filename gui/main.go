@@ -28,7 +28,7 @@ func main() {
 
 	// Application options
 	appOptions := &options.App{
-		Title:            "NetClient",
+		Title:            "Netclient",
 		Width:            1024,
 		Height:           768,
 		MinWidth:         1024,
