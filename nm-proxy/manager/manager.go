@@ -13,8 +13,17 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// ProxyAction - type for proxy action
 type ProxyAction string
 
+const (
+	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
+	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
+	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
+	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
+)
+
+// ProxyManagerPayload - struct for proxy manager payload
 type ProxyManagerPayload struct {
 	Action          ProxyAction            `json:"action"`
 	InterfaceName   string                 `json:"interface_name"`
@@ -29,12 +38,14 @@ type ProxyManagerPayload struct {
 	RelayedPeerConf map[string]RelayedConf `json:"relayed_conf"`
 }
 
+// RelayedConf - struct relayed peers config
 type RelayedConf struct {
 	RelayedPeerEndpoint *net.UDPAddr         `json:"relayed_peer_endpoint"`
 	RelayedPeerPubKey   string               `json:"relayed_peer_pub_key"`
 	Peers               []wgtypes.PeerConfig `json:"relayed_peers"`
 }
 
+// PeerConf - struct for peer config in the network
 type PeerConf struct {
 	IsExtClient            bool         `json:"is_ext_client"`
 	Address                string       `json:"address"`
@@ -45,11 +56,7 @@ type PeerConf struct {
 	Proxy                  bool         `json:"proxy"`
 }
 
-const (
-	AddNetwork    ProxyAction = "ADD_NETWORK_TO_PROXY"
-	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
-)
-
+// StartProxyManager - starts the proxy manager loop and listens for events on the Channel provided
 func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayload) {
 	for {
 
@@ -68,6 +75,19 @@ func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayloa
 	}
 }
 
+// ProxyManagerPayload.configureProxy - confgures proxy by payload action
+func (m *ProxyManagerPayload) configureProxy() error {
+	switch m.Action {
+	case AddNetwork:
+		m.addNetwork()
+	case DeleteNetwork:
+		m.deleteNetwork()
+
+	}
+	return nil
+}
+
+// ProxyManagerPayload.settingsUpdate - updates the network settings in the config
 func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 
 	config.GetGlobalCfg().SetRelayStatus(m.Network, m.IsRelay)
@@ -82,6 +102,7 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 	return
 }
 
+// ProxyManagerPayload.setRelayedPeers - processes the payload for the relayed peers
 func (m *ProxyManagerPayload) setRelayedPeers() {
 	g := config.GetGlobalCfg()
 	for relayedNodePubKey, relayedNodeConf := range m.RelayedPeerConf {
@@ -119,6 +140,7 @@ func cleanUpInterface(network string) {
 
 }
 
+// ProxyManagerPayload.processPayload - updates the peers and config with the recieved payload
 func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 	var err error
 	var wgIface *wg.WGIface
@@ -259,21 +281,12 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 	return wgIface, nil
 }
 
-func (m *ProxyManagerPayload) configureProxy() error {
-	switch m.Action {
-	case AddNetwork:
-		m.addNetwork()
-	case DeleteNetwork:
-		m.deleteNetwork()
-
-	}
-	return nil
-}
-
+// ProxyManagerPayload.deleteNetwork - deletes network and the peers from proxy
 func (m *ProxyManagerPayload) deleteNetwork() {
 	cleanUpInterface(m.Network)
 }
 
+// ProxyManagerPayload.addNetwork - adds new peers to proxy
 func (m *ProxyManagerPayload) addNetwork() error {
 	var err error
 

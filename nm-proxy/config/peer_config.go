@@ -8,13 +8,6 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const (
-	// default proxy port
-	NmProxyPort = 51722
-	// default CIDR for proxy peers
-	DefaultCIDR = "127.0.0.1/8"
-)
-
 // wgIfaceConf - interface config
 type wgIfaceConf struct {
 	iface            *wg.WGIface

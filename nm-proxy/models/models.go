@@ -13,10 +13,16 @@ import (
 )
 
 const (
+	// default proxy port
 	NmProxyPort = 51722
+	// default CIDR for proxy peers
 	DefaultCIDR = "127.0.0.1/8"
 )
 
+// PeerConnMap - type for peer conn config map
+type PeerConnMap map[string]*Conn
+
+// ProxyConfig - struct for proxy config
 type ProxyConfig struct {
 	RemoteKey           wgtypes.Key
 	LocalKey            wgtypes.Key
@@ -29,8 +35,6 @@ type ProxyConfig struct {
 	LocalConnAddr       *net.UDPAddr
 	Network             string
 }
-
-type PeerConnMap map[string]*Conn
 
 // Conn is a peer Connection configuration
 type Conn struct {
@@ -48,6 +52,7 @@ type Conn struct {
 	Mutex               *sync.RWMutex
 }
 
+// RemotePeer - struct remote peer data
 type RemotePeer struct {
 	Network             string
 	PeerKey             string
@@ -60,12 +65,7 @@ type RemotePeer struct {
 	CommChan            chan *net.UDPAddr
 }
 
-type WgIfaceConf struct {
-	Iface          *wgtypes.Device
-	IfaceKeyHash   string
-	NetworkPeerMap map[string]PeerConnMap
-}
-
+// ConvPeerKeyToHash - converts peer key to a md5 hash
 func ConvPeerKeyToHash(peerKey string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
 }

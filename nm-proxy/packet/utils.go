@@ -5,41 +5,73 @@ import (
 	"crypto/subtle"
 	"hash"
 
-	"github.com/gravitl/netclient/nm-proxy/config"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
 )
 
-type MessageType uint32
-type ProxyActionType uint32
+type (
 
-const (
-	MessageInitiationType  MessageType = 1
-	MessageMetricsType     MessageType = 5
-	MessageProxyType       MessageType = 6
-	MessageProxyUpdateType MessageType = 7
+	// MessageType - custom type for message type
+	MessageType uint32
+
+	// ProxyActionType - custom type for proxy update action type
+	ProxyActionType uint32
+
+	// NoisePublicKey - custom type for noise public key
+	NoisePublicKey [NoisePublicKeySize]byte
+
+	// NoisePrivateKey - custom type for noise private key
+	NoisePrivateKey [NoisePrivateKeySize]byte
 )
 
 const (
-	UpdateListenPort ProxyActionType = 1
-)
-const (
-	NoisePublicKeySize     = 32
-	NoisePrivateKeySize    = 32
-	NetworkNameSize        = 12
-	PeerKeyHashSize        = 16
-	MessageMetricSize      = 148
+	// NoisePublicKeySize - constant for noise public key size
+	NoisePublicKeySize = 32
+
+	// NoisePrivateKeySize - constant for noise private key size
+	NoisePrivateKeySize = 32
+
+	// NetworkNameSize - constant for netmaker network name
+	NetworkNameSize = 12
+
+	// PeerKeyHashSize - constant for peer key hash size
+	PeerKeyHashSize = 16
+
+	// MessageMetricSize - constant for metric message size
+	MessageMetricSize = 148
+
+	// MessageProxyUpdateSize - constant for proxy update message size
 	MessageProxyUpdateSize = 148
-	MessageProxySize       = 48
 
-	NoiseConstruction = "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s"
-	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
-	WGLabelMAC1       = "mac1----"
-	WGLabelCookie     = "cookie--"
+	// MessageProxyTransportSize - constant for proxy transport message size
+	MessageProxyTransportSize = 48
+
+	// constants for wg handshake identifiers
+	noiseConstruction = "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s"
+	wGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
+	wGLabelMAC1       = "mac1----"
+	wGLabelCookie     = "cookie--"
+
+	// proxy message types
+
+	// MessageInitiationType - constant for wg handshake intiation type
+	MessageInitiationType MessageType = 1
+
+	// MessageMetricsType - constant for proxy metrics message
+	MessageMetricsType MessageType = 5
+
+	// MessageProxyTransportType - constant for proxy transport message
+	MessageProxyTransportType MessageType = 6
+
+	// MessageProxyUpdateType - constant for proxy update message
+	MessageProxyUpdateType MessageType = 7
+
+	// UpdateListenPort - constant update listen port proxy action
+	UpdateListenPort ProxyActionType = 1
 )
 
 func mixKey(dst, c *[blake2s.Size]byte, data []byte) {
-	KDF1(dst, c[:], data)
+	kdf1(dst, c[:], data)
 }
 
 func mixHash(dst, h *[blake2s.Size]byte, data []byte) {
@@ -49,7 +81,8 @@ func mixHash(dst, h *[blake2s.Size]byte, data []byte) {
 	hash.Sum(dst[:0])
 	hash.Reset()
 }
-func HMAC1(sum *[blake2s.Size]byte, key, in0 []byte) {
+
+func hmac1(sum *[blake2s.Size]byte, key, in0 []byte) {
 	mac := hmac.New(func() hash.Hash {
 		h, _ := blake2s.New256(nil)
 		return h
@@ -58,7 +91,7 @@ func HMAC1(sum *[blake2s.Size]byte, key, in0 []byte) {
 	mac.Sum(sum[:0])
 }
 
-func HMAC2(sum *[blake2s.Size]byte, key, in0, in1 []byte) {
+func hmac2(sum *[blake2s.Size]byte, key, in0, in1 []byte) {
 	mac := hmac.New(func() hash.Hash {
 		h, _ := blake2s.New256(nil)
 		return h
@@ -68,16 +101,16 @@ func HMAC2(sum *[blake2s.Size]byte, key, in0, in1 []byte) {
 	mac.Sum(sum[:0])
 }
 
-func KDF1(t0 *[blake2s.Size]byte, key, input []byte) {
-	HMAC1(t0, key, input)
-	HMAC1(t0, t0[:], []byte{0x1})
+func kdf1(t0 *[blake2s.Size]byte, key, input []byte) {
+	hmac1(t0, key, input)
+	hmac1(t0, t0[:], []byte{0x1})
 }
 
-func KDF2(t0, t1 *[blake2s.Size]byte, key, input []byte) {
+func kdf2(t0, t1 *[blake2s.Size]byte, key, input []byte) {
 	var prk [blake2s.Size]byte
-	HMAC1(&prk, key, input)
-	HMAC1(t0, prk[:], []byte{0x1})
-	HMAC2(t1, prk[:], t0[:], []byte{0x2})
+	hmac1(&prk, key, input)
+	hmac1(t0, prk[:], []byte{0x1})
+	hmac2(t1, prk[:], t0[:], []byte{0x2})
 	setZero(prk[:])
 }
 
@@ -93,16 +126,6 @@ func isZero(val []byte) bool {
 	}
 	return acc == 1
 }
-
-func GetDeviceKeys(ifaceName string) (NoisePrivateKey, NoisePublicKey, error) {
-	wgPrivKey, wgPubKey := config.GetGlobalCfg().GetDeviceKeys()
-	return NoisePrivateKey(wgPrivKey), NoisePublicKey(wgPubKey), nil
-}
-
-type (
-	NoisePublicKey  [NoisePublicKeySize]byte
-	NoisePrivateKey [NoisePrivateKeySize]byte
-)
 
 func sharedSecret(sk *NoisePrivateKey, pk NoisePublicKey) (ss [NoisePublicKeySize]byte) {
 	apk := (*[NoisePublicKeySize]byte)(&pk)

@@ -9,16 +9,17 @@ import (
 )
 
 var (
-	InitialChainKey [blake2s.Size]byte
-	InitialHash     [blake2s.Size]byte
-	ZeroNonce       [chacha20poly1305.NonceSize]byte
+	initialChainKey [blake2s.Size]byte
+	initialHash     [blake2s.Size]byte
+	zeroNonce       [chacha20poly1305.NonceSize]byte
 )
 
 func init() {
-	InitialChainKey = blake2s.Sum256([]byte(NoiseConstruction))
-	mixHash(&InitialHash, &InitialChainKey, []byte(WGIdentifier))
+	initialChainKey = blake2s.Sum256([]byte(noiseConstruction))
+	mixHash(&initialHash, &initialChainKey, []byte(wGIdentifier))
 }
 
+// MessageInitiation - struct for wg handshake initiation message
 type MessageInitiation struct {
 	Type      MessageType
 	Sender    uint32
@@ -29,6 +30,7 @@ type MessageInitiation struct {
 	MAC2      [blake2s.Size128]byte
 }
 
+// MetricMessage - struct for metric message
 type MetricMessage struct {
 	Type           MessageType
 	ID             uint32
@@ -38,6 +40,7 @@ type MetricMessage struct {
 	TimeStamp      int64
 }
 
+// ProxyMessage - struct for proxy message
 type ProxyMessage struct {
 	Type     MessageType
 	Network  [NetworkNameSize]byte
@@ -45,6 +48,7 @@ type ProxyMessage struct {
 	Reciever [PeerKeyHashSize]byte
 }
 
+// ProxyUpdateMessage - struct for proxy update message
 type ProxyUpdateMessage struct {
 	Type           MessageType
 	Action         ProxyActionType

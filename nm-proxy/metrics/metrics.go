@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/common"
 )
 
+// Metric - struct for metric data
 type Metric struct {
 	LastRecordedLatency uint64
 	ConnectionStatus    bool
@@ -17,8 +18,10 @@ type Metric struct {
 	TrafficRecieved     float64
 }
 
+// lock for metrics map
 var metricsMapLock = &sync.RWMutex{}
 
+// metrics data map
 var metricsNetworkMap = make(map[string]map[string]*Metric)
 
 func init() {
@@ -30,6 +33,7 @@ func init() {
 	}()
 }
 
+// GetMetric - fetches the metric data for the peer
 func GetMetric(network, peerKey string) Metric {
 	metric := Metric{}
 	metricsMapLock.RLock()
@@ -44,6 +48,7 @@ func GetMetric(network, peerKey string) Metric {
 	return metric
 }
 
+// UpdateMetric - updates metric data for the peer
 func UpdateMetric(network, peerKey string, metric *Metric) {
 	metricsMapLock.Lock()
 	defer metricsMapLock.Unlock()

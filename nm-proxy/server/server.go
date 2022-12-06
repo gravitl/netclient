@@ -19,22 +19,23 @@ var (
 )
 
 const (
-	defaultBodySize = 65000 + packet.MessageProxySize
-	defaultPort     = models.NmProxyPort
+	// constant for proxy server buffer size
+	defaultBodySize = 65000 + packet.MessageProxyTransportSize
 )
 
+// Config - struct for proxy server config
 type Config struct {
 	Port     int
 	BodySize int
-	IsRelay  bool
-	Addr     net.Addr
 }
 
+// ProxyServer - struct for proxy server
 type ProxyServer struct {
 	Config Config
 	Server *net.UDPConn
 }
 
+// ProxyServer.Close - closes the proxy server
 func (p *ProxyServer) Close() {
 	log.Println("--------->### Shutting down Proxy.....")
 	// clean up proxy connections
@@ -198,7 +199,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 			log.Printf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
 				source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash)
-			_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxySize], remotePeer.Endpoint)
+			_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
 			if err != nil {
 				log.Println("Failed to send to remote: ", err)
 			}
@@ -209,7 +210,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 				log.Printf("--------> Relaying BACK TO RELAYED NODE PKT [ SourceIP: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
 					source.String(), srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash)
-				_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxySize], remotePeer.Endpoint)
+				_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
 				if err != nil {
 					log.Println("Failed to send to remote: ", err)
 				}
@@ -284,7 +285,7 @@ func (p *ProxyServer) setDefaults() {
 // Proxy.setDefaultPort - sets default port of Proxy listener if 0
 func (p *ProxyServer) setDefaultPort() {
 	if p.Config.Port == 0 {
-		p.Config.Port = defaultPort
+		p.Config.Port = models.NmProxyPort
 	}
 }
 

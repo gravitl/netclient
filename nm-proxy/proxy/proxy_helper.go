@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -23,12 +22,14 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/stun"
 )
 
+// NewProxy - gets new proxy config
 func NewProxy(config models.ProxyConfig) *Proxy {
 	p := &Proxy{Config: config}
 	p.Ctx, p.Cancel = context.WithCancel(context.Background())
 	return p
 }
 
+// Proxy.proxyToRemote - proxies data from the interface to remote peer
 func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -81,6 +82,7 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 
 }
 
+// Proxy.Reset - resets peer's conn
 func (p *Proxy) Reset() {
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
@@ -91,6 +93,7 @@ func (p *Proxy) Reset() {
 
 }
 
+// Proxy.pullLatestConfig - pulls latest peer config
 func (p *Proxy) pullLatestConfig() error {
 	peer, found := config.GetGlobalCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
 	if found {
@@ -102,6 +105,7 @@ func (p *Proxy) pullLatestConfig() error {
 
 }
 
+// Proxy.startMetricsThread - runs metrics loop for the peer
 func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -131,6 +135,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 	}
 }
 
+// Proxy.peerUpdates - sends peer updates through proxy
 func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 	defer wg.Done()
 	for {
@@ -140,13 +145,9 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 		case <-ticker.C:
 			// send listen port packet
 			var networkEncoded [packet.NetworkNameSize]byte
-			b, err := base64.StdEncoding.DecodeString(p.Config.Network)
-			if err != nil {
-				continue
-			}
-			copy(networkEncoded[:], b[:])
+			copy(networkEncoded[:], []byte(p.Config.Network))
 			m := &packet.ProxyUpdateMessage{
-				Type:           packet.MessageProxyType,
+				Type:           packet.MessageProxyTransportType,
 				NetworkEncoded: networkEncoded,
 				Action:         packet.UpdateListenPort,
 				Sender:         p.Config.LocalKey,
@@ -166,29 +167,22 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 	}
 }
 
-// ProxyPeer proxies everything from Wireguard to the RemoteKey peer and vice-versa
+// Proxy.ProxyPeer proxies data from Wireguard to the remote peer and vice-versa
 func (p *Proxy) ProxyPeer() {
 	ticker := time.NewTicker(*p.Config.PersistentKeepalive)
 	defer ticker.Stop()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.proxyToRemote(wg)
-	// if common.BehindNAT {
 	wg.Add(1)
 	go p.startMetricsThread(wg, ticker)
 	wg.Add(1)
 	go p.peerUpdates(wg, ticker)
-	// }
 	wg.Wait()
 
 }
-func test(n int, buffer []byte) {
-	data := buffer[:n]
-	srcKeyHash := data[n-32 : n-16]
-	dstKeyHash := data[n-16:]
-	log.Printf("--------> TEST PACKET [ SRCKEYHASH: %x ], [ DSTKEYHASH: %x ] \n", srcKeyHash, dstKeyHash)
-}
 
+// Proxy.updateEndpoint - updates peer endpoint to point to proxy
 func (p *Proxy) updateEndpoint() error {
 	udpAddr, err := net.ResolveUDPAddr("udp", p.LocalConn.LocalAddr().String())
 	if err != nil {
@@ -203,6 +197,7 @@ func (p *Proxy) updateEndpoint() error {
 	return nil
 }
 
+// GetFreeIp - gets available free ip from the cidr provided
 func GetFreeIp(cidrAddr string, dstPort int) (string, error) {
 	//ensure AddressRange is valid
 	if dstPort == 0 {
