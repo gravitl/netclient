@@ -216,6 +216,9 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	wireguard.SetPeers()
+	if node.Proxy {
+		ProxyManagerChan <- &peerUpdate.ProxyUpdate
+	}
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {
@@ -229,9 +232,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	UpdateLocalListenPort(&node)
-	if node.Proxy {
-		ProxyManagerChan <- &peerUpdate.ProxyUpdate
-	}
+
 }
 
 func parseNetworkFromTopic(topic string) string {

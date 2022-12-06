@@ -68,6 +68,7 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		LocalConn:           p.LocalConn,
 	}
 	rPeer := models.RemotePeer{
+		Network:             network,
 		Interface:           wgInterface.Name,
 		PeerKey:             peer.PublicKey.String(),
 		IsExtClient:         isExtClient,

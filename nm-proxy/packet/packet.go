@@ -107,8 +107,8 @@ func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key)
 	return packet, nil
 }
 
-func DecodeNetwork(networkBytes []byte) string {
-	return string(bytes.TrimSpace(networkBytes[:]))
+func DecodeNetwork(networkBytes [NetworkNameSize]byte) string {
+	return string(bytes.TrimRight(networkBytes[:], "\u0000"))
 }
 
 func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
@@ -170,7 +170,7 @@ func ExtractInfo(buffer []byte, n int) (int, string, string, string, error) {
 		log.Println("Failed to decode proxy message")
 		return n, "", "", "", err
 	}
-	network := DecodeNetwork(msg.Network[:])
+	network := DecodeNetwork(msg.Network)
 	if msg.Type != MessageProxyType {
 		return n, "", "", "", errors.New("not a proxy message")
 	}

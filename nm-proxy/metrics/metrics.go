@@ -10,30 +10,12 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/common"
 )
 
-/*
-1. Create metrics packet--> packet with identifier to track latency, errors.
-
-*/
-
 type Metric struct {
 	LastRecordedLatency uint64
 	ConnectionStatus    bool
 	TrafficSent         float64
 	TrafficRecieved     float64
 }
-
-type MetricsPayload struct {
-	MetricType MetricsUpdateType
-	Value      interface{}
-}
-
-type MetricsUpdateType uint32
-
-const (
-	LatencyUpdate         MetricsUpdateType = 1
-	TrafficSentUpdate     MetricsUpdateType = 2
-	TrafficRecievedUpdate MetricsUpdateType = 3
-)
 
 var metricsMapLock = &sync.RWMutex{}
 

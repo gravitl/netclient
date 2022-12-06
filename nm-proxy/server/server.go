@@ -105,7 +105,8 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		if err == nil {
 			log.Printf("------->$$$$$ Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String())
 			_, pubKey := config.GetGlobalCfg().GetDeviceKeys()
-			network := packet.DecodeNetwork(metricMsg.NetworkEncoded[:])
+			network := packet.DecodeNetwork(metricMsg.NetworkEncoded)
+			log.Println("---------> $$$$ NETWORK: ", network)
 			if metricMsg.Sender == pubKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metric := metrics.GetMetric(network, metricMsg.Reciever.String())
@@ -134,7 +135,7 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		if err == nil {
 			switch msg.Action {
 			case packet.UpdateListenPort:
-				network := packet.DecodeNetwork(msg.NetworkEncoded[:])
+				network := packet.DecodeNetwork(msg.NetworkEncoded)
 				if peer, found := config.GetGlobalCfg().GetPeer(network, msg.Sender.String()); found {
 
 					if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nm-proxy/peer"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -33,6 +34,9 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 			addr.Network = node.NetworkRange6
 		}
 		addrs = append(addrs, addr)
+		if node.Proxy {
+			node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
+		}
 		peers = append(peers, node.Peers...)
 	}
 	netmaker = NCIface{
