@@ -1,16 +1,20 @@
 package wireguard
 
 import (
+	"net"
+
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // NCIface - represents a Netclient network interface
 type NCIface struct {
-	Iface  netIface
-	Name   string
-	MTU    int
-	Config wgtypes.Config
+	Iface     netIface
+	Name      string
+	Addresses []ifaceAddress
+	MTU       int
+	Config    wgtypes.Config
 }
 
 var netmaker NCIface
@@ -19,12 +23,22 @@ var netmaker NCIface
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := 0
 	peers := []wgtypes.PeerConfig{}
+	addrs := []ifaceAddress{}
 	for _, node := range nodes {
+		addr := ifaceAddress{}
+		addr.IP = node.Address.IP
+		addr.Network = node.NetworkRange
+		if addr.IP == nil {
+			addr.IP = node.Address6.IP
+			addr.Network = node.NetworkRange6
+		}
+		addrs = append(addrs, addr)
 		peers = append(peers, node.Peers...)
 	}
-	netmaker := NCIface{
-		Name: getName(),
-		MTU:  host.MTU,
+	netmaker = NCIface{
+		Name:      ncutils.GetInterfaceName(),
+		MTU:       host.MTU,
+		Addresses: addrs,
 		Config: wgtypes.Config{
 			PrivateKey:   &host.PrivateKey,
 			FirewallMark: &firewallMark,
@@ -34,6 +48,12 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 		},
 	}
 	return &netmaker
+}
+
+// ifaceAddress - interface parsed address
+type ifaceAddress struct {
+	IP      net.IP
+	Network net.IPNet
 }
 
 // Close closes a netclient interface

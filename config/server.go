@@ -38,7 +38,7 @@ type Server struct {
 
 // ReadServerConf reads the servers configuration file and populates the server map
 func ReadServerConf() error {
-	lockfile := filepath.Join(os.TempDir()) + ServerLockfile
+	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
 	file := GetNetclientPath() + "servers.yml"
 	if err := Lock(lockfile); err != nil {
 		return err
@@ -60,7 +60,7 @@ func ReadServerConf() error {
 
 // WriteServerConfig writes server map to disk
 func WriteServerConfig() error {
-	lockfile := filepath.Join(os.TempDir()) + ServerLockfile
+	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
 	file := GetNetclientPath() + "servers.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {

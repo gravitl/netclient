@@ -138,11 +138,6 @@ func CheckConfig() {
 		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
-	if netclient.Interface == "" {
-		logger.Log(0, "setting interface name")
-		netclient.Interface = "netmaker"
-		saveRequired = true
-	}
 	if netclient.MacAddress == nil {
 		logger.Log(0, "setting macAddress")
 		mac, err := ncutils.GetMacAddr()

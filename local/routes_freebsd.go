@@ -64,6 +64,6 @@ func setCidr(iface string, addr *net.IPNet) {
 	ncutils.RunCmd("route add -net "+addr.String()+" -interface "+iface, false)
 }
 
-func removeCidr(iface string, addr *net.IPNet) {
-	ncutils.RunCmd("route delete -net "+addr.String()+" -interface "+iface, false)
+func removeCidr(addr *net.IPNet) {
+	ncutils.RunCmd("route delete -net "+addr.String()+" -interface netmaker", false)
 }

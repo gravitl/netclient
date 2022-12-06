@@ -150,8 +150,9 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	loginMsg.Network = network
 	if user != "" {
 		var pass string
-		fmt.Printf("Continuing with user, %s.\nPlease input password:\n", user)
+		fmt.Printf("Continuing with user, %s.\n", user)
 		if flags.GetBool("readPassFromStdIn") {
+			fmt.Printf("Please input password:\n")
 			passBytes, err := term.ReadPassword(int(syscall.Stdin))
 			pass = string(passBytes)
 			if err != nil || string(pass) == "" {
@@ -322,7 +323,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	// Find and set node MacAddress
 	nodeForServer.MacAddress = config.Netclient().MacAddress.String()
 	// make sure name is appropriate, if not, give blank name
-	nodeForServer.Name = config.Netclient().Name
+	nodeForServer.Name = flags.GetString("name")
+	if nodeForServer.Name == "" {
+		nodeForServer.Name = config.Netclient().Name
+	}
 	nodeForServer.FirewallInUse = config.Netclient().FirewallInUse
 	nodeForServer.OS = config.Netclient().OS
 	nodeForServer.IPForwarding = config.FormatBool(config.Netclient().IPForwarding)
@@ -352,7 +356,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response
-	config.UpdateServerConfig(&nodeGET.ServerConfig)
+	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
 	// safety check. If returned node from server is local, but not currently configured as local, set to local addr
@@ -373,8 +377,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	// TODO :: why here ... should be in daemon?
 	local.SetNetmakerDomainRoute(newServer.API)
-	logger.Log(0, "update wireguard config")
-	wireguard.AddAddresses(newNode)
 	peers := newNode.Peers
 	for _, node := range config.GetNodes() {
 		if node.Connected {

@@ -10,6 +10,7 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -24,22 +25,17 @@ func Uninstall() ([]error, error) {
 		}
 	}
 	// clean up OS specific stuff
-	//if ncutils.IsWindows() {
-	//daemon.CleanupWindows()
-	//} else if ncutils.IsMac() {
-	//daemon.CleanupMac()
-	//} else if ncutils.IsLinux() {
-	daemon.CleanupLinux()
-	//} else if ncutils.IsFreeBSD() {
-	//daemon.CleanupFreebsd()
-	//} else if !ncutils.IsKernel() {
-	//logger.Log(1, "manual cleanup required")
-	//}
-
-	if len(allfaults) > 0 {
-		err = errors.New("failed to uninstall")
+	if ncutils.IsWindows() {
+		daemon.CleanupWindows()
+	} else if ncutils.IsMac() {
+		daemon.CleanupMac()
+	} else if ncutils.IsLinux() {
+		daemon.CleanupLinux()
+	} else if ncutils.IsFreeBSD() {
+		daemon.CleanupFreebsd()
+	} else if !ncutils.IsKernel() {
+		logger.Log(1, "manual cleanup required")
 	}
-
 	return allfaults, err
 }
 
@@ -132,7 +128,7 @@ func deleteLocalNetwork(node *config.Node) error {
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
 	if len(config.GetNodes()) < 1 {
-		logger.Log(0, "removing wireguard config and netmaker interface")
+		logger.Log(0, "removing wireguard config")
 		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
 	}
 	return nil
