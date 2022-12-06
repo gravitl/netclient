@@ -200,7 +200,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	if node.InternetGateway != nil {
 		netmakerNode.InternetGateway = node.InternetGateway.IP.String()
 	}
-	netmakerNode.Interface = host.Interface
+	netmakerNode.Interface = ncutils.GetInterfaceName()
 	netmakerNode.Interfaces = node.Interfaces
 	netmakerNode.Server = node.Server
 	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic

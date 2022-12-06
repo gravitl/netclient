@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -312,7 +311,7 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 		return nil, err
 	}
 	defer wg.Close()
-	dev, err := wg.Device(GetName())
+	dev, err := wg.Device(ncutils.GetInterfaceName())
 	if err != nil {
 		return nil, err
 	}
@@ -341,14 +340,7 @@ func apply(n *config.Node, c *wgtypes.Config) error {
 	}
 	defer wg.Close()
 
-	return wg.ConfigureDevice(GetName(), *c)
-}
-
-func GetName() string {
-	if runtime.GOOS == "darwin" {
-		return "utun69"
-	}
-	return "netmaker"
+	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
 }
 
 // GetRealIface - used only for darwin OS retrieves tun iface based on reference iface name from config file

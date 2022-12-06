@@ -2,12 +2,13 @@ package local
 
 import (
 	"fmt"
-	"github.com/c-robinson/iplib"
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/logger"
 	"net"
 	"regexp"
 	"strings"
+
+	"github.com/c-robinson/iplib"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // GetDefaultRoute - Gets the default route (ip and interface) on a mac machine
@@ -81,6 +82,6 @@ func setCidr(iface string, addr *net.IPNet) {
 	}
 }
 
-func removeCidr(iface string, addr *net.IPNet) {
-	ncutils.RunCmd("route -q -n delete "+addr.String()+" -interface "+iface, false)
+func removeCidr(addr *net.IPNet) {
+	ncutils.RunCmd("route -q -n delete "+addr.String()+" -interface "+ncutils.GetInterfaceName(), false)
 }

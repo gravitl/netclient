@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/driver"
@@ -21,7 +22,7 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 	logger.Log(3, "creating Windows tunnel")
-	adapter, err := driver.CreateAdapter(getName(), "WireGuard", &windowsGUID)
+	adapter, err := driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
 	if err != nil {
 		return err
 	}
@@ -34,12 +35,10 @@ func (nc *NCIface) Create() error {
 	}
 	logger.Log(3, "set adapter state")
 	newAddrs := []net.IPNet{}
-	if nc.Settings.NetworkRange.IP != nil {
-		newAddrs = append(newAddrs, net.IPNet{IP: nc.Settings.NetworkRange.IP, Mask: nc.Settings.NetworkRange.Mask})
+	if nc.Address.Network.IP != nil {
+		newAddrs = append(newAddrs, net.IPNet{IP: nc.Address.Network.IP, Mask: nc.Address.Network.Mask})
 	}
-	if nc.Settings.NetworkRange6.IP != nil {
-		newAddrs = append(newAddrs, net.IPNet{IP: nc.Settings.NetworkRange6.IP, Mask: nc.Settings.NetworkRange6.Mask})
-	}
+
 	return nc.applyAddrs(luid, newAddrs)
 }
 

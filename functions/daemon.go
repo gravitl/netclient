@@ -308,7 +308,7 @@ func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) erro
 		logger.Log(0, "network:", node.Network, "error generating privatekey ", err.Error())
 		return err
 	}
-	file := config.GetNetclientPath() + host.Interface + ".conf"
+	file := config.GetNetclientPath() + "netmaker.conf"
 	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
 		logger.Log(0, "network:", node.Network, "error updating wireguard key ", err.Error())
 		return err

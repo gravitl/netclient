@@ -134,11 +134,8 @@ func CheckConfig() {
 	if netclient.Name == "" {
 		logger.Log(0, "setting name")
 		netclient.Name, _ = os.Hostname()
-		saveRequired = true
-	}
-	if netclient.Interface == "" {
-		logger.Log(0, "setting interface name")
-		netclient.Interface = "netmaker"
+		//make sure hostname is suitable
+		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
 	if netclient.MacAddress == nil {

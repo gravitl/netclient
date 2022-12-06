@@ -321,7 +321,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	if nodeForServer.Name == "" {
 		nodeForServer.Name = config.Netclient().Name
 	}
-
 	nodeForServer.FirewallInUse = config.Netclient().FirewallInUse
 	nodeForServer.OS = config.Netclient().OS
 	nodeForServer.IPForwarding = config.FormatBool(config.Netclient().IPForwarding)
