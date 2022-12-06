@@ -29,7 +29,7 @@ func main() {
 		len(ncArgs) == 1 && runtime.GOOS != "windows" { // windows by default uses gui
 		config.SetVersion(version)
 		if version != "dev" {
-			functions.SelfUpdate(version)
+			functions.SelfUpdate(version, true)
 		}
 		cmd.Execute()
 	} else {
