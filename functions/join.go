@@ -374,8 +374,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	// TODO :: why here ... should be in daemon?
 	local.SetNetmakerDomainRoute(newServer.API)
-	// logger.Log(0, "update wireguard config")
-	// wireguard.AddAddresses(newNode)
 	peers := newNode.Peers
 	for _, node := range config.GetNodes() {
 		if node.Connected {
