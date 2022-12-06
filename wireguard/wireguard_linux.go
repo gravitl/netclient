@@ -123,11 +123,7 @@ type netLink struct {
 }
 
 func (nc *NCIface) getKernelLink() *netLink {
-<<<<<<< HEAD
-	link := getNewLink(GetName())
-=======
 	link := getNewLink(nc.Name)
->>>>>>> ca5483864c0c72baa43bd3168d465598598ef8f7
 	return link
 }
 

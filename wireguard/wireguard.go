@@ -12,6 +12,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nm-proxy/peer"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -21,8 +22,17 @@ import (
 var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // SetPeers - sets peers on netmaker WireGuard interface
-func SetPeers(peers []wgtypes.PeerConfig) {
-
+func SetPeers() {
+	nodes := config.GetNodes()
+	peers := []wgtypes.PeerConfig{}
+	for _, node := range nodes {
+		if node.Connected {
+			if node.Proxy {
+				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
+			}
+			peers = append(peers, node.Peers...)
+		}
+	}
 	config := wgtypes.Config{
 		ReplacePeers: true,
 		Peers:        peers,
