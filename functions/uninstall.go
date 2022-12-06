@@ -10,6 +10,7 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -25,22 +26,17 @@ func Uninstall() ([]error, error) {
 		}
 	}
 	// clean up OS specific stuff
-	//if ncutils.IsWindows() {
-	//daemon.CleanupWindows()
-	//} else if ncutils.IsMac() {
-	//daemon.CleanupMac()
-	//} else if ncutils.IsLinux() {
-	daemon.CleanupLinux()
-	//} else if ncutils.IsFreeBSD() {
-	//daemon.CleanupFreebsd()
-	//} else if !ncutils.IsKernel() {
-	//logger.Log(1, "manual cleanup required")
-	//}
-
-	if len(allfaults) > 0 {
-		err = errors.New("failed to uninstall")
+	if ncutils.IsWindows() {
+		daemon.CleanupWindows()
+	} else if ncutils.IsMac() {
+		daemon.CleanupMac()
+	} else if ncutils.IsLinux() {
+		daemon.CleanupLinux()
+	} else if ncutils.IsFreeBSD() {
+		daemon.CleanupFreebsd()
+	} else if !ncutils.IsKernel() {
+		logger.Log(1, "manual cleanup required")
 	}
-
 	return allfaults, err
 }
 

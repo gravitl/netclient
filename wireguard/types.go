@@ -22,7 +22,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	for _, node := range nodes {
 		peers = append(peers, node.Peers...)
 	}
-	netmaker := NCIface{
+	netmaker = NCIface{
 		Name: getName(),
 		MTU:  host.MTU,
 		Config: wgtypes.Config{
