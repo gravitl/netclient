@@ -15,6 +15,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// AddNewPeer - adds new peer to proxy config and starts proxying the peer
 func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, peerAddr string,
 	isRelayed, isExtClient, isAttachedExtClient bool, relayTo *net.UDPAddr) error {
 	if peer.PersistentKeepaliveInterval == nil {
@@ -85,6 +86,7 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 	return nil
 }
 
+// SetPeersEndpointToProxy - sets peer endpoints to local addresses connected to proxy
 func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	log.Println("Setting peers endpoints to proxy: ", network)
 	if !config.GetGlobalCfg().ProxyStatus {

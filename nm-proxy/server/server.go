@@ -47,7 +47,7 @@ func (p *ProxyServer) Close() {
 		}
 
 	}
-	config.GetGlobalCfg().Reset()
+	config.Reset()
 	// close server connection
 	NmProxyServer.Server.Close()
 }
