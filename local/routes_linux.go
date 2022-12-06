@@ -70,7 +70,7 @@ func setCidr(iface string, addr *net.IPNet) {
 	}
 }
 
-func removeCidr(iface string, addr *net.IPNet) {
+func removeCidr(addr *net.IPNet) {
 	routes, err := netlink.RouteGet(addr.IP)
 	if err != nil {
 		logger.Log(0, "failed to find route for ", addr.String(), err.Error())
