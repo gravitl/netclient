@@ -150,8 +150,9 @@ func JoinViaSSo(flags *viper.Viper) (*models.AccessToken, error) {
 	loginMsg.Network = network
 	if user != "" {
 		var pass string
-		fmt.Printf("Continuing with user, %s.\nPlease input password:\n", user)
+		fmt.Printf("Continuing with user, %s.\n", user)
 		if flags.GetBool("readPassFromStdIn") {
+			fmt.Printf("Please input password:\n")
 			passBytes, err := term.ReadPassword(int(syscall.Stdin))
 			pass = string(passBytes)
 			if err != nil || string(pass) == "" {
@@ -376,8 +377,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	// TODO :: why here ... should be in daemon?
 	local.SetNetmakerDomainRoute(newServer.API)
-	logger.Log(0, "update wireguard config")
-	wireguard.AddAddresses(newNode)
 	peers := newNode.Peers
 	for _, node := range config.GetNodes() {
 		if node.Connected {
