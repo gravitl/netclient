@@ -7,7 +7,6 @@ import (
 	"net"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/ipc"
@@ -20,7 +19,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	tunIface, err := tun.CreateTUN(ncutils.GetInterfaceName(), config.Netclient().MTU)
+	tunIface, err := tun.CreateTUN(nc.Name, config.Netclient().MTU)
 	if err != nil {
 		return err
 	}
@@ -30,7 +29,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-	uapi, err := getUAPIByInterface(ncutils.GetInterfaceName())
+	uapi, err := getUAPIByInterface(nc.Name)
 	if err != nil {
 		return err
 	}

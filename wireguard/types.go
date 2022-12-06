@@ -12,7 +12,7 @@ import (
 type NCIface struct {
 	Iface     netIface
 	Name      string
-	Addresses []IfaceAddress
+	Addresses []ifaceAddress
 	MTU       int
 	Config    wgtypes.Config
 }
@@ -23,9 +23,9 @@ var netmaker NCIface
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := 0
 	peers := []wgtypes.PeerConfig{}
-	addrs := []IfaceAddress{}
+	addrs := []ifaceAddress{}
 	for _, node := range nodes {
-		addr := IfaceAddress{}
+		addr := ifaceAddress{}
 		addr.IP = node.Address.IP
 		addr.Network = node.NetworkRange
 		if addr.IP == nil {
@@ -50,8 +50,8 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	return &netmaker
 }
 
-// IfaceAddress - interface parsed address
-type IfaceAddress struct {
+// ifaceAddress - interface parsed address
+type ifaceAddress struct {
 	IP      net.IP
 	Network net.IPNet
 }

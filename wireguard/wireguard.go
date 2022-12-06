@@ -300,7 +300,7 @@ func RemovePeers(node *config.Node) error {
 	if config.Netclient().MTU != 0 {
 		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient().MTU), 10))
 	}
-	if err := wireguard.SaveTo(config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
 		return err
 	}
 	return nil

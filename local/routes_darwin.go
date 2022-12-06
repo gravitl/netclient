@@ -2,12 +2,13 @@ package local
 
 import (
 	"fmt"
-	"github.com/c-robinson/iplib"
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/logger"
 	"net"
 	"regexp"
 	"strings"
+
+	"github.com/c-robinson/iplib"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // GetDefaultRoute - Gets the default route (ip and interface) on a mac machine

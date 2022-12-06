@@ -19,7 +19,7 @@ const (
 
 // UpdateWgInterface - updates the interface section of a wireguard config file
 func UpdateWgInterface(node *config.Node, host *config.Config) error {
-	file := config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf"
+	file := config.GetNetclientPath() + "netmaker.conf"
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
@@ -72,7 +72,7 @@ func UpdateWgInterface(node *config.Node, host *config.Config) error {
 
 // UpdateKeepAlive - updates the persistentkeepalive of all peers
 func UpdateKeepAlive(keepalive int) error {
-	file := config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf"
+	file := config.GetNetclientPath() + "netmaker.conf"
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
@@ -102,7 +102,7 @@ func UpdateWgPeers(peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
 	}
-	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+ncutils.GetInterfaceName()+".conf")
+	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+"netmaker.conf")
 	if err != nil {
 		return internetGateway, err
 	}
@@ -134,7 +134,7 @@ func UpdateWgPeers(peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
 			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
 	}
-	if err := wireguard.SaveTo(config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
 		return internetGateway, err
 	}
 	return internetGateway, nil
@@ -232,7 +232,7 @@ func WriteWgConfig(host *config.Config, nodes map[string]config.Node) error {
 			}
 		}
 	}
-	if err := wireguard.SaveTo(config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf"); err != nil {
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
 		return err
 	}
 	return nil
@@ -244,7 +244,7 @@ func AddAddresses(node *config.Node) {
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
 	}
-	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+ncutils.GetInterfaceName()+".conf")
+	wireguard, err := ini.LoadSources(options, config.GetNetclientPath()+"netmaker.conf")
 	if err != nil {
 		logger.Log(0, "could not open the %s.conf wireguard file", ncutils.GetInterfaceName(), err.Error())
 	}
@@ -254,5 +254,5 @@ func AddAddresses(node *config.Node) {
 	if node.Address6.IP != nil {
 		wireguard.Section(sectionInterface).Key("Address").AddShadow(node.Address6.IP.String())
 	}
-	wireguard.SaveTo(config.GetNetclientPath() + ncutils.GetInterfaceName() + ".conf")
+	wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf")
 }
