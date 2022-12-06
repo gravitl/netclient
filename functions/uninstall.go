@@ -11,7 +11,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/vishvananda/netlink"
 )
 
 // Uninstall - uninstalls networks from client
@@ -135,13 +134,6 @@ func deleteLocalNetwork(node *config.Node) error {
 	if len(config.GetNodes()) < 1 {
 		logger.Log(0, "removing wireguard config and netmaker interface")
 		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
-		link, err := netlink.LinkByName("netmaker")
-		if err != nil {
-			return err
-		}
-		if err := netlink.LinkDel(link); err != nil {
-			return err
-		}
 	}
 	return nil
 }
