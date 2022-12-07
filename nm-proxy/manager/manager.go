@@ -91,11 +91,11 @@ func (m *ProxyManagerPayload) configureProxy() error {
 func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 
 	config.GetGlobalCfg().SetRelayStatus(m.Network, m.IsRelay)
-	config.GetGlobalCfg().SetRelayedStatus(m.Network, m.IsRelayed)
 	config.GetGlobalCfg().SetIngressGwStatus(m.Network, m.IsIngress)
 	if config.GetGlobalCfg().GetRelayedStatus(m.Network) != m.IsRelayed {
 		reset = true
 	}
+	config.GetGlobalCfg().SetRelayedStatus(m.Network, m.IsRelayed)
 	if m.IsRelay {
 		m.setRelayedPeers()
 	}

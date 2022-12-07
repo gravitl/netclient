@@ -226,7 +226,7 @@ func (g *GlobalConfig) SaveRelayedPeer(relayedNodePubKey string, peer *models.Re
 	if _, ok := g.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)]; !ok {
 		g.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)] = make(map[string]*models.RemotePeer)
 	}
-	g.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(models.ConvPeerKeyToHash(relayedNodePubKey))][models.ConvPeerKeyToHash(peer.PeerKey)] = peer
+	g.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)][models.ConvPeerKeyToHash(peer.PeerKey)] = peer
 }
 
 // GlobalConfig.CheckIfRelayedNodeExists - checks if relayed node exists

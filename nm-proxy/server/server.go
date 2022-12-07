@@ -129,6 +129,9 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.TrafficRecieved += float64(n) / (1 << 20)
 				metrics.UpdateMetric(network, metricMsg.Sender.String(), &metric)
 
+			} else {
+				// check if packet needs to be relayed
+
 			}
 		}
 	case packet.MessageProxyUpdateType:

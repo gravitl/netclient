@@ -35,35 +35,6 @@ func GetWgIface(iface string) (*WGIface, error) {
 	return wgIface, nil
 }
 
-func GetWgIfacePubKey(iface string) [32]byte {
-	wgClient, err := wgctrl.New()
-	if err != nil {
-		log.Println("Error fetching pub key: ", iface, err)
-		return [32]byte{}
-	}
-	dev, err := wgClient.Device(iface)
-	if err != nil {
-		log.Println("Error fetching pub key: ", iface, err)
-		return [32]byte{}
-	}
-
-	return dev.PublicKey
-}
-
-func GetWgIfacePrivKey(iface string) [32]byte {
-	wgClient, err := wgctrl.New()
-	if err != nil {
-		log.Println("Error fetching pub key: ", iface, err)
-		return [32]byte{}
-	}
-	dev, err := wgClient.Device(iface)
-	if err != nil {
-		log.Println("Error fetching pub key: ", iface, err)
-		return [32]byte{}
-	}
-	return dev.PrivateKey
-}
-
 // UpdatePeer updates existing Wireguard Peer or creates a new one if doesn't exist
 func (w *WGIface) UpdatePeerEndpoint(peer wgtypes.PeerConfig) error {
 	w.mu.Lock()
@@ -161,6 +132,7 @@ func (w *WGIface) Update(peerConf wgtypes.PeerConfig) error {
 	return nil
 }
 
+// GetPeer - gets the peerinfo from the wg interface
 func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 	wg, err := wgctrl.New()
 	if err != nil {
