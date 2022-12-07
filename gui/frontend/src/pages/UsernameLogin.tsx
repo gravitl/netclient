@@ -15,6 +15,7 @@ import {
   GoJoinNetworkByBasicAuth,
   GoJoinNetworkBySso,
 } from "../../wailsjs/go/main/App";
+import { notifyUser } from "../utils/messaging";
 
 export default function UsernameLogin() {
   const [recentServerNames, setRecentServerNames] = useState<string[]>([]);
@@ -87,7 +88,7 @@ export default function UsernameLogin() {
 
       navigate(getNetworkDetailsPageUrl(networkName));
     } catch (err) {
-      // TODO: notify
+      await notifyUser("Failed to login to network\n" + err as string);
       console.error(err);
     } finally {
       setIsConnecting(false);
@@ -116,7 +117,7 @@ export default function UsernameLogin() {
       // redirect
       navigate(getNetworkDetailsPageUrl(networkName));
     } catch (err) {
-      // TODO: notify
+      await notifyUser("Failed to login to network\n" + err as string);
       console.error(err);
     } finally {
       setIsConnecting(false);

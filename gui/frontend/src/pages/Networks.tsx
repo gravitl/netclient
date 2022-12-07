@@ -6,8 +6,12 @@ import NetworkTable from "../components/NetworkTable";
 import { Link } from "react-router-dom";
 import { AppRoutes } from "../routes";
 import { useNetworksContext } from "../store/NetworkContext";
-import { refreshNetworks, updateConnectionStatusAndRefreshNetworks } from "../store/helpers";
+import {
+  refreshNetworks,
+  updateConnectionStatusAndRefreshNetworks,
+} from "../store/helpers";
 import { main } from "../../wailsjs/go/models";
+import { getUserConfirmation, notifyUser } from "../utils/messaging";
 
 function Networks() {
   const [isLoadingNetworks, setIsLoadingNetworks] = useState<boolean>(true);
@@ -15,12 +19,12 @@ function Networks() {
   const [networksSearch, setNetworksSearch] = useState<string>('');
   const { networksState, networksDispatch } = useNetworksContext();
 
-  const loadNetworks = useCallback(() => {
+  const loadNetworks = useCallback(async () => {
     setIsLoadingNetworks(true);
     try {
       refreshNetworks(networksDispatch);
     } catch (err) {
-      // TODO: notifications
+      await notifyUser(("Failed to load networks\n" + err) as string);
       console.log(err);
     } finally {
       setIsLoadingNetworks(false);
@@ -39,11 +43,24 @@ function Networks() {
     async (networkName: string, newStatus: boolean) => {
       try {
         if (!networkName) {
-          throw new Error("No network name")
+          throw new Error("No network name");
         }
-        await updateConnectionStatusAndRefreshNetworks(networksDispatch, networkName, newStatus)
+        if (
+          newStatus === false &&
+          !(await getUserConfirmation(
+            `Are you sure you want to disconnect from network: ${networkName}`,
+            "Disconnect from network?"
+          ))
+        ) {
+          return;
+        }
+        await updateConnectionStatusAndRefreshNetworks(
+          networksDispatch,
+          networkName,
+          newStatus
+        );
       } catch (err) {
-        // TODO: notify
+        await notifyUser(("Failed to update network status\n" + err) as string);
         console.error(err);
       }
     },

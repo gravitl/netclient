@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/gravitl/netclient/functions"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -31,7 +33,7 @@ func getAppMenu(app *App) *menu.Menu {
 
 	fileMenu := menu.AddSubmenu("File")
 	fileMenu.AddText("Networks", nil, app.openNetworksPage)
-	fileMenu.AddText("Server Logs", nil, app.openServerLogsPage)
+	fileMenu.AddText("Netclient Logs", nil, app.openLogsPage)
 	fileMenu.AddText("Uninstall", nil, app.uninstallApp)
 
 	aboutMenu := menu.AddSubmenu("About")
@@ -42,18 +44,37 @@ func getAppMenu(app *App) *menu.Menu {
 
 // openDocs opens the Netmaker docs in user's browser
 func (a *App) openDocs(callbackData *menu.CallbackData) {
-	OpenUrlInBrowser(NETMAKER_DOCS_LINK)
+	err := OpenUrlInBrowser(NETMAKER_DOCS_LINK)
+	if err != nil {
+		a.GoOpenDialogue(runtime.ErrorDialog, "An error occured whiles opening docs.\n"+err.Error(), "Error opening docs")
+	}
 }
 
 func (a *App) openNetworksPage(callbackData *menu.CallbackData) {
 	runtime.EventsEmit(a.ctx, EV_OPEN_NETWORKS_PAGE)
 }
 
-func (a *App) openServerLogsPage(callbackData *menu.CallbackData) {
-	runtime.EventsEmit(a.ctx, EV_OPEN_SERVER_LOGS_PAGE)
+func (a *App) openLogsPage(callbackData *menu.CallbackData) {
+	runtime.EventsEmit(a.ctx, EV_OPEN_LOGS_PAGE)
 }
 
 func (a *App) uninstallApp(callbackData *menu.CallbackData) {
-	// TODO: notify
-	functions.Uninstall()
+	res, err := a.GoOpenDialogue(runtime.QuestionDialog, "Do you want to uninstall Netclient?", "Unintstall?")
+	if err != nil {
+		return
+	}
+	fmt.Println(res)
+	if res != "Yes" {
+		return
+	}
+
+	errs, err := functions.Uninstall()
+	if err != nil {
+		var errString strings.Builder
+		for _, err := range errs {
+			errString.WriteString(err.Error() + ", ")
+		}
+
+		a.GoOpenDialogue(runtime.ErrorDialog, "An error occured whiles uninstalling.\n"+errString.String(), "Error unintstalling")
+	}
 }
