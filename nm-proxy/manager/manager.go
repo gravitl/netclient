@@ -224,7 +224,7 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
 			if err == nil {
-				logger.Log(0, "---------> COMAPRING ENDPOINT: DEV: %s, Proxy: %s", devPeer.Endpoint.String(), currentPeer.Config.LocalConnAddr.String())
+				logger.Log(0, "---------> COMPARING ENDPOINT: DEV: %s, Proxy: %s", devPeer.Endpoint.String(), currentPeer.Config.LocalConnAddr.String())
 				if devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", currentPeer.Key.String())
 					currentPeer.StopConn()
@@ -316,7 +316,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 
 		}
 		if peerConf.IsAttachedExtClient {
-			logger.Log(1, "Extclient Thread...")
+			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
 			go func(wgInterface *wg.WGIface, peer *wgtypes.PeerConfig,
 				isRelayed bool, relayTo *net.UDPAddr, peerConf PeerConf) {
 				addExtClient := false
