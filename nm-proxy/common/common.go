@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+// *** Added here to avoid cyclic pkg import dependency with netclient ***
 const (
 	// LinuxAppDataPath - linux path
 	LinuxAppDataPath = "/etc/netclient/"

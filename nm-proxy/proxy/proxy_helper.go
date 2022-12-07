@@ -116,9 +116,9 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 		case <-ticker.C:
 
 			metric := metrics.GetMetric(p.Config.Network, p.Config.RemoteKey.String())
-			if metric.ConnectionStatus && rTicker != nil {
-				rTicker.Reset(*p.Config.PersistentKeepalive)
-			}
+			// if metric.ConnectionStatus && rTicker != nil {
+			// 	rTicker.Reset(*p.Config.PersistentKeepalive)
+			// }
 			metric.ConnectionStatus = false
 			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
@@ -134,6 +134,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 	}
 }
 
+// *** NOT USED CURRENTLY ****
 // Proxy.peerUpdates - sends peer updates through proxy
 func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 	defer wg.Done()
@@ -158,7 +159,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {
-				logger.Log(0, "-----------> ##### $$$$$ SENDING Proxy Update PACKET TO: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### sending proxy update packet to: %s\n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
@@ -171,21 +172,21 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 
 // Proxy.ProxyPeer proxies data from Wireguard to the remote peer and vice-versa
 func (p *Proxy) ProxyPeer() {
-	var ticker *time.Ticker
-	if config.GetGlobalCfg().IsBehindNAT() {
-		ticker = time.NewTicker(*p.Config.PersistentKeepalive)
-		defer ticker.Stop()
-	}
+	// var ticker *time.Ticker
+	// if config.GetGlobalCfg().IsBehindNAT() {
+	// 	ticker = time.NewTicker(*p.Config.PersistentKeepalive)
+	// 	defer ticker.Stop()
+	// }
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.proxyToRemote(wg)
 	wg.Add(1)
-	go p.startMetricsThread(wg, ticker)
-	if config.GetGlobalCfg().IsBehindNAT() {
-		wg.Add(1)
-		go p.peerUpdates(wg, ticker)
-	}
+	go p.startMetricsThread(wg, nil)
+	// if config.GetGlobalCfg().IsBehindNAT() {
+	// 	wg.Add(1)
+	// 	go p.peerUpdates(wg, ticker)
+	// }
 
 	wg.Wait()
 

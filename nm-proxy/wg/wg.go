@@ -2,8 +2,6 @@ package wg
 
 import (
 	"fmt"
-	"os/exec"
-	"strings"
 	"sync"
 
 	"github.com/gravitl/netmaker/logger"
@@ -100,19 +98,6 @@ func (w *WGIface) GetListenPort() (*int, error) {
 	logger.Log(0, fmt.Sprintf("got Wireguard device listen port %s, %d", w.Name, d.ListenPort))
 
 	return &d.ListenPort, nil
-}
-
-// RunCmd - runs a local command
-func RunCmd(command string, printerr bool) (string, error) {
-	args := strings.Fields(command)
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Wait()
-	out, err := cmd.CombinedOutput()
-	if err != nil && printerr {
-		logger.Log(1, "error running command: ", command)
-		logger.Log(1, strings.TrimSuffix(string(out), "\n"))
-	}
-	return string(out), err
 }
 
 // GetPeer - gets the peerinfo from the wg interface

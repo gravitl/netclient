@@ -172,7 +172,6 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	node := config.GetNode(network)
 	server := config.GetServer(node.Server)
 	logger.Log(3, "received peer update for", network)
-	log.Println("------> NODE.PROXY: ", node.Proxy)
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
 		return
