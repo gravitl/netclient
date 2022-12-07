@@ -27,7 +27,7 @@ var metricsNetworkMap = make(map[string]map[string]*Metric)
 func init() {
 	go func() {
 		for {
-			time.Sleep(1 * time.Minute)
+			time.Sleep(30 * time.Second)
 			dumpMetricsToFile()
 		}
 	}()

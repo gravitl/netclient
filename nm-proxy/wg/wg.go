@@ -2,11 +2,11 @@ package wg
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
 	"sync"
 
+	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -40,7 +40,7 @@ func (w *WGIface) UpdatePeerEndpoint(peer wgtypes.PeerConfig) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	log.Printf("updating interface %s peer %s: endpoint %s ", w.Name, peer.PublicKey.String(), peer.Endpoint.String())
+	logger.Log(0, "updating interface %s peer %s: endpoint %s ", w.Name, peer.PublicKey.String(), peer.Endpoint.String())
 
 	// //parse allowed ips
 	// _, ipNet, err := net.ParseCIDR(allowedIps)
@@ -77,14 +77,14 @@ func (w *WGIface) configureDevice(config wgtypes.Config) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("got Wireguard device %s\n", w.Name)
+	logger.Log(0, "got Wireguard device %s\n", w.Name)
 
 	return wg.ConfigureDevice(w.Name, config)
 }
 
 // WGIface.GetListenPort - returns the listening port of the Wireguard endpoint
 func (w *WGIface) GetListenPort() (*int, error) {
-	log.Printf("getting Wireguard listen port of interface %s", w.Name)
+	logger.Log(0, "getting Wireguard listen port of interface %s", w.Name)
 
 	//discover Wireguard current configuration
 	wg, err := wgctrl.New()
@@ -97,7 +97,7 @@ func (w *WGIface) GetListenPort() (*int, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("got Wireguard device listen port %s, %d", w.Name, d.ListenPort)
+	logger.Log(0, fmt.Sprintf("got Wireguard device listen port %s, %d", w.Name, d.ListenPort))
 
 	return &d.ListenPort, nil
 }
@@ -109,8 +109,8 @@ func RunCmd(command string, printerr bool) (string, error) {
 	cmd.Wait()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
-		log.Println("error running command: ", command)
-		log.Println(strings.TrimSuffix(string(out), "\n"))
+		logger.Log(1, "error running command: ", command)
+		logger.Log(1, strings.TrimSuffix(string(out), "\n"))
 	}
 	return string(out), err
 }
@@ -124,7 +124,7 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 	defer func() {
 		err = wg.Close()
 		if err != nil {
-			log.Printf("got error while closing wgctl: %v", err)
+			logger.Log(0, "got error while closing wgctl: ", err.Error())
 		}
 	}()
 

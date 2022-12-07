@@ -3,7 +3,6 @@ package peer
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/proxy"
 	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -51,7 +51,7 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 	}
 	p.Config.PeerEndpoint = peerEndpoint
 
-	log.Printf("Starting proxy for Peer: %s\n", peer.PublicKey.String())
+	logger.Log(0, "Starting proxy for Peer: %s\n", peer.PublicKey.String())
 	err = p.Start()
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 
 // SetPeersEndpointToProxy - sets peer endpoints to local addresses connected to proxy
 func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
-	log.Println("Setting peers endpoints to proxy: ", network)
+	logger.Log(1, "Setting peers endpoints to proxy: ", network)
 	if !config.GetGlobalCfg().ProxyStatus {
 		return peers
 	}

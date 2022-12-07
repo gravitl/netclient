@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"net"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/metrics"
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/packet"
+	"github.com/gravitl/netmaker/logger"
 )
 
 var (
@@ -38,7 +38,7 @@ type ProxyServer struct {
 
 // ProxyServer.Close - closes the proxy server
 func (p *ProxyServer) Close() {
-	log.Println("--------->### Shutting down Proxy.....")
+	logger.Log(1, "--------->### Shutting down Proxy.....")
 	// clean up proxy connections
 
 	for _, peerConnMap := range config.GetGlobalCfg().GetNetworkPeerMap() {
@@ -69,8 +69,8 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 			// Read Packet
 
 			n, source, err := p.Server.ReadFromUDP(buffer)
-			if err != nil || source == nil { // in future log errors?
-				log.Println("RECV ERROR: ", err)
+			if err != nil || source == nil {
+				logger.Log(3, "failed to read from server: ", err.Error())
 				continue
 			}
 			//go func(buffer []byte, source *net.UDPAddr, n int) {
@@ -78,7 +78,7 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 			var srcPeerKeyHash, dstPeerKeyHash, network string
 			n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
 			if err != nil {
-				log.Println("proxy transport message not found: ", err)
+				logger.Log(2, "proxy transport message not found: ", err.Error())
 				proxyTransportMsg = false
 			}
 			if proxyTransportMsg {
@@ -105,10 +105,9 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		metricMsg, err := packet.ConsumeMetricPacket(buffer[:n])
 		// calc latency
 		if err == nil {
-			log.Printf("------->$$$$$ Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String())
+			logger.Log(3, fmt.Sprintf("------->Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String()))
 			_, pubKey := config.GetGlobalCfg().GetDeviceKeys()
 			network := packet.DecodeNetwork(metricMsg.NetworkEncoded)
-			log.Println("---------> $$$$ NETWORK: ", network)
 			if metricMsg.Sender == pubKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metric := metrics.GetMetric(network, metricMsg.Reciever.String())
@@ -119,17 +118,17 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
-				log.Println("------------> $$$ SENDING back the metric pkt to the source: ", source.String())
+				logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source.String())
 				metricMsg.Reply = 1
 				buf, err := packet.EncodePacketMetricMsg(metricMsg)
 				if err == nil {
 					copy(buffer[:n], buf[:])
 				} else {
-					log.Println("--------> failed to encode metric reply message")
+					logger.Log(1, "--------> failed to encode metric reply message")
 				}
 				_, err = NmProxyServer.Server.WriteToUDP(buffer[:n], source)
 				if err != nil {
-					log.Println("Failed to send metric packet to remote: ", err)
+					logger.Log(0, "Failed to send metric packet to remote: ", err.Error())
 				}
 
 				metric := metrics.GetMetric(network, metricMsg.Sender.String())
@@ -153,7 +152,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				}
 			}
 		} else {
-			log.Println("failed to decode metrics message: ", err)
+			logger.Log(1, "failed to decode metrics message: ", err.Error())
 		}
 	case packet.MessageProxyUpdateType:
 		msg, err := packet.ConsumeProxyUpdateMsg(buffer[:n])
@@ -178,7 +177,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 							// update peer conn
 							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
 							config.GetGlobalCfg().UpdatePeer(network, &peer)
-							log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
+							logger.Log(1, "--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
 							config.GetGlobalCfg().ResetPeer(network, peer.Key.String())
 							return
 						}
@@ -194,10 +193,10 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		peerKey, err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n],
 			packet.NoisePublicKey(pub), packet.NoisePrivateKey(priv))
 		if err != nil {
-			log.Println("---------> @@@ failed to decode HS: ", err)
+			logger.Log(1, "---------> @@@ failed to decode HS: ", err.Error())
 		} else {
 
-			log.Println("--------> Got HandShake from peer: ", peerKey, source.String())
+			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
 			if peerInfo, ok := config.GetGlobalCfg().GetExtClientWaitCfg(peerKey); ok {
 				peerInfo.CommChan <- source
 			}
@@ -211,7 +210,7 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	if peerInfo, ok := config.GetGlobalCfg().GetExtClientInfo(source); ok {
 		_, err := peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
-			log.Println("Failed to proxy to Wg local interface: ", err)
+			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
 			//continue
 		}
 		metric := metrics.GetMetric(peerInfo.Network, peerInfo.PeerKey)
@@ -224,15 +223,14 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 }
 
 func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {
-	log.Println("----------> Relaying######")
-	// check for routing map and forward to right proxy
+	// check for routing map and relay to right proxy
 	if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
 
-		log.Printf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
-			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash)
+		logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
+			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash))
 		_, err := p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
 		if err != nil {
-			log.Println("Failed to send to remote: ", err)
+			logger.Log(1, "Failed to relay to remote: ", err.Error())
 		}
 		return
 
@@ -241,7 +239,7 @@ func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, src
 
 func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash, network string) {
 	var err error
-	//log.Printf("--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
+	//logger.Log(0,"--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
 	if config.GetGlobalCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetGlobalCfg().IsRelay(network) {
 		p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
@@ -250,12 +248,12 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 	if peerInfo, ok := config.GetGlobalCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
 
-		log.Printf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], SourceIP: [%s] ]]\n",
+		logger.Log(0, fmt.Sprintf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
-			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), srcPeerKeyHash, dstPeerKeyHash, source.IP.String())
+			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), srcPeerKeyHash, dstPeerKeyHash, source.IP.String()))
 		_, err = peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
-			log.Println("Failed to proxy to Wg local interface: ", err)
+			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
 			//continue
 		}
 
@@ -298,7 +296,7 @@ func (p *ProxyServer) KeepAlive(ip string, port int) {
 			IP:   net.ParseIP(ip),
 			Port: port,
 		})
-		//log.Println("Sending MSg: ", ip, port, err)
+		//logger.Log(1,"Sending MSg: ", ip, port, err)
 		time.Sleep(time.Second * 5)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"runtime"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/packet"
 	"github.com/gravitl/netclient/nm-proxy/server"
 	"github.com/gravitl/netclient/nm-proxy/stun"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // NewProxy - gets new proxy config
@@ -43,12 +43,12 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 
 			n, err := p.LocalConn.Read(buf)
 			if err != nil {
-				log.Println("ERRR READ: ", err)
+				logger.Log(1, "error reading: ", err.Error())
 				continue
 			}
 
 			// if _, found := common.GetPeer(p.Config.RemoteKey); !found {
-			// 	log.Printf("Peer: %s not found in config\n", p.Config.RemoteKey)
+			// 	logger.Log(0,"Peer: %s not found in config\n", p.Config.RemoteKey)
 			// 	p.Close()
 			// 	return
 			// }
@@ -65,16 +65,16 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
 					p.Config.WgInterface.Device.PublicKey.String(), p.Config.RemoteKey.String())
 				if err != nil {
-					log.Println("failed to process pkt before sending: ", err)
+					logger.Log(0, "failed to process pkt before sending: ", err.Error())
 				}
 			}
 
-			log.Printf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-				p.LocalConn.LocalAddr(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash)
+			logger.Log(2, "PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
+				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash)
 
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
-				log.Println("Failed to send to remote: ", err)
+				logger.Log(0, "Failed to send to remote: ", err.Error())
 			}
 
 		}
@@ -86,7 +86,7 @@ func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
 func (p *Proxy) Reset() {
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
-		log.Println("couldn't perform reset: ", err)
+		logger.Log(0, "couldn't perform reset: ", p.Config.RemoteKey.String(), err.Error())
 		return
 	}
 	p.Start()
@@ -124,10 +124,10 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
-				log.Printf("-----------> ##### $$$$$ SENDING METRIC PACKET TO: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: %s\n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
-					log.Println("Failed to send to metric pkt: ", err)
+					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 				}
 
 			}
@@ -159,10 +159,10 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {
-				log.Printf("-----------> ##### $$$$$ SENDING Proxy Update PACKET TO: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### $$$$$ SENDING Proxy Update PACKET TO: %s\n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
-					log.Println("Failed to send to metric pkt: ", err)
+					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 				}
 
 			}
@@ -199,7 +199,7 @@ func (p *Proxy) updateEndpoint() error {
 		return err
 	}
 	// add local proxy connection as a Wireguard peer
-	log.Printf("---> ####### Updating Peer:  %+v\n", p.Config.PeerConf)
+	logger.Log(1, fmt.Sprintf("---> Updating Peer Endpoint:  %+v\n", p.Config.PeerConf))
 	peer := *p.Config.PeerConf
 	peer.Endpoint = udpAddr
 	p.Config.WgInterface.UpdatePeerEndpoint(peer)
@@ -214,7 +214,7 @@ func GetFreeIp(cidrAddr string, dstPort int) (string, error) {
 		return "", errors.New("dst port should be set")
 	}
 	if _, _, err := net.ParseCIDR(cidrAddr); err != nil {
-		log.Println("UniqueAddress encountered  an error")
+		logger.Log(1, "UniqueAddress encountered  an error")
 		return "", err
 	}
 	net4 := iplib.Net4FromStr(cidrAddr)
@@ -223,7 +223,7 @@ func GetFreeIp(cidrAddr string, dstPort int) (string, error) {
 		if runtime.GOOS == "darwin" {
 			_, err := common.RunCmd(fmt.Sprintf("ifconfig lo0 alias %s 255.255.255.255", newAddrs.String()), true)
 			if err != nil {
-				log.Println("Failed to add alias: ", err)
+				logger.Log(1, "Failed to add alias: ", err.Error())
 			}
 		}
 
@@ -235,7 +235,7 @@ func GetFreeIp(cidrAddr string, dstPort int) (string, error) {
 			Port: dstPort,
 		})
 		if err != nil {
-			log.Println("----> GetFreeIP ERR: ", err)
+			logger.Log(1, "----> GetFreeIP err: ", err.Error())
 			if strings.Contains(err.Error(), "can't assign requested address") ||
 				strings.Contains(err.Error(), "address already in use") || strings.Contains(err.Error(), "cannot assign requested address") {
 				var nErr error

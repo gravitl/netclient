@@ -1,10 +1,11 @@
 package common
 
 import (
-	"log"
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/gravitl/netmaker/logger"
 )
 
 const (
@@ -23,8 +24,8 @@ func RunCmd(command string, printerr bool) (string, error) {
 	cmd.Wait()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
-		log.Println("error running command: ", command)
-		log.Println(strings.TrimSuffix(string(out), "\n"))
+		logger.Log(1, "error running command: ", command)
+		logger.Log(1, strings.TrimSuffix(string(out), "\n"))
 	}
 	return string(out), err
 }

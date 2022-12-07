@@ -2,12 +2,12 @@ package stun
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
 
 	"github.com/gravitl/netclient/nm-proxy/models"
+	"github.com/gravitl/netmaker/logger"
 	"gortc.io/stun"
 )
 
@@ -24,7 +24,7 @@ func GetHostInfo(stunHostAddr, stunPort string) (info HostInfo) {
 
 	s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%s", stunHostAddr, stunPort))
 	if err != nil {
-		log.Println("Resolve: ", err)
+		logger.Log(1, "failed to resolve udp addr: ", err.Error())
 		return
 	}
 	l := &net.UDPAddr{
@@ -33,13 +33,13 @@ func GetHostInfo(stunHostAddr, stunPort string) (info HostInfo) {
 	}
 	conn, err := net.DialUDP("udp", l, s)
 	if err != nil {
-		log.Println(err)
+		logger.Log(1, "failed to dial: ", err.Error())
 		return
 	}
 	defer conn.Close()
 	c, err := stun.NewClient(conn)
 	if err != nil {
-		log.Println(err)
+		logger.Log(1, "failed to create stun client: ", err.Error())
 		return
 	}
 	defer c.Close()
@@ -51,19 +51,19 @@ func GetHostInfo(stunHostAddr, stunPort string) (info HostInfo) {
 	// Sending request to STUN server, waiting for response message.
 	if err := c.Do(message, func(res stun.Event) {
 		if res.Error != nil {
-			log.Println("stun error: ", res.Error)
+			logger.Log(1, "0:stun error: ", res.Error.Error())
 			return
 		}
 		// Decoding XOR-MAPPED-ADDRESS attribute from message.
 		var xorAddr stun.XORMappedAddress
 		if err := xorAddr.GetFrom(res.Message); err != nil {
-			log.Println("stun error: ", res.Error)
+			logger.Log(1, "1:stun error: ", res.Error.Error())
 			return
 		}
 		info.PublicIp = xorAddr.IP
 		info.PubPort = xorAddr.Port
 	}); err != nil {
-		log.Println("stun error: ", err)
+		logger.Log(1, "2:stun error: ", err.Error())
 	}
 	return
 }

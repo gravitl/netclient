@@ -2,38 +2,39 @@ package nmproxy
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net"
 
 	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/manager"
 	"github.com/gravitl/netclient/nm-proxy/server"
 	"github.com/gravitl/netclient/nm-proxy/stun"
+	"github.com/gravitl/netmaker/logger"
 )
 
 func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunAddr, stunPort string, fromServer bool) {
 
 	if config.GetGlobalCfg().IsProxyRunning() {
-		log.Println("Proxy is running already...")
+		logger.Log(1, "Proxy is running already...")
 		return
 	}
-	log.Println("Starting Proxy...")
+	logger.Log(1, "Starting Proxy...")
 	if stunAddr == "" || stunPort == "" {
-		log.Println("stun config values cannot be empty")
+		logger.Log(1, "stun config values cannot be empty")
 		return
 	}
 	config.InitializeGlobalCfg()
 	config.GetGlobalCfg().SetIsHostNetwork(!fromServer)
 	hInfo := stun.GetHostInfo(stunAddr, stunPort)
 	stun.Host = hInfo
-	log.Printf("HOSTINFO: %+v", hInfo)
+	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", hInfo))
 	if hInfo.PrivIp != nil && IsPublicIP(hInfo.PrivIp) {
-		log.Println("Host is public facing!!!")
+		logger.Log(1, "Host is public facing!!!")
 	}
 	// start the netclient proxy server
 	err := server.NmProxyServer.CreateProxyServer(hInfo.PrivPort, 0, hInfo.PrivIp.String())
 	if err != nil {
-		log.Fatal("failed to create proxy: ", err)
+		logger.FatalLog("failed to create proxy: ", err.Error())
 	}
 	go manager.StartProxyManager(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"runtime"
 
 	"github.com/gravitl/netclient/nm-proxy/common"
 	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/models"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // Proxy -  struct for wg proxy
@@ -27,15 +27,15 @@ func (p *Proxy) Start() error {
 
 	var err error
 	p.RemoteConn = p.Config.PeerEndpoint
-	log.Printf("----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.RemoteKey.String(), p.RemoteConn.String())
+	logger.Log(0, "----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.RemoteKey.String(), p.RemoteConn.String())
 	addr, err := GetFreeIp(models.DefaultCIDR, p.Config.WgInterface.Device.ListenPort)
 	if err != nil {
-		log.Println("Failed to get freeIp: ", err)
+		logger.Log(1, "Failed to get freeIp: ", err.Error())
 		return err
 	}
 	wgListenAddr, err := GetInterfaceListenAddr(p.Config.WgInterface.Device.ListenPort)
 	if err != nil {
-		log.Println("failed to get wg listen addr: ", err)
+		logger.Log(1, "failed to get wg listen addr: ", err.Error())
 		return err
 	}
 	if runtime.GOOS == "darwin" {
@@ -46,19 +46,19 @@ func (p *Proxy) Start() error {
 		Port: models.NmProxyPort,
 	}, wgListenAddr)
 	if err != nil {
-		log.Printf("failed dialing to local Wireguard port,Err: %v\n", err)
+		logger.Log(0, "failed dialing to local Wireguard port,Err: %v\n", err.Error())
 		return err
 	}
 
-	log.Printf("Dialing to local Wireguard port %s --> %s\n", p.LocalConn.LocalAddr().String(), p.LocalConn.RemoteAddr().String())
+	logger.Log(0, "Dialing to local Wireguard port %s --> %s\n", p.LocalConn.LocalAddr().String(), p.LocalConn.RemoteAddr().String())
 	err = p.updateEndpoint()
 	if err != nil {
-		log.Printf("error while updating Wireguard peer endpoint [%s] %v\n", p.Config.RemoteKey, err)
+		logger.Log(0, "error while updating Wireguard peer endpoint [%s] %v\n", p.Config.RemoteKey.String(), err.Error())
 		return err
 	}
 	localAddr, err := net.ResolveUDPAddr("udp", p.LocalConn.LocalAddr().String())
 	if err != nil {
-		log.Println("failed to resolve local addr: ", err)
+		logger.Log(0, "failed to resolve local addr: ", err.Error())
 		return err
 	}
 	p.Config.LocalConnAddr = localAddr
@@ -70,20 +70,20 @@ func (p *Proxy) Start() error {
 
 // Proxy.Close - removes peer conn from proxy and closes all the opened connections locally
 func (p *Proxy) Close() {
-	log.Println("------> Closing Proxy for ", p.Config.RemoteKey.String())
+	logger.Log(0, "------> Closing Proxy for ", p.Config.RemoteKey.String())
 	p.Cancel()
 	p.LocalConn.Close()
 	if runtime.GOOS == "darwin" {
 		host, _, err := net.SplitHostPort(p.LocalConn.LocalAddr().String())
 		if err != nil {
-			log.Println("Failed to split host: ", p.LocalConn.LocalAddr().String(), err)
+			logger.Log(0, "Failed to split host: ", err.Error())
 			return
 		}
 
 		if host != "127.0.0.1" {
 			_, err = common.RunCmd(fmt.Sprintf("ifconfig lo0 -alias %s 255.255.255.255", host), true)
 			if err != nil {
-				log.Println("Failed to add alias: ", err)
+				logger.Log(0, "Failed to add alias: ", err.Error())
 			}
 		}
 
@@ -137,7 +137,7 @@ func getBroadCastAddress() ([]net.Addr, error) {
 
 // **** TO BE DONE ****
 /*func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extClientAddr string, port int) {
-	log.Println("Starting Packet Sniffer for iface: ", ifaceName)
+	logger.Log(1,"Starting Packet Sniffer for iface: ", ifaceName)
 	var (
 		snapshotLen int32 = 1024
 		promiscuous bool  = false
@@ -148,11 +148,11 @@ func getBroadCastAddress() ([]net.Addr, error) {
 	// Open device
 	handle, err = pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
-		log.Println("failed to start sniffer for iface: ", ifaceName, err)
+		logger.Log(1,"failed to start sniffer for iface: ", ifaceName, err)
 		return
 	}
 	// if err := handle.SetBPFFilter(fmt.Sprintf("src %s and port %d", extClientAddr, port)); err != nil {
-	// 	log.Println("failed to set bpf filter: ", err)
+	// 	logger.Log(1,"failed to set bpf filter: ", err)
 	// 	return
 	// }
 	defer handle.Close()
@@ -166,7 +166,7 @@ func getBroadCastAddress() ([]net.Addr, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Stopping packet sniffer for iface: ", ifaceName, " port: ", port)
+			logger.Log(1,"Stopping packet sniffer for iface: ", ifaceName, " port: ", port)
 			return
 		default:
 			packet, err := packetSource.NextPacket()
@@ -188,13 +188,13 @@ func getBroadCastAddress() ([]net.Addr, error) {
 					if (ip.SrcIP.String() == extClientAddr && ip.DstIP.String() != ingGwAddr) ||
 						(ip.DstIP.String() == extClientAddr && ip.SrcIP.String() != ingGwAddr) {
 
-						log.Println("-----> Fowarding PKT From: ", ip.SrcIP, " to: ", ip.DstIP)
+						logger.Log(1,"-----> Fowarding PKT From: ", ip.SrcIP, " to: ", ip.DstIP)
 						c, err := net.Dial("ip", ip.DstIP.String())
 						if err == nil {
 							c.Write(ip.Payload)
 							c.Close()
 						} else {
-							log.Println("------> Failed to forward packet from sniffer: ", err)
+							logger.Log(1,"------> Failed to forward packet from sniffer: ", err)
 
 						}
 					}

@@ -7,9 +7,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -27,14 +27,13 @@ func ConsumeHandshakeInitiationMsg(initiator bool, buf []byte, devicePubKey Nois
 	reader := bytes.NewReader(buf[:])
 	err = binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
-		log.Println("Failed to decode initiation message")
+		logger.Log(1, "Failed to decode initiation message")
 		return "", err
 	}
 
 	if msg.Type != MessageInitiationType {
 		return "", errors.New("not handshake initiation message")
 	}
-	log.Println("-----> ConsumeHandshakeInitiationMsg, Intitator:  ", initiator)
 	mixHash(&hash, &initialHash, devicePubKey[:])
 	mixHash(&hash, &hash, msg.Ephemeral[:])
 	mixKey(&chainKey, &initialChainKey, msg.Ephemeral[:])
@@ -77,7 +76,7 @@ func ConsumeProxyUpdateMsg(buf []byte) (*ProxyUpdateMessage, error) {
 	reader := bytes.NewReader(buf[:])
 	err := binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
-		log.Println("Failed to decode proxy update message")
+		logger.Log(1, "Failed to decode proxy update message")
 		return nil, err
 	}
 
@@ -100,7 +99,7 @@ func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key)
 		Reciever:       reciever,
 		TimeStamp:      time.Now().UnixMilli(),
 	}
-	log.Printf("----------> $$$$$$ CREATED PACKET: %+v\n", msg)
+	logger.Log(1, fmt.Sprintf("----------> $$ CREATED PACKET: %+v\n", msg))
 	var buff [MessageMetricSize]byte
 	writer := bytes.NewBuffer(buff[:0])
 	err := binary.Write(writer, binary.LittleEndian, msg)
@@ -135,7 +134,7 @@ func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
 	reader := bytes.NewReader(buf[:])
 	err = binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
-		log.Println("Failed to decode metric message")
+		logger.Log(1, "Failed to decode metric message")
 		return nil, err
 	}
 
@@ -162,7 +161,7 @@ func ProcessPacketBeforeSending(network string, buf []byte, n int, srckey, dstKe
 	writer := bytes.NewBuffer(msgBuffer[:0])
 	err := binary.Write(writer, binary.LittleEndian, m)
 	if err != nil {
-		log.Println("errror writing msg to bytes: ", err)
+		logger.Log(0, "errror writing msg to bytes: ", err.Error())
 		return buf, n, "", ""
 	}
 	if n > len(buf)-MessageProxyTransportSize {
@@ -187,7 +186,7 @@ func ExtractInfo(buffer []byte, n int) (int, string, string, string, error) {
 	reader := bytes.NewReader(buffer[n-MessageProxyTransportSize:])
 	err = binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
-		log.Println("Failed to decode proxy message")
+		logger.Log(1, "Failed to decode proxy message")
 		return n, "", "", "", err
 	}
 	network := DecodeNetwork(msg.Network)
