@@ -48,7 +48,6 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
-		node := node
 		if node.Network == networkName {
 			server := config.GetServer(node.Server)
 			return Network{&node, server}, nil
