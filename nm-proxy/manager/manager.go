@@ -66,6 +66,9 @@ func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayloa
 			logger.Log(1, "shutting down proxy manager...")
 			return
 		case mI := <-managerChan:
+			if mI == nil {
+				continue
+			}
 			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI))
 			err := mI.configureProxy()
 			if err != nil {
