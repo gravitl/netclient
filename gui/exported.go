@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App.GoJoinNetworkByToken joins a network with the given token
@@ -147,4 +148,20 @@ func (app *App) GoUninstall() (any, error) {
 		errMsgsBuilder.WriteString(errMsg.Error() + " ")
 	}
 	return nil, fmt.Errorf("%w: "+errMsgsBuilder.String(), err)
+}
+
+// App.GoOpenDialogue opens a dialogue box with title and message.
+// Type of dialogue box is based on the type passed
+func (app *App) GoOpenDialogue(dialogueType runtime.DialogType, msg, title string) (string, error) {
+	res, err := runtime.MessageDialog(app.ctx, runtime.MessageDialogOptions{
+		Type:    dialogueType,
+		Title:   title,
+		Message: msg,
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return res, nil
 }

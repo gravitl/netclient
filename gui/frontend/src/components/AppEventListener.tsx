@@ -21,12 +21,12 @@ export default function AppEventListener() {
   // register event handlers
   useEffect(() => {
     wailsRuntime?.EventsOn(AppEvents.EV_OPEN_NETWORKS_PAGE, openNetworksPage)
-    wailsRuntime?.EventsOn(AppEvents.EV_OPEN_SERVER_LOGS_PAGE, openServerLogsPage)
+    wailsRuntime?.EventsOn(AppEvents.EV_OPEN_LOGS_PAGE, openServerLogsPage)
     
     // cleanup
     return () => {
       wailsRuntime?.EventsOff(AppEvents.EV_OPEN_NETWORKS_PAGE)
-      wailsRuntime?.EventsOff(AppEvents.EV_OPEN_SERVER_LOGS_PAGE)
+      wailsRuntime?.EventsOff(AppEvents.EV_OPEN_LOGS_PAGE)
     }
   })
 

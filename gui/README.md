@@ -13,7 +13,7 @@ Only generate modules when you are sure. you will have to change the unkown type
 
 ### Cheatsheet
 
-- Generate TS modules with `export WAILS_EXEC="$(which wails)" && sudo -E PATH=$PATH:$GOROOT/bin $WAILS_EXEC generate module && sudo chown -R "$(whoami)" ./*`
+- Generate TS modules with `export WAILS_EXEC="$(which wails)" && sudo -E PATH=$PATH:$GOROOT/bin $WAILS_EXEC generate module && sudo chown -R "$(whoami)" .`
 - Run dev mode with `export WAILS_EXEC="$(which wails)" && export NODE_PATH=/home/aceix/.volta/bin && sudo -E PATH=$PATH:$GOROOT/bin:$NODE_PATH $WAILS_EXEC dev -skipbindings`
 
 _*actual paths might differ for you_

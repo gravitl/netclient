@@ -42,6 +42,10 @@ export function GoLeaveNetwork(arg1) {
   return window['go']['main']['App']['GoLeaveNetwork'](arg1);
 }
 
+export function GoOpenDialogue(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GoOpenDialogue'](arg1, arg2, arg3);
+}
+
 export function GoParseAccessToken(arg1) {
   return window['go']['main']['App']['GoParseAccessToken'](arg1);
 }
