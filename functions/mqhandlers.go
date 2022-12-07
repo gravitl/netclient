@@ -217,6 +217,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	}
 	wireguard.SetPeers()
 	if node.Proxy {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		ProxyManagerChan <- &peerUpdate.ProxyUpdate
 	}
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
