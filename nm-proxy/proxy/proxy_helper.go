@@ -18,7 +18,6 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/models"
 	"github.com/gravitl/netclient/nm-proxy/packet"
 	"github.com/gravitl/netclient/nm-proxy/server"
-	"github.com/gravitl/netclient/nm-proxy/stun"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -146,7 +145,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			// send listen port packet
 			var networkEncoded [packet.NetworkNameSize]byte
 			copy(networkEncoded[:], []byte(p.Config.Network))
-			if stun.Host.PubPort == 0 {
+			if config.GetGlobalCfg().HostInfo.PubPort == 0 {
 				continue
 			}
 			m := &packet.ProxyUpdateMessage{
@@ -155,7 +154,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 				Action:         packet.UpdateListenPort,
 				Sender:         p.Config.LocalKey,
 				Reciever:       p.Config.RemoteKey,
-				ListenPort:     uint32(stun.Host.PubPort),
+				ListenPort:     uint32(config.GetGlobalCfg().HostInfo.PubPort),
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {

@@ -65,7 +65,23 @@ type RemotePeer struct {
 	CommChan            chan *net.UDPAddr
 }
 
+// HostInfo - struct for host information
+type HostInfo struct {
+	PublicIp net.IP
+	PrivIp   net.IP
+	PubPort  int
+	PrivPort int
+}
+
 // ConvPeerKeyToHash - converts peer key to a md5 hash
 func ConvPeerKeyToHash(peerKey string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
+}
+
+// IsPublicIP indicates whether IP is public or not.
+func IsPublicIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
+		return false
+	}
+	return true
 }

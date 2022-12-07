@@ -11,16 +11,8 @@ import (
 	"gortc.io/stun"
 )
 
-type HostInfo struct {
-	PublicIp net.IP
-	PrivIp   net.IP
-	PubPort  int
-	PrivPort int
-}
-
-var Host HostInfo
-
-func GetHostInfo(stunHostAddr, stunPort string) (info HostInfo) {
+// GetHostInfo - calls stun server for udp hole punch and fetches host info
+func GetHostInfo(stunHostAddr, stunPort string) (info models.HostInfo) {
 
 	s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%s", stunHostAddr, stunPort))
 	if err != nil {

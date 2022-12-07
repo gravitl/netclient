@@ -60,7 +60,6 @@ type PeerConf struct {
 // StartProxyManager - starts the proxy manager loop and listens for events on the Channel provided
 func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayload) {
 	for {
-
 		select {
 		case <-ctx.Done():
 			logger.Log(1, "shutting down proxy manager...")
@@ -74,7 +73,6 @@ func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayloa
 			if err != nil {
 				logger.Log(0, "failed to add interface: [%s] to proxy: %v\n  ", mI.InterfaceName, err.Error())
 			}
-
 		}
 	}
 }

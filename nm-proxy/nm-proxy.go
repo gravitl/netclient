@@ -3,7 +3,6 @@ package nmproxy
 import (
 	"context"
 	"fmt"
-	"net"
 
 	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/manager"
@@ -25,26 +24,15 @@ func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunA
 	}
 	config.InitializeGlobalCfg()
 	config.GetGlobalCfg().SetIsHostNetwork(!fromServer)
-	hInfo := stun.GetHostInfo(stunAddr, stunPort)
-	stun.Host = hInfo
-	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", hInfo))
-	if hInfo.PrivIp != nil && IsPublicIP(hInfo.PrivIp) {
-		logger.Log(1, "Host is public facing!!!")
-	}
+	config.GetGlobalCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort))
+	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetGlobalCfg().GetHostInfo()))
+	config.GetGlobalCfg().SetNATStatus()
 	// start the netclient proxy server
-	err := server.NmProxyServer.CreateProxyServer(hInfo.PrivPort, 0, hInfo.PrivIp.String())
+	err := server.NmProxyServer.CreateProxyServer(config.GetGlobalCfg().GetHostInfo().PrivPort, 0, config.GetGlobalCfg().GetHostInfo().PrivIp.String())
 	if err != nil {
 		logger.FatalLog("failed to create proxy: ", err.Error())
 	}
 	go manager.StartProxyManager(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)
 
-}
-
-// IsPublicIP indicates whether IP is public or not.
-func IsPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return false
-	}
-	return true
 }

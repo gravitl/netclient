@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/nm-proxy/models"
+	"github.com/gravitl/netmaker/logger"
 )
 
 var (
@@ -20,6 +21,7 @@ type Settings struct {
 
 // GlobalConfig - struct for proxy config
 type GlobalConfig struct {
+	HostInfo      models.HostInfo
 	ProxyStatus   bool
 	isHostNetwork bool
 	isServer      bool
@@ -49,6 +51,15 @@ func InitializeGlobalCfg() {
 // GlobalConfig.IsProxyRunning - checks if proxy is running
 func (g *GlobalConfig) IsProxyRunning() bool {
 	return g.ProxyStatus
+}
+
+// GlobalConfig.SetHostInfo - sets host info
+func (g *GlobalConfig) SetHostInfo(hostInfo models.HostInfo) {
+	g.HostInfo = hostInfo
+}
+
+func (g *GlobalConfig) GetHostInfo() models.HostInfo {
+	return g.HostInfo
 }
 
 // Reset - resets GlobalConfig // to be called only when proxy is shutting down
@@ -135,8 +146,13 @@ func (g *GlobalConfig) IsServer() bool {
 }
 
 // GlobalConfig.SetBehindNATStatus - sets NAT status for the device
-func (g *GlobalConfig) SetBehindNATStatus(value bool) {
-	g.isBehindNAT = value
+func (g *GlobalConfig) SetNATStatus() {
+	if g.HostInfo.PrivIp != nil && models.IsPublicIP(g.HostInfo.PrivIp) {
+		logger.Log(1, "Host is public facing!!!")
+	} else {
+		g.isBehindNAT = true
+	}
+
 }
 
 // GlobalConfig.IsBehindNAT - checks if proxy is running behind NAT
