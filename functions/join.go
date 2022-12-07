@@ -333,7 +333,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	url := flags.GetString("apiconn")
 	nodeForServer.AccessKey = flags.GetString("accesskey")
 	logger.Log(0, "joining "+nodeForServer.Network+" at "+url)
-	log.Println("--------. NODE For SERVER: ", nodeForServer.Proxy)
 	api := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + nodeForServer.Network,
