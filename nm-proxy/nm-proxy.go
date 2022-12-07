@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net"
-	"os"
 
 	"github.com/gravitl/netclient/nm-proxy/config"
 	"github.com/gravitl/netclient/nm-proxy/manager"
@@ -12,7 +11,7 @@ import (
 	"github.com/gravitl/netclient/nm-proxy/stun"
 )
 
-func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunAddr, stunPort string) {
+func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunAddr, stunPort string, fromServer bool) {
 
 	if config.GetGlobalCfg().IsProxyRunning() {
 		log.Println("Proxy is running already...")
@@ -24,7 +23,7 @@ func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunA
 		return
 	}
 	config.InitializeGlobalCfg()
-	config.GetGlobalCfg().SetIsHostNetwork((os.Getenv("HOST_NETWORK") == "" || os.Getenv("HOST_NETWORK") == "on"))
+	config.GetGlobalCfg().SetIsHostNetwork(!fromServer)
 	hInfo := stun.GetHostInfo(stunAddr, stunPort)
 	stun.Host = hInfo
 	log.Printf("HOSTINFO: %+v", hInfo)
