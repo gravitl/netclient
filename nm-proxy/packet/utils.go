@@ -52,7 +52,8 @@ const (
 	wGLabelMAC1       = "mac1----"
 	wGLabelCookie     = "cookie--"
 
-	// proxy message types
+	// MessageTransportType - constant for wg message transport type
+	MessageTransportType MessageType = 4
 
 	// MessageInitiationType - constant for wg handshake intiation type
 	MessageInitiationType MessageType = 1

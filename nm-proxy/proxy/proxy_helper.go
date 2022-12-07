@@ -152,7 +152,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 				Action:         packet.UpdateListenPort,
 				Sender:         p.Config.LocalKey,
 				Reciever:       p.Config.RemoteKey,
-				ListenPort:     uint32(stun.Host.PrivPort),
+				ListenPort:     uint32(stun.Host.PubPort),
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {

@@ -116,6 +116,18 @@ func DecodeNetwork(networkBytes [NetworkNameSize]byte) string {
 	return string(bytes.TrimRight(networkBytes[:], "\u0000"))
 }
 
+// EncodePacketMetricMsg - encodes metric message to buffer
+func EncodePacketMetricMsg(msg *MetricMessage) ([]byte, error) {
+	var buff [MessageMetricSize]byte
+	writer := bytes.NewBuffer(buff[:0])
+	err := binary.Write(writer, binary.LittleEndian, msg)
+	if err != nil {
+		return nil, err
+	}
+	packet := writer.Bytes()
+	return packet, nil
+}
+
 // ConsumeMetricPacket - decodes metric packet
 func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
 	var msg MetricMessage

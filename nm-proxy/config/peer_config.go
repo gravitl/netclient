@@ -63,6 +63,14 @@ func (g *GlobalConfig) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtype
 	return
 }
 
+// GlobalConfig.GetDevicePubKey - fetches device public key
+func (g *GlobalConfig) GetDevicePubKey() (publicKey wgtypes.Key) {
+	if !g.IsIfaceNil() {
+		publicKey = g.GetIface().PublicKey
+	}
+	return
+}
+
 // GlobalConfig.CheckIfNetworkExists - checks if network exists
 func (g *GlobalConfig) CheckIfNetworkExists(network string) bool {
 	_, found := g.ifaceConfig.networkPeerMap[network]
@@ -242,8 +250,27 @@ func (g *GlobalConfig) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.Re
 		if peer, found := g.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
 			return *peer, found
 		}
+	} else if g.CheckIfRelayedNodeExists(dstPeerHash) {
+		if peer, found := g.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
+			return *peer, found
+		}
 	}
 	return models.RemotePeer{}, false
+}
+
+// GlobalConfig.UpdateListenPortForRelayedPeer - updates listen port for the relayed peer
+func (g *GlobalConfig) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
+	if g.CheckIfRelayedNodeExists(srcKeyHash) {
+		if peer, found := g.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
+			peer.Endpoint.Port = port
+			g.SaveRelayedPeer(srcKeyHash, peer)
+		}
+	} else if g.CheckIfRelayedNodeExists(dstPeerHash) {
+		if peer, found := g.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
+			peer.Endpoint.Port = port
+			g.SaveRelayedPeer(dstPeerHash, peer)
+		}
+	}
 }
 
 // GlobalConfig.GetInterfaceListenPort - fetches interface listen port from config

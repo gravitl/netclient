@@ -34,6 +34,7 @@ type MessageInitiation struct {
 type MetricMessage struct {
 	Type           MessageType
 	ID             uint32
+	Reply          uint32
 	NetworkEncoded [NetworkNameSize]byte
 	Sender         wgtypes.Key
 	Reciever       wgtypes.Key

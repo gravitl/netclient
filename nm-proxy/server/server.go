@@ -90,13 +90,13 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 				}
 
 			}
-			handleMsgs(buffer, n, source)
+			p.handleMsgs(buffer, n, source)
 
 		}
 	}
 }
 
-func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
+func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 	msgType := binary.LittleEndian.Uint32(buffer[:4])
 	switch packet.MessageType(msgType) {
@@ -119,6 +119,13 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
 				log.Println("------------> $$$ SENDING back the metric pkt to the source: ", source.String())
+				metricMsg.Reply = 1
+				buf, err := packet.EncodePacketMetricMsg(metricMsg)
+				if err == nil {
+					copy(buffer[:n], buf[:])
+				} else {
+					log.Println("--------> failed to encode metric reply message")
+				}
 				_, err = NmProxyServer.Server.WriteToUDP(buffer[:n], source)
 				if err != nil {
 					log.Println("Failed to send metric packet to remote: ", err)
@@ -130,9 +137,22 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metrics.UpdateMetric(network, metricMsg.Sender.String(), &metric)
 
 			} else {
-				// check if packet needs to be relayed
-
+				// metric packet needs to be relayed
+				if config.GetGlobalCfg().IsRelay(network) {
+					var srcPeerKeyHash, dstPeerKeyHash string
+					if metricMsg.Reply == 1 {
+						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
+						srcPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Reciever.String())
+					} else {
+						srcPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
+						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Reciever.String())
+					}
+					p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
+					return
+				}
 			}
+		} else {
+			log.Println("failed to decode metrics message: ", err)
 		}
 	case packet.MessageProxyUpdateType:
 		msg, err := packet.ConsumeProxyUpdateMsg(buffer[:n])
@@ -141,14 +161,26 @@ func handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			case packet.UpdateListenPort:
 				network := packet.DecodeNetwork(msg.NetworkEncoded)
 				if peer, found := config.GetGlobalCfg().GetPeer(network, msg.Sender.String()); found {
+					if config.GetGlobalCfg().IsRelay(network) && config.GetGlobalCfg().GetDevicePubKey() != msg.Reciever {
+						// update relay peer config
+						if peer, found := config.GetGlobalCfg().GetRelayedPeer(models.ConvPeerKeyToHash(msg.Sender.String()),
+							models.ConvPeerKeyToHash(msg.Reciever.String())); found {
+							if peer.Endpoint.Port != int(msg.ListenPort) {
+								config.GetGlobalCfg().UpdateListenPortForRelayedPeer(int(msg.ListenPort),
+									models.ConvPeerKeyToHash(msg.Sender.String()), models.ConvPeerKeyToHash(msg.Reciever.String()))
+							}
 
-					if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
-						// update peer conn
-						peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
-						config.GetGlobalCfg().UpdatePeer(network, &peer)
-						log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
-						config.GetGlobalCfg().ResetPeer(network, peer.Key.String())
-						return
+						}
+
+					} else {
+						if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
+							// update peer conn
+							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
+							config.GetGlobalCfg().UpdatePeer(network, &peer)
+							log.Println("--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
+							config.GetGlobalCfg().ResetPeer(network, peer.Key.String())
+							return
+						}
 					}
 
 				}
@@ -190,38 +222,29 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	return isExtClient
 }
 
+func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {
+	log.Println("----------> Relaying######")
+	// check for routing map and forward to right proxy
+	if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
+
+		log.Printf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
+			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash)
+		_, err := p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
+		if err != nil {
+			log.Println("Failed to send to remote: ", err)
+		}
+		return
+
+	}
+}
+
 func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash, network string) {
 	var err error
 	//log.Printf("--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
 	if config.GetGlobalCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetGlobalCfg().IsRelay(network) {
-
-		log.Println("----------> Relaying######")
-		// check for routing map and forward to right proxy
-		if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
-
-			log.Printf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
-				source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash)
-			_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
-			if err != nil {
-				log.Println("Failed to send to remote: ", err)
-			}
-			return
-
-		} else {
-			if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(dstPeerKeyHash, dstPeerKeyHash); ok {
-
-				log.Printf("--------> Relaying BACK TO RELAYED NODE PKT [ SourceIP: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
-					source.String(), srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash)
-				_, err = p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
-				if err != nil {
-					log.Println("Failed to send to remote: ", err)
-				}
-				return
-
-			}
-
-		}
+		p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
+		return
 	}
 
 	if peerInfo, ok := config.GetGlobalCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {

@@ -195,7 +195,6 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 			}
 			gCfg.DeletePeerHash(peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
-			continue
 		}
 	}
 	for i := len(m.Peers) - 1; i >= 0; i-- {

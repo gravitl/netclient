@@ -95,7 +95,9 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 	for i := range peers {
 		proxyPeer, found := config.GetGlobalCfg().GetPeer(network, peers[i].PublicKey.String())
 		if found {
+			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
+			proxyPeer.Mutex.RUnlock()
 		}
 	}
 	return peers
