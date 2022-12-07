@@ -266,9 +266,6 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 
 		} else if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
 			log.Println("-----------> skipping peer, proxy is off: ", m.Peers[i].PublicKey)
-			// if err := wgIface.Update(m.Peers[i]); err != nil {
-			// 	log.Println("falied to update peer: ", err)
-			// }
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 	}
@@ -294,7 +291,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 
 	log.Printf("wg: %+v\n", wgInterface)
 	for i, peerI := range m.Peers {
-		if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
+		if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
 			continue
 		}
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
@@ -331,7 +328,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 					CommChan:            commChan,
 					IsAttachedExtClient: true,
 				}
-				config.GetGlobalCfg().SaveExtClientInfo(&extPeer)
+				config.GetGlobalCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {
 					if addExtClient {
 						log.Println("GOT ENDPOINT for Extclient adding peer...")
