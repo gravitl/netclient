@@ -7,6 +7,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -160,10 +161,6 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	insert(peerUpdate.Network, lastPeerUpdate, string(data))
-	// check version
-	if peerUpdate.ServerVersion != config.Version {
-		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
-	}
 	if peerUpdate.ServerVersion != server.Version {
 		logger.Log(1, "updating server version")
 		server.Version = peerUpdate.ServerVersion
@@ -201,6 +198,14 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	UpdateLocalListenPort(&node)
+	// check version
+	if peerUpdate.ServerVersion != config.Version {
+		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
+		SelfUpdate(config.Version, false)
+		if err := daemon.Restart(); err != nil {
+			logger.Log(0, "Error restarting daemon:", err.Error())
+		}
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {
