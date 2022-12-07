@@ -258,6 +258,16 @@ func (g *GlobalConfig) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.Re
 	return models.RemotePeer{}, false
 }
 
+// GlobalConfig.DeleteRelayedPeers - deletes relayed peer info
+func (g *GlobalConfig) DeleteRelayedPeers(network string) {
+	peersMap := g.GetNetworkPeers(network)
+	for _, peer := range peersMap {
+		if peer.IsRelayed {
+			delete(g.ifaceConfig.relayPeerMap, models.ConvPeerKeyToHash(peer.Key.String()))
+		}
+	}
+}
+
 // GlobalConfig.UpdateListenPortForRelayedPeer - updates listen port for the relayed peer
 func (g *GlobalConfig) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
 	if g.CheckIfRelayedNodeExists(srcKeyHash) {

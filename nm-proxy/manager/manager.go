@@ -89,7 +89,9 @@ func (m *ProxyManagerPayload) configureProxy() error {
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config
 func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
-
+	if !m.IsRelay && config.GetGlobalCfg().IsRelay(m.Network) {
+		config.GetGlobalCfg().DeleteRelayedPeers(m.Network)
+	}
 	config.GetGlobalCfg().SetRelayStatus(m.Network, m.IsRelay)
 	config.GetGlobalCfg().SetIngressGwStatus(m.Network, m.IsIngress)
 	if config.GetGlobalCfg().GetRelayedStatus(m.Network) != m.IsRelayed {
