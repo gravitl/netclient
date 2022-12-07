@@ -113,16 +113,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
 	nodes := config.GetNodes()
-	if len(nodes) > 0 {
-		logger.Log(3, "configuring netmaker wireguard interface")
-		nc := wireguard.NewNCIface(config.Netclient(), nodes)
-		nc.Create()
-		nc.Configure()
-		wireguard.SetPeers()
-	}
+	logger.Log(3, "configuring netmaker wireguard interface")
+	nc := wireguard.NewNCIface(config.Netclient(), nodes)
+	nc.Create()
+	nc.Configure()
+	wireguard.SetPeers()
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
-		local.SetNetmakerDomainRoute(server.API)
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
