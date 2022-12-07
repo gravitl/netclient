@@ -212,10 +212,6 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 				// cleanup proxy connections for the peer
 				currentPeer.StopConn()
 				delete(peerConnMap, currentPeer.Key.String())
-				// update the peer with actual endpoint
-				if err := wgIface.Update(m.Peers[i]); err != nil {
-					log.Println("falied to update peer: ", err)
-				}
 				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 				currentPeer.Mutex.Unlock()
 				continue
@@ -268,9 +264,9 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 
 		} else if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
 			log.Println("-----------> skipping peer, proxy is off: ", m.Peers[i].PublicKey)
-			if err := wgIface.Update(m.Peers[i]); err != nil {
-				log.Println("falied to update peer: ", err)
-			}
+			// if err := wgIface.Update(m.Peers[i]); err != nil {
+			// 	log.Println("falied to update peer: ", err)
+			// }
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 	}

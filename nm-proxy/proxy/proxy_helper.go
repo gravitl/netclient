@@ -117,7 +117,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 		case <-ticker.C:
 
 			metric := metrics.GetMetric(p.Config.Network, p.Config.RemoteKey.String())
-			if metric.ConnectionStatus {
+			if metric.ConnectionStatus && rTicker != nil {
 				rTicker.Reset(*p.Config.PersistentKeepalive)
 			}
 			metric.ConnectionStatus = false
@@ -146,6 +146,9 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			// send listen port packet
 			var networkEncoded [packet.NetworkNameSize]byte
 			copy(networkEncoded[:], []byte(p.Config.Network))
+			if stun.Host.PubPort == 0 {
+				continue
+			}
 			m := &packet.ProxyUpdateMessage{
 				Type:           packet.MessageProxyTransportType,
 				NetworkEncoded: networkEncoded,
@@ -169,15 +172,22 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 
 // Proxy.ProxyPeer proxies data from Wireguard to the remote peer and vice-versa
 func (p *Proxy) ProxyPeer() {
-	ticker := time.NewTicker(*p.Config.PersistentKeepalive)
-	defer ticker.Stop()
+	var ticker *time.Ticker
+	if config.GetGlobalCfg().IsBehindNAT() {
+		ticker = time.NewTicker(*p.Config.PersistentKeepalive)
+		defer ticker.Stop()
+	}
+
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.proxyToRemote(wg)
 	wg.Add(1)
 	go p.startMetricsThread(wg, ticker)
-	wg.Add(1)
-	go p.peerUpdates(wg, ticker)
+	if config.GetGlobalCfg().IsBehindNAT() {
+		wg.Add(1)
+		go p.peerUpdates(wg, ticker)
+	}
+
 	wg.Wait()
 
 }

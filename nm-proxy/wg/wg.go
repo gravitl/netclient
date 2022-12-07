@@ -115,23 +115,6 @@ func RunCmd(command string, printerr bool) (string, error) {
 	return string(out), err
 }
 
-// WGIface.Update - updates peer config
-func (w *WGIface) Update(peerConf wgtypes.PeerConfig) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	var err error
-	log.Printf("--------->  Updating peer %+v from interface %s ", peerConf, w.Name)
-	peerConf.UpdateOnly = true
-	config := wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{peerConf},
-	}
-	err = w.configureDevice(config)
-	if err != nil {
-		return fmt.Errorf("received error \"%v\" while Updating peer %s from interface %s", err, peerConf.PublicKey.String(), w.Name)
-	}
-	return nil
-}
-
 // GetPeer - gets the peerinfo from the wg interface
 func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 	wg, err := wgctrl.New()

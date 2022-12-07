@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	// proxy server var for global access
 	NmProxyServer = &ProxyServer{}
 )
 
