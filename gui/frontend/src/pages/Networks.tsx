@@ -1,7 +1,7 @@
 import Grid from "@mui/material/Grid";
-import { Button } from "@mui/material";
+import { Button, TextField } from "@mui/material";
 import LoopIcon from "@mui/icons-material/Loop";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import NetworkTable from "../components/NetworkTable";
 import { Link } from "react-router-dom";
 import { AppRoutes } from "../routes";
@@ -12,6 +12,7 @@ import { main } from "../../wailsjs/go/models";
 function Networks() {
   const [isLoadingNetworks, setIsLoadingNetworks] = useState<boolean>(true);
   const [networks, setNetworks] = useState<main.Network[]>([]);
+  const [networksSearch, setNetworksSearch] = useState<string>('');
   const { networksState, networksDispatch } = useNetworksContext();
 
   const loadNetworks = useCallback(() => {
@@ -29,6 +30,10 @@ function Networks() {
       setIsLoadingNetworks(false);
     };
   }, [setIsLoadingNetworks]);
+
+  const filteredNetworks = useMemo(() => {
+    return networksState.networks.filter(nw => nw.node?.network.toLocaleLowerCase().includes(networksSearch.toLocaleLowerCase()))
+  }, [networksSearch, networksState])
 
   const changeNetworkStatus = useCallback(
     async (networkName: string, newStatus: boolean) => {
@@ -63,9 +68,11 @@ function Networks() {
       </Grid>
 
       <Grid
+        container
         item
         xs={12}
-        justifyContent="center"
+        direction="column"
+        alignItems="center"
         style={{ minHeight: "5rem", maxHeight: "65vh", overflow: "auto" }}
       >
         {isLoadingNetworks ? (
@@ -73,11 +80,23 @@ function Networks() {
             <LoopIcon fontSize="large" className="spinning" />
           </div>
         ) : (
-          <NetworkTable
-            networks={networksState.networks}
-            onNetworkStatusChange={changeNetworkStatus}
-            emptyMsg="No joined network"
-          />
+          <>
+            <Grid item xs={12}>
+              <TextField
+                style={{ width: "40vw" }}
+                placeholder="Search for networks by name"
+                value={networksSearch}
+                onChange={(e) => setNetworksSearch(e.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} marginTop="2rem">
+              <NetworkTable
+                networks={filteredNetworks}
+                onNetworkStatusChange={changeNetworkStatus}
+              />
+            </Grid>
+          </>
         )}
       </Grid>
 
