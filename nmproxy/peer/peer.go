@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/models"
-	"github.com/gravitl/netclient/nm-proxy/proxy"
-	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/proxy"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )

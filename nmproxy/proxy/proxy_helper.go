@@ -12,12 +12,12 @@ import (
 
 	"github.com/c-robinson/iplib"
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/nm-proxy/common"
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/metrics"
-	"github.com/gravitl/netclient/nm-proxy/models"
-	"github.com/gravitl/netclient/nm-proxy/packet"
-	"github.com/gravitl/netclient/nm-proxy/server"
+	"github.com/gravitl/netclient/nmproxy/common"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/metrics"
+	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
+	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netmaker/logger"
 )
 

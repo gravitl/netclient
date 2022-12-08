@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
+	"github.com/gravitl/netclient/nmproxy/common"
 )
 
 // Metric - struct for metric data

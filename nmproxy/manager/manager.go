@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/models"
-	peerpkg "github.com/gravitl/netclient/nm-proxy/peer"
-	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
+	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )

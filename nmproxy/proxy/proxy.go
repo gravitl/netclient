@@ -7,9 +7,9 @@ import (
 	"net"
 	"runtime"
 
-	"github.com/gravitl/netclient/nm-proxy/common"
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/models"
+	"github.com/gravitl/netclient/nmproxy/common"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 )
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nm-proxy/peer"
+	"github.com/gravitl/netclient/nmproxy/peer"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 

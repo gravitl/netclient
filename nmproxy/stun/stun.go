@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gravitl/netclient/nm-proxy/models"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"gortc.io/stun"
 )

@@ -3,8 +3,8 @@ package config
 import (
 	"net"
 
-	"github.com/gravitl/netclient/nm-proxy/models"
-	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
