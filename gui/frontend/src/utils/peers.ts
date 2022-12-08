@@ -1,7 +1,12 @@
 import { Peer } from "../models/Peer";
 
-export  function extractPeerEndpoint(peer: Peer): string {
+export function extractPeerPublicEndpoint(peer: Peer): string {
   return `${peer.Endpoint?.IP}:${peer?.Endpoint?.Port}`
+}
+
+export function extractPeerPrivateEndpoints(peer: Peer): string[] {
+  console.log(peer);
+  return peer.AllowedIPs.map(endpoint => `${endpoint.IP}`)
 }
 
 export function byteArrayToString(byteArray: any): string {
