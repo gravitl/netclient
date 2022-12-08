@@ -22,7 +22,8 @@
   },
   "include": [
     "src",
-    "wailsjs/**/*.ts"
+    "wailsjs/**/*.ts",
+    "tests"
   ],
   "references": [
     {

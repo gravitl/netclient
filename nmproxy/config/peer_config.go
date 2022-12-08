@@ -3,8 +3,8 @@ package config
 import (
 	"net"
 
-	"github.com/gravitl/netclient/nm-proxy/models"
-	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -20,18 +20,18 @@ type wgIfaceConf struct {
 }
 
 // GlobalConfig.IsIfaceNil - checks if ifconfig is nil in the memory config
-func (g *GlobalConfig) IsIfaceNil() bool {
+func (g *Config) IsIfaceNil() bool {
 	return g.ifaceConfig.iface == nil
 }
 
 // GlobalConfig.SetIface - sets the iface value in the config
-func (g *GlobalConfig) SetIface(iface *wg.WGIface) {
+func (g *Config) SetIface(iface *wg.WGIface) {
 	g.ifaceConfig.iface = iface
 	g.setIfaceKeyHash()
 }
 
 // GlobalConfig.GetIface - gets the wg device value
-func (g *GlobalConfig) GetIface() wgtypes.Device {
+func (g *Config) GetIface() wgtypes.Device {
 	var iface wgtypes.Device
 	if g.ifaceConfig.iface != nil {
 		iface = *g.ifaceConfig.iface.Device
@@ -40,14 +40,14 @@ func (g *GlobalConfig) GetIface() wgtypes.Device {
 }
 
 // sets the interface pubky hash in the config
-func (g *GlobalConfig) setIfaceKeyHash() {
+func (g *Config) setIfaceKeyHash() {
 	if !g.IsIfaceNil() {
 		g.ifaceConfig.ifaceKeyHash = models.ConvPeerKeyToHash(g.ifaceConfig.iface.Device.PublicKey.String())
 	}
 }
 
 // GlobalConfig.GetDeviceKeyHash - gets the interface pubkey hash
-func (g *GlobalConfig) GetDeviceKeyHash() string {
+func (g *Config) GetDeviceKeyHash() string {
 	if !g.IsIfaceNil() {
 		return g.ifaceConfig.ifaceKeyHash
 	}
@@ -55,7 +55,7 @@ func (g *GlobalConfig) GetDeviceKeyHash() string {
 }
 
 // GlobalConfig.GetDeviceKeys - fetches interface private,pubkey
-func (g *GlobalConfig) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtypes.Key) {
+func (g *Config) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtypes.Key) {
 	if !g.IsIfaceNil() {
 		privateKey = g.GetIface().PrivateKey
 		publicKey = g.GetIface().PublicKey
@@ -64,7 +64,7 @@ func (g *GlobalConfig) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtype
 }
 
 // GlobalConfig.GetDevicePubKey - fetches device public key
-func (g *GlobalConfig) GetDevicePubKey() (publicKey wgtypes.Key) {
+func (g *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 	if !g.IsIfaceNil() {
 		publicKey = g.GetIface().PublicKey
 	}
@@ -72,18 +72,18 @@ func (g *GlobalConfig) GetDevicePubKey() (publicKey wgtypes.Key) {
 }
 
 // GlobalConfig.CheckIfNetworkExists - checks if network exists
-func (g *GlobalConfig) CheckIfNetworkExists(network string) bool {
+func (g *Config) CheckIfNetworkExists(network string) bool {
 	_, found := g.ifaceConfig.networkPeerMap[network]
 	return found
 }
 
 // GlobalConfig.GetNetworkPeers - fetches all peers in the network
-func (g *GlobalConfig) GetNetworkPeers(network string) models.PeerConnMap {
+func (g *Config) GetNetworkPeers(network string) models.PeerConnMap {
 	return g.ifaceConfig.networkPeerMap[network]
 }
 
 // GlobalConfig.UpdateNetworkPeers - updates all peers in the network
-func (g *GlobalConfig) UpdateNetworkPeers(network string, peers *models.PeerConnMap) {
+func (g *Config) UpdateNetworkPeers(network string, peers *models.PeerConnMap) {
 	if peers != nil {
 		g.ifaceConfig.networkPeerMap[network] = *peers
 	}
@@ -91,7 +91,7 @@ func (g *GlobalConfig) UpdateNetworkPeers(network string, peers *models.PeerConn
 }
 
 // GlobalConfig.SavePeer - saves peer to the config
-func (g *GlobalConfig) SavePeer(network string, connConf *models.Conn) {
+func (g *Config) SavePeer(network string, connConf *models.Conn) {
 	if _, ok := g.ifaceConfig.networkPeerMap[network]; !ok {
 		g.ifaceConfig.networkPeerMap[network] = make(models.PeerConnMap)
 	}
@@ -99,7 +99,7 @@ func (g *GlobalConfig) SavePeer(network string, connConf *models.Conn) {
 }
 
 // GlobalConfig.GetPeer - fetches the peer by network and pubkey
-func (g *GlobalConfig) GetPeer(network, peerPubKey string) (models.Conn, bool) {
+func (g *Config) GetPeer(network, peerPubKey string) (models.Conn, bool) {
 
 	if g.CheckIfNetworkExists(network) {
 		if peerConn, found := g.ifaceConfig.networkPeerMap[network][peerPubKey]; found {
@@ -110,7 +110,7 @@ func (g *GlobalConfig) GetPeer(network, peerPubKey string) (models.Conn, bool) {
 }
 
 // GlobalConfig.UpdatePeer - updates peer by network
-func (g *GlobalConfig) UpdatePeer(network string, updatedPeer *models.Conn) {
+func (g *Config) UpdatePeer(network string, updatedPeer *models.Conn) {
 	if g.CheckIfNetworkExists(network) {
 		if peerConf, found := g.ifaceConfig.networkPeerMap[network][updatedPeer.Key.String()]; found {
 			peerConf.Mutex.Lock()
@@ -122,7 +122,7 @@ func (g *GlobalConfig) UpdatePeer(network string, updatedPeer *models.Conn) {
 }
 
 // GlobalConfig.ResetPeer - resets the peer connection to proxy
-func (g *GlobalConfig) ResetPeer(network, peerKey string) {
+func (g *Config) ResetPeer(network, peerKey string) {
 	if g.CheckIfNetworkExists(network) {
 		if peerConf, found := g.ifaceConfig.networkPeerMap[network][peerKey]; found {
 			peerConf.Mutex.Lock()
@@ -133,7 +133,7 @@ func (g *GlobalConfig) ResetPeer(network, peerKey string) {
 }
 
 // GlobalConfig.RemovePeer - removes the peer from the network peer config
-func (g *GlobalConfig) RemovePeer(network string, peerPubKey string) {
+func (g *Config) RemovePeer(network string, peerPubKey string) {
 	if g.CheckIfNetworkExists(network) {
 		if peerConf, found := g.ifaceConfig.networkPeerMap[network][peerPubKey]; found {
 			peerConf.Mutex.Lock()
@@ -146,12 +146,12 @@ func (g *GlobalConfig) RemovePeer(network string, peerPubKey string) {
 }
 
 // GlobalConfig.DeleteNetworkPeers - deletes all peers in the network from the config
-func (g *GlobalConfig) DeleteNetworkPeers(network string) {
+func (g *Config) DeleteNetworkPeers(network string) {
 	delete(g.ifaceConfig.networkPeerMap, network)
 }
 
 // GlobalConfig.CheckIfPeerExists - checks if peer exists in the config
-func (g *GlobalConfig) CheckIfPeerExists(network, peerPubKey string) bool {
+func (g *Config) CheckIfPeerExists(network, peerPubKey string) bool {
 	if !g.CheckIfNetworkExists(network) {
 		return false
 	}
@@ -160,17 +160,17 @@ func (g *GlobalConfig) CheckIfPeerExists(network, peerPubKey string) bool {
 }
 
 // GlobalConfig.GetNetworkPeerMap - fetches all peers in the network
-func (g *GlobalConfig) GetNetworkPeerMap() map[string]models.PeerConnMap {
+func (g *Config) GetNetworkPeerMap() map[string]models.PeerConnMap {
 	return g.ifaceConfig.networkPeerMap
 }
 
 // GlobalConfig.SavePeerByHash - saves peer by its publicKey hash to the config
-func (g *GlobalConfig) SavePeerByHash(peerInfo *models.RemotePeer) {
+func (g *Config) SavePeerByHash(peerInfo *models.RemotePeer) {
 	g.ifaceConfig.peerHashMap[models.ConvPeerKeyToHash(peerInfo.PeerKey)] = peerInfo
 }
 
 // GlobalConfig.GetPeerInfoByHash - fetches the peerInfo by its pubKey hash
-func (g *GlobalConfig) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer, bool) {
+func (g *Config) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer, bool) {
 
 	if peerInfo, found := g.ifaceConfig.peerHashMap[peerKeyHash]; found {
 		return *peerInfo, found
@@ -179,12 +179,12 @@ func (g *GlobalConfig) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer,
 }
 
 // GlobalConfig.DeletePeerHash - deletes peer by its pubkey hash from config
-func (g *GlobalConfig) DeletePeerHash(peerKey string) {
+func (g *Config) DeletePeerHash(peerKey string) {
 	delete(g.ifaceConfig.peerHashMap, models.ConvPeerKeyToHash(peerKey))
 }
 
 // GlobalConfig.GetExtClientInfo - fetches ext. client from the config by it's endpoint
-func (g *GlobalConfig) GetExtClientInfo(udpAddr *net.UDPAddr) (models.RemotePeer, bool) {
+func (g *Config) GetExtClientInfo(udpAddr *net.UDPAddr) (models.RemotePeer, bool) {
 
 	if udpAddr == nil {
 		return models.RemotePeer{}, false
@@ -197,17 +197,17 @@ func (g *GlobalConfig) GetExtClientInfo(udpAddr *net.UDPAddr) (models.RemotePeer
 }
 
 // GlobalConfig.SaveExtClientInfo - saves the ext. client info to config
-func (g *GlobalConfig) SaveExtClientInfo(peerInfo *models.RemotePeer) {
+func (g *Config) SaveExtClientInfo(peerInfo *models.RemotePeer) {
 	g.ifaceConfig.extSrcIpMap[peerInfo.Endpoint.String()] = peerInfo
 }
 
 // GlobalConfig.DeleteExtClientInfo - deletes the ext. client info from the config
-func (g *GlobalConfig) DeleteExtClientInfo(udpAddr *net.UDPAddr) {
+func (g *Config) DeleteExtClientInfo(udpAddr *net.UDPAddr) {
 	delete(g.ifaceConfig.extSrcIpMap, udpAddr.String())
 }
 
 // GlobalConfig.GetExtClientWaitCfg - fetches the ext. info from wait config
-func (g *GlobalConfig) GetExtClientWaitCfg(peerKey string) (models.RemotePeer, bool) {
+func (g *Config) GetExtClientWaitCfg(peerKey string) (models.RemotePeer, bool) {
 
 	if peerInfo, found := g.ifaceConfig.extClientWaitMap[peerKey]; found {
 		return *peerInfo, found
@@ -216,12 +216,12 @@ func (g *GlobalConfig) GetExtClientWaitCfg(peerKey string) (models.RemotePeer, b
 }
 
 // GlobalConfig.SaveExtclientWaitCfg - saves extclient wait cfg
-func (g *GlobalConfig) SaveExtclientWaitCfg(extPeer *models.RemotePeer) {
+func (g *Config) SaveExtclientWaitCfg(extPeer *models.RemotePeer) {
 	g.ifaceConfig.extClientWaitMap[extPeer.PeerKey] = extPeer
 }
 
 // GlobalConfig.DeleteExtWaitCfg - deletes ext. wait cfg
-func (g *GlobalConfig) DeleteExtWaitCfg(peerKey string) {
+func (g *Config) DeleteExtWaitCfg(peerKey string) {
 	if extPeerCfg, ok := g.ifaceConfig.extClientWaitMap[peerKey]; ok {
 		extPeerCfg.CancelFunc()
 		close(extPeerCfg.CommChan)
@@ -230,7 +230,7 @@ func (g *GlobalConfig) DeleteExtWaitCfg(peerKey string) {
 }
 
 // GlobalConfig.SaveRelayedPeer - saves relayed peer to config
-func (g *GlobalConfig) SaveRelayedPeer(relayedNodePubKey string, peer *models.RemotePeer) {
+func (g *Config) SaveRelayedPeer(relayedNodePubKey string, peer *models.RemotePeer) {
 	if _, ok := g.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)]; !ok {
 		g.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)] = make(map[string]*models.RemotePeer)
 	}
@@ -238,13 +238,13 @@ func (g *GlobalConfig) SaveRelayedPeer(relayedNodePubKey string, peer *models.Re
 }
 
 // GlobalConfig.CheckIfRelayedNodeExists - checks if relayed node exists
-func (g *GlobalConfig) CheckIfRelayedNodeExists(peerHash string) bool {
+func (g *Config) CheckIfRelayedNodeExists(peerHash string) bool {
 	_, found := g.ifaceConfig.relayPeerMap[peerHash]
 	return found
 }
 
 // GlobalConfig.GetRelayedPeer - fectches the relayed peer
-func (g *GlobalConfig) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePeer, bool) {
+func (g *Config) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePeer, bool) {
 
 	if g.CheckIfRelayedNodeExists(srcKeyHash) {
 		if peer, found := g.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
@@ -259,7 +259,7 @@ func (g *GlobalConfig) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.Re
 }
 
 // GlobalConfig.DeleteRelayedPeers - deletes relayed peer info
-func (g *GlobalConfig) DeleteRelayedPeers(network string) {
+func (g *Config) DeleteRelayedPeers(network string) {
 	peersMap := g.GetNetworkPeers(network)
 	for _, peer := range peersMap {
 		if peer.IsRelayed {
@@ -269,7 +269,7 @@ func (g *GlobalConfig) DeleteRelayedPeers(network string) {
 }
 
 // GlobalConfig.UpdateListenPortForRelayedPeer - updates listen port for the relayed peer
-func (g *GlobalConfig) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
+func (g *Config) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
 	if g.CheckIfRelayedNodeExists(srcKeyHash) {
 		if peer, found := g.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
 			peer.Endpoint.Port = port
@@ -284,7 +284,7 @@ func (g *GlobalConfig) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstP
 }
 
 // GlobalConfig.GetInterfaceListenPort - fetches interface listen port from config
-func (g *GlobalConfig) GetInterfaceListenPort() (port int) {
+func (g *Config) GetInterfaceListenPort() (port int) {
 	if !g.IsIfaceNil() {
 		port = g.GetIface().ListenPort
 	}
@@ -292,6 +292,6 @@ func (g *GlobalConfig) GetInterfaceListenPort() (port int) {
 }
 
 // GlobalConfig.UpdateWgIface - updates iface config in memory
-func (g *GlobalConfig) UpdateWgIface(wgIface *wg.WGIface) {
+func (g *Config) UpdateWgIface(wgIface *wg.WGIface) {
 	g.ifaceConfig.iface = wgIface
 }

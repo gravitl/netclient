@@ -25,7 +25,7 @@ func Install() error {
 		return errors.New("path error")
 	}
 	daemon.Stop()
-	if err := daemon.InstallDaemon(); err != nil {
+	if err := daemon.Install(); err != nil {
 		logger.Log(0, "error installing daemon", err.Error())
 		return err
 	}

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"log"
 	"os"
 
@@ -9,13 +10,14 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-// SetupFreebsdDaemon -- sets up daemon for freebsd
-func SetupFreebsdDaemon() error {
+const ExecDir = "/sbin/"
+
+// install -- sets up daemon for freebsd
+func install() error {
 	binarypath, err := os.Executable()
 	if err != nil {
 		return err
 	}
-
 	_, err = os.Stat("/etc/netclient")
 	if os.IsNotExist(err) {
 		os.MkdirAll("/etc/netclient", 0744)
@@ -94,45 +96,75 @@ netclient_args="daemon"`
 			if err != nil {
 				return err
 			}
-			FreebsdDaemon("start")
+			start()
 			return nil
 		}
 	}
 	return nil
 }
 
-// FreebsdDaemon - accepts args to service netclient and applies
-func FreebsdDaemon(command string) {
-	_, _ = ncutils.RunCmdFormatted("service netclient "+command, true)
+func start() error {
+	return service("start")
 }
 
-// CleanupFreebsd - removes config files and netclient binary
-func CleanupFreebsd() {
-	ncutils.RunCmd("service netclient stop", false)
-	RemoveFreebsdDaemon()
+func stop() error {
+	return service("stop")
+}
+
+// service- accepts args to service netclient and applies
+func service(command string) error {
+	if _, err := ncutils.RunCmdFormatted("service netclient "+command, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+// cleanUp- removes config files and netclient binary
+func cleanUp() error {
+	var faults bool
+	if _, err := ncutils.RunCmd("service netclient stop", false); err != nil {
+		faults = true
+	}
+	if err := removeFreebsdDaemon(); err != nil {
+		faults = true
+	}
 	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		logger.Log(1, "Removing netclient configs: ", err.Error())
+		faults = true
 	}
 	if err := os.Remove(ExecDir + "netclient"); err != nil {
 		logger.Log(1, "Removing netclient binary: ", err.Error())
+		faults = true
 	}
 	if err := os.Remove("/var/log/netclient.log"); err != nil {
 		logger.Log(1, "error removing netclient log file", err.Error())
+		faults = true
 	}
+	if faults {
+		return errors.New("error removing removing netclient files and configs")
+	}
+	return nil
 }
 
-// RemoveFreebsdDaemon - remove freebsd daemon
-func RemoveFreebsdDaemon() {
+// removeFreebsdDaemon - remove freebsd daemon
+func removeFreebsdDaemon() error {
+	var faults bool
 	if ncutils.FileExists("/etc/rc.d/netclient") {
 		err := os.Remove("/etc/rc.d/netclient")
 		if err != nil {
 			logger.Log(0, "Error removing /etc/rc.d/netclient. Please investigate.")
+			faults = true
 		}
 	}
 	if ncutils.FileExists("/etc/rc.conf.d/netclient") {
 		err := os.Remove("/etc/rc.conf.d/netclient")
 		if err != nil {
+			faults = true
 			logger.Log(0, "Error removing /etc/rc.conf.d/netclient. Please investigate.")
 		}
 	}
+	if faults {
+		return errors.New("error removing daemon")
+	}
+	return nil
 }

@@ -7,5 +7,5 @@ export interface Peer {
   PresharedKey?: number[];
   PersistentKeepaliveInterval: number;
   ReplaceAllowedIPs: boolean;
-  AllowedIps: { IP: string, Mask: string, }[];
+  AllowedIPs: { IP: string, Mask: string, }[];
 }

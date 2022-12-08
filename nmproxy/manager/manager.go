@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/models"
-	peerpkg "github.com/gravitl/netclient/nm-proxy/peer"
-	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
+	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -57,8 +57,8 @@ type PeerConf struct {
 	Proxy                  bool         `json:"proxy"`
 }
 
-// StartProxyManager - starts the proxy manager loop and listens for events on the Channel provided
-func StartProxyManager(ctx context.Context, managerChan chan *ProxyManagerPayload) {
+// Start - starts the proxy manager loop and listens for events on the Channel provided
+func Start(ctx context.Context, managerChan chan *ProxyManagerPayload) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -91,15 +91,15 @@ func (m *ProxyManagerPayload) configureProxy() error {
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config
 func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
-	if !m.IsRelay && config.GetGlobalCfg().IsRelay(m.Network) {
-		config.GetGlobalCfg().DeleteRelayedPeers(m.Network)
+	if !m.IsRelay && config.GetCfg().IsRelay(m.Network) {
+		config.GetCfg().DeleteRelayedPeers(m.Network)
 	}
-	config.GetGlobalCfg().SetRelayStatus(m.Network, m.IsRelay)
-	config.GetGlobalCfg().SetIngressGwStatus(m.Network, m.IsIngress)
-	if config.GetGlobalCfg().GetRelayedStatus(m.Network) != m.IsRelayed {
+	config.GetCfg().SetRelayStatus(m.Network, m.IsRelay)
+	config.GetCfg().SetIngressGwStatus(m.Network, m.IsIngress)
+	if config.GetCfg().GetRelayedStatus(m.Network) != m.IsRelayed {
 		reset = true
 	}
-	config.GetGlobalCfg().SetRelayedStatus(m.Network, m.IsRelayed)
+	config.GetCfg().SetRelayedStatus(m.Network, m.IsRelayed)
 	if m.IsRelay {
 		m.setRelayedPeers()
 	}
@@ -108,7 +108,7 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 
 // ProxyManagerPayload.setRelayedPeers - processes the payload for the relayed peers
 func (m *ProxyManagerPayload) setRelayedPeers() {
-	g := config.GetGlobalCfg()
+	c := config.GetCfg()
 	for relayedNodePubKey, relayedNodeConf := range m.RelayedPeerConf {
 		for _, peer := range relayedNodeConf.Peers {
 			if peer.Endpoint != nil {
@@ -118,7 +118,7 @@ func (m *ProxyManagerPayload) setRelayedPeers() {
 					PeerKey:  peer.PublicKey.String(),
 					Endpoint: peer.Endpoint,
 				}
-				g.SaveRelayedPeer(relayedNodePubKey, &rPeer)
+				c.SaveRelayedPeer(relayedNodePubKey, &rPeer)
 
 			}
 
@@ -129,18 +129,18 @@ func (m *ProxyManagerPayload) setRelayedPeers() {
 			PeerKey:  relayedNodePubKey,
 			Endpoint: relayedNodeConf.RelayedPeerEndpoint,
 		}
-		g.SaveRelayedPeer(relayedNodePubKey, &relayedNode)
+		c.SaveRelayedPeer(relayedNodePubKey, &relayedNode)
 
 	}
 }
 
 func cleanUpInterface(network string) {
 	logger.Log(1, "Removing proxy configuration for: ", network)
-	peerConnMap := config.GetGlobalCfg().GetNetworkPeers(network)
+	peerConnMap := config.GetCfg().GetNetworkPeers(network)
 	for _, peerI := range peerConnMap {
-		config.GetGlobalCfg().RemovePeer(network, peerI.Key.String())
+		config.GetCfg().RemovePeer(network, peerI.Key.String())
 	}
-	config.GetGlobalCfg().DeleteNetworkPeers(network)
+	config.GetCfg().DeleteNetworkPeers(network)
 
 }
 
@@ -157,7 +157,7 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 	if len(m.Peers) == 0 {
 		return nil, errors.New("no peers to add")
 	}
-	gCfg := config.GetGlobalCfg()
+	gCfg := config.GetCfg()
 	wgIface, err = wg.GetWgIface(m.InterfaceName)
 	if err != nil {
 		logger.Log(1, "Failed get interface config: ", err.Error())
@@ -328,12 +328,12 @@ func (m *ProxyManagerPayload) addNetwork() error {
 					CommChan:            commChan,
 					IsAttachedExtClient: true,
 				}
-				config.GetGlobalCfg().SaveExtclientWaitCfg(&extPeer)
+				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {
 					if addExtClient {
 						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...")
 
-						peerpkg.AddNewPeer(wgInterface, m.Network, peer, peerConf.Address, isRelayed,
+						peerpkg.AddNew(wgInterface, m.Network, peer, peerConf.Address, isRelayed,
 							peerConf.IsExtClient, peerConf.IsAttachedExtClient, relayedTo)
 
 					}
@@ -347,7 +347,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 						if endpoint != nil {
 							addExtClient = true
 							peer.Endpoint = endpoint
-							config.GetGlobalCfg().DeleteExtWaitCfg(peer.PublicKey.String())
+							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}
 					}
@@ -358,7 +358,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 			continue
 		}
 
-		peerpkg.AddNewPeer(wgInterface, m.Network, &peerI, peerConf.Address, isRelayed,
+		peerpkg.AddNew(wgInterface, m.Network, &peerI, peerConf.Address, isRelayed,
 			peerConf.IsExtClient, peerConf.IsAttachedExtClient, relayedTo)
 
 	}

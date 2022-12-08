@@ -12,24 +12,24 @@ import (
 
 	"github.com/c-robinson/iplib"
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/nm-proxy/common"
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/metrics"
-	"github.com/gravitl/netclient/nm-proxy/models"
-	"github.com/gravitl/netclient/nm-proxy/packet"
-	"github.com/gravitl/netclient/nm-proxy/server"
+	"github.com/gravitl/netclient/nmproxy/common"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/metrics"
+	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
+	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netmaker/logger"
 )
 
-// NewProxy - gets new proxy config
-func NewProxy(config models.ProxyConfig) *Proxy {
+// New - gets new proxy config
+func New(config models.Proxy) *Proxy {
 	p := &Proxy{Config: config}
 	p.Ctx, p.Cancel = context.WithCancel(context.Background())
 	return p
 }
 
-// Proxy.proxyToRemote - proxies data from the interface to remote peer
-func (p *Proxy) proxyToRemote(wg *sync.WaitGroup) {
+// Proxy.toRemote - proxies data from the interface to remote peer
+func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	buf := make([]byte, 65000)
@@ -94,7 +94,7 @@ func (p *Proxy) Reset() {
 
 // Proxy.pullLatestConfig - pulls latest peer config
 func (p *Proxy) pullLatestConfig() error {
-	peer, found := config.GetGlobalCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
+	peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
 	if found {
 		p.Config.PeerEndpoint.Port = peer.Config.PeerEndpoint.Port
 	} else {
@@ -146,7 +146,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			// send listen port packet
 			var networkEncoded [packet.NetworkNameSize]byte
 			copy(networkEncoded[:], []byte(p.Config.Network))
-			if config.GetGlobalCfg().HostInfo.PubPort == 0 {
+			if config.GetCfg().HostInfo.PubPort == 0 {
 				continue
 			}
 			m := &packet.ProxyUpdateMessage{
@@ -155,7 +155,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 				Action:         packet.UpdateListenPort,
 				Sender:         p.Config.LocalKey,
 				Reciever:       p.Config.RemoteKey,
-				ListenPort:     uint32(config.GetGlobalCfg().HostInfo.PubPort),
+				ListenPort:     uint32(config.GetCfg().HostInfo.PubPort),
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {
@@ -180,7 +180,7 @@ func (p *Proxy) ProxyPeer() {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go p.proxyToRemote(wg)
+	go p.toRemote(wg)
 	wg.Add(1)
 	go p.startMetricsThread(wg, nil)
 	// if config.GetGlobalCfg().IsBehindNAT() {

@@ -9,11 +9,19 @@ import {
   Grid,
   TableFooter,
   TablePagination,
+  IconButton,
 } from "@mui/material";
 import TablePaginationActions from "@mui/material/TablePagination/TablePaginationActions";
-import React from "react";
+import React, { useCallback } from "react";
 import { Peer } from "../models/Peer";
-import extractPeerEndpoint from "../utils/peers";
+import {
+  extractPeerPublicEndpoint,
+  byteArrayToString,
+  extractPeerPrivateEndpoints,
+} from "../utils/peers";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { writeTextToClipboard } from "../utils/browser";
+import { notifyUser } from "../utils/messaging";
 
 interface PeersTableProps {
   peers: Peer[];
@@ -40,6 +48,14 @@ export default function PeersTable(props: PeersTableProps) {
     setPage(0);
   };
 
+  const onCopyClicked = useCallback(async (text: string) => {
+    try {
+      writeTextToClipboard(text);
+    } catch (err) {
+      await notifyUser("Failed to copy\n" + err);
+    }
+  }, []);
+
   return (
     <>
       {props.peers?.length > 0 ? (
@@ -47,7 +63,9 @@ export default function PeersTable(props: PeersTableProps) {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Peer endpoint</TableCell>
+                <TableCell>Peer endpoint (public)</TableCell>
+                <TableCell>Peer endpoint (private)</TableCell>
+                <TableCell>Public key</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -58,8 +76,50 @@ export default function PeersTable(props: PeersTableProps) {
                   )
                 : props.peers
               ).map((p) => (
-                <TableRow key={`${p.PublicKey}${p.Endpoint}`}>
-                  <TableCell>{extractPeerEndpoint(p)}</TableCell>
+                <TableRow key={`${p.PublicKey}${p.Endpoint}`} data-testid="peer-row">
+                  <TableCell data-testid="public-endpoint">
+                    {
+                      <span
+                        onClick={() =>
+                          onCopyClicked(extractPeerPublicEndpoint(p))
+                        }
+                        title="Copy"
+                        style={{ cursor: "pointer" }}
+                      >
+                        {extractPeerPublicEndpoint(p)}
+                      </span>
+                    }
+                  </TableCell>
+                  <TableCell data-testid="private-endpoint">
+                    {extractPeerPrivateEndpoints(p).map(
+                      (endpoint, i, endpoints) => (
+                        <>
+                          <span key={endpoint + i}>
+                            {endpoint}
+                            <IconButton
+                              size="small"
+                              onClick={() => onCopyClicked(endpoint)}
+                              title="Copy"
+                            >
+                              <ContentCopyIcon
+                                style={{ width: "0.9rem", height: "0.9rem" }}
+                              />
+                            </IconButton>
+                          </span>
+                          {i !== endpoints.length - 1 ? ", " : ""}
+                        </>
+                      )
+                    )}
+                  </TableCell>
+                  <TableCell data-testid="public-key">
+                    <span
+                      onClick={() => onCopyClicked(byteArrayToString(p.PublicKey))}
+                      title="Copy"
+                      style={{ cursor: "pointer" }}
+                    >
+                      {byteArrayToString(p.PublicKey)}
+                    </span>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

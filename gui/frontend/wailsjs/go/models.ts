@@ -12,7 +12,6 @@ export namespace config {
 	    os: string;
 	    debug: boolean;
 	    nodepassword: string;
-	    interface: string;
 	    listenport: number;
 	    // Go type: net.IPNet
 	    localaddress: any;
@@ -45,7 +44,6 @@ export namespace config {
 	        this.os = source["os"];
 	        this.debug = source["debug"];
 	        this.nodepassword = source["nodepassword"];
-	        this.interface = source["interface"];
 	        this.listenport = source["listenport"];
 	        this.localaddress = this.convertValues(source["localaddress"], null);
 	        this.localrange = this.convertValues(source["localrange"], null);

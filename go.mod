@@ -15,9 +15,10 @@ require (
 require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
-	github.com/gravitl/netmaker v0.17.1-0.20221208041327-401488ba7caa
+	github.com/gravitl/netmaker v0.17.1-0.20221208192411-e00199a6502a
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.2.0
+	golang.design/x/clipboard v0.6.3
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/windows v0.5.3
 	gortc.io/stun v1.23.0
@@ -84,6 +85,9 @@ require (
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
+	golang.org/x/exp/shiny v0.0.0-20221208044002-44028be4359e // indirect
+	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd // indirect
+	golang.org/x/mobile v0.0.0-20211207041440-4e6c2922fdee // indirect
 	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220822191816-0ebed06d0094 // indirect
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
