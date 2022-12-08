@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -50,6 +49,7 @@ type Node struct {
 	DNSOn               bool                 `json:"dnson" yaml:"dnson"`
 	IsHub               bool                 `json:"ishub" yaml:"ishub"`
 	PersistentKeepalive int                  `json:"persistentkeepalive" yaml:"persistentkeepalive"`
+	Proxy               bool                 `json:"proxy" yaml:"proxy"`
 	Peers               []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
@@ -151,8 +151,9 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	node.Interfaces = netmakerNode.Interfaces
+	node.Proxy = netmakerNode.Proxy
 	//n.Interface = s.Interface
-	node.Server = strings.Replace(netmakerNode.Server, "api.", "", 1)
+	node.Server = netmakerNode.Server
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
@@ -234,6 +235,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	netmakerNode.IsPending = FormatBool(node.IsPending)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
 	netmakerNode.IsHub = FormatBool(node.IsHub)
+	netmakerNode.Proxy = node.Proxy
 	return &netmakerNode
 }
 

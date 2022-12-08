@@ -9,6 +9,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -23,6 +24,9 @@ func SetPeers() {
 	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
 		if node.Connected {
+			if node.Proxy {
+				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
+			}
 			peers = append(peers, node.Peers...)
 		}
 	}

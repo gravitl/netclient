@@ -14,6 +14,8 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy"
+	"github.com/gravitl/netclient/nmproxy/manager"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
@@ -25,10 +27,25 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet map[string]mqtt.Client
+var ProxyManagerChan = make(chan *manager.ProxyManagerPayload)
 
 type cachedMessage struct {
 	Message  string
 	LastSeen time.Time
+}
+
+func startProxy(wg *sync.WaitGroup) context.CancelFunc {
+
+	ctx, cancel := context.WithCancel(context.Background())
+	for _, server := range config.Servers {
+		wg.Add(1)
+		go func(server config.Server) {
+			defer wg.Done()
+			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort, false)
+		}(server)
+		break
+	}
+	return cancel
 }
 
 // Daemon runs netclient daemon
@@ -47,10 +64,14 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
+	proxyWg := sync.WaitGroup{}
+	stopProxy := startProxy(&proxyWg)
 	for {
 		select {
 		case <-quit:
 			cancel()
+			stopProxy()
+			proxyWg.Wait()
 			logger.Log(0, "shutting down netclient daemon")
 			wg.Wait()
 			for _, mqclient := range ServerSet {
@@ -74,6 +95,7 @@ func Daemon() {
 			}
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
+			stopProxy = startProxy(&proxyWg)
 		}
 	}
 }
@@ -126,7 +148,7 @@ func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("mqtts://%s:%s", broker, port))
+	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
 	opts.SetUsername(server.MQID)
 	opts.SetPassword(server.Password)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
@@ -186,6 +208,15 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 	logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
 	if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "network", node.Network, token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
+	if token := client.Subscribe(fmt.Sprintf("proxy/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(ProxyUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		if token.Error() == nil {
+			logger.Log(0, "###### network:", node.Network, "connection timeout")
+		} else {
+			logger.Log(0, "###### network:", node.Network, token.Error().Error())
+		}
 		return
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to peer updates peers/%s/%s", node.Network, node.ID))

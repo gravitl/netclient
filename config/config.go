@@ -198,7 +198,7 @@ func Lock(lockfile string) error {
 				return nil
 			} else {
 				if debug {
-					logger.Log(0, "unable to write")
+					logger.Log(0, "unable to write: ", err.Error())
 				}
 			}
 		}
