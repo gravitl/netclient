@@ -1,5 +1,5 @@
 import { Grid, Switch, Typography } from "@mui/material";
-import LoadingButton from '@mui/lab/LoadingButton';
+import LoadingButton from "@mui/lab/LoadingButton";
 import { useCallback, useEffect, useState } from "react";
 import LoopIcon from "@mui/icons-material/Loop";
 import PeersTable from "../components/PeersTable";
@@ -7,7 +7,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AppRoutes } from "../routes";
 import { main } from "../../wailsjs/go/models";
 import { useNetworksContext } from "../store/NetworkContext";
-import { getNetwork, leaveAndRefreshNetworks, updateConnectionStatusAndRefreshNetworks } from "../store/helpers";
+import {
+  getNetwork,
+  leaveAndRefreshNetworks,
+  updateConnectionStatusAndRefreshNetworks,
+} from "../store/helpers";
+import { getUserConfirmation, notifyUser } from "../utils/messaging";
 
 export default function NetworkDetailsPage() {
   const [networkDetails, setNetworkDetails] = useState<main.Network | null>(
@@ -23,43 +28,67 @@ export default function NetworkDetailsPage() {
     try {
       setIsLoadingDetails(() => true);
       if (!networkName) {
-        throw new Error("No network name")
+        throw new Error("No network name");
       }
-      const network = await getNetwork(networksState, networkName)
+      const network = await getNetwork(networksState, networkName);
       setNetworkDetails(network);
     } catch (err) {
-      // TODO: notify
-      console.error(err)
+      await notifyUser("Failed to load network\n" + err as string);
+      console.error(err);
     } finally {
       setIsLoadingDetails(() => false);
     }
   }, [setIsLoadingDetails, setNetworkDetails, networksState]);
 
-  const onConnectionStatusChange = useCallback(async (newStatus: boolean) => {
-    try {
-      if (!networkName) {
-        throw new Error("No network name")
+  const onConnectionStatusChange = useCallback(
+    async (newStatus: boolean) => {
+      try {
+        if (!networkName) {
+          throw new Error("No network name");
+        }
+        if (
+          newStatus === false &&
+          !(await getUserConfirmation(
+            `Are you sure you want to disconnect from network: ${networkName}`,
+            "Disconnect from network?"
+          ))
+        ) {
+          return;
+        }
+        await updateConnectionStatusAndRefreshNetworks(
+          networksDispatch,
+          networkName,
+          newStatus
+        );
+      } catch (err) {
+        await notifyUser("Failed to update network status\n" + err as string);
+        console.error(err);
       }
-      await updateConnectionStatusAndRefreshNetworks(networksDispatch, networkName, newStatus)
-    } catch (err) {
-      // TODO: notify
-      console.error(err);
-    }
-  }, [setNetworkDetails, networkDetails, networkName, networksDispatch]);
+    },
+    [setNetworkDetails, networkDetails, networkName, networksDispatch]
+  );
 
   const onLeaveNetwork = useCallback(async () => {
     try {
       if (!networkName) {
-        throw new Error("No network name")
+        throw new Error("No network name");
       }
-      setIsLeavingNetwork(true)
-      await leaveAndRefreshNetworks(networksDispatch, networkName)
+      setIsLeavingNetwork(true);
+      if (
+        !(await getUserConfirmation(
+          `Are you sure you want to leave network: ${networkName}`,
+          "Leave network?"
+        ))
+      ) {
+        return;
+      }
+      await leaveAndRefreshNetworks(networksDispatch, networkName);
       navigate(AppRoutes.NETWORKS_ROUTE, { replace: true });
     } catch (err) {
-      // TODO: notify
-      console.error(err)
+      await notifyUser("Failed to leave network\n" + err as string);
+      console.error(err);
     } finally {
-      setIsLeavingNetwork(false)
+      setIsLeavingNetwork(false);
     }
   }, [navigate, networksDispatch, setIsLeavingNetwork, networkName]);
 
@@ -95,7 +124,9 @@ export default function NetworkDetailsPage() {
             <Grid item xs={3}>
               <div>
                 <Typography variant="overline">Network name</Typography>
-                <Typography variant="h4">{networkDetails?.node?.network}</Typography>
+                <Typography variant="h4">
+                  {networkDetails?.node?.network}
+                </Typography>
               </div>
 
               <div style={{ marginTop: "4rem" }}>
@@ -105,12 +136,18 @@ export default function NetworkDetailsPage() {
                 <br />
                 <Switch
                   checked={networkDetails?.node?.connected}
-                  onChange={() => onConnectionStatusChange(!networkDetails?.node?.connected)}
+                  onChange={() =>
+                    onConnectionStatusChange(!networkDetails?.node?.connected)
+                  }
                 />
               </div>
 
               <div style={{ marginTop: "4rem" }}>
-                <LoadingButton loading={isLeavingNetwork} variant="contained" onClick={onLeaveNetwork}>
+                <LoadingButton
+                  loading={isLeavingNetwork}
+                  variant="contained"
+                  onClick={onLeaveNetwork}
+                >
                   Leave Network
                 </LoadingButton>
               </div>

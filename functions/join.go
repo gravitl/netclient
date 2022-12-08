@@ -375,7 +375,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("modPort error %w", err)
 	}
 	config.UpdateNodeMap(newNode.Network, *newNode)
-	// TODO :: why here ... should be in daemon?
 	peers := newNode.Peers
 	for _, node := range config.GetNodes() {
 		if node.Connected {

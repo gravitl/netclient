@@ -29,7 +29,7 @@ export default function NetworkTable(props: NetworkTableProps) {
   return (
     <>
       {props?.networks?.length > 0 ? (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} style={{ width: '80vw'}}>
           <Table size="small">
             <TableHead>
               <TableRow>

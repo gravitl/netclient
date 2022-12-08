@@ -34,7 +34,7 @@ type Server struct {
 	Nodes       map[string]bool `json:"nodes" yaml:"nodes"`
 	TrafficKey  []byte          `json:"traffickey" yaml:"traffickey"`
 	AccessKey   string          `json:"accesskey" yaml:"accesskey"`
-	StunPort    string          `json:"stun_port" yaml:"stun_port"`
+	StunPort    int             `json:"stun_port" yaml:"stun_port"`
 	StunHost    string          `json:"stun_host" yaml:"stun_host"`
 }
 

@@ -9,7 +9,7 @@ import (
 
 var (
 	// contains all the config related to proxy
-	globalConfig = &GlobalConfig{}
+	config = &Config{}
 )
 
 // Settings - struct for network level settings
@@ -19,8 +19,8 @@ type Settings struct {
 	isRelayed        bool
 }
 
-// GlobalConfig - struct for proxy config
-type GlobalConfig struct {
+// Config - struct for proxy config
+type Config struct {
 	HostInfo      models.HostInfo
 	ProxyStatus   bool
 	isHostNetwork bool
@@ -31,9 +31,9 @@ type GlobalConfig struct {
 	settings      map[string]Settings
 }
 
-// InitializeGlobalCfg - intializes all the variables and sets defaults
-func InitializeGlobalCfg() {
-	globalConfig = &GlobalConfig{
+// InitializeCfg - intializes all the variables and sets defaults
+func InitializeCfg() {
+	config = &Config{
 		ProxyStatus: true,
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
@@ -48,114 +48,115 @@ func InitializeGlobalCfg() {
 	}
 }
 
-// GlobalConfig.IsProxyRunning - checks if proxy is running
-func (g *GlobalConfig) IsProxyRunning() bool {
-	return g.ProxyStatus
+// Config.IsProxyRunning - checks if proxy is running
+func (c *Config) IsProxyRunning() bool {
+	return c.ProxyStatus
 }
 
-// GlobalConfig.SetHostInfo - sets host info
-func (g *GlobalConfig) SetHostInfo(hostInfo models.HostInfo) {
-	g.HostInfo = hostInfo
+// Config.SetHostInfo - sets host info
+func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
+	c.HostInfo = hostInfo
 }
 
-func (g *GlobalConfig) GetHostInfo() models.HostInfo {
-	return g.HostInfo
+// Config.GetHostInfo - gets the host info
+func (c *Config) GetHostInfo() models.HostInfo {
+	return c.HostInfo
 }
 
-// Reset - resets GlobalConfig // to be called only when proxy is shutting down
+// Reset - resets Config // to be called only when proxy is shutting down
 func Reset() {
-	globalConfig = &GlobalConfig{}
+	config = &Config{}
 }
 
-// GetGlobalCfg - fethes GlobalConfig
-func GetGlobalCfg() *GlobalConfig {
-	return globalConfig
+// GetCfg - fethes Config
+func GetCfg() *Config {
+	return config
 }
 
-// GlobalConfig.GetSettings - fetches network settings
-func (g *GlobalConfig) GetSettings(network string) Settings {
-	return g.settings[network]
+// Config.GetSettings - fetches network settings
+func (c *Config) GetSettings(network string) Settings {
+	return c.settings[network]
 }
 
-// GlobalConfig.UpdateSettings - updates network settings
-func (g *GlobalConfig) UpdateSettings(network string, settings Settings) {
-	g.settings[network] = settings
+// Config.UpdateSettings - updates network settings
+func (c *Config) UpdateSettings(network string, settings Settings) {
+	c.settings[network] = settings
 }
 
-// GlobalConfig.DeleteSettings - deletes network settings
-func (g *GlobalConfig) DeleteSettings(network string) {
-	delete(g.settings, network)
+// Config.DeleteSettings - deletes network settings
+func (c *Config) DeleteSettings(network string) {
+	delete(c.settings, network)
 }
 
-// GlobalConfig.SetIsHostNetwork - sets host network value
-func (g *GlobalConfig) SetIsHostNetwork(value bool) {
-	g.isHostNetwork = value
+// Config.SetIsHostNetwork - sets host network value
+func (c *Config) SetIsHostNetwork(value bool) {
+	c.isHostNetwork = value
 }
 
-// GlobalConfig.IsHostNetwork - checks if proxy is using host network
-func (g *GlobalConfig) IsHostNetwork() bool {
-	return g.isHostNetwork
+// Config.IsHostNetwork - checks if proxy is using host network
+func (c *Config) IsHostNetwork() bool {
+	return c.isHostNetwork
 }
 
-// GlobalConfig.SetRelayStatus - sets node relay status for the network
-func (g *GlobalConfig) SetRelayStatus(network string, value bool) {
-	settings := g.GetSettings(network)
+// Config.SetRelayStatus - sets node relay status for the network
+func (c *Config) SetRelayStatus(network string, value bool) {
+	settings := c.GetSettings(network)
 	settings.isRelay = value
-	g.UpdateSettings(network, settings)
+	c.UpdateSettings(network, settings)
 }
 
-// GlobalConfig.IsRelay - fetches relay status value of the node by network
-func (g *GlobalConfig) IsRelay(network string) bool {
+// Config.IsRelay - fetches relay status value of the node by network
+func (c *Config) IsRelay(network string) bool {
 
-	return g.GetSettings(network).isRelay
+	return c.GetSettings(network).isRelay
 }
 
-// GlobalConfig.SetIngressGwStatus - sets ingressGW status
-func (g *GlobalConfig) SetIngressGwStatus(network string, value bool) {
-	settings := g.GetSettings(network)
+// Config.SetIngressGwStatus - sets ingressGW status
+func (c *Config) SetIngressGwStatus(network string, value bool) {
+	settings := c.GetSettings(network)
 	settings.isIngressGateway = value
-	g.UpdateSettings(network, settings)
+	c.UpdateSettings(network, settings)
 }
 
-// GlobalConfig.IsIngressGw - checks if ingressGW by network
-func (g *GlobalConfig) IsIngressGw(network string) bool {
+// Config.IsIngressGw - checks if ingressGW by network
+func (c *Config) IsIngressGw(network string) bool {
 
-	return g.GetSettings(network).isIngressGateway
+	return c.GetSettings(network).isIngressGateway
 }
 
-// GlobalConfig.SetRelayedStatus - sets relayed status by network
-func (g *GlobalConfig) SetRelayedStatus(network string, value bool) {
-	settings := g.GetSettings(network)
+// Config.SetRelayedStatus - sets relayed status by network
+func (c *Config) SetRelayedStatus(network string, value bool) {
+	settings := c.GetSettings(network)
 	settings.isRelayed = value
-	g.UpdateSettings(network, settings)
+	c.UpdateSettings(network, settings)
 }
 
-// GlobalConfig.GetRelayedStatus - gets relayed status
-func (g *GlobalConfig) GetRelayedStatus(network string) bool {
-	return g.GetSettings(network).isRelayed
+// Config.GetRelayedStatus - gets relayed status
+func (c *Config) GetRelayedStatus(network string) bool {
+	return c.GetSettings(network).isRelayed
 }
 
-// GlobalConfig.SetIsServer - sets value for IsServer
-func (g *GlobalConfig) SetIsServer(value bool) {
-	g.isServer = value
+// Config.SetIsServer - sets value for IsServer
+func (c *Config) SetIsServer(value bool) {
+	c.isServer = value
 }
 
-// GlobalConfig.IsServer - checks if proxy operating on server
-func (g *GlobalConfig) IsServer() bool {
-	return g.isServer
+// Config.IsServer - checks if proxy operating on server
+func (c *Config) IsServer() bool {
+	return c.isServer
 }
 
-// GlobalConfig.SetBehindNATStatus - sets NAT status for the device
-func (g *GlobalConfig) SetNATStatus() {
-	if g.HostInfo.PrivIp != nil && models.IsPublicIP(g.HostInfo.PrivIp) {
+// Config.SetBehindNATStatus - sets NAT status for the device
+func (c *Config) SetNATStatus() {
+	if c.HostInfo.PrivIp != nil && models.IsPublicIP(c.HostInfo.PrivIp) {
 		logger.Log(1, "Host is public facing!!!")
 	} else {
-		g.isBehindNAT = true
+		c.isBehindNAT = true
 	}
 
 }
 
-// GlobalConfig.IsBehindNAT - checks if proxy is running behind NAT
-func (g *GlobalConfig) IsBehindNAT() bool {
-	return g.isBehindNAT
+// Config.IsBehindNAT - checks if proxy is running behind NAT
+func (c *Config) IsBehindNAT() bool {
+	return c.isBehindNAT
 }

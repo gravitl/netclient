@@ -1,8 +1,6 @@
 package wireguard
 
 import (
-	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -350,22 +348,4 @@ func apply(n *config.Node, c *wgtypes.Config) error {
 	defer wg.Close()
 
 	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
-}
-
-// GetRealIface - used only for darwin OS retrieves tun iface based on reference iface name from config file
-func GetRealIface(iface string) (string, error) {
-
-	ifacePath := "/var/run/wireguard/" + iface + ".name"
-	if !(ncutils.FileExists(ifacePath)) {
-		return "", errors.New(ifacePath + " does not exist")
-	}
-	realIfaceName, err := ncutils.GetFileAsString(ifacePath)
-	if err != nil {
-		return "", err
-	}
-	realIfaceName = strings.TrimSpace(realIfaceName)
-	if !(ncutils.FileExists(fmt.Sprintf("/var/run/wireguard/%s.sock", realIfaceName))) {
-		return "", errors.New("interface file does not exist")
-	}
-	return realIfaceName, nil
 }
