@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -34,25 +33,34 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 	logger.Log(3, "set adapter state")
-	newAddrs := []net.IPNet{}
-	if nc.Address.Network.IP != nil {
-		newAddrs = append(newAddrs, net.IPNet{IP: nc.Address.Network.IP, Mask: nc.Address.Network.Mask})
-	}
 
-	return nc.applyAddrs(luid, newAddrs)
+	return nc.applyAddrs(luid)
 }
 
-func (nc *NCIface) applyAddrs(luid winipcfg.LUID, addrs []net.IPNet) error {
-	if len(addrs) == 0 {
+// NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
+func (nc *NCIface) ApplyAddrs() error {
+	return nil
+}
+
+func (nc *NCIface) Close() {
+	err := nc.Iface.Close()
+	if err != nil {
+		logger.Log(0, "error closing netclient interface -", err.Error())
+	}
+}
+
+func (nc *NCIface) applyAddrs(luid winipcfg.LUID) error {
+
+	if len(nc.Addresses) == 0 {
 		return fmt.Errorf("no addresses provided")
 	}
 
 	prefixAddrs := []netip.Prefix{}
-	for i := range addrs {
+	for i := range nc.Addresses {
 		// ones, bits := addrs[i].Mask.Size()
 		// fmt.Sprintf("%d %d \n", ones, bits)
-		logger.Log(0, "appending addr", addrs[i].String())
-		pre, err := netip.ParsePrefix(addrs[i].String())
+		logger.Log(0, "appending addr", nc.Addresses[i].Network.String())
+		pre, err := netip.ParsePrefix(nc.Addresses[i].Network.String())
 		if err == nil {
 			prefixAddrs = append(prefixAddrs, pre)
 		} else {

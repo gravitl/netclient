@@ -1,3 +1,5 @@
+//go:generate goversioninfo -icon=resources/windows/netclient.ico -manifest=resources/windows/netclient.exe.manifest.xml -64=true -o=netclient.syso
+
 /*
 Copyright © 2022 Netmaker Team <info@netmaker.io>
 */
