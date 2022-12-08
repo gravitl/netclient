@@ -30,3 +30,5 @@ export function GoOpenDialogue(arg1:frontend.DialogType,arg2:string,arg3:string)
 export function GoParseAccessToken(arg1:string):Promise<models.AccessToken>;
 
 export function GoUninstall():Promise<any>;
+
+export function GoWriteToClipboard(arg1:string):Promise<any>;

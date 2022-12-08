@@ -53,3 +53,7 @@ export function GoParseAccessToken(arg1) {
 export function GoUninstall() {
   return window['go']['main']['App']['GoUninstall']();
 }
+
+export function GoWriteToClipboard(arg1) {
+  return window['go']['main']['App']['GoWriteToClipboard'](arg1);
+}

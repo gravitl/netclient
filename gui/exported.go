@@ -12,6 +12,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.design/x/clipboard"
 )
 
 // App.GoJoinNetworkByToken joins a network with the given token
@@ -164,4 +165,15 @@ func (app *App) GoOpenDialogue(dialogueType runtime.DialogType, msg, title strin
 	}
 
 	return res, nil
+}
+
+// App.GoWriteToClipboard writes given data to clipboard
+func (app *App) GoWriteToClipboard(data string) (any, error) {
+	err := clipboard.Init()
+	if err != nil {
+		return nil, err
+	}
+
+	clipboard.Write(clipboard.FmtText, []byte(data))
+	return nil, nil
 }
