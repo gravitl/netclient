@@ -270,6 +270,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 	nodeForServer.Server = flags.GetString("server")
 	nodeForServer.Password = netclient.HostPass
 	nodeForServer.HostID = netclient.HostID
+	nodeForServer.Proxy = flags.GetBool("proxy")
 	//check if ListenPort was set on command line
 	nodeForServer.UDPHolePunch = "" // set default
 	nodeForServer.ListenPort = flags.GetInt32("port")

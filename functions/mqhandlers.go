@@ -2,11 +2,13 @@ package functions
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/nmproxy/manager"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -98,6 +100,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "could not configure netmaker interface", err.Error())
 		return
 	}
+
 	wireguard.SetPeers()
 	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
 
@@ -137,10 +140,35 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = UpdateLocalListenPort(newNode)
 }
 
+// ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
+func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
+
+	var proxyUpdate manager.ProxyManagerPayload
+	var network = parseNetworkFromTopic(msg.Topic())
+	node := config.GetNode(network)
+	logger.Log(0, "---------> Recieved a proxy update")
+	data, dataErr := decryptMsg(&node, msg.Payload())
+	if dataErr != nil {
+		return
+	}
+	err := json.Unmarshal([]byte(data), &proxyUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling proxy update data"+err.Error())
+		return
+	}
+
+	ProxyManagerChan <- &proxyUpdate
+}
+
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
 func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.PeerUpdate
 	var err error
+	defer func() {
+		if err != nil {
+			log.Println("failed to update peers: ", err)
+		}
+	}()
 	network := parseNetworkFromTopic(msg.Topic())
 	node := config.GetNode(network)
 	server := config.GetServer(node.Server)
@@ -188,6 +216,10 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	wireguard.SetPeers()
+	if node.Proxy {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate.ProxyUpdate
+	}
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {
@@ -201,6 +233,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	UpdateLocalListenPort(&node)
+
 }
 
 func parseNetworkFromTopic(topic string) string {
