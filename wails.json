@@ -10,5 +10,11 @@
   "author": {
     "name": "Netmaker",
     "email": "info@netmaker.io"
+  },
+  "info": {
+  "companyName": "Netmaker",
+  "productName": "netclient",
+  "productVersion": "0.18.0",
+  "comments": "This app controls aspects of Netmaker networks"
   }
 }
