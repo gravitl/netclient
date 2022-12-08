@@ -11,6 +11,8 @@ import (
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.design/x/clipboard"
 )
 
 // App.GoJoinNetworkByToken joins a network with the given token
@@ -147,4 +149,31 @@ func (app *App) GoUninstall() (any, error) {
 		errMsgsBuilder.WriteString(errMsg.Error() + " ")
 	}
 	return nil, fmt.Errorf("%w: "+errMsgsBuilder.String(), err)
+}
+
+// App.GoOpenDialogue opens a dialogue box with title and message.
+// Type of dialogue box is based on the type passed
+func (app *App) GoOpenDialogue(dialogueType runtime.DialogType, msg, title string) (string, error) {
+	res, err := runtime.MessageDialog(app.ctx, runtime.MessageDialogOptions{
+		Type:    dialogueType,
+		Title:   title,
+		Message: msg,
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return res, nil
+}
+
+// App.GoWriteToClipboard writes given data to clipboard
+func (app *App) GoWriteToClipboard(data string) (any, error) {
+	err := clipboard.Init()
+	if err != nil {
+		return nil, err
+	}
+
+	clipboard.Write(clipboard.FmtText, []byte(data))
+	return nil, nil
 }

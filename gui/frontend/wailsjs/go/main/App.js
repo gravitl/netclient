@@ -42,10 +42,18 @@ export function GoLeaveNetwork(arg1) {
   return window['go']['main']['App']['GoLeaveNetwork'](arg1);
 }
 
+export function GoOpenDialogue(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GoOpenDialogue'](arg1, arg2, arg3);
+}
+
 export function GoParseAccessToken(arg1) {
   return window['go']['main']['App']['GoParseAccessToken'](arg1);
 }
 
 export function GoUninstall() {
   return window['go']['main']['App']['GoUninstall']();
+}
+
+export function GoWriteToClipboard(arg1) {
+  return window['go']['main']['App']['GoWriteToClipboard'](arg1);
 }

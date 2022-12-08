@@ -6,6 +6,7 @@ import { GoJoinNetworkByToken, GoParseAccessToken } from "../../wailsjs/go/main/
 import { NetworksContextDispatcherProps, useNetworksContext } from "../store/NetworkContext";
 import { getNetworkDetailsPageUrl } from "../utils/networks";
 import { LoadingButton } from "@mui/lab";
+import { notifyUser } from "../utils/messaging";
 
 function TokenLogin() {
   const [isFormValid, setIsFormValid] = useState(true);
@@ -44,7 +45,7 @@ function TokenLogin() {
       const { network: networkName } = await GoParseAccessToken(token)
       navigate(getNetworkDetailsPageUrl(networkName));
     } catch (err) {
-      // TODO: notify
+      await notifyUser("Failed to connect to network\n" + err as string);
       console.error(err);
     } finally {
       setIsConnecting(false)

@@ -1,25 +1,30 @@
 import Grid from "@mui/material/Grid";
-import { Button } from "@mui/material";
+import { Button, TextField } from "@mui/material";
 import LoopIcon from "@mui/icons-material/Loop";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import NetworkTable from "../components/NetworkTable";
 import { Link } from "react-router-dom";
 import { AppRoutes } from "../routes";
 import { useNetworksContext } from "../store/NetworkContext";
-import { refreshNetworks, updateConnectionStatusAndRefreshNetworks } from "../store/helpers";
+import {
+  refreshNetworks,
+  updateConnectionStatusAndRefreshNetworks,
+} from "../store/helpers";
 import { main } from "../../wailsjs/go/models";
+import { getUserConfirmation, notifyUser } from "../utils/messaging";
 
 function Networks() {
   const [isLoadingNetworks, setIsLoadingNetworks] = useState<boolean>(true);
   const [networks, setNetworks] = useState<main.Network[]>([]);
+  const [networksSearch, setNetworksSearch] = useState<string>('');
   const { networksState, networksDispatch } = useNetworksContext();
 
-  const loadNetworks = useCallback(() => {
+  const loadNetworks = useCallback(async () => {
     setIsLoadingNetworks(true);
     try {
       refreshNetworks(networksDispatch);
     } catch (err) {
-      // TODO: notifications
+      await notifyUser(("Failed to load networks\n" + err) as string);
       console.log(err);
     } finally {
       setIsLoadingNetworks(false);
@@ -30,15 +35,32 @@ function Networks() {
     };
   }, [setIsLoadingNetworks]);
 
+  const filteredNetworks = useMemo(() => {
+    return networksState.networks.filter(nw => nw.node?.network.toLocaleLowerCase().includes(networksSearch.toLocaleLowerCase()))
+  }, [networksSearch, networksState])
+
   const changeNetworkStatus = useCallback(
     async (networkName: string, newStatus: boolean) => {
       try {
         if (!networkName) {
-          throw new Error("No network name")
+          throw new Error("No network name");
         }
-        await updateConnectionStatusAndRefreshNetworks(networksDispatch, networkName, newStatus)
+        if (
+          newStatus === false &&
+          !(await getUserConfirmation(
+            `Are you sure you want to disconnect from network: ${networkName}`,
+            "Disconnect from network?"
+          ))
+        ) {
+          return;
+        }
+        await updateConnectionStatusAndRefreshNetworks(
+          networksDispatch,
+          networkName,
+          newStatus
+        );
       } catch (err) {
-        // TODO: notify
+        await notifyUser(("Failed to update network status\n" + err) as string);
         console.error(err);
       }
     },
@@ -63,9 +85,11 @@ function Networks() {
       </Grid>
 
       <Grid
+        container
         item
         xs={12}
-        justifyContent="center"
+        direction="column"
+        alignItems="center"
         style={{ minHeight: "5rem", maxHeight: "65vh", overflow: "auto" }}
       >
         {isLoadingNetworks ? (
@@ -73,11 +97,23 @@ function Networks() {
             <LoopIcon fontSize="large" className="spinning" />
           </div>
         ) : (
-          <NetworkTable
-            networks={networksState.networks}
-            onNetworkStatusChange={changeNetworkStatus}
-            emptyMsg="No joined network"
-          />
+          <>
+            <Grid item xs={12}>
+              <TextField
+                style={{ width: "40vw" }}
+                placeholder="Search for networks by name"
+                value={networksSearch}
+                onChange={(e) => setNetworksSearch(e.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} marginTop="2rem">
+              <NetworkTable
+                networks={filteredNetworks}
+                onNetworkStatusChange={changeNetworkStatus}
+              />
+            </Grid>
+          </>
         )}
       </Grid>
 
