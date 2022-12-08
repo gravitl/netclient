@@ -140,6 +140,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = UpdateLocalListenPort(newNode)
 }
 
+// ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
 func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	var proxyUpdate manager.ProxyManagerPayload

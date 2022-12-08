@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+// Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunAddr, stunPort string, fromServer bool) {
 
 	if config.GetGlobalCfg().IsProxyRunning() {

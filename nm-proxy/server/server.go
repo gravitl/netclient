@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	// proxy server var for global access
+	// NmProxyServer - proxy server for global access
 	NmProxyServer = &ProxyServer{}
 )
 
@@ -271,11 +271,10 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 }
 
-// Create - creats a proxy listener
+// ProxyServer.CreateProxyServer - creats a proxy listener
 // port - port for proxy to listen on localhost
 // bodySize - leave 0 to use default
 // addr - the address for proxy to listen on
-// forwards - indicate address to forward to, {"<address:port>",...} format
 func (p *ProxyServer) CreateProxyServer(port, bodySize int, addr string) (err error) {
 	if p == nil {
 		p = &ProxyServer{}

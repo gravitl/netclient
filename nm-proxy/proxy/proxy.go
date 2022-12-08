@@ -38,7 +38,7 @@ func (p *Proxy) Start() error {
 		logger.Log(1, "failed to get wg listen addr: ", err.Error())
 		return err
 	}
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" { // on darwin need listen on alias ip that was added to lo0
 		wgListenAddr.IP = net.ParseIP(addr)
 	}
 	p.LocalConn, err = net.DialUDP("udp", &net.UDPAddr{
@@ -73,7 +73,7 @@ func (p *Proxy) Close() {
 	logger.Log(0, "------> Closing Proxy for ", p.Config.RemoteKey.String())
 	p.Cancel()
 	p.LocalConn.Close()
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" { // on darwin need to add alias for additional address in lo0 range
 		host, _, err := net.SplitHostPort(p.LocalConn.LocalAddr().String())
 		if err != nil {
 			logger.Log(0, "Failed to split host: ", err.Error())

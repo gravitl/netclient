@@ -3,7 +3,6 @@ package wireguard
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -369,40 +368,4 @@ func GetRealIface(iface string) (string, error) {
 		return "", errors.New("interface file does not exist")
 	}
 	return realIfaceName, nil
-}
-
-func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
-	wg, err := wgctrl.New()
-	if err != nil {
-		return wgtypes.Peer{}, err
-	}
-	defer func() {
-		err = wg.Close()
-		if err != nil {
-			log.Printf("got error while closing wgctl: %v", err)
-		}
-	}()
-
-	wgDevice, err := wg.Device(ifaceName)
-	if err != nil {
-		return wgtypes.Peer{}, err
-	}
-	for _, peer := range wgDevice.Peers {
-		if peer.PublicKey.String() == peerPubKey {
-			return peer, nil
-		}
-	}
-	return wgtypes.Peer{}, fmt.Errorf("peer not found")
-}
-
-func GetIfaceConfig(ifacename string) (*wgtypes.Device, error) {
-	wgClient, err := wgctrl.New()
-	if err != nil {
-		return nil, err
-	}
-	device, err := wgClient.Device(ifacename)
-	if err != nil {
-		return nil, err
-	}
-	return device, nil
 }
