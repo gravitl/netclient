@@ -1,4 +1,4 @@
-package main
+package gui
 
 import (
 	"context"
@@ -21,14 +21,14 @@ func NewApp() *App {
 	return &App{}
 }
 
-// startup is called when the app starts. The context is saved
+// App.Startup is called when the app starts. The context is saved
 // so we can call the runtime methods
-func (a *App) startup(ctx context.Context) {
+func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// getAppMenu builds and returns the application menu
-func getAppMenu(app *App) *menu.Menu {
+// GetAppMenu builds and returns the application menu
+func GetAppMenu(app *App) *menu.Menu {
 	menu := menu.NewMenu()
 
 	fileMenu := menu.AddSubmenu("File")

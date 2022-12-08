@@ -1,0 +1,20 @@
+{
+  "name": "netclient-2-0",
+  "outputfilename": "netclient",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "frontend:dir": "gui/frontend",
+  "appargs": "gui",
+  "author": {
+    "name": "Netmaker",
+    "email": "info@netmaker.io"
+  },
+  "info": {
+  "companyName": "Netmaker",
+  "productName": "netclient",
+  "productVersion": "0.18.0",
+  "comments": "This app controls aspects of Netmaker networks"
+  }
+}
