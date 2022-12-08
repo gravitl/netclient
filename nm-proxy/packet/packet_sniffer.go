@@ -3,6 +3,7 @@ package packet
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -13,8 +14,8 @@ import (
 )
 
 // StartSniffer - sniffs the packets coming out of the interface
-func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extClientAddr string, port int) {
-	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName)
+func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extClientAddr string) {
+	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName, ingGwAddr, extInternalIP, extClientAddr)
 	var (
 		snapshotLen int32 = 1024
 		promiscuous bool  = false
@@ -22,6 +23,24 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extClientAddr strin
 		timeout     time.Duration = 1 * time.Microsecond
 		handle      *pcap.Handle
 	)
+	toExtClientConn, err := net.DialIP("ip:icmp", &net.IPAddr{
+		IP: net.ParseIP("10.235.166.2"),
+	}, &net.IPAddr{
+		IP: net.ParseIP(extClientAddr),
+	})
+	if err != nil {
+		log.Println("QUTIING SNIFFER: ", err)
+		return
+	}
+	toPeer, err := net.DialIP("ip:icmp", &net.IPAddr{
+		IP: net.ParseIP(extInternalIP),
+	}, &net.IPAddr{
+		IP: net.ParseIP("10.235.166.2"),
+	})
+	if err != nil {
+		log.Println("1 QUTIING SNIFFER: ", err)
+		return
+	}
 	// Open device
 	handle, err = pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
@@ -43,7 +62,7 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extClientAddr strin
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Log(1, fmt.Sprint("Stopping packet sniffer for iface: ", ifaceName, " port: ", port))
+			logger.Log(1, fmt.Sprint("Stopping packet sniffer for iface: ", ifaceName))
 			return
 		default:
 			packet, err := packetSource.NextPacket()
@@ -59,20 +78,36 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extClientAddr strin
 					// IHL (IP Header Length in 32-bit words)
 					// TOS, Length, Id, Flags, FragOffset, TTL, Protocol (TCP?),
 					// Checksum, SrcIP, DstIP
-					fmt.Println("#########################")
-					fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
-					fmt.Println("Protocol: ", ip.Protocol.String())
-					if (ip.SrcIP.String() == extClientAddr && ip.DstIP.String() != ingGwAddr) ||
-						(ip.DstIP.String() == extClientAddr && ip.SrcIP.String() != ingGwAddr) {
 
-						logger.Log(1, "-----> Fowarding PKT From: ", ip.SrcIP.String(), " to: ", ip.DstIP.String())
-						c, err := net.Dial("ip", ip.DstIP.String())
-						if err == nil {
-							c.Write(ip.Payload)
-							c.Close()
-						} else {
-							logger.Log(1, "------> Failed to forward packet from sniffer: ", err.Error())
+					// if (ip.SrcIP.String() == extClientAddr && ip.DstIP.String() != ingGwAddr) ||
+					// 	(ip.DstIP.String() == extClientAddr && ip.SrcIP.String() != ingGwAddr) {
 
+					// 	logger.Log(1, "-----> Fowarding PKT From: ", ip.SrcIP.String(), " to: ", ip.DstIP.String())
+					// 	c, err := net.Dial("ip", ip.DstIP.String())
+					// 	if err == nil {
+					// 		c.Write(ip.Payload)
+					// 		c.Close()
+					// 	} else {
+					// 		logger.Log(1, "------> Failed to forward packet from sniffer: ", err.Error())
+
+					// 	}
+					// }
+					if ip.SrcIP.String() == extClientAddr && ip.DstIP.String() == "10.235.166.2" {
+						fmt.Println("############ SENDING TO PEER #############")
+						fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
+						fmt.Println("Protocol: ", ip.Protocol.String())
+						_, err := toPeer.Write(ip.Payload)
+						if err != nil {
+							log.Println("falied to send it to peer from ext cleint", err)
+						}
+					} else if ip.SrcIP.String() == "10.235.166.2" && ip.DstIP.String() == extInternalIP {
+						fmt.Println("########## SENDING TO EXT ###############")
+						fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
+						fmt.Println("Protocol: ", ip.Protocol.String())
+
+						_, err := toExtClientConn.Write(ip.Payload)
+						if err != nil {
+							log.Println("falied to send it to  ext cleint", err)
 						}
 					}
 
