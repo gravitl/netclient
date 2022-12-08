@@ -1,0 +1,12 @@
+{
+  "name": "netclient-2-0",
+  "outputfilename": "netclient",
+  "gui:frontend:install": "npm install",
+  "gui:frontend:build": "npm run build",
+  "gui:frontend:dev:watcher": "npm run dev",
+  "gui:frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Netmaker",
+    "email": "info@netmaker.io"
+  }
+}
