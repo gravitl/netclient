@@ -49,6 +49,7 @@ type RelayedConf struct {
 // PeerConf - struct for peer config in the network
 type PeerConf struct {
 	IsExtClient            bool         `json:"is_ext_client"`
+	ExtInternalIp          string       `json:"ext_internal_ip"`
 	Address                string       `json:"address"`
 	IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
 	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
