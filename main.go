@@ -9,6 +9,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
@@ -28,7 +29,7 @@ func main() {
 
 	ncArgs := os.Args
 	if len(ncArgs) > 1 && ncArgs[1] != "gui" ||
-		len(ncArgs) == 1 {
+		len(ncArgs) == 1 && runtime.GOOS != "windows" { // windows by default uses gui
 		config.SetVersion(version)
 		cmd.Execute()
 	} else {
