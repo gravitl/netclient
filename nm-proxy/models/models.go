@@ -22,8 +22,8 @@ const (
 // PeerConnMap - type for peer conn config map
 type PeerConnMap map[string]*Conn
 
-// ProxyConfig - struct for proxy config
-type ProxyConfig struct {
+// Proxy - struct for proxy config
+type Proxy struct {
 	RemoteKey           wgtypes.Key
 	LocalKey            wgtypes.Key
 	WgInterface         *wg.WGIface
@@ -45,7 +45,7 @@ type Conn struct {
 	IsRelayed           bool
 	RelayedEndpoint     *net.UDPAddr
 	IsAttachedExtClient bool
-	Config              ProxyConfig
+	Config              Proxy
 	StopConn            func()
 	ResetConn           func()
 	LocalConn           net.Conn

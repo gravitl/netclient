@@ -17,7 +17,7 @@ import (
 type Proxy struct {
 	Ctx        context.Context
 	Cancel     context.CancelFunc
-	Config     models.ProxyConfig
+	Config     models.Proxy
 	RemoteConn *net.UDPAddr
 	LocalConn  net.Conn
 }
@@ -97,7 +97,7 @@ func GetInterfaceListenAddr(port int) (*net.UDPAddr, error) {
 	if err != nil {
 		return udpAddr, err
 	}
-	if !config.GetGlobalCfg().IsHostNetwork() {
+	if !config.GetCfg().IsHostNetwork() {
 		addrs, err := getBroadCastAddress()
 		if err != nil {
 			return udpAddr, err

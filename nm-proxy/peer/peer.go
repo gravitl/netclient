@@ -15,14 +15,14 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// AddNewPeer - adds new peer to proxy config and starts proxying the peer
-func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, peerAddr string,
+// AddNew - adds new peer to proxy config and starts proxying the peer
+func AddNew(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, peerAddr string,
 	isRelayed, isExtClient, isAttachedExtClient bool, relayTo *net.UDPAddr) error {
 	if peer.PersistentKeepaliveInterval == nil {
 		d := time.Second * 25
 		peer.PersistentKeepaliveInterval = &d
 	}
-	c := models.ProxyConfig{
+	c := models.Proxy{
 		LocalKey:            wgInterface.Device.PublicKey,
 		RemoteKey:           peer.PublicKey,
 		WgInterface:         wgInterface,
@@ -31,7 +31,7 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
 		Network:             network,
 	}
-	p := proxy.NewProxy(c)
+	p := proxy.New(c)
 	peerPort := models.NmProxyPort
 	if isExtClient && isAttachedExtClient {
 		peerPort = peer.Endpoint.Port
@@ -77,11 +77,11 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 		IsAttachedExtClient: isAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
-	config.GetGlobalCfg().SavePeer(network, &connConf)
-	config.GetGlobalCfg().SavePeerByHash(&rPeer)
+	config.GetCfg().SavePeer(network, &connConf)
+	config.GetCfg().SavePeerByHash(&rPeer)
 
 	if isAttachedExtClient {
-		config.GetGlobalCfg().SaveExtClientInfo(&rPeer)
+		config.GetCfg().SaveExtClientInfo(&rPeer)
 	}
 	return nil
 }
@@ -89,11 +89,11 @@ func AddNewPeer(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfi
 // SetPeersEndpointToProxy - sets peer endpoints to local addresses connected to proxy
 func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	logger.Log(1, "Setting peers endpoints to proxy: ", network)
-	if !config.GetGlobalCfg().ProxyStatus {
+	if !config.GetCfg().ProxyStatus {
 		return peers
 	}
 	for i := range peers {
-		proxyPeer, found := config.GetGlobalCfg().GetPeer(network, peers[i].PublicKey.String())
+		proxyPeer, found := config.GetCfg().GetPeer(network, peers[i].PublicKey.String())
 		if found {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr

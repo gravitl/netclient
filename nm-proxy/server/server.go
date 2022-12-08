@@ -41,7 +41,7 @@ func (p *ProxyServer) Close() {
 	logger.Log(1, "--------->### Shutting down Proxy.....")
 	// clean up proxy connections
 
-	for _, peerConnMap := range config.GetGlobalCfg().GetNetworkPeerMap() {
+	for _, peerConnMap := range config.GetCfg().GetNetworkPeerMap() {
 		for _, peerConnI := range peerConnMap {
 			peerConnI.Mutex.Lock()
 			peerConnI.StopConn()
@@ -106,7 +106,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		// calc latency
 		if err == nil {
 			logger.Log(3, fmt.Sprintf("------->Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String()))
-			_, pubKey := config.GetGlobalCfg().GetDeviceKeys()
+			_, pubKey := config.GetCfg().GetDeviceKeys()
 			network := packet.DecodeNetwork(metricMsg.NetworkEncoded)
 			if metricMsg.Sender == pubKey {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
@@ -138,7 +138,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 			} else {
 				// metric packet needs to be relayed
-				if config.GetGlobalCfg().IsRelay(network) {
+				if config.GetCfg().IsRelay(network) {
 					var srcPeerKeyHash, dstPeerKeyHash string
 					if metricMsg.Reply == 1 {
 						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
@@ -160,13 +160,13 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			switch msg.Action {
 			case packet.UpdateListenPort:
 				network := packet.DecodeNetwork(msg.NetworkEncoded)
-				if peer, found := config.GetGlobalCfg().GetPeer(network, msg.Sender.String()); found {
-					if config.GetGlobalCfg().IsRelay(network) && config.GetGlobalCfg().GetDevicePubKey() != msg.Reciever {
+				if peer, found := config.GetCfg().GetPeer(network, msg.Sender.String()); found {
+					if config.GetCfg().IsRelay(network) && config.GetCfg().GetDevicePubKey() != msg.Reciever {
 						// update relay peer config
-						if peer, found := config.GetGlobalCfg().GetRelayedPeer(models.ConvPeerKeyToHash(msg.Sender.String()),
+						if peer, found := config.GetCfg().GetRelayedPeer(models.ConvPeerKeyToHash(msg.Sender.String()),
 							models.ConvPeerKeyToHash(msg.Reciever.String())); found {
 							if peer.Endpoint.Port != int(msg.ListenPort) {
-								config.GetGlobalCfg().UpdateListenPortForRelayedPeer(int(msg.ListenPort),
+								config.GetCfg().UpdateListenPortForRelayedPeer(int(msg.ListenPort),
 									models.ConvPeerKeyToHash(msg.Sender.String()), models.ConvPeerKeyToHash(msg.Reciever.String()))
 							}
 
@@ -176,9 +176,9 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 						if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
 							// update peer conn
 							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
-							config.GetGlobalCfg().UpdatePeer(network, &peer)
+							config.GetCfg().UpdatePeer(network, &peer)
 							logger.Log(1, "--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
-							config.GetGlobalCfg().ResetPeer(network, peer.Key.String())
+							config.GetCfg().ResetPeer(network, peer.Key.String())
 							return
 						}
 					}
@@ -189,7 +189,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		}
 	// consume handshake message for ext clients
 	case packet.MessageInitiationType:
-		priv, pub := config.GetGlobalCfg().GetDeviceKeys()
+		priv, pub := config.GetCfg().GetDeviceKeys()
 		peerKey, err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n],
 			packet.NoisePublicKey(pub), packet.NoisePrivateKey(priv))
 		if err != nil {
@@ -197,7 +197,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		} else {
 
 			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
-			if peerInfo, ok := config.GetGlobalCfg().GetExtClientWaitCfg(peerKey); ok {
+			if peerInfo, ok := config.GetCfg().GetExtClientWaitCfg(peerKey); ok {
 				peerInfo.CommChan <- source
 			}
 
@@ -207,7 +207,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	isExtClient := false
-	if peerInfo, ok := config.GetGlobalCfg().GetExtClientInfo(source); ok {
+	if peerInfo, ok := config.GetCfg().GetExtClientInfo(source); ok {
 		_, err := peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
 			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
@@ -224,7 +224,7 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 
 func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {
 	// check for routing map and relay to right proxy
-	if remotePeer, ok := config.GetGlobalCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
+	if remotePeer, ok := config.GetCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
 
 		logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s:%d ], [ DstHashKey: %s ] \n",
 			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), remotePeer.Endpoint.Port, dstPeerKeyHash))
@@ -241,12 +241,12 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 	var err error
 	//logger.Log(0,"--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
-	if config.GetGlobalCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetGlobalCfg().IsRelay(network) {
+	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsRelay(network) {
 		p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
 
-	if peerInfo, ok := config.GetGlobalCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
+	if peerInfo, ok := config.GetCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
 
 		logger.Log(0, fmt.Sprintf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
