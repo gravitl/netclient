@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: 1.19
-      - name: run tests
+      - name: Run Go tests
         run: |
           sudo apt update
           go test -p 1 ./... -v
@@ -38,6 +38,10 @@ jobs:
         env:
           DATABASE: sqlite
           CLIENT_MODE: "off"
+      - name: Run GUI (React) tests
+        run: |
+          npm run test
+        working-directory: './gui/frontend'
   linux-gui:
     strategy:
       fail-fast: false
