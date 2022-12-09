@@ -7,7 +7,9 @@ import (
 	"net"
 
 	"github.com/gravitl/netclient/nmproxy/config"
+
 	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -50,6 +52,7 @@ type RelayedConf struct {
 type PeerConf struct {
 	IsExtClient            bool         `json:"is_ext_client"`
 	Address                string       `json:"address"`
+	ExtInternalIp          string       `json:"ext_internal_ip"`
 	IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
 	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
 	IsRelayed              bool         `json:"is_relayed"`
@@ -318,7 +321,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 		if peerConf.IsAttachedExtClient {
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
 			go func(wgInterface *wg.WGIface, peer *wgtypes.PeerConfig,
-				isRelayed bool, relayTo *net.UDPAddr, peerConf PeerConf) {
+				isRelayed bool, relayTo *net.UDPAddr, peerConf PeerConf, ingGwAddr string) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 30)
 				ctx, cancel := context.WithCancel(context.Background())
@@ -332,7 +335,8 @@ func (m *ProxyManagerPayload) addNetwork() error {
 				defer func() {
 					if addExtClient {
 						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...")
-
+						ctx, _ := context.WithCancel(context.Background())
+						go packet.StartSniffer(ctx, wgInterface.Name, ingGwAddr, peerConf.ExtInternalIp, peerConf.Address)
 						peerpkg.AddNew(wgInterface, m.Network, peer, peerConf.Address, isRelayed,
 							peerConf.IsExtClient, peerConf.IsAttachedExtClient, relayedTo)
 
@@ -354,7 +358,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 
 				}
 
-			}(wgInterface, &peerI, isRelayed, relayedTo, peerConf)
+			}(wgInterface, &peerI, isRelayed, relayedTo, peerConf, m.WgAddr)
 			continue
 		}
 

@@ -23,24 +23,24 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extC
 		timeout     time.Duration = 1 * time.Microsecond
 		handle      *pcap.Handle
 	)
-	toExtClientConn, err := net.DialIP("ip:icmp", &net.IPAddr{
-		IP: net.ParseIP(ingGwAddr),
-	}, &net.IPAddr{
-		IP: net.ParseIP(extClientAddr),
-	})
-	if err != nil {
-		log.Println("QUTIING SNIFFER: ", err)
-		return
-	}
-	toPeer, err := net.DialIP("ip:icmp", &net.IPAddr{
-		IP: net.ParseIP(extInternalIP),
-	}, &net.IPAddr{
-		IP: net.ParseIP("10.235.166.2"),
-	})
-	if err != nil {
-		log.Println("1 QUTIING SNIFFER: ", err)
-		return
-	}
+	// toExtClientConn, err := net.DialIP("ip:icmp", &net.IPAddr{
+	// 	IP: net.ParseIP(ingGwAddr),
+	// }, &net.IPAddr{
+	// 	IP: net.ParseIP(extClientAddr),
+	// })
+	// if err != nil {
+	// 	log.Println("QUTIING SNIFFER: ", err)
+	// 	return
+	// }
+	// toPeer, err := net.DialIP("ip:icmp", &net.IPAddr{
+	// 	IP: net.ParseIP(extInternalIP),
+	// }, &net.IPAddr{
+	// 	IP: net.ParseIP("10.235.166.1"),
+	// })
+	// if err != nil {
+	// 	log.Println("1 QUTIING SNIFFER: ", err)
+	// 	return
+	// }
 	// Open device
 	handle, err = pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
@@ -92,23 +92,25 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extC
 
 					// 	}
 					// }
-					if ip.SrcIP.String() == extClientAddr && ip.DstIP.String() == "10.235.166.2" {
-						fmt.Println("############ SENDING TO PEER #############")
-						fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
-						fmt.Println("Protocol: ", ip.Protocol.String())
-						_, err := toPeer.Write(ip.Payload)
-						if err != nil {
-							log.Println("falied to send it to peer from ext cleint", err)
-						}
-					} else if ip.SrcIP.String() == "10.235.166.2" && ip.DstIP.String() == extInternalIP {
-						fmt.Println("########## SENDING TO EXT ###############")
-						fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
-						fmt.Println("Protocol: ", ip.Protocol.String())
+					if ip.SrcIP.String() == extClientAddr && ip.DstIP.String() == "10.235.166.1" {
+						// fmt.Println("############ SENDING TO PEER #############")
+						// fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
+						// fmt.Println("Protocol: ", ip.Protocol.String())
+						// _, err := toPeer.Write(ip.Payload)
+						// if err != nil {
+						// 	log.Println("falied to send it to peer from ext cleint", err)
+						// }
+						sendPktsV1(handle, packet, ip.SrcIP.String(), ip.DstIP.String(), ingGwAddr, extInternalIP, extClientAddr)
+					} else if ip.SrcIP.String() == "10.235.166.1" && ip.DstIP.String() == extInternalIP {
+						fmt.Println("########## SENDING TO DST EXT ###############")
+						// fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
+						// fmt.Println("Protocol: ", ip.Protocol.String())
 
-						_, err := toExtClientConn.Write(ip.Payload)
-						if err != nil {
-							log.Println("falied to send it to  ext cleint", err)
-						}
+						// _, err := toExtClientConn.Write(ip.Payload)
+						// if err != nil {
+						// 	log.Println("falied to send it to  ext cleint", err)
+						// }
+						sendPktsV1(handle, packet, ip.SrcIP.String(), ip.DstIP.String(), ingGwAddr, extInternalIP, extClientAddr)
 					}
 
 					fmt.Println("#########################")
@@ -116,6 +118,62 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extC
 			}
 		}
 
+	}
+}
+func sendPktsV1(handle *pcap.Handle, pkt gopacket.Packet, from, to, ingGwAddr, extInternalIP, extClientAddr string) {
+	packetData := pkt.Data()
+
+	// fmt.Println("Hex dump of real IP packet taken as input:\n")
+	// fmt.Println(hex.Dump(packetData))
+
+	packet := gopacket.NewPacket(packetData, layers.LayerTypeIPv4, gopacket.Default)
+	// packet := pkt
+	//log.Println("-----------> SENDING ICMP PACKET FROM: ", from, " DST: ", to)
+	// err := handle.WritePacketData(pkt.Data())
+	// if err != nil {
+	// 	log.Println("failed to write to interface: ", err)
+	// }
+	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+		ip := ipLayer.(*layers.IPv4)
+		log.Printf(" ACTUAL HEREEEEE FROM: %s TO %s", ip.SrcIP.String(), ip.DstIP.String())
+		srcIp := ""
+		dstIp := ""
+		if ip.SrcIP.String() == extClientAddr {
+			srcIp = extInternalIP
+			dstIp = to
+		}
+		if ip.DstIP.String() == extInternalIP {
+			srcIp = from
+			dstIp = extClientAddr
+		}
+		if icmpLayer := packet.Layer(layers.LayerTypeICMPv4); icmpLayer != nil {
+			icmp := icmpLayer.(*layers.ICMPv4)
+			fmt.Println(icmp.Id)
+			ip.SrcIP = net.ParseIP(srcIp)
+			ip.DstIP = net.ParseIP(dstIp)
+			//log.Printf(" SENDING HEREEEEE FROM: %s TO %s", ip.SrcIP.String(), ip.DstIP.String())
+			options := gopacket.SerializeOptions{
+				ComputeChecksums: true,
+				FixLengths:       true,
+			}
+
+			// tcp.SetNetworkLayerForChecksum(ip)
+
+			newBuffer := gopacket.NewSerializeBuffer()
+			err := gopacket.SerializePacket(newBuffer, options, packet)
+			if err != nil {
+				panic(err)
+			}
+			outgoingPacket := newBuffer.Bytes()
+
+			// fmt.Println("Hex dump of go packet serialization output:\n")
+			// fmt.Println(hex.Dump(outgoingPacket))
+			log.Println("-----------> SENDING ICMP PACKET FROM: ", ip.SrcIP.String(), " DST: ", ip.DstIP.String())
+			err = handle.WritePacketData(outgoingPacket)
+			if err != nil {
+				log.Println("failed to write to interface: ", err)
+			}
+		}
 	}
 }
 
