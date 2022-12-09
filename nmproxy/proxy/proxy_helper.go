@@ -86,9 +86,20 @@ func (p *Proxy) Reset() {
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
 		logger.Log(0, "couldn't perform reset: ", p.Config.RemoteKey.String(), err.Error())
-		return
 	}
 	p.Start()
+	// update peer configs
+	if peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String()); found {
+		peer.Config = p.Config
+		peer.LocalConn = p.LocalConn
+		peer.ResetConn = p.Reset
+		peer.StopConn = p.Close
+		config.GetCfg().SavePeer(p.Config.Network, &peer)
+	}
+	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.RemoteKey.String())); found {
+		peer.LocalConn = p.LocalConn
+		config.GetCfg().SavePeerByHash(&peer)
+	}
 
 }
 
