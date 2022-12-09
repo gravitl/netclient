@@ -2,6 +2,7 @@ package packet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -10,12 +11,21 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
 )
 
 // StartSniffer - sniffs the packets coming out of the interface
-func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extClientAddr string) {
-	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName, ingGwAddr, extInternalIP, extClientAddr)
+func StartSniffer(ctx context.Context) error {
+
+	defer func() {
+		config.GetCfg().SnifferCfg.IsRunning = false
+	}()
+	if config.GetCfg().IsIfaceNil() {
+		return errors.New("iface is nil")
+	}
+	ifaceName := config.GetCfg().GetIface().Name
+	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName)
 	var (
 		snapshotLen int32 = 1024
 		promiscuous bool  = false
@@ -23,29 +33,11 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extC
 		timeout     time.Duration = 1 * time.Microsecond
 		handle      *pcap.Handle
 	)
-	// toExtClientConn, err := net.DialIP("ip:icmp", &net.IPAddr{
-	// 	IP: net.ParseIP(ingGwAddr),
-	// }, &net.IPAddr{
-	// 	IP: net.ParseIP(extClientAddr),
-	// })
-	// if err != nil {
-	// 	log.Println("QUTIING SNIFFER: ", err)
-	// 	return
-	// }
-	// toPeer, err := net.DialIP("ip:icmp", &net.IPAddr{
-	// 	IP: net.ParseIP(extInternalIP),
-	// }, &net.IPAddr{
-	// 	IP: net.ParseIP("10.235.166.1"),
-	// })
-	// if err != nil {
-	// 	log.Println("1 QUTIING SNIFFER: ", err)
-	// 	return
-	// }
 	// Open device
 	handle, err = pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
 		logger.Log(1, "failed to start sniffer for iface: ", ifaceName, err.Error())
-		return
+		return err
 	}
 	// if err := handle.SetBPFFilter(fmt.Sprintf("src %s and port %d", extClientAddr, port)); err != nil {
 	// 	logger.Log(1,"failed to set bpf filter: ", err)
@@ -53,17 +45,15 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extC
 	// }
 	defer handle.Close()
 
-	// var tcp layers.TCP
-	// var icmp layers.ICMPv4
-	// var udp layers.UDP
-	// parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &udp, &tcp, &icmp)
-
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	extClientAddr := "10.235.166.4"
+	ingGwAddr := "10.235.166.3"
+	extInternalIP := "10.235.166.20"
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Log(1, fmt.Sprint("Stopping packet sniffer for iface: ", ifaceName))
-			return
+			return nil
 		default:
 			packet, err := packetSource.NextPacket()
 			if err == nil {
@@ -72,26 +62,6 @@ func StartSniffer(ctx context.Context, ifaceName, ingGwAddr, extInternalIP, extC
 				if ipLayer != nil {
 					fmt.Println("IPv4 layer detected.")
 					ip, _ := ipLayer.(*layers.IPv4)
-
-					// IP layer variables:
-					// Version (Either 4 or 6)
-					// IHL (IP Header Length in 32-bit words)
-					// TOS, Length, Id, Flags, FragOffset, TTL, Protocol (TCP?),
-					// Checksum, SrcIP, DstIP
-
-					// if (ip.SrcIP.String() == extClientAddr && ip.DstIP.String() != ingGwAddr) ||
-					// 	(ip.DstIP.String() == extClientAddr && ip.SrcIP.String() != ingGwAddr) {
-
-					// 	logger.Log(1, "-----> Fowarding PKT From: ", ip.SrcIP.String(), " to: ", ip.DstIP.String())
-					// 	c, err := net.Dial("ip", ip.DstIP.String())
-					// 	if err == nil {
-					// 		c.Write(ip.Payload)
-					// 		c.Close()
-					// 	} else {
-					// 		logger.Log(1, "------> Failed to forward packet from sniffer: ", err.Error())
-
-					// 	}
-					// }
 					if ip.SrcIP.String() == extClientAddr && ip.DstIP.String() == "10.235.166.1" {
 						// fmt.Println("############ SENDING TO PEER #############")
 						// fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)

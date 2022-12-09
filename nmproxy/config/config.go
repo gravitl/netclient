@@ -29,6 +29,12 @@ type Config struct {
 	mutex         *sync.RWMutex
 	ifaceConfig   wgIfaceConf
 	settings      map[string]Settings
+	SnifferCfg    Sniffer
+}
+
+type Sniffer struct {
+	Stop      func()
+	IsRunning bool
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -159,4 +165,15 @@ func (c *Config) SetNATStatus() {
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
 	return c.isBehindNAT
+}
+
+// Config.SetSnifferCfg - set sniffer cfg
+func (c *Config) SetSnifferCfg(stop func()) {
+	c.SnifferCfg.IsRunning = true
+	c.SnifferCfg.Stop = stop
+}
+
+// Config.CheckIfSnifferIsRunning - checks if sniffer is running
+func (c *Config) CheckIfSnifferIsRunning() bool {
+	return c.SnifferCfg.IsRunning
 }
