@@ -17,6 +17,8 @@ const (
 	NmProxyPort = 51722
 	// default CIDR for proxy peers
 	DefaultCIDR = "127.0.0.1/8"
+	// PersistentKeepaliveInterval - default keepalive for wg peer
+	DefaultPersistentKeepaliveInterval = time.Duration(time.Second * 20)
 )
 
 // PeerConnMap - type for peer conn config map

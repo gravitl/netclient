@@ -342,11 +342,12 @@ func (m *ProxyManagerPayload) addNetwork() error {
 					CommChan:            commChan,
 					IsAttachedExtClient: true,
 				}
-
+				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {
 					if addExtClient {
 						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...", extPeer.Endpoint.String())
-						config.GetCfg().SaveExtclientWaitCfg(&extPeer)
+						peerpkg.AddNew(wgInterface, m.Network, &peerI, peerConf.Address, isRelayed,
+							peerConf.IsExtClient, peerConf.IsAttachedExtClient, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
 				}()
@@ -358,7 +359,6 @@ func (m *ProxyManagerPayload) addNetwork() error {
 						if endpoint != nil {
 							addExtClient = true
 							peer.Endpoint = endpoint
-							extPeer.Endpoint = endpoint
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}

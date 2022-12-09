@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -18,8 +17,9 @@ import (
 // AddNew - adds new peer to proxy config and starts proxying the peer
 func AddNew(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, peerAddr string,
 	isRelayed, isExtClient, isAttachedExtClient bool, relayTo *net.UDPAddr) error {
+
 	if peer.PersistentKeepaliveInterval == nil {
-		d := time.Second * 25
+		d := models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
