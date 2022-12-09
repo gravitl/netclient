@@ -19,7 +19,6 @@ import (
 // TODO: use -ldflags to set the right version at build time
 var version = "dev"
 
-//go:embed all:gui/frontend/dist
 var assets embed.FS
 
 func main() {
