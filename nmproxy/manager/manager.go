@@ -220,8 +220,10 @@ func (m *ProxyManagerPayload) processPayload() (*wg.WGIface, error) {
 				if found {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 					currentPeer.Mutex.Unlock()
+
 				}
 				continue
+
 			}
 			// check if proxy is off for the peer
 			if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
@@ -340,11 +342,11 @@ func (m *ProxyManagerPayload) addNetwork() error {
 					CommChan:            commChan,
 					IsAttachedExtClient: true,
 				}
-				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
+
 				defer func() {
 					if addExtClient {
-						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...")
-
+						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...", extPeer.Endpoint.String())
+						config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
 				}()
@@ -356,6 +358,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 						if endpoint != nil {
 							addExtClient = true
 							peer.Endpoint = endpoint
+							extPeer.Endpoint = endpoint
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}
