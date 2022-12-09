@@ -96,7 +96,7 @@ func (p *Proxy) Reset() {
 func (p *Proxy) pullLatestConfig() error {
 	peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
 	if found {
-		p.Config.PeerEndpoint.Port = peer.Config.PeerEndpoint.Port
+		p.Config.PeerEndpoint = peer.Config.PeerEndpoint
 	} else {
 		return errors.New("peer not found")
 	}
