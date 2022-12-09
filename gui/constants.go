@@ -1,4 +1,4 @@
-package main
+package gui
 
 const NETMAKER_DOCS_LINK = "https://docs.netmaker.org/"
 

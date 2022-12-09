@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gravitl/netclient/nm-proxy/config"
-	"github.com/gravitl/netclient/nm-proxy/manager"
-	"github.com/gravitl/netclient/nm-proxy/server"
-	"github.com/gravitl/netclient/nm-proxy/stun"
+	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/manager"
+	"github.com/gravitl/netclient/nmproxy/server"
+	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
 )
 

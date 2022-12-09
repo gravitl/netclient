@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netclient/nm-proxy/wg"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 

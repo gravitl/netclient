@@ -1,25 +1,25 @@
+//go:build !freebsd
+// +build !freebsd
+
 package wireguard
 
 import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nm-proxy/peer"
+	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 )
 
-var wgMutex = sync.Mutex{} // used to mutex functions of the interface
-
 // SetPeers - sets peers on netmaker WireGuard interface
-func SetPeers() {
+func SetPeers() error {
 	nodes := config.GetNodes()
 	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
@@ -34,103 +34,8 @@ func SetPeers() {
 		ReplacePeers: true,
 		Peers:        peers,
 	}
-	apply(nil, &config)
+	return apply(nil, &config)
 }
-
-//func SetPeers(iface string, node *config.Node, peers []wgtypes.PeerConfig) error {
-//	var devicePeers []wgtypes.Peer
-//	var keepalive = node.PersistentKeepalive
-//	var oldPeerAllowedIps = make(map[string]bool, len(peers))
-//	var err error
-//	devicePeers, err = GetDevicePeers(iface)
-//	if err != nil {
-//		return err
-//	}
-//
-//	if len(devicePeers) > 1 && len(peers) == 0 {
-//		logger.Log(1, "no peers pulled")
-//		return err
-//	}
-//	for _, peer := range peers {
-//		// make sure peer has AllowedIP's before comparison
-//		hasPeerIP := len(peer.AllowedIPs) > 0
-//		for _, currentPeer := range devicePeers {
-//			// make sure currenPeer has AllowedIP's before comparison
-//			hascurrentPeerIP := len(currentPeer.AllowedIPs) > 0
-//
-//			if hasPeerIP && hascurrentPeerIP &&
-//				currentPeer.AllowedIPs[0].String() == peer.AllowedIPs[0].String() &&
-//				currentPeer.PublicKey.String() != peer.PublicKey.String() {
-//				_, err := ncutils.RunCmd("wg set "+iface+" peer "+currentPeer.PublicKey.String()+" remove", true)
-//				if err != nil {
-//					logger.Log(0, "error removing peer", peer.Endpoint.String())
-//				}
-//			}
-//		}
-//		udpendpoint := peer.Endpoint.String()
-//		var allowedips string
-//		var iparr []string
-//		for _, ipaddr := range peer.AllowedIPs {
-//			if hasPeerIP {
-//				iparr = append(iparr, ipaddr.String())
-//			}
-//		}
-//		if len(iparr) > 0 {
-//			allowedips = strings.Join(iparr, ",")
-//		}
-//		keepAliveString := strconv.Itoa(int(keepalive))
-//		if keepAliveString == "0" {
-//			keepAliveString = "15"
-//		}
-//		if node.IsServer || peer.Endpoint == nil {
-//			_, err = ncutils.RunCmd("wg set "+iface+" peer "+peer.PublicKey.String()+
-//				" persistent-keepalive "+keepAliveString+
-//				" allowed-ips "+allowedips, true)
-//		} else {
-//			_, err = ncutils.RunCmd("wg set "+iface+" peer "+peer.PublicKey.String()+
-//				" endpoint "+udpendpoint+
-//				" persistent-keepalive "+keepAliveString+
-//				" allowed-ips "+allowedips, true)
-//		}
-//		if err != nil {
-//			logger.Log(0, "error setting peer", peer.PublicKey.String())
-//		}
-//	}
-//	if len(devicePeers) > 0 {
-//		for _, currentPeer := range devicePeers {
-//			shouldDelete := true
-//			if len(peers) > 0 {
-//				for _, peer := range peers {
-//
-//					if len(peer.AllowedIPs) > 0 && len(currentPeer.AllowedIPs) > 0 &&
-//						peer.AllowedIPs[0].String() == currentPeer.AllowedIPs[0].String() {
-//						shouldDelete = false
-//					}
-//					// re-check this if logic is not working, added in case of allowedips not working
-//					if peer.PublicKey.String() == currentPeer.PublicKey.String() {
-//						shouldDelete = false
-//					}
-//				}
-//				if shouldDelete {
-//					output, err := ncutils.RunCmd("wg set "+iface+" peer "+currentPeer.PublicKey.String()+" remove", true)
-//					if err != nil {
-//						logger.Log(0, output, "error removing peer", currentPeer.PublicKey.String())
-//					}
-//				}
-//				for _, ip := range currentPeer.AllowedIPs {
-//					oldPeerAllowedIps[ip.String()] = true
-//				}
-//			}
-//		}
-//	}
-
-// if routes are wrong, come back to this, but should work...I would think. Or we should get it working.
-//	if len(peers) > 0 {
-//		local.SetPeerRoutes(iface, oldPeerAllowedIps, peers)
-//	}
-
-//	return nil
-//}
 
 // GetDevicePeers - gets the current device's peers
 func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {

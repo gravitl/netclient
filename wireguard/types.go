@@ -2,10 +2,11 @@ package wireguard
 
 import (
 	"net"
+	"sync"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nm-proxy/peer"
+	"github.com/gravitl/netclient/nmproxy/peer"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -19,6 +20,7 @@ type NCIface struct {
 }
 
 var netmaker NCIface
+var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
