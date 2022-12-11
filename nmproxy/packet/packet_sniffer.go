@@ -15,6 +15,8 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+// use two sniffers one outbound and one for inbound, set filters accordingly
+
 // StartSniffer - sniffs the packets coming out of the interface
 func StartSniffer(ctx context.Context) error {
 
@@ -30,7 +32,7 @@ func StartSniffer(ctx context.Context) error {
 		snapshotLen int32 = 1024
 		promiscuous bool  = false
 		err         error
-		timeout     time.Duration = 1 * time.Microsecond
+		timeout     time.Duration = 1 * time.Nanosecond
 		handle      *pcap.Handle
 	)
 	// Open device

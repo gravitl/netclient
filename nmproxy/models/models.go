@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netclient/nmproxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -28,7 +27,6 @@ type PeerConnMap map[string]*Conn
 type Proxy struct {
 	RemoteKey           wgtypes.Key
 	LocalKey            wgtypes.Key
-	WgInterface         *wg.WGIface
 	IsExtClient         bool
 	PersistentKeepalive *time.Duration
 	PeerConf            *wgtypes.PeerConfig
@@ -73,6 +71,25 @@ type HostInfo struct {
 	PrivIp   net.IP
 	PubPort  int
 	PrivPort int
+}
+
+// RelayedConf - struct relayed peers config
+type RelayedConf struct {
+	RelayedPeerEndpoint *net.UDPAddr         `json:"relayed_peer_endpoint"`
+	RelayedPeerPubKey   string               `json:"relayed_peer_pub_key"`
+	Peers               []wgtypes.PeerConfig `json:"relayed_peers"`
+}
+
+// PeerConf - struct for peer config in the network
+type PeerConf struct {
+	IsExtClient            bool         `json:"is_ext_client"`
+	Address                net.IP       `json:"address"`
+	ExtInternalIp          net.IP       `json:"ext_internal_ip"`
+	IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
+	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
+	IsRelayed              bool         `json:"is_relayed"`
+	RelayedTo              *net.UDPAddr `json:"relayed_to"`
+	Proxy                  bool         `json:"proxy"`
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash

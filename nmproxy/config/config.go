@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net"
 	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -32,9 +33,20 @@ type Config struct {
 	SnifferCfg    Sniffer
 }
 
+// Sniffer - struct for sniffer cfg
 type Sniffer struct {
-	Stop      func()
-	IsRunning bool
+	Stop          func()
+	IsRunning     bool
+	OutBoundRules map[string]Rule
+	InBoundRules  map[string]Rule
+}
+
+// Rule - struct for routing rule
+type Rule struct {
+	InternalIP net.IP
+	ExternalIP net.IP
+	From       net.IP
+	To         net.IP
 }
 
 // InitializeCfg - intializes all the variables and sets defaults

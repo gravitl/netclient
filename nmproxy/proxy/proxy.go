@@ -28,12 +28,12 @@ func (p *Proxy) Start() error {
 	var err error
 	p.RemoteConn = p.Config.PeerEndpoint
 	logger.Log(0, "----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.RemoteKey.String(), p.RemoteConn.String())
-	addr, err := GetFreeIp(models.DefaultCIDR, p.Config.WgInterface.Device.ListenPort)
+	addr, err := GetFreeIp(models.DefaultCIDR, config.GetCfg().GetInterfaceListenPort())
 	if err != nil {
 		logger.Log(1, "Failed to get freeIp: ", err.Error())
 		return err
 	}
-	wgListenAddr, err := GetInterfaceListenAddr(p.Config.WgInterface.Device.ListenPort)
+	wgListenAddr, err := GetInterfaceListenAddr(config.GetCfg().GetInterfaceListenPort())
 	if err != nil {
 		logger.Log(1, "failed to get wg listen addr: ", err.Error())
 		return err
