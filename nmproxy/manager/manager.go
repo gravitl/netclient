@@ -243,6 +243,17 @@ func (m *ProxyManagerPayload) processPayload() error {
 				continue
 			}
 
+			// check if proxy listen port has chnaged for the peer
+			if currentPeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort) &&
+				m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != 0 {
+				// listen port has been changed, reset conn
+				logger.Log(1, "--------> peer proxy listen port has been changed", currentPeer.Key.String())
+				currentPeer.StopConn()
+				currentPeer.Mutex.Unlock()
+				delete(peerConnMap, currentPeer.Key.String())
+				continue
+			}
+
 			if currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
 				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String(), m.InterfaceName)
 				currentPeer.StopConn()

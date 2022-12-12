@@ -34,6 +34,7 @@ type Proxy struct {
 	RemoteConnAddr      *net.UDPAddr
 	LocalConnAddr       *net.UDPAddr
 	Network             string
+	ListenPort          int
 }
 
 // Conn is a peer Connection configuration
