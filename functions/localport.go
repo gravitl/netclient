@@ -4,7 +4,6 @@
 package functions
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 
@@ -38,14 +37,16 @@ func GetLocalListenPort(ifacename string) (int, error) {
 func UpdateLocalListenPort(node *config.Node) error {
 	var err error
 	ifacename := getRealIface(ncutils.GetInterfaceName(), node.Address)
-	var proxylistenPort int32
+	var localPort int
 	if node.Proxy {
-		proxylistenPort = int32(proxyCfg.GetCfg().HostInfo.PubPort)
-		if proxylistenPort == 0 {
-			proxylistenPort = proxy_models.NmProxyPort
+		localPort = int(proxyCfg.GetCfg().HostInfo.PubPort)
+		if localPort == 0 {
+			localPort = proxy_models.NmProxyPort
 		}
+	} else {
+		localPort, err = GetLocalListenPort(ifacename)
 	}
-	localPort, err := GetLocalListenPort(ifacename)
+
 	if err != nil {
 		logger.Log(1, "network:", node.Network, "error encountered checking local listen port: ", ifacename, err.Error())
 	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 {
@@ -57,16 +58,6 @@ func UpdateLocalListenPort(node *config.Node) error {
 		if err := PublishNodeUpdate(node); err != nil {
 			logger.Log(0, "could not publish local port change", err.Error())
 		}
-	} else if node.Proxy && config.Netclient().ProxyListenPort != proxylistenPort {
-		logger.Log(1, fmt.Sprint("network:", node.Network, "proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
-		config.Netclient().ProxyListenPort = proxylistenPort
-		if err := config.WriteNetclientConfig(); err != nil {
-			return err
-		}
-		if err := PublishNodeUpdate(node); err != nil {
-			logger.Log(0, "could not publish local port change", err.Error())
-		}
-
 	}
 	return err
 }

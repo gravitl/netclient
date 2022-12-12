@@ -57,7 +57,6 @@ type Config struct {
 	LocalAddress      net.IPNet        `json:"localaddress" yaml:"localaddress"`
 	LocalRange        net.IPNet        `json:"localrange" yaml:"localrange"`
 	LocalListenPort   int              `json:"locallistenport" yaml:"locallistenport"`
-	ProxyListenPort   int32            `json:"proxy_listen_port" yaml:"proxy_listen_port"`
 	MTU               int              `json:"mtu" yaml:"mtu"`
 	PrivateKey        wgtypes.Key      `json:"privatekey" yaml:"privatekey"`
 	PublicKey         wgtypes.Key      `json:"publickey" yaml:"publickey"`

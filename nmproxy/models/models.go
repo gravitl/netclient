@@ -91,7 +91,7 @@ type PeerConf struct {
 	IsRelayed              bool         `json:"is_relayed"`
 	RelayedTo              *net.UDPAddr `json:"relayed_to"`
 	Proxy                  bool         `json:"proxy"`
-	ProxyListenPort        int32        `json:"proxy_listen_port"`
+	PublicListenPort       int32        `json:"public_listen_port"`
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash
