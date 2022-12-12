@@ -45,6 +45,12 @@ func InitializeCfg() {
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 		},
+		SnifferCfg: Sniffer{
+			mutex:           &sync.RWMutex{},
+			IsRunning:       false,
+			InboundRouting:  map[string]Routing{},
+			OutboundRouting: map[string]Routing{},
+		},
 		settings: make(map[string]Settings),
 	}
 }

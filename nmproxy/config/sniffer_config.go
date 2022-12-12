@@ -27,19 +27,10 @@ type Routing struct {
 	ExternalIP net.IP
 }
 
-// Config.InitSniffer - sets sniffer cfg
-func (c *Config) InitSniffer() {
-	c.SnifferCfg = Sniffer{
-		mutex:           &sync.RWMutex{},
-		IsRunning:       true,
-		InboundRouting:  map[string]Routing{},
-		OutboundRouting: map[string]Routing{},
-	}
-}
-
 func (c *Config) ResetSniffer() {
 	c.SnifferCfg = Sniffer{
 		IsRunning: false,
+		mutex:     &sync.RWMutex{},
 	}
 }
 
@@ -58,8 +49,8 @@ func (c *Config) CheckIfSnifferIsRunning() bool {
 
 // Config.SaveRoutingInfo - saves the routing info for both inbound and outbound traffic for ext clients
 func (c *Config) SaveRoutingInfo(r *Routing) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.SnifferCfg.mutex.Lock()
+	defer c.SnifferCfg.mutex.Unlock()
 	if c.SnifferCfg.IsRunning && r != nil {
 		c.SnifferCfg.InboundRouting[r.ExternalIP.String()] = *r
 		c.SnifferCfg.OutboundRouting[r.InternalIP.String()] = *r
@@ -67,16 +58,17 @@ func (c *Config) SaveRoutingInfo(r *Routing) {
 }
 
 func (c *Config) SetSnifferHandlers(inbound, outbound *pcap.Handle, cancel context.CancelFunc) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.SnifferCfg.mutex.Lock()
+	defer c.SnifferCfg.mutex.Unlock()
 	c.SnifferCfg.InboundHandler = inbound
 	c.SnifferCfg.stop = cancel
+	c.SnifferCfg.IsRunning = true
 	c.SnifferCfg.OutBoundHandler = outbound
 }
 
 func (c *Config) SetBPFFilter() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.SnifferCfg.mutex.Lock()
+	defer c.SnifferCfg.mutex.Unlock()
 
 	inBoundFilter := ""
 	count := 0
