@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -57,10 +56,13 @@ func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, true)
-				routePkt(inBoundHandler, packet, true)
-				// if err := inBoundHandler.WritePacketData(packet.Data()); err != nil {
-				// 	logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
-				// }
+				pktBytes, shouldRoute := routePkt(packet, true)
+				if !shouldRoute {
+					continue
+				}
+				if err := inBoundHandler.WritePacketData(pktBytes); err != nil {
+					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
+				}
 			}
 		}
 
@@ -79,11 +81,14 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, false)
-				routePkt(outBoundHandler, packet, false)
-				// testpkt(packet, false)
-				// if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
-				// 	logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
-				// }
+				pktBytes, shouldRoute := routePkt(packet, false)
+				if !shouldRoute {
+					continue
+				}
+				if err := outBoundHandler.WritePacketData(pktBytes); err != nil {
+					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
+				}
+
 			}
 		}
 
@@ -150,12 +155,11 @@ func printPktInfo(packet gopacket.Packet, inbound bool) {
 	}
 }
 
-func routePkt(hander *pcap.Handle, pkt gopacket.Packet, inbound bool) {
+func routePkt(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 	if pkt.NetworkLayer() != nil {
 		flow := pkt.NetworkLayer().NetworkFlow()
 		src, dst := flow.Endpoints()
 		var srcIP, dstIP net.IP
-		log.Println("========> FLOW: ", src.String(), " ---> ", dst.String())
 		if inbound {
 			if rInfo, found := config.GetCfg().GetRoutingInfo(src.String(), inbound); found {
 				srcIP = rInfo.InternalIP
@@ -167,48 +171,32 @@ func routePkt(hander *pcap.Handle, pkt gopacket.Packet, inbound bool) {
 				dstIP = rInfo.ExternalIP
 			}
 		}
-		log.Println("SENDING FROMMM: ", srcIP.String(), " TO: ", dstIP.String(), " ", fmt.Sprint(inbound))
 		if srcIP != nil && dstIP != nil {
-			sendPktsV1(hander, pkt, srcIP, dstIP)
-		}
-
-	}
-
-}
-
-func sendPktsV1(handle *pcap.Handle, packet gopacket.Packet, srcIP, dstIP net.IP) {
-
-	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
-		ip := ipLayer.(*layers.IPv4)
-		//log.Printf("HEREEEEE FROM: %s TO %s", ip.SrcIP.String(), ip.DstIP.String())
-
-		if icmpLayer := packet.Layer(layers.LayerTypeICMPv4); icmpLayer != nil {
-			icmp := icmpLayer.(*layers.ICMPv4)
-			fmt.Println(icmp.Id)
-			ip.SrcIP = srcIP
-			ip.DstIP = dstIP
-
+			if pkt.NetworkLayer().(*layers.IPv4) != nil {
+				pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
+				pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
+			} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
+				pkt.NetworkLayer().(*layers.IPv6).SrcIP = srcIP
+				pkt.NetworkLayer().(*layers.IPv6).DstIP = dstIP
+			}
+			buffer := gopacket.NewSerializeBuffer()
 			options := gopacket.SerializeOptions{
 				ComputeChecksums: true,
 				FixLengths:       true,
 			}
-
-			// tcp.SetNetworkLayerForChecksum(ip)
-
-			newBuffer := gopacket.NewSerializeBuffer()
-			err := gopacket.SerializePacket(newBuffer, options, packet)
-			if err != nil {
-				panic(err)
+			if pkt.TransportLayer().(*layers.TCP) != nil {
+				pkt.TransportLayer().(*layers.TCP).SetNetworkLayerForChecksum(pkt.NetworkLayer())
 			}
-			outgoingPacket := newBuffer.Bytes()
 
-			// fmt.Println("Hex dump of go packet serialization output:\n")
-			// fmt.Println(hex.Dump(outgoingPacket))
-			log.Println("-----------> SENDING PACKET FROM: ", ip.SrcIP.String(), " DST: ", ip.DstIP.String())
-			err = handle.WritePacketData(outgoingPacket)
-			if err != nil {
-				log.Println("failed to write to interface: ", err)
+			// Serialize Packet to get raw bytes
+			if err := gopacket.SerializePacket(buffer, options, pkt); err != nil {
+				logger.Log(0, "Failed to serialize packet: ", err.Error())
+				return nil, false
 			}
+			packetBytes := buffer.Bytes()
+			return packetBytes, true
 		}
+
 	}
+	return nil, false
 }
