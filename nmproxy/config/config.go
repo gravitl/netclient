@@ -29,7 +29,7 @@ type Config struct {
 	mutex         *sync.RWMutex
 	ifaceConfig   wgIfaceConf
 	settings      map[string]Settings
-	SnifferCfg    Sniffer
+	//SnifferCfg    Sniffer
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
