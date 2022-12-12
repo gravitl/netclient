@@ -19,6 +19,7 @@ func GetHostInfo(stunHostAddr string, stunPort int) (info models.HostInfo) {
 		logger.Log(1, "failed to resolve udp addr: ", err.Error())
 		return
 	}
+	logger.Log(0, "Stun Addr: ", stunHostAddr)
 	l := &net.UDPAddr{
 		IP:   net.ParseIP(""),
 		Port: models.NmProxyPort,
