@@ -97,14 +97,19 @@ func (c *Config) SetBPFFilter() error {
 		count++
 	}
 	logger.Log(0, "Setting filters for sniffer: ", inBoundFilter, outBoundFilter)
-	err := c.SnifferCfg.InboundHandler.SetBPFFilter(inBoundFilter)
-	if err != nil {
-		return errors.New("failed to set inbound bpf filter: " + err.Error())
+	if inBoundFilter != "" {
+		err := c.SnifferCfg.InboundHandler.SetBPFFilter(inBoundFilter)
+		if err != nil {
+			return errors.New("failed to set inbound bpf filter: " + err.Error())
+		}
 	}
-	err = c.SnifferCfg.OutBoundHandler.SetBPFFilter(outBoundFilter)
-	if err != nil {
-		return errors.New("failed to set outbound bpf filter: " + err.Error())
+	if outBoundFilter != "" {
+		err := c.SnifferCfg.OutBoundHandler.SetBPFFilter(outBoundFilter)
+		if err != nil {
+			return errors.New("failed to set outbound bpf filter: " + err.Error())
+		}
 	}
+
 	return nil
 }
 

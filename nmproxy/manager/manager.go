@@ -148,6 +148,11 @@ func (m *ProxyManagerPayload) processPayload() error {
 	if len(m.Peers) == 0 {
 		return errors.New("no peers to add")
 	}
+	reset := m.settingsUpdate()
+	if reset {
+		cleanUpInterface(m.Network)
+		return nil
+	}
 	gCfg := config.GetCfg()
 	wgIface, err = wg.GetWgIface(m.InterfaceName)
 	if err != nil {
@@ -156,11 +161,6 @@ func (m *ProxyManagerPayload) processPayload() error {
 	}
 	gCfg.SetIface(wgIface)
 	if !gCfg.CheckIfNetworkExists(m.Network) {
-		return nil
-	}
-	reset := m.settingsUpdate()
-	if reset {
-		cleanUpInterface(m.Network)
 		return nil
 	}
 

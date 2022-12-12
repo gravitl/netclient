@@ -157,7 +157,7 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	//ProxyManagerChan <- &proxyUpdate
+	ProxyManagerChan <- &proxyUpdate
 }
 
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
