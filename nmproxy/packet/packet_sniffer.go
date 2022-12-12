@@ -184,7 +184,8 @@ func routePkt(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 				ComputeChecksums: true,
 				FixLengths:       true,
 			}
-			if pkt.TransportLayer().(*layers.TCP) != nil {
+
+			if pkt.TransportLayer() != nil && pkt.TransportLayer().(*layers.TCP) != nil {
 				pkt.TransportLayer().(*layers.TCP).SetNetworkLayerForChecksum(pkt.NetworkLayer())
 			}
 
