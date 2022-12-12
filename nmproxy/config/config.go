@@ -29,7 +29,7 @@ type Config struct {
 	mutex         *sync.RWMutex
 	ifaceConfig   wgIfaceConf
 	settings      map[string]Settings
-	SnifferCfg    Sniffer
+	SnifferCfg    Router
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -45,7 +45,7 @@ func InitializeCfg() {
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 		},
-		SnifferCfg: Sniffer{
+		SnifferCfg: Router{
 			mutex:           &sync.RWMutex{},
 			IsRunning:       false,
 			InboundRouting:  map[string]Routing{},

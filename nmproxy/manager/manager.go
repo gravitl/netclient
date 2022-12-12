@@ -78,13 +78,13 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(m.Network) {
 		config.GetCfg().DeleteRelayedPeers(m.Network)
 	}
-	if m.IsIngress && !config.GetCfg().CheckIfSnifferIsRunning() {
+	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
 		// start sniffer on the ingress node
-		config.GetCfg().SetSnifferToRunning()
-		go packet.StartSniffer()
+		config.GetCfg().SetRouterToRunning()
+		go packet.StartRouter()
 
-	} else if !m.IsIngress && config.GetCfg().CheckIfSnifferIsRunning() {
-		config.GetCfg().StopSniffer()
+	} else if !m.IsIngress && config.GetCfg().CheckIfRouterIsRunning() {
+		config.GetCfg().StopRouter()
 	}
 	config.GetCfg().SetRelayStatus(m.Network, m.IsRelay)
 	config.GetCfg().SetIngressGwStatus(m.Network, m.IsIngress)

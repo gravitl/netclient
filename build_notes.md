@@ -3,7 +3,7 @@
 ## Head build
 
 Linux: 
-sudo apt-get install npm build-essential libgtk3 libwebkit
+sudo apt-get install npm build-essential libgtk3 libwebkit libpcap-dev
 - Prod
   - `cd gui/frontend/ && npm run build`
   - `go build -tags desktop,production -ldflags "-w -s"`

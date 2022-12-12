@@ -68,8 +68,8 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				}
 			}
 
-			logger.Log(2, "PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash)
+			logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
+				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
 
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
@@ -139,7 +139,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
-				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: \n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
@@ -175,7 +175,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {
-				logger.Log(0, "-----------> ##### sending proxy update packet to: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### sending proxy update packet to: \n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())

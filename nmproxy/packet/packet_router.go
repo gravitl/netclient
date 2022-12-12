@@ -15,7 +15,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-// use two sniffers one outbound and one for inbound, set filters accordingly
 var (
 	snapshotLen int32         = 65048
 	promiscuous bool          = true
@@ -44,7 +43,7 @@ func getInboundHandler(ifaceName string) (*pcap.Handle, error) {
 	return handle, nil
 }
 
-func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
+func startInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	inBoundHandler := config.GetCfg().SnifferCfg.InboundHandler
 	packetSource := gopacket.NewPacketSource(inBoundHandler, config.GetCfg().SnifferCfg.InboundHandler.LinkType())
@@ -55,7 +54,7 @@ func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			packet, err := packetSource.NextPacket()
 			if err == nil {
-				printPktInfo(packet, true)
+				//printPktInfo(packet, true)
 				pktBytes, shouldRoute := routePkt(packet, true)
 				if !shouldRoute {
 					continue
@@ -69,7 +68,7 @@ func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
+func startOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	outBoundHandler := config.GetCfg().SnifferCfg.OutBoundHandler
 	packetSource := gopacket.NewPacketSource(outBoundHandler, config.GetCfg().SnifferCfg.OutBoundHandler.LinkType())
@@ -80,7 +79,7 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			packet, err := packetSource.NextPacket()
 			if err == nil {
-				printPktInfo(packet, false)
+				//printPktInfo(packet, false)
 				pktBytes, shouldRoute := routePkt(packet, false)
 				if !shouldRoute {
 					continue
@@ -94,18 +93,12 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 
 	}
 }
-func testpkt(packet gopacket.Packet, inbound bool) {
 
-	flow := packet.NetworkLayer().NetworkFlow()
-	src, dst := flow.Endpoints()
-	logger.Log(0, "TESTING FROM: ", src.String(), " TO: ", dst.String(), " INBOUND: ", fmt.Sprint(inbound))
-}
-
-// StartSniffer - sniffs the the interface
-func StartSniffer() error {
+// StartRouter - sniffs the the interface
+func StartRouter() error {
 	var err error
 	defer func() {
-		config.GetCfg().ResetSniffer()
+		config.GetCfg().ResetRouter()
 		if err != nil {
 			logger.Log(0, "---------> Failed to start sniffer: ", err.Error())
 		}
@@ -124,16 +117,16 @@ func StartSniffer() error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	config.GetCfg().SetSnifferHandlers(inHandler, outHandler, cancel)
+	config.GetCfg().SetRouterHandlers(inHandler, outHandler, cancel)
 	err = config.GetCfg().SetBPFFilter()
 	if err != nil {
 		return err
 	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go startInBoundSniffer(ctx, wg)
+	go startInBoundRouter(ctx, wg)
 	wg.Add(1)
-	go startOutBoundSniffer(ctx, wg)
+	go startOutBoundRouter(ctx, wg)
 	wg.Wait()
 	return nil
 }

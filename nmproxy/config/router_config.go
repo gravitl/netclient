@@ -11,8 +11,8 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-// Sniffer - struct for sniffer cfg
-type Sniffer struct {
+// Router - struct for sniffer cfg
+type Router struct {
 	mutex           *sync.RWMutex
 	stop            func()
 	InboundHandler  *pcap.Handle
@@ -28,27 +28,30 @@ type Routing struct {
 	ExternalIP net.IP
 }
 
-func (c *Config) ResetSniffer() {
-	c.SnifferCfg = Sniffer{
+// Config.ResetRouter - resets the router
+func (c *Config) ResetRouter() {
+	c.SnifferCfg = Router{
 		IsRunning: false,
 		mutex:     &sync.RWMutex{},
 	}
 }
 
-func (c *Config) StopSniffer() {
+// Config.StopRouter - stops the router
+func (c *Config) StopRouter() {
 	c.SnifferCfg.mutex.Lock()
 	defer c.SnifferCfg.mutex.Unlock()
 	c.SnifferCfg.stop()
 }
 
-// Config.CheckIfSnifferIsRunning - checks if sniffer is running
-func (c *Config) CheckIfSnifferIsRunning() bool {
+// Config.CheckIfRouterIsRunning - checks if sniffer is running
+func (c *Config) CheckIfRouterIsRunning() bool {
 	c.SnifferCfg.mutex.RLock()
 	defer c.SnifferCfg.mutex.RUnlock()
 	return c.SnifferCfg.IsRunning
 }
 
-func (c *Config) SetSnifferToRunning() {
+// Config.SetRouterToRunning - sets the router status to running
+func (c *Config) SetRouterToRunning() {
 	c.SnifferCfg.mutex.Lock()
 	defer c.SnifferCfg.mutex.Unlock()
 	c.SnifferCfg.IsRunning = true
@@ -68,7 +71,8 @@ func (c *Config) SaveRoutingInfo(r *Routing) {
 	}
 }
 
-func (c *Config) SetSnifferHandlers(inbound, outbound *pcap.Handle, cancel context.CancelFunc) {
+// Config.SetRouterHandlers - sets the inbound and outbound handlers
+func (c *Config) SetRouterHandlers(inbound, outbound *pcap.Handle, cancel context.CancelFunc) {
 	c.SnifferCfg.mutex.Lock()
 	defer c.SnifferCfg.mutex.Unlock()
 	c.SnifferCfg.InboundHandler = inbound
@@ -77,6 +81,7 @@ func (c *Config) SetSnifferHandlers(inbound, outbound *pcap.Handle, cancel conte
 	c.SnifferCfg.OutBoundHandler = outbound
 }
 
+// Config.SetBPFFilter - sets the pcap filters for both inbound and outbound handlers
 func (c *Config) SetBPFFilter() error {
 	c.SnifferCfg.mutex.Lock()
 	defer c.SnifferCfg.mutex.Unlock()
@@ -102,14 +107,16 @@ func (c *Config) SetBPFFilter() error {
 		}
 		count++
 	}
-	logger.Log(0, "Setting filters for sniffer: ", inBoundFilter, outBoundFilter)
+
 	if inBoundFilter != "" {
+		logger.Log(1, "Setting filters for inbound handler: ", inBoundFilter)
 		err := c.SnifferCfg.InboundHandler.SetBPFFilter(inBoundFilter)
 		if err != nil {
 			return errors.New("failed to set inbound bpf filter: " + err.Error())
 		}
 	}
 	if outBoundFilter != "" {
+		logger.Log(1, "Setting filters for outbound handler: ", outBoundFilter)
 		err := c.SnifferCfg.OutBoundHandler.SetBPFFilter(outBoundFilter)
 		if err != nil {
 			return errors.New("failed to set outbound bpf filter: " + err.Error())
@@ -119,6 +126,7 @@ func (c *Config) SetBPFFilter() error {
 	return nil
 }
 
+// Config.GetRoutingInfo - fetches the routing info
 func (c *Config) GetRoutingInfo(ip string, inbound bool) (Routing, bool) {
 	c.SnifferCfg.mutex.RLock()
 	defer c.SnifferCfg.mutex.RUnlock()

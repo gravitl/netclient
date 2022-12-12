@@ -205,7 +205,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 					if peerInfoHash.Endpoint.String() != source.String() {
 						// update ext client endpoint
 						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
-							logger.Log(0, "----> Updating ExtPeer endpoint from: ", extPeer.Endpoint.String(), " to: ", source.String())
+							logger.Log(1, "----> Updating ExtPeer endpoint from: ", extPeer.Endpoint.String(), " to: ", source.String())
 							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
 							peerInfoHash.Endpoint = source
 							extPeer.Endpoint = source
