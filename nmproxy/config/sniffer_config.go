@@ -31,6 +31,8 @@ func (c *Config) InitSniffer(stop func()) {
 	c.SnifferCfg.mutex = &sync.RWMutex{}
 	c.SnifferCfg.IsRunning = true
 	c.SnifferCfg.stop = stop
+	c.SnifferCfg.InboundRouting = map[string]Routing{}
+	c.SnifferCfg.OutboundRouting = map[string]Routing{}
 }
 
 func (c *Config) ResetSniffer() {
