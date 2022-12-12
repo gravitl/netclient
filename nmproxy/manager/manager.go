@@ -7,7 +7,6 @@ import (
 	"net"
 
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/packet"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
@@ -80,10 +79,10 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 	}
 	if m.IsIngress && !config.GetCfg().CheckIfSnifferIsRunning() {
 		// start sniffer on the ingress node
-		go packet.StartSniffer()
+		//go packet.StartSniffer()
 
 	} else if !m.IsIngress && config.GetCfg().CheckIfSnifferIsRunning() {
-		config.GetCfg().StopSniffer()
+		//config.GetCfg().StopSniffer()
 	}
 	config.GetCfg().SetRelayStatus(m.Network, m.IsRelay)
 	config.GetCfg().SetIngressGwStatus(m.Network, m.IsIngress)
