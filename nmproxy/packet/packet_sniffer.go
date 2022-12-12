@@ -155,6 +155,7 @@ func routePkt(hander *pcap.Handle, pkt gopacket.Packet, inbound bool) {
 		flow := pkt.NetworkLayer().NetworkFlow()
 		src, dst := flow.Endpoints()
 		var srcIP, dstIP net.IP
+		log.Println("========> FLOW: ", src.String(), " ---> ", dst.String())
 		if inbound {
 			if rInfo, found := config.GetCfg().GetRoutingInfo(src.String(), inbound); found {
 				srcIP = rInfo.InternalIP
@@ -166,7 +167,7 @@ func routePkt(hander *pcap.Handle, pkt gopacket.Packet, inbound bool) {
 				dstIP = rInfo.ExternalIP
 			}
 		}
-		log.Println("SENDING FROMMM: ", srcIP.String(), " TO: ", dstIP.String())
+		log.Println("SENDING FROMMM: ", srcIP.String(), " TO: ", dstIP.String(), " ", fmt.Sprint(inbound))
 		if srcIP != nil && dstIP != nil {
 			sendPktsV1(hander, pkt, srcIP, dstIP)
 		}
