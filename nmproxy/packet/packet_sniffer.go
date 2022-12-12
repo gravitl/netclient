@@ -186,6 +186,7 @@ func routePkt(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 		// } else {
 		// 	return pkt, false
 		// }
+		log.Println("------> SRCIP: ", srcIP.String(), " DstIP: ", dst.String())
 		return sendPktsV1(pkt, srcIP, dstIP), true
 	}
 	return nil, false
