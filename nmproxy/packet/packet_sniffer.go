@@ -57,6 +57,7 @@ func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			if err == nil {
 				printPktInfo(packet, true)
 				packet = routePkt(packet, true)
+				testpkt(packet, true)
 				if err := inBoundHandler.WritePacketData(packet.Data()); err != nil {
 					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
 				}
@@ -79,6 +80,7 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			if err == nil {
 				printPktInfo(packet, false)
 				packet = routePkt(packet, false)
+				testpkt(packet, false)
 				if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
 					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
 				}
@@ -86,6 +88,12 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 	}
+}
+func testpkt(packet gopacket.Packet, inbound bool) {
+
+	flow := packet.NetworkLayer().NetworkFlow()
+	src, dst := flow.Endpoints()
+	logger.Log(0, "TESTING FROM: ", src.String(), " TO: ", dst.String(), " INBOUND: ", fmt.Sprint(inbound))
 }
 
 // StartSniffer - sniffs the the interface
@@ -158,13 +166,16 @@ func routePkt(pkt gopacket.Packet, inbound bool) gopacket.Packet {
 				dstIP = rInfo.ExternalIP
 			}
 		}
-		if pkt.NetworkLayer().(*layers.IPv4) != nil {
-			pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
-			pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
-		} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
-			pkt.NetworkLayer().(*layers.IPv6).SrcIP = srcIP
-			pkt.NetworkLayer().(*layers.IPv6).DstIP = dstIP
+		if srcIP != nil && dstIP != nil {
+			if pkt.NetworkLayer().(*layers.IPv4) != nil {
+				pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
+				pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
+			} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
+				pkt.NetworkLayer().(*layers.IPv6).SrcIP = srcIP
+				pkt.NetworkLayer().(*layers.IPv6).DstIP = dstIP
+			}
 		}
+
 	}
 	return pkt
 }
