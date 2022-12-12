@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/google/gopacket/pcap"
-	"github.com/wailsapp/wails/v2/internal/logger"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // Sniffer - struct for sniffer cfg
@@ -55,6 +55,10 @@ func (c *Config) SaveRoutingInfo(r *Routing) {
 	if c.SnifferCfg.IsRunning && r != nil {
 		c.SnifferCfg.InboundRouting[r.ExternalIP.String()] = *r
 		c.SnifferCfg.OutboundRouting[r.InternalIP.String()] = *r
+	}
+	err := c.SetBPFFilter()
+	if err != nil {
+		logger.Log(0, "failed to set sniffer filters: ", err.Error())
 	}
 }
 
