@@ -28,9 +28,13 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		PeerConf:            peer,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
 		Network:             network,
+		ListenPort:          int(peerConf.PublicListenPort),
 	}
 	p := proxy.New(c)
-	peerPort := models.NmProxyPort
+	peerPort := int(peerConf.PublicListenPort)
+	if peerPort == 0 {
+		peerPort = models.NmProxyPort
+	}
 	if peerConf.IsExtClient && peerConf.IsAttachedExtClient {
 		peerPort = peer.Endpoint.Port
 

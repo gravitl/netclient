@@ -147,6 +147,11 @@ func (m *ProxyManagerPayload) processPayload() error {
 	if len(m.Peers) == 0 {
 		return errors.New("no peers to add")
 	}
+	reset := m.settingsUpdate()
+	if reset {
+		cleanUpInterface(m.Network)
+		return nil
+	}
 	gCfg := config.GetCfg()
 	wgIface, err = wg.GetWgIface(m.InterfaceName)
 	if err != nil {
@@ -155,11 +160,6 @@ func (m *ProxyManagerPayload) processPayload() error {
 	}
 	gCfg.SetIface(wgIface)
 	if !gCfg.CheckIfNetworkExists(m.Network) {
-		return nil
-	}
-	reset := m.settingsUpdate()
-	if reset {
-		cleanUpInterface(m.Network)
 		return nil
 	}
 
@@ -183,6 +183,7 @@ func (m *ProxyManagerPayload) processPayload() error {
 				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
 			}
 			gCfg.DeletePeerHash(peerConn.Key.String())
+			logger.Log(0, "----> Deleting Peer from proxy: ", peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
 		}
 	}
@@ -236,6 +237,17 @@ func (m *ProxyManagerPayload) processPayload() error {
 				m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo != nil &&
 				currentPeer.RelayedEndpoint.String() != m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo.String() {
 				logger.Log(1, "---------> peer relay endpoint has been changed: ", currentPeer.Key.String())
+				currentPeer.StopConn()
+				currentPeer.Mutex.Unlock()
+				delete(peerConnMap, currentPeer.Key.String())
+				continue
+			}
+
+			// check if proxy listen port has chnaged for the peer
+			if currentPeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
+				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0 {
+				// listen port has been changed, reset conn
+				logger.Log(1, "--------> peer proxy listen port has been changed", currentPeer.Key.String())
 				currentPeer.StopConn()
 				currentPeer.Mutex.Unlock()
 				delete(peerConnMap, currentPeer.Key.String())

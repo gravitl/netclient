@@ -220,7 +220,6 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 		netmakerNode.Address6 = ""
 	}
 	netmakerNode.LocalListenPort = int32(host.LocalListenPort)
-	netmakerNode.ProxyListenPort = host.ProxyListenPort
 	netmakerNode.LocalAddress = host.LocalAddress.String()
 	netmakerNode.LocalRange = host.LocalRange.String()
 	netmakerNode.MTU = int32(host.MTU)
