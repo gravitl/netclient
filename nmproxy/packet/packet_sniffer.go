@@ -90,9 +90,12 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 
 // StartSniffer - sniffs the the interface
 func StartSniffer() error {
-
+	var err error
 	defer func() {
 		config.GetCfg().ResetSniffer()
+		if err != nil {
+			logger.Log(0, "---------> Failed to start sniffer: ", err.Error())
+		}
 	}()
 	if config.GetCfg().IsIfaceNil() {
 		return errors.New("iface is nil")

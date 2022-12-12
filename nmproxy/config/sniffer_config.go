@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/google/gopacket/pcap"
+	"github.com/wailsapp/wails/v2/internal/logger"
 )
 
 // Sniffer - struct for sniffer cfg
@@ -91,7 +92,7 @@ func (c *Config) SetBPFFilter() error {
 		}
 		count++
 	}
-
+	logger.Log(0, "Setting filters for sniffer: ", inBoundFilter, outBoundFilter)
 	err := c.SnifferCfg.InboundHandler.SetBPFFilter(inBoundFilter)
 	if err != nil {
 		return errors.New("failed to set inbound bpf filter: " + err.Error())
