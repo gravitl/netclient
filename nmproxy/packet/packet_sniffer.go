@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -16,198 +16,150 @@ import (
 )
 
 // use two sniffers one outbound and one for inbound, set filters accordingly
+var (
+	snapshotLen int32         = 1024
+	promiscuous bool          = false
+	timeout     time.Duration = 1 * time.Nanosecond
+)
 
-// StartSniffer - sniffs the packets coming out of the interface
-func StartSniffer(ctx context.Context) error {
+func getOutboundHandler(ifaceName string) (*pcap.Handle, error) {
 
-	defer func() {
-		config.GetCfg().SnifferCfg.IsRunning = false
-	}()
-	if config.GetCfg().IsIfaceNil() {
-		return errors.New("iface is nil")
-	}
-	ifaceName := config.GetCfg().GetIface().Name
-	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName)
-	var (
-		snapshotLen int32 = 1024
-		promiscuous bool  = false
-		err         error
-		timeout     time.Duration = 1 * time.Nanosecond
-		handle      *pcap.Handle
-	)
 	// Open device
-	handle, err = pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
+	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
-		logger.Log(1, "failed to start sniffer for iface: ", ifaceName, err.Error())
-		return err
+		logger.Log(1, "failed to get outbound sniffer for iface: ", ifaceName, err.Error())
+		return nil, err
 	}
-	// if err := handle.SetBPFFilter(fmt.Sprintf("src %s and port %d", extClientAddr, port)); err != nil {
-	// 	logger.Log(1,"failed to set bpf filter: ", err)
-	// 	return
-	// }
-	defer handle.Close()
+	return handle, nil
+}
 
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	extClientAddr := "10.235.166.4"
-	ingGwAddr := "10.235.166.3"
-	extInternalIP := "10.235.166.20"
+func getInboundHandler(ifaceName string) (*pcap.Handle, error) {
+
+	// Open device
+	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
+	if err != nil {
+		logger.Log(1, "failed to get outbound sniffer for iface: ", ifaceName, err.Error())
+		return nil, err
+	}
+	return handle, nil
+}
+
+func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	inBoundHandler := config.GetCfg().SnifferCfg.InboundHandler
+	packetSource := gopacket.NewPacketSource(inBoundHandler, config.GetCfg().SnifferCfg.InboundHandler.LinkType())
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Log(1, fmt.Sprint("Stopping packet sniffer for iface: ", ifaceName))
-			return nil
+			return
 		default:
 			packet, err := packetSource.NextPacket()
 			if err == nil {
-				//processPkt(ifaceName, packet)
-				ipLayer := packet.Layer(layers.LayerTypeIPv4)
-				if ipLayer != nil {
-					fmt.Println("IPv4 layer detected.")
-					ip, _ := ipLayer.(*layers.IPv4)
-					if ip.SrcIP.String() == extClientAddr && ip.DstIP.String() == "10.235.166.1" {
-						// fmt.Println("############ SENDING TO PEER #############")
-						// fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
-						// fmt.Println("Protocol: ", ip.Protocol.String())
-						// _, err := toPeer.Write(ip.Payload)
-						// if err != nil {
-						// 	log.Println("falied to send it to peer from ext cleint", err)
-						// }
-						sendPktsV1(handle, packet, ip.SrcIP.String(), ip.DstIP.String(), ingGwAddr, extInternalIP, extClientAddr)
-					} else if ip.SrcIP.String() == "10.235.166.1" && ip.DstIP.String() == extInternalIP {
-						fmt.Println("########## SENDING TO DST EXT ###############")
-						// fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
-						// fmt.Println("Protocol: ", ip.Protocol.String())
-
-						// _, err := toExtClientConn.Write(ip.Payload)
-						// if err != nil {
-						// 	log.Println("falied to send it to  ext cleint", err)
-						// }
-						sendPktsV1(handle, packet, ip.SrcIP.String(), ip.DstIP.String(), ingGwAddr, extInternalIP, extClientAddr)
-					}
-
-					fmt.Println("#########################")
+				printPktInfo(packet, true)
+				packet = routePkt(packet, true)
+				if err := inBoundHandler.WritePacketData(packet.Data()); err != nil {
+					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
 				}
 			}
 		}
 
 	}
 }
-func sendPktsV1(handle *pcap.Handle, pkt gopacket.Packet, from, to, ingGwAddr, extInternalIP, extClientAddr string) {
-	packetData := pkt.Data()
 
-	// fmt.Println("Hex dump of real IP packet taken as input:\n")
-	// fmt.Println(hex.Dump(packetData))
-
-	packet := gopacket.NewPacket(packetData, layers.LayerTypeIPv4, gopacket.Default)
-	// packet := pkt
-	//log.Println("-----------> SENDING ICMP PACKET FROM: ", from, " DST: ", to)
-	// err := handle.WritePacketData(pkt.Data())
-	// if err != nil {
-	// 	log.Println("failed to write to interface: ", err)
-	// }
-	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
-		ip := ipLayer.(*layers.IPv4)
-		log.Printf(" ACTUAL HEREEEEE FROM: %s TO %s", ip.SrcIP.String(), ip.DstIP.String())
-		srcIp := ""
-		dstIp := ""
-		if ip.SrcIP.String() == extClientAddr {
-			srcIp = extInternalIP
-			dstIp = to
-		}
-		if ip.DstIP.String() == extInternalIP {
-			srcIp = from
-			dstIp = extClientAddr
-		}
-		if icmpLayer := packet.Layer(layers.LayerTypeICMPv4); icmpLayer != nil {
-			icmp := icmpLayer.(*layers.ICMPv4)
-			fmt.Println(icmp.Id)
-			ip.SrcIP = net.ParseIP(srcIp)
-			ip.DstIP = net.ParseIP(dstIp)
-			//log.Printf(" SENDING HEREEEEE FROM: %s TO %s", ip.SrcIP.String(), ip.DstIP.String())
-			options := gopacket.SerializeOptions{
-				ComputeChecksums: true,
-				FixLengths:       true,
-			}
-
-			// tcp.SetNetworkLayerForChecksum(ip)
-
-			newBuffer := gopacket.NewSerializeBuffer()
-			err := gopacket.SerializePacket(newBuffer, options, packet)
-			if err != nil {
-				panic(err)
-			}
-			outgoingPacket := newBuffer.Bytes()
-
-			// fmt.Println("Hex dump of go packet serialization output:\n")
-			// fmt.Println(hex.Dump(outgoingPacket))
-			log.Println("-----------> SENDING ICMP PACKET FROM: ", ip.SrcIP.String(), " DST: ", ip.DstIP.String())
-			err = handle.WritePacketData(outgoingPacket)
-			if err != nil {
-				log.Println("failed to write to interface: ", err)
+func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	outBoundHandler := config.GetCfg().SnifferCfg.OutBoundHandler
+	packetSource := gopacket.NewPacketSource(outBoundHandler, config.GetCfg().SnifferCfg.OutBoundHandler.LinkType())
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			packet, err := packetSource.NextPacket()
+			if err == nil {
+				printPktInfo(packet, false)
+				packet = routePkt(packet, false)
+				if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
+					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
+				}
 			}
 		}
+
 	}
 }
 
-func processPkt(iface string, packet gopacket.Packet) {
-	// Let's see if the packet is an ethernet packet
-	// ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
-	// if ethernetLayer != nil {
-	// 	fmt.Println("Ethernet layer detected.")
-	// 	ethernetPacket, _ := ethernetLayer.(*layers.Ethernet)
-	// 	fmt.Println("Source MAC: ", ethernetPacket.SrcMAC)
-	// 	fmt.Println("Destination MAC: ", ethernetPacket.DstMAC)
-	// 	// Ethernet type is typically IPv4 but could be ARP or other
-	// 	fmt.Println("Ethernet type: ", ethernetPacket.EthernetType)
-	// 	fmt.Println()
-	// }
+// StartSniffer - sniffs the the interface
+func StartSniffer() error {
 
-	// Let's see if the packet is IP (even though the ether type told us)
+	defer func() {
+		config.GetCfg().ResetSniffer()
+	}()
+	if config.GetCfg().IsIfaceNil() {
+		return errors.New("iface is nil")
+	}
+	ifaceName := config.GetCfg().GetIface().Name
+	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName)
+	outHandler, err := getOutboundHandler(ifaceName)
+	if err != nil {
+		return err
+	}
+	inHandler, err := getInboundHandler(ifaceName)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	config.GetCfg().InitSniffer(cancel)
+	config.GetCfg().SetSnifferHandlers(inHandler, outHandler)
+	config.GetCfg().SetBPFFilter()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go startInBoundSniffer(ctx, wg)
+	wg.Add(1)
+	go startOutBoundSniffer(ctx, wg)
+	wg.Wait()
+	return nil
+}
+
+func printPktInfo(packet gopacket.Packet, inbound bool) {
+
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil {
-		fmt.Println("IPv4 layer detected.")
+		fmt.Println("IPv4 layer detected.  ", inbound)
 		ip, _ := ipLayer.(*layers.IPv4)
-
-		// IP layer variables:
-		// Version (Either 4 or 6)
-		// IHL (IP Header Length in 32-bit words)
-		// TOS, Length, Id, Flags, FragOffset, TTL, Protocol (TCP?),
-		// Checksum, SrcIP, DstIP
 		fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
 		fmt.Println("Protocol: ", ip.Protocol)
 		fmt.Println()
 
 	}
-
-	// udpLayer := packet.Layer(layers.LayerTypeUDP)
-	// if udpLayer != nil {
-	// 	udp, _ := udpLayer.(*layers.UDP)
-	// 	fmt.Printf("UDP: From port %d to %d\n", udp.SrcPort, udp.DstPort)
-	// 	fmt.Println()
-	// }
-
-	// // Iterate over all layers, printing out each layer type
-	// fmt.Println("All packet layers:")
-	// for _, layer := range packet.Layers() {
-	// 	fmt.Println("- ", layer.LayerType())
-	// }
-
-	// When iterating through packet.Layers() above,
-	// if it lists Payload layer then that is the same as
-	// this applicationLayer. applicationLayer contains the payload
-	// applicationLayer := packet.ApplicationLayer()
-	// if applicationLayer != nil {
-	// 	fmt.Println("Application layer/Payload found.")
-	// 	fmt.Printf("%s\n", applicationLayer.Payload())
-
-	// 	// Search for a string inside the payload
-	// 	if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
-	// 		fmt.Println("HTTP found!")
-	// 	}
-	// }
-
 	// Check for errors
 	if err := packet.ErrorLayer(); err != nil {
 		fmt.Println("Error decoding some part of the packet:", err)
 	}
+}
+
+func routePkt(pkt gopacket.Packet, inbound bool) gopacket.Packet {
+	if pkt.NetworkLayer() != nil {
+		flow := pkt.NetworkLayer().NetworkFlow()
+		src, dst := flow.Endpoints()
+		var srcIP, dstIP net.IP
+		if inbound {
+			if rInfo, found := config.GetCfg().GetRoutingInfo(src.String(), inbound); found {
+				srcIP = rInfo.InternalIP
+				dstIP = net.ParseIP(dst.String())
+			}
+		} else {
+			if rInfo, found := config.GetCfg().GetRoutingInfo(dst.String(), inbound); found {
+				srcIP = net.ParseIP(src.String())
+				dstIP = rInfo.ExternalIP
+			}
+		}
+		if pkt.NetworkLayer().(*layers.IPv4) != nil {
+			pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
+			pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
+		} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
+			pkt.NetworkLayer().(*layers.IPv6).SrcIP = srcIP
+			pkt.NetworkLayer().(*layers.IPv6).DstIP = dstIP
+		}
+	}
+	return pkt
 }

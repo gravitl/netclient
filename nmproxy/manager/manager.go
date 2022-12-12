@@ -80,10 +80,10 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 	}
 	if m.IsIngress && !config.GetCfg().CheckIfSnifferIsRunning() {
 		// start sniffer on the ingress node
-		ctx, cancel := context.WithCancel(context.Background())
-		config.GetCfg().SetSnifferCfg(cancel)
-		go packet.StartSniffer(ctx)
+		go packet.StartSniffer()
 
+	} else if !m.IsIngress && config.GetCfg().CheckIfSnifferIsRunning() {
+		config.GetCfg().StopSniffer()
 	}
 	config.GetCfg().SetRelayStatus(m.Network, m.IsRelay)
 	config.GetCfg().SetIngressGwStatus(m.Network, m.IsIngress)

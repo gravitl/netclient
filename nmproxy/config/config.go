@@ -1,7 +1,6 @@
 package config
 
 import (
-	"net"
 	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -31,22 +30,6 @@ type Config struct {
 	ifaceConfig   wgIfaceConf
 	settings      map[string]Settings
 	SnifferCfg    Sniffer
-}
-
-// Sniffer - struct for sniffer cfg
-type Sniffer struct {
-	Stop          func()
-	IsRunning     bool
-	OutBoundRules map[string]Rule
-	InBoundRules  map[string]Rule
-}
-
-// Rule - struct for routing rule
-type Rule struct {
-	InternalIP net.IP
-	ExternalIP net.IP
-	From       net.IP
-	To         net.IP
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -177,15 +160,4 @@ func (c *Config) SetNATStatus() {
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
 	return c.isBehindNAT
-}
-
-// Config.SetSnifferCfg - set sniffer cfg
-func (c *Config) SetSnifferCfg(stop func()) {
-	c.SnifferCfg.IsRunning = true
-	c.SnifferCfg.Stop = stop
-}
-
-// Config.CheckIfSnifferIsRunning - checks if sniffer is running
-func (c *Config) CheckIfSnifferIsRunning() bool {
-	return c.SnifferCfg.IsRunning
 }

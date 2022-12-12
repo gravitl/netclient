@@ -219,7 +219,6 @@ func (p *Proxy) updateEndpoint() error {
 	peer := *p.Config.PeerConf
 	peer.Endpoint = udpAddr
 	config.GetCfg().GetIface().UpdatePeerEndpoint(peer)
-
 	return nil
 }
 
