@@ -48,6 +48,12 @@ func (c *Config) CheckIfSnifferIsRunning() bool {
 	return c.SnifferCfg.IsRunning
 }
 
+func (c *Config) SetSnifferToRunning() {
+	c.SnifferCfg.mutex.Lock()
+	defer c.SnifferCfg.mutex.Unlock()
+	c.SnifferCfg.IsRunning = true
+}
+
 // Config.SaveRoutingInfo - saves the routing info for both inbound and outbound traffic for ext clients
 func (c *Config) SaveRoutingInfo(r *Routing) {
 	c.SnifferCfg.mutex.Lock()
