@@ -51,11 +51,11 @@ func (c *Config) CheckIfSnifferIsRunning() bool {
 // Config.SaveRoutingInfo - saves the routing info for both inbound and outbound traffic for ext clients
 func (c *Config) SaveRoutingInfo(r *Routing) {
 	c.SnifferCfg.mutex.Lock()
-	defer c.SnifferCfg.mutex.Unlock()
 	if c.SnifferCfg.IsRunning && r != nil {
 		c.SnifferCfg.InboundRouting[r.ExternalIP.String()] = *r
 		c.SnifferCfg.OutboundRouting[r.InternalIP.String()] = *r
 	}
+	c.SnifferCfg.mutex.Unlock()
 	err := c.SetBPFFilter()
 	if err != nil {
 		logger.Log(0, "failed to set sniffer filters: ", err.Error())
