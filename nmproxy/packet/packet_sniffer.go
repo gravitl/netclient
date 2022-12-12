@@ -79,7 +79,7 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, false)
-				routePkt(outBoundHandler, packet, true)
+				routePkt(outBoundHandler, packet, false)
 				// testpkt(packet, false)
 				// if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
 				// 	logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
