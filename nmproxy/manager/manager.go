@@ -184,6 +184,7 @@ func (m *ProxyManagerPayload) processPayload() error {
 				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
 			}
 			gCfg.DeletePeerHash(peerConn.Key.String())
+			logger.Log(0, "----> Deleting Peer from proxy: ", peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
 		}
 	}

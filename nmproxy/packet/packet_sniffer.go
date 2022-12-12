@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -17,9 +18,9 @@ import (
 
 // use two sniffers one outbound and one for inbound, set filters accordingly
 var (
-	snapshotLen int32         = 1024
-	promiscuous bool          = false
-	timeout     time.Duration = 1 * time.Nanosecond
+	snapshotLen int32         = 65048
+	promiscuous bool          = true
+	timeout     time.Duration = 1 * time.Microsecond
 )
 
 func getOutboundHandler(ifaceName string) (*pcap.Handle, error) {
@@ -48,6 +49,7 @@ func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	inBoundHandler := config.GetCfg().SnifferCfg.InboundHandler
 	packetSource := gopacket.NewPacketSource(inBoundHandler, config.GetCfg().SnifferCfg.InboundHandler.LinkType())
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,9 +58,12 @@ func startInBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, true)
-				packet = routePkt(packet, true)
-				testpkt(packet, true)
-				if err := inBoundHandler.WritePacketData(packet.Data()); err != nil {
+				out, shouldRoute := routePkt(packet, true)
+				if !shouldRoute {
+					continue
+				}
+				//testpkt(packet, true)
+				if err := inBoundHandler.WritePacketData(out); err != nil {
 					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
 				}
 			}
@@ -79,11 +84,15 @@ func startOutBoundSniffer(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, false)
-				packet = routePkt(packet, false)
-				testpkt(packet, false)
-				if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
+				out, shouldRoute := routePkt(packet, true)
+				if !shouldRoute {
+					continue
+				}
+				//testpkt(packet, false)
+				if err := outBoundHandler.WritePacketData(out); err != nil {
 					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
 				}
+
 			}
 		}
 
@@ -150,7 +159,7 @@ func printPktInfo(packet gopacket.Packet, inbound bool) {
 	}
 }
 
-func routePkt(pkt gopacket.Packet, inbound bool) gopacket.Packet {
+func routePkt(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 	if pkt.NetworkLayer() != nil {
 		flow := pkt.NetworkLayer().NetworkFlow()
 		src, dst := flow.Endpoints()
@@ -166,16 +175,60 @@ func routePkt(pkt gopacket.Packet, inbound bool) gopacket.Packet {
 				dstIP = rInfo.ExternalIP
 			}
 		}
-		if srcIP != nil && dstIP != nil {
-			if pkt.NetworkLayer().(*layers.IPv4) != nil {
-				pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
-				pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
-			} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
-				pkt.NetworkLayer().(*layers.IPv6).SrcIP = srcIP
-				pkt.NetworkLayer().(*layers.IPv6).DstIP = dstIP
-			}
-		}
-
+		// if srcIP != nil && dstIP != nil {
+		// 	if pkt.NetworkLayer().(*layers.IPv4) != nil {
+		// 		pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
+		// 		pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
+		// 	} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
+		// 		pkt.NetworkLayer().(*layers.IPv6).SrcIP = srcIP
+		// 		pkt.NetworkLayer().(*layers.IPv6).DstIP = dstIP
+		// 	}
+		// } else {
+		// 	return pkt, false
+		// }
+		return sendPktsV1(pkt, srcIP, dstIP), true
 	}
-	return pkt
+	return nil, false
+
+}
+
+func sendPktsV1(pkt gopacket.Packet, srcIP, dstIP net.IP) []byte {
+	//packetData := pkt.Data()
+
+	// fmt.Println("Hex dump of real IP packet taken as input:\n")
+	// fmt.Println(hex.Dump(packetData))
+
+	// packet := gopacket.NewPacket(packetData, layers.LayerTypeIPv4, gopacket.Default)
+	packet := pkt
+	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+		ip := ipLayer.(*layers.IPv4)
+		//log.Printf("HEREEEEE FROM: %s TO %s", ip.SrcIP.String(), ip.DstIP.String())
+
+		if icmpLayer := packet.Layer(layers.LayerTypeICMPv4); icmpLayer != nil {
+			icmp := icmpLayer.(*layers.ICMPv4)
+			fmt.Println(icmp.Id)
+			ip.SrcIP = srcIP
+			ip.DstIP = dstIP
+
+			options := gopacket.SerializeOptions{
+				ComputeChecksums: true,
+				FixLengths:       true,
+			}
+
+			// tcp.SetNetworkLayerForChecksum(ip)
+
+			newBuffer := gopacket.NewSerializeBuffer()
+			err := gopacket.SerializePacket(newBuffer, options, packet)
+			if err != nil {
+				panic(err)
+			}
+			outgoingPacket := newBuffer.Bytes()
+
+			// fmt.Println("Hex dump of go packet serialization output:\n")
+			// fmt.Println(hex.Dump(outgoingPacket))
+			log.Println("-----------> SENDING PACKET FROM: ", ip.SrcIP.String(), " DST: ", ip.DstIP.String())
+			return outgoingPacket
+		}
+	}
+	return nil
 }
