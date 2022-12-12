@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -27,12 +28,13 @@ type Routing struct {
 }
 
 // Config.InitSniffer - sets sniffer cfg
-func (c *Config) InitSniffer(stop func()) {
-	c.SnifferCfg.mutex = &sync.RWMutex{}
-	c.SnifferCfg.IsRunning = true
-	c.SnifferCfg.stop = stop
-	c.SnifferCfg.InboundRouting = map[string]Routing{}
-	c.SnifferCfg.OutboundRouting = map[string]Routing{}
+func (c *Config) InitSniffer() {
+	c.SnifferCfg = Sniffer{
+		mutex:           &sync.RWMutex{},
+		IsRunning:       true,
+		InboundRouting:  map[string]Routing{},
+		OutboundRouting: map[string]Routing{},
+	}
 }
 
 func (c *Config) ResetSniffer() {
@@ -49,8 +51,8 @@ func (c *Config) StopSniffer() {
 
 // Config.CheckIfSnifferIsRunning - checks if sniffer is running
 func (c *Config) CheckIfSnifferIsRunning() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.SnifferCfg.mutex.RLock()
+	defer c.SnifferCfg.mutex.RUnlock()
 	return c.SnifferCfg.IsRunning
 }
 
@@ -64,10 +66,11 @@ func (c *Config) SaveRoutingInfo(r *Routing) {
 	}
 }
 
-func (c *Config) SetSnifferHandlers(inbound, outbound *pcap.Handle) {
+func (c *Config) SetSnifferHandlers(inbound, outbound *pcap.Handle, cancel context.CancelFunc) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.SnifferCfg.InboundHandler = inbound
+	c.SnifferCfg.stop = cancel
 	c.SnifferCfg.OutBoundHandler = outbound
 }
 

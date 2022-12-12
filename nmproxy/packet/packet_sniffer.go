@@ -108,8 +108,7 @@ func StartSniffer() error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	config.GetCfg().InitSniffer(cancel)
-	config.GetCfg().SetSnifferHandlers(inHandler, outHandler)
+	config.GetCfg().SetSnifferHandlers(inHandler, outHandler, cancel)
 	config.GetCfg().SetBPFFilter()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
