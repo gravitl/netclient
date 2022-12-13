@@ -44,7 +44,7 @@ func startEgressInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			packet, err := packetSource.NextPacket()
 			if err == nil {
-				//printPktInfo(packet, true)
+				printPktInfo(packet, true)
 				pktBytes, shouldRoute := routePktEgress(packet, true)
 				if !shouldRoute {
 					continue
@@ -69,7 +69,7 @@ func startEgressOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			packet, err := packetSource.NextPacket()
 			if err == nil {
-				//printPktInfo(packet, false)
+				printPktInfo(packet, false)
 				pktBytes, shouldRoute := routePktEgress(packet, false)
 				if !shouldRoute {
 					continue
