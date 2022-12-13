@@ -210,14 +210,14 @@ func (c *Config) SetEgressRouterHandlers(inbound, outbound *pcap.Handle, cancel 
 func (c *Config) SetEgressBPFFilter() error {
 	c.Router.EgressRouter.mutex.Lock()
 	defer c.Router.EgressRouter.mutex.Unlock()
-	inBoundFilter := "dst host 10.235.166.0/24"
+	inBoundFilter := "dst net 10.235.166.0/24"
 	logger.Log(1, "Setting filters for egress inbound handler: ")
 	err := c.Router.EgressRouter.InboundHandler.SetBPFFilter(inBoundFilter)
 	if err != nil {
 		return errors.New("failed to set egress inbound bpf filter: " + err.Error())
 	}
 
-	outBoundFilter := "dst host 10.126.0.0/20"
+	outBoundFilter := "dst net 10.126.0.0/20"
 	logger.Log(1, "Setting filters for outbound handler: ", outBoundFilter)
 	err = c.Router.EgressRouter.OutBoundHandler.SetBPFFilter(outBoundFilter)
 	if err != nil {
