@@ -7,10 +7,10 @@ import (
 	"net"
 
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/packet"
-
 	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -28,17 +28,20 @@ const (
 
 // ProxyManagerPayload - struct for proxy manager payload
 type ProxyManagerPayload struct {
-	Action          ProxyAction                   `json:"action"`
-	InterfaceName   string                        `json:"interface_name"`
-	Network         string                        `json:"network"`
-	WgAddr          string                        `json:"wg_addr"`
-	Peers           []wgtypes.PeerConfig          `json:"peers"`
-	PeerMap         map[string]models.PeerConf    `json:"peer_map"`
-	IsRelayed       bool                          `json:"is_relayed"`
-	IsIngress       bool                          `json:"is_ingress"`
-	RelayedTo       *net.UDPAddr                  `json:"relayed_to"`
-	IsRelay         bool                          `json:"is_relay"`
-	RelayedPeerConf map[string]models.RelayedConf `json:"relayed_conf"`
+	Action              ProxyAction                   `json:"action"`
+	InterfaceName       string                        `json:"interface_name"`
+	Network             string                        `json:"network"`
+	WgAddr              string                        `json:"wg_addr"`
+	Peers               []wgtypes.PeerConfig          `json:"peers"`
+	PeerMap             map[string]models.PeerConf    `json:"peer_map"`
+	IsRelayed           bool                          `json:"is_relayed"`
+	IsIngress           bool                          `json:"is_ingress"`
+	IsEgress            bool                          `json:"is_egress"`
+	EgressGatewayRanges []net.IPNet                   `json:"egress_gateway_ranges"`
+	EgressGatewayIface  string                        `json:"egress_gateway_interface"`
+	RelayedTo           *net.UDPAddr                  `json:"relayed_to"`
+	IsRelay             bool                          `json:"is_relay"`
+	RelayedPeerConf     map[string]models.RelayedConf `json:"relayed_conf"`
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
@@ -78,17 +81,25 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(m.Network) {
 		config.GetCfg().DeleteRelayedPeers(m.Network)
 	}
-	if m.IsIngress {
+	if m.IsIngress || m.IsEgress {
 		packet.TurnOffIpFowarding()
 	}
-	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
+	if m.IsIngress && !config.GetCfg().CheckIfIngressRouterIsRunning() {
 		// start router on the ingress node
-		config.GetCfg().SetRouterToRunning()
-		go packet.StartRouter()
+		config.GetCfg().SetIngressRouterToRunning()
+		go router.StartIngress()
 
-	} else if !m.IsIngress && config.GetCfg().CheckIfRouterIsRunning() {
-		config.GetCfg().StopRouter()
+	} else if !m.IsIngress && config.GetCfg().CheckIfIngressRouterIsRunning() {
+		config.GetCfg().StopIngressRouter()
 	}
+
+	if m.IsEgress && !config.GetCfg().CheckIfEgressRouterIsRunning() {
+		config.GetCfg().SetEgressRouterToRunning()
+		go router.StartEgress()
+	} else if !m.IsEgress && config.GetCfg().CheckIfEgressRouterIsRunning() {
+		config.GetCfg().StopEgressRouter()
+	}
+
 	config.GetCfg().SetRelayStatus(m.Network, m.IsRelay)
 	config.GetCfg().SetIngressGwStatus(m.Network, m.IsIngress)
 	if config.GetCfg().GetRelayedStatus(m.Network) != m.IsRelayed {

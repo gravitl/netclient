@@ -1,4 +1,4 @@
-package packet
+package router
 
 import (
 	"context"
@@ -10,10 +10,16 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
 )
+
+/*
+	For egress -
+	1. fetch all addresses from the wg interface
+	2. two sniffers - 1) for WG interface --> with filter dst set to gateway interfaces --> then inject the pkt to GW interface
+					  2) for GW interface --> with filter dst set to wg interface addrs --> then inject the pkt to Wg interface
+*/
 
 var (
 	snapshotLen int32         = 65048
@@ -21,85 +27,11 @@ var (
 	timeout     time.Duration = 1 * time.Microsecond
 )
 
-func getOutboundHandler(ifaceName string) (*pcap.Handle, error) {
-
-	// Open device
-	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
-	if err != nil {
-		logger.Log(1, "failed to get outbound router for iface: ", ifaceName, err.Error())
-		return nil, err
-	}
-
-	return handle, nil
-}
-
-func getInboundHandler(ifaceName string) (*pcap.Handle, error) {
-
-	// Open device
-	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
-	if err != nil {
-		logger.Log(1, "failed to get outbound router for iface: ", ifaceName, err.Error())
-		return nil, err
-	}
-	return handle, nil
-}
-
-func startInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-	inBoundHandler := config.GetCfg().RouterCfg.InboundHandler
-	packetSource := gopacket.NewPacketSource(inBoundHandler, config.GetCfg().RouterCfg.InboundHandler.LinkType())
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			packet, err := packetSource.NextPacket()
-			if err == nil {
-				//printPktInfo(packet, true)
-				pktBytes, shouldRoute := routePkt(packet, true)
-				if !shouldRoute {
-					continue
-				}
-				if err := inBoundHandler.WritePacketData(pktBytes); err != nil {
-					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
-				}
-			}
-		}
-
-	}
-}
-
-func startOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-	outBoundHandler := config.GetCfg().RouterCfg.OutBoundHandler
-	packetSource := gopacket.NewPacketSource(outBoundHandler, config.GetCfg().RouterCfg.OutBoundHandler.LinkType())
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			packet, err := packetSource.NextPacket()
-			if err == nil {
-				//printPktInfo(packet, false)
-				pktBytes, shouldRoute := routePkt(packet, false)
-				if !shouldRoute {
-					continue
-				}
-				if err := outBoundHandler.WritePacketData(pktBytes); err != nil {
-					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
-				}
-
-			}
-		}
-
-	}
-}
-
-// StartRouter - sniffs the the interface
-func StartRouter() error {
+// StartIngress - sniffs the the interface
+func StartIngress() error {
 	var err error
 	defer func() {
-		config.GetCfg().ResetRouter()
+		config.GetCfg().ResetIngressRouter()
 		if err != nil {
 			logger.Log(0, "---------> Failed to start router: ", err.Error())
 		}
@@ -110,25 +42,25 @@ func StartRouter() error {
 	}
 	ifaceName := config.GetCfg().GetIface().Name
 	logger.Log(1, "Starting Packet router for iface: ", ifaceName)
-	outHandler, err := getOutboundHandler(ifaceName)
+	outHandler, err := getIngressOutboundHandler(ifaceName)
 	if err != nil {
 		return err
 	}
-	inHandler, err := getInboundHandler(ifaceName)
+	inHandler, err := getIngressInboundHandler(ifaceName)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	config.GetCfg().SetRouterHandlers(inHandler, outHandler, cancel)
-	err = config.GetCfg().SetBPFFilter()
+	config.GetCfg().SetIngressRouterHandlers(inHandler, outHandler, cancel)
+	err = config.GetCfg().SetIngressBPFFilter()
 	if err != nil {
 		return err
 	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go startInBoundRouter(ctx, wg)
+	go startIngressInBoundRouter(ctx, wg)
 	wg.Add(1)
-	go startOutBoundRouter(ctx, wg)
+	go startIngressOutBoundRouter(ctx, wg)
 	wg.Wait()
 	return nil
 }
@@ -156,12 +88,12 @@ func routePkt(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 		src, dst := flow.Endpoints()
 		var srcIP, dstIP net.IP
 		if inbound {
-			if rInfo, found := config.GetCfg().GetRoutingInfo(src.String(), inbound); found {
+			if rInfo, found := config.GetCfg().GetIngressRoutingInfo(src.String(), inbound); found {
 				srcIP = rInfo.InternalIP
 				dstIP = net.ParseIP(dst.String())
 			}
 		} else {
-			if rInfo, found := config.GetCfg().GetRoutingInfo(dst.String(), inbound); found {
+			if rInfo, found := config.GetCfg().GetIngressRoutingInfo(dst.String(), inbound); found {
 				srcIP = net.ParseIP(src.String())
 				dstIP = rInfo.ExternalIP
 			}
