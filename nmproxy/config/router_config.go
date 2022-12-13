@@ -208,6 +208,7 @@ func (c *Config) SetEgressRouterHandlers(inbound, outbound *pcap.Handle, cancel 
 
 // Config.SetEgressBPFFilter - sets the pcap filters for both egress inbound and outbound handlers
 func (c *Config) SetEgressBPFFilter() error {
+	return nil
 	c.Router.EgressRouter.mutex.Lock()
 	defer c.Router.EgressRouter.mutex.Unlock()
 	inBoundFilter := "dst 10.235.166.1"
