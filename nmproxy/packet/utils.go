@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/subtle"
 	"hash"
+	"runtime"
 
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netmaker/logger"
@@ -137,9 +138,13 @@ func sharedSecret(sk *NoisePrivateKey, pk NoisePublicKey) (ss [NoisePublicKeySiz
 	return ss
 }
 
+// TurnOffIpFowarding - turns off ip fowarding, runs only for linux systems
 func TurnOffIpFowarding() {
-	_, err := common.RunCmd("sysctl -w net.ipv4.ip_forward=0", true)
-	if err != nil {
-		logger.Log(0, "WARNING: Error encountered turning off ip forwarding: ", err.Error())
+	if runtime.GOOS == "linux" {
+		_, err := common.RunCmd("sysctl -w net.ipv4.ip_forward=0", true)
+		if err != nil {
+			logger.Log(0, "error encountered turning off ip forwarding: ", err.Error())
+		}
 	}
+
 }
