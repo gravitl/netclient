@@ -15,7 +15,7 @@ require (
 require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
-	github.com/gravitl/netmaker v0.17.1-0.20221208192411-e00199a6502a
+	github.com/gravitl/netmaker v0.17.1-0.20221209182524-99cf81375359
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.2.0
 	golang.design/x/clipboard v0.6.3
