@@ -31,8 +31,10 @@ type Routing struct {
 // Config.ResetRouter - resets the router
 func (c *Config) ResetRouter() {
 	c.RouterCfg = Router{
-		IsRunning: false,
-		mutex:     &sync.RWMutex{},
+		mutex:           &sync.RWMutex{},
+		IsRunning:       false,
+		InboundRouting:  map[string]Routing{},
+		OutboundRouting: map[string]Routing{},
 	}
 }
 
