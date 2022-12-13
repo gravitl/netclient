@@ -33,7 +33,7 @@ func StartEgress() error {
 		return errors.New("iface is nil")
 	}
 	ifaceName := config.GetCfg().GetIface().Name
-	logger.Log(1, "Starting Packet router for iface: ", ifaceName)
+	logger.Log(1, "Starting egress packet router for iface: ", ifaceName)
 	outHandler, err := getEgressOutboundHandler(ifaceName)
 	if err != nil {
 		return err
@@ -44,10 +44,10 @@ func StartEgress() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	config.GetCfg().SetEgressRouterHandlers(inHandler, outHandler, cancel)
-	err = config.GetCfg().SetEgressBPFFilter()
-	if err != nil {
-		return err
-	}
+	// err = config.GetCfg().SetEgressBPFFilter()
+	// if err != nil {
+	// 	return err
+	// }
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go startEgressInBoundRouter(ctx, wg)

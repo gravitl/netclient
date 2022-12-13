@@ -53,6 +53,8 @@ func startEgressInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 				if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
 					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
 				}
+			} else {
+				logger.Log(1, "failed to read next packet: ", err.Error())
 			}
 		}
 
