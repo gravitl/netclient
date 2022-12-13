@@ -5,14 +5,12 @@ updates:
   # Enable version updates for netmaker
   - package-ecosystem: "gomod"
     directory: "/"
-    # Check for updates every day (weekdays)
     schedule:
       interval: "weekly"
     target-branch: "develop"
   # Enable version updates for netclient
   - package-ecosystem: "gomod"
     directory: "/netclient"
-    # Check for updates every day (weekdays)
     schedule:
       interval: "weekly"
     target-branch: "develop"
