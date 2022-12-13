@@ -17,7 +17,7 @@ import (
 )
 
 // TODO: use -ldflags to set the right version at build time
-var version = "dev"
+var version = "v0.18.0"
 
 //go:embed all:gui/frontend/dist
 var assets embed.FS
