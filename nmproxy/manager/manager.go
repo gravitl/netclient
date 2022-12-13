@@ -79,7 +79,7 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 		config.GetCfg().DeleteRelayedPeers(m.Network)
 	}
 	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
-		// start sniffer on the ingress node
+		// start router on the ingress node
 		config.GetCfg().SetRouterToRunning()
 		go packet.StartRouter()
 

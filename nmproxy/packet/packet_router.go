@@ -26,9 +26,10 @@ func getOutboundHandler(ifaceName string) (*pcap.Handle, error) {
 	// Open device
 	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
-		logger.Log(1, "failed to get outbound sniffer for iface: ", ifaceName, err.Error())
+		logger.Log(1, "failed to get outbound router for iface: ", ifaceName, err.Error())
 		return nil, err
 	}
+
 	return handle, nil
 }
 
@@ -37,7 +38,7 @@ func getInboundHandler(ifaceName string) (*pcap.Handle, error) {
 	// Open device
 	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
-		logger.Log(1, "failed to get outbound sniffer for iface: ", ifaceName, err.Error())
+		logger.Log(1, "failed to get outbound router for iface: ", ifaceName, err.Error())
 		return nil, err
 	}
 	return handle, nil
@@ -45,8 +46,8 @@ func getInboundHandler(ifaceName string) (*pcap.Handle, error) {
 
 func startInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-	inBoundHandler := config.GetCfg().SnifferCfg.InboundHandler
-	packetSource := gopacket.NewPacketSource(inBoundHandler, config.GetCfg().SnifferCfg.InboundHandler.LinkType())
+	inBoundHandler := config.GetCfg().RouterCfg.InboundHandler
+	packetSource := gopacket.NewPacketSource(inBoundHandler, config.GetCfg().RouterCfg.InboundHandler.LinkType())
 	for {
 		select {
 		case <-ctx.Done():
@@ -70,8 +71,8 @@ func startInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 
 func startOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-	outBoundHandler := config.GetCfg().SnifferCfg.OutBoundHandler
-	packetSource := gopacket.NewPacketSource(outBoundHandler, config.GetCfg().SnifferCfg.OutBoundHandler.LinkType())
+	outBoundHandler := config.GetCfg().RouterCfg.OutBoundHandler
+	packetSource := gopacket.NewPacketSource(outBoundHandler, config.GetCfg().RouterCfg.OutBoundHandler.LinkType())
 	for {
 		select {
 		case <-ctx.Done():
@@ -100,14 +101,15 @@ func StartRouter() error {
 	defer func() {
 		config.GetCfg().ResetRouter()
 		if err != nil {
-			logger.Log(0, "---------> Failed to start sniffer: ", err.Error())
+			logger.Log(0, "---------> Failed to start router: ", err.Error())
 		}
+		logger.Log(0, "-----> Stopping Router...")
 	}()
 	if config.GetCfg().IsIfaceNil() {
 		return errors.New("iface is nil")
 	}
 	ifaceName := config.GetCfg().GetIface().Name
-	logger.Log(1, "Starting Packet Sniffer for iface: ", ifaceName)
+	logger.Log(1, "Starting Packet router for iface: ", ifaceName)
 	outHandler, err := getOutboundHandler(ifaceName)
 	if err != nil {
 		return err

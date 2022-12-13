@@ -11,7 +11,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-// Router - struct for sniffer cfg
+// Router - struct for router cfg
 type Router struct {
 	mutex           *sync.RWMutex
 	stop            func()
@@ -30,7 +30,7 @@ type Routing struct {
 
 // Config.ResetRouter - resets the router
 func (c *Config) ResetRouter() {
-	c.SnifferCfg = Router{
+	c.RouterCfg = Router{
 		IsRunning: false,
 		mutex:     &sync.RWMutex{},
 	}
@@ -38,57 +38,57 @@ func (c *Config) ResetRouter() {
 
 // Config.StopRouter - stops the router
 func (c *Config) StopRouter() {
-	c.SnifferCfg.mutex.Lock()
-	defer c.SnifferCfg.mutex.Unlock()
-	c.SnifferCfg.stop()
+	c.RouterCfg.mutex.Lock()
+	defer c.RouterCfg.mutex.Unlock()
+	c.RouterCfg.stop()
 }
 
-// Config.CheckIfRouterIsRunning - checks if sniffer is running
+// Config.CheckIfRouterIsRunning - checks if router is running
 func (c *Config) CheckIfRouterIsRunning() bool {
-	c.SnifferCfg.mutex.RLock()
-	defer c.SnifferCfg.mutex.RUnlock()
-	return c.SnifferCfg.IsRunning
+	c.RouterCfg.mutex.RLock()
+	defer c.RouterCfg.mutex.RUnlock()
+	return c.RouterCfg.IsRunning
 }
 
 // Config.SetRouterToRunning - sets the router status to running
 func (c *Config) SetRouterToRunning() {
-	c.SnifferCfg.mutex.Lock()
-	defer c.SnifferCfg.mutex.Unlock()
-	c.SnifferCfg.IsRunning = true
+	c.RouterCfg.mutex.Lock()
+	defer c.RouterCfg.mutex.Unlock()
+	c.RouterCfg.IsRunning = true
 }
 
 // Config.SaveRoutingInfo - saves the routing info for both inbound and outbound traffic for ext clients
 func (c *Config) SaveRoutingInfo(r *Routing) {
-	c.SnifferCfg.mutex.Lock()
-	if c.SnifferCfg.IsRunning && r != nil {
-		c.SnifferCfg.InboundRouting[r.ExternalIP.String()] = *r
-		c.SnifferCfg.OutboundRouting[r.InternalIP.String()] = *r
+	c.RouterCfg.mutex.Lock()
+	if c.RouterCfg.IsRunning && r != nil {
+		c.RouterCfg.InboundRouting[r.ExternalIP.String()] = *r
+		c.RouterCfg.OutboundRouting[r.InternalIP.String()] = *r
 	}
-	c.SnifferCfg.mutex.Unlock()
+	c.RouterCfg.mutex.Unlock()
 	err := c.SetBPFFilter()
 	if err != nil {
-		logger.Log(0, "failed to set sniffer filters: ", err.Error())
+		logger.Log(0, "failed to set router filters: ", err.Error())
 	}
 }
 
 // Config.SetRouterHandlers - sets the inbound and outbound handlers
 func (c *Config) SetRouterHandlers(inbound, outbound *pcap.Handle, cancel context.CancelFunc) {
-	c.SnifferCfg.mutex.Lock()
-	defer c.SnifferCfg.mutex.Unlock()
-	c.SnifferCfg.InboundHandler = inbound
-	c.SnifferCfg.stop = cancel
-	c.SnifferCfg.IsRunning = true
-	c.SnifferCfg.OutBoundHandler = outbound
+	c.RouterCfg.mutex.Lock()
+	defer c.RouterCfg.mutex.Unlock()
+	c.RouterCfg.InboundHandler = inbound
+	c.RouterCfg.stop = cancel
+	c.RouterCfg.IsRunning = true
+	c.RouterCfg.OutBoundHandler = outbound
 }
 
 // Config.SetBPFFilter - sets the pcap filters for both inbound and outbound handlers
 func (c *Config) SetBPFFilter() error {
-	c.SnifferCfg.mutex.Lock()
-	defer c.SnifferCfg.mutex.Unlock()
+	c.RouterCfg.mutex.Lock()
+	defer c.RouterCfg.mutex.Unlock()
 
 	inBoundFilter := ""
 	count := 0
-	for _, rInfo := range c.SnifferCfg.InboundRouting {
+	for _, rInfo := range c.RouterCfg.InboundRouting {
 		if count == 0 {
 			inBoundFilter = fmt.Sprintf("src %s", rInfo.ExternalIP)
 		} else {
@@ -99,7 +99,7 @@ func (c *Config) SetBPFFilter() error {
 
 	outBoundFilter := ""
 	count = 0
-	for _, rInfo := range c.SnifferCfg.OutboundRouting {
+	for _, rInfo := range c.RouterCfg.OutboundRouting {
 		if count == 0 {
 			outBoundFilter = fmt.Sprintf("dst %s", rInfo.InternalIP)
 		} else {
@@ -110,14 +110,14 @@ func (c *Config) SetBPFFilter() error {
 
 	if inBoundFilter != "" {
 		logger.Log(1, "Setting filters for inbound handler: ", inBoundFilter)
-		err := c.SnifferCfg.InboundHandler.SetBPFFilter(inBoundFilter)
+		err := c.RouterCfg.InboundHandler.SetBPFFilter(inBoundFilter)
 		if err != nil {
 			return errors.New("failed to set inbound bpf filter: " + err.Error())
 		}
 	}
 	if outBoundFilter != "" {
 		logger.Log(1, "Setting filters for outbound handler: ", outBoundFilter)
-		err := c.SnifferCfg.OutBoundHandler.SetBPFFilter(outBoundFilter)
+		err := c.RouterCfg.OutBoundHandler.SetBPFFilter(outBoundFilter)
 		if err != nil {
 			return errors.New("failed to set outbound bpf filter: " + err.Error())
 		}
@@ -128,14 +128,14 @@ func (c *Config) SetBPFFilter() error {
 
 // Config.GetRoutingInfo - fetches the routing info
 func (c *Config) GetRoutingInfo(ip string, inbound bool) (Routing, bool) {
-	c.SnifferCfg.mutex.RLock()
-	defer c.SnifferCfg.mutex.RUnlock()
+	c.RouterCfg.mutex.RLock()
+	defer c.RouterCfg.mutex.RUnlock()
 	var rInfo Routing
 	var found bool
 	if inbound {
-		rInfo, found = c.SnifferCfg.InboundRouting[ip]
+		rInfo, found = c.RouterCfg.InboundRouting[ip]
 	} else {
-		rInfo, found = c.SnifferCfg.OutboundRouting[ip]
+		rInfo, found = c.RouterCfg.OutboundRouting[ip]
 	}
 	return rInfo, found
 }

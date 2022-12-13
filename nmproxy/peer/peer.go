@@ -84,7 +84,7 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 
 	if peerConf.IsAttachedExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
-		//add rules to sniffer
+		//add rules to router
 		routingInfo := &config.Routing{
 			InternalIP: peerConf.ExtInternalIp,
 			ExternalIP: peerConf.Address,
