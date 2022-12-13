@@ -78,6 +78,9 @@ func (m *ProxyManagerPayload) settingsUpdate() (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(m.Network) {
 		config.GetCfg().DeleteRelayedPeers(m.Network)
 	}
+	if m.IsIngress {
+		packet.TurnOffIpFowarding()
+	}
 	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
 		// start router on the ingress node
 		config.GetCfg().SetRouterToRunning()
