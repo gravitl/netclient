@@ -89,25 +89,27 @@ func (c *Config) SetBPFFilter() error {
 	defer c.RouterCfg.mutex.Unlock()
 
 	inBoundFilter := ""
-	count := 0
+	first := true
 	for _, rInfo := range c.RouterCfg.InboundRouting {
-		if count == 0 {
+		if first {
 			inBoundFilter = fmt.Sprintf("src %s", rInfo.ExternalIP)
+			first = false
 		} else {
 			inBoundFilter += fmt.Sprintf(" || src %s", rInfo.ExternalIP)
 		}
-		count++
+
 	}
 
 	outBoundFilter := ""
-	count = 0
+	first = true
 	for _, rInfo := range c.RouterCfg.OutboundRouting {
-		if count == 0 {
+		if first {
 			outBoundFilter = fmt.Sprintf("dst %s", rInfo.InternalIP)
+			first = false
 		} else {
 			outBoundFilter += fmt.Sprintf(" || dst %s", rInfo.InternalIP)
 		}
-		count++
+
 	}
 
 	if inBoundFilter != "" {
