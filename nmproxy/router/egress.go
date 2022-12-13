@@ -44,10 +44,10 @@ func StartEgress() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	config.GetCfg().SetEgressRouterHandlers(inHandler, outHandler, cancel)
-	// err = config.GetCfg().SetEgressBPFFilter()
-	// if err != nil {
-	// 	return err
-	// }
+	err = config.GetCfg().SetEgressBPFFilter()
+	if err != nil {
+		return err
+	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go startEgressInBoundRouter(ctx, wg)
