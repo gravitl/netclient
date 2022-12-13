@@ -34,7 +34,7 @@ func (nc *NCIface) Create() error {
 	}
 	logger.Log(3, "set adapter state")
 
-	return nc.applyAddrs(luid)
+	return nc.applyAddrs(&luid)
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
@@ -49,7 +49,7 @@ func (nc *NCIface) Close() {
 	}
 }
 
-func (nc *NCIface) applyAddrs(luid winipcfg.LUID) error {
+func (nc *NCIface) applyAddrs(luid *winipcfg.LUID) error {
 
 	if len(nc.Addresses) == 0 {
 		return fmt.Errorf("no addresses provided")
@@ -57,14 +57,13 @@ func (nc *NCIface) applyAddrs(luid winipcfg.LUID) error {
 
 	prefixAddrs := []netip.Prefix{}
 	for i := range nc.Addresses {
-		// ones, bits := addrs[i].Mask.Size()
-		// fmt.Sprintf("%d %d \n", ones, bits)
-		logger.Log(0, "appending addr", nc.Addresses[i].Network.String())
-		pre, err := netip.ParsePrefix(nc.Addresses[i].Network.String())
+		maskSize, _ := nc.Addresses[i].Network.Mask.Size()
+		logger.Log(0, "appending address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
+		addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))
 		if err == nil {
-			prefixAddrs = append(prefixAddrs, pre)
+			prefixAddrs = append(prefixAddrs, addr)
 		} else {
-			logger.Log(0, fmt.Sprintf("failed to append addr to Netclient adapter %v", err))
+			logger.Log(0, fmt.Sprintf("failed to append ip to Netclient adapter %v", err))
 		}
 	}
 
