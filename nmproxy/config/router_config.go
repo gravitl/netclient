@@ -92,10 +92,10 @@ func (c *Config) SetBPFFilter() error {
 	first := true
 	for _, rInfo := range c.RouterCfg.InboundRouting {
 		if first {
-			inBoundFilter = fmt.Sprintf("src %s", rInfo.ExternalIP)
+			inBoundFilter = fmt.Sprintf("src host %s", rInfo.ExternalIP)
 			first = false
 		} else {
-			inBoundFilter += fmt.Sprintf(" || src %s", rInfo.ExternalIP)
+			inBoundFilter += fmt.Sprintf(" || src host %s", rInfo.ExternalIP)
 		}
 
 	}
@@ -104,10 +104,10 @@ func (c *Config) SetBPFFilter() error {
 	first = true
 	for _, rInfo := range c.RouterCfg.OutboundRouting {
 		if first {
-			outBoundFilter = fmt.Sprintf("dst %s", rInfo.InternalIP)
+			outBoundFilter = fmt.Sprintf("dst host %s", rInfo.InternalIP)
 			first = false
 		} else {
-			outBoundFilter += fmt.Sprintf(" || dst %s", rInfo.InternalIP)
+			outBoundFilter += fmt.Sprintf(" || dst host %s", rInfo.InternalIP)
 		}
 
 	}
