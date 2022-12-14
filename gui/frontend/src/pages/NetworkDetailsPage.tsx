@@ -33,7 +33,7 @@ export default function NetworkDetailsPage() {
       const network = await getNetwork(networksState, networkName);
       setNetworkDetails(network);
     } catch (err) {
-      await notifyUser("Failed to load network\n" + err as string);
+      await notifyUser(("Failed to load network\n" + err) as string);
       console.error(err);
     } finally {
       setIsLoadingDetails(() => false);
@@ -61,7 +61,7 @@ export default function NetworkDetailsPage() {
           newStatus
         );
       } catch (err) {
-        await notifyUser("Failed to update network status\n" + err as string);
+        await notifyUser(("Failed to update network status\n" + err) as string);
         console.error(err);
       }
     },
@@ -85,7 +85,7 @@ export default function NetworkDetailsPage() {
       await leaveAndRefreshNetworks(networksDispatch, networkName);
       navigate(AppRoutes.NETWORKS_ROUTE, { replace: true });
     } catch (err) {
-      await notifyUser("Failed to leave network\n" + err as string);
+      await notifyUser(("Failed to leave network\n" + err) as string);
       console.error(err);
     } finally {
       setIsLeavingNetwork(false);
@@ -121,15 +121,15 @@ export default function NetworkDetailsPage() {
           </div>
         ) : (
           <Grid container item style={{ width: "90vw" }}>
-            <Grid item xs={3}>
-              <div>
+            <Grid container item xs={12}>
+              <Grid item xs={3}>
                 <Typography variant="overline">Network name</Typography>
                 <Typography variant="h4">
                   {networkDetails?.node?.network}
                 </Typography>
-              </div>
+              </Grid>
 
-              <div style={{ marginTop: "4rem" }}>
+              <Grid item xs={3}>
                 <Typography variant="overline">
                   Connected/Disconnected
                 </Typography>
@@ -140,19 +140,25 @@ export default function NetworkDetailsPage() {
                     onConnectionStatusChange(!networkDetails?.node?.connected)
                   }
                 />
-              </div>
+              </Grid>
 
-              <div style={{ marginTop: "4rem" }}>
+              <Grid item xs={6} textAlign="right">
                 <LoadingButton
                   loading={isLeavingNetwork}
-                  variant="contained"
+                  variant="outlined"
+                  color="error"
                   onClick={onLeaveNetwork}
                 >
                   Leave Network
                 </LoadingButton>
-              </div>
+              </Grid>
             </Grid>
-            <Grid item xs={9} style={{ maxHeight: "70vh", overflow: "auto" }}>
+
+            <Grid
+              item
+              xs={12}
+              style={{ marginTop: "2rem", maxHeight: "60vh", overflow: "auto" }}
+            >
               <PeersTable peers={networkDetails?.node?.peers ?? []} />
             </Grid>
           </Grid>

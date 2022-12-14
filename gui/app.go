@@ -33,7 +33,6 @@ func GetAppMenu(app *App) *menu.Menu {
 
 	fileMenu := menu.AddSubmenu("File")
 	fileMenu.AddText("Networks", nil, app.openNetworksPage)
-	fileMenu.AddText("Netclient Logs", nil, app.openLogsPage)
 	fileMenu.AddText("Uninstall", nil, app.uninstallApp)
 
 	aboutMenu := menu.AddSubmenu("About")

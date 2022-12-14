@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { beforeEach, describe } from "vitest";
 import PeersTable from "../../src/components/PeersTable";
 import { Peer } from "../../src/models/Peer";
 
@@ -41,14 +41,19 @@ const mockPeers: Peer[] = [
 ];
 
 describe("PeersTable", () => {
-  it("renders peer details correctly", async () => {
+  beforeEach(() => {
     (window as any)["go"] = {};
-    (window as any)["go"]["main"] = {};
-    (window as any)["go"]["main"]["App"] = {};
+    (window as any)["go"]["gui"] = {};
+    (window as any)["go"]["gui"]["App"] = {};
 
-    render(<PeersTable peers={mockPeers} />);
-    screen.debug();
+    act(() => {
+      render(<PeersTable peers={mockPeers} />);
+    });
 
+    // screen.debug();
+  });
+
+  it("renders peer details correctly", async () => {
     const peersEls = await screen.findAllByTestId("peer-row");
     const mockPublicEndpoints = mockPeers.flatMap((p) =>
       extractPeerPublicEndpoint(p)
@@ -56,7 +61,9 @@ describe("PeersTable", () => {
     const mockPrivateEndpoints = mockPeers.flatMap((p) =>
       extractPeerPrivateEndpoints(p)
     );
-    const mockPublicKeys: string[] = mockPeers.map((p) => byteArrayToString(p.PublicKey));
+    const mockPublicKeys: string[] = mockPeers.map((p) =>
+      byteArrayToString(p.PublicKey)
+    );
 
     // peers should be listed
     expect(peersEls.length).toBeGreaterThan(0);
@@ -68,7 +75,9 @@ describe("PeersTable", () => {
     });
 
     // private endpoints should show
-    const privateEndpointsEls = await screen.findAllByTestId("private-endpoint");
+    const privateEndpointsEls = await screen.findAllByTestId(
+      "private-endpoint"
+    );
     privateEndpointsEls.forEach((el) => {
       expect(mockPrivateEndpoints).toContain(el.textContent);
     });
