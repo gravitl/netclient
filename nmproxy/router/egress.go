@@ -66,7 +66,7 @@ func routePktEgress(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 		if inbound {
 			// if rInfo, found := config.GetCfg().GetEgressRoutingInfo(src.String(), inbound); found {
 			srcIP = net.ParseIP(src.String())
-			dstIP = net.ParseIP(dst.String())
+			dstIP = net.ParseIP("10.235.166.1")
 			// }
 		} else {
 			//if rInfo, found := config.GetCfg().GetEgressRoutingInfo(dst.String(), inbound); found {
@@ -92,7 +92,7 @@ func routePktEgress(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 			if pkt.TransportLayer() != nil && pkt.TransportLayer().(*layers.TCP) != nil {
 				pkt.TransportLayer().(*layers.TCP).SetNetworkLayerForChecksum(pkt.NetworkLayer())
 			}
-			logger.Log(0, "-----------> Flowing From: ", src.String(), " TO: ", dst.String())
+			logger.Log(0, "-----------> Flowing From: ", srcIP.String(), " TO: ", dstIP.String())
 			// Serialize Packet to get raw bytes
 			if err := gopacket.SerializePacket(buffer, options, pkt); err != nil {
 				logger.Log(0, "Failed to serialize packet: ", err.Error())
