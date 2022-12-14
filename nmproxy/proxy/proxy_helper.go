@@ -135,7 +135,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			// if metric.ConnectionStatus && rTicker != nil {
 			// 	rTicker.Reset(*p.Config.PersistentKeepalive)
 			// }
-			metric.ConnectionStatus = metrics.PeerConnectionStatus(p.Config.WgAddr.String())
+			metric.ConnectionStatus = false
 			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
