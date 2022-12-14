@@ -62,17 +62,19 @@ func routePktEgress(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 		flow := pkt.NetworkLayer().NetworkFlow()
 		src, dst := flow.Endpoints()
 		var srcIP, dstIP net.IP
-		if inbound {
-			if rInfo, found := config.GetCfg().GetEgressRoutingInfo(src.String(), inbound); found {
-				srcIP = rInfo.InternalIP
-				dstIP = net.ParseIP(dst.String())
-			}
-		} else {
-			if rInfo, found := config.GetCfg().GetEgressRoutingInfo(dst.String(), inbound); found {
-				srcIP = net.ParseIP(src.String())
-				dstIP = rInfo.ExternalIP
-			}
-		}
+		srcIP = net.ParseIP(src.String())
+		dstIP = net.ParseIP(dst.String())
+		// if inbound {
+		// 	if rInfo, found := config.GetCfg().GetEgressRoutingInfo(src.String(), inbound); found {
+		// 		srcIP = rInfo.InternalIP
+		// 		dstIP = net.ParseIP(dst.String())
+		// 	}
+		// } else {
+		// 	//if rInfo, found := config.GetCfg().GetEgressRoutingInfo(dst.String(), inbound); found {
+		// 		srcIP = net.ParseIP()
+		// 		dstIP =
+		// 	//}
+		// }
 		if srcIP != nil && dstIP != nil {
 			if pkt.NetworkLayer().(*layers.IPv4) != nil {
 				pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP

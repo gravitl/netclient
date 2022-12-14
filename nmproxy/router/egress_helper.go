@@ -47,11 +47,11 @@ func startEgressInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, true)
-				// pktBytes, shouldRoute := routePktEgress(packet, true)
-				// if !shouldRoute {
-				// 	continue
-				// }
-				if err := outBoundHandler.WritePacketData(packet.Data()); err != nil {
+				pktBytes, shouldRoute := routePktEgress(packet, true)
+				if !shouldRoute {
+					continue
+				}
+				if err := outBoundHandler.WritePacketData(pktBytes); err != nil {
 					logger.Log(0, "failed to inject pkt by inbound handler: ", err.Error())
 				}
 			}
@@ -74,11 +74,11 @@ func startEgressOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 			packet, err := packetSource.NextPacket()
 			if err == nil {
 				printPktInfo(packet, false)
-				// pktBytes, shouldRoute := routePktEgress(packet, false)
-				// if !shouldRoute {
-				// 	continue
-				// }
-				if err := inBoundHandler.WritePacketData(packet.Data()); err != nil {
+				pktBytes, shouldRoute := routePktEgress(packet, false)
+				if !shouldRoute {
+					continue
+				}
+				if err := inBoundHandler.WritePacketData(pktBytes); err != nil {
 					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
 				}
 			}
