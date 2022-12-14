@@ -16,7 +16,7 @@ import { getUserConfirmation, notifyUser } from "../utils/messaging";
 function Networks() {
   const [isLoadingNetworks, setIsLoadingNetworks] = useState<boolean>(true);
   const [networks, setNetworks] = useState<main.Network[]>([]);
-  const [networksSearch, setNetworksSearch] = useState<string>('');
+  const [networksSearch, setNetworksSearch] = useState<string>("");
   const { networksState, networksDispatch } = useNetworksContext();
 
   const loadNetworks = useCallback(async () => {
@@ -36,8 +36,12 @@ function Networks() {
   }, [setIsLoadingNetworks]);
 
   const filteredNetworks = useMemo(() => {
-    return networksState.networks.filter(nw => nw.node?.network.toLocaleLowerCase().includes(networksSearch.toLocaleLowerCase()))
-  }, [networksSearch, networksState])
+    return networksState.networks.filter((nw) =>
+      nw.node?.network
+        .toLocaleLowerCase()
+        .includes(networksSearch.toLocaleLowerCase())
+    );
+  }, [networksSearch, networksState]);
 
   const changeNetworkStatus = useCallback(
     async (networkName: string, newStatus: boolean) => {
@@ -99,12 +103,27 @@ function Networks() {
         ) : (
           <>
             <Grid item xs={12}>
+              {/* search network */}
               <TextField
                 style={{ width: "40vw" }}
                 placeholder="Search for networks by name"
                 value={networksSearch}
                 onChange={(e) => setNetworksSearch(e.target.value)}
+                size="small"
+                data-testid="networks-search-inp"
               />
+
+              {/* add network button */}
+              <Button
+                variant="contained"
+                component={Link}
+                size="medium"
+                style={{ marginLeft: '2rem' }}
+                to={AppRoutes.LOGIN_OPTIONS_ROUTE}
+                data-testid="add-network-btn"
+              >
+                Add New
+              </Button>
             </Grid>
 
             <Grid item xs={12} marginTop="2rem">
@@ -115,18 +134,6 @@ function Networks() {
             </Grid>
           </>
         )}
-      </Grid>
-
-      <Grid container item xs={12} justifyContent="center">
-        <Grid item>
-          <Button
-            variant="contained"
-            component={Link}
-            to={AppRoutes.LOGIN_OPTIONS_ROUTE}
-          >
-            Add New
-          </Button>
-        </Grid>
       </Grid>
     </Grid>
   );
