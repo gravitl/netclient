@@ -13,7 +13,7 @@ func PeerConnectionStatus(address string) (connected bool) {
 		logger.Log(0, "could not initiliaze ping peer address", address, err.Error())
 		connected = false
 	} else {
-		pinger.Timeout = time.Second * 1
+		pinger.Timeout = time.Second * 2
 		err = pinger.Run()
 		if err != nil {
 			logger.Log(0, "failed to ping on peer address", address, err.Error())
