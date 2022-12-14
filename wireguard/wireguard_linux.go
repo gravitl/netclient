@@ -4,20 +4,20 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gravitl/netclient/local"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
 
-// NCIface.Create - creates a linux WG interface based on a node's given config
+// NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
-
-	if local.IsKernelWGInstalled() { // TODO detect if should use userspace or kernel
+	if isKernelWireGuardPresent() {
 		newLink := nc.getKernelLink()
 		if newLink == nil {
 			return fmt.Errorf("failed to create kernel interface")
 		}
 		nc.Iface = newLink
-		l, err := netlink.LinkByName(getName())
+		l, err := netlink.LinkByName(nc.Name)
 		if err != nil {
 			switch err.(type) {
 			case netlink.LinkNotFoundError:
@@ -35,20 +35,18 @@ func (nc *NCIface) Create() error {
 		if err = netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
 			return err
 		}
-
+		logger.Log(3, "adding addresses to netmaker interface")
 		if err = nc.ApplyAddrs(); err != nil {
 			return err
 		}
-
-		if err = netlink.LinkSetMTU(newLink, nc.Settings.MTU); err != nil {
+		if err = netlink.LinkSetMTU(newLink, nc.MTU); err != nil {
 			return err
 		}
-
 		if err = netlink.LinkSetUp(newLink); err != nil {
 			return err
 		}
 		return nil
-	} else if local.IsUserSpaceWGInstalled() {
+	} else if isTunModuleLoaded() {
 		if err := nc.createUserSpaceWG(); err != nil {
 			return err
 		}
@@ -64,6 +62,12 @@ func (l *netLink) Attrs() *netlink.LinkAttrs {
 // netLink.Type - returns type of link i.e wireguard
 func (l *netLink) Type() string {
 	return "wireguard"
+}
+
+// NCIface.Close closes netmaker interface
+func (n *NCIface) Close() {
+	link := n.getKernelLink()
+	link.Close()
 }
 
 // netLink.Close - required function to close linux interface
@@ -88,19 +92,25 @@ func (nc *NCIface) ApplyAddrs() error {
 			}
 		}
 	}
-
-	addr, err := netlink.ParseAddr(nc.Settings.Address.String())
-	if err == nil {
-		err = netlink.AddrAdd(l, addr)
-		if err != nil {
-			return err
+	for _, node := range config.GetNodes() {
+		var address netlink.Addr
+		var address6 netlink.Addr
+		address.IPNet = &node.Address
+		if address.IPNet.IP != nil {
+			logger.Log(3, "adding address", address.IP.String(), "to netmaker interface")
+			if err := netlink.AddrAdd(l, &address); err != nil {
+				logger.Log(0, "error adding addr", err.Error())
+				return err
+			}
 		}
-	}
-	addr6, err := netlink.ParseAddr(nc.Settings.Address6.String())
-	if err == nil {
-		err = netlink.AddrAdd(l, addr6)
-		if err != nil {
-			return err
+		address6.IPNet = &node.Address6
+		if address6.IPNet.IP != nil {
+			logger.Log(3, "adding address", address6.IP.String(), "to netmaker interface")
+			err = netlink.AddrAdd(l, &address6)
+			if err != nil {
+				logger.Log(0, "error adding addr", err.Error())
+				return err
+			}
 		}
 	}
 	return nil
@@ -113,7 +123,7 @@ type netLink struct {
 }
 
 func (nc *NCIface) getKernelLink() *netLink {
-	link := getNewLink(getName())
+	link := getNewLink(nc.Name)
 	return link
 }
 

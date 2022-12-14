@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -33,15 +34,14 @@ func GetLocalListenPort(ifacename string) (int, error) {
 // UpdateLocalListenPort - check local port, if different, mod config and publish
 func UpdateLocalListenPort(node *config.Node) error {
 	var err error
-	ifacename := getRealIface(node.Interface, node.Address)
+	ifacename := getRealIface(ncutils.GetInterfaceName(), node.Address)
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "network:", node.Network, "error encountered checking local listen port: ", ifacename, err.Error())
-	} else if node.LocalListenPort != localPort && localPort != 0 {
-		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(node.LocalListenPort), " to ", strconv.Itoa(localPort))
-		node.LocalListenPort = localPort
-		config.Nodes[node.Network] = *node
-		if err := config.WriteNodeConfig(); err != nil {
+	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 {
+		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(config.Netclient().LocalListenPort), " to ", strconv.Itoa(localPort))
+		config.Netclient().LocalListenPort = localPort
+		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}
 		if err := PublishNodeUpdate(node); err != nil {
@@ -61,4 +61,35 @@ func getRealIface(ifacename string, address net.IPNet) string {
 		}
 	}
 	return deviceiface
+}
+
+func getInterfaces() (*[]models.Iface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	var data []models.Iface
+	var link models.Iface
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			link.Name = iface.Name
+			_, cidr, err := net.ParseCIDR(addr.String())
+			if err != nil {
+				continue
+			}
+			link.Address = *cidr
+			data = append(data, link)
+		}
+	}
+	return &data, nil
 }

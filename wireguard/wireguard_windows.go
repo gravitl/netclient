@@ -2,9 +2,9 @@ package wireguard
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/driver"
@@ -21,7 +21,7 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 	logger.Log(3, "creating Windows tunnel")
-	adapter, err := driver.CreateAdapter(getName(), "WireGuard", &windowsGUID)
+	adapter, err := driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
 	if err != nil {
 		return err
 	}
@@ -33,31 +33,37 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 	logger.Log(3, "set adapter state")
-	newAddrs := []net.IPNet{}
-	if nc.Settings.NetworkRange.IP != nil {
-		newAddrs = append(newAddrs, net.IPNet{IP: nc.Settings.NetworkRange.IP, Mask: nc.Settings.NetworkRange.Mask})
-	}
-	if nc.Settings.NetworkRange6.IP != nil {
-		newAddrs = append(newAddrs, net.IPNet{IP: nc.Settings.NetworkRange6.IP, Mask: nc.Settings.NetworkRange6.Mask})
-	}
-	return nc.applyAddrs(luid, newAddrs)
+
+	return nc.applyAddrs(&luid)
 }
 
-func (nc *NCIface) applyAddrs(luid winipcfg.LUID, addrs []net.IPNet) error {
-	if len(addrs) == 0 {
+// NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
+func (nc *NCIface) ApplyAddrs() error {
+	return nil
+}
+
+func (nc *NCIface) Close() {
+	err := nc.Iface.Close()
+	if err != nil {
+		logger.Log(0, "error closing netclient interface -", err.Error())
+	}
+}
+
+func (nc *NCIface) applyAddrs(luid *winipcfg.LUID) error {
+
+	if len(nc.Addresses) == 0 {
 		return fmt.Errorf("no addresses provided")
 	}
 
 	prefixAddrs := []netip.Prefix{}
-	for i := range addrs {
-		// ones, bits := addrs[i].Mask.Size()
-		// fmt.Sprintf("%d %d \n", ones, bits)
-		logger.Log(0, "appending addr", addrs[i].String())
-		pre, err := netip.ParsePrefix(addrs[i].String())
+	for i := range nc.Addresses {
+		maskSize, _ := nc.Addresses[i].Network.Mask.Size()
+		logger.Log(0, "appending address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
+		addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))
 		if err == nil {
-			prefixAddrs = append(prefixAddrs, pre)
+			prefixAddrs = append(prefixAddrs, addr)
 		} else {
-			logger.Log(0, fmt.Sprintf("failed to append addr to Netclient adapter %v", err))
+			logger.Log(0, fmt.Sprintf("failed to append ip to Netclient adapter %v", err))
 		}
 	}
 

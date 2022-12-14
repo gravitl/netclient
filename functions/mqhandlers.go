@@ -2,22 +2,16 @@ package functions
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
+	"log"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
-	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/manager"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/guumaster/hostctl/pkg/file"
-	"github.com/guumaster/hostctl/pkg/parser"
-	"github.com/guumaster/hostctl/pkg/types"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -27,15 +21,14 @@ const MQTimeout = 30
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	logger.Log(0, "default message handler -- received message but not handling")
 	logger.Log(0, "topic: "+string(msg.Topic()))
-	//logger.Log(0, "Message: " + string(msg.Payload()))
 }
 
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	logger.Log(0, "processing node update for network", network)
-	node := config.Nodes[network]
-	server := config.Servers[node.Server]
+	node := config.GetNode(network)
+	//server := config.Servers[node.Server]
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
 		logger.Log(0, "error decrypting message", err.Error())
@@ -46,44 +39,46 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling node update data"+err.Error())
 		return
 	}
-
 	// see if cache hit, if so skip
 	var currentMessage = read(nodeUpdate.Network, lastNodeUpdate)
 	if currentMessage == string(data) {
 		logger.Log(3, "cache hit on node update ... skipping")
 		return
 	}
-	newNode := config.ConvertNode(&nodeUpdate)
+	var nodeGet models.NodeGet
+	nodeGet.Node = nodeUpdate
+	for _, wgnode := range config.GetNodes() {
+		nodeGet.Peers = append(nodeGet.Peers, wgnode.Peers...)
+	}
+	newNode, _, _ := config.ConvertNode(&nodeGet)
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
-	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.Name)
-
+	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID)
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, newNode)
 	shouldDNSChange := node.DNSOn != newNode.DNSOn
 	hubChange := node.IsHub != newNode.IsHub
 	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
-
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
-		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.Name)
+		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.ID)
 		unsubscribeNode(client, newNode)
-		if err = LeaveNetwork(newNode.Network); err != nil {
+		if _, err = LeaveNetwork(newNode.Network); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
 				logger.Log(0, "failed to leave, please check that local files for network", newNode.Network, "were removed")
 				return
 			}
 		}
-		logger.Log(0, newNode.Name, "was removed from network", newNode.Network)
+		logger.Log(0, newNode.ID, "was removed from network", newNode.Network)
 		return
 	case models.NODE_UPDATE_KEY:
 		// == get the current key for node ==
-		oldPrivateKey := node.PrivateKey
-		if err := UpdateKeys(newNode, client); err != nil {
+		oldPrivateKey := config.Netclient().PrivateKey
+		if err := UpdateKeys(newNode, config.Netclient(), client); err != nil {
 			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
-			newNode.PrivateKey = oldPrivateKey
+			config.Netclient().PrivateKey = oldPrivateKey
 		}
-		newNode.PublicKey = newNode.PrivateKey.PublicKey()
+		config.Netclient().PublicKey = config.Netclient().PrivateKey.PublicKey()
 		ifaceDelta = true
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
@@ -92,41 +87,30 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
-	config.Nodes[network] = *newNode
+	config.UpdateNodeMap(network, *newNode)
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
-	nameserver := server.CoreDNSAddr
-	file := config.GetNetclientInterfacePath() + newNode.Interface + ".conf"
-
-	nc := wireguard.NewNCIface(newNode)
-	if newNode.ListenPort != newNode.LocalListenPort {
-		if err := nc.Close(); err != nil {
-			logger.Log(0, "error remove interface", newNode.Interface, err.Error())
-		}
-		err = config.ModPort(newNode)
-		if err != nil {
-			logger.Log(0, "network:", newNode.Network, "error modifying node port on", newNode.Name, "-", err.Error())
-			return
-		}
-		ifaceDelta = true
-		informPortChange(newNode)
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	if err := nc.Create(); err != nil {
+		logger.Log(0, "could not create netmaker interface", err.Error())
+		return
 	}
-	if err := wireguard.UpdateWgInterface(file, nameserver, newNode); err != nil {
+	if err := nc.Configure(); err != nil {
+		logger.Log(0, "could not configure netmaker interface", err.Error())
+		return
+	}
+
+	wireguard.SetPeers()
+	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
 	}
 	if keepaliveChange {
-		wireguard.UpdateKeepAlive(file, newNode.PersistentKeepalive)
+		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
 	}
-	logger.Log(0, "applying WG conf to "+file)
-	if err = nc.Create(); err != nil {
-		logger.Log(0, "failed to create WG iface after update")
-	}
-	// wireguard.ApplyConf(newNode, file)
 	time.Sleep(time.Second)
-
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
 		doneErr := publishSignal(newNode, DONE)
 		if doneErr != nil {
@@ -143,9 +127,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	//deal with DNS
-	if newNode.DNSOn && shouldDNSChange && newNode.Interface != "" {
+	if newNode.DNSOn && shouldDNSChange {
 		logger.Log(0, "network:", newNode.Network, "settng DNS off")
-		if err := removeHostDNS(newNode.Interface, ncutils.IsWindows()); err != nil {
+		if err := removeHostDNS(newNode.Network); err != nil {
 			logger.Log(0, "network:", newNode.Network, "error removing netmaker profile from /etc/hosts "+err.Error())
 		}
 		//		_, err := ncutils.RunCmd("/usr/bin/resolvectl revert "+nodeCfg.Node.Interface, true)
@@ -156,13 +140,39 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = UpdateLocalListenPort(newNode)
 }
 
+// ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
+func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
+
+	var proxyUpdate manager.ProxyManagerPayload
+	var network = parseNetworkFromTopic(msg.Topic())
+	node := config.GetNode(network)
+	logger.Log(0, "---------> Recieved a proxy update")
+	data, dataErr := decryptMsg(&node, msg.Payload())
+	if dataErr != nil {
+		return
+	}
+	err := json.Unmarshal([]byte(data), &proxyUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling proxy update data"+err.Error())
+		return
+	}
+
+	ProxyManagerChan <- &proxyUpdate
+}
+
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
 func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.PeerUpdate
 	var err error
+	defer func() {
+		if err != nil {
+			log.Println("failed to update peers: ", err)
+		}
+	}()
 	network := parseNetworkFromTopic(msg.Topic())
-	node := config.Nodes[network]
-	server := config.Servers[node.Server]
+	node := config.GetNode(network)
+	server := config.GetServer(node.Server)
+	logger.Log(3, "received peer update for", network)
 	data, err := decryptMsg(&node, msg.Payload())
 	if err != nil {
 		return
@@ -187,8 +197,11 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	file := config.GetNetclientInterfacePath() + node.Interface + ".conf"
-	internetGateway, err := wireguard.UpdateWgPeers(file, peerUpdate.Peers)
+	//update peers in node map
+	updateNode := config.GetNode(peerUpdate.Network)
+	updateNode.Peers = peerUpdate.Peers
+	config.UpdateNodeMap(updateNode.Network, updateNode)
+	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
@@ -197,79 +210,30 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	oldGateway := node.InternetGateway
 	if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
 		node.InternetGateway = internetGateway
-		config.Nodes[node.Network] = node
+		config.UpdateNodeMap(node.Network, node)
 		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "failed to save internet gateway", err.Error())
 		}
-		// wireguard.ApplyConf(&node, file)
-		UpdateLocalListenPort(&node)
-		return
 	}
-	queryAddr := node.PrimaryAddress()
-	//err = wireguard.SyncWGQuickConf(cfg.Node.Interface, file)
-	var iface = node.Interface
-	if ncutils.IsMac() {
-		iface, err = local.GetMacIface(queryAddr.IP.String())
-		if err != nil {
-			logger.Log(0, "error retrieving mac iface: "+err.Error())
-			return
-		}
+	wireguard.SetPeers()
+	if node.Proxy {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate.ProxyUpdate
 	}
-	err = wireguard.SetPeers(iface, &node, peerUpdate.Peers)
-	if err != nil {
-		logger.Log(0, "error syncing wg after peer update: "+err.Error())
-		return
-	}
-	logger.Log(0, "network:", node.Network, "received peer update for node "+node.Name+" "+node.Network)
+	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
 	if node.DNSOn {
-		if err := setHostDNS(peerUpdate.DNS, node.Interface, ncutils.IsWindows()); err != nil {
+		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {
 			logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())
 			return
 		}
 	} else {
-		if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
+		if err := removeHostDNS(node.Network); err != nil {
 			logger.Log(0, "network:", node.Network, "error removing profile from /etc/hosts "+err.Error())
 			return
 		}
 	}
-	_ = UpdateLocalListenPort(&node)
-}
+	UpdateLocalListenPort(&node)
 
-func setHostDNS(dns, iface string, windows bool) error {
-	etchosts := "/etc/hosts"
-	temp := os.TempDir()
-	lockfile := temp + "/netclient-lock"
-	if windows {
-		etchosts = "c:\\windows\\system32\\drivers\\etc\\hosts"
-		lockfile = temp + "\\netclient-lock"
-	}
-	if _, err := os.Stat(lockfile); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("/etc/hosts file is locked .... aborting")
-	}
-	lock, err := os.Create(lockfile)
-	if err != nil {
-		return fmt.Errorf("could not create lock file %w", err)
-	}
-	lock.Close()
-	defer os.Remove(lockfile)
-	dnsdata := strings.NewReader(dns)
-	profile, err := parser.ParseProfile(dnsdata)
-	if err != nil {
-		return err
-	}
-	hosts, err := file.NewFile(etchosts)
-	if err != nil {
-		return err
-	}
-	profile.Name = strings.ToLower(iface)
-	profile.Status = types.Enabled
-	if err := hosts.ReplaceProfile(profile); err != nil {
-		return err
-	}
-	if err := hosts.Flush(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func parseNetworkFromTopic(topic string) string {

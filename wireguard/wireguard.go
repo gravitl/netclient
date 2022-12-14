@@ -1,122 +1,40 @@
+//go:build !freebsd
+// +build !freebsd
+
 package wireguard
 
 import (
 	"net"
-	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/ini.v1"
 )
 
-const (
-	sectionInterface = "Interface" // indexes ini section of Interface in WG conf files
-	sectionPeers     = "Peer"      // indexes ini section of Peer in WG conf files
-)
-
-var wgMutex = sync.Mutex{} // used to mutex functions of the interface
-
-// SetPeers - sets peers on a given WireGuard interface
-func SetPeers(iface string, node *config.Node, peers []wgtypes.PeerConfig) error {
-	var devicePeers []wgtypes.Peer
-	var keepalive = node.PersistentKeepalive
-	var oldPeerAllowedIps = make(map[string]bool, len(peers))
-	var err error
-	devicePeers, err = GetDevicePeers(iface)
-	if err != nil {
-		return err
-	}
-
-	if len(devicePeers) > 1 && len(peers) == 0 {
-		logger.Log(1, "no peers pulled")
-		return err
-	}
-	for _, peer := range peers {
-		// make sure peer has AllowedIP's before comparison
-		hasPeerIP := len(peer.AllowedIPs) > 0
-		for _, currentPeer := range devicePeers {
-			// make sure currenPeer has AllowedIP's before comparison
-			hascurrentPeerIP := len(currentPeer.AllowedIPs) > 0
-
-			if hasPeerIP && hascurrentPeerIP &&
-				currentPeer.AllowedIPs[0].String() == peer.AllowedIPs[0].String() &&
-				currentPeer.PublicKey.String() != peer.PublicKey.String() {
-				_, err := ncutils.RunCmd("wg set "+iface+" peer "+currentPeer.PublicKey.String()+" remove", true)
-				if err != nil {
-					logger.Log(0, "error removing peer", peer.Endpoint.String())
-				}
+// SetPeers - sets peers on netmaker WireGuard interface
+func SetPeers() error {
+	nodes := config.GetNodes()
+	peers := []wgtypes.PeerConfig{}
+	for _, node := range nodes {
+		if node.Connected {
+			if node.Proxy {
+				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 			}
-		}
-		udpendpoint := peer.Endpoint.String()
-		var allowedips string
-		var iparr []string
-		for _, ipaddr := range peer.AllowedIPs {
-			if hasPeerIP {
-				iparr = append(iparr, ipaddr.String())
-			}
-		}
-		if len(iparr) > 0 {
-			allowedips = strings.Join(iparr, ",")
-		}
-		keepAliveString := strconv.Itoa(int(keepalive))
-		if keepAliveString == "0" {
-			keepAliveString = "15"
-		}
-		if node.IsServer || peer.Endpoint == nil {
-			_, err = ncutils.RunCmd("wg set "+iface+" peer "+peer.PublicKey.String()+
-				" persistent-keepalive "+keepAliveString+
-				" allowed-ips "+allowedips, true)
-		} else {
-			_, err = ncutils.RunCmd("wg set "+iface+" peer "+peer.PublicKey.String()+
-				" endpoint "+udpendpoint+
-				" persistent-keepalive "+keepAliveString+
-				" allowed-ips "+allowedips, true)
-		}
-		if err != nil {
-			logger.Log(0, "error setting peer", peer.PublicKey.String())
+			peers = append(peers, node.Peers...)
 		}
 	}
-	if len(devicePeers) > 0 {
-		for _, currentPeer := range devicePeers {
-			shouldDelete := true
-			if len(peers) > 0 {
-				for _, peer := range peers {
-
-					if len(peer.AllowedIPs) > 0 && len(currentPeer.AllowedIPs) > 0 &&
-						peer.AllowedIPs[0].String() == currentPeer.AllowedIPs[0].String() {
-						shouldDelete = false
-					}
-					// re-check this if logic is not working, added in case of allowedips not working
-					if peer.PublicKey.String() == currentPeer.PublicKey.String() {
-						shouldDelete = false
-					}
-				}
-				if shouldDelete {
-					output, err := ncutils.RunCmd("wg set "+iface+" peer "+currentPeer.PublicKey.String()+" remove", true)
-					if err != nil {
-						logger.Log(0, output, "error removing peer", currentPeer.PublicKey.String())
-					}
-				}
-				for _, ip := range currentPeer.AllowedIPs {
-					oldPeerAllowedIps[ip.String()] = true
-				}
-			}
-		}
+	config := wgtypes.Config{
+		ReplacePeers: true,
+		Peers:        peers,
 	}
-
-	// if routes are wrong, come back to this, but should work...I would think. Or we should get it working.
-	if len(peers) > 0 {
-		local.SetPeerRoutes(iface, oldPeerAllowedIps, peers)
-	}
-
-	return nil
+	return apply(nil, &config)
 }
 
 // GetDevicePeers - gets the current device's peers
@@ -144,23 +62,18 @@ func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {
 }
 
 // Configure - configures a pre-installed network interface with WireGuard
-func Configure(privateKey string, port int, n *config.Node) error {
+func Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-
-	key, err := wgtypes.ParseKey(privateKey)
-	if err != nil {
-		return err
-	}
+	host := config.Netclient()
 	firewallMark := 0
 	config := wgtypes.Config{
-		PrivateKey:   &key,
+		PrivateKey:   &host.PrivateKey,
 		ReplacePeers: true,
 		FirewallMark: &firewallMark,
-		ListenPort:   &port,
+		ListenPort:   &host.ListenPort,
 	}
-
-	return apply(n, &config)
+	return apply(nil, &config)
 }
 
 // GetPeers - gets the peers from a given WireGuard interface
@@ -249,36 +162,55 @@ func GetPeers(iface string) ([]wgtypes.Peer, error) {
 	return peers, err
 }
 
-// ApplyPeers - used to apply or update given peer configs to a node's interface
-func ApplyPeers(n *config.Node, peers []wgtypes.PeerConfig) error {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	if err := RemovePeers(n); err != nil {
-		return err
-	}
-
-	for i := range peers {
-		if err := updatePeer(n, &peers[i]); err != nil {
-			logger.Log(0, "failed to update peer", peers[i].PublicKey.String(), err.Error())
-		}
-	}
-
-	return nil
-}
-
 // RemovePeers - removes all peers from a given node config
-func RemovePeers(n *config.Node) error {
-	currPeers, err := getPeers(n)
+func RemovePeers(node *config.Node) error {
+	currPeers, err := getPeers(node)
 	if err != nil || len(currPeers) == 0 {
 		return err
 	}
-
-	for i := range currPeers {
-		if err = removePeer(n, &wgtypes.PeerConfig{
-			PublicKey: currPeers[i].PublicKey,
-		}); err != nil {
-			logger.Log(0, "failed to remove peer", currPeers[i].PublicKey.String())
+	options := ini.LoadOptions{
+		AllowNonUniqueSections: true,
+		AllowShadows:           true,
+	}
+	wireguard := ini.Empty(options)
+	wireguard.DeleteSection(sectionInterface)
+	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(config.Netclient().PrivateKey.String())
+	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(config.Netclient().ListenPort))
+	addrString := node.Address.String()
+	if node.Address6.IP != nil {
+		if addrString != "" {
+			addrString += ","
 		}
+		addrString += node.Address6.String()
+	}
+	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
+	//if node.DNSOn == "yes" {
+	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
+	//}
+	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
+	if node.PostUp != "" {
+		parts := strings.Split(node.PostUp, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
+			}
+			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
+		}
+	}
+	if node.PostDown != "" {
+		parts := strings.Split(node.PostDown, " ; ")
+		for i, part := range parts {
+			if i == 0 {
+				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
+			}
+			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
+		}
+	}
+	if config.Netclient().MTU != 0 {
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient().MTU), 10))
+	}
+	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -291,7 +223,7 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 		return nil, err
 	}
 	defer wg.Close()
-	dev, err := wg.Device(getName())
+	dev, err := wg.Device(ncutils.GetInterfaceName())
 	if err != nil {
 		return nil, err
 	}
@@ -320,13 +252,5 @@ func apply(n *config.Node, c *wgtypes.Config) error {
 	}
 	defer wg.Close()
 
-	return wg.ConfigureDevice(getName(), *c)
-}
-
-func getName() string {
-	if runtime.GOOS == "darwin" {
-		return "utun69"
-	}
-
-	return "netmaker"
+	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
 }

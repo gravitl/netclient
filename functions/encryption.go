@@ -57,7 +57,6 @@ func Chunk(message []byte, recipientPubKey *[32]byte, senderPrivateKey *[32]byte
 	if err != nil {
 		return nil, err
 	}
-
 	return chunkedMsg, nil
 }
 
@@ -67,7 +66,6 @@ func DeChunk(chunkedMsg []byte, senderPublicKey *[32]byte, recipientPrivateKey *
 	if err != nil {
 		return nil, err
 	}
-
 	var totalMsg []byte
 	for i := range chunks {
 		decodedMsg, err := BoxDecrypt(chunks[i], senderPublicKey, recipientPrivateKey)

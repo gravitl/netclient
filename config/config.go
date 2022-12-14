@@ -4,14 +4,17 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/spf13/viper"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,26 +29,41 @@ const (
 	Timeout = time.Second * 5
 	// ConfigLockfile lockfile to control access to config file
 	ConfigLockfile = "config.lck"
+	// MaxNameLength maximum length of a node name
+	MaxNameLength = 62
 )
 
 var (
 	// Netclient contains the netclient config
-	Netclient Config
+	netclient Config
 	// Version - default version string
 	Version = "dev"
 )
 
 // Config configuration for netclient and host as a whole
 type Config struct {
-	Verbosity       int `yaml:"verbosity"`
-	FirewallInUse   string
-	Version         string
-	IPForwarding    bool
-	DaemonInstalled bool
-	HostID          string
-	HostPass        string
-	OS              string
-	Debug           bool
+	Verbosity         int              `json:"verbosity" yaml:"verbosity"`
+	FirewallInUse     string           `json:"firewallinuse" yaml:"firewallinuse"`
+	Version           string           `json:"version" yaml:"version"`
+	IPForwarding      bool             `json:"ipforwarding" yaml:"ipforwarding"`
+	DaemonInstalled   bool             `json:"daemoninstalled" yaml:"daemoninstalled"`
+	HostID            string           `json:"hostid" yaml:"hostid"`
+	HostPass          string           `json:"hostpass" yaml:"hostpass"`
+	Name              string           `json:"name" yaml:"name"`
+	OS                string           `json:"os" yaml:"os"`
+	Debug             bool             `json:"debug" yaml:"debug"`
+	NodePassword      string           `json:"nodepassword" yaml:"nodepassword"`
+	ListenPort        int              `json:"listenport" yaml:"listenport"`
+	LocalAddress      net.IPNet        `json:"localaddress" yaml:"localaddress"`
+	LocalRange        net.IPNet        `json:"localrange" yaml:"localrange"`
+	LocalListenPort   int              `json:"locallistenport" yaml:"locallistenport"`
+	MTU               int              `json:"mtu" yaml:"mtu"`
+	PrivateKey        wgtypes.Key      `json:"privatekey" yaml:"privatekey"`
+	PublicKey         wgtypes.Key      `json:"publickey" yaml:"publickey"`
+	MacAddress        net.HardwareAddr `json:"macaddress" yaml:"macaddress"`
+	TrafficKeyPrivate []byte           `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	TrafficKeyPublic  []byte           `json:"traffickeypublic" yaml:"trafficekeypublic"`
+	InternetGateway   net.UDPAddr      `json:"internetgateway" yaml:"internetgateway"`
 }
 
 func init() {
@@ -53,43 +71,42 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
+// UpdateNetcllient updates the in memory version of the host configuration
+func UpdateNetclient(c Config) {
+	netclient = c
+}
+
+// Netclient returns a pointer to the im memory version of the host configuration
+func Netclient() *Config {
+	return &netclient
+}
+
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
 }
 
-// ReadNetclientConfig reads a configuration file and returns it as an
-// instance. If no configuration file is found, nil and no error will be
-// returned. The configuration mustID live in one of the directories specified in
-// with AddConfigPath()
-//
-// In case multiple configuration files are found, the one in the most specific
-// or "closest" directory will be preferred.
+// ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
-	lockfile := filepath.Join(os.TempDir()) + ConfigLockfile
-	viper.SetConfigName("netclient.yml")
-	viper.SetConfigType("yml")
-	viper.AddConfigPath(GetNetclientPath())
+	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
+	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
 		return nil, err
 	}
 	defer Unlock(lockfile)
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
-		}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
 	}
-	var netclient Config
-	if err := viper.Unmarshal(&netclient); err != nil {
+	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
 	return &netclient, nil
 }
 
-// WriteNetclientConfig save the netclient configuration to disk
+// WriteNetclientConfiig writes the in memory host configuration to disk
 func WriteNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
-	logger.Log(0, "lock file path: ", lockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -107,7 +124,7 @@ func WriteNetclientConfig() error {
 		return err
 	}
 	defer f.Close()
-	err = yaml.NewEncoder(f).Encode(Netclient)
+	err = yaml.NewEncoder(f).Encode(netclient)
 	if err != nil {
 		return err
 	}
@@ -125,17 +142,6 @@ func GetNetclientPath() string {
 	}
 }
 
-// GetNetclientInterfacePath returns path to wireguard interface configuration files
-func GetNetclientInterfacePath() string {
-	if runtime.GOOS == "windows" {
-		return WindowsAppDataPath + "interfaces\\"
-	} else if runtime.GOOS == "darwin" {
-		return MacAppDataPath + "interfaces/"
-	} else {
-		return LinuxAppDataPath + "interfaces/"
-	}
-}
-
 // GetNetclientInstallPath returns the full path where netclient should be installed based on OS
 func GetNetclientInstallPath() string {
 	switch runtime.GOOS {
@@ -148,21 +154,12 @@ func GetNetclientInstallPath() string {
 	}
 }
 
-// FileExists - checks if a file exists on disk
-func FileExists(f string) bool {
-	info, err := os.Stat(f)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
 // Lock creates a lockfile with pid as contents
 // if lockfile exists but belongs to defunct process
 // the existing lockfile will be deleted and new one created
 // if unable to create within TIMEOUT returns error
 func Lock(lockfile string) error {
-	debug := Netclient.Debug
+	debug := netclient.Debug
 	start := time.Now()
 	pid := os.Getpid()
 	if debug {
@@ -201,7 +198,7 @@ func Lock(lockfile string) error {
 				return nil
 			} else {
 				if debug {
-					logger.Log(0, "unable to write")
+					logger.Log(0, "unable to write: ", err.Error())
 				}
 			}
 		}
@@ -220,7 +217,7 @@ func Lock(lockfile string) error {
 // will return TIMEOUT error if timeout exceeded
 func Unlock(lockfile string) error {
 	var pid int
-	debug := Netclient.Debug
+	debug := netclient.Debug
 	start := time.Now()
 	if debug {
 		logger.Log(0, "unlock try")
@@ -289,4 +286,31 @@ func IsPidDead(pid int) bool {
 	//FindProcess always returns err = nil on linux
 	err = process.Signal(syscall.Signal(0))
 	return errors.Is(err, os.ErrProcessDone)
+}
+
+// FormatName ensures name is in character set and is proper length
+// Sets name to blank on failure
+func FormatName(name string) string {
+	if !InCharSet(name) {
+		name = ncutils.DNSFormatString(name)
+	}
+	if len(name) > MaxNameLength {
+		name = ncutils.ShortenString(name, MaxNameLength)
+	}
+	if !InCharSet(name) || len(name) > MaxNameLength {
+		logger.Log(1, "could not properly format name, setting to blank")
+		name = ""
+	}
+	return name
+}
+
+// InCharSet verifies if all chars in string are part of defined charset
+func InCharSet(name string) bool {
+	charset := "abcdefghijklmnopqrstuvwxyz1234567890-"
+	for _, char := range name {
+		if !strings.Contains(charset, strings.ToLower(string(char))) {
+			return false
+		}
+	}
+	return true
 }

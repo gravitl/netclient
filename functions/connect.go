@@ -1,56 +1,72 @@
 package functions
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netclient/wireguard"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// Disconnect - disconnects a node from the given network
-func Disconnect(network string) {
-	node := config.Nodes[network]
+// Disconnect disconnects a node from the given network
+func Disconnect(network string) error {
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
+	if !ok {
+		return errors.New("no such network")
+	}
 	if !node.Connected {
-		fmt.Println("\nnode already disconnected from", network)
-		return
+		return errors.New("node is already disconnected")
 	}
 	node.Connected = false
-	config.Nodes[node.Network] = node
+	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
-		return
+		return fmt.Errorf("error writing node config %w", err)
 	}
-
+	peers := []wgtypes.PeerConfig{}
+	for _, node := range nodes {
+		if node.Connected {
+			peers = append(peers, node.Peers...)
+		}
+	}
+	wireguard.UpdateWgPeers(peers)
 	if err := daemon.Restart(); err != nil {
-		logger.Log(0, "daemon restart failed", err.Error())
+		fmt.Println("daemon restart failed", err)
+		if err := daemon.Start(); err != nil {
+			fmt.Println("daemon failed to start", err)
+		}
 	}
-	fmt.Println("\nnode is disconnected from", network)
+	return nil
 }
 
-// Connect - will attempt to connect a node on given network
-func Connect(network string) {
-	node := config.Nodes[network]
+// Connect will attempt to connect a node on given network
+func Connect(network string) error {
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
+	if !ok {
+		return errors.New("no such network")
+	}
 	if node.Connected {
-		fmt.Println("\nnode already connected to", network)
-		return
+		return errors.New("node already connected")
 	}
 	node.Connected = true
-	config.Nodes[node.Network] = node
+	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "failed to write node config for", node.Name, "on network", network, "with error", err.Error())
-		return
+		return fmt.Errorf("error writing node config %w", err)
 	}
-	// filePath := config.GetNetclientInterfacePath() + node.Interface + ".conf"
-	//if err := setupMQTTSingleton(cfg); err != nil {
-	//	return err
-	//}
-	//if err := PublishNodeUpdate(cfg); err != nil {
-	//	return err
-	//}
-
+	peers := []wgtypes.PeerConfig{}
+	for _, node := range nodes {
+		if node.Connected {
+			peers = append(peers, node.Peers...)
+		}
+	}
+	wireguard.UpdateWgPeers(peers)
 	if err := daemon.Restart(); err != nil {
-		logger.Log(0, "daemon restart failed", err.Error())
+		if err := daemon.Start(); err != nil {
+			return fmt.Errorf("daemon restart failed %w", err)
+		}
 	}
-	fmt.Println("\nnode is connected to", network)
+	return nil
 }

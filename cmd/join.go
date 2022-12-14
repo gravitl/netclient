@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -24,11 +25,16 @@ additional paramaters can be be specified such as listenport or macaddress -- se
 	Run: func(cmd *cobra.Command, args []string) {
 		flags := viper.New()
 		flags.BindPFlags(cmd.Flags())
+		// CLI should always take password from stdin
+		flags.Set("readPassFromStdIn", true)
 		if flags.Get("server") == "" && flags.Get("token") == "" && flags.Get("key") == "" {
 			cmd.Usage()
 			return
 		}
-		functions.Join(flags)
+		err := functions.Join(flags)
+		if err != nil {
+			logger.Log(0, "join failed", err.Error())
+		}
 	},
 }
 
@@ -49,19 +55,16 @@ func init() {
 	joinCmd.Flags().String("localaddress", "", "localaddress for machine. can be used in place of endpoint for machines on same lan")
 	joinCmd.Flags().String("address", "", "wireguard address (ipv4) for machine in netmaker network")
 	joinCmd.Flags().String("address6", "", "wireguard address (ipv6) for machine in netmaker network")
-	joinCmd.Flags().String("interface", "", "wireguard interface name")
 	joinCmd.Flags().String("postup", "", "wireguard postup command(s)")
 	joinCmd.Flags().String("postdown", "", "wireguard postdown command(s)")
 	joinCmd.Flags().String("publicipservice", "", "service to call to obtain the public ip of machine")
-
 	joinCmd.Flags().Bool("static", false, "netclient will not check for public address changes")
 	joinCmd.Flags().Bool("dnson", true, "use private dns")
 	joinCmd.Flags().Bool("islocal", false, "use localaddress for wg endpoint")
 	joinCmd.Flags().Bool("ipforwarding", true, "set ipforwarding on/off")
-
 	joinCmd.Flags().Int("keepalive", 20, "persistent keepalive for wireguard peers")
-	joinCmd.Flags().Int("port", 0, "port for wireguard interface, will turn udpholepunching off")
-
+	joinCmd.Flags().Int("port", 51821, "port for wireguard interface, will turn udpholepunching off")
+	joinCmd.Flags().Bool("proxy", false, "set proxy on/off for the node")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

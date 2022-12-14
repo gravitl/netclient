@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -16,57 +15,47 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// NodeMap is an in memory map of the all nodes indexed by network name
+type NodeMap map[string]Node
+
 // Nodes provides a map of node configurations indexed by network name
-var Nodes map[string]Node
+var Nodes NodeMap
 
 // NodeLockFile is name of lockfile for controlling access to node config file on disk
 const NodeLockfile = "netclient-nodes.lck"
 
 // Node provides configuration of a node
 type Node struct {
-	ID                  string
-	Name                string
-	Network             string
-	Password            string
-	AccessKey           string
-	NetworkRange        net.IPNet
-	NetworkRange6       net.IPNet
-	InternetGateway     *net.UDPAddr
-	Interface           string
-	Server              string
-	Connected           bool
-	TrafficKeys         models.TrafficKeys
-	TrafficPrivateKey   []byte
-	MacAddress          net.HardwareAddr
-	Port                int
-	EndpointIP          net.IP
-	Address             net.IPNet
-	Address6            net.IPNet
-	ListenPort          int
-	LocalAddress        net.IPNet
-	LocalRange          net.IPNet
-	LocalListenPort     int
-	MTU                 int
-	PersistentKeepalive int
-	PrivateKey          wgtypes.Key
-	PublicKey           wgtypes.Key
-	PostUp              string
-	PostDown            string
-	Action              string
-	IsServer            bool
-	UDPHolePunch        bool
-	IsLocal             bool
-	IsEgressGateway     bool
-	IsIngressGateway    bool
-	IsStatic            bool
-	IsPending           bool
-	DNSOn               bool
-	IsHub               bool
+	ID                  string               `json:"id" yaml:"id"`
+	Network             string               `json:"network" yaml:"network"`
+	NetworkRange        net.IPNet            `json:"networkrange" yaml:"networkrange"`
+	NetworkRange6       net.IPNet            `json:"networkrange6" yaml:"networkrange6"`
+	InternetGateway     *net.UDPAddr         `json:"internetgateway" yaml:"internetgateway"`
+	Server              string               `json:"server" yaml:"server"`
+	Connected           bool                 `json:"connected" yaml:"connected"`
+	Interfaces          []models.Iface       `json:"interfaces" yaml:"interfaces"`
+	EndpointIP          net.IP               `json:"endpointip" yaml:"endpointip"`
+	Address             net.IPNet            `json:"address" yaml:"address"`
+	Address6            net.IPNet            `json:"address6" yaml:"address6"`
+	PostUp              string               `json:"postup" yaml:"postup"`
+	PostDown            string               `json:"postdown" yaml:"postdown"`
+	Action              string               `json:"action" yaml:"action"`
+	IsServer            bool                 `json:"isserver" yaml:"isserver"`
+	IsLocal             bool                 `json:"islocal" yaml:"islocal"`
+	IsEgressGateway     bool                 `json:"isegressgateway" yaml:"isegressgateway"`
+	IsIngressGateway    bool                 `json:"isingressgateway" yaml:"isingressgateway"`
+	IsStatic            bool                 `json:"isstatic" yaml:"isstatic"`
+	IsPending           bool                 `json:"ispending" yaml:"ispending"`
+	DNSOn               bool                 `json:"dnson" yaml:"dnson"`
+	IsHub               bool                 `json:"ishub" yaml:"ishub"`
+	PersistentKeepalive int                  `json:"persistentkeepalive" yaml:"persistentkeepalive"`
+	Proxy               bool                 `json:"proxy" yaml:"proxy"`
+	Peers               []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
-// ReadNodeConfig - reads node configuration from disk
+// ReadNodeConfig reads node configuration from disk
 func ReadNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
+	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if err := Lock(lockfile); err != nil {
 		return err
@@ -77,10 +66,36 @@ func ReadNodeConfig() error {
 		return err
 	}
 	defer f.Close()
+	for k := range Nodes {
+		delete(Nodes, k)
+	}
 	if err := yaml.NewDecoder(f).Decode(&Nodes); err != nil {
 		return err
 	}
 	return nil
+}
+
+// GetNodes returns a copy of the NodeMap
+func GetNodes() NodeMap {
+	return Nodes
+}
+
+// GetNode returns returns the node configuation of the specified network name
+func GetNode(k string) Node {
+	if node, ok := Nodes[k]; ok {
+		return node
+	}
+	return Node{}
+}
+
+// UpdateNodeMap updates the in memory nodemap for the specified network
+func UpdateNodeMap(k string, value Node) {
+	Nodes[k] = value
+}
+
+// DeleteNode deletes the node from the nodemap for the specified network
+func DeleteNode(k string) {
+	delete(Nodes, k)
 }
 
 // PrimaryAddress returns the primary address of a node
@@ -91,9 +106,9 @@ func (node *Node) PrimaryAddress() net.IPNet {
 	return node.Address6
 }
 
-// writeNodeConfiguation writes the node map to disk
+// WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir() + NodeLockfile)
+	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
@@ -118,102 +133,110 @@ func WriteNodeConfig() error {
 	return f.Sync()
 }
 
-// ConvertNode accepts a netmaker node struc and converts to a netclient node struct
-func ConvertNode(s *models.Node) *Node {
-	var n Node
-	n.ID = s.ID
-	n.Name = s.Name
-	n.Network = s.Network
-	n.Password = s.Password
-	n.AccessKey = s.AccessKey
-	n.NetworkRange = ToIPNet(s.NetworkSettings.AddressRange)
-	n.NetworkRange6 = ToIPNet(s.NetworkSettings.AddressRange6)
-	n.InternetGateway = ToUDPAddr(s.InternetGateway)
-	n.Interface = s.Interface
-	n.Server = strings.Replace(s.Server, "api.", "", 1)
-	n.TrafficKeys = s.TrafficKeys
-	n.EndpointIP = net.ParseIP(s.Endpoint)
-	n.Connected = ParseBool(s.Connected)
-	n.MacAddress, _ = net.ParseMAC(s.MacAddress)
-	n.Port = int(s.ListenPort)
-	n.Address.IP = net.ParseIP(s.Address)
-	n.Address.Mask = n.NetworkRange.Mask
-	n.Address6.IP = net.ParseIP(s.Address6)
-	n.Address6.Mask = n.NetworkRange6.Mask
-	n.ListenPort = int(s.ListenPort)
-	n.LocalAddress = ToIPNet(s.LocalAddress)
-	n.LocalRange = ToIPNet(s.LocalRange)
-	n.MTU = int(s.MTU)
-	n.PersistentKeepalive = int(s.PersistentKeepalive)
-	n.PublicKey, _ = wgtypes.ParseKey(s.PublicKey)
-	n.PostUp = s.PostUp
-	n.PostDown = s.PostDown
-	n.Action = s.Action
-	n.UDPHolePunch = ParseBool(s.UDPHolePunch)
-	n.IsLocal = ParseBool(s.IsLocal)
-	n.IsEgressGateway = ParseBool(s.IsEgressGateway)
-	n.IsIngressGateway = ParseBool(s.IsIngressGateway)
-	n.IsStatic = ParseBool(s.IsStatic)
-	n.IsPending = ParseBool(s.IsPending)
-	n.DNSOn = ParseBool(s.DNSOn)
-	n.IsHub = ParseBool(s.IsHub)
+// ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
+func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
+	host := Netclient()
+	netmakerNode := nodeGet.Node
+	server := GetServer(netmakerNode.Server)
+	if server == nil {
+		server = ConvertServerCfg(&nodeGet.ServerConfig)
+	}
+	var node Node
+	node.ID = netmakerNode.ID
+	//n.Name = s.Name
+	node.Network = netmakerNode.Network
+	//node.Password = netmakerNode.Password
+	server.AccessKey = netmakerNode.AccessKey
+	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
+	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
+	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
+	node.Interfaces = netmakerNode.Interfaces
+	node.Proxy = netmakerNode.Proxy
+	//n.Interface = s.Interface
+	node.Server = netmakerNode.Server
+	server.TrafficKey = netmakerNode.TrafficKeys.Server
+	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
+	node.Connected = ParseBool(netmakerNode.Connected)
+	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
+	host.ListenPort = int(netmakerNode.ListenPort)
+	node.Address.IP = net.ParseIP(netmakerNode.Address)
+	node.Address.Mask = node.NetworkRange.Mask
+	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
+	node.Address6.Mask = node.NetworkRange6.Mask
+	host.LocalListenPort = int(netmakerNode.LocalListenPort)
+	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
+	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
+	host.MTU = int(netmakerNode.MTU)
+	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
+	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
+	node.PostUp = netmakerNode.PostUp
+	node.PostDown = netmakerNode.PostDown
+	node.Action = netmakerNode.Action
+	node.IsLocal = ParseBool(netmakerNode.IsLocal)
+	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
+	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
+	node.IsStatic = ParseBool(netmakerNode.IsStatic)
+	node.IsPending = ParseBool(netmakerNode.IsPending)
+	node.DNSOn = ParseBool(netmakerNode.DNSOn)
+	node.IsHub = ParseBool(netmakerNode.IsHub)
+	node.Peers = nodeGet.Peers
 	//add items not provided by server
-	n.TrafficPrivateKey = Nodes[n.Network].TrafficPrivateKey
-	n.Password = Nodes[n.Network].Password
-	return &n
+	return &node, server, host
 }
 
-// ConverttoOldNode converts a netclient node to a netmaker node
-func ConvertToOldNode(n *Node) *models.Node {
-	var s models.Node
-	s.ID = n.ID
-	s.OS = Netclient.OS
-	s.HostID = Servers[n.Server].MQID
-	s.Name = n.Name
-	s.Network = n.Network
-	s.Password = n.Password
-	s.AccessKey = n.AccessKey
-	s.NetworkSettings.AddressRange = n.NetworkRange.String()
-	s.NetworkSettings.AddressRange6 = n.NetworkRange6.String()
-	s.InternetGateway = ""
-	if n.InternetGateway != nil {
-		s.InternetGateway = n.InternetGateway.IP.String()
+// ConvertToNetmakerNode converts a netclient node to a netmaker node
+func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Node {
+	var netmakerNode models.Node
+	netmakerNode.ID = node.ID
+	netmakerNode.OS = host.OS
+	netmakerNode.HostID = server.MQID
+	netmakerNode.Name = host.Name
+	netmakerNode.Network = node.Network
+	netmakerNode.Password = host.NodePassword
+	netmakerNode.AccessKey = server.AccessKey
+	netmakerNode.NetworkSettings.AddressRange = node.NetworkRange.String()
+	netmakerNode.NetworkSettings.AddressRange6 = node.NetworkRange6.String()
+	netmakerNode.InternetGateway = ""
+	if node.InternetGateway != nil {
+		netmakerNode.InternetGateway = node.InternetGateway.IP.String()
 	}
-	s.Interface = n.Interface
-	s.Server = n.Server
-	s.TrafficKeys = n.TrafficKeys
+	netmakerNode.Interface = ncutils.GetInterfaceName()
+	netmakerNode.Interfaces = node.Interfaces
+	netmakerNode.Server = node.Server
+	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic
+	netmakerNode.TrafficKeys.Server = server.TrafficKey
 	//only send ip
-	s.Endpoint = n.EndpointIP.String()
-	s.Connected = FormatBool(n.Connected)
-	s.MacAddress = n.MacAddress.String()
-	s.ListenPort = int32(n.ListenPort)
+	netmakerNode.Endpoint = node.EndpointIP.String()
+	netmakerNode.Connected = FormatBool(node.Connected)
+	netmakerNode.MacAddress = host.MacAddress.String()
+	netmakerNode.ListenPort = int32(host.ListenPort)
 	//only send ip
-	s.Address = n.Address.IP.String()
-	if n.Address.IP == nil {
-		s.Address = ""
+	netmakerNode.Address = node.Address.IP.String()
+	if node.Address.IP == nil {
+		netmakerNode.Address = ""
 	}
-	s.Address6 = n.Address6.IP.String()
-	if n.Address6.IP == nil {
-		s.Address6 = ""
+	netmakerNode.Address6 = node.Address6.IP.String()
+	if node.Address6.IP == nil {
+		netmakerNode.Address6 = ""
 	}
-	s.ListenPort = int32(n.ListenPort)
-	s.LocalAddress = n.LocalAddress.String()
-	s.LocalRange = n.LocalRange.String()
-	s.MTU = int32(n.MTU)
-	s.PersistentKeepalive = int32(s.PersistentKeepalive)
-	s.PublicKey = n.PublicKey.String()
-	s.PostUp = n.PostUp
-	s.PostDown = n.PostDown
-	s.Action = n.Action
-	s.UDPHolePunch = FormatBool(n.UDPHolePunch)
-	s.IsLocal = FormatBool(n.IsLocal)
-	s.IsEgressGateway = FormatBool(n.IsEgressGateway)
-	s.IsIngressGateway = FormatBool(n.IsIngressGateway)
-	s.IsStatic = FormatBool(n.IsStatic)
-	s.IsPending = FormatBool(n.IsPending)
-	s.DNSOn = FormatBool(n.DNSOn)
-	s.IsHub = FormatBool(n.IsHub)
-	return &s
+	netmakerNode.LocalListenPort = int32(host.LocalListenPort)
+	netmakerNode.LocalAddress = host.LocalAddress.String()
+	netmakerNode.LocalRange = host.LocalRange.String()
+	netmakerNode.MTU = int32(host.MTU)
+	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive)
+	netmakerNode.PublicKey = host.PublicKey.String()
+	netmakerNode.PostUp = node.PostUp
+	netmakerNode.PostDown = node.PostDown
+	netmakerNode.Action = node.Action
+	netmakerNode.IsLocal = FormatBool(node.IsLocal)
+	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
+	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
+	netmakerNode.IsStatic = FormatBool(node.IsStatic)
+	netmakerNode.IsPending = FormatBool(node.IsPending)
+	netmakerNode.DNSOn = FormatBool(node.DNSOn)
+	netmakerNode.IsHub = FormatBool(node.IsHub)
+	netmakerNode.Proxy = node.Proxy
+	return &netmakerNode
 }
 
 // ToIPNet parses a cidr string and returns a net.IPNet
@@ -246,14 +269,10 @@ func ParseAccessToken(token string) (*models.AccessToken, error) {
 	return &accesstoken, nil
 }
 
-// ModPort - Change Node Port if UDP Hole Punching or ListenPort is not free
-func ModPort(node *Node) error {
+// ModPort - Change Node Port if ListenPort is not free
+func ModPort(host *Config) error {
 	var err error
-	if node.UDPHolePunch {
-		node.ListenPort = 0
-	} else {
-		node.ListenPort, err = ncutils.GetFreePort(node.ListenPort)
-	}
+	host.ListenPort, err = ncutils.GetFreePort(host.ListenPort)
 	return err
 }
 

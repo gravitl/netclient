@@ -10,70 +10,67 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/local"
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 // Uninstall - uninstalls networks from client
-func Uninstall() {
+func Uninstall() ([]error, error) {
+	allfaults := []error{}
+	var err error
 	for network := range config.Nodes {
-		if err := LeaveNetwork(network); err != nil {
-			logger.Log(1, "encountered issue leaving network", network, ":", err.Error())
+		faults, err := LeaveNetwork(network)
+		if err != nil {
+			allfaults = append(allfaults, faults...)
 		}
 	}
-	// clean up OS specific stuff
-	//if ncutils.IsWindows() {
-	//daemon.CleanupWindows()
-	//} else if ncutils.IsMac() {
-	//daemon.CleanupMac()
-	//} else if ncutils.IsLinux() {
-	daemon.CleanupLinux()
-	//} else if ncutils.IsFreeBSD() {
-	//daemon.CleanupFreebsd()
-	//} else if !ncutils.IsKernel() {
-	//logger.Log(1, "manual cleanup required")
-	//}
+	if err := daemon.CleanUp(); err != nil {
+		allfaults = append(allfaults, err)
+	}
+	return allfaults, err
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) error {
-	logger.Log(0, "leaving network", network)
-	node := config.Nodes[network]
-	logger.Log(2, "deleting node from server")
+func LeaveNetwork(network string) ([]error, error) {
+	faults := []error{}
+	fmt.Println("\nleaving network", network)
+	node, ok := config.Nodes[network]
+	if !ok {
+		fmt.Printf("\nnot connected to network: %s", network)
+		return faults, fmt.Errorf("not connected to network: %s", network)
+	}
+	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
-		logger.Log(0, "error deleting node from server", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
 	}
-	logger.Log(2, "deleting wireguard interface")
+	fmt.Println("deleting wireguard interface")
 	if err := deleteLocalNetwork(&node); err != nil {
-		logger.Log(0, "error deleting wireguard interface", err.Error())
+		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	logger.Log(2, "deleting configuration files")
-	if err := WipeLocal(&node); err != nil {
-		logger.Log(0, "error deleting local network files", err.Error())
+	fmt.Println("removing dns entries")
+	if err := removeHostDNS(node.Network); err != nil {
+		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
-	logger.Log(2, "removing dns entries")
-	if err := removeHostDNS(node.Interface, ncutils.IsWindows()); err != nil {
-		logger.Log(0, "failed to delete dns entries for", node.Interface, err.Error())
+	if config.Netclient().DaemonInstalled {
+		fmt.Println("restarting daemon")
+		if err := daemon.Restart(); err != nil {
+			faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
+		}
 	}
-	if config.Netclient.DaemonInstalled {
-		logger.Log(2, "restarting daemon")
-		return daemon.Restart()
+	if len(faults) > 0 {
+		return faults, errors.New("error(s) leaving nework")
 	}
-	return nil
+	return faults, nil
 }
 
 func deleteNodeFromServer(node *config.Node) error {
 	if node.IsServer {
 		return errors.New("attempt to delete server node ... not permitted")
 	}
-	token, err := Authenticate(node)
+	token, err := Authenticate(node, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
 	if err != nil {
 		return fmt.Errorf("could not read sever config %w", err)
 	}
@@ -102,57 +99,27 @@ func deleteNodeFromServer(node *config.Node) error {
 }
 
 func deleteLocalNetwork(node *config.Node) error {
-	wgClient, wgErr := wgctrl.New()
-	if wgErr != nil {
-		return wgErr
+	nodetodelete := config.GetNode(node.Network)
+	if nodetodelete.Network == "" {
+		return errors.New("no such network")
 	}
-	defer wgClient.Close()
-	removeIface := node.Interface
-	queryAddr := node.PrimaryAddress()
-	if ncutils.IsMac() {
-		var macIface string
-		macIface, wgErr = local.GetMacIface(queryAddr.IP.String())
-		if wgErr == nil && removeIface != "" {
-			removeIface = macIface
-		}
-	}
-	dev, err := wgClient.Device(removeIface)
-	if err != nil {
-		return fmt.Errorf("error flushing routes %w", err)
-	}
-	local.FlushPeerRoutes(removeIface, dev.Peers[:])
-	local.RemoveCIDRRoute(removeIface, &node.NetworkRange)
-	return nil
-}
-
-// WipeLocal - wipes local instance
-func WipeLocal(node *config.Node) error {
-	fail := false
-	nc := wireguard.NewNCIface(node)
-	if err := nc.Close(); err == nil {
-		logger.Log(1, "network:", node.Network, "removed WireGuard interface: ", node.Interface)
-	} else if os.IsNotExist(err) {
-		err = nil
-	} else {
-		fail = true
-	}
-	if err := os.Remove(config.GetNetclientInterfacePath() + node.Interface + ".conf"); err != nil {
-		logger.Log(0, "failed to delete file", err.Error())
-		fail = true
-	}
-	//remove node from map of nodes
-	delete(config.Nodes, node.Network)
-	//remove node from list of nodes that server handles
+	//remove node from nodes map
+	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)
-	delete(server.Nodes, node.Network)
-	//if server node list is empty delete server from map of servers
+	//remove node from server node map
+	if server != nil {
+		nodes := server.Nodes
+		delete(nodes, node.Network)
+	}
 	if len(server.Nodes) == 0 {
-		delete(config.Servers, node.Server)
+		logger.Log(3, "removing server", server.Name)
+		config.DeleteServer(node.Server)
 	}
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
-	if fail {
-		return errors.New("not all files were deleted")
+	if len(config.GetNodes()) < 1 {
+		logger.Log(0, "removing wireguard config")
+		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
 	}
 	return nil
 }

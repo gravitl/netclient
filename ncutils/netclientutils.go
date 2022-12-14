@@ -535,3 +535,11 @@ func ConvertBytesToKey(data []byte) (*[32]byte, error) {
 func IPIsPrivate(ipnet net.IP) bool {
 	return ipnet.IsPrivate() || ipnet.IsLoopback()
 }
+
+// GetInterfaceName - fetches the interface name
+func GetInterfaceName() string {
+	if runtime.GOOS == "darwin" {
+		return "utun69"
+	}
+	return "netmaker"
+}

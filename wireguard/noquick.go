@@ -2,25 +2,22 @@ package wireguard
 
 import (
 	"errors"
-	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const disconnectError = "node disconnected"
 
 // ApplyWithoutWGQuick - Function for running the equivalent of "wg-quick up" for linux if wg-quick is missing
-func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnected bool) error {
-
+func ApplyWithoutWGQuick(nc *NCIface) error {
 	ipExec, err := exec.LookPath("ip")
 	if err != nil {
 		return err
@@ -30,50 +27,41 @@ func ApplyWithoutWGQuick(node *config.Node, ifacename, confPath string, isConnec
 		return err
 	}
 	defer wgclient.Close()
-	var conf wgtypes.Config
-	if node.UDPHolePunch && !node.IsServer && !node.IsIngressGateway {
-		conf = wgtypes.Config{
-			PrivateKey: &node.PrivateKey,
-		}
-	} else {
-		conf = wgtypes.Config{
-			PrivateKey: &node.PrivateKey,
-			ListenPort: &node.ListenPort,
-		}
-	}
-	err = setKernelDevice(ifacename, node.Address, node.Address6, isConnected)
+	err = setKernelDevice(nc)
 	if err != nil {
 		if err.Error() == disconnectError {
 			return nil
 		}
 	}
-	_, err = wgclient.Device(ifacename)
+	_, err = wgclient.Device(nc.Name)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return errors.New("Unknown config error: " + err.Error())
 		}
 	}
-	err = wgclient.ConfigureDevice(ifacename, conf)
+	err = wgclient.ConfigureDevice(nc.Name, nc.Config)
 	if err != nil {
 		if os.IsNotExist(err) {
 			logger.Log(0, "Could not configure device: ", err.Error())
 		}
 	}
-	if _, err := ncutils.RunCmd(ipExec+" link set down dev "+ifacename, false); err != nil {
+	if _, err := ncutils.RunCmd(ipExec+" link set down dev "+nc.Name, false); err != nil {
 		logger.Log(1, "attempted to remove interface before editing")
 		return err
 	}
-	if node.PostDown != "" {
-		ncutils.RunCmd(node.PostDown, false)
-	}
+	// **********TODO *********
+	// figure out firewalls
+	//if node.PostDown != "" {
+	//ncutils.RunCmd(node.PostDown, false)
+	//}
 	// set MTU of node interface
-	if _, err := ncutils.RunCmd(ipExec+" link set mtu "+strconv.Itoa(node.MTU)+" up dev "+ifacename, true); err != nil {
-		logger.Log(1, "failed to create interface with mtu ", strconv.Itoa(node.MTU), "-", ifacename)
+	if _, err := ncutils.RunCmd(ipExec+" link set mtu "+strconv.Itoa(config.Netclient().MTU)+" up dev "+nc.Name, true); err != nil {
+		logger.Log(1, "failed to create interface with mtu ", strconv.Itoa(config.Netclient().MTU), "-", nc.Name)
 		return err
 	}
-	if node.PostUp != "" {
-		ncutils.RunCmd(node.PostUp, false)
-	}
+	//if node.PostUp != "" {
+	//ncutils.RunCmd(node.PostUp, false)
+	//}
 	return nil
 }
 
@@ -89,7 +77,7 @@ func RemoveWithoutWGQuick(ifacename string) error {
 		logger.Log(1, out)
 	}
 	network := strings.ReplaceAll(ifacename, "nm-", "")
-	node := config.Nodes[network]
+	node := config.GetNode(network)
 	if node.PostDown != "" {
 		if _, err := ncutils.RunCmd(node.PostDown, false); err != nil {
 			return err
@@ -98,22 +86,26 @@ func RemoveWithoutWGQuick(ifacename string) error {
 	return nil
 }
 
-func setKernelDevice(ifacename string, address4, address6 net.IPNet, isConnected bool) error {
+func setKernelDevice(nc *NCIface) error {
 	ipExec, err := exec.LookPath("ip")
 	if err != nil {
 		return err
 	}
 	// == best effort ==
-	ncutils.RunCmd("ip link delete dev "+ifacename, false)
-	if !isConnected {
-		return fmt.Errorf(disconnectError)
-	}
-	ncutils.RunCmd(ipExec+" link add dev "+ifacename+" type wireguard", true)
-	if address4.IP != nil {
-		ncutils.RunCmd(ipExec+" address add dev "+ifacename+" "+address4.String(), true)
-	}
-	if address6.IP != nil {
-		ncutils.RunCmd(ipExec+" address add dev "+ifacename+" "+address6.String(), true)
+	ncutils.RunCmd("ip link delete dev "+nc.Name, false)
+	//wait for a bit
+	time.Sleep(time.Millisecond * 500)
+	ncutils.RunCmd(ipExec+" link add dev "+nc.Name+" type wireguard", true)
+	for _, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		if node.Address.IP != nil {
+			ncutils.RunCmd(ipExec+" address add dev "+nc.Name+" "+node.Address.String(), true)
+		}
+		if node.Address6.IP != nil {
+			ncutils.RunCmd(ipExec+" address add dev "+nc.Name+" "+node.Address6.String(), true)
+		}
 	}
 	return nil
 }
