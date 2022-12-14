@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
@@ -62,21 +63,20 @@ func routePktEgress(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 		flow := pkt.NetworkLayer().NetworkFlow()
 		src, dst := flow.Endpoints()
 		var srcIP, dstIP net.IP
-		srcIP = net.ParseIP(src.String())
-		dstIP = net.ParseIP(dst.String())
-		// if inbound {
-		// 	if rInfo, found := config.GetCfg().GetEgressRoutingInfo(src.String(), inbound); found {
-		// 		srcIP = rInfo.InternalIP
-		// 		dstIP = net.ParseIP(dst.String())
-		// 	}
-		// } else {
-		// 	//if rInfo, found := config.GetCfg().GetEgressRoutingInfo(dst.String(), inbound); found {
-		// 		srcIP = net.ParseIP()
-		// 		dstIP =
-		// 	//}
-		// }
+		if inbound {
+			// if rInfo, found := config.GetCfg().GetEgressRoutingInfo(src.String(), inbound); found {
+			srcIP = net.ParseIP(src.String())
+			dstIP = net.ParseIP(dst.String())
+			// }
+		} else {
+			//if rInfo, found := config.GetCfg().GetEgressRoutingInfo(dst.String(), inbound); found {
+			srcIP = net.ParseIP("10.126.0.3")
+			dstIP = net.ParseIP(dst.String())
+			//}
+		}
 		if srcIP != nil && dstIP != nil {
 			if pkt.NetworkLayer().(*layers.IPv4) != nil {
+				logger.Log(0, fmt.Sprintf("--------> IP header: %+v\n", pkt.NetworkLayer().(*layers.IPv4)))
 				pkt.NetworkLayer().(*layers.IPv4).SrcIP = srcIP
 				pkt.NetworkLayer().(*layers.IPv4).DstIP = dstIP
 			} else if pkt.NetworkLayer().(*layers.IPv6) != nil {
@@ -92,7 +92,7 @@ func routePktEgress(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 			if pkt.TransportLayer() != nil && pkt.TransportLayer().(*layers.TCP) != nil {
 				pkt.TransportLayer().(*layers.TCP).SetNetworkLayerForChecksum(pkt.NetworkLayer())
 			}
-
+			logger.Log(0, "-----------> Flowing From: ", src.String(), " TO: ", dst.String())
 			// Serialize Packet to get raw bytes
 			if err := gopacket.SerializePacket(buffer, options, pkt); err != nil {
 				logger.Log(0, "Failed to serialize packet: ", err.Error())
