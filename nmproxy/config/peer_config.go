@@ -313,6 +313,7 @@ func (c *Config) AddNoProxyPeer(peer *models.RemotePeer) {
 	c.ifaceConfig.nonProxyPeerMap[peer.PeerKey] = peer
 }
 
+// Config.DeleteNoProxyPeer - deletes no proxy peers from config
 func (c *Config) DeleteNoProxyPeer(peerKey string) {
 	delete(c.ifaceConfig.nonProxyPeerMap, peerKey)
 }
