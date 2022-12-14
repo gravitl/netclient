@@ -1,4 +1,5 @@
 {
+  "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "netclient-2-0",
   "outputfilename": "netclient",
   "frontend:install": "npm install",
@@ -12,9 +13,9 @@
     "email": "info@netmaker.io"
   },
   "info": {
-  "companyName": "Netmaker",
-  "productName": "netclient",
-  "productVersion": "0.18.0",
-  "comments": "This app controls aspects of Netmaker networks"
+    "companyName": "Netmaker",
+    "productName": "netclient",
+    "productVersion": "0.18.0",
+    "comments": "This app controls aspects of Netmaker networks"
   }
 }
