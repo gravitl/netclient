@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+// PeerConnectionStatus - get peer connection status by pinging
 func PeerConnectionStatus(address string) (connected bool) {
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
