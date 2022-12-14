@@ -17,6 +17,8 @@ type wgIfaceConf struct {
 	extSrcIpMap      map[string]*models.RemotePeer
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
+	nonProxyPeerMap  map[string]*models.RemotePeer
+	ServerConn       *net.UDPAddr
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -299,4 +301,18 @@ func (c *Config) GetInterfaceListenPort() (port int) {
 // Config.UpdateWgIface - updates iface config in memory
 func (c *Config) UpdateWgIface(wgIface *wg.WGIface) {
 	c.ifaceConfig.iface = wgIface
+}
+
+// Config.GetNoProxyPeers - fetches peers not using proxy
+func (c *Config) GetNoProxyPeers() map[string]*models.RemotePeer {
+	return c.ifaceConfig.nonProxyPeerMap
+}
+
+// Config.AddNoProxyPeer - adds non proxy peer to config
+func (c *Config) AddNoProxyPeer(peer *models.RemotePeer) {
+	c.ifaceConfig.nonProxyPeerMap[peer.PeerKey] = peer
+}
+
+func (c *Config) DeleteNoProxyPeer(peerKey string) {
+	delete(c.ifaceConfig.nonProxyPeerMap, peerKey)
 }
