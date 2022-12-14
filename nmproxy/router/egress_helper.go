@@ -15,7 +15,7 @@ func getEgressOutboundHandler(ifaceName string) (*pcap.Handle, error) {
 	// Open device
 	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
-		logger.Log(1, "failed to get outbound router for iface: ", ifaceName, err.Error())
+		logger.Log(1, "failed to get outbound router handle for iface: ", ifaceName, err.Error())
 		return nil, err
 	}
 
@@ -27,7 +27,7 @@ func getEgressInboundHandler(ifaceName string) (*pcap.Handle, error) {
 	// Open device
 	handle, err := pcap.OpenLive(ifaceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
-		logger.Log(1, "failed to get outbound router for iface: ", ifaceName, err.Error())
+		logger.Log(1, "failed to get inbound router handle for iface: ", ifaceName, err.Error())
 		return nil, err
 	}
 	return handle, nil
@@ -41,6 +41,7 @@ func startEgressInBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Log(0, "------> Stopping egress inbound handler")
 			return
 		default:
 			packet, err := packetSource.NextPacket()
@@ -67,6 +68,7 @@ func startEgressOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Log(0, "------> Stopping egress outbound handler")
 			return
 		default:
 			packet, err := packetSource.NextPacket()
@@ -79,7 +81,6 @@ func startEgressOutBoundRouter(ctx context.Context, wg *sync.WaitGroup) {
 				if err := inBoundHandler.WritePacketData(packet.Data()); err != nil {
 					logger.Log(0, "failed to inject pkt by outbound handler: ", err.Error())
 				}
-
 			}
 		}
 

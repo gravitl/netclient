@@ -38,7 +38,7 @@ func StartEgress() error {
 	if err != nil {
 		return err
 	}
-	inHandler, err := getEgressInboundHandler("eth1")
+	inHandler, err := getEgressInboundHandler("ens4")
 	if err != nil {
 		return err
 	}
