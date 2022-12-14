@@ -28,14 +28,12 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	peers := []wgtypes.PeerConfig{}
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
-		addr := ifaceAddress{}
-		addr.IP = node.Address.IP
-		addr.Network = node.NetworkRange
-		if addr.IP == nil {
-			addr.IP = node.Address6.IP
-			addr.Network = node.NetworkRange6
-		}
-		addrs = append(addrs, addr)
+		addrs = append(addrs, ifaceAddress{
+			IP:       node.Address.IP,
+			Network:  node.NetworkRange,
+			IP6:      node.Address6.IP,
+			Network6: node.NetworkRange6,
+		})
 		if node.Proxy {
 			node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 		}
@@ -58,8 +56,10 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
-	IP      net.IP
-	Network net.IPNet
+	IP       net.IP
+	Network  net.IPNet
+	IP6      net.IP
+	Network6 net.IPNet
 }
 
 // Close closes a netclient interface
