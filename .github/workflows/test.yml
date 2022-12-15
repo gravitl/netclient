@@ -27,26 +27,20 @@ jobs:
          env CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -tags headless .
          env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags headless .
          env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags headless .
-  
-#  tests:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v3
-#      - name: Setup Go
-#        uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: Run Go tests
-#        run: |
-#          go test  -tags headless ./... -v
-#        env:
-#          DATABASE: sqlite
-#      - name: Run GUI (React) tests
-#        run: |
-#          npm run test
-#        working-directory: './gui/frontend'
-#  
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - name: Run Go tests
+        run: |
+          go test  -tags headless ./... -v
+
 #  test-gui:
 #    runs-on: ubuntu-latest
 #    steps:
