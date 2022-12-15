@@ -85,7 +85,6 @@ jobs:
         build: [
           {name: guiLinux, platform: linux/amd64, os: ubuntu-latest},
           {name: guiMac, platform: darwin/universal, os: macos-latest},
-          {name: guiFreebsd, platform: freebsd/amd64, os: ubuntu-latest}
         ]
     runs-on: ${{ matrix.build.os }}
     steps:
@@ -101,7 +100,7 @@ jobs:
       - name: build gui
         run: |
           sudo apt update
-          sudo apt install build-essential libgtk-3-dev webkit2gtk-4.0-dev
+          sudo apt install build-essential libgtk-3-dev libwebkit2gtk-4.0-dev
           cd gui/frontend
           npm ci
           npm run build
