@@ -25,7 +25,11 @@ func createDirIfNotExists() {
 }
 
 func downloadVersion(version string) {
-	res, err := http.Get(fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH))
+	url := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		url += ".exe"
+	}
+	res, err := http.Get(url)
 	if err != nil {
 		log.Fatal("Error making HTTP request: ", err)
 	}
@@ -66,10 +70,10 @@ func UseVersion(version string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer tmpFile.Close()
 	if _, err := tmpFile.Write(src); err != nil {
 		log.Fatal(err)
 	}
-	tmpFile.Close()
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		log.Fatal(err)
 	}
