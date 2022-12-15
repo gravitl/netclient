@@ -17,7 +17,9 @@
   </a>
 </p>
 
-# The Netmaker client 
+# It Manages WireGuard® so You Don't Have To 
+
+This is the client for Netmaker networks. To learn more about Netmaker, [see here](http://github.com/gravitl/netmaker).
 
 ## Installation
 
@@ -27,7 +29,7 @@ https://docs.netmaker.org/netclient.html#installation
 
 https://docs.netmaker.org/netclient.html#joining-a-network
 
-### Join a network
+## Join a network
 
 With Token:  
 `netclient join -t <token>`
@@ -38,22 +40,36 @@ With User (Basic Auth):
 With User (SSO):  
 `netclient join -n <net name> -s api.<netmaker domain>`
 
-### Helper Functions
-`netclient help`  
-`netclient list`  
-`wg show`  
-(on linux) `systemctl status netclient`
+## Commands
+```
+Netmaker's netclient agent and CLI to manage wireguard networks
 
-### Connect / Disconnect from Network
-`netclient connect -n <network>`  
-`netclient disconnect -n <network>`
+Join, leave, connect and disconnect from netmaker wireguard networks.
 
-### Leave Network
-`netclient leave -n <network>`
+Usage:
+  netclient [command]
 
-## Uninstall
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  connect     connect to a netmaker network
+  daemon      netclient daemon
+  disconnect  disconnet from a network
+  help        Help about any command
+  install     install netclient binary and daemon
+  join        join a network
+  leave       leave a network
+  list        display list of netmaker networks
+  pull        get the latest node configuration
+  uninstall   uninstall netclient
+  version     Displays version information
 
-`netclient uninstall`
+Flags:
+      --config string   use specified config file
+  -h, --help            help for netclient
+  -v, --verbosity int   set loggin verbosity 0-4
+
+Use "netclient [command] --help" for more information about a command.
+```
 
 ## Disclaimer
  [WireGuard](https://wireguard.com/) is a registered trademark of Jason A. Donenfeld.
