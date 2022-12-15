@@ -43,22 +43,22 @@ jobs:
           touch gui/frontend/dist/index.html
           go test  -tags headless ./... -v
 
-#  test-gui:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v3
-#        with:
-#          submodules: recursive
-#      - uses: actions/setup-node@v3
-#        with:
-#          node-version: 19
-#          cache: 'npm'
-#      - uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: build gui 
-#        run: |
-#          cd gui/frontend/ && npm test
+  test-gui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 19
+          cache: 'npm'
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - name: build gui 
+        run: |
+          cd gui/frontend/ && npm run test
 
   staticcheck:
     runs-on: ubuntu-latest
@@ -71,6 +71,8 @@ jobs:
           go-version: 1.19
       - name: Run static checks
         run: |
+          mkdir -p gui/frontend/dist
+          touch gui/frontend/dist/index.html
           sudo apt update
           go install honnef.co/go/tools/cmd/staticcheck@latest
           { ~/go/bin/staticcheck  ./... ; }
