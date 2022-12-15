@@ -21,7 +21,6 @@ jobs:
           go-version: 1.19
       - name: Build
         run: |
-<<<<<<< HEAD
           sudo apt update
           sudo apt install -y libpcap-dev 
           env CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags headless .
@@ -40,15 +39,6 @@ jobs:
             git restore .
             git pull
             go build -tags headless .
-=======
-         mkdir -p gui/frontend/dist
-         touch gui/frontend/dist/index.html
-         env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags headless .
-
->>>>>>> 10f53eb3 (add test)
   tests:
     runs-on: ubuntu-latest
     steps:
@@ -60,94 +50,9 @@ jobs:
           go-version: 1.19
       - name: Run Go tests
         run: |
-<<<<<<< HEAD
           sudo apt update
           sudo apt install -y libpcap-dev 
           go test  -tags headless ./... -v
-=======
-          go test  -tags headless ./... -v
-
-#  test-gui:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v3
-#        with:
-#          submodules: recursive
-#      - uses: actions/setup-node@v3
-#        with:
-#          node-version: 19
-#          cache: 'npm'
-#      - uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: build gui 
-#        run: |
-#          cd gui/frontend/ && npm test
-#
-#  staticcheck:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v3
-#      - name: Setup Go
-#        uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: Run Go tests
-#        run: |
-#          sudo apt update
-#          go install honnef.co/go/tools/cmd/staticcheck@latest
-#          { ~/go/bin/staticcheck  -tags=ee ./... ; }
-#
-#      - name: Run GUI (React) tests
-#        run: |
-#          npm run test
-#        working-directory: './gui/frontend'
-#
-#  gui:
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        build: [
-#          {name: guiLinux, platform: linux/amd64, os: ubuntu-latest},
-#          {name: guiMac, platform: darwin/universal, os: macos-latest},
-#          {name: guiFreebsd, platform: freebsd/amd64, os: ubuntu-latest}
-#        ]
-#    runs-on: ${{ matrix.build.os }}
-#    steps:
-#      - uses: actions/checkout@v3
-#        with:
-#          submodules: recursive
-#      - uses: actions/setup-node@v3
-#        with:
-#          node-version: 19
-#          cache: 'npm'
-#      - uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: build gui 
-#        run: |
-#          cd gui/frontend/ && npm run build
-#          go build -tags desktop,production -ldflags "-w -s"
-#
-#  windows:
-#    runs-on: windows-latest
-#    steps:
-#      - uses: actions/checkout@v3
-#        with:
-#          submodules: recursive
-#      - uses: actions/setup-node@v3
-#        with:
-#          node-version: 19
-#          cache: 'npm'
-#      - uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: build gui 
-#        run: |
-#          cd gui/frontend/ && npm run build
-#          go build -tags desktop,production -ldflags "-w -s -H windowsgui"
->>>>>>> 10f53eb3 (add test)
 
   test-gui:
     runs-on: ubuntu-latest
