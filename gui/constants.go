@@ -1,5 +1,7 @@
 package gui
 
+const APP_NAME = "Netclient"
+const APP_ICON_FILE_PATH = "gui/assets/logo.png"
 const NETMAKER_DOCS_LINK = "https://docs.netmaker.org/"
 
 // app events

@@ -23,6 +23,7 @@ import (
 var version = "v0.18.0"
 
 //go:embed all:gui/frontend/dist
+//go:embed gui/assets
 var assets embed.FS
 
 func main() {
@@ -40,25 +41,30 @@ func main() {
 var guiFunc = setupNetclientGui
 
 func setupNetclientGui() {
-	cmd.InitConfig()
+	// cmd.InitConfig()
 	config.SetVersion(version)
 	fmt.Printf("wails: netclient version set to: %s\n", version)
 
+	app.HookAppAssets(&assets)
+
 	// Create an instance of the guiApp structure
 	guiApp := app.NewApp()
+
+	app.SysTrayReadyFunc, app.SysTrayExitFunc = guiApp.SetupSysTray()
 
 	// Application menu
 	appMenu := app.GetAppMenu(guiApp)
 
 	// Application options
 	appOptions := &options.App{
-		Title:            "Netclient",
+		Title:            app.APP_NAME,
 		Width:            1024,
 		Height:           768,
 		MinWidth:         1024,
 		MinHeight:        768,
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 1},
 		OnStartup:        guiApp.Startup,
+		OnShutdown:       guiApp.Shutdown,
 		Menu:             appMenu,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
