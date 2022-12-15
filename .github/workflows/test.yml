@@ -57,7 +57,9 @@ jobs:
           go-version: 1.19
       - name: test gui
         run: |
-          cd gui/frontend/ && npm run test
+          cd gui/frontend
+          npm ci
+          npm run test
 
   staticcheck:
     runs-on: ubuntu-latest
@@ -99,6 +101,7 @@ jobs:
       - name: build gui
         run: |
           cd gui/frontend
+          npm ci
           npm run build
           cd ../..
           go build -tags desktop,production -ldflags "-w -s"
@@ -118,6 +121,7 @@ jobs:
       - name: build gui
         run: |
           cd gui/frontend
+          npm ci
           npm run build
           cd ../..
           go build -tags desktop,production -ldflags "-w -s -H windowsgui"
