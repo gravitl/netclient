@@ -25,7 +25,7 @@ func createDirIfNotExists() {
 }
 
 func downloadVersion(version string) {
-	res, err := http.Get(fmt.Sprintf("https://github.com/gravitl/netmaker/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH))
+	res, err := http.Get(fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH))
 	if err != nil {
 		log.Fatal("Error making HTTP request: ", err)
 	}
