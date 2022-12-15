@@ -59,22 +59,22 @@ jobs:
 #      - name: build gui 
 #        run: |
 #          cd gui/frontend/ && npm test
-#
-#  staticcheck:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v3
-#      - name: Setup Go
-#        uses: actions/setup-go@v3
-#        with:
-#          go-version: 1.19
-#      - name: Run Go tests
-#        run: |
-#          sudo apt update
-#          go install honnef.co/go/tools/cmd/staticcheck@latest
-#          { ~/go/bin/staticcheck  -tags=ee ./... ; }
-#
+
+  staticcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - name: Run static checks
+        run: |
+          sudo apt update
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          { ~/go/bin/staticcheck  ./... ; }
+
 #      - name: Run GUI (React) tests
 #        run: |
 #          npm run test
