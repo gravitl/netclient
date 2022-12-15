@@ -63,7 +63,6 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 19
-          cache: 'npm'
       - uses: actions/setup-go@v3
         with:
           go-version: 1.19
