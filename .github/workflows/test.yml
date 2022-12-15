@@ -100,6 +100,8 @@ jobs:
           go-version: 1.19
       - name: build gui
         run: |
+          sudo apt update
+          sudo apt install build-essential libgtk3 libwebkit
           cd gui/frontend
           npm ci
           npm run build
@@ -120,6 +122,8 @@ jobs:
           go-version: 1.19
       - name: build gui
         run: |
+          sudo apt update
+          sudo apt install build-essential libgtk3 libwebkit
           cd gui/frontend
           npm ci
           npm run build
