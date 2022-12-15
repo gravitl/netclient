@@ -358,6 +358,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 		return nil, nil, nil, fmt.Errorf("error creating node %w", err)
 	}
 	nodeGET := response
+	log.Println("checking for version compatiblitity ", nodeGET.ServerConfig.Version)
+	if !IsVersionComptatible(nodeGET.ServerConfig.Version) {
+		return nil, nil, nil, errors.New("incompatible server version")
+	}
 	//config.UpdateServerConfig(&nodeGET.ServerConfig)
 	newNode, newServer, newHostConfig := config.ConvertNode(&nodeGET)
 	newNode.Connected = true
