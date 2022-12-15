@@ -15,7 +15,6 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -88,8 +87,6 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 		Password:   string(pass),
 	}
 	server := GetServer(node.Server)
-	pretty.Println(data)
-	pretty.Println(server)
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Route:  "/api/nodes/adm/" + node.Network + "/authenticate",
@@ -114,7 +111,7 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 	return token.(string), nil
 }
 
-// ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
+// ConvertOldNode accepts a netmaker node struct and converts to the structs used by netclient
 func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	host := Netclient()
 	netmakerNode := nodeGet.Node
@@ -122,8 +119,6 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	//if server == nil {
 	server := ConvertOldServerCfg(&nodeGet.ServerConfig)
 	//}
-	log.Println("CovertOldNode")
-	pretty.Println(server)
 	var node Node
 	node.ID = netmakerNode.ID
 	//n.Name = s.Name
@@ -167,7 +162,7 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	return &node, server, host
 }
 
-// ConvertServerCfg converts a netmaker ServerConfig to netclient server struct
+// ConvertOldServerCfg converts a netmaker ServerConfig to netclient server struct
 func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	var server Server
 	serverName := strings.Replace(cfg.Server, "broker.", "", 1)

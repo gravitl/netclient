@@ -13,7 +13,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 )
 
 // Migrate update data from older versions of netclient to new format
@@ -52,7 +51,6 @@ func Migrate() {
 		var tempServer config.Server
 		tempServer.API = cfg.Server.API
 		config.UpdateServer(serverName, tempServer)
-		pretty.Println(node)
 		//get jwt
 		jwt, err := config.OldAuthenticate(&node, host)
 		if err != nil {
