@@ -39,6 +39,8 @@ jobs:
           go-version: 1.19
       - name: Run Go tests
         run: |
+          mkdir -p gui/frontend/dist
+          touch gui/frontend/dist/index.html
           go test  -tags headless ./... -v
 
 #  test-gui:
