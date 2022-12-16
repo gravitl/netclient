@@ -37,7 +37,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 				IP:      node.Address6.IP,
 				Network: node.NetworkRange6,
 			})
-		if node.Proxy {
+		if config.Netclient().ProxyEnabled {
 			node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 		}
 		peers = append(peers, node.Peers...)

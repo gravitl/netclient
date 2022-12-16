@@ -146,5 +146,4 @@ func TurnOffIpFowarding() {
 			logger.Log(0, "error encountered turning off ip forwarding: ", err.Error())
 		}
 	}
-
 }
