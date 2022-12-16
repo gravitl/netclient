@@ -41,12 +41,12 @@ func (nc *NCIface) ApplyAddrs() error {
 					continue
 				}
 			}
-		}
-		if address.Network.IP.To4() != nil {
-			cmd := exec.Command("route", "add", "-net", address.Network.String(), "-interface", nc.Name)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
-				continue
+			if address.Network.IP.To4() != nil {
+				cmd := exec.Command("route", "add", "-net", address.Network.String(), "-interface", nc.Name)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+					continue
+				}
 			}
 		}
 	}
