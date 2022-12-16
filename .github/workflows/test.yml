@@ -123,12 +123,10 @@ jobs:
       - uses: dAppServer/wails-build-action@v2
         with:
           build-name: netclient
-          build-platform: darwin/univeral
+          build-platform: darwin/universal
           package: false
           go-version: 1.19
-      - run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@latest 
-          ~/go/bin/wails build
+          node-version: 19.x
 
   windows:
     runs-on: windows-latest
