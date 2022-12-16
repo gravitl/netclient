@@ -112,10 +112,11 @@ jobs:
       - uses: actions/setup-go@v3
         with:
           go-version: 1.19
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
       - name: build gui
         run: |
-          sudo rm -rf /Library/Developer/CommandLineTools
-          xcode-select --install
           cd gui/frontend
           npm ci
           npm run build
