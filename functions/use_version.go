@@ -35,6 +35,9 @@ func downloadVersion(version string) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusNotFound {
+			log.Fatal("Specified version of netclient doesn't exist")
+		}
 		log.Fatal("Error making HTTP request Code: ", res.StatusCode)
 	}
 	file, err := os.Create(filePath)
