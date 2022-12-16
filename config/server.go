@@ -93,6 +93,11 @@ func SaveServer(name string, server Server) error {
 	return WriteServerConfig()
 }
 
+// UpdateServer updates the in-memory server map
+func UpdateServer(name string, server Server) {
+	Servers[name] = server
+}
+
 // GetServer returns the server struct for the given server name
 func GetServer(name string) *Server {
 	if server, ok := Servers[name]; ok {

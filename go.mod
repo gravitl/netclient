@@ -15,7 +15,10 @@ require (
 require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
+	github.com/google/gopacket v1.1.19
 	github.com/gravitl/netmaker v0.17.1-0.20221208192411-e00199a6502a
+	github.com/hashicorp/go-version v1.6.0
+	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.2.0
 	golang.design/x/clipboard v0.6.3
@@ -41,7 +44,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/josharian/native v1.0.0 // indirect

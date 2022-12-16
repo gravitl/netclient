@@ -33,7 +33,6 @@ func GetAppMenu(app *App) *menu.Menu {
 
 	fileMenu := menu.AddSubmenu("File")
 	fileMenu.AddText("Networks", nil, app.openNetworksPage)
-	fileMenu.AddText("Netclient Logs", nil, app.openLogsPage)
 	fileMenu.AddText("Uninstall", nil, app.uninstallApp)
 
 	aboutMenu := menu.AddSubmenu("About")
@@ -52,10 +51,6 @@ func (a *App) openDocs(callbackData *menu.CallbackData) {
 
 func (a *App) openNetworksPage(callbackData *menu.CallbackData) {
 	runtime.EventsEmit(a.ctx, EV_OPEN_NETWORKS_PAGE)
-}
-
-func (a *App) openLogsPage(callbackData *menu.CallbackData) {
-	runtime.EventsEmit(a.ctx, EV_OPEN_LOGS_PAGE)
 }
 
 func (a *App) uninstallApp(callbackData *menu.CallbackData) {

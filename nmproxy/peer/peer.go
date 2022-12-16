@@ -5,35 +5,37 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/proxy"
-	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, peerAddr string,
-	isRelayed, isExtClient, isAttachedExtClient bool, relayTo *net.UDPAddr) error {
+func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+	isRelayed bool, relayTo *net.UDPAddr) error {
+
 	if peer.PersistentKeepaliveInterval == nil {
-		d := time.Second * 25
+		d := models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
-		LocalKey:            wgInterface.Device.PublicKey,
+		LocalKey:            config.GetCfg().GetDevicePubKey(),
 		RemoteKey:           peer.PublicKey,
-		WgInterface:         wgInterface,
-		IsExtClient:         isExtClient,
+		IsExtClient:         peerConf.IsExtClient,
 		PeerConf:            peer,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
 		Network:             network,
+		ListenPort:          int(peerConf.PublicListenPort),
 	}
 	p := proxy.New(c)
-	peerPort := models.NmProxyPort
-	if isExtClient && isAttachedExtClient {
+	peerPort := int(peerConf.PublicListenPort)
+	if peerPort == 0 {
+		peerPort = models.NmProxyPort
+	}
+	if peerConf.IsExtClient && peerConf.IsAttachedExtClient {
 		peerPort = peer.Endpoint.Port
 
 	}
@@ -62,7 +64,7 @@ func AddNew(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, p
 		Key:                 peer.PublicKey,
 		IsRelayed:           isRelayed,
 		RelayedEndpoint:     relayTo,
-		IsAttachedExtClient: isAttachedExtClient,
+		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		Config:              p.Config,
 		StopConn:            p.Close,
 		ResetConn:           p.Reset,
@@ -70,18 +72,25 @@ func AddNew(wgInterface *wg.WGIface, network string, peer *wgtypes.PeerConfig, p
 	}
 	rPeer := models.RemotePeer{
 		Network:             network,
-		Interface:           wgInterface.Name,
+		Interface:           config.GetCfg().GetIface().Name,
 		PeerKey:             peer.PublicKey.String(),
-		IsExtClient:         isExtClient,
+		IsExtClient:         peerConf.IsExtClient,
 		Endpoint:            peerEndpoint,
-		IsAttachedExtClient: isAttachedExtClient,
+		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
 	config.GetCfg().SavePeer(network, &connConf)
 	config.GetCfg().SavePeerByHash(&rPeer)
 
-	if isAttachedExtClient {
+	if peerConf.IsAttachedExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
+		//add rules to router
+		routingInfo := &config.Routing{
+			InternalIP: peerConf.ExtInternalIp,
+			ExternalIP: peerConf.Address,
+		}
+		config.GetCfg().SaveRoutingInfo(routingInfo)
+
 	}
 	return nil
 }

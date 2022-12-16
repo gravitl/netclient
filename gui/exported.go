@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/models"
@@ -22,7 +21,7 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 	flags.Set("token", token)
 	flags.Set("server", "")
 
-	cmd.InitConfig()
+	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -109,7 +108,7 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	flags.Set("server", serverName)
 	flags.Set("network", networkName)
 
-	cmd.InitConfig()
+	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -128,7 +127,7 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 	flags.Set("readPassFromStdIn", false)
 	flags.Set("pass", password)
 
-	cmd.InitConfig()
+	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
