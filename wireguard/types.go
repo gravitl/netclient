@@ -34,8 +34,8 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 				Network: node.NetworkRange,
 			},
 			ifaceAddress{
-				IP6:      node.Address6.IP,
-				Network6: node.NetworkRange6,
+				IP:      node.Address6.IP,
+				Network: node.NetworkRange6,
 			})
 		if node.Proxy {
 			node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
@@ -59,10 +59,8 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
-	IP       net.IP
-	Network  net.IPNet
-	IP6      net.IP
-	Network6 net.IPNet
+	IP      net.IP
+	Network net.IPNet
 }
 
 // Close closes a netclient interface
