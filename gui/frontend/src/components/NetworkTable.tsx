@@ -39,8 +39,8 @@ export default function NetworkTable(props: NetworkTableProps) {
             </TableHead>
             <TableBody>
               {props.networks.map((nw, i) => (
-                <TableRow key={(nw?.node?.network ?? '') + i}>
-                  <TableCell>
+                <TableRow key={(nw?.node?.network ?? '') + i} data-testid="network-row">
+                  <TableCell data-testid="network-name">
                     <Button
                       variant="text"
                       title="View details"
@@ -52,6 +52,7 @@ export default function NetworkTable(props: NetworkTableProps) {
                   </TableCell>
                   <TableCell align="right">
                     <Switch
+                      data-testid="status-toggle"
                       checked={nw?.node?.connected ?? false}
                       onChange={() =>
                         props.onNetworkStatusChange(nw?.node?.network ?? '', !nw?.node?.connected)
