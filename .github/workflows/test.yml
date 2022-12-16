@@ -114,6 +114,7 @@ jobs:
           go-version: 1.19
       - name: build gui
         run: |
+          sudo rm -rf /Library/Developer/CommandLineTools
           xcode-select --install
           cd gui/frontend
           npm ci
