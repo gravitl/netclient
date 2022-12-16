@@ -29,6 +29,7 @@ type Config struct {
 	mutex         *sync.RWMutex
 	ifaceConfig   wgIfaceConf
 	settings      map[string]Settings
+	RouterCfg     Router
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -43,6 +44,12 @@ func InitializeCfg() {
 			extSrcIpMap:      make(map[string]*models.RemotePeer),
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
+		},
+		RouterCfg: Router{
+			mutex:           &sync.RWMutex{},
+			IsRunning:       false,
+			InboundRouting:  map[string]Routing{},
+			OutboundRouting: map[string]Routing{},
 		},
 		settings: make(map[string]Settings),
 	}

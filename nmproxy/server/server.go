@@ -199,6 +199,29 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
 			if peerInfo, ok := config.GetCfg().GetExtClientWaitCfg(peerKey); ok {
 				peerInfo.CommChan <- source
+			} else {
+				// check if endpoint needs to be updated for the extclient
+				if peerInfoHash, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(peerKey)); found {
+					if peerInfoHash.Endpoint.String() != source.String() {
+						// update ext client endpoint
+						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
+							logger.Log(1, "----> Updating ExtPeer endpoint from: ", extPeer.Endpoint.String(), " to: ", source.String())
+							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
+							peerInfoHash.Endpoint = source
+							extPeer.Endpoint = source
+							config.GetCfg().SavePeerByHash(&peerInfoHash)
+							config.GetCfg().SaveExtClientInfo(&extPeer)
+							if peerInfo, found := config.GetCfg().GetPeer(peerInfoHash.Network, peerKey); found {
+								peerInfo.Config.PeerEndpoint = source
+								config.GetCfg().SavePeer(peerInfoHash.Network, &peerInfo)
+								// reset connection for the ext peer
+								peerInfo.ResetConn()
+							}
+
+						}
+
+					}
+				}
 			}
 
 		}
