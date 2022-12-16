@@ -163,7 +163,7 @@ func UpdatePrivateKey(file, privateKey string) error {
 }
 
 // WriteWgConfig - creates a wireguard config file
-func WriteWgConfig(host *config.Config, nodes map[string]config.Node) error {
+func WriteWgConfig(host *config.Config, nodes config.NodeMap) error {
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,

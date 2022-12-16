@@ -83,12 +83,14 @@ func Join(flags *viper.Viper) error {
 		logger.Log(0, "failed to save server", err.Error())
 	}
 	config.UpdateNetclient(*newHost)
-	log.Println("ListenPort", newHost.ListenPort, newHost.LocalListenPort)
 	if err := config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error saveing netclient config", err.Error())
+		logger.Log(0, "error saving netclient config", err.Error())
 	}
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, "error saveing netclient config", err.Error())
+		logger.Log(0, "error saving node map", err.Error())
+	}
+	if err := wireguard.WriteWgConfig(newHost, config.GetNodes()); err != nil {
+		logger.Log(0, "error saving wireguard conf", err.Error())
 	}
 	logger.Log(1, "joined", node.Network)
 	if config.Netclient().DaemonInstalled {
