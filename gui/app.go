@@ -53,10 +53,6 @@ func (a *App) openNetworksPage(callbackData *menu.CallbackData) {
 	runtime.EventsEmit(a.ctx, EV_OPEN_NETWORKS_PAGE)
 }
 
-func (a *App) openLogsPage(callbackData *menu.CallbackData) {
-	runtime.EventsEmit(a.ctx, EV_OPEN_LOGS_PAGE)
-}
-
 func (a *App) uninstallApp(callbackData *menu.CallbackData) {
 	res, err := a.GoOpenDialogue(runtime.QuestionDialog, "Do you want to uninstall Netclient?", "Unintstall?")
 	if err != nil {
