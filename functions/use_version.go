@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/gravitl/netclient/daemon"
 )
 
 var binPath, filePath string
@@ -60,6 +62,7 @@ func UseVersion(version string) {
 	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
 		downloadVersion(version)
 	}
+	daemon.Stop()
 	dst, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
@@ -86,4 +89,5 @@ func UseVersion(version string) {
 	if err := os.Rename(tmpPath, dst); err != nil {
 		log.Fatal(err)
 	}
+	daemon.Start()
 }
