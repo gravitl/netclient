@@ -7,7 +7,7 @@ import (
 
 // useCmd represents the use command
 var useCmd = &cobra.Command{
-	Use:   "use [version]",
+	Use:   "use version",
 	Args:  cobra.ExactArgs(1),
 	Short: "use a specific version of netclient",
 	Long: `use a specific version of netclient if available
