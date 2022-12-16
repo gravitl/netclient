@@ -28,12 +28,15 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	peers := []wgtypes.PeerConfig{}
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
-		addrs = append(addrs, ifaceAddress{
-			IP:       node.Address.IP,
-			Network:  node.NetworkRange,
-			IP6:      node.Address6.IP,
-			Network6: node.NetworkRange6,
-		})
+		addrs = append(addrs,
+			ifaceAddress{
+				IP:      node.Address.IP,
+				Network: node.NetworkRange,
+			},
+			ifaceAddress{
+				IP6:      node.Address6.IP,
+				Network6: node.NetworkRange6,
+			})
 		if node.Proxy {
 			node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 		}
