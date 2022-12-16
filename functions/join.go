@@ -387,10 +387,15 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, *config.Conf
 			peers = append(peers, node.Peers...)
 		}
 	}
-	internetGateway, err := wireguard.UpdateWgPeers(peers)
-	if internetGateway != nil {
-		newHostConfig.InternetGateway = *internetGateway
+
+	if wireguard.WgConfExists() {
+		internetGateway, wgErr := wireguard.UpdateWgPeers(peers)
+		if internetGateway != nil {
+			newHostConfig.InternetGateway = *internetGateway
+		}
+		err = wgErr
 	}
+
 	return newNode, newServer, newHostConfig, err
 }
 

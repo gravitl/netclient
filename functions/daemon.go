@@ -317,6 +317,7 @@ func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) erro
 	return nil
 }
 
+// RemoveServer - removes a server from server conf given a specific node
 func RemoveServer(node *config.Node) {
 	logger.Log(0, "removing server", node.Server, "from mq")
 	delete(ServerSet, node.Server)
