@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/manager"
+	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
@@ -33,7 +34,9 @@ func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunA
 	if err != nil {
 		logger.FatalLog("failed to create proxy: ", err.Error())
 	}
+	config.GetCfg().SetsServerConn(server.NmProxyServer.Server)
 	go manager.Start(ctx, mgmChan)
+	go metrics.StartMetricsCollectionForNoProxyPeers(ctx)
 	server.NmProxyServer.Listen(ctx)
 
 }

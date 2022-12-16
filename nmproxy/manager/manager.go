@@ -275,6 +275,15 @@ func (m *ProxyManagerPayload) processPayload() error {
 
 		} else if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
 			logger.Log(1, "-----------> skipping peer, proxy is off: ", m.Peers[i].PublicKey.String())
+			// add to no proxy peer config for metrics collection
+			config.GetCfg().AddNoProxyPeer(&models.RemotePeer{
+				Address:   net.IP(m.PeerMap[m.Peers[i].PublicKey.String()].Address),
+				Network:   m.Network,
+				PeerKey:   m.Peers[i].PublicKey.String(),
+				Interface: m.InterfaceName,
+				Endpoint:  m.Peers[i].Endpoint,
+			})
+
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 	}
@@ -301,6 +310,7 @@ func (m *ProxyManagerPayload) addNetwork() error {
 		if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
 			continue
 		}
+		config.GetCfg().DeleteNoProxyPeer(m.Peers[i].PublicKey.String())
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
 		if peerI.Endpoint == nil && !peerConf.IsAttachedExtClient {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())

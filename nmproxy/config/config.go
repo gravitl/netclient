@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net"
 	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -30,6 +31,7 @@ type Config struct {
 	ifaceConfig   wgIfaceConf
 	settings      map[string]Settings
 	RouterCfg     Router
+	serverConn    *net.UDPConn
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -44,6 +46,7 @@ func InitializeCfg() {
 			extSrcIpMap:      make(map[string]*models.RemotePeer),
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
+			nonProxyPeerMap:  make(map[string]*models.RemotePeer),
 		},
 		RouterCfg: Router{
 			mutex:           &sync.RWMutex{},
@@ -166,4 +169,14 @@ func (c *Config) SetNATStatus() {
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
 	return c.isBehindNAT
+}
+
+// Config.GetServerConn - fetches the server connection
+func (c *Config) GetServerConn() *net.UDPConn {
+	return c.serverConn
+}
+
+// Config.SetServerConn - sets server connection
+func (c *Config) SetsServerConn(conn *net.UDPConn) {
+	c.serverConn = conn
 }

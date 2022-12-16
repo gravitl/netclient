@@ -33,6 +33,7 @@ type Proxy struct {
 	PeerEndpoint        *net.UDPAddr
 	RemoteConnAddr      *net.UDPAddr
 	LocalConnAddr       *net.UDPAddr
+	WgAddr              net.IP
 	Network             string
 	ListenPort          int
 }
@@ -55,6 +56,7 @@ type Conn struct {
 
 // RemotePeer - struct remote peer data
 type RemotePeer struct {
+	Address             net.IP
 	Network             string
 	PeerKey             string
 	Interface           string
