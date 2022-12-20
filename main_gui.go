@@ -6,9 +6,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
 	app "github.com/gravitl/netclient/gui"
+	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -19,7 +19,8 @@ func init() {
 }
 
 func setupNetclientGui() {
-	cmd.InitConfig()
+	flags := viper.New()
+	config.InitConfig(flags)
 	config.SetVersion(version)
 	fmt.Printf("wails: netclient version set to: %s\n", version)
 

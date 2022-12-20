@@ -22,7 +22,7 @@ function Networks() {
   const loadNetworks = useCallback(async () => {
     setIsLoadingNetworks(true);
     try {
-      refreshNetworks(networksDispatch);
+      await refreshNetworks(networksDispatch);
     } catch (err) {
       await notifyUser(("Failed to load networks\n" + err) as string);
       console.log(err);
@@ -73,8 +73,10 @@ function Networks() {
 
   // on init
   useEffect(() => {
-    loadNetworks();
-  }, [loadNetworks]);
+    loadNetworks()
+    const id = setInterval(() => refreshNetworks(networksDispatch), 5000);
+    return () => clearInterval(id)
+  }, [loadNetworks, networksDispatch]);
 
   return (
     <Grid
@@ -118,7 +120,7 @@ function Networks() {
                 variant="contained"
                 component={Link}
                 size="medium"
-                style={{ marginLeft: '2rem' }}
+                style={{ marginLeft: "2rem" }}
                 to={AppRoutes.LOGIN_OPTIONS_ROUTE}
                 data-testid="add-network-btn"
               >

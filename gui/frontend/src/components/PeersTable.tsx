@@ -75,8 +75,8 @@ export default function PeersTable(props: PeersTableProps) {
                     page * rowsPerPage + rowsPerPage
                   )
                 : props.peers
-              ).map((p) => (
-                <TableRow key={`${p.PublicKey}${p.Endpoint}`} data-testid="peer-row">
+              ).map((p, i) => (
+                <TableRow key={`${p.PublicKey}-${i}`} data-testid="peer-row">
                   <TableCell data-testid="public-endpoint">
                     {
                       <span
