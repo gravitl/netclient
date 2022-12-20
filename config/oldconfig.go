@@ -119,34 +119,35 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	//if server == nil {
 	server := ConvertOldServerCfg(&nodeGet.ServerConfig)
 	//}
-	var node Node
-	node.ID = netmakerNode.ID
-	//n.Name = s.Name
-	node.Network = netmakerNode.Network
-	//node.Password = netmakerNode.Password
-	server.AccessKey = netmakerNode.AccessKey
-	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
-	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
-	node.Interfaces = netmakerNode.Interfaces
-	node.Proxy = netmakerNode.Proxy
-	//n.Interface = s.Interface
-	node.Server = server.Name
+
+	// server settings
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
-	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
-	node.Connected = ParseBool(netmakerNode.Connected)
-	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
+	server.AccessKey = netmakerNode.AccessKey
+
+	// host settings
 	host.ListenPort = int(netmakerNode.ListenPort)
-	node.Address.IP = net.ParseIP(netmakerNode.Address)
-	node.Address.Mask = node.NetworkRange.Mask
-	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
-	node.Address6.Mask = node.NetworkRange6.Mask
 	host.LocalListenPort = int(netmakerNode.LocalListenPort)
 	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
 	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)
-	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
+
+	// node settings
+	var node Node
+	node.ID = netmakerNode.ID
+	node.Network = netmakerNode.Network
+	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
+	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
+	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
+	node.Interfaces = netmakerNode.Interfaces
+	node.Server = server.Name
+	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
+	node.Connected = ParseBool(netmakerNode.Connected)
+	node.Address.IP = net.ParseIP(netmakerNode.Address)
+	node.Address.Mask = node.NetworkRange.Mask
+	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
+	node.Address6.Mask = node.NetworkRange6.Mask
+	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action

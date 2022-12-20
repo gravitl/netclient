@@ -24,7 +24,7 @@ func SetPeers() error {
 	peers := []wgtypes.PeerConfig{}
 	for _, node := range nodes {
 		if node.Connected {
-			if node.Proxy {
+			if config.Netclient().ProxyEnabled {
 				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
 			}
 			peers = append(peers, node.Peers...)

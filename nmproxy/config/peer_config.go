@@ -2,11 +2,14 @@ package config
 
 import (
 	"net"
+	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+var extPeerMapMutex = sync.Mutex{}
 
 // wgIfaceConf - interface config
 type wgIfaceConf struct {
@@ -224,12 +227,16 @@ func (c *Config) GetExtClientWaitCfg(peerKey string) (models.RemotePeer, bool) {
 
 // Config.SaveExtclientWaitCfg - saves extclient wait cfg
 func (c *Config) SaveExtclientWaitCfg(extPeer *models.RemotePeer) {
+	extPeerMapMutex.Lock()
+	defer extPeerMapMutex.Unlock()
 	c.ifaceConfig.extClientWaitMap[extPeer.PeerKey] = extPeer
 }
 
 // Config.DeleteExtWaitCfg - deletes ext. wait cfg
 func (c *Config) DeleteExtWaitCfg(peerKey string) {
 	if extPeerCfg, ok := c.ifaceConfig.extClientWaitMap[peerKey]; ok {
+		extPeerMapMutex.Lock()
+		defer extPeerMapMutex.Unlock()
 		extPeerCfg.CancelFunc()
 		close(extPeerCfg.CommChan)
 		delete(c.ifaceConfig.extClientWaitMap, peerKey)

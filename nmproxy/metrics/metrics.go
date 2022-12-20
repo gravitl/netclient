@@ -42,13 +42,14 @@ func GetMetric(network, peerKey string) Metric {
 	return metric
 }
 
+// StartMetricsCollectionForNoProxyPeers - starts metrics collection for non proxied peers
 func StartMetricsCollectionForNoProxyPeers(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-			time.Sleep(time.Minute * 1)
+		case <-ticker.C:
 			noProxyPeers := config.GetCfg().GetNoProxyPeers()
 			for peerPubKey, peerInfo := range noProxyPeers {
 				go collectMetricsForNoProxyPeer(peerPubKey, *peerInfo)

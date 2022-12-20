@@ -26,31 +26,31 @@ const NodeLockfile = "netclient-nodes.lck"
 
 // Node provides configuration of a node
 type Node struct {
-	ID                  string               `json:"id" yaml:"id"`
-	Network             string               `json:"network" yaml:"network"`
-	NetworkRange        net.IPNet            `json:"networkrange" yaml:"networkrange"`
-	NetworkRange6       net.IPNet            `json:"networkrange6" yaml:"networkrange6"`
-	InternetGateway     *net.UDPAddr         `json:"internetgateway" yaml:"internetgateway"`
-	Server              string               `json:"server" yaml:"server"`
-	Connected           bool                 `json:"connected" yaml:"connected"`
-	Interfaces          []models.Iface       `json:"interfaces" yaml:"interfaces"`
-	EndpointIP          net.IP               `json:"endpointip" yaml:"endpointip"`
-	Address             net.IPNet            `json:"address" yaml:"address"`
-	Address6            net.IPNet            `json:"address6" yaml:"address6"`
-	PostUp              string               `json:"postup" yaml:"postup"`
-	PostDown            string               `json:"postdown" yaml:"postdown"`
-	Action              string               `json:"action" yaml:"action"`
-	IsServer            bool                 `json:"isserver" yaml:"isserver"`
-	IsLocal             bool                 `json:"islocal" yaml:"islocal"`
-	IsEgressGateway     bool                 `json:"isegressgateway" yaml:"isegressgateway"`
-	IsIngressGateway    bool                 `json:"isingressgateway" yaml:"isingressgateway"`
-	IsStatic            bool                 `json:"isstatic" yaml:"isstatic"`
-	IsPending           bool                 `json:"ispending" yaml:"ispending"`
-	DNSOn               bool                 `json:"dnson" yaml:"dnson"`
-	IsHub               bool                 `json:"ishub" yaml:"ishub"`
-	PersistentKeepalive int                  `json:"persistentkeepalive" yaml:"persistentkeepalive"`
-	Proxy               bool                 `json:"proxy" yaml:"proxy"`
-	Peers               []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
+	ID                  string         `json:"id" yaml:"id"`
+	Network             string         `json:"network" yaml:"network"`
+	NetworkRange        net.IPNet      `json:"networkrange" yaml:"networkrange"`
+	NetworkRange6       net.IPNet      `json:"networkrange6" yaml:"networkrange6"`
+	InternetGateway     *net.UDPAddr   `json:"internetgateway" yaml:"internetgateway"`
+	Server              string         `json:"server" yaml:"server"`
+	Connected           bool           `json:"connected" yaml:"connected"`
+	Interfaces          []models.Iface `json:"interfaces" yaml:"interfaces"`
+	EndpointIP          net.IP         `json:"endpointip" yaml:"endpointip"`
+	Address             net.IPNet      `json:"address" yaml:"address"`
+	Address6            net.IPNet      `json:"address6" yaml:"address6"`
+	PostUp              string         `json:"postup" yaml:"postup"`
+	PostDown            string         `json:"postdown" yaml:"postdown"`
+	Action              string         `json:"action" yaml:"action"`
+	IsServer            bool           `json:"isserver" yaml:"isserver"`
+	IsLocal             bool           `json:"islocal" yaml:"islocal"`
+	IsEgressGateway     bool           `json:"isegressgateway" yaml:"isegressgateway"`
+	IsIngressGateway    bool           `json:"isingressgateway" yaml:"isingressgateway"`
+	IsStatic            bool           `json:"isstatic" yaml:"isstatic"`
+	IsPending           bool           `json:"ispending" yaml:"ispending"`
+	DNSOn               bool           `json:"dnson" yaml:"dnson"`
+	IsHub               bool           `json:"ishub" yaml:"ishub"`
+	PersistentKeepalive int            `json:"persistentkeepalive" yaml:"persistentkeepalive"`
+	// Proxy               bool                 `json:"proxy" yaml:"proxy"`
+	Peers []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
 // ReadNodeConfig reads node configuration from disk
@@ -141,34 +141,35 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	if server == nil {
 		server = ConvertServerCfg(&nodeGet.ServerConfig)
 	}
-	var node Node
-	node.ID = netmakerNode.ID
-	//n.Name = s.Name
-	node.Network = netmakerNode.Network
-	//node.Password = netmakerNode.Password
+
+	// server settings
 	server.AccessKey = netmakerNode.AccessKey
-	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
-	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
-	node.Interfaces = netmakerNode.Interfaces
-	node.Proxy = netmakerNode.Proxy
-	//n.Interface = s.Interface
-	node.Server = netmakerNode.Server
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
-	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
-	node.Connected = ParseBool(netmakerNode.Connected)
-	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
+	// host settings
 	host.ListenPort = int(netmakerNode.ListenPort)
-	node.Address.IP = net.ParseIP(netmakerNode.Address)
-	node.Address.Mask = node.NetworkRange.Mask
-	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
-	node.Address6.Mask = node.NetworkRange6.Mask
 	host.LocalListenPort = int(netmakerNode.LocalListenPort)
 	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
 	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)
-	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
+	host.ProxyEnabled = netmakerNode.Proxy
+
+	// node settings
+	var node Node
+	node.ID = netmakerNode.ID
+	node.Network = netmakerNode.Network
+	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
+	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
+	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
+	node.Interfaces = netmakerNode.Interfaces
+	node.Server = netmakerNode.Server
+	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
+	node.Connected = ParseBool(netmakerNode.Connected)
+	node.Address.IP = net.ParseIP(netmakerNode.Address)
+	node.Address.Mask = node.NetworkRange.Mask
+	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
+	node.Address6.Mask = node.NetworkRange6.Mask
+	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
@@ -236,7 +237,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	netmakerNode.IsPending = FormatBool(node.IsPending)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
 	netmakerNode.IsHub = FormatBool(node.IsHub)
-	netmakerNode.Proxy = node.Proxy
+	netmakerNode.Proxy = host.ProxyEnabled
 	return &netmakerNode
 }
 
