@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/devilcove/httpclient"
+	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
@@ -22,7 +22,7 @@ import (
 // ClientConfig - struct for dealing with client configuration
 type ClientConfig struct {
 	Server          models.ServerConfig `yaml:"server"`
-	Node            models.Node         `yaml:"node"`
+	Node            models.LegacyNode   `yaml:"node"`
 	NetworkSettings models.Network      `yaml:"networksettings"`
 	Network         string              `yaml:"network"`
 	Daemon          string              `yaml:"daemon"`
@@ -83,7 +83,7 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 	}
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
-		ID:         node.ID,
+		ID:         node.ID.String(),
 		Password:   string(pass),
 	}
 	server := GetServer(node.Server)
@@ -120,7 +120,7 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	server := ConvertOldServerCfg(&nodeGet.ServerConfig)
 	//}
 	var node Node
-	node.ID = netmakerNode.ID
+	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	//n.Name = s.Name
 	node.Network = netmakerNode.Network
 	//node.Password = netmakerNode.Password
@@ -154,9 +154,7 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
 	node.IsStatic = ParseBool(netmakerNode.IsStatic)
-	node.IsPending = ParseBool(netmakerNode.IsPending)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
-	node.IsHub = ParseBool(netmakerNode.IsHub)
 	node.Peers = nodeGet.Peers
 	//add items not provided by server
 	return &node, server, host
@@ -170,14 +168,14 @@ func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	server.Version = cfg.Version
 	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
-	server.MQID = netclient.HostID
+	server.MQID = netclient.ID
 	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.IsEE = cfg.Is_EE
+	server.Is_EE = cfg.Is_EE
 	server.StunHost = cfg.StunHost
 	server.StunPort = cfg.StunPort
-	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)
 	return &server
 }

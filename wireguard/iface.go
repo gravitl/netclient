@@ -32,7 +32,6 @@ func IfaceDelta(currentNode *config.Node, newNode *config.Node) bool {
 		newNode.IsIngressGateway != currentNode.IsIngressGateway ||
 		//newNode.IsRelay != currentNode.IsRelay ||
 		//newNode.UDPHolePunch != currentNode.UDPHolePunch ||
-		newNode.IsPending != currentNode.IsPending ||
 		//newNode.ListenPort != currentNode.ListenPort ||
 		//newNode.MTU != currentNode.MTU ||
 		newNode.PersistentKeepalive != currentNode.PersistentKeepalive ||

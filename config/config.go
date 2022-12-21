@@ -36,6 +36,10 @@ const (
 	ConfigLockfile = "config.lck"
 	// MaxNameLength maximum length of a node name
 	MaxNameLength = 62
+	// DefaultListenPort default port for wireguard
+	DefaultListenPort = 51821
+	// DefaultMTU default MTU for wireguard
+	DefaultMTU = 1420
 )
 
 var (
@@ -47,29 +51,10 @@ var (
 
 // Config configuration for netclient and host as a whole
 type Config struct {
-	Verbosity         int              `json:"verbosity" yaml:"verbosity"`
-	FirewallInUse     string           `json:"firewallinuse" yaml:"firewallinuse"`
-	Version           string           `json:"version" yaml:"version"`
-	IPForwarding      bool             `json:"ipforwarding" yaml:"ipforwarding"`
-	DaemonInstalled   bool             `json:"daemoninstalled" yaml:"daemoninstalled"`
-	HostID            string           `json:"hostid" yaml:"hostid"`
-	HostPass          string           `json:"hostpass" yaml:"hostpass"`
-	Name              string           `json:"name" yaml:"name"`
-	OS                string           `json:"os" yaml:"os"`
-	Debug             bool             `json:"debug" yaml:"debug"`
-	NodePassword      string           `json:"nodepassword" yaml:"nodepassword"`
-	ListenPort        int              `json:"listenport" yaml:"listenport"`
-	LocalAddress      net.IPNet        `json:"localaddress" yaml:"localaddress"`
-	LocalRange        net.IPNet        `json:"localrange" yaml:"localrange"`
-	LocalListenPort   int              `json:"locallistenport" yaml:"locallistenport"`
-	ProxyListenPort   int              `json:"proxy_listen_port" yaml:"proxy_listen_port"`
-	MTU               int              `json:"mtu" yaml:"mtu"`
+	models.Host
 	PrivateKey        wgtypes.Key      `json:"privatekey" yaml:"privatekey"`
-	PublicKey         wgtypes.Key      `json:"publickey" yaml:"publickey"`
 	MacAddress        net.HardwareAddr `json:"macaddress" yaml:"macaddress"`
 	TrafficKeyPrivate []byte           `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte           `json:"traffickeypublic" yaml:"trafficekeypublic"`
-	InternetGateway   net.UDPAddr      `json:"internetgateway" yaml:"internetgateway"`
 }
 
 func init() {
@@ -387,9 +372,9 @@ func CheckConfig() {
 		saveRequired = true
 	}
 	netclient.IPForwarding = true
-	if netclient.HostID == "" {
+	if netclient.ID == uuid.Nil {
 		logger.Log(0, "setting netclient hostid")
-		netclient.HostID = uuid.NewString()
+		netclient.ID = uuid.New()
 		netclient.HostPass = ncutils.MakeRandomString(32)
 		saveRequired = true
 	}
@@ -419,6 +404,26 @@ func CheckConfig() {
 		netclient.PublicKey = netclient.PrivateKey.PublicKey()
 		saveRequired = true
 	}
+	if netclient.Interface == "" {
+		logger.Log(0, "setting wireguard interface")
+		netclient.Interface = models.WIREGUARD_INTERFACE
+		saveRequired = true
+	}
+	if netclient.ListenPort == 0 {
+		logger.Log(0, "setting listenport")
+		port, err := ncutils.GetFreePort(DefaultListenPort)
+		if err != nil {
+			logger.Log(0, "error getting free port", err.Error())
+		} else {
+			netclient.ListenPort = port
+			saveRequired = true
+		}
+	}
+	if netclient.MTU == 0 {
+		logger.Log(0, "setting MTU")
+		netclient.MTU = DefaultMTU
+	}
+
 	if len(netclient.TrafficKeyPrivate) == 0 {
 		logger.Log(0, "setting traffic keys")
 		pub, priv, err := box.GenerateKey(rand.Reader)
@@ -459,7 +464,7 @@ func CheckConfig() {
 	}
 	ReadServerConf()
 	for _, server := range Servers {
-		if server.MQID != netclient.HostID || server.Password != netclient.HostPass {
+		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
@@ -477,4 +482,25 @@ func CheckConfig() {
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
+}
+
+// Convert converts netclient host/node struct to netmaker host/node structs
+func Convert(h *Config, n *Node) (models.Host, models.Node) {
+	var host models.Host
+	var node models.Node
+	temp, err := json.Marshal(h)
+	if err != nil {
+		logger.Log(0, "host marshal error", h.Name, err.Error())
+	}
+	if err := json.Unmarshal(temp, &host); err != nil {
+		logger.Log(0, "host unmarshal err", h.Name, err.Error())
+	}
+	temp, err = json.Marshal(n)
+	if err != nil {
+		logger.Log(0, "node marshal error", h.Name, err.Error())
+	}
+	if err := json.Unmarshal(temp, &node); err != nil {
+		logger.Log(0, "node unmarshal err", h.Name, err.Error())
+	}
+	return host, node
 }

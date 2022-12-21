@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,31 +26,7 @@ const NodeLockfile = "netclient-nodes.lck"
 
 // Node provides configuration of a node
 type Node struct {
-	ID                  string               `json:"id" yaml:"id"`
-	Network             string               `json:"network" yaml:"network"`
-	NetworkRange        net.IPNet            `json:"networkrange" yaml:"networkrange"`
-	NetworkRange6       net.IPNet            `json:"networkrange6" yaml:"networkrange6"`
-	InternetGateway     *net.UDPAddr         `json:"internetgateway" yaml:"internetgateway"`
-	Server              string               `json:"server" yaml:"server"`
-	Connected           bool                 `json:"connected" yaml:"connected"`
-	Interfaces          []models.Iface       `json:"interfaces" yaml:"interfaces"`
-	EndpointIP          net.IP               `json:"endpointip" yaml:"endpointip"`
-	Address             net.IPNet            `json:"address" yaml:"address"`
-	Address6            net.IPNet            `json:"address6" yaml:"address6"`
-	PostUp              string               `json:"postup" yaml:"postup"`
-	PostDown            string               `json:"postdown" yaml:"postdown"`
-	Action              string               `json:"action" yaml:"action"`
-	IsServer            bool                 `json:"isserver" yaml:"isserver"`
-	IsLocal             bool                 `json:"islocal" yaml:"islocal"`
-	IsEgressGateway     bool                 `json:"isegressgateway" yaml:"isegressgateway"`
-	IsIngressGateway    bool                 `json:"isingressgateway" yaml:"isingressgateway"`
-	IsStatic            bool                 `json:"isstatic" yaml:"isstatic"`
-	IsPending           bool                 `json:"ispending" yaml:"ispending"`
-	DNSOn               bool                 `json:"dnson" yaml:"dnson"`
-	IsHub               bool                 `json:"ishub" yaml:"ishub"`
-	PersistentKeepalive int                  `json:"persistentkeepalive" yaml:"persistentkeepalive"`
-	Proxy               bool                 `json:"proxy" yaml:"proxy"`
-	Peers               []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
+	models.CommonNode
 }
 
 // ReadNodeConfig reads node configuration from disk
@@ -134,19 +110,17 @@ func WriteNodeConfig() error {
 }
 
 // ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
-func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
-	host := Netclient()
+func ConvertNode(nodeGet *models.NodeGet) *Node {
 	netmakerNode := nodeGet.Node
-	server := GetServer(netmakerNode.Server)
-	if server == nil {
-		server = ConvertServerCfg(&nodeGet.ServerConfig)
-	}
+	//server := GetServer(netmakerNode.Server)
+	//if server == nil {
+	//server = ConvertServerCfg(nodeGet.ServerConfig)
+	//}
 	var node Node
-	node.ID = netmakerNode.ID
+	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	//n.Name = s.Name
 	node.Network = netmakerNode.Network
 	//node.Password = netmakerNode.Password
-	server.AccessKey = netmakerNode.AccessKey
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
@@ -154,21 +128,14 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Proxy = netmakerNode.Proxy
 	//n.Interface = s.Interface
 	node.Server = netmakerNode.Server
-	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
-	host.ListenPort = int(netmakerNode.ListenPort)
 	node.Address.IP = net.ParseIP(netmakerNode.Address)
 	node.Address.Mask = node.NetworkRange.Mask
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
 	node.Address6.Mask = node.NetworkRange6.Mask
-	host.LocalListenPort = int(netmakerNode.LocalListenPort)
-	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
-	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
-	host.MTU = int(netmakerNode.MTU)
 	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
-	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
@@ -176,23 +143,21 @@ func ConvertNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
 	node.IsStatic = ParseBool(netmakerNode.IsStatic)
-	node.IsPending = ParseBool(netmakerNode.IsPending)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
-	node.IsHub = ParseBool(netmakerNode.IsHub)
 	node.Peers = nodeGet.Peers
 	//add items not provided by server
-	return &node, server, host
+	return &node
 }
 
 // ConvertToNetmakerNode converts a netclient node to a netmaker node
-func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Node {
-	var netmakerNode models.Node
-	netmakerNode.ID = node.ID
+func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.LegacyNode {
+	var netmakerNode models.LegacyNode
+	netmakerNode.ID = node.ID.String()
 	netmakerNode.OS = host.OS
-	netmakerNode.HostID = server.MQID
+	netmakerNode.HostID = server.MQID.String()
 	netmakerNode.Name = host.Name
 	netmakerNode.Network = node.Network
-	netmakerNode.Password = host.NodePassword
+	netmakerNode.Password = host.HostPass
 	netmakerNode.AccessKey = server.AccessKey
 	netmakerNode.NetworkSettings.AddressRange = node.NetworkRange.String()
 	netmakerNode.NetworkSettings.AddressRange6 = node.NetworkRange6.String()
@@ -233,9 +198,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Nod
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
 	netmakerNode.IsStatic = FormatBool(node.IsStatic)
-	netmakerNode.IsPending = FormatBool(node.IsPending)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
-	netmakerNode.IsHub = FormatBool(node.IsHub)
 	netmakerNode.Proxy = node.Proxy
 	return &netmakerNode
 }

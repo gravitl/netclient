@@ -17,7 +17,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/go-ping/ping v1.1.0
 	github.com/google/gopacket v1.1.19
-	github.com/gravitl/netmaker v0.17.1-0.20221216124207-55f7a0eb02f6
+	github.com/gravitl/netmaker v0.17.1-0.20221221112905-716dc3def5af
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0
@@ -34,7 +34,6 @@ require (
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/coreos/go-oidc/v3 v3.4.0 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/docker/distribution v2.8.1+incompatible // indirect
 	github.com/docker/docker v20.10.17+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
@@ -73,18 +72,15 @@ require (
 	github.com/posthog/posthog-go v0.0.0-20211028072449-93c17c49e2b0 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/rqlite/gorqlite v0.0.0-20210514125552-08ff1e76b22f // indirect
-	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/samber/lo v1.27.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tkrajina/go-reflector v0.5.5 // indirect
 	github.com/txn2/txeh v1.3.0 // indirect
-	github.com/urfave/cli/v2 v2.23.5 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.1 // indirect
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/exp/shiny v0.0.0-20221208044002-44028be4359e // indirect

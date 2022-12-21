@@ -34,47 +34,43 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error decrypting message", err.Error())
 		return
 	}
-	nodeUpdate := models.Node{}
-	if err = json.Unmarshal([]byte(data), &nodeUpdate); err != nil {
+	serverNode := models.Node{}
+	if err = json.Unmarshal([]byte(data), &serverNode); err != nil {
 		logger.Log(0, "error unmarshalling node update data"+err.Error())
 		return
 	}
+	newNode := config.Node{}
+	newNode.CommonNode = serverNode.CommonNode
+
 	// see if cache hit, if so skip
-	var currentMessage = read(nodeUpdate.Network, lastNodeUpdate)
+	var currentMessage = read(newNode.Network, lastNodeUpdate)
 	if currentMessage == string(data) {
 		logger.Log(3, "cache hit on node update ... skipping")
 		return
 	}
-	var nodeGet models.NodeGet
-	nodeGet.Node = nodeUpdate
-	for _, wgnode := range config.GetNodes() {
-		nodeGet.Peers = append(nodeGet.Peers, wgnode.Peers...)
-	}
-	newNode, _, _ := config.ConvertNode(&nodeGet)
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
-	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID)
+	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
 	// check if interface needs to delta
-	ifaceDelta := wireguard.IfaceDelta(&node, newNode)
+	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
 	shouldDNSChange := node.DNSOn != newNode.DNSOn
-	hubChange := node.IsHub != newNode.IsHub
 	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
-		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.ID)
-		unsubscribeNode(client, newNode)
+		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.ID.String())
+		unsubscribeNode(client, &newNode)
 		if _, err = LeaveNetwork(newNode.Network); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
 				logger.Log(0, "failed to leave, please check that local files for network", newNode.Network, "were removed")
 				return
 			}
 		}
-		logger.Log(0, newNode.ID, "was removed from network", newNode.Network)
+		logger.Log(0, newNode.ID.String(), "was removed from network", newNode.Network)
 		return
 	case models.NODE_UPDATE_KEY:
 		// == get the current key for node ==
 		oldPrivateKey := config.Netclient().PrivateKey
-		if err := UpdateKeys(newNode, config.Netclient(), client); err != nil {
+		if err := UpdateKeys(&newNode, config.Netclient(), client); err != nil {
 			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
 			config.Netclient().PrivateKey = oldPrivateKey
 		}
@@ -87,7 +83,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
-	config.UpdateNodeMap(network, *newNode)
+	config.UpdateNodeMap(network, newNode)
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
@@ -102,7 +98,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	wireguard.SetPeers()
-	if err := wireguard.UpdateWgInterface(newNode, config.Netclient()); err != nil {
+	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
@@ -112,18 +108,11 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
-		doneErr := publishSignal(newNode, DONE)
+		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
 			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
 		} else {
 			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
-		}
-	} else if hubChange {
-		doneErr := publishSignal(newNode, DONE)
-		if doneErr != nil {
-			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after hub change")
-		} else {
-			logger.Log(0, "network:", newNode.Network, "signalled finished hub update to server")
 		}
 	}
 	//deal with DNS
@@ -137,7 +126,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		//			logger.Log(0, "error applying dns" + err.Error())
 		//		}
 	}
-	_ = UpdateLocalListenPort(newNode)
+	_ = UpdateLocalListenPort(&newNode)
 }
 
 // ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
@@ -220,7 +209,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		ProxyManagerChan <- &peerUpdate.ProxyUpdate
 	}
-	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID+" "+node.Network)
+	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID.String()+" "+node.Network)
 	if node.DNSOn {
 		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {
 			logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())

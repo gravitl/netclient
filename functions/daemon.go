@@ -149,10 +149,10 @@ func setupMQTT(server *config.Server) error {
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
-	opts.SetUsername(server.MQID)
+	opts.SetUsername(server.MQID.String())
 	opts.SetPassword(server.Password)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
-	opts.SetClientID(server.MQID)
+	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
@@ -276,22 +276,22 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 	var ok = true
 	if token := client.Unsubscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID, "\n", "connection timeout")
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", "connection timeout")
 		} else {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID, "\n", token.Error().Error())
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", token.Error().Error())
 		}
 		ok = false
 	}
 	if token := client.Unsubscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID, "\n", "connection timeout")
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID.String(), "\n", "connection timeout")
 		} else {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID, "\n", token.Error().Error())
+			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID.String(), "\n", token.Error().Error())
 		}
 		ok = false
 	}
 	if ok {
-		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID)
+		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID.String())
 	}
 }
 

@@ -121,7 +121,7 @@ func checkin() {
 		//config.Write(&nodeCfg, nodeCfg.Network)
 		//}
 		Hello(&node)
-		if server.IsEE && node.Connected {
+		if server.Is_EE && node.Connected {
 			logger.Log(0, "collecting metrics for node", host.Name)
 			publishMetrics(&node)
 		}
@@ -143,7 +143,7 @@ func PublishNodeUpdate(node *config.Node) error {
 		return err
 	}
 
-	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID)
+	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
 	return nil
 }
 
@@ -151,7 +151,7 @@ func PublishNodeUpdate(node *config.Node) error {
 func Hello(node *config.Node) {
 	var checkin models.NodeCheckin
 	checkin.Version = config.Version
-	checkin.Connected = config.FormatBool(node.Connected)
+	checkin.Connected = node.Connected
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
@@ -216,7 +216,7 @@ func publishMetrics(node *config.Node) {
 	}
 	metrics.Network = node.Network
 	metrics.NodeName = config.Netclient().Name
-	metrics.NodeID = node.ID
+	metrics.NodeID = node.ID.String()
 	metrics.IsServer = "no"
 	data, err := json.Marshal(metrics)
 	if err != nil {
