@@ -138,7 +138,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 		logger.Log(0, "unable to connect to broker", server.Broker, err.Error())
 		return
 	}
-	//defer mqclient.Disconnect(250)
+	defer ServerSet[server.Name].Disconnect(250)
 	<-ctx.Done()
 	logger.Log(0, "shutting down message queue for server", server.Name)
 }
@@ -317,6 +317,7 @@ func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) erro
 	return nil
 }
 
+// RemoveServer - removes a server from server conf given a specific node
 func RemoveServer(node *config.Node) {
 	logger.Log(0, "removing server", node.Server, "from mq")
 	delete(ServerSet, node.Server)

@@ -5,7 +5,6 @@ export function extractPeerPublicEndpoint(peer: Peer): string {
 }
 
 export function extractPeerPrivateEndpoints(peer: Peer): string[] {
-  console.log(peer);
   return peer.AllowedIPs.map(endpoint => `${endpoint.IP}`)
 }
 

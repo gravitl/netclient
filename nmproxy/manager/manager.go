@@ -68,7 +68,6 @@ func (m *ProxyManagerPayload) configureProxy() error {
 		m.addNetwork()
 	case DeleteNetwork:
 		m.deleteNetwork()
-
 	}
 	return nil
 }

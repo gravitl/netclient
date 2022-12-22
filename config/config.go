@@ -55,6 +55,9 @@ type Config struct {
 	PrivateKey        wgtypes.Key      `json:"privatekey" yaml:"privatekey"`
 	MacAddress        net.HardwareAddr `json:"macaddress" yaml:"macaddress"`
 	TrafficKeyPrivate []byte           `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	TrafficKeyPublic  []byte           `json:"traffickeypublic" yaml:"trafficekeypublic"`
+	InternetGateway   net.UDPAddr      `json:"internetgateway" yaml:"internetgateway"`
+	ProxyEnabled      bool             `json:"proxy_enabled" yaml:"proxy_enabled"`
 }
 
 func init() {

@@ -35,6 +35,9 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
 	configs := make([]Network, 0, 5)
 
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
 		node := node
@@ -47,6 +50,9 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
 		if node.Network == networkName {
@@ -175,4 +181,16 @@ func (app *App) GoWriteToClipboard(data string) (any, error) {
 
 	clipboard.Write(clipboard.FmtText, []byte(data))
 	return nil, nil
+}
+
+// App.GoPullLatestNodeConfig pulls the latest node config from the server and returns the network config
+func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
+	node, err := functions.Pull(network, true)
+	if err != nil {
+		return Network{}, err
+	}
+
+	server := config.GetServer(node.Server)
+
+	return Network{ Node: node, Server: server, }, nil
 }

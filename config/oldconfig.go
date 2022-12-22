@@ -113,13 +113,13 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 
 // ConvertOldNode accepts a netmaker node struct and converts to the structs used by netclient
 func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
+	var node Node
 	host := Netclient()
 	netmakerNode := nodeGet.Node
 	//server := GetServer(netmakerNode.Server)
 	//if server == nil {
 	server := ConvertOldServerCfg(&nodeGet.ServerConfig)
 	//}
-	var node Node
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	//n.Name = s.Name
 	node.Network = netmakerNode.Network
@@ -137,16 +137,27 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	host.ListenPort = int(netmakerNode.ListenPort)
-	node.Address.IP = net.ParseIP(netmakerNode.Address)
-	node.Address.Mask = node.NetworkRange.Mask
-	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
-	node.Address6.Mask = node.NetworkRange6.Mask
 	host.LocalListenPort = int(netmakerNode.LocalListenPort)
 	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
 	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)
-	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
+
+	// node settings
+	node.ID, _ = uuid.Parse(netmakerNode.ID)
+	node.Network = netmakerNode.Network
+	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
+	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
+	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
+	host.Interfaces = netmakerNode.Interfaces
+	node.Server = server.Name
+	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
+	node.Connected = ParseBool(netmakerNode.Connected)
+	node.Address.IP = net.ParseIP(netmakerNode.Address)
+	node.Address.Mask = node.NetworkRange.Mask
+	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
+	node.Address6.Mask = node.NetworkRange6.Mask
+	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
