@@ -76,14 +76,14 @@ func checkin() {
 	for network, node := range config.GetNodes() {
 		server := config.GetServer(node.Server)
 		if node.Connected {
-			if !node.IsStatic {
+			if !config.Netclient().IsStatic {
 				extIP, err := ncutils.GetPublicIP(server.API)
 				if err != nil {
 					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
 				}
-				if node.EndpointIP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", network, "endpoint has changed from ", node.EndpointIP.String(), " to ", extIP)
-					node.EndpointIP = net.ParseIP(extIP)
+				if config.Netclient().EndpointIP.String() != extIP && extIP != "" {
+					logger.Log(1, "network:", network, "endpoint has changed from ", config.Netclient().EndpointIP.String(), " to ", extIP)
+					config.Netclient().EndpointIP = net.ParseIP(extIP)
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
@@ -106,9 +106,9 @@ func checkin() {
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
 				}
-				if node.EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", network, "endpoint has changed from "+node.EndpointIP.String()+" to ", localIP.String())
-					node.EndpointIP = localIP.IP
+				if config.Netclient().EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
+					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", localIP.String())
+					config.Netclient().EndpointIP = localIP.IP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish localip change")
 					}
@@ -158,13 +158,13 @@ func Hello(node *config.Node) {
 	} else {
 		// just in case getInterfaces() returned nil, nil
 		if ip != nil {
-			node.Interfaces = *ip
+			config.Netclient().Interfaces = *ip
 			if err := config.WriteNodeConfig(); err != nil {
 				logger.Log(0, "error saving node map", err.Error())
 			}
 		}
 	}
-	checkin.Ifaces = node.Interfaces
+	checkin.Ifaces = config.Netclient().Interfaces
 	data, err := json.Marshal(checkin)
 	if err != nil {
 		logger.Log(0, "unable to marshal checkin data", err.Error())

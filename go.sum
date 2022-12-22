@@ -247,6 +247,8 @@ github.com/gravitl/netmaker v0.17.1-0.20221220202909-38cd4d77005c h1:8Zb0wl7Dy3C
 github.com/gravitl/netmaker v0.17.1-0.20221220202909-38cd4d77005c/go.mod h1:PZwylZ+ikLkZx949iS90OPuOAOdkV7rCjnYkGjpuJGE=
 github.com/gravitl/netmaker v0.17.1-0.20221221112905-716dc3def5af h1:tKJZIP9hqZfL5lNAFuB5wNoE/ixSkM1EAndBG+p9GG0=
 github.com/gravitl/netmaker v0.17.1-0.20221221112905-716dc3def5af/go.mod h1:PZwylZ+ikLkZx949iS90OPuOAOdkV7rCjnYkGjpuJGE=
+github.com/gravitl/netmaker v0.17.1-0.20221222114233-bce2f8a45c01 h1:kGHPCy6vXyfa8VhcZk1R9CWYvvOkmYpG0oCAM15MSgw=
+github.com/gravitl/netmaker v0.17.1-0.20221222114233-bce2f8a45c01/go.mod h1:PZwylZ+ikLkZx949iS90OPuOAOdkV7rCjnYkGjpuJGE=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/guumaster/hostctl v1.1.3 h1:b/yR3svkYsbr5VBdvfdyLXUl2xaKopSzgE/Xi7+1WRo=
 github.com/guumaster/hostctl v1.1.3/go.mod h1:h5rDx5Z8Hj2bYZfDt/eX4BNS2RSq7iRcGVQqfROJyH8=

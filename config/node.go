@@ -124,11 +124,8 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
-	node.Interfaces = netmakerNode.Interfaces
-	node.Proxy = netmakerNode.Proxy
 	//n.Interface = s.Interface
 	node.Server = netmakerNode.Server
-	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	node.Address.IP = net.ParseIP(netmakerNode.Address)
@@ -142,7 +139,6 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
-	node.IsStatic = ParseBool(netmakerNode.IsStatic)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
 	node.Peers = nodeGet.Peers
 	//add items not provided by server
@@ -166,12 +162,12 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 		netmakerNode.InternetGateway = node.InternetGateway.IP.String()
 	}
 	netmakerNode.Interface = ncutils.GetInterfaceName()
-	netmakerNode.Interfaces = node.Interfaces
+	netmakerNode.Interfaces = host.Interfaces
 	netmakerNode.Server = node.Server
 	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic
 	netmakerNode.TrafficKeys.Server = server.TrafficKey
 	//only send ip
-	netmakerNode.Endpoint = node.EndpointIP.String()
+	netmakerNode.Endpoint = host.EndpointIP.String()
 	netmakerNode.Connected = FormatBool(node.Connected)
 	netmakerNode.MacAddress = host.MacAddress.String()
 	netmakerNode.ListenPort = int32(host.ListenPort)
@@ -197,9 +193,9 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.IsLocal = FormatBool(node.IsLocal)
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
-	netmakerNode.IsStatic = FormatBool(node.IsStatic)
+	netmakerNode.IsStatic = FormatBool(host.IsStatic)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
-	netmakerNode.Proxy = node.Proxy
+	netmakerNode.Proxy = host.ProxyEnabled
 	return &netmakerNode
 }
 

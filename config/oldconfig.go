@@ -128,12 +128,12 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
-	node.Interfaces = netmakerNode.Interfaces
-	node.Proxy = netmakerNode.Proxy
+	host.Interfaces = netmakerNode.Interfaces
+	host.ProxyEnabled = netmakerNode.Proxy
 	//n.Interface = s.Interface
 	node.Server = server.Name
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
-	node.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
+	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	host.ListenPort = int(netmakerNode.ListenPort)
@@ -153,7 +153,7 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
-	node.IsStatic = ParseBool(netmakerNode.IsStatic)
+	host.IsStatic = ParseBool(netmakerNode.IsStatic)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
 	node.Peers = nodeGet.Peers
 	//add items not provided by server

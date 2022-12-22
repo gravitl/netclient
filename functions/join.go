@@ -14,7 +14,6 @@ import (
 	"syscall"
 
 	"github.com/devilcove/httpclient"
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -265,8 +264,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	node.Server = flags.GetString("server")
 	node.HostID = host.ID
-	node.ID = uuid.New()
-	node.Proxy = flags.GetBool("proxy")
+	host.ProxyEnabled = flags.GetBool("proxy")
 	// == end handle keys ==
 	if host.LocalAddress.IP == nil {
 		intIP, err := getPrivateAddr()
@@ -282,28 +280,28 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	} else {
 		// just in case getInterfaces() returned nil, nil
 		if ip != nil {
-			node.Interfaces = *ip
+			host.Interfaces = *ip
 		}
 	}
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
-	node.EndpointIP = net.ParseIP(flags.GetString("endpoint"))
+	host.EndpointIP = net.ParseIP(flags.GetString("endpoint"))
 	isLocal := flags.GetBool("islocal")
 	node.IsLocal = false
 	if isLocal {
 		node.IsLocal = true
 	}
-	if node.EndpointIP == nil {
+	if host.EndpointIP == nil {
 		if node.IsLocal && host.LocalAddress.IP != nil {
-			node.EndpointIP = host.LocalAddress.IP
+			host.EndpointIP = host.LocalAddress.IP
 		} else {
 			ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
-			node.EndpointIP = net.ParseIP(ip)
+			host.EndpointIP = net.ParseIP(ip)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error setting public ip %w", err)
 			}
 		}
-		if node.EndpointIP == nil {
+		if host.EndpointIP == nil {
 			logger.Log(0, "network:", node.Network, "error setting node.Endpoint.")
 			return nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", node.Network, err)
 		}
@@ -358,9 +356,12 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		server.Password = config.Netclient().HostPass
 		server.Nodes = make(map[string]bool)
 	}
+	// reset attributes that should not be changed by server
+
 	server.Nodes[joinResponse.Node.Network] = true
 	newNode := config.Node{}
-	newNode.CommonNode = joinData.Node.CommonNode
+	newNode.CommonNode = joinResponse.Node.CommonNode
+	newNode.Connected = true
 	internetGateway, err := wireguard.UpdateWgPeers(newNode.Peers)
 	if err != nil {
 		logger.Log(0, "failed to update wg peers", err.Error())
