@@ -264,6 +264,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	node.Server = flags.GetString("server")
 	node.HostID = host.ID
+	node.Connected = true
 	host.ProxyEnabled = flags.GetBool("proxy")
 	// == end handle keys ==
 	if host.LocalAddress.IP == nil {
