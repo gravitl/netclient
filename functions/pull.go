@@ -26,28 +26,25 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + server.API,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID,
+		Route:         "/api/nodes/" + node.Network + "/" + node.ID.String(),
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Response:      models.NodeGet{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
+	nodeGet, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "errror getting node", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return nil, err
 	}
-	nodeGet := response
-	newNode, newServer, newHost := config.ConvertNode(&nodeGet)
+	newNode := config.ConvertNode(&nodeGet)
 	config.UpdateNodeMap(newNode.Network, *newNode)
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
-	config.SaveServer(newNode.Server, *newServer)
 	config.WriteNodeConfig()
-	config.WriteNetclientConfig()
 	//update wg config
 	peers := newNode.Peers
 	for _, node := range config.GetNodes() {
@@ -57,7 +54,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	internetGateway, err := wireguard.UpdateWgPeers(peers)
 	if internetGateway != nil && err != nil {
-		newHost.InternetGateway = *internetGateway
+		config.Netclient().InternetGateway = *internetGateway
 		config.WriteNetclientConfig()
 	}
 	logger.Log(1, "node settings for network ", network)

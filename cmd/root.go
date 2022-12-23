@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -35,7 +34,9 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig, functions.Migrate)
+	// Migrate needs refactoring -- GRA-830
+	//cobra.OnInitialize(initConfig, functions.Migrate)
+	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,

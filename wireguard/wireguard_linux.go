@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/gravitl/netclient/config"
@@ -93,6 +94,7 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 	}
 	for _, node := range config.GetNodes() {
+		log.Println("adding address to wg interface", node.Address, node.Address6)
 		var address netlink.Addr
 		var address6 netlink.Addr
 		address.IPNet = &node.Address

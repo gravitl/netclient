@@ -76,14 +76,14 @@ func checkin() {
 	for network, node := range config.GetNodes() {
 		server := config.GetServer(node.Server)
 		if node.Connected {
-			if !node.IsStatic {
+			if !config.Netclient().IsStatic {
 				extIP, err := ncutils.GetPublicIP(server.API)
 				if err != nil {
 					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
 				}
-				if node.EndpointIP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", network, "endpoint has changed from ", node.EndpointIP.String(), " to ", extIP)
-					node.EndpointIP = net.ParseIP(extIP)
+				if config.Netclient().EndpointIP.String() != extIP && extIP != "" {
+					logger.Log(1, "network:", network, "endpoint has changed from ", config.Netclient().EndpointIP.String(), " to ", extIP)
+					config.Netclient().EndpointIP = net.ParseIP(extIP)
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
@@ -106,9 +106,9 @@ func checkin() {
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
 				}
-				if node.EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", network, "endpoint has changed from "+node.EndpointIP.String()+" to ", localIP.String())
-					node.EndpointIP = localIP.IP
+				if config.Netclient().EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
+					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", localIP.String())
+					config.Netclient().EndpointIP = localIP.IP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish localip change")
 					}
@@ -121,7 +121,7 @@ func checkin() {
 		//config.Write(&nodeCfg, nodeCfg.Network)
 		//}
 		Hello(&node)
-		if server.IsEE && node.Connected {
+		if server.Is_EE && node.Connected {
 			logger.Log(0, "collecting metrics for node", host.Name)
 			publishMetrics(&node)
 		}
@@ -143,7 +143,7 @@ func PublishNodeUpdate(node *config.Node) error {
 		return err
 	}
 
-	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID)
+	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
 	return nil
 }
 
@@ -151,20 +151,20 @@ func PublishNodeUpdate(node *config.Node) error {
 func Hello(node *config.Node) {
 	var checkin models.NodeCheckin
 	checkin.Version = config.Version
-	checkin.Connected = config.FormatBool(node.Connected)
+	checkin.Connected = node.Connected
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
 	} else {
 		// just in case getInterfaces() returned nil, nil
 		if ip != nil {
-			node.Interfaces = *ip
+			config.Netclient().Interfaces = *ip
 			if err := config.WriteNodeConfig(); err != nil {
 				logger.Log(0, "error saving node map", err.Error())
 			}
 		}
 	}
-	checkin.Ifaces = node.Interfaces
+	checkin.Ifaces = config.Netclient().Interfaces
 	data, err := json.Marshal(checkin)
 	if err != nil {
 		logger.Log(0, "unable to marshal checkin data", err.Error())
@@ -216,7 +216,7 @@ func publishMetrics(node *config.Node) {
 	}
 	metrics.Network = node.Network
 	metrics.NodeName = config.Netclient().Name
-	metrics.NodeID = node.ID
+	metrics.NodeID = node.ID.String()
 	metrics.IsServer = "no"
 	data, err := json.Marshal(metrics)
 	if err != nil {

@@ -241,6 +241,7 @@ func WriteWgConfig(host *config.Config, nodes config.NodeMap) error {
 		}
 	}
 	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
+		logger.Log(0, "failed to save wg conf file ", err.Error())
 		return err
 	}
 	return nil
