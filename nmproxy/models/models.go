@@ -133,3 +133,11 @@ type ProxyManagerPayload struct {
 	IsRelay         bool                   `json:"is_relay"`
 	RelayedPeerConf map[string]RelayedConf `json:"relayed_conf"`
 }
+
+// Metric - struct for metric data
+type Metric struct {
+	LastRecordedLatency uint64  `json:"last_recorded_latency"`
+	ConnectionStatus    bool    `json:"connection_status"`
+	TrafficSent         float64 `json:"traffic_sent"`     // stored in MB
+	TrafficRecieved     float64 `json:"traffic_recieved"` // stored in MB
+}
