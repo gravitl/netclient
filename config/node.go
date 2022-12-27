@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
@@ -132,7 +133,7 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.Address.Mask = node.NetworkRange.Mask
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
 	node.Address6.Mask = node.NetworkRange6.Mask
-	node.PersistentKeepalive = int(netmakerNode.PersistentKeepalive)
+	node.PersistentKeepalive = time.Duration(int(netmakerNode.PersistentKeepalive))
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
@@ -181,7 +182,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 		netmakerNode.Address6 = ""
 	}
 	netmakerNode.LocalListenPort = int32(host.LocalListenPort)
-	netmakerNode.LocalAddress = host.LocalAddress.String()
+	netmakerNode.LocalAddress = host.LocalRange.IP.String()
 	netmakerNode.ProxyListenPort = int32(host.ProxyListenPort)
 	netmakerNode.LocalRange = host.LocalRange.String()
 	netmakerNode.MTU = int32(host.MTU)

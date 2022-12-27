@@ -92,9 +92,9 @@ func checkin() {
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
 				}
-				if host.LocalAddress.String() != intIP.String() && intIP.IP != nil {
-					logger.Log(1, "network:", network, "local Address has changed from ", host.LocalAddress.String(), " to ", intIP.String())
-					host.LocalAddress = intIP
+				if host.LocalRange.String() != intIP.String() && intIP.IP != nil {
+					logger.Log(1, "network:", network, "local Address has changed from ", host.LocalRange.String(), " to ", intIP.String())
+					host.LocalRange = intIP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "Network: ", network, " could not publish local address change")
 					}

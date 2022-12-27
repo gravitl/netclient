@@ -104,7 +104,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if keepaliveChange {
-		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
+		wireguard.UpdateKeepAlive(int(newNode.PersistentKeepalive.Seconds()))
 	}
 	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
