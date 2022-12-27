@@ -8,7 +8,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/nmproxy/manager"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -132,7 +132,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 // ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
 func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 
-	var proxyUpdate manager.ProxyManagerPayload
+	var proxyUpdate proxy_models.ProxyManagerPayload
 	var network = parseNetworkFromTopic(msg.Topic())
 	node := config.GetNode(network)
 	logger.Log(0, "---------> Recieved a proxy update")

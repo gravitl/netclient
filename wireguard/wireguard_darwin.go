@@ -18,6 +18,7 @@ func (nc *NCIface) Create() error {
 func (nc *NCIface) ApplyAddrs() error {
 	for _, address := range nc.Addresses {
 		if address.IP != nil {
+			fmt.Println("-------------> HREEEEEEEEE")
 			if address.IP.To4() != nil {
 				cmd := exec.Command("ifconfig", nc.Name, "inet", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {

@@ -317,6 +317,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	joinData.Key = flags.GetString("accesskey")
 	logger.Log(0, "joining "+node.Network+" at "+url)
+	log.Println("HOST ID AND NDOE ID: ", joinData.Host.ID, joinData.Node.ID)
 	api := httpclient.JSONEndpoint[models.NodeJoinResponse, models.ErrorResponse]{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,

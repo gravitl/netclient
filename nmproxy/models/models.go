@@ -108,3 +108,28 @@ func IsPublicIP(ip net.IP) bool {
 	}
 	return true
 }
+
+// ProxyAction - type for proxy action
+type ProxyAction string
+
+const (
+	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
+	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
+	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
+	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
+)
+
+// ProxyManagerPayload - struct for proxy manager payload
+type ProxyManagerPayload struct {
+	Action          ProxyAction            `json:"action"`
+	InterfaceName   string                 `json:"interface_name"`
+	Network         string                 `json:"network"`
+	WgAddr          string                 `json:"wg_addr"`
+	Peers           []wgtypes.PeerConfig   `json:"peers"`
+	PeerMap         map[string]PeerConf    `json:"peer_map"`
+	IsRelayed       bool                   `json:"is_relayed"`
+	IsIngress       bool                   `json:"is_ingress"`
+	RelayedTo       *net.UDPAddr           `json:"relayed_to"`
+	IsRelay         bool                   `json:"is_relay"`
+	RelayedPeerConf map[string]RelayedConf `json:"relayed_conf"`
+}
