@@ -15,7 +15,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy"
-	"github.com/gravitl/netclient/nmproxy/manager"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/mq"
@@ -27,7 +27,7 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet map[string]mqtt.Client
-var ProxyManagerChan = make(chan *manager.ProxyManagerPayload)
+var ProxyManagerChan = make(chan *proxy_models.ProxyManagerPayload)
 
 type cachedMessage struct {
 	Message  string

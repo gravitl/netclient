@@ -2,13 +2,12 @@ package functions
 
 import (
 	"encoding/json"
-	"log"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/nmproxy/manager"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -104,7 +103,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if keepaliveChange {
-		wireguard.UpdateKeepAlive(newNode.PersistentKeepalive)
+		wireguard.UpdateKeepAlive(int(newNode.PersistentKeepalive.Seconds()))
 	}
 	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
@@ -132,7 +131,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 // ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
 func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 
-	var proxyUpdate manager.ProxyManagerPayload
+	var proxyUpdate proxy_models.ProxyManagerPayload
 	var network = parseNetworkFromTopic(msg.Topic())
 	node := config.GetNode(network)
 	logger.Log(0, "---------> Recieved a proxy update")
@@ -153,11 +152,6 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.PeerUpdate
 	var err error
-	defer func() {
-		if err != nil {
-			log.Println("failed to update peers: ", err)
-		}
-	}()
 	network := parseNetworkFromTopic(msg.Topic())
 	node := config.GetNode(network)
 	server := config.GetServer(node.Server)

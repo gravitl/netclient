@@ -11,6 +11,9 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// ProxyAction - type for proxy action
+type ProxyAction string
+
 const (
 	// default proxy port
 	NmProxyPort = 51722
@@ -18,6 +21,11 @@ const (
 	DefaultCIDR = "127.0.0.1/8"
 	// PersistentKeepaliveInterval - default keepalive for wg peer
 	DefaultPersistentKeepaliveInterval = time.Duration(time.Second * 20)
+
+	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
+	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
+	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
+	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
 )
 
 // PeerConnMap - type for peer conn config map
@@ -107,4 +115,27 @@ func IsPublicIP(ip net.IP) bool {
 		return false
 	}
 	return true
+}
+
+// ProxyManagerPayload - struct for proxy manager payload
+type ProxyManagerPayload struct {
+	Action          ProxyAction            `json:"action"`
+	InterfaceName   string                 `json:"interface_name"`
+	Network         string                 `json:"network"`
+	WgAddr          string                 `json:"wg_addr"`
+	Peers           []wgtypes.PeerConfig   `json:"peers"`
+	PeerMap         map[string]PeerConf    `json:"peer_map"`
+	IsRelayed       bool                   `json:"is_relayed"`
+	IsIngress       bool                   `json:"is_ingress"`
+	RelayedTo       *net.UDPAddr           `json:"relayed_to"`
+	IsRelay         bool                   `json:"is_relay"`
+	RelayedPeerConf map[string]RelayedConf `json:"relayed_conf"`
+}
+
+// Metric - struct for metric data
+type Metric struct {
+	LastRecordedLatency uint64  `json:"last_recorded_latency"`
+	ConnectionStatus    bool    `json:"connection_status"`
+	TrafficSent         float64 `json:"traffic_sent"`     // stored in MB
+	TrafficRecieved     float64 `json:"traffic_recieved"` // stored in MB
 }
