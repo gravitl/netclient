@@ -11,6 +11,9 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// ProxyAction - type for proxy action
+type ProxyAction string
+
 const (
 	// default proxy port
 	NmProxyPort = 51722
@@ -18,6 +21,11 @@ const (
 	DefaultCIDR = "127.0.0.1/8"
 	// PersistentKeepaliveInterval - default keepalive for wg peer
 	DefaultPersistentKeepaliveInterval = time.Duration(time.Second * 20)
+
+	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
+	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
+	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
+	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
 )
 
 // PeerConnMap - type for peer conn config map
@@ -108,16 +116,6 @@ func IsPublicIP(ip net.IP) bool {
 	}
 	return true
 }
-
-// ProxyAction - type for proxy action
-type ProxyAction string
-
-const (
-	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
-	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
-	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
-	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
-)
 
 // ProxyManagerPayload - struct for proxy manager payload
 type ProxyManagerPayload struct {
