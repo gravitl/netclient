@@ -18,7 +18,7 @@ import (
 
 type proxyPayload models.ProxyManagerPayload
 
-func getlocalType(m *models.ProxyManagerPayload) *proxyPayload {
+func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
 	mI := proxyPayload(*m)
 	return &mI
 }
@@ -34,7 +34,7 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 			if mI == nil {
 				continue
 			}
-			m := getlocalType(mI)
+			m := getRecieverType(mI)
 			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI))
 			err := m.configureProxy()
 			if err != nil {
