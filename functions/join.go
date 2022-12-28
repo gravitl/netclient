@@ -267,10 +267,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	node.Connected = true
 	host.ProxyEnabled = flags.GetBool("proxy")
 	// == end handle keys ==
-	if host.LocalRange.IP == nil {
+	if host.LocalAddress.IP == nil {
 		intIP, err := getPrivateAddr()
 		if err == nil {
-			host.LocalRange = intIP
+			host.LocalAddress = intIP
 		} else {
 			logger.Log(1, "network:", node.Network, "error retrieving private address: ", err.Error())
 		}
@@ -293,8 +293,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		node.IsLocal = true
 	}
 	if host.EndpointIP == nil {
-		if node.IsLocal && host.LocalRange.IP != nil {
-			host.EndpointIP = host.LocalRange.IP
+		if node.IsLocal && host.LocalAddress.IP != nil {
+			host.EndpointIP = host.LocalAddress.IP
 		} else {
 			ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
 			host.EndpointIP = net.ParseIP(ip)
