@@ -363,6 +363,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	newNode := config.Node{}
 	newNode.CommonNode = joinResponse.Node.CommonNode
 	newNode.Connected = true
+	newNode.Peers = joinResponse.Node.Peers
 	internetGateway, err := wireguard.UpdateWgPeers(newNode.Peers)
 	if err != nil {
 		logger.Log(0, "failed to update wg peers", err.Error())
