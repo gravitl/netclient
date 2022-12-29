@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/packet"
 
@@ -38,7 +39,7 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI))
 			err := m.configureProxy()
 			if err != nil {
-				logger.Log(0, "failed to add interface: [%s] to proxy: %v\n  ", mI.InterfaceName, err.Error())
+				logger.Log(0, "failed to configure proxy:  ", err.Error())
 			}
 		}
 	}
@@ -46,13 +47,15 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 
 // ProxyManagerPayload.configureProxy - confgures proxy by payload action
 func (m *proxyPayload) configureProxy() error {
+	var err error
+	m.InterfaceName = ncutils.GetInterfaceName()
 	switch m.Action {
 	case models.AddNetwork:
-		m.addNetwork()
+		err = m.addNetwork()
 	case models.DeleteNetwork:
 		m.deleteNetwork()
 	}
-	return nil
+	return err
 }
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config
@@ -147,6 +150,7 @@ func (m *proxyPayload) processPayload() error {
 	}
 	gCfg.SetIface(wgIface)
 	if !gCfg.CheckIfNetworkExists(m.Network) {
+		logger.Log(0, "------> new network being added to proxy")
 		return nil
 	}
 
@@ -282,9 +286,8 @@ func (m *proxyPayload) deleteNetwork() {
 
 // ProxyManagerPayload.addNetwork - adds new peers to proxy
 func (m *proxyPayload) addNetwork() error {
-	var err error
 
-	err = m.processPayload()
+	err := m.processPayload()
 	if err != nil {
 		return err
 	}
