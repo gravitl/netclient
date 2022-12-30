@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 
@@ -17,7 +16,7 @@ func (nc *NCIface) Create() error {
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
 func (nc *NCIface) ApplyAddrs() error {
-	log.Println("-------------> Applying Addrs: ", nc.Addresses)
+
 	for _, address := range nc.Addresses {
 		if address.IP != nil {
 			if address.IP.To4() != nil {
