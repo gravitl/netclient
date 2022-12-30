@@ -36,13 +36,6 @@ func (nc *NCIface) Create() error {
 		if err = netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
 			return err
 		}
-		logger.Log(3, "adding addresses to netmaker interface")
-		if err = nc.ApplyAddrs(); err != nil {
-			return err
-		}
-		if err = netlink.LinkSetMTU(newLink, nc.MTU); err != nil {
-			return err
-		}
 		if err = netlink.LinkSetUp(newLink); err != nil {
 			return err
 		}
@@ -53,6 +46,14 @@ func (nc *NCIface) Create() error {
 		}
 	}
 	return fmt.Errorf("WireGuard not detected")
+}
+
+// NCIface.SetMTU - sets the mtu for the interface
+func (n *NCIface) SetMTU() error {
+	if err = netlink.LinkSetMTU(n.Iface, n.MTU); err != nil {
+		return err
+	}
+	return nil
 }
 
 // netLink.Attrs - implements required function of NetLink package

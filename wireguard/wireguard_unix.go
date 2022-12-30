@@ -42,9 +42,6 @@ func (nc *NCIface) createUserSpaceWG() error {
 			go tunDevice.IpcHandle(uapiConn)
 		}
 	}()
-	if err = nc.ApplyAddrs(); err != nil {
-		return err
-	}
 	return nil
 }
 

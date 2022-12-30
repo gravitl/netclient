@@ -16,6 +16,7 @@ func (nc *NCIface) Create() error {
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
 func (nc *NCIface) ApplyAddrs() error {
+
 	for _, address := range nc.Addresses {
 		if address.IP != nil {
 			if address.IP.To4() != nil {
@@ -50,6 +51,10 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 	}
 
+	return nil
+}
+
+func (nc *NCIface) SetMTU() error {
 	// set MTU for the interface
 	cmd := exec.Command("ifconfig", nc.Name, "mtu", fmt.Sprint(nc.MTU), "up")
 	if out, err := cmd.CombinedOutput(); err != nil {

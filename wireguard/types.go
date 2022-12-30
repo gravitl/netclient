@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -77,6 +78,13 @@ type ifaceAddress struct {
 func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	logger.Log(3, "adding addresses to netmaker interface")
+	if err := n.ApplyAddrs(); err != nil {
+		return err
+	}
+	if err := n.SetMTU(); err != nil {
+		return err
+	}
 	return apply(nil, &n.Config)
 }
 
