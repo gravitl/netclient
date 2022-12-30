@@ -87,10 +87,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
 	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	if err := nc.Create(); err != nil {
-		logger.Log(0, "could not create netmaker interface", err.Error())
-		return
-	}
 	if err := nc.Configure(); err != nil {
 		logger.Log(0, "could not configure netmaker interface", err.Error())
 		return

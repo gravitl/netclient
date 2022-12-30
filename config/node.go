@@ -133,7 +133,7 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.Address.Mask = node.NetworkRange.Mask
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
 	node.Address6.Mask = node.NetworkRange6.Mask
-	node.PersistentKeepalive = time.Duration(int(netmakerNode.PersistentKeepalive))
+	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
 	node.PostUp = netmakerNode.PostUp
 	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
@@ -186,7 +186,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.ProxyListenPort = int32(host.ProxyListenPort)
 	netmakerNode.LocalRange = host.LocalRange.String()
 	netmakerNode.MTU = int32(host.MTU)
-	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive)
+	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive.Seconds())
 	netmakerNode.PublicKey = host.PublicKey.String()
 	netmakerNode.PostUp = node.PostUp
 	netmakerNode.PostDown = node.PostDown
