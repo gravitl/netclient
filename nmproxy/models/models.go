@@ -79,10 +79,11 @@ type RemotePeer struct {
 
 // HostInfo - struct for host information
 type HostInfo struct {
-	PublicIp net.IP
-	PrivIp   net.IP
-	PubPort  int
-	PrivPort int
+	PublicIp     net.IP
+	PrivIp       net.IP
+	PubPort      int
+	PrivPort     int
+	ProxyEnabled bool
 }
 
 // RelayedConf - struct relayed peers config
@@ -122,6 +123,7 @@ func IsPublicIP(ip net.IP) bool {
 type ProxyManagerPayload struct {
 	Action          ProxyAction            `json:"action"`
 	InterfaceName   string                 `json:"interface_name"`
+	ProxyEnabled    bool                   `json:"proxy_enabled"`
 	Network         string                 `json:"network"`
 	WgAddr          string                 `json:"wg_addr"`
 	Peers           []wgtypes.PeerConfig   `json:"peers"`

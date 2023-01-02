@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/packet"
+	"github.com/gravitl/netclient/nmproxy/peer"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
@@ -49,6 +50,16 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 func (m *proxyPayload) configureProxy() error {
 	var err error
 	m.InterfaceName = ncutils.GetInterfaceName()
+	config.GetCfg().SetPeers(m.PeerMap)
+	if m.ProxyEnabled && !config.GetCfg().GetWgProxyStatus() {
+		// stop the metrics thread since proxy is switched on for the host
+		config.GetCfg().StopMetricsCollectionThread()
+	}
+	if !m.ProxyEnabled && !config.GetCfg().GetMetricsCollectionStatus() {
+		ctx, cancel := context.WithCancel(context.Background())
+		go peer.StartMetricsCollectionForHostPeers(ctx)
+		config.GetCfg().SetMetricsThread(cancel)
+	}
 	switch m.Action {
 	case models.AddNetwork:
 		err = m.addNetwork()

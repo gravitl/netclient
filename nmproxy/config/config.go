@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"net"
 	"sync"
 
@@ -22,16 +23,18 @@ type Settings struct {
 
 // Config - struct for proxy config
 type Config struct {
-	HostInfo      models.HostInfo
-	ProxyStatus   bool
-	isHostNetwork bool
-	isServer      bool
-	isBehindNAT   bool
-	mutex         *sync.RWMutex
-	ifaceConfig   wgIfaceConf
-	settings      map[string]Settings
-	RouterCfg     Router
-	serverConn    *net.UDPConn
+	HostInfo                models.HostInfo
+	ProxyStatus             bool
+	isHostNetwork           bool
+	isServer                bool
+	isBehindNAT             bool
+	mutex                   *sync.RWMutex
+	ifaceConfig             wgIfaceConf
+	settings                map[string]Settings
+	RouterCfg               Router
+	metricsThreadDone       context.CancelFunc
+	metricsCollectionStatus bool
+	serverConn              *net.UDPConn
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -47,6 +50,7 @@ func InitializeCfg() {
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 			noProxyPeerMap:   make(models.PeerConnMap),
+			allPeersConf:     make(map[string]models.PeerConf),
 		},
 		RouterCfg: Router{
 			mutex:           &sync.RWMutex{},
@@ -66,6 +70,31 @@ func (c *Config) IsProxyRunning() bool {
 // Config.SetHostInfo - sets host info
 func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
 	c.HostInfo = hostInfo
+}
+
+func (c *Config) StopMetricsCollectionThread() {
+	if c.metricsThreadDone != nil {
+		c.metricsThreadDone()
+	}
+}
+
+func (c *Config) GetMetricsCollectionStatus() bool {
+	return c.metricsCollectionStatus
+}
+
+func (c *Config) SetMetricsThread(cancelFunc context.CancelFunc) {
+	c.metricsThreadDone = cancelFunc
+	c.metricsCollectionStatus = true
+}
+
+// Config.SetWgProxyStatus - sets proxy status of host
+func (c *Config) SetWgProxyStatus(status bool) {
+	c.HostInfo.ProxyEnabled = status
+}
+
+// Config.GetWgProxyStatus - fetches proxy status of host
+func (c *Config) GetWgProxyStatus() bool {
+	return c.HostInfo.ProxyEnabled
 }
 
 // Config.GetHostInfo - gets the host info
@@ -177,6 +206,6 @@ func (c *Config) GetServerConn() *net.UDPConn {
 }
 
 // Config.SetServerConn - sets server connection
-func (c *Config) SetsServerConn(conn *net.UDPConn) {
+func (c *Config) SetServerConn(conn *net.UDPConn) {
 	c.serverConn = conn
 }

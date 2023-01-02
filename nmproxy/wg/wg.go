@@ -100,6 +100,25 @@ func (w *WGIface) GetListenPort() (*int, error) {
 	return &d.ListenPort, nil
 }
 
+func GetPeers(ifaceName string) ([]wgtypes.Peer, error) {
+	wg, err := wgctrl.New()
+	if err != nil {
+		return []wgtypes.Peer{}, err
+	}
+	defer func() {
+		err = wg.Close()
+		if err != nil {
+			logger.Log(0, "got error while closing wgctl: ", err.Error())
+		}
+	}()
+
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return []wgtypes.Peer{}, err
+	}
+	return wgDevice.Peers, nil
+}
+
 // GetPeer - gets the peerinfo from the wg interface
 func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 	wg, err := wgctrl.New()

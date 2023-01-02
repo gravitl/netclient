@@ -21,6 +21,7 @@ type wgIfaceConf struct {
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
 	noProxyPeerMap   models.PeerConnMap
+	allPeersConf     map[string]models.PeerConf
 	ServerConn       *net.UDPAddr
 }
 
@@ -315,6 +316,7 @@ func (c *Config) GetNoProxyPeers() models.PeerConnMap {
 	return c.ifaceConfig.noProxyPeerMap
 }
 
+// Config.GetNoProxyPeer - fetches no proxy peer
 func (c *Config) GetNoProxyPeer(peerIp net.IP) (models.Conn, bool) {
 	if connConf, found := c.ifaceConfig.noProxyPeerMap[peerIp.String()]; found {
 		return *connConf, found
@@ -336,4 +338,14 @@ func (c *Config) DeleteNoProxyPeer(peerIP string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.noProxyPeerMap, peerIP)
 	}
+}
+
+// Config.GetAllPeersConf - fetches all peers from config
+func (c *Config) GetAllPeersConf() map[string]models.PeerConf {
+	return c.ifaceConfig.allPeersConf
+}
+
+// Config.SetPeers - sets the peers in the config
+func (c *Config) SetPeers(peers map[string]models.PeerConf) {
+	c.ifaceConfig.allPeersConf = peers
 }

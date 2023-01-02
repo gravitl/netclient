@@ -124,25 +124,25 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 	return peers
 }
 
-// StartMetricsCollectionForNoProxyPeers - starts metrics collection for non proxied peers
-func StartMetricsCollectionForNoProxyPeers(ctx context.Context) {
+// StartMetricsCollectionForHostPeers - starts metrics collection for non proxied peers
+func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// noProxyPeers := config.GetCfg().GetNoProxyPeers()
-			// for peerPubKey, peerInfo := range noProxyPeers {
-			// 	//go collectMetricsForNoProxyPeer(peerPubKey, *peerInfo)
-			// }
+			peers := config.GetCfg().GetAllPeersConf()
+			for peerPubKey, peerI := range peers {
+				go collectMetricsForNoProxyPeer(peerPubKey, peerI)
+			}
 		}
 	}
 }
 
-func collectMetricsForNoProxyPeer(peerKey string, peerInfo models.RemotePeer) {
+func collectMetricsForNoProxyPeer(peerKey string, peerInfo models.PeerConf) {
 
-	devPeer, err := wg.GetPeer(peerInfo.Interface, peerKey)
+	devPeer, err := wg.GetPeer(config.GetCfg().GetIface().Name, peerKey)
 	if err != nil {
 		return
 	}
@@ -153,12 +153,12 @@ func collectMetricsForNoProxyPeer(peerKey string, peerInfo models.RemotePeer) {
 	}
 	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
 	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(peerInfo.Network, peerInfo.PeerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), peerInfo.Network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
+	metrics.UpdateMetric("", peerKey, &metric)
+	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), "", config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
 	if err == nil {
 		conn := config.GetCfg().GetServerConn()
 		if conn != nil {
-			_, err = conn.WriteToUDP(pkt, peerInfo.Endpoint)
+			_, err = conn.WriteToUDP(pkt, devPeer.Endpoint)
 			if err != nil {
 				logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 			}
