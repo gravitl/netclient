@@ -35,13 +35,14 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
 		Network:             network,
 		ListenPort:          int(peerConf.PublicListenPort),
+		ProxyStatus:         peerConf.Proxy,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
 	if peerPort == 0 {
 		peerPort = models.NmProxyPort
 	}
-	if peerConf.IsExtClient && peerConf.IsAttachedExtClient {
+	if peerConf.IsAttachedExtClient || !peerConf.Proxy {
 		peerPort = peer.Endpoint.Port
 
 	}
@@ -85,9 +86,12 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
-	config.GetCfg().SavePeer(network, &connConf)
+	if peerConf.Proxy {
+		config.GetCfg().SavePeer(network, &connConf)
+	} else {
+		config.GetCfg().SaveNoProxyPeer(&connConf)
+	}
 	config.GetCfg().SavePeerByHash(&rPeer)
-
 	if peerConf.IsAttachedExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
 		//add rules to router
@@ -126,10 +130,10 @@ func StartMetricsCollectionForNoProxyPeers(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			noProxyPeers := config.GetCfg().GetNoProxyPeers()
-			for peerPubKey, peerInfo := range noProxyPeers {
-				go collectMetricsForNoProxyPeer(peerPubKey, *peerInfo)
-			}
+			// noProxyPeers := config.GetCfg().GetNoProxyPeers()
+			// for peerPubKey, peerInfo := range noProxyPeers {
+			// 	//go collectMetricsForNoProxyPeer(peerPubKey, *peerInfo)
+			// }
 		}
 	}
 }

@@ -44,6 +44,7 @@ type Proxy struct {
 	WgAddr              net.IP
 	Network             string
 	ListenPort          int
+	ProxyStatus         bool
 }
 
 // Conn is a peer Connection configuration

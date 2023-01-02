@@ -60,7 +60,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			}(n, p.Config.Network, p.Config.RemoteKey.String())
 
 			var srcPeerKeyHash, dstPeerKeyHash string
-			if !p.Config.IsExtClient {
+			if !p.Config.IsExtClient || !p.Config.ProxyStatus {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
 					config.GetCfg().GetDevicePubKey().String(), p.Config.RemoteKey.String())
 				if err != nil {

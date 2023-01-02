@@ -85,7 +85,10 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash, network)
 				continue
 			} else {
-				// unknown peer to proxy -> check if extclient and handle it
+				// unknown peer to proxy -> check if extclient or noProxyPeer and handle it
+				if handleNoProxyPeer(buffer[:], n, source) {
+					continue
+				}
 				if handleExtClients(buffer[:], n, source) {
 					continue
 				}
@@ -238,11 +241,25 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 		}
 		metric := metrics.GetMetric(peerInfo.Network, peerInfo.PeerKey)
 		metric.TrafficRecieved += float64(n) / (1 << 20)
-		metric.ConnectionStatus = true
 		metrics.UpdateMetric(peerInfo.Network, peerInfo.PeerKey, &metric)
 		isExtClient = true
 	}
 	return isExtClient
+}
+
+func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
+	fromNoProxyPeer := false
+	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found {
+		_, err := peerInfo.LocalConn.Write(buffer[:n])
+		if err != nil {
+			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
+		}
+		metric := metrics.GetMetric(peerInfo.Config.Network, peerInfo.Key.String())
+		metric.TrafficRecieved += float64(n) / (1 << 20)
+		metrics.UpdateMetric(peerInfo.Config.Network, peerInfo.Key.String(), &metric)
+		fromNoProxyPeer = true
+	}
+	return fromNoProxyPeer
 }
 
 func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {

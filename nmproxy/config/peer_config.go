@@ -20,7 +20,7 @@ type wgIfaceConf struct {
 	extSrcIpMap      map[string]*models.RemotePeer
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
-	nonProxyPeerMap  map[string]*models.RemotePeer
+	noProxyPeerMap   models.PeerConnMap
 	ServerConn       *net.UDPAddr
 }
 
@@ -311,16 +311,24 @@ func (c *Config) UpdateWgIface(wgIface *wg.WGIface) {
 }
 
 // Config.GetNoProxyPeers - fetches peers not using proxy
-func (c *Config) GetNoProxyPeers() map[string]*models.RemotePeer {
-	return c.ifaceConfig.nonProxyPeerMap
+func (c *Config) GetNoProxyPeers() models.PeerConnMap {
+	return c.ifaceConfig.noProxyPeerMap
 }
 
-// Config.AddNoProxyPeer - adds non proxy peer to config
-func (c *Config) AddNoProxyPeer(peer *models.RemotePeer) {
-	c.ifaceConfig.nonProxyPeerMap[peer.PeerKey] = peer
+func (c *Config) GetNoProxyPeer(peerIp net.IP) (models.Conn, bool) {
+	if connConf, found := c.ifaceConfig.noProxyPeerMap[peerIp.String()]; found {
+		return *connConf, found
+	}
+	return models.Conn{}, false
+
+}
+
+// Config.SaveNoProxyPeer - adds non proxy peer to config
+func (c *Config) SaveNoProxyPeer(peer *models.Conn) {
+	c.ifaceConfig.noProxyPeerMap[peer.Config.PeerEndpoint.IP.String()] = peer
 }
 
 // Config.DeleteNoProxyPeer - deletes no proxy peers from config
 func (c *Config) DeleteNoProxyPeer(peerKey string) {
-	delete(c.ifaceConfig.nonProxyPeerMap, peerKey)
+	delete(c.ifaceConfig.noProxyPeerMap, peerKey)
 }

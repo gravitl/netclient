@@ -46,7 +46,7 @@ func InitializeCfg() {
 			extSrcIpMap:      make(map[string]*models.RemotePeer),
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
-			nonProxyPeerMap:  make(map[string]*models.RemotePeer),
+			noProxyPeerMap:   make(models.PeerConnMap),
 		},
 		RouterCfg: Router{
 			mutex:           &sync.RWMutex{},
