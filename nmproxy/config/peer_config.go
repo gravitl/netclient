@@ -329,6 +329,11 @@ func (c *Config) SaveNoProxyPeer(peer *models.Conn) {
 }
 
 // Config.DeleteNoProxyPeer - deletes no proxy peers from config
-func (c *Config) DeleteNoProxyPeer(peerKey string) {
-	delete(c.ifaceConfig.noProxyPeerMap, peerKey)
+func (c *Config) DeleteNoProxyPeer(peerIP string) {
+	if peerConf, found := c.ifaceConfig.noProxyPeerMap[peerIP]; found {
+		peerConf.Mutex.Lock()
+		peerConf.StopConn()
+		peerConf.Mutex.Unlock()
+		delete(c.ifaceConfig.noProxyPeerMap, peerIP)
+	}
 }

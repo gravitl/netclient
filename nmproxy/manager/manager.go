@@ -162,7 +162,7 @@ func (m *proxyPayload) processPayload() error {
 		return nil
 	}
 	peerConnMap := gCfg.GetNetworkPeers(m.Network)
-
+	noProxyPeerMap := gCfg.GetNoProxyPeers()
 	// check device conf different from proxy
 	// sync peer map with new update
 	for peerPubKey, peerConn := range peerConnMap {
@@ -177,7 +177,16 @@ func (m *proxyPayload) processPayload() error {
 			logger.Log(0, "----> Deleting Peer from proxy: ", peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
 		}
+
 	}
+
+	// update no proxy peers map with peer update
+	for peerIP, peerConn := range noProxyPeerMap {
+		if _, ok := m.PeerMap[peerConn.Key.String()]; !ok {
+			gCfg.DeleteNoProxyPeer(peerIP)
+		}
+	}
+
 	for i := len(m.Peers) - 1; i >= 0; i-- {
 
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
@@ -252,26 +261,27 @@ func (m *proxyPayload) processPayload() error {
 				delete(peerConnMap, currentPeer.Key.String())
 				continue
 
-			} else {
-				// delete the peer from the list
-				logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
-				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			}
+			// delete the peer from the list
+			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
+			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			currentPeer.Mutex.Unlock()
+			continue
 
-		} else if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
-			logger.Log(1, "-----------> skipping peer, proxy is off: ", m.Peers[i].PublicKey.String())
-			// add to no proxy peer config for metrics collection
-			// config.GetCfg().AddNoProxyPeer(&models.RemotePeer{
-			// 	Address:   net.IP(m.PeerMap[m.Peers[i].PublicKey.String()].Address),
-			// 	Network:   m.Network,
-			// 	PeerKey:   m.Peers[i].PublicKey.String(),
-			// 	Interface: m.InterfaceName,
-			// 	Endpoint:  m.Peers[i].Endpoint,
-			// })
-
-			//m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
+
+		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
+			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
+				// cleanup proxy connections for the peer
+				noProxypeer.Mutex.Lock()
+				noProxypeer.StopConn()
+				noProxypeer.Mutex.Unlock()
+				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
+				continue
+			}
+			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+		}
+
 	}
 
 	gCfg.UpdateNetworkPeers(m.Network, &peerConnMap)
