@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -148,7 +149,7 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 
 func collectMetricsForNoProxyPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
 
-	devPeer, err := wg.GetPeer(config.GetCfg().GetIface().Name, peerKey)
+	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
 		return
 	}

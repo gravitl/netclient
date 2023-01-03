@@ -51,14 +51,13 @@ func configureProxy(payload *nm_models.PeerUpdate) error {
 	var err error
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
-
+	noProxy(m.Network, payload)
 	switch m.Action {
 	case models.AddNetwork:
 		err = m.addNetwork()
 	case models.DeleteNetwork:
 		m.deleteNetwork()
-	case models.NoProxy:
-		noProxy(m.Network, payload)
+
 	}
 	return err
 }
@@ -69,9 +68,7 @@ func noProxy(network string, peerUpdate *nm_models.PeerUpdate) {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
 		config.GetCfg().StopMetricsCollectionThread()
-	}
-
-	if !peerUpdate.ProxyUpdate.ProxyEnabled && !config.GetCfg().GetMetricsCollectionStatus() {
+	} else if !peerUpdate.ProxyUpdate.ProxyEnabled && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go peer.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)

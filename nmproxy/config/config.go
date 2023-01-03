@@ -210,8 +210,3 @@ func (c *Config) GetServerConn() *net.UDPConn {
 func (c *Config) SetServerConn(conn *net.UDPConn) {
 	c.serverConn = conn
 }
-
-// Config.GetIfaceName - fetches interface name
-func (c *Config) GetIfaceName() string {
-	return c.ifaceConfig.iface.Name
-}
