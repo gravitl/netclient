@@ -88,16 +88,6 @@ func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
 	c.metricsCollectionStatus = true
 }
 
-// Config.SetWgProxyStatus - sets proxy status of host
-func (c *Config) SetWgProxyStatus(status bool) {
-	c.HostInfo.ProxyEnabled = status
-}
-
-// Config.GetWgProxyStatus - fetches proxy status of host
-func (c *Config) GetWgProxyStatus() bool {
-	return c.HostInfo.ProxyEnabled
-}
-
 // Config.GetHostInfo - gets the host info
 func (c *Config) GetHostInfo() models.HostInfo {
 	return c.HostInfo
