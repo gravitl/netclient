@@ -73,7 +73,10 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 				logger.Log(3, "failed to read from server: ", err.Error())
 				continue
 			}
-			//go func(buffer []byte, source *net.UDPAddr, n int) {
+
+			if handleNoProxyPeer(buffer[:], n, source) {
+				continue
+			}
 			proxyTransportMsg := true
 			var srcPeerKeyHash, dstPeerKeyHash, network string
 			n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
@@ -86,9 +89,6 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 				continue
 			} else {
 				// unknown peer to proxy -> check if extclient or noProxyPeer and handle it
-				if handleNoProxyPeer(buffer[:], n, source) {
-					continue
-				}
 				if handleExtClients(buffer[:], n, source) {
 					continue
 				}
