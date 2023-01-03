@@ -50,8 +50,8 @@ func (nc *NCIface) Create() error {
 
 // NCIface.SetMTU - sets the mtu for the interface
 func (n *NCIface) SetMTU() error {
-	l := nc.getKernelLink()
-	if err = netlink.LinkSetMTU(l, n.MTU); err != nil {
+	l := n.getKernelLink()
+	if err := netlink.LinkSetMTU(l, n.MTU); err != nil {
 		return err
 	}
 	return nil
