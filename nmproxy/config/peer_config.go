@@ -156,6 +156,15 @@ func (c *Config) RemovePeer(network, peerPubKey string) {
 
 }
 
+// Config.UpdatePeerNetwork - updates the peer network settings map
+func (c *Config) UpdatePeerNetwork(peerPubKey, network string, setting models.Settings) {
+	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
+		peerConf.Mutex.Lock()
+		peerConf.NetworkSettings[network] = setting
+		peerConf.Mutex.Unlock()
+	}
+}
+
 // Config.CheckIfPeerExists - checks if peer exists in the config
 func (c *Config) CheckIfPeerExists(peerPubKey string) bool {
 

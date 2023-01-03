@@ -290,6 +290,11 @@ func (m *proxyPayload) processPayload() error {
 			}
 			// delete the peer from the list
 			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
+			// peer exists and no changes observed, update network map for the peer
+			currentPeer.NetworkSettings[m.Network] = models.Settings{
+				IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
+				RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
+			}
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			currentPeer.Mutex.Unlock()
 			continue
