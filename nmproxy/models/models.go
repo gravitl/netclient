@@ -65,6 +65,7 @@ type Conn struct {
 	ResetConn           func()
 	LocalConn           net.Conn
 	Mutex               *sync.RWMutex
+	NetworkSettings     map[string]Settings
 }
 
 // RemotePeer - struct remote peer data
@@ -145,4 +146,12 @@ type Metric struct {
 	ConnectionStatus    bool    `json:"connection_status"`
 	TrafficSent         float64 `json:"traffic_sent"`     // stored in MB
 	TrafficRecieved     float64 `json:"traffic_recieved"` // stored in MB
+}
+
+// Settings - struct for network level settings
+type Settings struct {
+	IsRelay          bool
+	IsIngressGateway bool
+	IsRelayed        bool
+	RelayedTo        *net.UDPAddr
 }

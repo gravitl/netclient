@@ -35,7 +35,6 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsExtClient:         peerConf.IsExtClient,
 		PeerConf:            peer,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
-		Network:             network,
 		ListenPort:          int(peerConf.PublicListenPort),
 		ProxyStatus:         peerConf.Proxy,
 	}
@@ -71,13 +70,16 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	connConf := models.Conn{
 		Mutex:               &sync.RWMutex{},
 		Key:                 peer.PublicKey,
-		IsRelayed:           isRelayed,
-		RelayedEndpoint:     relayTo,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		Config:              p.Config,
 		StopConn:            p.Close,
 		ResetConn:           p.Reset,
 		LocalConn:           p.LocalConn,
+		NetworkSettings:     make(map[string]models.Settings),
+	}
+	connConf.NetworkSettings[network] = models.Settings{
+		IsRelayed: isRelayed,
+		RelayedTo: relayTo,
 	}
 	rPeer := models.RemotePeer{
 		Network:             network,
@@ -90,7 +92,7 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	}
 	if peerConf.Proxy {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
-		config.GetCfg().SavePeer(network, &connConf)
+		config.GetCfg().SavePeer(&connConf)
 	} else {
 		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
 		config.GetCfg().SaveNoProxyPeer(&connConf)
@@ -116,7 +118,7 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 		return peers
 	}
 	for i := range peers {
-		proxyPeer, found := config.GetCfg().GetPeer(network, peers[i].PublicKey.String())
+		proxyPeer, found := config.GetCfg().GetPeer(peers[i].PublicKey.String())
 		if found {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr

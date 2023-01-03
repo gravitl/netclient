@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
+	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -16,14 +17,13 @@ var extPeerMapMutex = sync.Mutex{}
 type wgIfaceConf struct {
 	iface            *wg.WGIface
 	ifaceKeyHash     string
-	networkPeerMap   map[string]models.PeerConnMap
+	proxyPeerMap     models.PeerConnMap
 	peerHashMap      map[string]*models.RemotePeer
 	extSrcIpMap      map[string]*models.RemotePeer
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
 	noProxyPeerMap   models.PeerConnMap
 	allPeersConf     map[string]nm_models.PeerMap
-	ServerConn       *net.UDPAddr
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -85,95 +85,87 @@ func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 
 // Config.CheckIfNetworkExists - checks if network exists
 func (c *Config) CheckIfNetworkExists(network string) bool {
-	_, found := c.ifaceConfig.networkPeerMap[network]
+	_, found := c.ifaceConfig.proxyPeerMap[network]
 	return found
 }
 
-// Config.GetNetworkPeers - fetches all peers in the network
-func (c *Config) GetNetworkPeers(network string) models.PeerConnMap {
-	return c.ifaceConfig.networkPeerMap[network]
+// Config.GetAllProxyPeers - fetches all peers in the network
+func (c *Config) GetAllProxyPeers() models.PeerConnMap {
+	return c.ifaceConfig.proxyPeerMap
 }
 
-// Config.UpdateNetworkPeers - updates all peers in the network
-func (c *Config) UpdateNetworkPeers(network string, peers *models.PeerConnMap) {
+// Config.UpdateProxyPeers - updates all peers in the network
+func (c *Config) UpdateProxyPeers(peers *models.PeerConnMap) {
 	if peers != nil {
-		c.ifaceConfig.networkPeerMap[network] = *peers
+		c.ifaceConfig.proxyPeerMap = *peers
 	}
-
 }
 
 // Config.SavePeer - saves peer to the config
-func (c *Config) SavePeer(network string, connConf *models.Conn) {
-	if _, ok := c.ifaceConfig.networkPeerMap[network]; !ok {
-		c.ifaceConfig.networkPeerMap[network] = make(models.PeerConnMap)
-	}
-	c.ifaceConfig.networkPeerMap[network][connConf.Key.String()] = connConf
+func (c *Config) SavePeer(connConf *models.Conn) {
+	c.ifaceConfig.proxyPeerMap[connConf.Key.String()] = connConf
 }
 
 // Config.GetPeer - fetches the peer by network and pubkey
-func (c *Config) GetPeer(network, peerPubKey string) (models.Conn, bool) {
+func (c *Config) GetPeer(peerPubKey string) (models.Conn, bool) {
 
-	if c.CheckIfNetworkExists(network) {
-		if peerConn, found := c.ifaceConfig.networkPeerMap[network][peerPubKey]; found {
-			return *peerConn, found
-		}
+	if peerConn, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
+		return *peerConn, found
 	}
+
 	return models.Conn{}, false
 }
 
 // Config.UpdatePeer - updates peer by network
-func (c *Config) UpdatePeer(network string, updatedPeer *models.Conn) {
-	if c.CheckIfNetworkExists(network) {
-		if peerConf, found := c.ifaceConfig.networkPeerMap[network][updatedPeer.Key.String()]; found {
-			peerConf.Mutex.Lock()
-			c.ifaceConfig.networkPeerMap[network][updatedPeer.Key.String()] = updatedPeer
-			peerConf.Mutex.Unlock()
-		}
-	}
+func (c *Config) UpdatePeer(updatedPeer *models.Conn) {
 
+	if peerConf, found := c.ifaceConfig.proxyPeerMap[updatedPeer.Key.String()]; found {
+		peerConf.Mutex.Lock()
+		c.ifaceConfig.proxyPeerMap[updatedPeer.Key.String()] = updatedPeer
+		peerConf.Mutex.Unlock()
+	}
 }
 
 // Config.ResetPeer - resets the peer connection to proxy
-func (c *Config) ResetPeer(network, peerKey string) {
-	if c.CheckIfNetworkExists(network) {
-		if peerConf, found := c.ifaceConfig.networkPeerMap[network][peerKey]; found {
-			peerConf.Mutex.Lock()
-			peerConf.ResetConn()
-			peerConf.Mutex.Unlock()
-		}
+func (c *Config) ResetPeer(peerKey string) {
+
+	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerKey]; found {
+		peerConf.Mutex.Lock()
+		peerConf.ResetConn()
+		peerConf.Mutex.Unlock()
 	}
+
 }
 
 // Config.RemovePeer - removes the peer from the network peer config
-func (c *Config) RemovePeer(network string, peerPubKey string) {
-	if c.CheckIfNetworkExists(network) {
-		if peerConf, found := c.ifaceConfig.networkPeerMap[network][peerPubKey]; found {
+func (c *Config) RemovePeer(network, peerPubKey string) {
+
+	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
+
+		delete(peerConf.NetworkSettings, network)
+		if len(peerConf.NetworkSettings) == 0 {
+			logger.Log(0, "----> Deleting Peer from proxy: ", peerConf.Key.String())
 			peerConf.Mutex.Lock()
 			peerConf.StopConn()
 			peerConf.Mutex.Unlock()
-			delete(c.ifaceConfig.networkPeerMap[network], peerPubKey)
+			delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
+			GetCfg().DeletePeerHash(peerConf.Key.String())
 		}
+
 	}
 
-}
-
-// Config.DeleteNetworkPeers - deletes all peers in the network from the config
-func (c *Config) DeleteNetworkPeers(network string) {
-	delete(c.ifaceConfig.networkPeerMap, network)
 }
 
 // Config.CheckIfPeerExists - checks if peer exists in the config
-func (c *Config) CheckIfPeerExists(network, peerPubKey string) bool {
-	if !c.CheckIfNetworkExists(network) {
-		return false
-	}
-	_, found := c.ifaceConfig.networkPeerMap[network][peerPubKey]
+func (c *Config) CheckIfPeerExists(peerPubKey string) bool {
+
+	_, found := c.ifaceConfig.proxyPeerMap[peerPubKey]
 	return found
 }
 
 // Config.GetNetworkPeerMap - fetches all peers in the network
-func (c *Config) GetNetworkPeerMap() map[string]models.PeerConnMap {
-	return c.ifaceConfig.networkPeerMap
+func (c *Config) GetNetworkPeerMap() models.PeerConnMap {
+	return c.ifaceConfig.proxyPeerMap
 }
 
 // Config.SavePeerByHash - saves peer by its publicKey hash to the config
@@ -276,7 +268,7 @@ func (c *Config) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePe
 
 // Config.DeleteRelayedPeers - deletes relayed peer info
 func (c *Config) DeleteRelayedPeers(network string) {
-	peersMap := c.GetNetworkPeers(network)
+	peersMap := c.GetAllProxyPeers()
 	for _, peer := range peersMap {
 		if peer.IsRelayed {
 			delete(c.ifaceConfig.relayPeerMap, models.ConvPeerKeyToHash(peer.Key.String()))
@@ -324,6 +316,11 @@ func (c *Config) GetNoProxyPeer(peerIp net.IP) (models.Conn, bool) {
 	}
 	return models.Conn{}, false
 
+}
+
+// Config.UpdateNoProxyPeers - updates no proxy peers in the config
+func (c *Config) UpdateNoProxyPeers(peers *models.PeerConnMap) {
+	c.ifaceConfig.noProxyPeerMap = *peers
 }
 
 // Config.SaveNoProxyPeer - adds non proxy peer to config

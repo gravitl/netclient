@@ -133,11 +133,19 @@ func (m *proxyPayload) setRelayedPeers() {
 
 func cleanUpInterface(network string) {
 	logger.Log(1, "Removing proxy configuration for: ", network)
-	peerConnMap := config.GetCfg().GetNetworkPeers(network)
+	peerConnMap := config.GetCfg().GetAllProxyPeers()
 	for _, peerI := range peerConnMap {
-		config.GetCfg().RemovePeer(network, peerI.Key.String())
+		if _, ok := peerI.NetworkSettings[network]; ok {
+			config.GetCfg().RemovePeer(network, peerI.Key.String())
+		}
 	}
-	config.GetCfg().DeleteNetworkPeers(network)
+	noProxyPeers := config.GetCfg().GetNoProxyPeers()
+	for _, peerI := range noProxyPeers {
+		if _, ok := peerI.NetworkSettings[network]; ok {
+			config.GetCfg().DeleteNoProxyPeer(peerI.Config.PeerEndpoint.IP.String())
+		}
+
+	}
 
 }
 
@@ -178,7 +186,7 @@ func (m *proxyPayload) processPayload() error {
 		cleanUpInterface(m.Network)
 		return nil
 	}
-	peerConnMap := gCfg.GetNetworkPeers(m.Network)
+	peerConnMap := gCfg.GetAllProxyPeers()
 	noProxyPeerMap := gCfg.GetNoProxyPeers()
 	// check device conf different from proxy
 	// sync peer map with new update
@@ -190,9 +198,8 @@ func (m *proxyPayload) processPayload() error {
 				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
 				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
 			}
-			gCfg.DeletePeerHash(peerConn.Key.String())
-			logger.Log(0, "----> Deleting Peer from proxy: ", peerConn.Key.String())
-			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
+			// check if peer is part of other networks if so don't delete
+			gCfg.RemovePeer(m.Network, peerConn.Key.String())
 		}
 
 	}
@@ -241,6 +248,7 @@ func (m *proxyPayload) processPayload() error {
 					continue
 				}
 			}
+
 			//check if peer is being relayed
 			if currentPeer.IsRelayed != m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
 				logger.Log(1, "---------> peer relay status has been changed: ", currentPeer.Key.String())
@@ -249,6 +257,7 @@ func (m *proxyPayload) processPayload() error {
 				delete(peerConnMap, currentPeer.Key.String())
 				continue
 			}
+
 			// check if relay endpoint has been changed
 			if currentPeer.RelayedEndpoint != nil &&
 				m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo != nil &&
@@ -260,7 +269,7 @@ func (m *proxyPayload) processPayload() error {
 				continue
 			}
 
-			// check if proxy listen port has chnaged for the peer
+			// check if proxy listen port has changed for the peer
 			if currentPeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
 				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0 {
 				// listen port has been changed, reset conn
@@ -301,7 +310,8 @@ func (m *proxyPayload) processPayload() error {
 
 	}
 
-	gCfg.UpdateNetworkPeers(m.Network, &peerConnMap)
+	gCfg.UpdateProxyPeers(&peerConnMap)
+	gCfg.UpdateNoProxyPeers(&noProxyPeerMap)
 	logger.Log(1, "CLEANED UP..........")
 	return nil
 }
