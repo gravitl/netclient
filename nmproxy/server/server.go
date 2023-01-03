@@ -74,26 +74,26 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 				continue
 			}
 
-			if handleNoProxyPeer(buffer[:], n, source) {
-				continue
-			}
-			proxyTransportMsg := true
-			var srcPeerKeyHash, dstPeerKeyHash, network string
-			n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
-			if err != nil {
-				logger.Log(2, "proxy transport message not found: ", err.Error())
-				proxyTransportMsg = false
-			}
-			if proxyTransportMsg {
-				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash, network)
-				continue
-			} else {
-				// unknown peer to proxy -> check if extclient or noProxyPeer and handle it
-				if handleExtClients(buffer[:], n, source) {
-					continue
+			if !handleNoProxyPeer(buffer[:], n, source) {
+				proxyTransportMsg := true
+				var srcPeerKeyHash, dstPeerKeyHash, network string
+				n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
+				if err != nil {
+					logger.Log(2, "proxy transport message not found: ", err.Error())
+					proxyTransportMsg = false
 				}
+				if proxyTransportMsg {
+					p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash, network)
+					continue
+				} else {
+					// unknown peer to proxy -> check if extclient and handle it
+					if handleExtClients(buffer[:], n, source) {
+						continue
+					}
 
+				}
 			}
+
 			p.handleMsgs(buffer, n, source)
 
 		}
