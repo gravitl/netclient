@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 )
 
 var (
@@ -50,7 +51,7 @@ func InitializeCfg() {
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 			noProxyPeerMap:   make(models.PeerConnMap),
-			allPeersConf:     make(map[string]models.PeerConf),
+			allPeersConf:     make(map[string]nm_models.PeerMap),
 		},
 		RouterCfg: Router{
 			mutex:           &sync.RWMutex{},
@@ -82,7 +83,7 @@ func (c *Config) GetMetricsCollectionStatus() bool {
 	return c.metricsCollectionStatus
 }
 
-func (c *Config) SetMetricsThread(cancelFunc context.CancelFunc) {
+func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
 	c.metricsThreadDone = cancelFunc
 	c.metricsCollectionStatus = true
 }
@@ -208,4 +209,9 @@ func (c *Config) GetServerConn() *net.UDPConn {
 // Config.SetServerConn - sets server connection
 func (c *Config) SetServerConn(conn *net.UDPConn) {
 	c.serverConn = conn
+}
+
+// Config.GetIfaceName - fetches interface name
+func (c *Config) GetIfaceName() string {
+	return c.ifaceConfig.iface.Name
 }

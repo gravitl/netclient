@@ -141,7 +141,9 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	ProxyManagerChan <- &proxyUpdate
+	ProxyManagerChan <- &models.PeerUpdate{
+		ProxyUpdate: proxyUpdate,
+	}
 }
 
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
@@ -197,7 +199,11 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		ProxyManagerChan <- &peerUpdate.ProxyUpdate
+		ProxyManagerChan <- &peerUpdate
+	} else {
+		peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
+		peerUpdate.ProxyUpdate.Network = network
+		ProxyManagerChan <- &peerUpdate
 	}
 	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID.String()+" "+node.Network)
 	if node.DNSOn {

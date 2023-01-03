@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -126,35 +127,40 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 
 // StartMetricsCollectionForHostPeers - starts metrics collection for non proxied peers
 func StartMetricsCollectionForHostPeers(ctx context.Context) {
+	logger.Log(0, "Starting Metrics Thread...")
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			peers := config.GetCfg().GetAllPeersConf()
-			for peerPubKey, peerI := range peers {
-				go collectMetricsForNoProxyPeer(peerPubKey, peerI)
+			allPeers := config.GetCfg().GetAllPeersConf()
+
+			for network, peerMap := range allPeers {
+				for peerKey, peer := range peerMap {
+					go collectMetricsForNoProxyPeer(network, peerKey, peer)
+				}
 			}
+
 		}
 	}
 }
 
-func collectMetricsForNoProxyPeer(peerKey string, peerInfo models.PeerConf) {
+func collectMetricsForNoProxyPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
 
 	devPeer, err := wg.GetPeer(config.GetCfg().GetIface().Name, peerKey)
 	if err != nil {
 		return
 	}
-	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address.String())
+	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address)
 	metric := models.Metric{
 		LastRecordedLatency: 999,
 		ConnectionStatus:    connectionStatus,
 	}
 	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
 	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric("", peerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), "", config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
+	metrics.UpdateMetric(network, peerKey, &metric)
+	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
 	if err == nil {
 		conn := config.GetCfg().GetServerConn()
 		if conn != nil {

@@ -24,8 +24,12 @@ const (
 
 	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
 	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
+
 	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
 	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
+
+	// NoProxy - constant for no ProxyAction
+	NoProxy ProxyAction = "NO_PROXY"
 )
 
 // PeerConnMap - type for peer conn config map

@@ -15,6 +15,7 @@ import (
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -26,7 +27,7 @@ func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
+func Start(ctx context.Context, managerChan chan *nm_models.PeerUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -36,9 +37,8 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 			if mI == nil {
 				continue
 			}
-			m := getRecieverType(mI)
-			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI))
-			err := m.configureProxy()
+			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
+			err := configureProxy(mI)
 			if err != nil {
 				logger.Log(0, "failed to configure proxy:  ", err.Error())
 			}
@@ -46,27 +46,36 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 	}
 }
 
-// ProxyManagerPayload.configureProxy - confgures proxy by payload action
-func (m *proxyPayload) configureProxy() error {
+// configureProxy - confgures proxy by payload action
+func configureProxy(payload *nm_models.PeerUpdate) error {
 	var err error
+	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
-	config.GetCfg().SetPeers(m.PeerMap)
-	if m.ProxyEnabled && !config.GetCfg().GetWgProxyStatus() {
-		// stop the metrics thread since proxy is switched on for the host
-		config.GetCfg().StopMetricsCollectionThread()
-	}
-	if !m.ProxyEnabled && !config.GetCfg().GetMetricsCollectionStatus() {
-		ctx, cancel := context.WithCancel(context.Background())
-		go peer.StartMetricsCollectionForHostPeers(ctx)
-		config.GetCfg().SetMetricsThread(cancel)
-	}
+
 	switch m.Action {
 	case models.AddNetwork:
 		err = m.addNetwork()
 	case models.DeleteNetwork:
 		m.deleteNetwork()
+	case models.NoProxy:
+		noProxy(m.Network, payload)
 	}
 	return err
+}
+
+func noProxy(network string, peerUpdate *nm_models.PeerUpdate) {
+	config.GetCfg().SetPeers(network, peerUpdate.PeerIDs)
+	if peerUpdate.ProxyUpdate.ProxyEnabled && config.GetCfg().GetMetricsCollectionStatus() {
+		// stop the metrics thread since proxy is switched on for the host
+		logger.Log(0, "Stopping Metrics Thread...")
+		config.GetCfg().StopMetricsCollectionThread()
+	}
+
+	if !peerUpdate.ProxyUpdate.ProxyEnabled && !config.GetCfg().GetMetricsCollectionStatus() {
+		ctx, cancel := context.WithCancel(context.Background())
+		go peer.StartMetricsCollectionForHostPeers(ctx)
+		config.GetCfg().SetMetricsThreadCtx(cancel)
+	}
 }
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config
