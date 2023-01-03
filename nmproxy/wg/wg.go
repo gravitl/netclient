@@ -100,6 +100,7 @@ func (w *WGIface) GetListenPort() (*int, error) {
 	return &d.ListenPort, nil
 }
 
+// GetPeers - gets all wg peers from the interface
 func GetPeers(ifaceName string) ([]wgtypes.Peer, error) {
 	wg, err := wgctrl.New()
 	if err != nil {

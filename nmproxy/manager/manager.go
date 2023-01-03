@@ -302,6 +302,7 @@ func (m *proxyPayload) processPayload() error {
 	}
 
 	gCfg.UpdateNetworkPeers(m.Network, &peerConnMap)
+	gCfg.UpdateNoProxyPeers(&noProxyPeerMap)
 	logger.Log(1, "CLEANED UP..........")
 	return nil
 }
