@@ -347,6 +347,14 @@ func (c *Config) DeleteNoProxyPeer(peerIP string) {
 	}
 }
 
+// Config.UpdateNoProxyPeers - updates no proxy peers config
+func (c *Config) UpdateNoProxyPeers(peers *models.PeerConnMap) {
+	if peers != nil {
+		c.ifaceConfig.noProxyPeerMap = *peers
+	}
+
+}
+
 // Config.GetAllPeersConf - fetches all peers from config
 func (c *Config) GetAllPeersConf() map[string]nm_models.PeerMap {
 	return c.ifaceConfig.allPeersConf
