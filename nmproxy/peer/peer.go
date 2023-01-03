@@ -126,7 +126,7 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 	return peers
 }
 
-// StartMetricsCollectionForHostPeers - starts metrics collection for non proxied peers
+// StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
 func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	logger.Log(0, "Starting Metrics Thread...")
 	ticker := time.NewTicker(time.Minute)
@@ -139,7 +139,7 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 
 			for network, peerMap := range allPeers {
 				for peerKey, peer := range peerMap {
-					go collectMetricsForNoProxyPeer(network, peerKey, peer)
+					go collectMetricsForPeer(network, peerKey, peer)
 				}
 			}
 
@@ -147,7 +147,7 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	}
 }
 
-func collectMetricsForNoProxyPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
+func collectMetricsForPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
 
 	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {

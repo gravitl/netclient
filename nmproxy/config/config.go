@@ -73,16 +73,19 @@ func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
 	c.HostInfo = hostInfo
 }
 
+// Config.StopMetricsCollectionThread - stops the metrics thread // only when host proxy is disabled
 func (c *Config) StopMetricsCollectionThread() {
 	if c.metricsThreadDone != nil {
 		c.metricsThreadDone()
 	}
 }
 
+// Config.GetMetricsCollectionStatus - fetchs metrics collection status when proxy is disabled for host
 func (c *Config) GetMetricsCollectionStatus() bool {
 	return c.metricsCollectionStatus
 }
 
+// Config.SetMetricsThreadCtx - sets the metrics thread ctx
 func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
 	c.metricsThreadDone = cancelFunc
 	c.metricsCollectionStatus = true

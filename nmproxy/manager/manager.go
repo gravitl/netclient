@@ -51,7 +51,7 @@ func configureProxy(payload *nm_models.PeerUpdate) error {
 	var err error
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
-	noProxy(m.Network, payload)
+	noProxy(m.Network, payload) // starts or stops the metrics collection based on host proxy setting
 	switch m.Action {
 	case models.AddNetwork:
 		err = m.addNetwork()
@@ -289,7 +289,7 @@ func (m *proxyPayload) processPayload() error {
 
 		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
 			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
-				// cleanup proxy connections for the peer
+				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
 				noProxypeer.Mutex.Lock()
 				noProxypeer.StopConn()
 				noProxypeer.Mutex.Unlock()
@@ -320,10 +320,7 @@ func (m *proxyPayload) addNetwork() error {
 		return err
 	}
 	for _, peerI := range m.Peers {
-		// if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
-		// 	continue
-		// }
-		//config.GetCfg().DeleteNoProxyPeer(m.Peers[i].PublicKey.String())
+
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
 		if peerI.Endpoint == nil && !peerConf.IsAttachedExtClient {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())
