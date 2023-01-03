@@ -135,15 +135,12 @@ func cleanUpInterface(network string) {
 	logger.Log(1, "Removing proxy configuration for: ", network)
 	peerConnMap := config.GetCfg().GetAllProxyPeers()
 	for _, peerI := range peerConnMap {
-		if _, ok := peerI.NetworkSettings[network]; ok {
-			config.GetCfg().RemovePeer(network, peerI.Key.String())
-		}
+		config.GetCfg().RemovePeer(network, peerI.Key.String())
+
 	}
 	noProxyPeers := config.GetCfg().GetNoProxyPeers()
 	for _, peerI := range noProxyPeers {
-		if _, ok := peerI.NetworkSettings[network]; ok {
-			config.GetCfg().DeleteNoProxyPeer(peerI.Config.PeerEndpoint.IP.String())
-		}
+		config.GetCfg().DeleteNoProxyPeer(network, peerI.Config.PeerEndpoint.IP.String())
 
 	}
 
@@ -207,7 +204,7 @@ func (m *proxyPayload) processPayload() error {
 	// update no proxy peers map with peer update
 	for peerIP, peerConn := range noProxyPeerMap {
 		if _, ok := m.PeerMap[peerConn.Key.String()]; !ok {
-			gCfg.DeleteNoProxyPeer(peerIP)
+			gCfg.DeleteNoProxyPeer(m.Network, peerIP)
 		}
 	}
 
@@ -295,6 +292,7 @@ func (m *proxyPayload) processPayload() error {
 				IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
 				RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
 			}
+			peerConnMap[currentPeer.Key.String()] = currentPeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			currentPeer.Mutex.Unlock()
 			continue
@@ -310,6 +308,12 @@ func (m *proxyPayload) processPayload() error {
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
 				continue
 			}
+			// update network map
+			noProxypeer.NetworkSettings[m.Network] = models.Settings{
+				IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
+				RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
+			}
+			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 
