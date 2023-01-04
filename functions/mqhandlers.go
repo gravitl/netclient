@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -159,6 +160,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling peer data")
 		return
 	}
+	log.Printf("-------> Host Peer Update: %+v\n", peerUpdate)
 	// // see if cached hit, if so skip
 	// var currentMessage = read(peerUpdate.Network, lastPeerUpdate)
 	// if currentMessage == string(data) {

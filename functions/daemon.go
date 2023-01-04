@@ -202,7 +202,7 @@ func setupMQTT(server *config.Server) error {
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
-	if token := client.Subscribe(fmt.Sprintf("peers/host/%s", hostID.String()), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
+	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
