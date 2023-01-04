@@ -64,11 +64,11 @@ func configureProxy(payload *nm_models.PeerUpdate) error {
 
 func noProxy(network string, peerUpdate *nm_models.PeerUpdate) {
 	config.GetCfg().SetPeers(network, peerUpdate.PeerIDs)
-	if peerUpdate.ProxyUpdate.ProxyEnabled && config.GetCfg().GetMetricsCollectionStatus() {
+	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
 		config.GetCfg().StopMetricsCollectionThread()
-	} else if !peerUpdate.ProxyUpdate.ProxyEnabled && !config.GetCfg().GetMetricsCollectionStatus() {
+	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go peer.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
