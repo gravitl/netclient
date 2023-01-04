@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -16,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -35,13 +37,14 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
 		Network:             network,
 		ListenPort:          int(peerConf.PublicListenPort),
+		ProxyStatus:         peerConf.Proxy,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
 	if peerPort == 0 {
 		peerPort = models.NmProxyPort
 	}
-	if peerConf.IsExtClient && peerConf.IsAttachedExtClient {
+	if peerConf.IsAttachedExtClient || !peerConf.Proxy {
 		peerPort = peer.Endpoint.Port
 
 	}
@@ -85,9 +88,14 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
-	config.GetCfg().SavePeer(network, &connConf)
+	if peerConf.Proxy {
+		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
+		config.GetCfg().SavePeer(network, &connConf)
+	} else {
+		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
+		config.GetCfg().SaveNoProxyPeer(&connConf)
+	}
 	config.GetCfg().SavePeerByHash(&rPeer)
-
 	if peerConf.IsAttachedExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
 		//add rules to router
@@ -118,41 +126,46 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 	return peers
 }
 
-// StartMetricsCollectionForNoProxyPeers - starts metrics collection for non proxied peers
-func StartMetricsCollectionForNoProxyPeers(ctx context.Context) {
+// StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
+func StartMetricsCollectionForHostPeers(ctx context.Context) {
+	logger.Log(0, "Starting Metrics Thread...")
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			noProxyPeers := config.GetCfg().GetNoProxyPeers()
-			for peerPubKey, peerInfo := range noProxyPeers {
-				go collectMetricsForNoProxyPeer(peerPubKey, *peerInfo)
+			allPeers := config.GetCfg().GetAllPeersConf()
+
+			for network, peerMap := range allPeers {
+				for peerKey, peer := range peerMap {
+					go collectMetricsForPeer(network, peerKey, peer)
+				}
 			}
+
 		}
 	}
 }
 
-func collectMetricsForNoProxyPeer(peerKey string, peerInfo models.RemotePeer) {
+func collectMetricsForPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
 
-	devPeer, err := wg.GetPeer(peerInfo.Interface, peerKey)
+	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
 		return
 	}
-	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address.String())
+	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address)
 	metric := models.Metric{
 		LastRecordedLatency: 999,
 		ConnectionStatus:    connectionStatus,
 	}
 	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
 	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(peerInfo.Network, peerInfo.PeerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), peerInfo.Network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
+	metrics.UpdateMetric(network, peerKey, &metric)
+	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
 	if err == nil {
 		conn := config.GetCfg().GetServerConn()
 		if conn != nil {
-			_, err = conn.WriteToUDP(pkt, peerInfo.Endpoint)
+			_, err = conn.WriteToUDP(pkt, devPeer.Endpoint)
 			if err != nil {
 				logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 			}

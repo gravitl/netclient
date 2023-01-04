@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -20,7 +21,8 @@ type wgIfaceConf struct {
 	extSrcIpMap      map[string]*models.RemotePeer
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
-	nonProxyPeerMap  map[string]*models.RemotePeer
+	noProxyPeerMap   models.PeerConnMap
+	allPeersConf     map[string]nm_models.PeerMap
 	ServerConn       *net.UDPAddr
 }
 
@@ -311,16 +313,58 @@ func (c *Config) UpdateWgIface(wgIface *wg.WGIface) {
 }
 
 // Config.GetNoProxyPeers - fetches peers not using proxy
-func (c *Config) GetNoProxyPeers() map[string]*models.RemotePeer {
-	return c.ifaceConfig.nonProxyPeerMap
+func (c *Config) GetNoProxyPeers() models.PeerConnMap {
+	return c.ifaceConfig.noProxyPeerMap
 }
 
-// Config.AddNoProxyPeer - adds non proxy peer to config
-func (c *Config) AddNoProxyPeer(peer *models.RemotePeer) {
-	c.ifaceConfig.nonProxyPeerMap[peer.PeerKey] = peer
+// Config.GetNoProxyPeer - fetches no proxy peer
+func (c *Config) GetNoProxyPeer(peerIp net.IP) (models.Conn, bool) {
+	if connConf, found := c.ifaceConfig.noProxyPeerMap[peerIp.String()]; found {
+		return *connConf, found
+	}
+	return models.Conn{}, false
+
+}
+
+// Config.SaveNoProxyPeer - adds non proxy peer to config
+func (c *Config) SaveNoProxyPeer(peer *models.Conn) {
+	c.ifaceConfig.noProxyPeerMap[peer.Config.PeerEndpoint.IP.String()] = peer
 }
 
 // Config.DeleteNoProxyPeer - deletes no proxy peers from config
-func (c *Config) DeleteNoProxyPeer(peerKey string) {
-	delete(c.ifaceConfig.nonProxyPeerMap, peerKey)
+func (c *Config) DeleteNoProxyPeer(peerIP string) {
+	if peerConf, found := c.ifaceConfig.noProxyPeerMap[peerIP]; found {
+		peerConf.Mutex.Lock()
+		peerConf.StopConn()
+		peerConf.Mutex.Unlock()
+		delete(c.ifaceConfig.noProxyPeerMap, peerIP)
+	}
+}
+
+// Config.UpdateNoProxyPeers - updates no proxy peers config
+func (c *Config) UpdateNoProxyPeers(peers *models.PeerConnMap) {
+	if peers != nil {
+		c.ifaceConfig.noProxyPeerMap = *peers
+	}
+
+}
+
+// Config.GetAllPeersConf - fetches all peers from config
+func (c *Config) GetAllPeersConf() map[string]nm_models.PeerMap {
+	return c.ifaceConfig.allPeersConf
+}
+
+// Config.SetPeers - sets the peers in the config
+func (c *Config) SetPeers(network string, peers nm_models.PeerMap) {
+	c.ifaceConfig.allPeersConf[network] = peers
+}
+
+// Config.GetPeerConf - get peer conf
+func (c *Config) GetPeerConf(network, peerKey string) (nm_models.IDandAddr, bool) {
+	if peerMap, found := c.ifaceConfig.allPeersConf[network]; found {
+		if peer, ok := peerMap[peerKey]; ok {
+			return peer, ok
+		}
+	}
+	return nm_models.IDandAddr{}, false
 }

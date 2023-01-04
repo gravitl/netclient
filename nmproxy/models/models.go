@@ -24,8 +24,12 @@ const (
 
 	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
 	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
+
 	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
 	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
+
+	// NoProxy - constant for no ProxyAction
+	NoProxy ProxyAction = "NO_PROXY"
 )
 
 // PeerConnMap - type for peer conn config map
@@ -44,6 +48,7 @@ type Proxy struct {
 	WgAddr              net.IP
 	Network             string
 	ListenPort          int
+	ProxyStatus         bool
 }
 
 // Conn is a peer Connection configuration
@@ -78,10 +83,11 @@ type RemotePeer struct {
 
 // HostInfo - struct for host information
 type HostInfo struct {
-	PublicIp net.IP
-	PrivIp   net.IP
-	PubPort  int
-	PrivPort int
+	PublicIp     net.IP
+	PrivIp       net.IP
+	PubPort      int
+	PrivPort     int
+	ProxyEnabled bool
 }
 
 // RelayedConf - struct relayed peers config

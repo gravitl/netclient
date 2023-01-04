@@ -57,7 +57,6 @@ type Config struct {
 	TrafficKeyPrivate []byte           `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	TrafficKeyPublic  []byte           `json:"traffickeypublic" yaml:"trafficekeypublic"`
 	InternetGateway   net.UDPAddr      `json:"internetgateway" yaml:"internetgateway"`
-	ProxyEnabled      bool             `json:"proxy_enabled" yaml:"proxy_enabled"`
 }
 
 func init() {
