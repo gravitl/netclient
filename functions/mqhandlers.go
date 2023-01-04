@@ -27,8 +27,8 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	logger.Log(0, "processing node update for network", network)
 	node := config.GetNode(network)
-	//server := config.Servers[node.Server]
-	data, err := decryptMsg(&node, msg.Payload())
+	server := config.Servers[node.Server]
+	data, err := decryptMsg(server.Name, msg.Payload())
 	if err != nil {
 		logger.Log(0, "error decrypting message", err.Error())
 		return
@@ -128,10 +128,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	var proxyUpdate proxy_models.ProxyManagerPayload
-	var network = parseNetworkFromTopic(msg.Topic())
-	node := config.GetNode(network)
+	//var network = parseNetworkFromTopic(msg.Topic())
+	//node := config.GetNode(network)
 	logger.Log(0, "---------> Recieved a proxy update")
-	data, dataErr := decryptMsg(&node, msg.Payload())
+	data, dataErr := decryptMsg("", msg.Payload())
 	if dataErr != nil {
 		return
 	}
@@ -144,6 +144,86 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 	ProxyManagerChan <- &proxyUpdate
 }
 
+func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	var peerUpdate models.HostPeerUpdate
+	var err error
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	logger.Log(3, "received peer update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal([]byte(data), &peerUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling peer data")
+		return
+	}
+	// // see if cached hit, if so skip
+	// var currentMessage = read(peerUpdate.Network, lastPeerUpdate)
+	// if currentMessage == string(data) {
+	// 	return
+	// }
+	// insert(peerUpdate.Network, lastPeerUpdate, string(data))
+	// check version
+	if peerUpdate.ServerVersion != config.Version {
+		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
+	}
+	if peerUpdate.ServerVersion != server.Version {
+		logger.Log(1, "updating server version")
+		server.Version = peerUpdate.ServerVersion
+		config.WriteServerConfig()
+	}
+	//update peers in node map
+	// updateNode := config.GetNode(peerUpdate.Network)
+	// updateNode.Peers = peerUpdate.Peers
+	// config.UpdateNodeMap(updateNode.Network, updateNode)
+	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
+	if err != nil {
+		logger.Log(0, "error updating wireguard peers"+err.Error())
+		return
+	}
+
+	config.Netclient().Peers = peerUpdate.Peers
+	config.WriteNetclientConfig()
+	wireguard.SetPeers()
+	// if config.Netclient().ProxyEnabled {
+	// 	time.Sleep(time.Second * 2) // sleep required to avoid race condition
+	// 	ProxyManagerChan <- &peerUpdate
+	// } else {
+	// 	peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
+	// 	peerUpdate.ProxyUpdate.Network = network
+	// 	ProxyManagerChan <- &peerUpdate
+	// }
+
+	for network, networkInfo := range peerUpdate.Network {
+		//check if internet gateway has changed
+		node := config.GetNode(network)
+		oldGateway := node.InternetGateway
+		if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
+			node.InternetGateway = internetGateway
+			config.UpdateNodeMap(node.Network, node)
+			if err := config.WriteNodeConfig(); err != nil {
+				logger.Log(0, "failed to save internet gateway", err.Error())
+			}
+		}
+		logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID.String()+" "+node.Network)
+		if node.DNSOn {
+			if err := setHostDNS(networkInfo.DNS, node.Network); err != nil {
+				logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())
+				return
+			}
+		} else {
+			if err := removeHostDNS(node.Network); err != nil {
+				logger.Log(0, "network:", node.Network, "error removing profile from /etc/hosts "+err.Error())
+				return
+			}
+		}
+		UpdateLocalListenPort(&node)
+	}
+
+}
+
 // UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
 func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.PeerUpdate
@@ -152,7 +232,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	node := config.GetNode(network)
 	server := config.GetServer(node.Server)
 	logger.Log(3, "received peer update for", network)
-	data, err := decryptMsg(&node, msg.Payload())
+	data, err := decryptMsg(node.Server, msg.Payload())
 	if err != nil {
 		return
 	}
@@ -217,4 +297,8 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 
 func parseNetworkFromTopic(topic string) string {
 	return strings.Split(topic, "/")[1]
+}
+
+func parseServerFromTopic(topic string) string {
+	return strings.Split(topic, "/")[3]
 }

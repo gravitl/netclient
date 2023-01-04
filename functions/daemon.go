@@ -164,6 +164,11 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			setSubscriptions(client, &node)
 		}
+		servers := config.GetServers()
+		for _, server := range servers {
+			setHostSubscription(client, server)
+		}
+
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -194,6 +199,15 @@ func setupMQTT(server *config.Server) error {
 	return nil
 }
 
+func setHostSubscription(client mqtt.Client, server string) {
+	hostID := config.Netclient().ID
+	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("peers/host/%s", hostID.String()), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+}
+
 // setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
@@ -205,11 +219,11 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		}
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
-	if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "network", node.Network, token.Error().Error())
-		return
-	}
+	// logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
+	// if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
+	// 	logger.Log(0, "network", node.Network, token.Error().Error())
+	// 	return
+	// }
 	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
 	if token := client.Subscribe(fmt.Sprintf("proxy/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(ProxyUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
@@ -223,7 +237,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 }
 
 // should only ever use node client configs
-func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
+func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
 		return nil, fmt.Errorf("recieved invalid message from broker %v", msg)
 	}
@@ -234,9 +248,9 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	server := config.GetServer(node.Server)
+	server := config.GetServer(serverName)
 	if server == nil {
-		return nil, errors.New("nil server for " + node.Server)
+		return nil, errors.New("nil server for " + serverName)
 	}
 	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {

@@ -20,15 +20,9 @@ import (
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers() error {
-	nodes := config.GetNodes()
-	peers := []wgtypes.PeerConfig{}
-	for _, node := range nodes {
-		if node.Connected {
-			if config.Netclient().ProxyEnabled {
-				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
-			}
-			peers = append(peers, node.Peers...)
-		}
+	peers := config.Netclient().Peers
+	if config.Netclient().ProxyEnabled {
+		peers = peer.SetPeersEndpointToProxy("", peers)
 	}
 	config := wgtypes.Config{
 		ReplacePeers: true,
