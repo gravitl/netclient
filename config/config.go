@@ -88,6 +88,7 @@ func UpdateHostPeers(peers []wgtypes.PeerConfig) {
 	for _, peer := range peers {
 		if hostPeer, ok := hostPeerMap[peer.PublicKey.String()]; ok {
 			hostPeer.AllowedIPs = getUniqueAllowedIPList(hostPeer.AllowedIPs, peer.AllowedIPs)
+			hostPeerMap[peer.PublicKey.String()] = hostPeer
 		} else {
 			hostPeerMap[peer.PublicKey.String()] = peer
 		}
