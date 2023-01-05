@@ -173,13 +173,15 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.MacAddress = host.MacAddress.String()
 	netmakerNode.ListenPort = int32(host.ListenPort)
 	//only send ip
-	netmakerNode.Address = node.Address.IP.String()
 	if node.Address.IP == nil {
 		netmakerNode.Address = ""
+	} else {
+		netmakerNode.Address = node.Address.IP.String()
 	}
-	netmakerNode.Address6 = node.Address6.IP.String()
 	if node.Address6.IP == nil {
 		netmakerNode.Address6 = ""
+	} else {
+		netmakerNode.Address6 = node.Address6.IP.String()
 	}
 	netmakerNode.LocalListenPort = int32(host.LocalListenPort)
 	netmakerNode.LocalAddress = host.LocalAddress.String()
@@ -197,6 +199,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.IsStatic = FormatBool(host.IsStatic)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
 	netmakerNode.Proxy = host.ProxyEnabled
+
 	return &netmakerNode
 }
 

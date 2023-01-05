@@ -86,6 +86,9 @@ func GetHostPeerList() (peers []wgtypes.PeerConfig) {
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
+	if hostPeerMap == nil {
+		hostPeerMap = make(map[string]wgtypes.PeerConfig)
+	}
 	for _, peer := range peers {
 		if hostPeer, ok := hostPeerMap[peer.PublicKey.String()]; ok {
 			hostPeer.AllowedIPs = getUniqueAllowedIPList(hostPeer.AllowedIPs, peer.AllowedIPs)

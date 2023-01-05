@@ -26,7 +26,7 @@ const lastNodeUpdate = "lnu"
 const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
-var ServerSet map[string]mqtt.Client
+var ServerSet = make(map[string]mqtt.Client)
 var ProxyManagerChan = make(chan *proxy_models.ProxyManagerPayload)
 
 type cachedMessage struct {
@@ -51,7 +51,6 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 // Daemon runs netclient daemon
 func Daemon() {
 	logger.Log(0, "netclient daemon started -- version:", config.Version)
-	ServerSet = make(map[string]mqtt.Client)
 	if err := ncutils.SavePID(); err != nil {
 		logger.FatalLog("unable to save PID on daemon startup")
 	}
