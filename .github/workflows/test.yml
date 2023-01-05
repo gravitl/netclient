@@ -2,7 +2,7 @@ name: Integration Test
 
 on:
   pull_request:
-    types: [opened, syncronized, reopened]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
   push:
     branches:
@@ -102,7 +102,7 @@ jobs:
           npm ci
           npm run build
           cd ../..
-          go build -tags desktop,production -ldflags "-w -s"
+          go build -tags desktop,production -ldflags -mod=mod "-w -s"
 
   darwin-gui:
     runs-on: macos-latest
@@ -136,4 +136,5 @@ jobs:
           npm ci
           npm run build
           cd ../..
-          go build -tags desktop,production -ldflags "-w -s -H windowsgui"
+          go build -tags desktop,production -ldflags -mod=mod "-w -s -H windowsgui"
+
