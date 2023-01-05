@@ -2,7 +2,7 @@ name: Integration Test
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, syncronized, reopened]
   workflow_dispatch:
   push:
     branches:
@@ -23,10 +23,12 @@ jobs:
         run: |
          mkdir -p gui/frontend/dist
          touch gui/frontend/dist/index.html
-         env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags headless .
+         sudo apt update
+         sudo apt install -y libpcap-dev
+         env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=mod -tags headless .
+         env CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -mod=mod -tags headless .
+         env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -mod=mod -tags headless .
+         env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=mod -tags headless .
 
   tests:
     runs-on: ubuntu-latest
@@ -41,7 +43,9 @@ jobs:
         run: |
           mkdir -p gui/frontend/dist
           touch gui/frontend/dist/index.html
-          go test  -tags headless ./... -v
+          sudo apt update
+          sudo apt upgrade -y libpcap-dev
+          go test  -tags headless -mod=mod ./... -v
 
   test-gui:
     runs-on: ubuntu-latest
@@ -93,7 +97,7 @@ jobs:
       - name: build gui
         run: |
           sudo apt update
-          sudo apt install build-essential libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt install build-essential libgtk-3-dev libwebkit2gtk-4.0-dev libpcap-dev
           cd gui/frontend
           npm ci
           npm run build
