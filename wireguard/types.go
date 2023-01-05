@@ -26,7 +26,7 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := 0
-	peers := config.Netclient().Peers
+	peers := config.GetHostPeerList()
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
 		if node.Address.IP != nil {

@@ -52,17 +52,18 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
-	MacAddress        net.HardwareAddr     `json:"macaddress" yaml:"macaddress"`
-	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte               `json:"traffickeypublic" yaml:"trafficekeypublic"`
-	InternetGateway   net.UDPAddr          `json:"internetgateway" yaml:"internetgateway"`
-	Peers             []wgtypes.PeerConfig `json:"peers" yaml:"peers"`
+	PrivateKey        wgtypes.Key                   `json:"privatekey" yaml:"privatekey"`
+	MacAddress        net.HardwareAddr              `json:"macaddress" yaml:"macaddress"`
+	TrafficKeyPrivate []byte                        `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	TrafficKeyPublic  []byte                        `json:"traffickeypublic" yaml:"trafficekeypublic"`
+	InternetGateway   net.UDPAddr                   `json:"internetgateway" yaml:"internetgateway"`
+	HostPeers         map[string]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
+	netclient.HostPeers = make(map[string]wgtypes.PeerConfig)
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -73,6 +74,41 @@ func UpdateNetclient(c Config) {
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
 	return &netclient
+}
+
+func GetHostPeerList() (peers []wgtypes.PeerConfig) {
+	for _, peer := range netclient.HostPeers {
+		peers = append(peers, peer)
+	}
+	return
+}
+
+func UpdateHostPeers(peers []wgtypes.PeerConfig) {
+	hostPeerMap := netclient.HostPeers
+	for _, peer := range peers {
+		if hostPeer, ok := hostPeerMap[peer.PublicKey.String()]; ok {
+			hostPeer.AllowedIPs = getUniqueAllowedIPList(hostPeer.AllowedIPs, peer.AllowedIPs)
+		} else {
+			hostPeerMap[peer.PublicKey.String()] = peer
+		}
+	}
+	netclient.HostPeers = hostPeerMap
+}
+
+func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
+	uniqueIpList := []net.IPNet{}
+	ipMap := make(map[string]struct{})
+	uniqueIpList = append(uniqueIpList, currIps...)
+	uniqueIpList = append(uniqueIpList, newIps...)
+	for i := len(uniqueIpList) - 1; i >= 0; i-- {
+		if _, ok := ipMap[uniqueIpList[i].String()]; ok {
+			// ip already exists, remove it
+			uniqueIpList = append(uniqueIpList[:i], uniqueIpList[i+1:]...)
+		} else {
+			ipMap[uniqueIpList[i].String()] = struct{}{}
+		}
+	}
+	return uniqueIpList
 }
 
 // SetVersion - sets version for use by other packages

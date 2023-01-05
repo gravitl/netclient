@@ -20,7 +20,7 @@ import (
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers() error {
-	peers := config.Netclient().Peers
+	peers := config.GetHostPeerList()
 	if config.Netclient().ProxyEnabled {
 		peers = peer.SetPeersEndpointToProxy("", peers)
 	}

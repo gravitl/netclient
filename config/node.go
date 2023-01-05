@@ -141,7 +141,7 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
-	node.Peers = nodeGet.Peers
+	//node.Peers = nodeGet.Peers
 	//add items not provided by server
 	return &node
 }
