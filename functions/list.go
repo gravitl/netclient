@@ -67,7 +67,7 @@ func getNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	nodeGet, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "errror getting node", strconv.Itoa(errData.Code), errData.Message)
+			logger.Log(0, "error getting node", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return nil, err
 	}

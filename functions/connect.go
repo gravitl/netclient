@@ -23,7 +23,13 @@ func Disconnect(network string) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	PublishNodeUpdate(&node)
+	server := config.GetServer(node.Server)
+	if err := setupMQTTSingleton(server); err != nil {
+		return err
+	}
+	if err := PublishNodeUpdate(&node); err != nil {
+		return err
+	}
 	if err := daemon.Restart(); err != nil {
 		fmt.Println("daemon restart failed", err)
 		if err := daemon.Start(); err != nil {
@@ -48,7 +54,13 @@ func Connect(network string) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	PublishNodeUpdate(&node)
+	server := config.GetServer(node.Server)
+	if err := setupMQTTSingleton(server); err != nil {
+		return err
+	}
+	if err := PublishNodeUpdate(&node); err != nil {
+		return err
+	}
 	if err := daemon.Restart(); err != nil {
 		if err := daemon.Start(); err != nil {
 			return fmt.Errorf("daemon restart failed %w", err)

@@ -2,7 +2,6 @@ package functions
 
 import (
 	"encoding/json"
-	"log"
 	"strings"
 	"time"
 
@@ -145,11 +144,16 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 	ProxyManagerChan <- &proxyUpdate
 }
 
+// HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
 	logger.Log(3, "received peer update for host from: ", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
@@ -160,14 +164,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling peer data")
 		return
 	}
-	log.Printf("-------> Host Peer Update: %+v\n", peerUpdate)
-	// // see if cached hit, if so skip
-	// var currentMessage = read(peerUpdate.Network, lastPeerUpdate)
-	// if currentMessage == string(data) {
-	// 	return
-	// }
-	// insert(peerUpdate.Network, lastPeerUpdate, string(data))
-	// check version
 	if peerUpdate.ServerVersion != config.Version {
 		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
 	}
@@ -176,10 +172,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	//update peers in node map
-	// updateNode := config.GetNode(peerUpdate.Network)
-	// updateNode.Peers = peerUpdate.Peers
-	// config.UpdateNodeMap(updateNode.Network, updateNode)
 	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
@@ -189,6 +181,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	config.UpdateHostPeers(peerUpdate.Peers)
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
+
+	// TODO -  update proxy with new host based peer updates
 	// if config.Netclient().ProxyEnabled {
 	// 	time.Sleep(time.Second * 2) // sleep required to avoid race condition
 	// 	ProxyManagerChan <- &peerUpdate
@@ -223,77 +217,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		UpdateLocalListenPort(&node)
 	}
-
-}
-
-// UpdatePeers -- mqtt message handler for peers/<Network>/<NodeID> topic
-func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
-	var peerUpdate models.PeerUpdate
-	var err error
-	network := parseNetworkFromTopic(msg.Topic())
-	node := config.GetNode(network)
-	server := config.GetServer(node.Server)
-	logger.Log(3, "received peer update for", network)
-	data, err := decryptMsg(node.Server, msg.Payload())
-	if err != nil {
-		return
-	}
-	err = json.Unmarshal([]byte(data), &peerUpdate)
-	if err != nil {
-		logger.Log(0, "error unmarshalling peer data")
-		return
-	}
-	// see if cached hit, if so skip
-	var currentMessage = read(peerUpdate.Network, lastPeerUpdate)
-	if currentMessage == string(data) {
-		return
-	}
-	insert(peerUpdate.Network, lastPeerUpdate, string(data))
-	// check version
-	if peerUpdate.ServerVersion != config.Version {
-		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
-	}
-	if peerUpdate.ServerVersion != server.Version {
-		logger.Log(1, "updating server version")
-		server.Version = peerUpdate.ServerVersion
-		config.WriteServerConfig()
-	}
-	//update peers in node map
-	updateNode := config.GetNode(peerUpdate.Network)
-	//updateNode.Peers = peerUpdate.Peers
-	config.UpdateNodeMap(updateNode.Network, updateNode)
-	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
-	if err != nil {
-		logger.Log(0, "error updating wireguard peers"+err.Error())
-		return
-	}
-	//check if internet gateway has changed
-	oldGateway := node.InternetGateway
-	if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
-		node.InternetGateway = internetGateway
-		config.UpdateNodeMap(node.Network, node)
-		if err := config.WriteNodeConfig(); err != nil {
-			logger.Log(0, "failed to save internet gateway", err.Error())
-		}
-	}
-	wireguard.SetPeers()
-	if config.Netclient().ProxyEnabled {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		ProxyManagerChan <- &peerUpdate.ProxyUpdate
-	}
-	logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID.String()+" "+node.Network)
-	if node.DNSOn {
-		if err := setHostDNS(peerUpdate.DNS, node.Network); err != nil {
-			logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())
-			return
-		}
-	} else {
-		if err := removeHostDNS(node.Network); err != nil {
-			logger.Log(0, "network:", node.Network, "error removing profile from /etc/hosts "+err.Error())
-			return
-		}
-	}
-	UpdateLocalListenPort(&node)
 
 }
 

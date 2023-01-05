@@ -199,6 +199,52 @@ func setupMQTT(server *config.Server) error {
 	return nil
 }
 
+// func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
+// only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
+func setupMQTTSingleton(server *config.Server) error {
+	opts := mqtt.NewClientOptions()
+	broker := server.Broker
+	port := server.MQPort
+	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.SetUsername(server.MQID.String())
+	opts.SetPassword(server.Password)
+	opts.SetClientID(server.MQID.String())
+	opts.SetAutoReconnect(true)
+	opts.SetConnectRetry(true)
+	opts.SetConnectRetryInterval(time.Second << 2)
+	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetWriteTimeout(time.Minute)
+	opts.SetOnConnectHandler(func(client mqtt.Client) {
+		logger.Log(0, "mqtt connect handler")
+		nodes := config.GetNodes()
+		for _, node := range nodes {
+			setSubscriptions(client, &node)
+		}
+		servers := config.GetServers()
+		for _, server := range servers {
+			setHostSubscription(client, server)
+		}
+
+	})
+	opts.SetOrderMatters(true)
+	opts.SetResumeSubs(true)
+	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
+		logger.Log(0, "detected broker connection lost for", server.Broker)
+	})
+	mqclient := mqtt.NewClient(opts)
+	ServerSet[server.Name] = mqclient
+	var connecterr error
+	if token := mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+		logger.Log(0, "unable to connect to broker, retrying ...")
+		if token.Error() == nil {
+			connecterr = errors.New("connect timeout")
+		} else {
+			connecterr = token.Error()
+		}
+	}
+	return connecterr
+}
+
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))

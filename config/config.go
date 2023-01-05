@@ -83,6 +83,7 @@ func GetHostPeerList() (peers []wgtypes.PeerConfig) {
 	return
 }
 
+// UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
 	for _, peer := range peers {
@@ -103,7 +104,7 @@ func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
 	uniqueIpList = append(uniqueIpList, newIps...)
 	for i := len(uniqueIpList) - 1; i >= 0; i-- {
 		if _, ok := ipMap[uniqueIpList[i].String()]; ok {
-			// ip already exists, remove it
+			// if ip already exists, remove duplicate one
 			uniqueIpList = append(uniqueIpList[:i], uniqueIpList[i+1:]...)
 		} else {
 			ipMap[uniqueIpList[i].String()] = struct{}{}
