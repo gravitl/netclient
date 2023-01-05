@@ -260,7 +260,7 @@ func UpdatePeers(client mqtt.Client, msg mqtt.Message) {
 	}
 	//update peers in node map
 	updateNode := config.GetNode(peerUpdate.Network)
-	updateNode.Peers = peerUpdate.Peers
+	//updateNode.Peers = peerUpdate.Peers
 	config.UpdateNodeMap(updateNode.Network, updateNode)
 	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
