@@ -1,5 +1,5 @@
 import Grid from "@mui/material/Grid";
-import { Button, TextField, Typography } from "@mui/material";
+import { TextField, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoJoinNetworkByToken, GoParseAccessToken } from "../../wailsjs/go/main/App";
@@ -73,6 +73,7 @@ function TokenLogin() {
           onChange={(e) => setToken(e.target.value)}
           error={!isFormValid}
           helperText={isFormValid ? "" : "Token cannot be empty"}
+          inputProps={{ 'data-testid': 'token-inp' }}
         />
         <br />
         <Typography variant="caption">
@@ -85,6 +86,7 @@ function TokenLogin() {
           loading={isConnecting}
           variant="contained"
           onClick={onConnectClick}
+          data-testid="connect-btn"
         >
           Connect
         </LoadingButton>
