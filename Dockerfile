@@ -7,6 +7,8 @@ RUN apk add git
 COPY . . 
 
 ENV GO111MODULE=auto
+RUN mkdir gui/frontend/dist
+RUN touch gui/frontend/dist/index.html
 RUN go mod tidy
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-X 'main.version=${version}'" -tags headless -o netclient-app .
 
