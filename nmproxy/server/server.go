@@ -73,24 +73,27 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 				logger.Log(3, "failed to read from server: ", err.Error())
 				continue
 			}
-			//go func(buffer []byte, source *net.UDPAddr, n int) {
-			proxyTransportMsg := true
-			var srcPeerKeyHash, dstPeerKeyHash, network string
-			n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
-			if err != nil {
-				logger.Log(2, "proxy transport message not found: ", err.Error())
-				proxyTransportMsg = false
-			}
-			if proxyTransportMsg {
-				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash, network)
-				continue
-			} else {
-				// unknown peer to proxy -> check if extclient and handle it
-				if handleExtClients(buffer[:], n, source) {
-					continue
-				}
 
+			if !handleNoProxyPeer(buffer[:], n, source) {
+				proxyTransportMsg := true
+				var srcPeerKeyHash, dstPeerKeyHash, network string
+				n, srcPeerKeyHash, dstPeerKeyHash, network, err = packet.ExtractInfo(buffer, n)
+				if err != nil {
+					logger.Log(2, "proxy transport message not found: ", err.Error())
+					proxyTransportMsg = false
+				}
+				if proxyTransportMsg {
+					p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash, network)
+					continue
+				} else {
+					// unknown peer to proxy -> check if extclient and handle it
+					if handleExtClients(buffer[:], n, source) {
+						continue
+					}
+
+				}
 			}
+
 			p.handleMsgs(buffer, n, source)
 
 		}
@@ -199,6 +202,29 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
 			if peerInfo, ok := config.GetCfg().GetExtClientWaitCfg(peerKey); ok {
 				peerInfo.CommChan <- source
+			} else {
+				// check if endpoint needs to be updated for the extclient
+				if peerInfoHash, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(peerKey)); found {
+					if peerInfoHash.Endpoint.String() != source.String() {
+						// update ext client endpoint
+						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
+							logger.Log(1, "----> Updating ExtPeer endpoint from: ", extPeer.Endpoint.String(), " to: ", source.String())
+							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
+							peerInfoHash.Endpoint = source
+							extPeer.Endpoint = source
+							config.GetCfg().SavePeerByHash(&peerInfoHash)
+							config.GetCfg().SaveExtClientInfo(&extPeer)
+							if peerInfo, found := config.GetCfg().GetPeer(peerInfoHash.Network, peerKey); found {
+								peerInfo.Config.PeerEndpoint = source
+								config.GetCfg().SavePeer(peerInfoHash.Network, &peerInfo)
+								// reset connection for the ext peer
+								peerInfo.ResetConn()
+							}
+
+						}
+
+					}
+				}
 			}
 
 		}
@@ -215,11 +241,28 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 		}
 		metric := metrics.GetMetric(peerInfo.Network, peerInfo.PeerKey)
 		metric.TrafficRecieved += float64(n) / (1 << 20)
-		metric.ConnectionStatus = true
 		metrics.UpdateMetric(peerInfo.Network, peerInfo.PeerKey, &metric)
 		isExtClient = true
 	}
 	return isExtClient
+}
+
+func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
+	fromNoProxyPeer := false
+	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found {
+		logger.Log(0, fmt.Sprintf("PROXING No Proxy Peer TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ SourceIP: [%s] ]]\n",
+			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
+			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), source.IP.String()))
+		_, err := peerInfo.LocalConn.Write(buffer[:n])
+		if err != nil {
+			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
+		}
+		metric := metrics.GetMetric(peerInfo.Config.Network, peerInfo.Key.String())
+		metric.TrafficRecieved += float64(n) / (1 << 20)
+		metrics.UpdateMetric(peerInfo.Config.Network, peerInfo.Key.String(), &metric)
+		fromNoProxyPeer = true
+	}
+	return fromNoProxyPeer
 }
 
 func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {

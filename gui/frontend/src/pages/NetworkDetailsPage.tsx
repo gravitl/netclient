@@ -10,6 +10,7 @@ import { useNetworksContext } from "../store/NetworkContext";
 import {
   getNetwork,
   leaveAndRefreshNetworks,
+  refreshNetworks,
   updateConnectionStatusAndRefreshNetworks,
 } from "../store/helpers";
 import { getUserConfirmation, notifyUser } from "../utils/messaging";
@@ -26,7 +27,6 @@ export default function NetworkDetailsPage() {
 
   const loadNetworkDetails = useCallback(async () => {
     try {
-      setIsLoadingDetails(() => true);
       if (!networkName) {
         throw new Error("No network name");
       }
@@ -94,7 +94,20 @@ export default function NetworkDetailsPage() {
 
   useEffect(() => {
     loadNetworkDetails();
-  }, [loadNetworkDetails]);
+    const id = setInterval(async () => {
+      try {
+        if (!networkName) {
+          throw new Error("No network name");
+        }
+        await refreshNetworks(networksDispatch)
+        const network = await getNetwork(networksState, networkName);
+        setNetworkDetails(network);
+      } catch (err) {
+        console.error(err);
+      }
+    }, 5000)
+    return () => clearInterval(id);
+  }, [loadNetworkDetails, networkName, networksState, networksDispatch]);
 
   return (
     <Grid

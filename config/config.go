@@ -2,6 +2,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net"
@@ -12,8 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
+	"github.com/spf13/viper"
+	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -31,6 +36,10 @@ const (
 	ConfigLockfile = "config.lck"
 	// MaxNameLength maximum length of a node name
 	MaxNameLength = 62
+	// DefaultListenPort default port for wireguard
+	DefaultListenPort = 51821
+	// DefaultMTU default MTU for wireguard
+	DefaultMTU = 1420
 )
 
 var (
@@ -42,33 +51,19 @@ var (
 
 // Config configuration for netclient and host as a whole
 type Config struct {
-	Verbosity         int              `json:"verbosity" yaml:"verbosity"`
-	FirewallInUse     string           `json:"firewallinuse" yaml:"firewallinuse"`
-	Version           string           `json:"version" yaml:"version"`
-	IPForwarding      bool             `json:"ipforwarding" yaml:"ipforwarding"`
-	DaemonInstalled   bool             `json:"daemoninstalled" yaml:"daemoninstalled"`
-	HostID            string           `json:"hostid" yaml:"hostid"`
-	HostPass          string           `json:"hostpass" yaml:"hostpass"`
-	Name              string           `json:"name" yaml:"name"`
-	OS                string           `json:"os" yaml:"os"`
-	Debug             bool             `json:"debug" yaml:"debug"`
-	NodePassword      string           `json:"nodepassword" yaml:"nodepassword"`
-	ListenPort        int              `json:"listenport" yaml:"listenport"`
-	LocalAddress      net.IPNet        `json:"localaddress" yaml:"localaddress"`
-	LocalRange        net.IPNet        `json:"localrange" yaml:"localrange"`
-	LocalListenPort   int              `json:"locallistenport" yaml:"locallistenport"`
-	MTU               int              `json:"mtu" yaml:"mtu"`
-	PrivateKey        wgtypes.Key      `json:"privatekey" yaml:"privatekey"`
-	PublicKey         wgtypes.Key      `json:"publickey" yaml:"publickey"`
-	MacAddress        net.HardwareAddr `json:"macaddress" yaml:"macaddress"`
-	TrafficKeyPrivate []byte           `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte           `json:"traffickeypublic" yaml:"trafficekeypublic"`
-	InternetGateway   net.UDPAddr      `json:"internetgateway" yaml:"internetgateway"`
+	models.Host
+	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
+	MacAddress        net.HardwareAddr                `json:"macaddress" yaml:"macaddress"`
+	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	TrafficKeyPublic  []byte                          `json:"traffickeypublic" yaml:"trafficekeypublic"`
+	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
+	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
+	netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -81,9 +76,58 @@ func Netclient() *Config {
 	return &netclient
 }
 
+// GetHostPeerList - gets the combined list of peers for the host
+func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
+
+	peerMap := make(map[string]int)
+	for _, serverPeers := range netclient.HostPeers {
+		for i, peerI := range serverPeers {
+			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
+				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
+			} else {
+				peerMap[peerI.PublicKey.String()] = i
+				allPeers = append(allPeers, peerI)
+			}
+
+		}
+	}
+	return
+}
+
+// UpdateHostPeers - updates host peer map in the netclient config
+func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
+	hostPeerMap := netclient.HostPeers
+	if hostPeerMap == nil {
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
+	}
+	hostPeerMap[server] = peers
+	netclient.HostPeers = hostPeerMap
+}
+
+func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
+	uniqueIpList := []net.IPNet{}
+	ipMap := make(map[string]struct{})
+	uniqueIpList = append(uniqueIpList, currIps...)
+	uniqueIpList = append(uniqueIpList, newIps...)
+	for i := len(uniqueIpList) - 1; i >= 0; i-- {
+		if _, ok := ipMap[uniqueIpList[i].String()]; ok {
+			// if ip already exists, remove duplicate one
+			uniqueIpList = append(uniqueIpList[:i], uniqueIpList[i+1:]...)
+		} else {
+			ipMap[uniqueIpList[i].String()] = struct{}{}
+		}
+	}
+	return uniqueIpList
+}
+
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
+}
+
+// setLogVerbosity sets the logger verbosity from config
+func setLogVerbosity() {
+	logger.Verbosity = netclient.Verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -313,4 +357,174 @@ func InCharSet(name string) bool {
 		}
 	}
 	return true
+}
+
+// InitConfig reads in config file and ENV variables if set.
+func InitConfig(viper *viper.Viper) {
+	checkUID()
+	ReadNetclientConfig()
+	setLogVerbosity()
+	ReadNodeConfig()
+	ReadServerConf()
+	CheckConfig()
+	//check netclient dirs exist
+	if _, err := os.Stat(GetNetclientPath()); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.Mkdir(GetNetclientPath(), os.ModePerm); err != nil {
+				logger.Log(0, "failed to create dirs", err.Error())
+			}
+		} else {
+			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
+		}
+	}
+	//wireguard.WriteWgConfig(Netclient(), GetNodes())
+}
+
+// CheckConfig - verifies and updates configuration settings
+func CheckConfig() {
+	fail := false
+	saveRequired := false
+	netclient := Netclient()
+	if netclient.OS != runtime.GOOS {
+		logger.Log(0, "setting OS")
+		netclient.OS = runtime.GOOS
+		saveRequired = true
+	}
+	if netclient.Version != Version {
+		logger.Log(0, "setting version")
+		netclient.Version = Version
+		saveRequired = true
+	}
+	netclient.IPForwarding = true
+	if netclient.ID == uuid.Nil {
+		logger.Log(0, "setting netclient hostid")
+		netclient.ID = uuid.New()
+		netclient.HostPass = ncutils.MakeRandomString(32)
+		saveRequired = true
+	}
+	if netclient.Name == "" {
+		logger.Log(0, "setting name")
+		netclient.Name, _ = os.Hostname()
+		//make sure hostname is suitable
+		netclient.Name = FormatName(netclient.Name)
+		saveRequired = true
+	}
+	if netclient.MacAddress == nil {
+		logger.Log(0, "setting macAddress")
+		mac, err := ncutils.GetMacAddr()
+		if err != nil {
+			logger.FatalLog("failed to set macaddress", err.Error())
+		}
+		netclient.MacAddress = mac[0]
+		saveRequired = true
+	}
+	if (netclient.PrivateKey == wgtypes.Key{}) {
+		logger.Log(0, "setting wireguard keys")
+		var err error
+		netclient.PrivateKey, err = wgtypes.GeneratePrivateKey()
+		if err != nil {
+			logger.FatalLog("failed to generate wg key", err.Error())
+		}
+		netclient.PublicKey = netclient.PrivateKey.PublicKey()
+		saveRequired = true
+	}
+	if netclient.Interface == "" {
+		logger.Log(0, "setting wireguard interface")
+		netclient.Interface = models.WIREGUARD_INTERFACE
+		saveRequired = true
+	}
+	if netclient.ListenPort == 0 {
+		logger.Log(0, "setting listenport")
+		port, err := ncutils.GetFreePort(DefaultListenPort)
+		if err != nil {
+			logger.Log(0, "error getting free port", err.Error())
+		} else {
+			netclient.ListenPort = port
+			saveRequired = true
+		}
+	}
+	if netclient.MTU == 0 {
+		logger.Log(0, "setting MTU")
+		netclient.MTU = DefaultMTU
+	}
+
+	if len(netclient.TrafficKeyPrivate) == 0 {
+		logger.Log(0, "setting traffic keys")
+		pub, priv, err := box.GenerateKey(rand.Reader)
+		if err != nil {
+			logger.FatalLog("error generating traffic keys", err.Error())
+		}
+		bytes, err := ncutils.ConvertKeyToBytes(priv)
+		if err != nil {
+			logger.FatalLog("error generating traffic keys", err.Error())
+		}
+		netclient.TrafficKeyPrivate = bytes
+		bytes, err = ncutils.ConvertKeyToBytes(pub)
+		if err != nil {
+			logger.FatalLog("error generating traffic keys", err.Error())
+		}
+		netclient.TrafficKeyPublic = bytes
+		saveRequired = true
+	}
+	// check for nftables present if on Linux
+	if netclient.FirewallInUse == "" {
+		saveRequired = true
+		if ncutils.IsLinux() {
+			if ncutils.IsNFTablesPresent() {
+				netclient.FirewallInUse = models.FIREWALL_NFTABLES
+			} else {
+				netclient.FirewallInUse = models.FIREWALL_IPTABLES
+			}
+		} else {
+			// defaults to iptables for now, may need another default for non-Linux OSes
+			netclient.FirewallInUse = models.FIREWALL_IPTABLES
+		}
+	}
+	if saveRequired {
+		logger.Log(3, "saving netclient configuration")
+		if err := WriteNetclientConfig(); err != nil {
+			logger.FatalLog("could not save netclient config " + err.Error())
+		}
+	}
+	ReadServerConf()
+	for _, server := range Servers {
+		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
+			fail = true
+			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+		}
+	}
+	ReadNodeConfig()
+	nodes := GetNodes()
+	for _, node := range nodes {
+		//make sure server config exists
+		server := GetServer(node.Server)
+		if server == nil {
+			fail = true
+			logger.Log(0, "configuration for", node.Server, "is missing")
+		}
+	}
+	if fail {
+		logger.FatalLog("configuration is invalid, fix before proceeding")
+	}
+}
+
+// Convert converts netclient host/node struct to netmaker host/node structs
+func Convert(h *Config, n *Node) (models.Host, models.Node) {
+	var host models.Host
+	var node models.Node
+	temp, err := json.Marshal(h)
+	if err != nil {
+		logger.Log(0, "host marshal error", h.Name, err.Error())
+	}
+	if err := json.Unmarshal(temp, &host); err != nil {
+		logger.Log(0, "host unmarshal err", h.Name, err.Error())
+	}
+	temp, err = json.Marshal(n)
+	if err != nil {
+		logger.Log(0, "node marshal error", h.Name, err.Error())
+	}
+	if err := json.Unmarshal(temp, &node); err != nil {
+		logger.Log(0, "node unmarshal err", h.Name, err.Error())
+	}
+	return host, node
 }

@@ -2,25 +2,19 @@ package metrics
 
 import (
 	"sync"
-)
 
-// Metric - struct for metric data
-type Metric struct {
-	LastRecordedLatency uint64  `json:"last_recorded_latency"`
-	ConnectionStatus    bool    `json:"connection_status"`
-	TrafficSent         float64 `json:"traffic_sent"`     // stored in MB
-	TrafficRecieved     float64 `json:"traffic_recieved"` // stored in MB
-}
+	"github.com/gravitl/netclient/nmproxy/models"
+)
 
 // lock for metrics map
 var metricsMapLock = &sync.RWMutex{}
 
 // metrics data map
-var metricsNetworkMap = make(map[string]map[string]*Metric)
+var metricsNetworkMap = make(map[string]map[string]*models.Metric)
 
 // GetMetric - fetches the metric data for the peer
-func GetMetric(network, peerKey string) Metric {
-	metric := Metric{}
+func GetMetric(network, peerKey string) models.Metric {
+	metric := models.Metric{}
 	metricsMapLock.RLock()
 	defer metricsMapLock.RUnlock()
 	if metricsMap, ok := metricsNetworkMap[network]; ok {
@@ -28,15 +22,18 @@ func GetMetric(network, peerKey string) Metric {
 			metric = *m
 		}
 	} else {
-		metricsNetworkMap[network] = make(map[string]*Metric)
+		metricsNetworkMap[network] = make(map[string]*models.Metric)
 	}
 	return metric
 }
 
 // UpdateMetric - updates metric data for the peer
-func UpdateMetric(network, peerKey string, metric *Metric) {
+func UpdateMetric(network, peerKey string, metric *models.Metric) {
 	metricsMapLock.Lock()
 	defer metricsMapLock.Unlock()
+	if _, ok := metricsNetworkMap[network]; !ok {
+		metricsNetworkMap[network] = make(map[string]*models.Metric)
+	}
 	metricsNetworkMap[network][peerKey] = metric
 }
 

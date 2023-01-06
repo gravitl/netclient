@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/models"
@@ -22,7 +21,7 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 	flags.Set("token", token)
 	flags.Set("server", "")
 
-	cmd.InitConfig()
+	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -36,6 +35,9 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
 	configs := make([]Network, 0, 5)
 
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
 		node := node
@@ -48,6 +50,9 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
 		if node.Network == networkName {
@@ -109,7 +114,7 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	flags.Set("server", serverName)
 	flags.Set("network", networkName)
 
-	cmd.InitConfig()
+	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -128,7 +133,7 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 	flags.Set("readPassFromStdIn", false)
 	flags.Set("pass", password)
 
-	cmd.InitConfig()
+	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -176,4 +181,16 @@ func (app *App) GoWriteToClipboard(data string) (any, error) {
 
 	clipboard.Write(clipboard.FmtText, []byte(data))
 	return nil, nil
+}
+
+// App.GoPullLatestNodeConfig pulls the latest node config from the server and returns the network config
+func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
+	node, err := functions.Pull(network, true)
+	if err != nil {
+		return Network{}, err
+	}
+
+	server := config.GetServer(node.Server)
+
+	return Network{ Node: node, Server: server, }, nil
 }

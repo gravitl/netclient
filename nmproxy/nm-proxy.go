@@ -9,10 +9,11 @@ import (
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 )
 
 // Start - setups the global cfg for proxy and starts the proxy server
-func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunAddr string, stunPort int, fromServer bool) {
+func Start(ctx context.Context, mgmChan chan *nm_models.PeerUpdate, stunAddr string, stunPort int, fromServer bool) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -33,6 +34,7 @@ func Start(ctx context.Context, mgmChan chan *manager.ProxyManagerPayload, stunA
 	if err != nil {
 		logger.FatalLog("failed to create proxy: ", err.Error())
 	}
+	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	go manager.Start(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)
 

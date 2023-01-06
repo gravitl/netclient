@@ -60,16 +60,16 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			}(n, p.Config.Network, p.Config.RemoteKey.String())
 
 			var srcPeerKeyHash, dstPeerKeyHash string
-			if !p.Config.IsExtClient {
+			if p.Config.ProxyStatus {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
-					p.Config.WgInterface.Device.PublicKey.String(), p.Config.RemoteKey.String())
+					config.GetCfg().GetDevicePubKey().String(), p.Config.RemoteKey.String())
 				if err != nil {
 					logger.Log(0, "failed to process pkt before sending: ", err.Error())
 				}
 			}
 
-			logger.Log(2, "PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash)
+			logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
+				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
 
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
@@ -83,12 +83,28 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 
 // Proxy.Reset - resets peer's conn
 func (p *Proxy) Reset() {
+	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.RemoteKey.String())
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
 		logger.Log(0, "couldn't perform reset: ", p.Config.RemoteKey.String(), err.Error())
-		return
 	}
 	p.Start()
+	// update peer configs
+	if peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String()); found {
+		peer.Config = p.Config
+		peer.LocalConn = p.LocalConn
+		peer.ResetConn = p.Reset
+		peer.StopConn = p.Close
+		config.GetCfg().SavePeer(p.Config.Network, &peer)
+	}
+	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.RemoteKey.String())); found {
+		peer.LocalConn = p.LocalConn
+		config.GetCfg().SavePeerByHash(&peer)
+	}
+	if extpeer, found := config.GetCfg().GetExtClientInfo(p.Config.PeerEndpoint); found {
+		extpeer.LocalConn = p.LocalConn
+		config.GetCfg().SaveExtClientInfo(&extpeer)
+	}
 
 }
 
@@ -96,7 +112,7 @@ func (p *Proxy) Reset() {
 func (p *Proxy) pullLatestConfig() error {
 	peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
 	if found {
-		p.Config.PeerEndpoint.Port = peer.Config.PeerEndpoint.Port
+		p.Config.PeerEndpoint = peer.Config.PeerEndpoint
 	} else {
 		return errors.New("peer not found")
 	}
@@ -123,7 +139,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
-				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: \n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
@@ -159,7 +175,7 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {
-				logger.Log(0, "-----------> ##### sending proxy update packet to: %s\n", p.RemoteConn.String())
+				logger.Log(0, "-----------> ##### sending proxy update packet to: \n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
@@ -202,8 +218,7 @@ func (p *Proxy) updateEndpoint() error {
 	logger.Log(1, fmt.Sprintf("---> Updating Peer Endpoint:  %+v\n", p.Config.PeerConf))
 	peer := *p.Config.PeerConf
 	peer.Endpoint = udpAddr
-	p.Config.WgInterface.UpdatePeerEndpoint(peer)
-
+	config.GetCfg().GetIface().UpdatePeerEndpoint(peer)
 	return nil
 }
 

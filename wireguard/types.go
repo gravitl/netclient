@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -25,21 +26,25 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := 0
-	peers := []wgtypes.PeerConfig{}
+	peers := config.GetHostPeerList()
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
-		addr := ifaceAddress{}
-		addr.IP = node.Address.IP
-		addr.Network = node.NetworkRange
-		if addr.IP == nil {
-			addr.IP = node.Address6.IP
-			addr.Network = node.NetworkRange6
+		if node.Address.IP != nil {
+			addrs = append(addrs, ifaceAddress{
+				IP:      node.Address.IP,
+				Network: node.NetworkRange,
+			})
 		}
-		addrs = append(addrs, addr)
-		if node.Proxy {
-			node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
+		if node.Address6.IP != nil {
+			addrs = append(addrs, ifaceAddress{
+				IP:      node.Address6.IP,
+				Network: node.NetworkRange6,
+			})
 		}
-		peers = append(peers, node.Peers...)
+
+	}
+	if config.Netclient().ProxyEnabled {
+		peers = peer.SetPeersEndpointToProxy("", peers)
 	}
 	netmaker = NCIface{
 		Name:      ncutils.GetInterfaceName(),
@@ -73,6 +78,13 @@ type ifaceAddress struct {
 func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	logger.Log(3, "adding addresses to netmaker interface")
+	if err := n.ApplyAddrs(); err != nil {
+		return err
+	}
+	if err := n.SetMTU(); err != nil {
+		return err
+	}
 	return apply(nil, &n.Config)
 }
 

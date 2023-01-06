@@ -1,10 +1,13 @@
 package config
 
 import (
+	"context"
+	"net"
 	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 )
 
 var (
@@ -21,14 +24,18 @@ type Settings struct {
 
 // Config - struct for proxy config
 type Config struct {
-	HostInfo      models.HostInfo
-	ProxyStatus   bool
-	isHostNetwork bool
-	isServer      bool
-	isBehindNAT   bool
-	mutex         *sync.RWMutex
-	ifaceConfig   wgIfaceConf
-	settings      map[string]Settings
+	HostInfo                models.HostInfo
+	ProxyStatus             bool
+	isHostNetwork           bool
+	isServer                bool
+	isBehindNAT             bool
+	mutex                   *sync.RWMutex
+	ifaceConfig             wgIfaceConf
+	settings                map[string]Settings
+	RouterCfg               Router
+	metricsThreadDone       context.CancelFunc
+	metricsCollectionStatus bool
+	serverConn              *net.UDPConn
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -43,6 +50,14 @@ func InitializeCfg() {
 			extSrcIpMap:      make(map[string]*models.RemotePeer),
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
+			noProxyPeerMap:   make(models.PeerConnMap),
+			allPeersConf:     make(map[string]nm_models.PeerMap),
+		},
+		RouterCfg: Router{
+			mutex:           &sync.RWMutex{},
+			IsRunning:       false,
+			InboundRouting:  map[string]Routing{},
+			OutboundRouting: map[string]Routing{},
 		},
 		settings: make(map[string]Settings),
 	}
@@ -56,6 +71,24 @@ func (c *Config) IsProxyRunning() bool {
 // Config.SetHostInfo - sets host info
 func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
 	c.HostInfo = hostInfo
+}
+
+// Config.StopMetricsCollectionThread - stops the metrics thread // only when host proxy is disabled
+func (c *Config) StopMetricsCollectionThread() {
+	if c.metricsThreadDone != nil {
+		c.metricsThreadDone()
+	}
+}
+
+// Config.GetMetricsCollectionStatus - fetchs metrics collection status when proxy is disabled for host
+func (c *Config) GetMetricsCollectionStatus() bool {
+	return c.metricsCollectionStatus
+}
+
+// Config.SetMetricsThreadCtx - sets the metrics thread ctx
+func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
+	c.metricsThreadDone = cancelFunc
+	c.metricsCollectionStatus = true
 }
 
 // Config.GetHostInfo - gets the host info
@@ -159,4 +192,14 @@ func (c *Config) SetNATStatus() {
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
 	return c.isBehindNAT
+}
+
+// Config.GetServerConn - fetches the server connection
+func (c *Config) GetServerConn() *net.UDPConn {
+	return c.serverConn
+}
+
+// Config.SetServerConn - sets server connection
+func (c *Config) SetServerConn(conn *net.UDPConn) {
+	c.serverConn = conn
 }

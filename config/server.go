@@ -4,8 +4,9 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
 	"gopkg.in/yaml.v3"
 )
@@ -21,21 +22,25 @@ const ServerLockfile = "netclient-servers.lck"
 
 // Server represents a server configuration
 type Server struct {
-	Name        string          `json:"name" yaml:"name"`
-	Version     string          `json:"verson" yaml:"version"`
-	API         string          `json:"api" yaml:"api"`
-	CoreDNSAddr string          `json:"corednsaddress" yaml:"corednsaddress"`
-	Broker      string          `json:"broker" yaml:"broker"`
-	MQPort      string          `json:"mqport" yaml:"mqport"`
-	MQID        string          `json:"mqid" yaml:"mqid"`
-	Password    string          `json:"password" yaml:"password"`
-	DNSMode     bool            `json:"dnsmode" yaml:"dnsmode"`
-	IsEE        bool            `json:"isee" yaml:"isee"`
-	Nodes       map[string]bool `json:"nodes" yaml:"nodes"`
-	TrafficKey  []byte          `json:"traffickey" yaml:"traffickey"`
-	AccessKey   string          `json:"accesskey" yaml:"accesskey"`
-	StunPort    int             `json:"stun_port" yaml:"stun_port"`
-	StunHost    string          `json:"stun_host" yaml:"stun_host"`
+	models.ServerConfig
+	Name      string          `json:"name" yaml:"name"`
+	MQID      uuid.UUID       `json:"mqid" yaml:"mqid"`
+	Password  string          `json:"password" yaml:"password"`
+	Nodes     map[string]bool `json:"nodes" yaml:"nodes"`
+	AccessKey string          `json:"accesskey" yaml:"accesskey"`
+}
+
+// OldNetmakerServerConfig - pre v0.18.0 server configuration
+type OldNetmakerServerConfig struct {
+	CoreDNSAddr string `yaml:"corednsaddr"`
+	API         string `yaml:"api"`
+	APIPort     string `yaml:"apiport"`
+	ClientMode  string `yaml:"clientmode"`
+	DNSMode     string `yaml:"dnsmode"`
+	Version     string `yaml:"version"`
+	MQPort      string `yaml:"mqport"`
+	Server      string `yaml:"server"`
+	Is_EE       bool   `yaml:"isee"`
 }
 
 // ReadServerConf reads the servers configuration file and populates the server map
@@ -93,6 +98,11 @@ func SaveServer(name string, server Server) error {
 	return WriteServerConfig()
 }
 
+// UpdateServer updates the in-memory server map
+func UpdateServer(name string, server Server) {
+	Servers[name] = server
+}
+
 // GetServer returns the server struct for the given server name
 func GetServer(name string) *Server {
 	if server, ok := Servers[name]; ok {
@@ -101,26 +111,34 @@ func GetServer(name string) *Server {
 	return nil
 }
 
+// GetServers - gets all the server names host has registered to.
+func GetServers() (servers []string) {
+	for _, server := range Servers {
+		servers = append(servers, server.Name)
+	}
+	return
+}
+
 // DeleteServer deletes the specified server name from the server map
 func DeleteServer(k string) {
 	delete(Servers, k)
 }
 
 // ConvertServerCfg converts a netmaker ServerConfig to netclient server struct
-func ConvertServerCfg(cfg *models.ServerConfig) *Server {
+func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 	var server Server
-	server.Name = cfg.Server
+	server.Name = strings.Replace(cfg.Server, "broker.", "", 1)
 	server.Version = cfg.Version
-	server.Broker = cfg.Broker
+	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
-	server.MQID = netclient.HostID
+	server.MQID = netclient.ID
 	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.IsEE = cfg.Is_EE
-	server.StunHost = cfg.StunHost
-	server.StunPort = cfg.StunPort
-	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	server.Is_EE = cfg.Is_EE
+	//server.StunHost = cfg.StunHost
+	//server.StunPort = cfg.StunPort
+	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)
 	return &server
 }
@@ -136,11 +154,11 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.Version = cfg.Version
 	server.Broker = cfg.Broker
 	server.MQPort = cfg.MQPort
-	server.MQID = netclient.HostID
+	server.MQID = netclient.ID
 	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.IsEE = cfg.Is_EE
-	server.DNSMode, _ = strconv.ParseBool(cfg.DNSMode)
+	server.Is_EE = cfg.Is_EE
+	server.DNSMode = cfg.DNSMode
 	Servers[cfg.Server] = server
 }

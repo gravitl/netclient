@@ -16,31 +16,47 @@ func (nc *NCIface) Create() error {
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
 func (nc *NCIface) ApplyAddrs() error {
-	for _, address := range nc.Addresses {
-		cmd := exec.Command("ifconfig", nc.Name, "inet", address.IP.String(), address.IP.String())
-		if out, err := cmd.CombinedOutput(); err != nil {
-			logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
-			continue
-		}
 
-		if address.Network.IP != nil {
-			if address.Network.IP.To4() != nil {
-				cmd = exec.Command("route", "add", "-net", address.Network.String(), "-interface", nc.Name)
+	for _, address := range nc.Addresses {
+		if address.IP != nil {
+			if address.IP.To4() != nil {
+
+				cmd := exec.Command("ifconfig", nc.Name, "inet", "alias", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
 					continue
 				}
 			} else {
-				cmd = exec.Command("route", "add", "-inet6", address.Network.String(), "-interface", nc.Name)
+
+				cmd := exec.Command("ifconfig", nc.Name, "inet6", "alias", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
 					continue
 				}
 			}
 
 		}
+		if address.Network.IP != nil {
+			if address.Network.IP.To4() != nil {
+				cmd := exec.Command("route", "add", "-net", address.Network.String(), "-interface", nc.Name)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+					continue
+				}
+			} else {
+				cmd := exec.Command("route", "add", "-inet6", address.Network.String(), "-interface", nc.Name)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+					continue
+				}
+			}
+		}
 	}
 
+	return nil
+}
+
+func (nc *NCIface) SetMTU() error {
 	// set MTU for the interface
 	cmd := exec.Command("ifconfig", nc.Name, "mtu", fmt.Sprint(nc.MTU), "up")
 	if out, err := cmd.CombinedOutput(); err != nil {

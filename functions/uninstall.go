@@ -63,9 +63,6 @@ func LeaveNetwork(network string) ([]error, error) {
 }
 
 func deleteNodeFromServer(node *config.Node) error {
-	if node.IsServer {
-		return errors.New("attempt to delete server node ... not permitted")
-	}
 	token, err := Authenticate(node, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
@@ -77,7 +74,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Method: http.MethodDelete,
-		Route:  "/api/nodes/" + node.Network + "/" + node.ID,
+		Route:  "/api/nodes/" + node.Network + "/" + node.ID.String(),
 		Headers: []httpclient.Header{
 			{
 				Name:  "requestfrom",

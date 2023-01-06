@@ -4,7 +4,10 @@ import (
 	"crypto/hmac"
 	"crypto/subtle"
 	"hash"
+	"runtime"
 
+	"github.com/gravitl/netclient/nmproxy/common"
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
 )
@@ -133,4 +136,14 @@ func sharedSecret(sk *NoisePrivateKey, pk NoisePublicKey) (ss [NoisePublicKeySiz
 	ask := (*[NoisePrivateKeySize]byte)(sk)
 	curve25519.ScalarMult(&ss, ask, apk)
 	return ss
+}
+
+// TurnOffIpFowarding - turns off ip fowarding, runs only for linux systems
+func TurnOffIpFowarding() {
+	if runtime.GOOS == "linux" {
+		_, err := common.RunCmd("sysctl -w net.ipv4.ip_forward=0", true)
+		if err != nil {
+			logger.Log(0, "error encountered turning off ip forwarding: ", err.Error())
+		}
+	}
 }

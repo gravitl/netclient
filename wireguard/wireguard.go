@@ -20,15 +20,9 @@ import (
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers() error {
-	nodes := config.GetNodes()
-	peers := []wgtypes.PeerConfig{}
-	for _, node := range nodes {
-		if node.Connected {
-			if node.Proxy {
-				node.Peers = peer.SetPeersEndpointToProxy(node.Network, node.Peers)
-			}
-			peers = append(peers, node.Peers...)
-		}
+	peers := config.GetHostPeerList()
+	if config.Netclient().ProxyEnabled {
+		peers = peer.SetPeersEndpointToProxy("", peers)
 	}
 	config := wgtypes.Config{
 		ReplacePeers: true,
@@ -230,7 +224,10 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 	return dev.Peers, nil
 }
 
-func removePeer(n *config.Node, p *wgtypes.PeerConfig) error {
+// RemovePeer replaces a wireguard peer
+// temporarily making public func to pass staticchecks
+// this function will be required in future when add/delete node on server is refactored
+func RemovePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	p.Remove = true
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{*p},
@@ -238,7 +235,10 @@ func removePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	return apply(n, &config)
 }
 
-func updatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
+// UpdatePeer replaces a wireguard peer
+// temporarily making public func to pass staticchecks
+// this function will be required in future when update node on server is refactored
+func UpdatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{*p},
 	}
