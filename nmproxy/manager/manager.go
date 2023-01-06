@@ -9,11 +9,13 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/packet"
+	"github.com/gravitl/netclient/nmproxy/peer"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -25,7 +27,7 @@ func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
+func Start(ctx context.Context, managerChan chan *nm_models.PeerUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -35,9 +37,8 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 			if mI == nil {
 				continue
 			}
-			m := getRecieverType(mI)
-			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI))
-			err := m.configureProxy()
+			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
+			err := configureProxy(mI)
 			if err != nil {
 				logger.Log(0, "failed to configure proxy:  ", err.Error())
 			}
@@ -45,17 +46,33 @@ func Start(ctx context.Context, managerChan chan *models.ProxyManagerPayload) {
 	}
 }
 
-// ProxyManagerPayload.configureProxy - confgures proxy by payload action
-func (m *proxyPayload) configureProxy() error {
+// configureProxy - confgures proxy by payload action
+func configureProxy(payload *nm_models.PeerUpdate) error {
 	var err error
+	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
+	noProxy(m.Network, payload) // starts or stops the metrics collection based on host proxy setting
 	switch m.Action {
 	case models.AddNetwork:
 		err = m.addNetwork()
 	case models.DeleteNetwork:
 		m.deleteNetwork()
+
 	}
 	return err
+}
+
+func noProxy(network string, peerUpdate *nm_models.PeerUpdate) {
+	config.GetCfg().SetPeers(network, peerUpdate.PeerIDs)
+	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
+		// stop the metrics thread since proxy is switched on for the host
+		logger.Log(0, "Stopping Metrics Thread...")
+		config.GetCfg().StopMetricsCollectionThread()
+	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
+		ctx, cancel := context.WithCancel(context.Background())
+		go peer.StartMetricsCollectionForHostPeers(ctx)
+		config.GetCfg().SetMetricsThreadCtx(cancel)
+	}
 }
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config
@@ -162,7 +179,7 @@ func (m *proxyPayload) processPayload() error {
 		return nil
 	}
 	peerConnMap := gCfg.GetNetworkPeers(m.Network)
-
+	noProxyPeerMap := gCfg.GetNoProxyPeers()
 	// check device conf different from proxy
 	// sync peer map with new update
 	for peerPubKey, peerConn := range peerConnMap {
@@ -177,7 +194,16 @@ func (m *proxyPayload) processPayload() error {
 			logger.Log(0, "----> Deleting Peer from proxy: ", peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Config.Network, peerConn.Key.String())
 		}
+
 	}
+
+	// update no proxy peers map with peer update
+	for peerIP, peerConn := range noProxyPeerMap {
+		if _, ok := m.PeerMap[peerConn.Key.String()]; !ok {
+			gCfg.DeleteNoProxyPeer(peerIP)
+		}
+	}
+
 	for i := len(m.Peers) - 1; i >= 0; i-- {
 
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
@@ -198,7 +224,7 @@ func (m *proxyPayload) processPayload() error {
 				// cleanup proxy connections for the peer
 				currentPeer.StopConn()
 				delete(peerConnMap, currentPeer.Key.String())
-				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+				//m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 				currentPeer.Mutex.Unlock()
 				continue
 
@@ -252,29 +278,31 @@ func (m *proxyPayload) processPayload() error {
 				delete(peerConnMap, currentPeer.Key.String())
 				continue
 
-			} else {
-				// delete the peer from the list
-				logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
-				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			}
+			// delete the peer from the list
+			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
+			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			currentPeer.Mutex.Unlock()
+			continue
 
-		} else if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
-			logger.Log(1, "-----------> skipping peer, proxy is off: ", m.Peers[i].PublicKey.String())
-			// add to no proxy peer config for metrics collection
-			config.GetCfg().AddNoProxyPeer(&models.RemotePeer{
-				Address:   net.IP(m.PeerMap[m.Peers[i].PublicKey.String()].Address),
-				Network:   m.Network,
-				PeerKey:   m.Peers[i].PublicKey.String(),
-				Interface: m.InterfaceName,
-				Endpoint:  m.Peers[i].Endpoint,
-			})
+		}
 
+		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
+			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
+				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
+				noProxypeer.Mutex.Lock()
+				noProxypeer.StopConn()
+				noProxypeer.Mutex.Unlock()
+				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
+				continue
+			}
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
+
 	}
 
 	gCfg.UpdateNetworkPeers(m.Network, &peerConnMap)
+	gCfg.UpdateNoProxyPeers(&noProxyPeerMap)
 	logger.Log(1, "CLEANED UP..........")
 	return nil
 }
@@ -291,11 +319,8 @@ func (m *proxyPayload) addNetwork() error {
 	if err != nil {
 		return err
 	}
-	for i, peerI := range m.Peers {
-		if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsAttachedExtClient {
-			continue
-		}
-		config.GetCfg().DeleteNoProxyPeer(m.Peers[i].PublicKey.String())
+	for _, peerI := range m.Peers {
+
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
 		if peerI.Endpoint == nil && !peerConf.IsAttachedExtClient {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())

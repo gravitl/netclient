@@ -141,7 +141,9 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	ProxyManagerChan <- &proxyUpdate
+	ProxyManagerChan <- &models.PeerUpdate{
+		ProxyUpdate: proxyUpdate,
+	}
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
