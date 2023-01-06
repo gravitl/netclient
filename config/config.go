@@ -124,6 +124,11 @@ func SetVersion(ver string) {
 	Version = ver
 }
 
+// SetLogVerbosity - sets the logger verbosity from config
+func SetLogVerbosity() {
+	logger.Verbosity = netclient.Verbosity
+}
+
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
@@ -356,37 +361,8 @@ func InCharSet(name string) bool {
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
 	checkUID()
-	viper.AddConfigPath(GetNetclientPath())
-	viper.SetConfigName("netclient.yml")
-	viper.SetConfigType("yml")
-	//viper.BindPFlags(flags)
-	viper.AutomaticEnv() // read in environment variables that match
-	//not sure why vebosity not set in AutomaticEnv
-	viper.BindEnv("verbosity", "VERBOSITY")
-	// If a config file is found, read it in
-	if err := Lock(ConfigLockfile); err != nil {
-		logger.Log(0, "failed to obtain lockfile", err.Error())
-	}
-	if err := viper.ReadInConfig(); err == nil {
-		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
-	} else {
-		logger.Log(0, "error reading config file", err.Error())
-	}
-	if err := Unlock(ConfigLockfile); err != nil {
-		logger.Log(0, "failed to releas lockfile", err.Error())
-	}
-	var netclient Config
-	//viper cannot unmarshal net.IPNet so need to do a funky conversion
-	//if err := viper.Unmarshal(&netclient); err != nil {
-	//logger.Log(0, "could not read netclient config file", err.Error())
-	//}
-	c := viper.AllSettings()
-	b, _ := yaml.Marshal(c)
-	if err := yaml.Unmarshal(b, &netclient); err != nil {
-		logger.Log(0, "could not read netclient config file", err.Error())
-	}
-	logger.Verbosity = netclient.Verbosity
-	UpdateNetclient(netclient)
+	ReadNetclientConfig()
+	SetLogVerbosity()
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
