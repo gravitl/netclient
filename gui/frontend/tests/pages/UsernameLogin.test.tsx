@@ -66,7 +66,7 @@ describe("UsernameLoginPage", () => {
     });
   });
 
-  it("validates token", () => {
+  it("validates inputs", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("sso-login-btn"));
     });
