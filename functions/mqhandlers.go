@@ -126,7 +126,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
 func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
-
+	// *** TODO - proxy updates need to be fixed with new peer updates ***
 	var proxyUpdate proxy_models.ProxyManagerPayload
 	//var network = parseNetworkFromTopic(msg.Topic())
 	//node := config.GetNode(network)

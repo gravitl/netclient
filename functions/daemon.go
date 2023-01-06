@@ -244,6 +244,8 @@ func setupMQTTSingleton(server *config.Server) error {
 	return connecterr
 }
 
+// setHostSubscription sets MQ client subscriptions for host
+// should be called for each server host is registered on.
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
@@ -264,11 +266,6 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		}
 		return
 	}
-	// logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
-	// if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
-	// 	logger.Log(0, "network", node.Network, token.Error().Error())
-	// 	return
-	// }
 	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
 	if token := client.Subscribe(fmt.Sprintf("proxy/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(ProxyUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {

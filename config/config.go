@@ -76,6 +76,7 @@ func Netclient() *Config {
 	return &netclient
 }
 
+// GetHostPeerList - gets the combined list of peers for the host
 func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 
 	peerMap := make(map[string]int)
