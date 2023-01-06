@@ -6,8 +6,6 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/wireguard"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Disconnect disconnects a node from the given network
@@ -25,13 +23,13 @@ func Disconnect(network string) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	peers := []wgtypes.PeerConfig{}
-	for _, node := range nodes {
-		if node.Connected {
-			peers = append(peers, node.Peers...)
-		}
+	server := config.GetServer(node.Server)
+	if err := setupMQTTSingleton(server); err != nil {
+		return err
 	}
-	wireguard.UpdateWgPeers(peers)
+	if err := PublishNodeUpdate(&node); err != nil {
+		return err
+	}
 	if err := daemon.Restart(); err != nil {
 		fmt.Println("daemon restart failed", err)
 		if err := daemon.Start(); err != nil {
@@ -56,13 +54,13 @@ func Connect(network string) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	peers := []wgtypes.PeerConfig{}
-	for _, node := range nodes {
-		if node.Connected {
-			peers = append(peers, node.Peers...)
-		}
+	server := config.GetServer(node.Server)
+	if err := setupMQTTSingleton(server); err != nil {
+		return err
 	}
-	wireguard.UpdateWgPeers(peers)
+	if err := PublishNodeUpdate(&node); err != nil {
+		return err
+	}
 	if err := daemon.Restart(); err != nil {
 		if err := daemon.Start(); err != nil {
 			return fmt.Errorf("daemon restart failed %w", err)

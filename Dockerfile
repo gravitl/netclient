@@ -3,7 +3,7 @@ FROM gravitl/go-builder as builder
 WORKDIR /app
 ARG version
 
-RUN apk add git
+RUN apk add git libpcap-dev
 COPY . . 
 
 ENV GO111MODULE=auto

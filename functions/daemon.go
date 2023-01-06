@@ -26,7 +26,7 @@ const lastNodeUpdate = "lnu"
 const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
-var ServerSet map[string]mqtt.Client
+var ServerSet = make(map[string]mqtt.Client)
 var ProxyManagerChan = make(chan *models.PeerUpdate)
 
 type cachedMessage struct {
@@ -51,7 +51,6 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 // Daemon runs netclient daemon
 func Daemon() {
 	logger.Log(0, "netclient daemon started -- version:", config.Version)
-	ServerSet = make(map[string]mqtt.Client)
 	if err := ncutils.SavePID(); err != nil {
 		logger.FatalLog("unable to save PID on daemon startup")
 	}
@@ -164,6 +163,11 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			setSubscriptions(client, &node)
 		}
+		servers := config.GetServers()
+		for _, server := range servers {
+			setHostSubscription(client, server)
+		}
+
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -194,6 +198,63 @@ func setupMQTT(server *config.Server) error {
 	return nil
 }
 
+// func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
+// only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
+func setupMQTTSingleton(server *config.Server) error {
+	opts := mqtt.NewClientOptions()
+	broker := server.Broker
+	port := server.MQPort
+	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.SetUsername(server.MQID.String())
+	opts.SetPassword(server.Password)
+	opts.SetClientID(server.MQID.String())
+	opts.SetAutoReconnect(true)
+	opts.SetConnectRetry(true)
+	opts.SetConnectRetryInterval(time.Second << 2)
+	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetWriteTimeout(time.Minute)
+	opts.SetOnConnectHandler(func(client mqtt.Client) {
+		logger.Log(0, "mqtt connect handler")
+		nodes := config.GetNodes()
+		for _, node := range nodes {
+			setSubscriptions(client, &node)
+		}
+		servers := config.GetServers()
+		for _, server := range servers {
+			setHostSubscription(client, server)
+		}
+
+	})
+	opts.SetOrderMatters(true)
+	opts.SetResumeSubs(true)
+	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
+		logger.Log(0, "detected broker connection lost for", server.Broker)
+	})
+	mqclient := mqtt.NewClient(opts)
+	ServerSet[server.Name] = mqclient
+	var connecterr error
+	if token := mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+		logger.Log(0, "unable to connect to broker, retrying ...")
+		if token.Error() == nil {
+			connecterr = errors.New("connect timeout")
+		} else {
+			connecterr = token.Error()
+		}
+	}
+	return connecterr
+}
+
+// setHostSubscription sets MQ client subscriptions for host
+// should be called for each server host is registered on.
+func setHostSubscription(client mqtt.Client, server string) {
+	hostID := config.Netclient().ID
+	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+}
+
 // setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
@@ -203,11 +264,6 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		} else {
 			logger.Log(0, "network:", node.Network, token.Error().Error())
 		}
-		return
-	}
-	logger.Log(3, fmt.Sprintf("subscribed to node updates  /%s/%s", node.Network, node.ID))
-	if token := client.Subscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(UpdatePeers)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "network", node.Network, token.Error().Error())
 		return
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
@@ -223,7 +279,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 }
 
 // should only ever use node client configs
-func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
+func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
 		return nil, fmt.Errorf("recieved invalid message from broker %v", msg)
 	}
@@ -234,9 +290,9 @@ func decryptMsg(node *config.Node, msg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	server := config.GetServer(node.Server)
+	server := config.GetServer(serverName)
 	if server == nil {
-		return nil, errors.New("nil server for " + node.Server)
+		return nil, errors.New("nil server for " + serverName)
 	}
 	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {

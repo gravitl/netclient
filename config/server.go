@@ -111,6 +111,14 @@ func GetServer(name string) *Server {
 	return nil
 }
 
+// GetServers - gets all the server names host has registered to.
+func GetServers() (servers []string) {
+	for _, server := range Servers {
+		servers = append(servers, server.Name)
+	}
+	return
+}
+
 // DeleteServer deletes the specified server name from the server map
 func DeleteServer(k string) {
 	delete(Servers, k)

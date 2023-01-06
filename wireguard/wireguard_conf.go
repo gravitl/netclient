@@ -213,33 +213,37 @@ func WriteWgConfig(host *config.Config, nodes config.NodeMap) error {
 				wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
 			}
 		}
-		if host.MTU != 0 {
-			wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))
-		}
-		for i, peer := range node.Peers {
-			wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
-			if peer.PresharedKey != nil {
-				wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
-			}
-			if peer.AllowedIPs != nil {
-				var allowedIPs string
-				for i, ip := range peer.AllowedIPs {
-					if i == 0 {
-						allowedIPs = ip.String()
-					} else {
-						allowedIPs = allowedIPs + ", " + ip.String()
-					}
-				}
-				wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
-			}
-			if peer.Endpoint != nil {
-				wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
-			}
-			if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
-				wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
-			}
-		}
 	}
+	if host.MTU != 0 {
+		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))
+	}
+
+	peers := config.GetHostPeerList()
+	for i, peer := range peers {
+		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
+		if peer.PresharedKey != nil {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
+		}
+		if peer.AllowedIPs != nil {
+			var allowedIPs string
+			for j, ip := range peer.AllowedIPs {
+				if j == 0 {
+					allowedIPs = ip.String()
+				} else {
+					allowedIPs = allowedIPs + ", " + ip.String()
+				}
+			}
+			wireguard.SectionWithIndex(sectionPeers, i).Key("AllowedIps").SetValue(allowedIPs)
+		}
+		if peer.Endpoint != nil {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("Endpoint").SetValue(peer.Endpoint.String())
+		}
+		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
+			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
+		}
+
+	}
+
 	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
 		logger.Log(0, "failed to save wg conf file ", err.Error())
 		return err

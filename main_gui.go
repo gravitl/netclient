@@ -4,6 +4,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
@@ -13,6 +14,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
+
+//go:embed all:gui/frontend/dist
+var assets embed.FS
 
 func init() {
 	guiFunc = setupNetclientGui

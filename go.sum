@@ -150,8 +150,8 @@ github.com/go-playground/validator/v10 v10.11.1 h1:prmOlTVv+YjZjmRmNSF3VmspqJIxJ
 github.com/go-playground/validator/v10 v10.11.1/go.mod h1:i+3WkQ1FvaUjjxh1kSvIA4dMGDBiPU55YFDl0WbKdWU=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
 github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
-github.com/golang-jwt/jwt/v4 v4.4.2 h1:rcc4lwaZgFMCZ5jxF9ABolDcIHdBytAFgqFPbSJQAYs=
-github.com/golang-jwt/jwt/v4 v4.4.2/go.mod h1:m21LjoU+eqJr34lmDMbreY2eSTRJ1cv77w39/MY0Ch0=
+github.com/golang-jwt/jwt/v4 v4.4.3 h1:Hxl6lhQFj4AnOX6MLrsCb/+7tCj7DxP7VA+2rDIq5AU=
+github.com/golang-jwt/jwt/v4 v4.4.3/go.mod h1:m21LjoU+eqJr34lmDMbreY2eSTRJ1cv77w39/MY0Ch0=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6/go.mod h1:cIg4eruTrX1D+g88fzRXU5OdNfaM+9IcxsU14FzY7Hc=
 github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7/go.mod h1:cIg4eruTrX1D+g88fzRXU5OdNfaM+9IcxsU14FzY7Hc=
@@ -244,10 +244,10 @@ github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB7
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/gravitl/netmaker v0.17.1-0.20221227162655-2cb3ee65af43 h1:0OUGqkvlnNs06xoj+2cLgueK6vLm/Rm9UPsYCmWjrCA=
-github.com/gravitl/netmaker v0.17.1-0.20221227162655-2cb3ee65af43/go.mod h1:JCB1DlxK2OeMklMqIdhfP9YOGnpzAk8xzUl+cqd9PN8=
-github.com/gravitl/netmaker v0.17.1-0.20221228023335-7cd11e4d86e3 h1:UrNhwSZw8AnAmtndhrqmvgICao/wrtzvRQ2bAIGS0Ow=
-github.com/gravitl/netmaker v0.17.1-0.20221228023335-7cd11e4d86e3/go.mod h1:wTHOwT8yhRyJV0RIN/TPO2tJfFrrWMcycGA+EiXSuuQ=
+github.com/gravitl/netmaker v0.17.2-0.20230105092620-bff68bd94541 h1:CQc/vXzixPP27UzKW2qT9vam2UhjP6NeCPhFzdjkdAA=
+github.com/gravitl/netmaker v0.17.2-0.20230105092620-bff68bd94541/go.mod h1:HMEB+/6r2DK3f41ODTE1Mfo3mIcopk3BjMSZ+2BqbVE=
+github.com/gravitl/netmaker v0.17.2-0.20230105104709-950fd3c290b2 h1:2Q0O+LBWUcO51vYkJTDhbLYCOmUxoqby65vYlvqBaE0=
+github.com/gravitl/netmaker v0.17.2-0.20230105104709-950fd3c290b2/go.mod h1:HMEB+/6r2DK3f41ODTE1Mfo3mIcopk3BjMSZ+2BqbVE=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/guumaster/hostctl v1.1.3 h1:b/yR3svkYsbr5VBdvfdyLXUl2xaKopSzgE/Xi7+1WRo=
 github.com/guumaster/hostctl v1.1.3/go.mod h1:h5rDx5Z8Hj2bYZfDt/eX4BNS2RSq7iRcGVQqfROJyH8=
