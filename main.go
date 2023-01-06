@@ -6,7 +6,6 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package main
 
 import (
-	"embed"
 	"os"
 	"runtime"
 
@@ -16,9 +15,6 @@ import (
 
 // TODO: use -ldflags to set the right version at build time
 var version = "v0.18.0"
-
-//go:embed all:gui/frontend/dist
-var assets embed.FS
 
 var guiFunc = func() {}
 
