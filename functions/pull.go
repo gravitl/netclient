@@ -46,17 +46,12 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	config.WriteNodeConfig()
 	//update wg config
-	peers := newNode.Peers
-	for _, node := range config.GetNodes() {
-		if node.Connected {
-			peers = append(peers, node.Peers...)
-		}
-	}
-	internetGateway, err := wireguard.UpdateWgPeers(peers)
+	config.UpdateHostPeers(node.Server, nodeGet.HostPeers)
+	internetGateway, err := wireguard.UpdateWgPeers(nodeGet.HostPeers)
 	if internetGateway != nil && err != nil {
 		config.Netclient().InternetGateway = *internetGateway
-		config.WriteNetclientConfig()
 	}
+	config.WriteNetclientConfig()
 	logger.Log(1, "node settings for network ", network)
 	if config.Netclient().DaemonInstalled {
 		logger.Log(3, "restarting daemon")

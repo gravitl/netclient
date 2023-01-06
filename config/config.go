@@ -52,16 +52,18 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key      `json:"privatekey" yaml:"privatekey"`
-	MacAddress        net.HardwareAddr `json:"macaddress" yaml:"macaddress"`
-	TrafficKeyPrivate []byte           `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte           `json:"traffickeypublic" yaml:"trafficekeypublic"`
-	InternetGateway   net.UDPAddr      `json:"internetgateway" yaml:"internetgateway"`
+	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
+	MacAddress        net.HardwareAddr                `json:"macaddress" yaml:"macaddress"`
+	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	TrafficKeyPublic  []byte                          `json:"traffickeypublic" yaml:"trafficekeypublic"`
+	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
+	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
+	netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -74,9 +76,58 @@ func Netclient() *Config {
 	return &netclient
 }
 
+// GetHostPeerList - gets the combined list of peers for the host
+func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
+
+	peerMap := make(map[string]int)
+	for _, serverPeers := range netclient.HostPeers {
+		for i, peerI := range serverPeers {
+			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
+				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
+			} else {
+				peerMap[peerI.PublicKey.String()] = i
+				allPeers = append(allPeers, peerI)
+			}
+
+		}
+	}
+	return
+}
+
+// UpdateHostPeers - updates host peer map in the netclient config
+func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
+	hostPeerMap := netclient.HostPeers
+	if hostPeerMap == nil {
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
+	}
+	hostPeerMap[server] = peers
+	netclient.HostPeers = hostPeerMap
+}
+
+func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
+	uniqueIpList := []net.IPNet{}
+	ipMap := make(map[string]struct{})
+	uniqueIpList = append(uniqueIpList, currIps...)
+	uniqueIpList = append(uniqueIpList, newIps...)
+	for i := len(uniqueIpList) - 1; i >= 0; i-- {
+		if _, ok := ipMap[uniqueIpList[i].String()]; ok {
+			// if ip already exists, remove duplicate one
+			uniqueIpList = append(uniqueIpList[:i], uniqueIpList[i+1:]...)
+		} else {
+			ipMap[uniqueIpList[i].String()] = struct{}{}
+		}
+	}
+	return uniqueIpList
+}
+
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
+}
+
+// setLogVerbosity sets the logger verbosity from config
+func setLogVerbosity() {
+	logger.Verbosity = netclient.Verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -311,37 +362,8 @@ func InCharSet(name string) bool {
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
 	checkUID()
-	viper.AddConfigPath(GetNetclientPath())
-	viper.SetConfigName("netclient.yml")
-	viper.SetConfigType("yml")
-	//viper.BindPFlags(flags)
-	viper.AutomaticEnv() // read in environment variables that match
-	//not sure why vebosity not set in AutomaticEnv
-	viper.BindEnv("verbosity", "VERBOSITY")
-	// If a config file is found, read it in
-	if err := Lock(ConfigLockfile); err != nil {
-		logger.Log(0, "failed to obtain lockfile", err.Error())
-	}
-	if err := viper.ReadInConfig(); err == nil {
-		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
-	} else {
-		logger.Log(0, "error reading config file", err.Error())
-	}
-	if err := Unlock(ConfigLockfile); err != nil {
-		logger.Log(0, "failed to releas lockfile", err.Error())
-	}
-	var netclient Config
-	//viper cannot unmarshal net.IPNet so need to do a funky conversion
-	//if err := viper.Unmarshal(&netclient); err != nil {
-	//logger.Log(0, "could not read netclient config file", err.Error())
-	//}
-	c := viper.AllSettings()
-	b, _ := yaml.Marshal(c)
-	if err := yaml.Unmarshal(b, &netclient); err != nil {
-		logger.Log(0, "could not read netclient config file", err.Error())
-	}
-	logger.Verbosity = netclient.Verbosity
-	UpdateNetclient(netclient)
+	ReadNetclientConfig()
+	setLogVerbosity()
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
