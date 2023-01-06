@@ -217,16 +217,17 @@ func WriteWgConfig(host *config.Config, nodes config.NodeMap) error {
 	if host.MTU != 0 {
 		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))
 	}
-	i := 0
-	for _, peer := range host.HostPeers {
+
+	peers := config.GetHostPeerList()
+	for i, peer := range peers {
 		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
 		if peer.PresharedKey != nil {
 			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())
 		}
 		if peer.AllowedIPs != nil {
 			var allowedIPs string
-			for i, ip := range peer.AllowedIPs {
-				if i == 0 {
+			for j, ip := range peer.AllowedIPs {
+				if j == 0 {
 					allowedIPs = ip.String()
 				} else {
 					allowedIPs = allowedIPs + ", " + ip.String()
@@ -240,7 +241,7 @@ func WriteWgConfig(host *config.Config, nodes config.NodeMap) error {
 		if peer.PersistentKeepaliveInterval != nil && peer.PersistentKeepaliveInterval.Seconds() > 0 {
 			wireguard.SectionWithIndex(sectionPeers, i).Key("PersistentKeepalive").SetValue(strconv.FormatInt((int64)(peer.PersistentKeepaliveInterval.Seconds()), 10))
 		}
-		i++
+
 	}
 
 	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {

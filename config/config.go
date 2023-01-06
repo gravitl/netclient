@@ -52,18 +52,18 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key                   `json:"privatekey" yaml:"privatekey"`
-	MacAddress        net.HardwareAddr              `json:"macaddress" yaml:"macaddress"`
-	TrafficKeyPrivate []byte                        `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte                        `json:"traffickeypublic" yaml:"trafficekeypublic"`
-	InternetGateway   net.UDPAddr                   `json:"internetgateway" yaml:"internetgateway"`
-	HostPeers         map[string]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
+	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
+	MacAddress        net.HardwareAddr                `json:"macaddress" yaml:"macaddress"`
+	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	TrafficKeyPublic  []byte                          `json:"traffickeypublic" yaml:"trafficekeypublic"`
+	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
+	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
-	netclient.HostPeers = make(map[string]wgtypes.PeerConfig)
+	netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -76,27 +76,30 @@ func Netclient() *Config {
 	return &netclient
 }
 
-func GetHostPeerList() (peers []wgtypes.PeerConfig) {
-	for _, peer := range netclient.HostPeers {
-		peers = append(peers, peer)
+func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
+
+	peerMap := make(map[string]int)
+	for _, serverPeers := range netclient.HostPeers {
+		for i, peerI := range serverPeers {
+			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
+				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
+			} else {
+				peerMap[peerI.PublicKey.String()] = i
+				allPeers = append(allPeers, peerI)
+			}
+
+		}
 	}
 	return
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(peers []wgtypes.PeerConfig) {
+func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
-		hostPeerMap = make(map[string]wgtypes.PeerConfig)
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
 	}
-	for _, peer := range peers {
-		if hostPeer, ok := hostPeerMap[peer.PublicKey.String()]; ok {
-			hostPeer.AllowedIPs = getUniqueAllowedIPList(hostPeer.AllowedIPs, peer.AllowedIPs)
-			hostPeerMap[peer.PublicKey.String()] = hostPeer
-		} else {
-			hostPeerMap[peer.PublicKey.String()] = peer
-		}
-	}
+	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
 }
 
