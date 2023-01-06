@@ -17,23 +17,18 @@ func (nc *NCIface) Create() error {
 // NCIface.ApplyAddrs - applies address for darwin userspace
 func (nc *NCIface) ApplyAddrs() error {
 
-	for i, address := range nc.Addresses {
+	for _, address := range nc.Addresses {
 		if address.IP != nil {
 			if address.IP.To4() != nil {
 
-				cmd := exec.Command("ifconfig", nc.Name, "inet", address.IP.String(), address.IP.String())
-				if i > 0 {
-					cmd = exec.Command("ifconfig", nc.Name, "inet", "alias", address.IP.String(), address.IP.String())
-				}
+				cmd := exec.Command("ifconfig", nc.Name, "inet", "alias", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
 					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
 					continue
 				}
 			} else {
-				cmd := exec.Command("ifconfig", nc.Name, "inet6", address.IP.String(), address.IP.String())
-				if i > 0 {
-					cmd = exec.Command("ifconfig", nc.Name, "inet6", "alias", address.IP.String(), address.IP.String())
-				}
+
+				cmd := exec.Command("ifconfig", nc.Name, "inet6", "alias", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
 					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
 					continue
