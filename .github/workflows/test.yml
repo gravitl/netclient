@@ -2,7 +2,11 @@ name: Integration Test
 
 on:
   pull_request:
-    types: [opened, reopened]
+    branches:
+      - master
+      - develop
+      - release/*
+    types: [opened, reopened, synchronize]
   workflow_dispatch:
   push:
     branches:
