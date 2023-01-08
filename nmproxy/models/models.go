@@ -22,11 +22,8 @@ const (
 	// PersistentKeepaliveInterval - default keepalive for wg peer
 	DefaultPersistentKeepaliveInterval = time.Duration(time.Second * 20)
 
-	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
-	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
-
-	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
-	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
+	// ProxyUpdate - constant for proxy update action
+	ProxyUpdate ProxyAction = "PROXY_UPDATE"
 
 	// NoProxy - constant for no ProxyAction
 	NoProxy ProxyAction = "NO_PROXY"
