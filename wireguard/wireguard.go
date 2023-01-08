@@ -22,7 +22,7 @@ import (
 func SetPeers() error {
 	peers := config.GetHostPeerList()
 	if config.Netclient().ProxyEnabled {
-		peers = peer.SetPeersEndpointToProxy("", peers)
+		peers = peer.SetPeersEndpointToProxy(peers)
 	}
 	config := wgtypes.Config{
 		ReplacePeers: true,

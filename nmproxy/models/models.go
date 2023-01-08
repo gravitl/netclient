@@ -53,7 +53,6 @@ type Proxy struct {
 
 // Conn is a peer Connection configuration
 type Conn struct {
-
 	// Key is a public key of a remote peer
 	Key                 wgtypes.Key
 	IsExtClient         bool
@@ -100,6 +99,8 @@ type RelayedConf struct {
 
 // PeerConf - struct for peer config in the network
 type PeerConf struct {
+	Proxy                  bool         `json:"proxy"`
+	PublicListenPort       int32        `json:"public_listen_port"`
 	IsExtClient            bool         `json:"is_ext_client"`
 	Address                net.IP       `json:"address"`
 	ExtInternalIp          net.IP       `json:"ext_internal_ip"`
@@ -107,8 +108,13 @@ type PeerConf struct {
 	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
 	IsRelayed              bool         `json:"is_relayed"`
 	RelayedTo              *net.UDPAddr `json:"relayed_to"`
-	Proxy                  bool         `json:"proxy"`
-	PublicListenPort       int32        `json:"public_listen_port"`
+	NetworkInfo            map[string]struct {
+		IsExtClient            bool         `json:"is_ext_client"`
+		Address                net.IP       `json:"address"`
+		ExtInternalIp          net.IP       `json:"ext_internal_ip"`
+		IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
+		IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
+	}
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash

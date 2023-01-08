@@ -141,7 +141,7 @@ func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	ProxyManagerChan <- &models.PeerUpdate{
+	ProxyManagerChan <- &models.HostPeerUpdate{
 		ProxyUpdate: proxyUpdate,
 	}
 }
@@ -184,14 +184,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 
 	// TODO -  update proxy with new host based peer updates
-	// if config.Netclient().ProxyEnabled {
-	// 	time.Sleep(time.Second * 2) // sleep required to avoid race condition
-	// 	ProxyManagerChan <- &peerUpdate
-	// } else {
-	// 	peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
-	// 	peerUpdate.ProxyUpdate.Network = network
-	// 	ProxyManagerChan <- &peerUpdate
-	// }
+	if config.Netclient().ProxyEnabled {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate
+	} else {
+		peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
+		ProxyManagerChan <- &peerUpdate
+	}
 
 	for network, networkInfo := range peerUpdate.Network {
 		//check if internet gateway has changed

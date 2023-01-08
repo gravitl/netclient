@@ -112,8 +112,8 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 }
 
 // SetPeersEndpointToProxy - sets peer endpoints to local addresses connected to proxy
-func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
-	logger.Log(1, "Setting peers endpoints to proxy: ", network)
+func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
+	logger.Log(1, "Setting peers endpoints to proxy...")
 	if !config.GetCfg().ProxyStatus {
 		return peers
 	}

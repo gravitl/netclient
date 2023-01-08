@@ -27,7 +27,7 @@ func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *nm_models.PeerUpdate) {
+func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -47,23 +47,17 @@ func Start(ctx context.Context, managerChan chan *nm_models.PeerUpdate) {
 }
 
 // configureProxy - confgures proxy by payload action
-func configureProxy(payload *nm_models.PeerUpdate) error {
+func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	var err error
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
-	noProxy(m.Network, payload) // starts or stops the metrics collection based on host proxy setting
-	switch m.Action {
-	case models.AddNetwork:
-		err = m.addNetwork()
-	case models.DeleteNetwork:
-		m.deleteNetwork()
-
-	}
+	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
+	m.peerUpdate()
 	return err
 }
 
-func noProxy(network string, peerUpdate *nm_models.PeerUpdate) {
-	config.GetCfg().SetPeers(network, peerUpdate.PeerIDs)
+func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
+	config.GetCfg().SetPeers(peerUpdate.PeerIDs)
 	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
@@ -135,13 +129,11 @@ func cleanUpInterface(network string) {
 	logger.Log(1, "Removing proxy configuration for: ", network)
 	peerConnMap := config.GetCfg().GetAllProxyPeers()
 	for _, peerI := range peerConnMap {
-		config.GetCfg().RemovePeer(network, peerI.Key.String())
-
+		config.GetCfg().RemovePeer(peerI.Key.String())
 	}
 	noProxyPeers := config.GetCfg().GetNoProxyPeers()
 	for _, peerI := range noProxyPeers {
 		config.GetCfg().DeleteNoProxyPeer(network, peerI.Config.PeerEndpoint.IP.String())
-
 	}
 
 }
@@ -152,9 +144,6 @@ func (m *proxyPayload) processPayload() error {
 	var wgIface *wg.WGIface
 	if m.InterfaceName == "" {
 		return errors.New("interface cannot be empty")
-	}
-	if m.Network == "" {
-		return errors.New("network name cannot be empty")
 	}
 	if len(m.Peers) == 0 {
 		return errors.New("no peers to add")
@@ -171,11 +160,6 @@ func (m *proxyPayload) processPayload() error {
 		return err
 	}
 	gCfg.SetIface(wgIface)
-	if !gCfg.CheckIfNetworkExists(m.Network) {
-		logger.Log(0, "------> new network being added to proxy")
-		return nil
-	}
-
 	// sync map with wg device config
 	// check if listen port has changed
 	if wgIface.Device.ListenPort != gCfg.GetInterfaceListenPort() {
@@ -195,10 +179,8 @@ func (m *proxyPayload) processPayload() error {
 				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
 				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
 			}
-			// check if peer is part of other networks if so don't delete
-			gCfg.RemovePeer(m.Network, peerConn.Key.String())
+			gCfg.RemovePeer(peerConn.Key.String())
 		}
-
 	}
 
 	// update no proxy peers map with peer update
@@ -278,7 +260,7 @@ func (m *proxyPayload) processPayload() error {
 			}
 
 			if currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
-				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String(), m.InterfaceName)
+				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
 				currentPeer.StopConn()
 				currentPeer.Mutex.Unlock()
 				delete(peerConnMap, currentPeer.Key.String())
@@ -325,13 +307,8 @@ func (m *proxyPayload) processPayload() error {
 	return nil
 }
 
-// ProxyManagerPayload.deleteNetwork - deletes network and the peers from proxy
-func (m *proxyPayload) deleteNetwork() {
-	cleanUpInterface(m.Network)
-}
-
-// ProxyManagerPayload.addNetwork - adds new peers to proxy
-func (m *proxyPayload) addNetwork() error {
+// ProxyManagerPayload.peerUpdate - porcesses the peer update
+func (m *proxyPayload) peerUpdate() error {
 
 	err := m.processPayload()
 	if err != nil {

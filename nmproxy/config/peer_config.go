@@ -23,7 +23,7 @@ type wgIfaceConf struct {
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
 	noProxyPeerMap   models.PeerConnMap
-	allPeersConf     map[string]nm_models.PeerMap
+	allPeersConf     nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -138,19 +138,16 @@ func (c *Config) ResetPeer(peerKey string) {
 }
 
 // Config.RemovePeer - removes the peer from the network peer config
-func (c *Config) RemovePeer(network, peerPubKey string) {
+func (c *Config) RemovePeer(peerPubKey string) {
 
 	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
 
-		delete(peerConf.NetworkSettings, network)
-		if len(peerConf.NetworkSettings) == 0 {
-			logger.Log(0, "----> Deleting Peer from proxy: ", peerConf.Key.String())
-			peerConf.Mutex.Lock()
-			peerConf.StopConn()
-			peerConf.Mutex.Unlock()
-			delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
-			GetCfg().DeletePeerHash(peerConf.Key.String())
-		}
+		logger.Log(0, "----> Deleting Peer from proxy: ", peerConf.Key.String())
+		peerConf.Mutex.Lock()
+		peerConf.StopConn()
+		peerConf.Mutex.Unlock()
+		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
+		GetCfg().DeletePeerHash(peerConf.Key.String())
 
 	}
 
@@ -352,13 +349,13 @@ func (c *Config) DeleteNoProxyPeer(network, peerIP string) {
 }
 
 // Config.GetAllPeersConf - fetches all peers from config
-func (c *Config) GetAllPeersConf() map[string]nm_models.PeerMap {
+func (c *Config) GetAllPeersConf() nm_models.HostPeerMap {
 	return c.ifaceConfig.allPeersConf
 }
 
 // Config.SetPeers - sets the peers in the config
-func (c *Config) SetPeers(network string, peers nm_models.PeerMap) {
-	c.ifaceConfig.allPeersConf[network] = peers
+func (c *Config) SetPeers(peers nm_models.HostPeerMap) {
+	c.ifaceConfig.allPeersConf = peers
 }
 
 // Config.GetPeerConf - get peer conf
