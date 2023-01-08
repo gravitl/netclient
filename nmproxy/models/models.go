@@ -99,22 +99,25 @@ type RelayedConf struct {
 
 // PeerConf - struct for peer config in the network
 type PeerConf struct {
-	Proxy                  bool         `json:"proxy"`
-	PublicListenPort       int32        `json:"public_listen_port"`
+	Proxy                  bool                   `json:"proxy"`
+	PublicListenPort       int32                  `json:"public_listen_port"`
+	IsExtClient            bool                   `json:"is_ext_client"`
+	Address                net.IP                 `json:"address"`
+	ExtInternalIp          net.IP                 `json:"ext_internal_ip"`
+	IsAttachedExtClient    bool                   `json:"is_attached_ext_client"`
+	IngressGatewayEndPoint *net.UDPAddr           `json:"ingress_gateway_endpoint"`
+	IsRelayed              bool                   `json:"is_relayed"`
+	RelayedTo              *net.UDPAddr           `json:"relayed_to"`
+	NetworkInfo            map[string]NetworkInfo `json:"network_info"`
+}
+
+// NetworkInfo - struct for network info.
+type NetworkInfo struct {
 	IsExtClient            bool         `json:"is_ext_client"`
 	Address                net.IP       `json:"address"`
 	ExtInternalIp          net.IP       `json:"ext_internal_ip"`
 	IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
 	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
-	IsRelayed              bool         `json:"is_relayed"`
-	RelayedTo              *net.UDPAddr `json:"relayed_to"`
-	NetworkInfo            map[string]struct {
-		IsExtClient            bool         `json:"is_ext_client"`
-		Address                net.IP       `json:"address"`
-		ExtInternalIp          net.IP       `json:"ext_internal_ip"`
-		IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
-		IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
-	}
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash
