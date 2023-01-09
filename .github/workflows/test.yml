@@ -23,10 +23,10 @@ jobs:
         run: |
          mkdir -p gui/frontend/dist
          touch gui/frontend/dist/index.html
-         env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags headless .
-         env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags headless .
+         env CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags headless .
+         env CGO_ENABLED=1 GOOS=freebsd GOARCH=amd64 go build -tags headless .
+         env CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags headless .
+         env CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -tags headless .
 
   tests:
     runs-on: ubuntu-latest
