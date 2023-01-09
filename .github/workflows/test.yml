@@ -93,7 +93,7 @@ jobs:
       - name: build gui
         run: |
           sudo apt update
-          sudo apt install build-essential libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt install build-essential libgtk-3-dev libwebkit2gtk-4.0-dev libpcap-dev
           cd gui/frontend
           npm ci
           npm run build
