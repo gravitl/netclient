@@ -134,7 +134,6 @@ func IsPublicIP(ip net.IP) bool {
 type ProxyManagerPayload struct {
 	Action          ProxyAction            `json:"action"`
 	InterfaceName   string                 `json:"interface_name"`
-	Network         string                 `json:"network"`
 	WgAddr          string                 `json:"wg_addr"`
 	Peers           []wgtypes.PeerConfig   `json:"peers"`
 	PeerMap         map[string]PeerConf    `json:"peer_map"`
