@@ -53,7 +53,9 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	m.InterfaceName = ncutils.GetInterfaceName()
 	m.Peers = payload.Peers
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
-	m.peerUpdate()
+	if m.Action == models.ProxyUpdate {
+		m.peerUpdate()
+	}
 	return err
 }
 
