@@ -149,11 +149,6 @@ func (m *proxyPayload) processPayload() error {
 	if len(m.Peers) == 0 {
 		return errors.New("no peers to add")
 	}
-	reset := m.settingsUpdate()
-	if reset {
-		cleanUpInterface()
-		return nil
-	}
 	gCfg := config.GetCfg()
 	wgIface, err = wg.GetWgIface(m.InterfaceName)
 	if err != nil {
@@ -161,6 +156,12 @@ func (m *proxyPayload) processPayload() error {
 		return err
 	}
 	gCfg.SetIface(wgIface)
+	reset := m.settingsUpdate()
+	if reset {
+		cleanUpInterface()
+		return nil
+	}
+
 	// sync map with wg device config
 	// check if listen port has changed
 	if wgIface.Device.ListenPort != gCfg.GetInterfaceListenPort() {
