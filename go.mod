@@ -21,7 +21,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0
-	github.com/wailsapp/wails/v2 v2.2.0
+	github.com/wailsapp/wails/v2 v2.3.1
 	golang.design/x/clipboard v0.6.3
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/windows v0.5.3
