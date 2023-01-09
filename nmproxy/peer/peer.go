@@ -22,7 +22,7 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
@@ -77,11 +77,12 @@ func AddNew(peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		LocalConn:           p.LocalConn,
 		NetworkSettings:     make(map[string]models.Settings),
 	}
-	// connConf.NetworkSettings[network] = models.Settings{
-	// 	IsRelayed: isRelayed,
-	// 	RelayedTo: relayTo,
-	// }
+	connConf.NetworkSettings[network] = models.Settings{
+		IsRelayed: isRelayed,
+		RelayedTo: relayTo,
+	}
 	rPeer := models.RemotePeer{
+		Network:             network,
 		Interface:           config.GetCfg().GetIface().Name,
 		PeerKey:             peer.PublicKey.String(),
 		IsExtClient:         peerConf.IsExtClient,

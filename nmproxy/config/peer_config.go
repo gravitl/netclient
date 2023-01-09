@@ -273,7 +273,7 @@ func (c *Config) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePe
 }
 
 // Config.DeleteRelayedPeers - deletes relayed peer info
-func (c *Config) DeleteRelayedPeers() {
+func (c *Config) DeleteRelayedPeers(network string) {
 	peersMap := c.GetAllProxyPeers()
 	for _, peer := range peersMap {
 		if peer.IsRelayed {
@@ -335,12 +335,16 @@ func (c *Config) SaveNoProxyPeer(peer *models.Conn) {
 }
 
 // Config.DeleteNoProxyPeer - deletes no proxy peers from config
-func (c *Config) DeleteNoProxyPeer(peerIP string) {
+func (c *Config) DeleteNoProxyPeer(network, peerIP string) {
 	if peerConf, found := c.ifaceConfig.noProxyPeerMap[peerIP]; found {
-		peerConf.Mutex.Lock()
-		peerConf.StopConn()
-		peerConf.Mutex.Unlock()
-		delete(c.ifaceConfig.noProxyPeerMap, peerIP)
+		delete(peerConf.NetworkSettings, network)
+		if len(peerConf.NetworkSettings) == 0 {
+			peerConf.Mutex.Lock()
+			peerConf.StopConn()
+			peerConf.Mutex.Unlock()
+			delete(c.ifaceConfig.noProxyPeerMap, peerIP)
+		}
+
 	}
 }
 

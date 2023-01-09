@@ -143,7 +143,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 			} else {
 				// metric packet needs to be relayed
-				if config.GetCfg().IsRelay() {
+				if config.GetCfg().IsRelay(network) {
 					var srcPeerKeyHash, dstPeerKeyHash string
 					if metricMsg.Reply == 1 {
 						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
@@ -164,8 +164,9 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		if err == nil {
 			switch msg.Action {
 			case packet.UpdateListenPort:
+				network := packet.DecodeNetwork(msg.NetworkEncoded)
 				if peer, found := config.GetCfg().GetPeer(msg.Sender.String()); found {
-					if config.GetCfg().IsRelay() && config.GetCfg().GetDevicePubKey() != msg.Reciever {
+					if config.GetCfg().IsRelay(network) && config.GetCfg().GetDevicePubKey() != msg.Reciever {
 						// update relay peer config
 						if peer, found := config.GetCfg().GetRelayedPeer(models.ConvPeerKeyToHash(msg.Sender.String()),
 							models.ConvPeerKeyToHash(msg.Reciever.String())); found {
@@ -285,7 +286,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 	var err error
 	//logger.Log(0,"--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
-	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsRelay() {
+	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsRelay(network) {
 		p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
