@@ -22,6 +22,7 @@ function LoginOption() {
           variant="contained"
           component={Link}
           to={AppRoutes.TOKEN_LOGIN_ROUTE}
+          data-testid="login-by-token-btn"
         >
           By Token
         </Button>
@@ -32,6 +33,7 @@ function LoginOption() {
           variant="contained"
           component={Link}
           to={AppRoutes.USERNAME_LOGIN_ROUTE}
+          data-testid="login-by-cred-btn"
         >
           Username/Password/SSO
         </Button>

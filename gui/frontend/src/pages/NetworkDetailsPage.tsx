@@ -152,6 +152,7 @@ export default function NetworkDetailsPage() {
                   onChange={() =>
                     onConnectionStatusChange(!networkDetails?.node?.connected)
                   }
+                  data-testid="connect-btn"
                 />
               </Grid>
 
@@ -161,6 +162,7 @@ export default function NetworkDetailsPage() {
                   variant="outlined"
                   color="error"
                   onClick={onLeaveNetwork}
+                  data-testid="leave-btn"
                 >
                   Leave Network
                 </LoadingButton>
