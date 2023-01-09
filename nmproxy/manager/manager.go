@@ -291,12 +291,24 @@ func (m *proxyPayload) processPayload() error {
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
 				continue
 			}
+			// check if peer is not connected to proxy
+			devPeer, err := wg.GetPeer(m.InterfaceName, noProxypeer.Key.String())
+			if err == nil {
+				logger.Log(0, "---------> COMPARING ENDPOINT: DEV: %s, Proxy: %s", devPeer.Endpoint.String(), noProxypeer.Config.LocalConnAddr.String())
+				if devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
+					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())
+					noProxypeer.StopConn()
+					noProxypeer.Mutex.Unlock()
+					delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
+					continue
+				}
+			}
 			// update network map
 			// noProxypeer.NetworkSettings[m.Network] = models.Settings{
 			// 	IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
 			// 	RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
 			// }
-			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
+			// noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 
@@ -308,7 +320,7 @@ func (m *proxyPayload) processPayload() error {
 	return nil
 }
 
-// ProxyManagerPayload.peerUpdate - porcesses the peer update
+// ProxyManagerPayload.peerUpdate - processes the peer update
 func (m *proxyPayload) peerUpdate() error {
 
 	err := m.processPayload()

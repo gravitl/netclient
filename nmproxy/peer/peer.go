@@ -119,6 +119,13 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
+		} else {
+			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
+			if found {
+				noProxyPeer.Mutex.RLock()
+				peers[i].Endpoint = noProxyPeer.Config.LocalConnAddr
+				noProxyPeer.Mutex.RUnlock()
+			}
 		}
 	}
 	return peers
