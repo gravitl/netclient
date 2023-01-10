@@ -27,7 +27,7 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
-var ProxyManagerChan = make(chan *models.HostPeerUpdate)
+var ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
 
 type cachedMessage struct {
 	Message  string
