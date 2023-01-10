@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -55,7 +56,7 @@ func List(net string, long bool) {
 	if !found {
 		fmt.Println("\nno such network")
 	} else {
-		PrettyPrint(output)
+		pretty.Print(output)
 	}
 }
 
