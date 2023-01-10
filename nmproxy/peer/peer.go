@@ -141,10 +141,10 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 			return
 		case <-ticker.C:
 			allPeers := config.GetCfg().GetAllPeersConf()
-
-			for network, peerMap := range allPeers {
+			// TODO needs to be fixed
+			for _, peerMap := range allPeers {
 				for peerKey, peer := range peerMap {
-					go collectMetricsForPeer(network, peerKey, peer)
+					go collectMetricsForPeer(peerKey, peer)
 				}
 			}
 
@@ -152,7 +152,7 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	}
 }
 
-func collectMetricsForPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
+func collectMetricsForPeer(peerKey string, peerInfo nm_models.IDandAddr) {
 
 	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
@@ -165,8 +165,8 @@ func collectMetricsForPeer(network, peerKey string, peerInfo nm_models.IDandAddr
 	}
 	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
 	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(network, peerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
+	metrics.UpdateMetric(peerKey, &metric)
+	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
 	if err == nil {
 		conn := config.GetCfg().GetServerConn()
 		if conn != nil {

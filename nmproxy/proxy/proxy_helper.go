@@ -51,17 +51,17 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			// 	p.Close()
 			// 	return
 			// }
-			go func(n int, network, peerKey string) {
+			go func(n int, peerKey string) {
 
-				metric := metrics.GetMetric(p.Config.Network, peerKey)
+				metric := metrics.GetMetric(peerKey)
 				metric.TrafficSent += float64(n) / (1 << 20)
-				metrics.UpdateMetric(network, peerKey, &metric)
+				metrics.UpdateMetric(peerKey, &metric)
 
-			}(n, p.Config.Network, p.Config.RemoteKey.String())
+			}(n, p.Config.RemoteKey.String())
 
 			var srcPeerKeyHash, dstPeerKeyHash string
 			if p.Config.ProxyStatus {
-				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(p.Config.Network, buf, n,
+				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(buf, n,
 					config.GetCfg().GetDevicePubKey().String(), p.Config.RemoteKey.String())
 				if err != nil {
 					logger.Log(0, "failed to process pkt before sending: ", err.Error())
@@ -131,13 +131,13 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			return
 		case <-ticker.C:
 
-			metric := metrics.GetMetric(p.Config.Network, p.Config.RemoteKey.String())
+			metric := metrics.GetMetric(p.Config.RemoteKey.String())
 			// if metric.ConnectionStatus && rTicker != nil {
 			// 	rTicker.Reset(*p.Config.PersistentKeepalive)
 			// }
 			metric.ConnectionStatus = false
-			metrics.UpdateMetric(p.Config.Network, p.Config.RemoteKey.String(), &metric)
-			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.Network, p.Config.LocalKey, p.Config.RemoteKey)
+			metrics.UpdateMetric(p.Config.RemoteKey.String(), &metric)
+			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
 				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: \n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
@@ -160,18 +160,15 @@ func (p *Proxy) peerUpdates(wg *sync.WaitGroup, ticker *time.Ticker) {
 			return
 		case <-ticker.C:
 			// send listen port packet
-			var networkEncoded [packet.NetworkNameSize]byte
-			copy(networkEncoded[:], []byte(p.Config.Network))
 			if config.GetCfg().HostInfo.PubPort == 0 {
 				continue
 			}
 			m := &packet.ProxyUpdateMessage{
-				Type:           packet.MessageProxyTransportType,
-				NetworkEncoded: networkEncoded,
-				Action:         packet.UpdateListenPort,
-				Sender:         p.Config.LocalKey,
-				Reciever:       p.Config.RemoteKey,
-				ListenPort:     uint32(config.GetCfg().HostInfo.PubPort),
+				Type:       packet.MessageProxyTransportType,
+				Action:     packet.UpdateListenPort,
+				Sender:     p.Config.LocalKey,
+				Reciever:   p.Config.RemoteKey,
+				ListenPort: uint32(config.GetCfg().HostInfo.PubPort),
 			}
 			pkt, err := packet.CreateProxyUpdatePacket(m)
 			if err == nil {
