@@ -107,11 +107,6 @@ func CreateMetricPacket(id uint32, sender, reciever wgtypes.Key) ([]byte, error)
 	return packet, nil
 }
 
-// DecodeNetwork - decodes network name from bytes
-func DecodeNetwork(networkBytes [NetworkNameSize]byte) string {
-	return string(bytes.TrimRight(networkBytes[:], "\u0000"))
-}
-
 // EncodePacketMetricMsg - encodes metric message to buffer
 func EncodePacketMetricMsg(msg *MetricMessage) ([]byte, error) {
 	var buff [MessageMetricSize]byte

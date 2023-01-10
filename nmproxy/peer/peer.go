@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -140,37 +139,31 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			allPeers := config.GetCfg().GetAllPeersConf()
-			// TODO needs to be fixed
-			for _, peerMap := range allPeers {
-				for peerKey, peer := range peerMap {
-					go collectMetricsForPeer(peerKey, peer)
+			peers, err := wg.GetPeers(ncutils.GetInterfaceName())
+			if err == nil {
+				for _, peer := range peers {
+					go collectMetricsForPeer(peer)
 				}
 			}
-
 		}
 	}
 }
 
-func collectMetricsForPeer(peerKey string, peerInfo nm_models.IDandAddr) {
+func collectMetricsForPeer(peer wgtypes.Peer) {
 
-	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
-	if err != nil {
-		return
-	}
-	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address)
 	metric := models.Metric{
 		LastRecordedLatency: 999,
-		ConnectionStatus:    connectionStatus,
 	}
-	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
-	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(peerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
+
+	metric.ConnectionStatus = metrics.PeerConnectionStatus(peer.AllowedIPs)
+	metric.TrafficRecieved = float64(peer.ReceiveBytes) / (1 << 20) // collected in MB
+	metric.TrafficSent = float64(peer.TransmitBytes) / (1 << 20)    // collected in MB
+	metrics.UpdateMetric(peer.PublicKey.String(), &metric)
+	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
 	if err == nil {
 		conn := config.GetCfg().GetServerConn()
 		if conn != nil {
-			_, err = conn.WriteToUDP(pkt, devPeer.Endpoint)
+			_, err = conn.WriteToUDP(pkt, peer.Endpoint)
 			if err != nil {
 				logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 			}

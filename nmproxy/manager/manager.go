@@ -52,6 +52,12 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
 	m.Peers = payload.Peers
+	wgIface, err := wg.GetWgIface(m.InterfaceName)
+	if err != nil {
+		logger.Log(1, "Failed get interface config: ", err.Error())
+		return err
+	}
+	config.GetCfg().SetIface(wgIface)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
 	if m.Action == models.ProxyUpdate {
 		m.peerUpdate()
@@ -141,7 +147,6 @@ func cleanUpInterface() {
 
 // ProxyManagerPayload.processPayload - updates the peers and config with the recieved payload
 func (m *proxyPayload) processPayload() error {
-	var err error
 	var wgIface *wg.WGIface
 	if m.InterfaceName == "" {
 		return errors.New("interface cannot be empty")
@@ -150,12 +155,7 @@ func (m *proxyPayload) processPayload() error {
 		return errors.New("no peers to add")
 	}
 	gCfg := config.GetCfg()
-	wgIface, err = wg.GetWgIface(m.InterfaceName)
-	if err != nil {
-		logger.Log(1, "Failed get interface config: ", err.Error())
-		return err
-	}
-	gCfg.SetIface(wgIface)
+
 	reset := m.settingsUpdate()
 	if reset {
 		cleanUpInterface()

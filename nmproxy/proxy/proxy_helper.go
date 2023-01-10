@@ -18,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
+	wireguard "github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -135,7 +136,11 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			// if metric.ConnectionStatus && rTicker != nil {
 			// 	rTicker.Reset(*p.Config.PersistentKeepalive)
 			// }
-			metric.ConnectionStatus = false
+			peer, err := wireguard.GetPeer(config.GetCfg().GetIface().Name, p.Config.RemoteKey.String())
+			if err != nil {
+				continue
+			}
+			metric.ConnectionStatus = metrics.PeerConnectionStatus(peer.AllowedIPs)
 			metrics.UpdateMetric(p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
