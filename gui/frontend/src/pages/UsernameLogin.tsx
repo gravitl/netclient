@@ -3,7 +3,6 @@ import { Autocomplete, TextField, Typography } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AppRoutes } from "../routes";
 import { LoadingButton } from "@mui/lab";
 import { getNetworkDetailsPageUrl } from "../utils/networks";
 import {
@@ -40,8 +39,9 @@ export default function UsernameLogin() {
   const checkIsFormValid = useCallback(
     (type: "basic-auth" | "sso") => {
       setIsServerNameFormValid(true);
-      setIsUsernameFormValid(true);
       setIsNetworkNameFormValid(true);
+      setIsUsernameFormValid(true);
+      setIsPasswordFormValid(true);
 
       if (serverName.length < 1) {
         setIsServerNameFormValid(false);
@@ -169,6 +169,7 @@ export default function UsernameLogin() {
               helperText={
                 isServerNameFormValid ? "" : "Server name cannot be empty"
               }
+              inputProps={{ 'data-testid': 'server-inp' }}
             />
           )}
           style={{ width: "40vw" }}
@@ -186,6 +187,7 @@ export default function UsernameLogin() {
           helperText={
             isNetworkNameFormValid ? "" : "Network name cannot be empty"
           }
+          inputProps={{ 'data-testid': 'network-inp' }}
         />
       </Grid>
 
@@ -198,6 +200,7 @@ export default function UsernameLogin() {
           style={{ width: "40vw" }}
           error={!isUsernameFormValid}
           helperText={isUsernameFormValid ? "" : "Username cannot be empty"}
+          inputProps={{ 'data-testid': 'username-inp' }}
         />
       </Grid>
 
@@ -211,6 +214,7 @@ export default function UsernameLogin() {
           style={{ width: "40vw" }}
           error={!isPasswordFormValid}
           helperText={isPasswordFormValid ? "" : "Password cannot be empty"}
+          inputProps={{ 'data-testid': 'password-inp' }}
         />
       </Grid>
 
@@ -225,6 +229,7 @@ export default function UsernameLogin() {
           loading={isConnecting}
           variant="contained"
           onClick={onLoginClick}
+          data-testid="login-btn"
         >
           Login
         </LoadingButton>
@@ -235,6 +240,7 @@ export default function UsernameLogin() {
           size="small"
           variant="outlined"
           onClick={onSsoLoginClick}
+          data-testid="sso-login-btn"
         >
           <AdminPanelSettingsIcon /> SSO Login
         </LoadingButton>
