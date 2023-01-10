@@ -116,7 +116,7 @@ func (m *proxyPayload) setRelayedPeers() {
 			}
 
 		}
-		relayedNodeConf.RelayedPeerEndpoint.Port = models.NmProxyPort
+		//relayedNodeConf.RelayedPeerEndpoint.Port = models.NmProxyPort
 		relayedNode := models.RemotePeer{
 			PeerKey:  relayedNodePubKey,
 			Endpoint: relayedNodeConf.RelayedPeerEndpoint,

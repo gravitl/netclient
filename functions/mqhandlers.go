@@ -184,9 +184,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
 
-	// TODO -  update proxy with new host based peer updates
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		peerUpdate.ProxyUpdate.Peers = peerUpdate.Peers
 		ProxyManagerChan <- &peerUpdate
 	} else {
 		peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
