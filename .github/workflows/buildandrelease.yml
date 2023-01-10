@@ -56,7 +56,7 @@ jobs:
         with:
           go-version: 1.19
       - name: Setup npm
-        uses: actions/setup-nodev3
+        uses: actions/setup-node@v3
       - name: build gui
         run: |
           sudo apt-get update
