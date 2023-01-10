@@ -43,6 +43,20 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
+// netlink.SetMTU - set MTU for netmaker interface
+func (nc *NCIface) SetMTU() error {
+	ifconfig, err := exec.LookPath("ifconfig")
+	if err != nil {
+		logger.Log(0, "failed to locate ifconfig", err.Error())
+		return err
+	}
+	//set MTU
+	if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" mtu "+strconv.Itoa(nc.MTU), true); err != nil {
+		return fmt.Errorf("error setting mtu %w", err)
+	}
+	return nil
+}
+
 // Configure does nothing on freebsd, all configuration is done by NCIface.Create()
 func Configure() error {
 	return nil
@@ -52,16 +66,15 @@ func Configure() error {
 func SetPeers() error {
 	nc := GetInterface()
 	nc.Config.Peers = []wgtypes.PeerConfig{}
-	for _, node := range config.GetNodes() {
-		for _, peer := range node.Peers {
-			nc.Config.Peers = append(nc.Config.Peers, peer)
-			cmd := fmt.Sprintf("wg set %s peer %s endpoint %s ", nc.Name, peer.PublicKey, peer.Endpoint)
-			for _, ip := range peer.AllowedIPs {
-				cmd = cmd + "allowed-ips " + ip.String() + " "
-			}
-			if _, err := ncutils.RunCmd(cmd, true); err != nil {
-				return fmt.Errorf("error adding peers %w", err)
-			}
+	peers := config.GetHostPeerList()
+	for _, peer := range peers {
+		nc.Config.Peers = append(nc.Config.Peers, peer)
+		cmd := fmt.Sprintf("wg set %s peer %s endpoint %s ", nc.Name, peer.PublicKey, peer.Endpoint)
+		for _, ip := range peer.AllowedIPs {
+			cmd = cmd + "allowed-ips " + ip.String() + " "
+		}
+		if _, err := ncutils.RunCmd(cmd, true); err != nil {
+			return fmt.Errorf("error adding peers %w", err)
 		}
 	}
 	return nil
