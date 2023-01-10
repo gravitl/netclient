@@ -49,7 +49,7 @@ func UpdateLocalListenPort(node *config.Node) error {
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "network:", node.Network, "error encountered checking local listen port: ", ifacename, err.Error())
-	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 || config.Netclient().ProxyEnabled && config.Netclient().ProxyListenPort != proxylistenPort {
+	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 {
 		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(config.Netclient().LocalListenPort), " to ", strconv.Itoa(localPort))
 		config.Netclient().LocalListenPort = localPort
 		if err := config.WriteNetclientConfig(); err != nil {
