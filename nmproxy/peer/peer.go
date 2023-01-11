@@ -144,14 +144,14 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 
 			peersServerMap := config.GetCfg().GetAllPeersIDsAndAddrs()
 			for server, peerMap := range peersServerMap {
-				go collectMetricsForPeer(server, peerMap)
+				go collectMetricsForServerPeers(server, peerMap)
 			}
 
 		}
 	}
 }
 
-func collectMetricsForPeer(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
+func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
 
 	metric := models.Metric{
 		LastRecordedLatency: 999,
