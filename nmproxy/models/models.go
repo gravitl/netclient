@@ -22,11 +22,8 @@ const (
 	// PersistentKeepaliveInterval - default keepalive for wg peer
 	DefaultPersistentKeepaliveInterval = time.Duration(time.Second * 20)
 
-	// AddNetwork - constant for ADD_NETWORK_TO_PROXY ProxyAction
-	AddNetwork ProxyAction = "ADD_NETWORK_TO_PROXY"
-
-	// DeleteNetwork - constant for DELETE_NETWORK_FROM_PROXY ProxyAction
-	DeleteNetwork ProxyAction = "DELETE_NETWORK_FROM_PROXY"
+	// ProxyUpdate - constant for proxy update action
+	ProxyUpdate ProxyAction = "PROXY_UPDATE"
 
 	// NoProxy - constant for no ProxyAction
 	NoProxy ProxyAction = "NO_PROXY"
@@ -53,7 +50,6 @@ type Proxy struct {
 
 // Conn is a peer Connection configuration
 type Conn struct {
-
 	// Key is a public key of a remote peer
 	Key                 wgtypes.Key
 	IsExtClient         bool
@@ -65,6 +61,7 @@ type Conn struct {
 	ResetConn           func()
 	LocalConn           net.Conn
 	Mutex               *sync.RWMutex
+	NetworkSettings     map[string]Settings
 }
 
 // RemotePeer - struct remote peer data
@@ -99,15 +96,25 @@ type RelayedConf struct {
 
 // PeerConf - struct for peer config in the network
 type PeerConf struct {
+	Proxy                  bool                   `json:"proxy"`
+	PublicListenPort       int32                  `json:"public_listen_port"`
+	IsExtClient            bool                   `json:"is_ext_client"`
+	Address                net.IP                 `json:"address"`
+	ExtInternalIp          net.IP                 `json:"ext_internal_ip"`
+	IsAttachedExtClient    bool                   `json:"is_attached_ext_client"`
+	IngressGatewayEndPoint *net.UDPAddr           `json:"ingress_gateway_endpoint"`
+	IsRelayed              bool                   `json:"is_relayed"`
+	RelayedTo              *net.UDPAddr           `json:"relayed_to"`
+	NetworkInfo            map[string]NetworkInfo `json:"network_info"`
+}
+
+// NetworkInfo - struct for network info.
+type NetworkInfo struct {
 	IsExtClient            bool         `json:"is_ext_client"`
 	Address                net.IP       `json:"address"`
 	ExtInternalIp          net.IP       `json:"ext_internal_ip"`
 	IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
 	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
-	IsRelayed              bool         `json:"is_relayed"`
-	RelayedTo              *net.UDPAddr `json:"relayed_to"`
-	Proxy                  bool         `json:"proxy"`
-	PublicListenPort       int32        `json:"public_listen_port"`
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash
@@ -127,7 +134,6 @@ func IsPublicIP(ip net.IP) bool {
 type ProxyManagerPayload struct {
 	Action          ProxyAction            `json:"action"`
 	InterfaceName   string                 `json:"interface_name"`
-	Network         string                 `json:"network"`
 	WgAddr          string                 `json:"wg_addr"`
 	Peers           []wgtypes.PeerConfig   `json:"peers"`
 	PeerMap         map[string]PeerConf    `json:"peer_map"`
@@ -144,4 +150,12 @@ type Metric struct {
 	ConnectionStatus    bool    `json:"connection_status"`
 	TrafficSent         float64 `json:"traffic_sent"`     // stored in MB
 	TrafficRecieved     float64 `json:"traffic_recieved"` // stored in MB
+}
+
+// Settings - struct for network level settings
+type Settings struct {
+	IsRelay          bool
+	IsIngressGateway bool
+	IsRelayed        bool
+	RelayedTo        *net.UDPAddr
 }

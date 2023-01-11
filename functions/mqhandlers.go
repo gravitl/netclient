@@ -124,28 +124,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = UpdateLocalListenPort(&newNode)
 }
 
-// ProxyUpdate - mq handler for proxy updates proxy/<Network>/<NodeID>
-func ProxyUpdate(client mqtt.Client, msg mqtt.Message) {
-	// *** TODO - proxy updates need to be fixed with new peer updates ***
-	var proxyUpdate proxy_models.ProxyManagerPayload
-	//var network = parseNetworkFromTopic(msg.Topic())
-	//node := config.GetNode(network)
-	logger.Log(0, "---------> Recieved a proxy update")
-	data, dataErr := decryptMsg("", msg.Payload())
-	if dataErr != nil {
-		return
-	}
-	err := json.Unmarshal([]byte(data), &proxyUpdate)
-	if err != nil {
-		logger.Log(0, "error unmarshalling proxy update data"+err.Error())
-		return
-	}
-
-	ProxyManagerChan <- &models.PeerUpdate{
-		ProxyUpdate: proxyUpdate,
-	}
-}
-
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
@@ -179,19 +157,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
+	config.Netclient().ProxyEnabled = peerUpdate.Host.ProxyEnabled
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
 
-	// TODO -  update proxy with new host based peer updates
-	// if config.Netclient().ProxyEnabled {
-	// 	time.Sleep(time.Second * 2) // sleep required to avoid race condition
-	// 	ProxyManagerChan <- &peerUpdate
-	// } else {
-	// 	peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
-	// 	peerUpdate.ProxyUpdate.Network = network
-	// 	ProxyManagerChan <- &peerUpdate
-	// }
+	if config.Netclient().ProxyEnabled {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate
+	} else {
+		peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
+		ProxyManagerChan <- &peerUpdate
+	}
 
 	for network, networkInfo := range peerUpdate.Network {
 		//check if internet gateway has changed
