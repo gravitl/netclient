@@ -108,7 +108,6 @@ func deleteLocalNetwork(node *config.Node) error {
 		delete(server.Nodes, node.Network)
 	}
 	if len(server.Nodes) == 0 {
-		fmt.Println("-------> HEREEEE")
 		logger.Log(3, "removing server", server.Name)
 		config.DeleteServer(node.Server)
 		config.DeleteServerHostPeerCfg(node.Server)
