@@ -90,12 +90,12 @@ func (p *Proxy) Reset() {
 	}
 	p.Start()
 	// update peer configs
-	if peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String()); found {
+	if peer, found := config.GetCfg().GetPeer(p.Config.RemoteKey.String()); found {
 		peer.Config = p.Config
 		peer.LocalConn = p.LocalConn
 		peer.ResetConn = p.Reset
 		peer.StopConn = p.Close
-		config.GetCfg().SavePeer(p.Config.Network, &peer)
+		config.GetCfg().SavePeer(&peer)
 	}
 	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.RemoteKey.String())); found {
 		peer.LocalConn = p.LocalConn
@@ -110,7 +110,7 @@ func (p *Proxy) Reset() {
 
 // Proxy.pullLatestConfig - pulls latest peer config
 func (p *Proxy) pullLatestConfig() error {
-	peer, found := config.GetCfg().GetPeer(p.Config.Network, p.Config.RemoteKey.String())
+	peer, found := config.GetCfg().GetPeer(p.Config.RemoteKey.String())
 	if found {
 		p.Config.PeerEndpoint = peer.Config.PeerEndpoint
 	} else {

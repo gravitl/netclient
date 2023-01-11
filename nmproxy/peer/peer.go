@@ -22,7 +22,7 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+func AddNew(peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
@@ -35,7 +35,6 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsExtClient:         peerConf.IsExtClient,
 		PeerConf:            peer,
 		PersistentKeepalive: peer.PersistentKeepaliveInterval,
-		Network:             network,
 		ListenPort:          int(peerConf.PublicListenPort),
 		ProxyStatus:         peerConf.Proxy,
 	}
@@ -71,16 +70,18 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	connConf := models.Conn{
 		Mutex:               &sync.RWMutex{},
 		Key:                 peer.PublicKey,
-		IsRelayed:           isRelayed,
-		RelayedEndpoint:     relayTo,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		Config:              p.Config,
 		StopConn:            p.Close,
 		ResetConn:           p.Reset,
 		LocalConn:           p.LocalConn,
+		NetworkSettings:     make(map[string]models.Settings),
 	}
+	// connConf.NetworkSettings[network] = models.Settings{
+	// 	IsRelayed: isRelayed,
+	// 	RelayedTo: relayTo,
+	// }
 	rPeer := models.RemotePeer{
-		Network:             network,
 		Interface:           config.GetCfg().GetIface().Name,
 		PeerKey:             peer.PublicKey.String(),
 		IsExtClient:         peerConf.IsExtClient,
@@ -90,7 +91,7 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	}
 	if peerConf.Proxy {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
-		config.GetCfg().SavePeer(network, &connConf)
+		config.GetCfg().SavePeer(&connConf)
 	} else {
 		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
 		config.GetCfg().SaveNoProxyPeer(&connConf)
@@ -110,17 +111,21 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 }
 
 // SetPeersEndpointToProxy - sets peer endpoints to local addresses connected to proxy
-func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
-	logger.Log(1, "Setting peers endpoints to proxy: ", network)
-	if !config.GetCfg().ProxyStatus {
-		return peers
-	}
+func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
+	logger.Log(1, "Setting peers endpoints to proxy...")
 	for i := range peers {
-		proxyPeer, found := config.GetCfg().GetPeer(network, peers[i].PublicKey.String())
+		proxyPeer, found := config.GetCfg().GetPeer(peers[i].PublicKey.String())
 		if found {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
+		} else {
+			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
+			if found {
+				noProxyPeer.Mutex.RLock()
+				peers[i].Endpoint = noProxyPeer.Config.LocalConnAddr
+				noProxyPeer.Mutex.RUnlock()
+			}
 		}
 	}
 	return peers

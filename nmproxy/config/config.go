@@ -15,13 +15,6 @@ var (
 	config = &Config{}
 )
 
-// Settings - struct for network level settings
-type Settings struct {
-	isRelay          bool
-	isIngressGateway bool
-	isRelayed        bool
-}
-
 // Config - struct for proxy config
 type Config struct {
 	HostInfo                models.HostInfo
@@ -31,7 +24,7 @@ type Config struct {
 	isBehindNAT             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
-	settings                map[string]Settings
+	settings                models.Settings
 	RouterCfg               Router
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
@@ -45,13 +38,13 @@ func InitializeCfg() {
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:            nil,
-			networkPeerMap:   make(map[string]models.PeerConnMap),
+			proxyPeerMap:     make(models.PeerConnMap),
 			peerHashMap:      make(map[string]*models.RemotePeer),
 			extSrcIpMap:      make(map[string]*models.RemotePeer),
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 			noProxyPeerMap:   make(models.PeerConnMap),
-			allPeersConf:     make(map[string]nm_models.PeerMap),
+			allPeersConf:     make(nm_models.HostPeerMap),
 		},
 		RouterCfg: Router{
 			mutex:           &sync.RWMutex{},
@@ -59,7 +52,6 @@ func InitializeCfg() {
 			InboundRouting:  map[string]Routing{},
 			OutboundRouting: map[string]Routing{},
 		},
-		settings: make(map[string]Settings),
 	}
 }
 
@@ -106,19 +98,14 @@ func GetCfg() *Config {
 	return config
 }
 
-// Config.GetSettings - fetches network settings
-func (c *Config) GetSettings(network string) Settings {
-	return c.settings[network]
+// Config.GetSettings - fetches host settings
+func (c *Config) GetSettings() models.Settings {
+	return c.settings
 }
 
 // Config.UpdateSettings - updates network settings
-func (c *Config) UpdateSettings(network string, settings Settings) {
-	c.settings[network] = settings
-}
-
-// Config.DeleteSettings - deletes network settings
-func (c *Config) DeleteSettings(network string) {
-	delete(c.settings, network)
+func (c *Config) UpdateSettings(settings models.Settings) {
+	c.settings = settings
 }
 
 // Config.SetIsHostNetwork - sets host network value
@@ -131,42 +118,42 @@ func (c *Config) IsHostNetwork() bool {
 	return c.isHostNetwork
 }
 
-// Config.SetRelayStatus - sets node relay status for the network
-func (c *Config) SetRelayStatus(network string, value bool) {
-	settings := c.GetSettings(network)
-	settings.isRelay = value
-	c.UpdateSettings(network, settings)
+// Config.SetRelayStatus - sets host relay status
+func (c *Config) SetRelayStatus(value bool) {
+	settings := c.GetSettings()
+	settings.IsRelay = value
+	c.UpdateSettings(settings)
 }
 
-// Config.IsRelay - fetches relay status value of the node by network
-func (c *Config) IsRelay(network string) bool {
+// Config.IsRelay - fetches relay status value of the host
+func (c *Config) IsRelay() bool {
 
-	return c.GetSettings(network).isRelay
+	return c.GetSettings().IsRelay
 }
 
 // Config.SetIngressGwStatus - sets ingressGW status
-func (c *Config) SetIngressGwStatus(network string, value bool) {
-	settings := c.GetSettings(network)
-	settings.isIngressGateway = value
-	c.UpdateSettings(network, settings)
+func (c *Config) SetIngressGwStatus(value bool) {
+	settings := c.GetSettings()
+	settings.IsIngressGateway = value
+	c.UpdateSettings(settings)
 }
 
 // Config.IsIngressGw - checks if ingressGW by network
-func (c *Config) IsIngressGw(network string) bool {
+func (c *Config) IsIngressGw() bool {
 
-	return c.GetSettings(network).isIngressGateway
+	return c.GetSettings().IsIngressGateway
 }
 
-// Config.SetRelayedStatus - sets relayed status by network
-func (c *Config) SetRelayedStatus(network string, value bool) {
-	settings := c.GetSettings(network)
-	settings.isRelayed = value
-	c.UpdateSettings(network, settings)
+// Config.SetRelayedStatus - sets relayed status
+func (c *Config) SetRelayedStatus(value bool) {
+	settings := c.GetSettings()
+	settings.IsRelayed = value
+	c.UpdateSettings(settings)
 }
 
 // Config.GetRelayedStatus - gets relayed status
-func (c *Config) GetRelayedStatus(network string) bool {
-	return c.GetSettings(network).isRelayed
+func (c *Config) GetRelayedStatus() bool {
+	return c.GetSettings().IsRelayed
 }
 
 // Config.SetIsServer - sets value for IsServer

@@ -44,7 +44,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 
 	}
 	if config.Netclient().ProxyEnabled {
-		peers = peer.SetPeersEndpointToProxy("", peers)
+		peers = peer.SetPeersEndpointToProxy(peers)
 	}
 	netmaker = NCIface{
 		Name:      ncutils.GetInterfaceName(),
