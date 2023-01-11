@@ -28,7 +28,7 @@ const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
-var ProxyManagerChan = make(chan *models.HostPeerUpdate)
+var ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
 
 type cachedMessage struct {
 	Message  string
@@ -264,15 +264,6 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 			logger.Log(0, "network:", node.Network, "connection timeout")
 		} else {
 			logger.Log(0, "network:", node.Network, token.Error().Error())
-		}
-		return
-	}
-	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
-	if token := client.Subscribe(fmt.Sprintf("proxy/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(ProxyUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		if token.Error() == nil {
-			logger.Log(0, "###### network:", node.Network, "connection timeout")
-		} else {
-			logger.Log(0, "###### network:", node.Network, token.Error().Error())
 		}
 		return
 	}

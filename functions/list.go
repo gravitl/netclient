@@ -10,42 +10,53 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // List - list network details for specified networks
 // long flag passed passed to cmd line will list additional details about network including peers
 func List(net string, long bool) {
+	output := make([]map[string]any, 0)
 	found := false
 	nodes := config.GetNodes()
 	for network := range nodes {
 		if network == net || net == "" {
 			found = true
 			node := nodes[network]
-			connected := "Not Connected"
-			if node.Connected {
-				connected = "Connected"
+			entry := map[string]any{
+				"network":      node.Network,
+				"connected":    node.Connected,
+				"id":           node.ID,
+				"ipv4_address": node.Address.String(),
+				"ipv6_address": node.Address6.String(),
 			}
-			fmt.Println()
-			fmt.Println(node.Network, connected, node.ID, node.Address.String(), node.Address6.String())
 			if long {
 				peers, err := getNodePeers(node)
 				if err != nil {
 					logger.Log(1, "failed to get peers for node: ", node.ID.String(), " Err: ", err.Error())
 					continue
 				}
-				fmt.Println("  Peers:")
+				entry["peers"] = make([]map[string]any, 0)
 				for _, peer := range peers {
-					fmt.Println("    ", peer.PublicKey, peer.Endpoint, "\n    AllowedIPs:")
-					for _, cidr := range peer.AllowedIPs {
-						fmt.Println("    ", cidr.String())
+					p := map[string]any{
+						"public_key":  peer.PublicKey,
+						"endpoint":    peer.Endpoint,
+						"allowed_ips": make([]string, 0),
 					}
+					for _, cidr := range peer.AllowedIPs {
+						p["allowed_ips"] = append(p["allowed_ips"].([]string), cidr.String())
+					}
+					entry["peers"] = append(entry["peers"].([]map[string]any), p)
 				}
 			}
+			output = append(output, entry)
 		}
 	}
 	if !found {
 		fmt.Println("\nno such network")
+	} else {
+		pretty.Print(output)
 	}
 }
 

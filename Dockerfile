@@ -8,13 +8,13 @@ COPY . .
 
 ENV GO111MODULE=auto
 RUN go mod tidy
-RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-X 'main.version=${version}'" -tags headless -o netclient-app .
+RUN GOOS=linux CGO_ENABLED=1 /usr/local/go/bin/go build -ldflags="-X 'main.version=${version}'" -tags headless -o netclient-app .
 
 FROM alpine:3.16.2
 
 WORKDIR /root/
 
-RUN apk add --no-cache --update bash libmnl gcompat iptables openresolv iproute2 
+RUN apk add --no-cache --update bash libmnl gcompat iptables openresolv iproute2
 COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
