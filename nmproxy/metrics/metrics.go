@@ -44,6 +44,15 @@ func ResetMetricsForPeer(peerKey string) {
 	delete(metricsHostMap, peerKey)
 }
 
+// ResetMetricForNode - resets node level data
+func ResetMetricForNode(peerKey, peerID string) {
+	metric := GetMetric(peerKey)
+	metricsMapLock.Lock()
+	delete(metric.NodeConnectionStatus, peerID)
+	metricsMapLock.Unlock()
+	UpdateMetric(peerKey, &metric)
+}
+
 func DumpMetrics() {
 	for {
 		time.Sleep(time.Minute)

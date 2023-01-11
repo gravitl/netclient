@@ -210,7 +210,7 @@ func publishMetrics(node *config.Node) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), nodeGET.Node.Network, nodeGET.Node.Proxy, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), nodeGET.Node.Network, config.Netclient().ProxyEnabled, nodeGET.PeerIDs)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 	}
