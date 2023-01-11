@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/guumaster/hostctl v1.1.3
 	github.com/kr/pretty v0.3.1
-	golang.org/x/term v0.2.0
+	golang.org/x/term v0.4.0
 )
 
 require (
