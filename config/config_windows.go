@@ -7,7 +7,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-// go:embed windows_files/amd64/wireguard.dll
+//go:embed windows_files/amd64/wireguard.dll
 var wireguardDLL embed.FS
 
 const (

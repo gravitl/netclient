@@ -8,7 +8,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/driver"
-	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
 
 // NCIface.Create - makes a new Wireguard interface and sets given addresses
@@ -27,33 +26,12 @@ func (nc *NCIface) Create() error {
 	}
 	logger.Log(3, "created Windows tunnel")
 	nc.Iface = adapter
-	luid := adapter.LUID()
-	err = adapter.SetAdapterState(driver.AdapterStateUp)
-	if err != nil {
-		return err
-	}
-	logger.Log(3, "set adapter state")
-
-	return nc.applyAddrs(&luid)
+	return adapter.SetAdapterState(driver.AdapterStateUp)
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
 func (nc *NCIface) ApplyAddrs() error {
-	return nil
-}
-
-func (nc *NCIface) Close() {
-	err := nc.Iface.Close()
-	if err != nil {
-		logger.Log(0, "error closing netclient interface -", err.Error())
-	}
-}
-
-func (nc *NCIface) applyAddrs(luid *winipcfg.LUID) error {
-
-	if len(nc.Addresses) == 0 {
-		return fmt.Errorf("no addresses provided")
-	}
+	adapter := nc.Iface
 
 	prefixAddrs := []netip.Prefix{}
 	for i := range nc.Addresses {
@@ -67,10 +45,19 @@ func (nc *NCIface) applyAddrs(luid *winipcfg.LUID) error {
 		}
 	}
 
-	err := luid.SetIPAddresses(prefixAddrs)
-	if err != nil {
-		return err
-	}
+	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
+}
 
+// NCIface.Close - closes the managed WireGuard interface
+func (nc *NCIface) Close() {
+	err := nc.Iface.Close()
+	if err != nil {
+		logger.Log(0, "error closing netclient interface -", err.Error())
+	}
+}
+
+// NCIface.SetMTU - sets the MTU of the windows WireGuard Iface adapter
+func (nc *NCIface) SetMTU() error {
+	// TODO figure out how to change MTU of adapter
 	return nil
 }
