@@ -116,7 +116,6 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metric := metrics.GetMetric(metricMsg.Reciever.String())
 				metric.LastRecordedLatency = uint64(latency)
-				metric.ConnectionStatus = true
 				metric.TrafficRecieved += float64(n) / (1 << 20)
 				metrics.UpdateMetric(metricMsg.Reciever.String(), &metric)
 
@@ -136,7 +135,6 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				}
 
 				metric := metrics.GetMetric(metricMsg.Sender.String())
-				metric.ConnectionStatus = true
 				metric.TrafficRecieved += float64(n) / (1 << 20)
 				metrics.UpdateMetric(metricMsg.Sender.String(), &metric)
 
@@ -304,7 +302,6 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 			metric := metrics.GetMetric(peerKey)
 			metric.TrafficRecieved += float64(n) / (1 << 20)
-			metric.ConnectionStatus = true
 			metrics.UpdateMetric(peerKey, &metric)
 
 		}(n, peerInfo.PeerKey)

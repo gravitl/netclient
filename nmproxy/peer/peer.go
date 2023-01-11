@@ -154,8 +154,14 @@ func collectMetricsForPeer(peer wgtypes.Peer) {
 	metric := models.Metric{
 		LastRecordedLatency: 999,
 	}
+	peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(peer.PublicKey.String())
+	if !found {
+		return
+	}
+	for peerID, peerInfo := range peerIDsAndAddrs {
+		metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+	}
 
-	metric.ConnectionStatus = metrics.PeerConnectionStatus(peer.AllowedIPs)
 	metric.TrafficRecieved = float64(peer.ReceiveBytes) / (1 << 20) // collected in MB
 	metric.TrafficSent = float64(peer.TransmitBytes) / (1 << 20)    // collected in MB
 	metrics.UpdateMetric(peer.PublicKey.String(), &metric)

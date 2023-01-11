@@ -8,10 +8,8 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/packet"
-	"github.com/gravitl/netclient/nmproxy/peer"
-
 	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -72,7 +70,7 @@ func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
 		config.GetCfg().StopMetricsCollectionThread()
 	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
-		go peer.StartMetricsCollectionForHostPeers(ctx)
+		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
 	}
 }

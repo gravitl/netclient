@@ -1,10 +1,17 @@
 package metrics
 
 import (
+	"encoding/json"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 )
+
+func init() {
+	go DumpMetrics()
+}
 
 // lock for metrics map
 var metricsMapLock = &sync.RWMutex{}
@@ -35,4 +42,12 @@ func ResetMetricsForPeer(peerKey string) {
 	metricsMapLock.Lock()
 	defer metricsMapLock.Unlock()
 	delete(metricsHostMap, peerKey)
+}
+
+func DumpMetrics() {
+	for {
+		time.Sleep(time.Minute)
+		out, _ := json.MarshalIndent(metricsHostMap, "", " ")
+		os.WriteFile("/tmp/metrics.json", out, 0755)
+	}
 }

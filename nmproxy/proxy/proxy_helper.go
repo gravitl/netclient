@@ -140,7 +140,13 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 			if err != nil {
 				continue
 			}
-			metric.ConnectionStatus = metrics.PeerConnectionStatus(peer.AllowedIPs)
+			peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(peer.PublicKey.String())
+			if !found {
+				return
+			}
+			for peerID, peerInfo := range peerIDsAndAddrs {
+				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+			}
 			metrics.UpdateMetric(p.Config.RemoteKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {

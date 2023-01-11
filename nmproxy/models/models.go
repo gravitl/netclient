@@ -144,10 +144,11 @@ type ProxyManagerPayload struct {
 
 // Metric - struct for metric data
 type Metric struct {
-	LastRecordedLatency uint64  `json:"last_recorded_latency"`
-	ConnectionStatus    bool    `json:"connection_status"`
-	TrafficSent         float64 `json:"traffic_sent"`     // stored in MB
-	TrafficRecieved     float64 `json:"traffic_recieved"` // stored in MB
+	NodeConnectionStatus map[string]bool `json:"node_connection_status"`
+	LastRecordedLatency  uint64          `json:"last_recorded_latency"`
+	//ConnectionStatus     bool            `json:"connection_status"`
+	TrafficSent     float64 `json:"traffic_sent"`     // stored in MB
+	TrafficRecieved float64 `json:"traffic_recieved"` // stored in MB
 }
 
 // Settings - struct for network level settings
