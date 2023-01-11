@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -17,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -139,41 +139,46 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			peers, err := wg.GetPeers(ncutils.GetInterfaceName())
-			if err == nil {
-				for _, peer := range peers {
-					go collectMetricsForPeer(peer)
-				}
+
+			peersServerMap := config.GetCfg().GetAllPeersIDsAndAddrs()
+			for server, peerMap := range peersServerMap {
+				go collectMetricsForPeer(server, peerMap)
 			}
+
 		}
 	}
 }
 
-func collectMetricsForPeer(peer wgtypes.Peer) {
+func collectMetricsForPeer(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
 
 	metric := models.Metric{
 		LastRecordedLatency: 999,
 	}
-	peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(peer.PublicKey.String())
-	if !found {
+	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
+	if err != nil {
 		return
 	}
-	for peerID, peerInfo := range peerIDsAndAddrs {
-		metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
-	}
+	for _, peer := range ifacePeers {
+		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
+			for peerID, peerInfo := range peerIDMap {
+				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+			}
+			metric.TrafficRecieved = peer.ReceiveBytes
+			metric.TrafficSent = peer.TransmitBytes
+			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
+			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
+			if err == nil {
+				conn := config.GetCfg().GetServerConn()
+				if conn != nil {
+					_, err = conn.WriteToUDP(pkt, peer.Endpoint)
+					if err != nil {
+						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
+					}
+				}
 
-	metric.TrafficRecieved = float64(peer.ReceiveBytes) / (1 << 20) // collected in MB
-	metric.TrafficSent = float64(peer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(peer.PublicKey.String(), &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
-	if err == nil {
-		conn := config.GetCfg().GetServerConn()
-		if conn != nil {
-			_, err = conn.WriteToUDP(pkt, peer.Endpoint)
-			if err != nil {
-				logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 			}
 		}
 
 	}
+
 }

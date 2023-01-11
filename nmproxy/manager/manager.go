@@ -64,10 +64,13 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 		return nil
 	}
 	config.GetCfg().SetIface(wgIface)
-	config.GetCfg().SetPeersIDsAndAddrs(payload.PeerIDs)
+	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
-	if m.Action == models.ProxyUpdate {
+	switch m.Action {
+	case models.ProxyUpdate:
 		m.peerUpdate()
+	case models.ProxyDeleteAllPeers:
+		cleanUpInterface()
 	}
 	return err
 }
@@ -274,6 +277,7 @@ func (m *proxyPayload) processPayload() error {
 			// 	IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
 			// 	RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
 			// }
+			currentPeer.ServerMap[m.Server] = struct{}{}
 			peerConnMap[currentPeer.Key.String()] = currentPeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			currentPeer.Mutex.Unlock()

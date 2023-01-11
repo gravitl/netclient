@@ -25,6 +25,10 @@ const (
 	// ProxyUpdate - constant for proxy update action
 	ProxyUpdate ProxyAction = "PROXY_UPDATE"
 
+	// DELETE_PEERS - constant for proxy delete peers action
+	ProxyDeletePeers ProxyAction = "PROXY_DELETE"
+	// DELETE_PEERS - constant for proxy delete all peers action
+	ProxyDeleteAllPeers ProxyAction = "PROXY_DELETE_ALL"
 	// NoProxy - constant for no ProxyAction
 	NoProxy ProxyAction = "NO_PROXY"
 )
@@ -61,6 +65,7 @@ type Conn struct {
 	LocalConn           net.Conn
 	Mutex               *sync.RWMutex
 	NetworkSettings     map[string]Settings
+	ServerMap           map[string]struct{}
 }
 
 // RemotePeer - struct remote peer data
@@ -132,6 +137,7 @@ func IsPublicIP(ip net.IP) bool {
 type ProxyManagerPayload struct {
 	Action          ProxyAction            `json:"action"`
 	InterfaceName   string                 `json:"interface_name"`
+	Server          string                 `json:"server"`
 	WgAddr          string                 `json:"wg_addr"`
 	Peers           []wgtypes.PeerConfig   `json:"peers"`
 	PeerMap         map[string]PeerConf    `json:"peer_map"`
@@ -146,9 +152,8 @@ type ProxyManagerPayload struct {
 type Metric struct {
 	NodeConnectionStatus map[string]bool `json:"node_connection_status"`
 	LastRecordedLatency  uint64          `json:"last_recorded_latency"`
-	//ConnectionStatus     bool            `json:"connection_status"`
-	TrafficSent     float64 `json:"traffic_sent"`     // stored in MB
-	TrafficRecieved float64 `json:"traffic_recieved"` // stored in MB
+	TrafficSent          int64           `json:"traffic_sent"`     // stored in MB
+	TrafficRecieved      int64           `json:"traffic_recieved"` // stored in MB
 }
 
 // Settings - struct for network level settings

@@ -44,7 +44,7 @@ func InitializeCfg() {
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 			noProxyPeerMap:   make(models.PeerConnMap),
-			allPeersConf:     make(nm_models.HostPeerMap),
+			allPeersConf:     make(map[string]nm_models.HostPeerMap),
 		},
 		RouterCfg: Router{
 			mutex:           &sync.RWMutex{},
@@ -58,6 +58,11 @@ func InitializeCfg() {
 // Config.IsProxyRunning - checks if proxy is running
 func (c *Config) IsProxyRunning() bool {
 	return c.ProxyStatus
+}
+
+// Config.SetProxyStatus - sets the proxy status to false
+func (c *Config) SetProxyStatus(s bool) {
+	c.ProxyStatus = false
 }
 
 // Config.SetHostInfo - sets host info

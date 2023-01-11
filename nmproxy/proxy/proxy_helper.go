@@ -18,7 +18,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
-	wireguard "github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -47,18 +46,20 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				continue
 			}
 
-			// if _, found := common.GetPeer(p.Config.RemoteKey); !found {
-			// 	logger.Log(0,"Peer: %s not found in config\n", p.Config.RemoteKey)
-			// 	p.Close()
-			// 	return
-			// }
-			go func(n int, peerKey string) {
+			go func(n int, cfg models.Proxy) {
+				peerConnCfg := models.Conn{}
+				if p.Config.ProxyStatus {
+					peerConnCfg, _ = config.GetCfg().GetPeer(cfg.RemoteKey.String())
+				} else {
+					peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
+				}
+				for server, _ := range peerConnCfg.ServerMap {
+					metric := metrics.GetMetric(server, cfg.RemoteKey.String())
+					metric.TrafficSent += int64(n)
+					metrics.UpdateMetric(server, cfg.RemoteKey.String(), &metric)
+				}
 
-				metric := metrics.GetMetric(peerKey)
-				metric.TrafficSent += float64(n) / (1 << 20)
-				metrics.UpdateMetric(peerKey, &metric)
-
-			}(n, p.Config.RemoteKey.String())
+			}(n, p.Config)
 
 			var srcPeerKeyHash, dstPeerKeyHash string
 			if p.Config.ProxyStatus {
@@ -131,26 +132,35 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 		case <-p.Ctx.Done():
 			return
 		case <-ticker.C:
+			peerConnCfg := models.Conn{}
+			if p.Config.ProxyStatus {
+				peerConnCfg, _ = config.GetCfg().GetPeer(p.Config.RemoteKey.String())
+			} else {
+				peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
+			}
+			for server, _ := range peerConnCfg.ServerMap {
+				peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(server, peerConnCfg.Config.RemoteKey.String())
+				if !found {
+					continue
+				}
+				metric := metrics.GetMetric(server, p.Config.RemoteKey.String())
+				for peerID, peerInfo := range peerIDsAndAddrs {
+					if metric.NodeConnectionStatus == nil {
+						metric.NodeConnectionStatus = make(map[string]bool)
+					}
+					metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+				}
+				metrics.UpdateMetric(server, p.Config.RemoteKey.String(), &metric)
+			}
 
-			metric := metrics.GetMetric(p.Config.RemoteKey.String())
 			// if metric.ConnectionStatus && rTicker != nil {
 			// 	rTicker.Reset(*p.Config.PersistentKeepalive)
 			// }
-			peer, err := wireguard.GetPeer(config.GetCfg().GetIface().Name, p.Config.RemoteKey.String())
-			if err != nil {
-				continue
-			}
-			peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(peer.PublicKey.String())
-			if !found {
-				return
-			}
-			for peerID, peerInfo := range peerIDsAndAddrs {
-				if metric.NodeConnectionStatus == nil {
-					metric.NodeConnectionStatus = make(map[string]bool)
-				}
-				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
-			}
-			metrics.UpdateMetric(p.Config.RemoteKey.String(), &metric)
+			// peer, err := wireguard.GetPeer(config.GetCfg().GetIface().Name, p.Config.RemoteKey.String())
+			// if err != nil {
+			// 	continue
+			// }
+
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.LocalKey, p.Config.RemoteKey)
 			if err == nil {
 				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: \n", p.RemoteConn.String())
