@@ -171,11 +171,7 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			setSubscriptions(client, &node)
 		}
-		servers := config.GetServers()
-		for _, server := range servers {
-			setHostSubscription(client, server)
-		}
-
+		setHostSubscription(client, server.Name)
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)

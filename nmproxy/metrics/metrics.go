@@ -81,7 +81,7 @@ func ResetMetricForNode(server, peerKey, peerID string) {
 
 func DumpMetrics() {
 	for {
-		time.Sleep(time.Minute)
+		time.Sleep(time.Second * 30)
 		out, _ := json.MarshalIndent(metricsPeerMap, "", " ")
 		os.WriteFile("/tmp/metrics.json", out, 0755)
 	}
