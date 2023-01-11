@@ -55,7 +55,16 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 		logger.Log(1, "Failed get interface config: ", err.Error())
 		return err
 	}
+
+	// sync map with wg device config
+	// check if listen port has changed
+	if !config.GetCfg().IsIfaceNil() && wgIface.Device.ListenPort != config.GetCfg().GetInterfaceListenPort() {
+		// reset proxy
+		cleanUpInterface()
+		return nil
+	}
 	config.GetCfg().SetIface(wgIface)
+	config.GetCfg().SetPeersIDsAndAddrs(payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
 	if m.Action == models.ProxyUpdate {
 		m.peerUpdate()
@@ -144,7 +153,6 @@ func cleanUpInterface() {
 
 // ProxyManagerPayload.processPayload - updates the peers and config with the recieved payload
 func (m *proxyPayload) processPayload() error {
-	var wgIface *wg.WGIface
 	if m.InterfaceName == "" {
 		return errors.New("interface cannot be empty")
 	}
@@ -159,13 +167,6 @@ func (m *proxyPayload) processPayload() error {
 		return nil
 	}
 
-	// sync map with wg device config
-	// check if listen port has changed
-	if wgIface.Device.ListenPort != gCfg.GetInterfaceListenPort() {
-		// reset proxy
-		cleanUpInterface()
-		return nil
-	}
 	peerConnMap := gCfg.GetAllProxyPeers()
 	noProxyPeerMap := gCfg.GetNoProxyPeers()
 	// check device conf different from proxy

@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-ping/ping"
@@ -9,7 +10,7 @@ import (
 
 // PeerConnectionStatus - get peer connection status by pinging
 func PeerConnectionStatus(address string) (connected bool) {
-
+	fmt.Println("PINGER ADDR: ", address)
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
 		logger.Log(0, "could not initiliaze ping peer address", address, err.Error())

@@ -145,6 +145,9 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup, rTicker *time.Ticker) {
 				return
 			}
 			for peerID, peerInfo := range peerIDsAndAddrs {
+				if metric.NodeConnectionStatus == nil {
+					metric.NodeConnectionStatus = make(map[string]bool)
+				}
 				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
 			}
 			metrics.UpdateMetric(p.Config.RemoteKey.String(), &metric)

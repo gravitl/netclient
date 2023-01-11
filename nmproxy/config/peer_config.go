@@ -344,17 +344,12 @@ func (c *Config) DeleteNoProxyPeer(peerIP string) {
 	}
 }
 
-// Config.GetAllPeersConf - fetches all peers from config
-func (c *Config) GetAllPeersConf() nm_models.HostPeerMap {
-	return c.ifaceConfig.allPeersConf
-}
-
-// Config.SetPeers - sets the peers in the config
-func (c *Config) SetPeers(peers nm_models.HostPeerMap) {
+// Config.SetPeersIDsAndAddrs - sets the peers in the config
+func (c *Config) SetPeersIDsAndAddrs(peers nm_models.HostPeerMap) {
 	c.ifaceConfig.allPeersConf = peers
 }
 
-// Config.GetPeerConf - get peer conf
+// Config.GetPeersIDsAndAddrs - get peer conf
 func (c *Config) GetPeersIDsAndAddrs(peerKey string) (map[string]nm_models.IDandAddr, bool) {
 	if peerIDMap, found := c.ifaceConfig.allPeersConf[peerKey]; found {
 		return peerIDMap, found
