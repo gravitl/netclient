@@ -66,7 +66,6 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 }
 
 func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
-	config.GetCfg().SetPeers(peerUpdate.PeerIDs)
 	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")

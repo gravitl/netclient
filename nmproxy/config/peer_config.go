@@ -7,7 +7,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -23,7 +22,6 @@ type wgIfaceConf struct {
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
 	noProxyPeerMap   models.PeerConnMap
-	allPeersConf     nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -342,24 +340,4 @@ func (c *Config) DeleteNoProxyPeer(peerIP string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.noProxyPeerMap, peerIP)
 	}
-}
-
-// Config.GetAllPeersConf - fetches all peers from config
-func (c *Config) GetAllPeersConf() nm_models.HostPeerMap {
-	return c.ifaceConfig.allPeersConf
-}
-
-// Config.SetPeers - sets the peers in the config
-func (c *Config) SetPeers(peers nm_models.HostPeerMap) {
-	c.ifaceConfig.allPeersConf = peers
-}
-
-// Config.GetPeerConf - get peer conf
-func (c *Config) GetPeerConf(network, peerKey string) (nm_models.IDandAddr, bool) {
-	if peerMap, found := c.ifaceConfig.allPeersConf[network]; found {
-		if peer, ok := peerMap[peerKey]; ok {
-			return peer, ok
-		}
-	}
-	return nm_models.IDandAddr{}, false
 }
