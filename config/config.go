@@ -104,6 +104,15 @@ func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
 	netclient.HostPeers = hostPeerMap
 }
 
+// DeleteServerHostPeerCfg - deletes the host peers for the server
+func DeleteServerHostPeerCfg(server string) {
+	if netclient.HostPeers == nil {
+		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		return
+	}
+	delete(netclient.HostPeers, server)
+}
+
 func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
 	uniqueIpList := []net.IPNet{}
 	ipMap := make(map[string]struct{})
