@@ -160,6 +160,7 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 	for _, peer := range ifacePeers {
 		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
+			metric.NodeConnectionStatus = make(map[string]bool)
 			for peerID, peerInfo := range peerIDMap {
 				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
 			}
