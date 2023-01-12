@@ -85,6 +85,9 @@ func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
 		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
 	}
+	if peerUpdate.ProxyUpdate.Action == models.NoProxy {
+		cleanUpInterface()
+	}
 }
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config

@@ -153,15 +153,16 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 
 func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
 
-	metric := models.Metric{
-		LastRecordedLatency: 999,
-	}
 	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
 	if err != nil {
 		return
 	}
 	for _, peer := range ifacePeers {
 		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
+			metric := models.Metric{
+				LastRecordedLatency:  999,
+				NodeConnectionStatus: make(map[string]bool),
+			}
 			for peerID, peerInfo := range peerIDMap {
 				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
 			}

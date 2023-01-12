@@ -44,6 +44,9 @@ func GetMetric(server, peerKey string) models.Metric {
 func UpdateMetric(server, peerKey string, metric *models.Metric) {
 	metricsMapLock.Lock()
 	defer metricsMapLock.Unlock()
+	if metricsPeerMap[server] == nil {
+		metricsPeerMap[server] = make(map[string]*models.Metric)
+	}
 	metricsPeerMap[server][peerKey] = metric
 }
 
