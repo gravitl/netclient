@@ -310,11 +310,8 @@ func (m *proxyPayload) processPayload() error {
 				}
 			}
 			// update network map
-			// noProxypeer.NetworkSettings[m.Network] = models.Settings{
-			// 	IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
-			// 	RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
-			// }
-			// noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
+			noProxypeer.ServerMap[m.Server] = struct{}{}
+			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 
