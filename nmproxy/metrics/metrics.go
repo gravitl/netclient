@@ -68,7 +68,7 @@ func ResetMetricsForPeer(server, peerKey string) {
 	delete(metricsPeerMap[server], peerKey)
 }
 
-// ResetMetricForNode - resets node level
+// ResetMetricForNode - resets node level metrics
 func ResetMetricForNode(server, peerKey, peerID string) {
 	metric := GetMetric(server, peerKey)
 	metricsMapLock.Lock()

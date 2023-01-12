@@ -60,9 +60,9 @@ func (c *Config) IsProxyRunning() bool {
 	return c.ProxyStatus
 }
 
-// Config.SetProxyStatus - sets the proxy status to false
+// Config.SetProxyStatus - sets the proxy status
 func (c *Config) SetProxyStatus(s bool) {
-	c.ProxyStatus = false
+	c.ProxyStatus = s
 }
 
 // Config.SetHostInfo - sets host info
