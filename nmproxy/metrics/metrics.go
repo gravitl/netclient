@@ -1,17 +1,10 @@
 package metrics
 
 import (
-	"encoding/json"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/gravitl/netclient/nmproxy/models"
 )
-
-func init() {
-	go DumpMetrics()
-}
 
 // lock for metrics map
 var metricsMapLock = &sync.RWMutex{}
@@ -19,6 +12,7 @@ var metricsMapLock = &sync.RWMutex{}
 // metrics data map
 var metricsPeerMap = make(map[string]map[string]*models.Metric)
 
+// GetMetricByServer - get metric data of peers by server
 func GetMetricByServer(server string) map[string]*models.Metric {
 	metricsMapLock.RLock()
 	defer metricsMapLock.RUnlock()
@@ -34,7 +28,7 @@ func GetMetric(server, peerKey string) models.Metric {
 	peerMetricMap := GetMetricByServer(server)
 	metricsMapLock.RLock()
 	defer metricsMapLock.RUnlock()
-	if m, ok := peerMetricMap[peerKey]; ok {
+	if m, ok := peerMetricMap[peerKey]; ok && m != nil {
 		metric = *m
 	}
 	return metric
@@ -50,6 +44,7 @@ func UpdateMetric(server, peerKey string, metric *models.Metric) {
 	metricsPeerMap[server][peerKey] = metric
 }
 
+// UpdateMetricByPeer - updates metrics data by peer public key
 func UpdateMetricByPeer(peerKey string, metric *models.Metric, onlyTraffic bool) {
 	metricsMapLock.Lock()
 	defer metricsMapLock.Unlock()
@@ -80,12 +75,4 @@ func ResetMetricForNode(server, peerKey, peerID string) {
 	delete(metric.NodeConnectionStatus, peerID)
 	metricsMapLock.Unlock()
 	UpdateMetric(server, peerKey, &metric)
-}
-
-func DumpMetrics() {
-	for {
-		time.Sleep(time.Second * 30)
-		out, _ := json.MarshalIndent(metricsPeerMap, "", " ")
-		os.WriteFile("/tmp/metrics.json", out, 0755)
-	}
 }
