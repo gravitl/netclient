@@ -8,6 +8,8 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+const MetricCollectionInterval = time.Second * 25
+
 // PeerConnectionStatus - get peer connection status by pinging
 func PeerConnectionStatus(address string) (connected bool) {
 	fmt.Println("PINGER ADDR: ", address)

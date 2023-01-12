@@ -124,7 +124,7 @@ func (p *Proxy) pullLatestConfig() error {
 
 // Proxy.startMetricsThread - runs metrics loop for the peer
 func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(metrics.MetricCollectionInterval)
 	defer ticker.Stop()
 	defer wg.Done()
 	for {
@@ -144,10 +144,9 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 					continue
 				}
 				metric := metrics.GetMetric(server, p.Config.RemoteKey.String())
+				metric.NodeConnectionStatus = make(map[string]bool)
+				metric.LastRecordedLatency = 999
 				for peerID, peerInfo := range peerIDsAndAddrs {
-					if metric.NodeConnectionStatus == nil {
-						metric.NodeConnectionStatus = make(map[string]bool)
-					}
 					metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
 				}
 				metrics.UpdateMetric(server, p.Config.RemoteKey.String(), &metric)

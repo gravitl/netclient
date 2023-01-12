@@ -135,7 +135,7 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 // StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
 func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	logger.Log(0, "Starting Metrics Thread...")
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(metrics.MetricCollectionInterval)
 	for {
 		select {
 		case <-ctx.Done():
@@ -159,15 +159,13 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 	}
 	for _, peer := range ifacePeers {
 		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
-			metric := models.Metric{
-				LastRecordedLatency:  999,
-				NodeConnectionStatus: make(map[string]bool),
-			}
+			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			for peerID, peerInfo := range peerIDMap {
 				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
 			}
-			metric.TrafficRecieved = peer.ReceiveBytes
-			metric.TrafficSent = peer.TransmitBytes
+			metric.LastRecordedLatency = 999
+			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
+			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
 			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
 			if err == nil {
