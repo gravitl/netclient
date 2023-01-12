@@ -216,7 +216,6 @@ func publishMetrics(node *config.Node) {
 	metrics.Network = node.Network
 	metrics.NodeName = config.Netclient().Name
 	metrics.NodeID = node.ID.String()
-	metrics.IsServer = "no"
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
