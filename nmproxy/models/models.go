@@ -24,10 +24,9 @@ const (
 
 	// ProxyUpdate - constant for proxy update action
 	ProxyUpdate ProxyAction = "PROXY_UPDATE"
-
-	// DELETE_PEERS - constant for proxy delete peers action
+	// ProxyDeletePeers - constant for proxy delete peers action
 	ProxyDeletePeers ProxyAction = "PROXY_DELETE"
-	// DELETE_PEERS - constant for proxy delete all peers action
+	// ProxyDeleteAllPeers - constant for proxy delete all peers action
 	ProxyDeleteAllPeers ProxyAction = "PROXY_DELETE_ALL"
 	// NoProxy - constant for no ProxyAction
 	NoProxy ProxyAction = "NO_PROXY"
