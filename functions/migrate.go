@@ -11,7 +11,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 )
 
 // Migrate update data from older versions of netclient to new format
@@ -40,7 +39,6 @@ func Migrate() {
 		server := config.ConvertOldServerCfg(&cfg.Server)
 		node.Server = server.Name
 		config.UpdateServer(node.Server, *server)
-		pretty.Println(node, host, server)
 		jwt, err := Authenticate(node, host)
 		if err != nil {
 			logger.Log(1, "failed to authenticate for network ", network, " ", err.Error())
