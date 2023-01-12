@@ -164,6 +164,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		peerUpdate.ProxyUpdate.Server = serverName
 		ProxyManagerChan <- &peerUpdate
 	} else {
 		peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy

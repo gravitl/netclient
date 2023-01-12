@@ -8,10 +8,8 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/packet"
-	"github.com/gravitl/netclient/nmproxy/peer"
-
 	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -52,23 +50,43 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
 	m.Peers = payload.Peers
+	wgIface, err := wg.GetWgIface(m.InterfaceName)
+	if err != nil {
+		logger.Log(1, "Failed get interface config: ", err.Error())
+		return err
+	}
+
+	// sync map with wg device config
+	// check if listen port has changed
+	if !config.GetCfg().IsIfaceNil() && wgIface.Device.ListenPort != config.GetCfg().GetInterfaceListenPort() {
+		// reset proxy
+		cleanUpInterface()
+		return nil
+	}
+	config.GetCfg().SetIface(wgIface)
+	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
-	if m.Action == models.ProxyUpdate {
+	switch m.Action {
+	case models.ProxyUpdate:
 		m.peerUpdate()
+	case models.ProxyDeleteAllPeers:
+		cleanUpInterface()
 	}
 	return err
 }
 
 func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
-	config.GetCfg().SetPeers(peerUpdate.PeerIDs)
 	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
 		config.GetCfg().StopMetricsCollectionThread()
 	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
-		go peer.StartMetricsCollectionForHostPeers(ctx)
+		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
+	}
+	if peerUpdate.ProxyUpdate.Action == models.NoProxy {
+		cleanUpInterface()
 	}
 }
 
@@ -141,8 +159,6 @@ func cleanUpInterface() {
 
 // ProxyManagerPayload.processPayload - updates the peers and config with the recieved payload
 func (m *proxyPayload) processPayload() error {
-	var err error
-	var wgIface *wg.WGIface
 	if m.InterfaceName == "" {
 		return errors.New("interface cannot be empty")
 	}
@@ -150,25 +166,13 @@ func (m *proxyPayload) processPayload() error {
 		return errors.New("no peers to add")
 	}
 	gCfg := config.GetCfg()
-	wgIface, err = wg.GetWgIface(m.InterfaceName)
-	if err != nil {
-		logger.Log(1, "Failed get interface config: ", err.Error())
-		return err
-	}
-	gCfg.SetIface(wgIface)
+
 	reset := m.settingsUpdate()
 	if reset {
 		cleanUpInterface()
 		return nil
 	}
 
-	// sync map with wg device config
-	// check if listen port has changed
-	if wgIface.Device.ListenPort != gCfg.GetInterfaceListenPort() {
-		// reset proxy
-		cleanUpInterface()
-		return nil
-	}
 	peerConnMap := gCfg.GetAllProxyPeers()
 	noProxyPeerMap := gCfg.GetNoProxyPeers()
 	// check device conf different from proxy
@@ -276,6 +280,7 @@ func (m *proxyPayload) processPayload() error {
 			// 	IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
 			// 	RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
 			// }
+			currentPeer.ServerMap[m.Server] = struct{}{}
 			peerConnMap[currentPeer.Key.String()] = currentPeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 			currentPeer.Mutex.Unlock()
@@ -305,11 +310,8 @@ func (m *proxyPayload) processPayload() error {
 				}
 			}
 			// update network map
-			// noProxypeer.NetworkSettings[m.Network] = models.Settings{
-			// 	IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
-			// 	RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
-			// }
-			// noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
+			noProxypeer.ServerMap[m.Server] = struct{}{}
+			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 		}
 
@@ -352,7 +354,7 @@ func (m *proxyPayload) peerUpdate() error {
 				continue
 			}
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
-			go func(peer *wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
+			go func(server string, peer *wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
 				peerConf models.PeerConf, ingGwAddr string) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 30)
@@ -367,7 +369,7 @@ func (m *proxyPayload) peerUpdate() error {
 				defer func() {
 					if addExtClient {
 						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...", extPeer.Endpoint.String())
-						peerpkg.AddNew(&peerI, peerConf, isRelayed, relayedTo)
+						peerpkg.AddNew(server, &peerI, peerConf, isRelayed, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
 				}()
@@ -386,11 +388,11 @@ func (m *proxyPayload) peerUpdate() error {
 
 				}
 
-			}(&peerI, isRelayed, relayedTo, peerConf, m.WgAddr)
+			}(m.Server, &peerI, isRelayed, relayedTo, peerConf, m.WgAddr)
 			continue
 		}
 
-		peerpkg.AddNew(&peerI, peerConf, isRelayed, relayedTo)
+		peerpkg.AddNew(m.Server, &peerI, peerConf, isRelayed, relayedTo)
 
 	}
 	return nil

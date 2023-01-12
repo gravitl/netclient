@@ -87,17 +87,14 @@ func ConsumeProxyUpdateMsg(buf []byte) (*ProxyUpdateMessage, error) {
 }
 
 // CreateMetricPacket - creates metric packet
-func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key) ([]byte, error) {
+func CreateMetricPacket(id uint32, sender, reciever wgtypes.Key) ([]byte, error) {
 
-	var networkEncoded [NetworkNameSize]byte
-	copy(networkEncoded[:], []byte(network))
 	msg := MetricMessage{
-		Type:           MessageMetricsType,
-		ID:             id,
-		NetworkEncoded: networkEncoded,
-		Sender:         sender,
-		Reciever:       reciever,
-		TimeStamp:      time.Now().UnixMilli(),
+		Type:      MessageMetricsType,
+		ID:        id,
+		Sender:    sender,
+		Reciever:  reciever,
+		TimeStamp: time.Now().UnixMilli(),
 	}
 	logger.Log(1, fmt.Sprintf("----------> $$ CREATED PACKET: %+v\n", msg))
 	var buff [MessageMetricSize]byte
@@ -108,11 +105,6 @@ func CreateMetricPacket(id uint32, network string, sender, reciever wgtypes.Key)
 	}
 	packet := writer.Bytes()
 	return packet, nil
-}
-
-// DecodeNetwork - decodes network name from bytes
-func DecodeNetwork(networkBytes [NetworkNameSize]byte) string {
-	return string(bytes.TrimRight(networkBytes[:], "\u0000"))
 }
 
 // EncodePacketMetricMsg - encodes metric message to buffer
@@ -145,15 +137,11 @@ func ConsumeMetricPacket(buf []byte) (*MetricMessage, error) {
 }
 
 // ProcessPacketBeforeSending - encodes data required for proxy transport message
-func ProcessPacketBeforeSending(network string, buf []byte, n int, srckey, dstKey string) ([]byte, int, string, string) {
-	var networkEncoded [NetworkNameSize]byte
-
-	copy(networkEncoded[:], []byte(network))
+func ProcessPacketBeforeSending(buf []byte, n int, srckey, dstKey string) ([]byte, int, string, string) {
 	srcKeymd5 := md5.Sum([]byte(srckey))
 	dstKeymd5 := md5.Sum([]byte(dstKey))
 	m := ProxyMessage{
 		Type:     MessageProxyTransportType,
-		Network:  networkEncoded,
 		Sender:   srcKeymd5,
 		Reciever: dstKeymd5,
 	}
@@ -176,10 +164,10 @@ func ProcessPacketBeforeSending(network string, buf []byte, n int, srckey, dstKe
 }
 
 // ExtractInfo - extracts proxy transport message from the  data buffer
-func ExtractInfo(buffer []byte, n int) (int, string, string, string, error) {
+func ExtractInfo(buffer []byte, n int) (int, string, string, error) {
 	data := buffer[:n]
 	if len(data) < MessageProxyTransportSize {
-		return n, "", "", "", errors.New("proxy message not found")
+		return n, "", "", errors.New("proxy message not found")
 	}
 	var msg ProxyMessage
 	var err error
@@ -187,12 +175,11 @@ func ExtractInfo(buffer []byte, n int) (int, string, string, string, error) {
 	err = binary.Read(reader, binary.LittleEndian, &msg)
 	if err != nil {
 		logger.Log(1, "Failed to decode proxy message")
-		return n, "", "", "", err
+		return n, "", "", err
 	}
-	network := DecodeNetwork(msg.Network)
 	if msg.Type != MessageProxyTransportType {
-		return n, "", "", "", errors.New("not a proxy message")
+		return n, "", "", errors.New("not a proxy message")
 	}
 	n -= MessageProxyTransportSize
-	return n, fmt.Sprintf("%x", msg.Sender), fmt.Sprintf("%x", msg.Reciever), network, nil
+	return n, fmt.Sprintf("%x", msg.Sender), fmt.Sprintf("%x", msg.Reciever), nil
 }

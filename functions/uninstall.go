@@ -105,13 +105,14 @@ func deleteLocalNetwork(node *config.Node) error {
 	server := config.GetServer(node.Server)
 	//remove node from server node map
 	if server != nil {
-		nodes := server.Nodes
-		delete(nodes, node.Network)
+		delete(server.Nodes, node.Network)
 	}
 	if len(server.Nodes) == 0 {
 		logger.Log(3, "removing server", server.Name)
 		config.DeleteServer(node.Server)
+		config.DeleteServerHostPeerCfg(node.Server)
 	}
+	config.WriteNetclientConfig()
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
 	if len(config.GetNodes()) < 1 {

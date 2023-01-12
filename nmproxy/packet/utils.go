@@ -47,7 +47,7 @@ const (
 	MessageProxyUpdateSize = 148
 
 	// MessageProxyTransportSize - constant for proxy transport message size
-	MessageProxyTransportSize = 48
+	MessageProxyTransportSize = 36
 
 	// constants for wg handshake identifiers
 	noiseConstruction = "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s"

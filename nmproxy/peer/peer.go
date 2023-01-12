@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -22,7 +21,7 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
@@ -76,7 +75,9 @@ func AddNew(peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		ResetConn:           p.Reset,
 		LocalConn:           p.LocalConn,
 		NetworkSettings:     make(map[string]models.Settings),
+		ServerMap:           make(map[string]struct{}),
 	}
+	connConf.ServerMap[server] = struct{}{}
 	// connConf.NetworkSettings[network] = models.Settings{
 	// 	IsRelayed: isRelayed,
 	// 	RelayedTo: relayTo,
@@ -134,47 +135,52 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 // StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
 func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	logger.Log(0, "Starting Metrics Thread...")
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(metrics.MetricCollectionInterval)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			allPeers := config.GetCfg().GetAllPeersConf()
 
-			for network, peerMap := range allPeers {
-				for peerKey, peer := range peerMap {
-					go collectMetricsForPeer(network, peerKey, peer)
-				}
+			peersServerMap := config.GetCfg().GetAllPeersIDsAndAddrs()
+			for server, peerMap := range peersServerMap {
+				go collectMetricsForServerPeers(server, peerMap)
 			}
 
 		}
 	}
 }
 
-func collectMetricsForPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
+func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
 
-	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
+	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
 	if err != nil {
 		return
 	}
-	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address)
-	metric := models.Metric{
-		LastRecordedLatency: 999,
-		ConnectionStatus:    connectionStatus,
-	}
-	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
-	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(network, peerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
-	if err == nil {
-		conn := config.GetCfg().GetServerConn()
-		if conn != nil {
-			_, err = conn.WriteToUDP(pkt, devPeer.Endpoint)
-			if err != nil {
-				logger.Log(1, "Failed to send to metric pkt: ", err.Error())
+	for _, peer := range ifacePeers {
+		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
+			metric := metrics.GetMetric(server, peer.PublicKey.String())
+			metric.NodeConnectionStatus = make(map[string]bool)
+			for peerID, peerInfo := range peerIDMap {
+				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+			}
+			metric.LastRecordedLatency = 999
+			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
+			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
+			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
+			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
+			if err == nil {
+				conn := config.GetCfg().GetServerConn()
+				if conn != nil {
+					_, err = conn.WriteToUDP(pkt, peer.Endpoint)
+					if err != nil {
+						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
+					}
+				}
+
 			}
 		}
 
 	}
+
 }

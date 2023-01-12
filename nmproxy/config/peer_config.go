@@ -23,7 +23,7 @@ type wgIfaceConf struct {
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
 	noProxyPeerMap   models.PeerConnMap
-	allPeersConf     nm_models.HostPeerMap
+	allPeersConf     map[string]nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -344,22 +344,21 @@ func (c *Config) DeleteNoProxyPeer(peerIP string) {
 	}
 }
 
-// Config.GetAllPeersConf - fetches all peers from config
-func (c *Config) GetAllPeersConf() nm_models.HostPeerMap {
+// Config.GetAllPeersIDsAndAddrs - get all peers
+func (c *Config) GetAllPeersIDsAndAddrs() map[string]nm_models.HostPeerMap {
 	return c.ifaceConfig.allPeersConf
 }
 
-// Config.SetPeers - sets the peers in the config
-func (c *Config) SetPeers(peers nm_models.HostPeerMap) {
-	c.ifaceConfig.allPeersConf = peers
+// Config.SetPeersIDsAndAddrs - sets the peers in the config
+func (c *Config) SetPeersIDsAndAddrs(server string, peers nm_models.HostPeerMap) {
+	c.ifaceConfig.allPeersConf[server] = peers
 }
 
-// Config.GetPeerConf - get peer conf
-func (c *Config) GetPeerConf(network, peerKey string) (nm_models.IDandAddr, bool) {
-	if peerMap, found := c.ifaceConfig.allPeersConf[network]; found {
-		if peer, ok := peerMap[peerKey]; ok {
-			return peer, ok
-		}
+// Config.GetPeersIDsAndAddrs - get peer conf
+func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_models.IDandAddr, bool) {
+	if peersIDsAndAddrs, ok := c.ifaceConfig.allPeersConf[server]; ok {
+		return peersIDsAndAddrs[peerKey], ok
 	}
-	return nm_models.IDandAddr{}, false
+
+	return make(map[string]nm_models.IDandAddr), false
 }
