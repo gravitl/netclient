@@ -101,7 +101,7 @@ func Migrate() {
 		config.UpdateHostPeers(server.Name, joinResponse.Peers)
 		internetGateway, err := wireguard.UpdateWgPeers(joinResponse.Peers)
 		if err != nil {
-
+			logger.Log(0, "failed to update wg peers", err.Error())
 		}
 		if internetGateway != nil {
 			config.Netclient().InternetGateway = *internetGateway
