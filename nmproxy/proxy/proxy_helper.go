@@ -101,10 +101,12 @@ func (p *Proxy) Reset() {
 	}
 	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.RemoteKey.String())); found {
 		peer.LocalConn = p.LocalConn
+		peer.Endpoint = p.RemoteConn
 		config.GetCfg().SavePeerByHash(&peer)
 	}
 	if extpeer, found := config.GetCfg().GetExtClientInfo(p.Config.PeerEndpoint); found {
 		extpeer.LocalConn = p.LocalConn
+		extpeer.Endpoint = p.RemoteConn
 		config.GetCfg().SaveExtClientInfo(&extpeer)
 	}
 
