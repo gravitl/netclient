@@ -282,7 +282,9 @@ func (m *proxyPayload) processPayload() error {
 			continue
 
 		}
-
+		if m.Peers[i].Endpoint == nil {
+			continue
+		}
 		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
 			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
