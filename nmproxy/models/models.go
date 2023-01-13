@@ -41,7 +41,7 @@ type Proxy struct {
 	LocalKey            wgtypes.Key
 	IsExtClient         bool
 	PersistentKeepalive *time.Duration
-	PeerConf            *wgtypes.PeerConfig
+	PeerConf            wgtypes.PeerConfig
 	PeerEndpoint        *net.UDPAddr
 	RemoteConnAddr      *net.UDPAddr
 	LocalConnAddr       *net.UDPAddr
@@ -98,16 +98,15 @@ type RelayedConf struct {
 
 // PeerConf - struct for peer config in the network
 type PeerConf struct {
-	Proxy                  bool                   `json:"proxy"`
-	PublicListenPort       int32                  `json:"public_listen_port"`
-	IsExtClient            bool                   `json:"is_ext_client"`
-	Address                net.IP                 `json:"address"`
-	ExtInternalIp          net.IP                 `json:"ext_internal_ip"`
-	IsAttachedExtClient    bool                   `json:"is_attached_ext_client"`
-	IngressGatewayEndPoint *net.UDPAddr           `json:"ingress_gateway_endpoint"`
-	IsRelayed              bool                   `json:"is_relayed"`
-	RelayedTo              *net.UDPAddr           `json:"relayed_to"`
-	NetworkInfo            map[string]NetworkInfo `json:"network_info"`
+	Proxy                  bool         `json:"proxy"`
+	PublicListenPort       int32        `json:"public_listen_port"`
+	IsExtClient            bool         `json:"is_ext_client"`
+	Address                net.IP       `json:"address"`
+	ExtInternalIp          net.IP       `json:"ext_internal_ip"`
+	IsAttachedExtClient    bool         `json:"is_attached_ext_client"`
+	IngressGatewayEndPoint *net.UDPAddr `json:"ingress_gateway_endpoint"`
+	IsRelayed              bool         `json:"is_relayed"`
+	RelayedTo              *net.UDPAddr `json:"relayed_to"`
 }
 
 // NetworkInfo - struct for network info.
@@ -134,14 +133,14 @@ func IsPublicIP(ip net.IP) bool {
 
 // ProxyManagerPayload - struct for proxy manager payload
 type ProxyManagerPayload struct {
-	Action          ProxyAction            `json:"action"`
-	InterfaceName   string                 `json:"interface_name"`
-	Server          string                 `json:"server"`
-	WgAddr          string                 `json:"wg_addr"`
+	Action        ProxyAction `json:"action"`
+	InterfaceName string      `json:"interface_name"`
+	Server        string      `json:"server"`
+	//WgAddr          string                 `json:"wg_addr"`
 	Peers           []wgtypes.PeerConfig   `json:"peers"`
 	PeerMap         map[string]PeerConf    `json:"peer_map"`
-	IsRelayed       bool                   `json:"is_relayed"`
 	IsIngress       bool                   `json:"is_ingress"`
+	IsRelayed       bool                   `json:"is_relayed"`
 	RelayedTo       *net.UDPAddr           `json:"relayed_to"`
 	IsRelay         bool                   `json:"is_relay"`
 	RelayedPeerConf map[string]RelayedConf `json:"relayed_conf"`
@@ -155,7 +154,7 @@ type Metric struct {
 	TrafficRecieved      int64           `json:"traffic_recieved"` // stored in MB
 }
 
-// Settings - struct for network level settings
+// Settings - struct for host settings
 type Settings struct {
 	IsRelay          bool
 	IsIngressGateway bool

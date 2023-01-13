@@ -17,7 +17,7 @@ func GetMetricByServer(server string) map[string]*models.Metric {
 	metricsMapLock.RLock()
 	defer metricsMapLock.RUnlock()
 	if _, ok := metricsPeerMap[server]; !ok {
-		metricsPeerMap[server] = make(map[string]*models.Metric)
+		return nil
 	}
 	return metricsPeerMap[server]
 }
@@ -26,8 +26,9 @@ func GetMetricByServer(server string) map[string]*models.Metric {
 func GetMetric(server, peerKey string) models.Metric {
 	metric := models.Metric{}
 	peerMetricMap := GetMetricByServer(server)
-	metricsMapLock.RLock()
-	defer metricsMapLock.RUnlock()
+	if peerMetricMap == nil {
+		return metric
+	}
 	if m, ok := peerMetricMap[peerKey]; ok && m != nil {
 		metric = *m
 	}
@@ -71,8 +72,6 @@ func ResetMetricsForPeer(server, peerKey string) {
 // ResetMetricForNode - resets node level metrics
 func ResetMetricForNode(server, peerKey, peerID string) {
 	metric := GetMetric(server, peerKey)
-	metricsMapLock.Lock()
 	delete(metric.NodeConnectionStatus, peerID)
-	metricsMapLock.Unlock()
 	UpdateMetric(server, peerKey, &metric)
 }

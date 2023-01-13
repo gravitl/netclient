@@ -21,7 +21,7 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
@@ -78,10 +78,6 @@ func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		ServerMap:           make(map[string]struct{}),
 	}
 	connConf.ServerMap[server] = struct{}{}
-	// connConf.NetworkSettings[network] = models.Settings{
-	// 	IsRelayed: isRelayed,
-	// 	RelayedTo: relayTo,
-	// }
 	rPeer := models.RemotePeer{
 		Interface:           config.GetCfg().GetIface().Name,
 		PeerKey:             peer.PublicKey.String(),
@@ -90,7 +86,7 @@ func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
-	if peerConf.Proxy {
+	if peerConf.Proxy || peerConf.IsExtClient {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
 		config.GetCfg().SavePeer(&connConf)
 	} else {
@@ -121,6 +117,9 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
 		} else {
+			if peers[i].Endpoint == nil {
+				continue
+			}
 			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
 			if found {
 				noProxyPeer.Mutex.RLock()

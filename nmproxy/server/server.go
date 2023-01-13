@@ -136,7 +136,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 			} else {
 				// metric packet needs to be relayed
-				if config.GetCfg().IsRelay() {
+				if config.GetCfg().IsGlobalRelay() {
 					var srcPeerKeyHash, dstPeerKeyHash string
 					if metricMsg.Reply == 1 {
 						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
@@ -158,7 +158,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			switch msg.Action {
 			case packet.UpdateListenPort:
 				if peer, found := config.GetCfg().GetPeer(msg.Sender.String()); found {
-					if config.GetCfg().IsRelay() && config.GetCfg().GetDevicePubKey() != msg.Reciever {
+					if config.GetCfg().IsGlobalRelay() && config.GetCfg().GetDevicePubKey() != msg.Reciever {
 						// update relay peer config
 						if peer, found := config.GetCfg().GetRelayedPeer(models.ConvPeerKeyToHash(msg.Sender.String()),
 							models.ConvPeerKeyToHash(msg.Reciever.String())); found {
@@ -202,18 +202,11 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 					if peerInfoHash.Endpoint.String() != source.String() {
 						// update ext client endpoint
 						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
-							logger.Log(1, "----> Updating ExtPeer endpoint from: ", extPeer.Endpoint.String(), " to: ", source.String())
+							logger.Log(1, "----> ExtClient [%s] endpoint has changed: ", peerKey, extPeer.Endpoint.String(), " to: ", source.String())
+							// Extclient Endpoint has changed so reset connection
 							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
-							peerInfoHash.Endpoint = source
-							extPeer.Endpoint = source
-							config.GetCfg().SavePeerByHash(&peerInfoHash)
-							config.GetCfg().SaveExtClientInfo(&extPeer)
-							if peerInfo, found := config.GetCfg().GetPeer(peerKey); found {
-								peerInfo.Config.PeerEndpoint = source
-								config.GetCfg().SavePeer(&peerInfo)
-								// reset connection for the ext peer
-								peerInfo.ResetConn()
-							}
+							config.GetCfg().DeletePeerHash(peerKey)
+							config.GetCfg().RemovePeer(peerKey)
 
 						}
 
@@ -288,7 +281,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 	var err error
 	//logger.Log(0,"--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
-	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsRelay() {
+	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsGlobalRelay() {
 		p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
