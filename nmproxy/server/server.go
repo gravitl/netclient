@@ -248,7 +248,7 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 
 func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
 	fromNoProxyPeer := false
-	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found {
+	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found && !peerInfo.IsExtClient {
 		logger.Log(0, fmt.Sprintf("PROXING No Proxy Peer TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
 			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), source.IP.String()))
