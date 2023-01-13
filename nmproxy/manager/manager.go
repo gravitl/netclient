@@ -91,7 +91,7 @@ func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
 	}
 }
 
-// ProxyManagerPayload.settingsUpdate - updates the network settings in the config
+// settingsUpdate - updates the host settings in the config
 func (m *proxyPayload) settingsUpdate(server string) (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(server) {
 		config.GetCfg().DeleteRelayedPeers()
