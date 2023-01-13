@@ -376,6 +376,7 @@ func (m *proxyPayload) peerUpdate() error {
 						if endpoint != nil {
 							addExtClient = true
 							peer.Endpoint = endpoint
+							peerI.Endpoint = endpoint
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}
