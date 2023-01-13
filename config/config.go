@@ -495,14 +495,14 @@ func CheckConfig() {
 			logger.FatalLog("could not save netclient config " + err.Error())
 		}
 	}
-	ReadServerConf()
+	_ = ReadServerConf()
 	for _, server := range Servers {
 		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
 	}
-	ReadNodeConfig()
+	_ = ReadNodeConfig()
 	nodes := GetNodes()
 	for _, node := range nodes {
 		//make sure server config exists
