@@ -328,7 +328,6 @@ func (m *proxyPayload) peerUpdate() error {
 		return err
 	}
 	for _, peerI := range m.Peers {
-
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
 		if peerI.Endpoint == nil && !peerConf.IsAttachedExtClient {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())
@@ -366,7 +365,7 @@ func (m *proxyPayload) peerUpdate() error {
 				defer func() {
 					if addExtClient {
 						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...", extPeer.Endpoint.String())
-						peerpkg.AddNew(server, peerI, peerConf, isRelayed, relayedTo)
+						peerpkg.AddNew(server, peer, peerConf, isRelayed, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
 				}()
