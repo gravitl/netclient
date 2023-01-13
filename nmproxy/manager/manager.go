@@ -378,7 +378,6 @@ func (m *proxyPayload) peerUpdate() error {
 					case endpoint := <-commChan:
 						if endpoint != nil {
 							addExtClient = true
-							logger.Log(0, "--------> RECV TO COMM CHAN: ", peer.PublicKey.String(), endpoint.String())
 							peer.Endpoint = endpoint
 							peerI.Endpoint = endpoint
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
