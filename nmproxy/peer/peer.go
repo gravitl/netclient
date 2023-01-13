@@ -90,7 +90,7 @@ func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
-	if peerConf.Proxy || peerConf.IsAttachedExtClient {
+	if peerConf.Proxy {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
 		config.GetCfg().SavePeer(&connConf)
 	} else {
