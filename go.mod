@@ -17,7 +17,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/go-ping/ping v1.1.0
 	github.com/google/gopacket v1.1.19
-	github.com/gravitl/netmaker v0.17.2-0.20230113044345-f129316bfe34
+	github.com/gravitl/netmaker v0.17.2-0.20230113134704-cbd7e492b911
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0
