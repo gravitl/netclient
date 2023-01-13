@@ -90,7 +90,7 @@ func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 		IsAttachedExtClient: peerConf.IsAttachedExtClient,
 		LocalConn:           p.LocalConn,
 	}
-	if peerConf.Proxy {
+	if peerConf.Proxy || peerConf.IsAttachedExtClient {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
 		config.GetCfg().SavePeer(&connConf)
 	} else {
@@ -121,6 +121,9 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
 		} else {
+			if peers[i].Endpoint.IP == nil {
+				continue
+			}
 			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
 			if found {
 				noProxyPeer.Mutex.RLock()
