@@ -186,6 +186,7 @@ func (m *proxyPayload) processPayload() error {
 				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
 				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
 			}
+			gCfg.DeletePeerHash(peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Key.String())
 		}
 	}
