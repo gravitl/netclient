@@ -3,6 +3,7 @@ package functions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,9 @@ func Authenticate(node *config.Node, host *config.Config) (string, error) {
 		Password:   host.HostPass,
 	}
 	server := config.GetServer(node.Server)
+	if server == nil {
+		return "", errors.New("nil server")
+	}
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Route:  "/api/nodes/adm/" + node.Network + "/authenticate",
