@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
@@ -95,7 +96,7 @@ func (m *proxyPayload) settingsUpdate(server string) (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(server) {
 		config.GetCfg().DeleteRelayedPeers()
 	}
-	if m.IsIngress {
+	if m.IsIngress && runtime.GOOS == "linux" {
 		packet.TurnOffIpFowarding()
 	}
 	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
