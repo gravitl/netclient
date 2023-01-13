@@ -91,8 +91,8 @@ func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
 }
 
 // ProxyManagerPayload.settingsUpdate - updates the network settings in the config
-func (m *proxyPayload) settingsUpdate() (reset bool) {
-	if !m.IsRelay && config.GetCfg().IsRelay() {
+func (m *proxyPayload) settingsUpdate(server string) (reset bool) {
+	if !m.IsRelay && config.GetCfg().IsRelay(server) {
 		config.GetCfg().DeleteRelayedPeers()
 	}
 	if m.IsIngress {
@@ -106,12 +106,12 @@ func (m *proxyPayload) settingsUpdate() (reset bool) {
 	} else if !m.IsIngress && config.GetCfg().CheckIfRouterIsRunning() {
 		config.GetCfg().StopRouter()
 	}
-	config.GetCfg().SetRelayStatus(m.IsRelay)
-	config.GetCfg().SetIngressGwStatus(m.IsIngress)
-	if config.GetCfg().GetRelayedStatus() != m.IsRelayed {
+	config.GetCfg().SetRelayStatus(server, m.IsRelay)
+	config.GetCfg().SetIngressGwStatus(server, m.IsIngress)
+	if config.GetCfg().GetRelayedStatus(server) != m.IsRelayed {
 		reset = true
 	}
-	config.GetCfg().SetRelayedStatus(m.IsRelayed)
+	config.GetCfg().SetRelayedStatus(server, m.IsRelayed)
 	if m.IsRelay {
 		m.setRelayedPeers()
 	}
@@ -167,7 +167,7 @@ func (m *proxyPayload) processPayload() error {
 	}
 	gCfg := config.GetCfg()
 
-	reset := m.settingsUpdate()
+	reset := m.settingsUpdate(m.Server)
 	if reset {
 		cleanUpInterface()
 		return nil
@@ -275,11 +275,6 @@ func (m *proxyPayload) processPayload() error {
 			}
 			// delete the peer from the list
 			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
-			// peer exists and no changes observed, update network map for the peer
-			// currentPeer.NetworkSettings[m.Network] = models.Settings{
-			// 	IsRelayed: m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed,
-			// 	RelayedTo: m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo,
-			// }
 			currentPeer.ServerMap[m.Server] = struct{}{}
 			peerConnMap[currentPeer.Key.String()] = currentPeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
@@ -355,7 +350,7 @@ func (m *proxyPayload) peerUpdate() error {
 			}
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
 			go func(server string, peer *wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
-				peerConf models.PeerConf, ingGwAddr string) {
+				peerConf models.PeerConf) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 30)
 				ctx, cancel := context.WithCancel(context.Background())
@@ -388,7 +383,7 @@ func (m *proxyPayload) peerUpdate() error {
 
 				}
 
-			}(m.Server, &peerI, isRelayed, relayedTo, peerConf, m.WgAddr)
+			}(m.Server, &peerI, isRelayed, relayedTo, peerConf)
 			continue
 		}
 
