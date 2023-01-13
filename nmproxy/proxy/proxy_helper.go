@@ -86,6 +86,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 // Proxy.Reset - resets peer's conn
 func (p *Proxy) Reset() {
 	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.RemoteKey.String())
+	peerRemoteEndpoint := p.RemoteConn
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
 		logger.Log(0, "couldn't perform reset: ", p.Config.RemoteKey.String(), err.Error())
@@ -104,7 +105,7 @@ func (p *Proxy) Reset() {
 		peer.Endpoint = p.RemoteConn
 		config.GetCfg().SavePeerByHash(&peer)
 	}
-	if extpeer, found := config.GetCfg().GetExtClientInfo(p.Config.PeerEndpoint); found {
+	if extpeer, found := config.GetCfg().GetExtClientInfo(peerRemoteEndpoint); found {
 		extpeer.LocalConn = p.LocalConn
 		extpeer.Endpoint = p.RemoteConn
 		config.GetCfg().SaveExtClientInfo(&extpeer)
