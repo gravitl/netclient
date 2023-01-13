@@ -351,7 +351,7 @@ func (m *proxyPayload) peerUpdate() error {
 				continue
 			}
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
-			go func(server string, peer *wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
+			go func(server string, peer wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
 				peerConf models.PeerConf) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 5)
@@ -366,7 +366,7 @@ func (m *proxyPayload) peerUpdate() error {
 				defer func() {
 					if addExtClient {
 						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...", extPeer.Endpoint.String())
-						peerpkg.AddNew(server, &peerI, peerConf, isRelayed, relayedTo)
+						peerpkg.AddNew(server, peerI, peerConf, isRelayed, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
 				}()
@@ -387,11 +387,11 @@ func (m *proxyPayload) peerUpdate() error {
 
 				}
 
-			}(m.Server, &peerI, isRelayed, relayedTo, peerConf)
+			}(m.Server, peerI, isRelayed, relayedTo, peerConf)
 			continue
 		}
 
-		peerpkg.AddNew(m.Server, &peerI, peerConf, isRelayed, relayedTo)
+		peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
 
 	}
 	return nil

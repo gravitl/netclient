@@ -21,7 +21,7 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(server string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {

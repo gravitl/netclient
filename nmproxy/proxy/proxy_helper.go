@@ -185,7 +185,7 @@ func (p *Proxy) updateEndpoint() error {
 	}
 	// add local proxy connection as a Wireguard peer
 	logger.Log(1, fmt.Sprintf("---> Updating Peer Endpoint:  %+v\n", p.Config.PeerConf))
-	peer := *p.Config.PeerConf
+	peer := p.Config.PeerConf
 	peer.Endpoint = udpAddr
 	config.GetCfg().GetIface().UpdatePeerEndpoint(peer)
 	return nil

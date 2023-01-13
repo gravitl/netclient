@@ -41,7 +41,7 @@ type Proxy struct {
 	LocalKey            wgtypes.Key
 	IsExtClient         bool
 	PersistentKeepalive *time.Duration
-	PeerConf            *wgtypes.PeerConfig
+	PeerConf            wgtypes.PeerConfig
 	PeerEndpoint        *net.UDPAddr
 	RemoteConnAddr      *net.UDPAddr
 	LocalConnAddr       *net.UDPAddr
