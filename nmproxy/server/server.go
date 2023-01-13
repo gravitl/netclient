@@ -195,6 +195,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
 			if peerInfo, ok := config.GetCfg().GetExtClientWaitCfg(peerKey); ok {
+				logger.Log(0, "--------> SENDING TO COMM CHAN: ", peerKey, source.String())
 				peerInfo.CommChan <- source
 			} else {
 				// check if endpoint needs to be updated for the extclient

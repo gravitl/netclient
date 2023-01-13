@@ -354,7 +354,7 @@ func (m *proxyPayload) peerUpdate() error {
 			go func(server string, peer *wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
 				peerConf models.PeerConf) {
 				addExtClient := false
-				commChan := make(chan *net.UDPAddr, 30)
+				commChan := make(chan *net.UDPAddr, 5)
 				ctx, cancel := context.WithCancel(context.Background())
 				extPeer := models.RemotePeer{
 					PeerKey:             peer.PublicKey.String(),
@@ -377,6 +377,7 @@ func (m *proxyPayload) peerUpdate() error {
 					case endpoint := <-commChan:
 						if endpoint != nil {
 							addExtClient = true
+							logger.Log(0, "--------> RECV TO COMM CHAN: ", peer.PublicKey.String(), endpoint.String())
 							peer.Endpoint = endpoint
 							peerI.Endpoint = endpoint
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
