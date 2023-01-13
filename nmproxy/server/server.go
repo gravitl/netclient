@@ -203,18 +203,22 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 						// update ext client endpoint
 						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
 							logger.Log(1, "----> Updating ExtPeer endpoint from: ", extPeer.Endpoint.String(), " to: ", source.String())
-							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
-							if peerInfo, found := config.GetCfg().GetNoProxyPeer(extPeer.Endpoint.IP); found {
-								peerInfo.Config.PeerEndpoint = source
-								config.GetCfg().SavePeer(&peerInfo)
-								// reset connection for the ext peer
-								peerInfo.ResetConn()
-							}
-							peerInfoHash.Endpoint = source
-							extPeer.Endpoint = source
-							config.GetCfg().SavePeerByHash(&peerInfoHash)
-							config.GetCfg().SaveExtClientInfo(&extPeer)
+							// config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
+							// if peerInfo, found := config.GetCfg().GetPeer(peerKey); found {
+							// 	peerInfo.Config.PeerEndpoint = source
+							// 	config.GetCfg().SavePeer(&peerInfo)
+							// 	// reset connection for the ext peer
+							// 	peerInfo.ResetConn()
+							// }
+							// peerInfoHash.Endpoint = source
+							// extPeer.Endpoint = source
+							// config.GetCfg().SavePeerByHash(&peerInfoHash)
+							// config.GetCfg().SaveExtClientInfo(&extPeer)
 
+							// Extclient Endpoint has changed so reset connection
+							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
+							config.GetCfg().DeletePeerHash(peerKey)
+							config.GetCfg().RemovePeer(peerKey)
 						}
 
 					}
@@ -248,7 +252,7 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 
 func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
 	fromNoProxyPeer := false
-	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found && !peerInfo.IsExtClient {
+	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found {
 		logger.Log(0, fmt.Sprintf("PROXING No Proxy Peer TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
 			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), source.IP.String()))
