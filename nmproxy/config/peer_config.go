@@ -213,6 +213,9 @@ func (c *Config) SaveExtClientInfo(peerInfo *models.RemotePeer) {
 
 // Config.DeleteExtClientInfo - deletes the ext. client info from the config
 func (c *Config) DeleteExtClientInfo(udpAddr *net.UDPAddr) {
+	if udpAddr == nil {
+		return
+	}
 	delete(c.ifaceConfig.extSrcIpMap, udpAddr.String())
 }
 

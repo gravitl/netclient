@@ -105,7 +105,9 @@ func (p *Proxy) Reset() {
 		peer.Endpoint = p.RemoteConn
 		config.GetCfg().SavePeerByHash(&peer)
 	}
+	logger.Log(0, "-----------> REMOTE ENDPOINTS: ", p.RemoteConn.String(), peerRemoteEndpoint.String())
 	if extpeer, found := config.GetCfg().GetExtClientInfo(peerRemoteEndpoint); found {
+		config.GetCfg().DeleteExtClientInfo(peerRemoteEndpoint)
 		extpeer.LocalConn = p.LocalConn
 		extpeer.Endpoint = p.RemoteConn
 		config.GetCfg().SaveExtClientInfo(&extpeer)
