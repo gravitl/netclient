@@ -145,6 +145,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 	}
 	defer ServerSet[server.Name].Disconnect(250)
 	<-ctx.Done()
+	delete(ServerSet, server.Name)
 	logger.Log(0, "shutting down message queue for server", server.Name)
 }
 
