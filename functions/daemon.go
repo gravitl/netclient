@@ -64,40 +64,43 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	proxyWg := sync.WaitGroup{}
-	stopProxy := startProxy(&proxyWg)
+	stopProxy := startProxy(&wg)
 	for {
 		select {
 		case <-quit:
-			cancel()
-			stopProxy()
-			proxyWg.Wait()
 			logger.Log(0, "shutting down netclient daemon")
-			wg.Wait()
-			for _, mqclient := range ServerSet {
-				if mqclient != nil {
-					mqclient.Disconnect(250)
-				}
-			}
-			logger.Log(0, "closing netmaker interface")
-			iface := wireguard.GetInterface()
-			iface.Close()
+			closeRoutines([]context.CancelFunc{
+				cancel,
+				stopProxy,
+			}, &wg)
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
 			logger.Log(0, "received reset")
-			cancel()
-			wg.Wait()
-			for _, mqclient := range ServerSet {
-				if mqclient != nil {
-					mqclient.Disconnect(250)
-				}
-			}
+			closeRoutines([]context.CancelFunc{
+				cancel,
+				stopProxy,
+			}, &wg)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
-			stopProxy = startProxy(&proxyWg)
+			stopProxy = startProxy(&wg)
 		}
 	}
+}
+
+func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
+	for i := range closers {
+		closers[i]()
+	}
+	for _, mqclient := range ServerSet {
+		if mqclient != nil {
+			mqclient.Disconnect(250)
+		}
+	}
+	wg.Wait()
+	logger.Log(0, "closing netmaker interface")
+	iface := wireguard.GetInterface()
+	iface.Close()
 }
 
 // startGoRoutines starts the daemon goroutines
