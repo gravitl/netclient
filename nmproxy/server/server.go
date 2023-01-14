@@ -256,7 +256,7 @@ func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
 			}
 			metrics.UpdateMetricByPeer(peerKey, &metric, true)
 
-		}(n, peerInfo.Config.RemoteKey.String())
+		}(n, peerInfo.Config.PeerPublicKey.String())
 		fromNoProxyPeer = true
 	}
 	return fromNoProxyPeer

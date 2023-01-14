@@ -49,14 +49,14 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			go func(n int, cfg models.Proxy) {
 				peerConnCfg := models.Conn{}
 				if p.Config.ProxyStatus {
-					peerConnCfg, _ = config.GetCfg().GetPeer(cfg.RemoteKey.String())
+					peerConnCfg, _ = config.GetCfg().GetPeer(cfg.PeerPublicKey.String())
 				} else {
 					peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
 				}
 				for server := range peerConnCfg.ServerMap {
-					metric := metrics.GetMetric(server, cfg.RemoteKey.String())
+					metric := metrics.GetMetric(server, cfg.PeerPublicKey.String())
 					metric.TrafficSent += int64(n)
-					metrics.UpdateMetric(server, cfg.RemoteKey.String(), &metric)
+					metrics.UpdateMetric(server, cfg.PeerPublicKey.String(), &metric)
 				}
 
 			}(n, p.Config)
@@ -64,7 +64,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			var srcPeerKeyHash, dstPeerKeyHash string
 			if p.Config.ProxyStatus {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(buf, n,
-					config.GetCfg().GetDevicePubKey().String(), p.Config.RemoteKey.String())
+					config.GetCfg().GetDevicePubKey().String(), p.Config.PeerPublicKey.String())
 				if err != nil {
 					logger.Log(0, "failed to process pkt before sending: ", err.Error())
 				}
@@ -85,21 +85,21 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 
 // Proxy.Reset - resets peer's conn
 func (p *Proxy) Reset() {
-	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.RemoteKey.String())
+	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.PeerPublicKey.String())
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
-		logger.Log(0, "couldn't perform reset: ", p.Config.RemoteKey.String(), err.Error())
+		logger.Log(0, "couldn't perform reset: ", p.Config.PeerPublicKey.String(), err.Error())
 	}
 	p.Start()
 	// update peer configs
-	if peer, found := config.GetCfg().GetPeer(p.Config.RemoteKey.String()); found {
+	if peer, found := config.GetCfg().GetPeer(p.Config.PeerPublicKey.String()); found {
 		peer.Config = p.Config
 		peer.LocalConn = p.LocalConn
 		peer.ResetConn = p.Reset
 		peer.StopConn = p.Close
 		config.GetCfg().SavePeer(&peer)
 	}
-	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.RemoteKey.String())); found {
+	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.PeerPublicKey.String())); found {
 		peer.LocalConn = p.LocalConn
 		config.GetCfg().SavePeerByHash(&peer)
 	}
@@ -112,7 +112,7 @@ func (p *Proxy) Reset() {
 
 // Proxy.pullLatestConfig - pulls latest peer config
 func (p *Proxy) pullLatestConfig() error {
-	peer, found := config.GetCfg().GetPeer(p.Config.RemoteKey.String())
+	peer, found := config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
 	if found {
 		p.Config.PeerEndpoint = peer.Config.PeerEndpoint
 	} else {
@@ -134,25 +134,25 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 		case <-ticker.C:
 			peerConnCfg := models.Conn{}
 			if p.Config.ProxyStatus {
-				peerConnCfg, _ = config.GetCfg().GetPeer(p.Config.RemoteKey.String())
+				peerConnCfg, _ = config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
 			} else {
 				peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
 			}
 			for server := range peerConnCfg.ServerMap {
-				peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(server, peerConnCfg.Config.RemoteKey.String())
+				peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(server, peerConnCfg.Config.PeerPublicKey.String())
 				if !found {
 					continue
 				}
-				metric := metrics.GetMetric(server, p.Config.RemoteKey.String())
+				metric := metrics.GetMetric(server, p.Config.PeerPublicKey.String())
 				metric.NodeConnectionStatus = make(map[string]bool)
 				metric.LastRecordedLatency = 999
 				for peerID, peerInfo := range peerIDsAndAddrs {
 					metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
 				}
-				metrics.UpdateMetric(server, p.Config.RemoteKey.String(), &metric)
+				metrics.UpdateMetric(server, p.Config.PeerPublicKey.String(), &metric)
 			}
 
-			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), p.Config.LocalKey, p.Config.RemoteKey)
+			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), p.Config.PeerPublicKey)
 			if err == nil {
 				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: \n", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)

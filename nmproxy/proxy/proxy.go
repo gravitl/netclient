@@ -27,7 +27,7 @@ func (p *Proxy) Start() error {
 
 	var err error
 	p.RemoteConn = p.Config.PeerEndpoint
-	logger.Log(0, "----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.RemoteKey.String(), p.RemoteConn.String())
+	logger.Log(0, "----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.PeerPublicKey.String(), p.RemoteConn.String())
 	addr, err := GetFreeIp(models.DefaultCIDR, config.GetCfg().GetInterfaceListenPort())
 	if err != nil {
 		logger.Log(1, "Failed to get freeIp: ", err.Error())
@@ -53,7 +53,7 @@ func (p *Proxy) Start() error {
 	logger.Log(0, "Dialing to local Wireguard port %s --> %s\n", p.LocalConn.LocalAddr().String(), p.LocalConn.RemoteAddr().String())
 	err = p.updateEndpoint()
 	if err != nil {
-		logger.Log(0, "error while updating Wireguard peer endpoint [%s] %v\n", p.Config.RemoteKey.String(), err.Error())
+		logger.Log(0, "error while updating Wireguard peer endpoint [%s] %v\n", p.Config.PeerPublicKey.String(), err.Error())
 		return err
 	}
 	localAddr, err := net.ResolveUDPAddr("udp", p.LocalConn.LocalAddr().String())
@@ -70,7 +70,7 @@ func (p *Proxy) Start() error {
 
 // Proxy.Close - removes peer conn from proxy and closes all the opened connections locally
 func (p *Proxy) Close() {
-	logger.Log(0, "------> Closing Proxy for ", p.Config.RemoteKey.String())
+	logger.Log(0, "------> Closing Proxy for ", p.Config.PeerPublicKey.String())
 	p.Cancel()
 	p.LocalConn.Close()
 	if runtime.GOOS == "darwin" { // on darwin need to add alias for additional address in lo0 range

@@ -38,5 +38,4 @@ func Start(ctx context.Context, mgmChan chan *nm_models.HostPeerUpdate, stunAddr
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	go manager.Start(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)
-
 }

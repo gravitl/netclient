@@ -29,20 +29,18 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
-		LocalKey:            config.GetCfg().GetDevicePubKey(),
-		RemoteKey:           peer.PublicKey,
-		IsExtClient:         peerConf.IsExtClient,
-		PeerConf:            peer,
-		PersistentKeepalive: peer.PersistentKeepaliveInterval,
-		ListenPort:          int(peerConf.PublicListenPort),
-		ProxyStatus:         peerConf.Proxy,
+		PeerPublicKey: peer.PublicKey,
+		IsExtClient:   peerConf.IsExtClient,
+		PeerConf:      peer,
+		ListenPort:    int(peerConf.PublicListenPort),
+		ProxyStatus:   peerConf.Proxy,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
 	if peerPort == 0 {
 		peerPort = models.NmProxyPort
 	}
-	if peerConf.IsAttachedExtClient || !peerConf.Proxy {
+	if peerConf.IsExtClient || !peerConf.Proxy {
 		peerPort = peer.Endpoint.Port
 
 	}
@@ -67,24 +65,22 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 	}
 
 	connConf := models.Conn{
-		Mutex:               &sync.RWMutex{},
-		Key:                 peer.PublicKey,
-		IsAttachedExtClient: peerConf.IsAttachedExtClient,
-		Config:              p.Config,
-		StopConn:            p.Close,
-		ResetConn:           p.Reset,
-		LocalConn:           p.LocalConn,
-		NetworkSettings:     make(map[string]models.Settings),
-		ServerMap:           make(map[string]struct{}),
+		Mutex:           &sync.RWMutex{},
+		Key:             peer.PublicKey,
+		IsExtClient:     peerConf.IsExtClient,
+		Config:          p.Config,
+		StopConn:        p.Close,
+		ResetConn:       p.Reset,
+		LocalConn:       p.LocalConn,
+		NetworkSettings: make(map[string]models.Settings),
+		ServerMap:       make(map[string]struct{}),
 	}
 	connConf.ServerMap[server] = struct{}{}
 	rPeer := models.RemotePeer{
-		Interface:           config.GetCfg().GetIface().Name,
-		PeerKey:             peer.PublicKey.String(),
-		IsExtClient:         peerConf.IsExtClient,
-		Endpoint:            peerEndpoint,
-		IsAttachedExtClient: peerConf.IsAttachedExtClient,
-		LocalConn:           p.LocalConn,
+		PeerKey:     peer.PublicKey.String(),
+		IsExtClient: peerConf.IsExtClient,
+		Endpoint:    peerEndpoint,
+		LocalConn:   p.LocalConn,
 	}
 	if peerConf.Proxy || peerConf.IsExtClient {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
@@ -94,7 +90,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 		config.GetCfg().SaveNoProxyPeer(&connConf)
 	}
 	config.GetCfg().SavePeerByHash(&rPeer)
-	if peerConf.IsAttachedExtClient {
+	if peerConf.IsExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
 		//add rules to router
 		routingInfo := &config.Routing{
