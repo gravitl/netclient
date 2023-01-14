@@ -21,6 +21,7 @@ func Stop() error {
 	return stop()
 }
 
+// CleanUp - calls the private cleanup func of every OS rather than just putting CleanUp in every OS
 func CleanUp() error {
 	return cleanUp()
 }

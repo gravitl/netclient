@@ -223,7 +223,6 @@ func setupMQTTSingleton(server *config.Server) error {
 			setSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
-
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -266,7 +265,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		}
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to peer updates peers/%s/%s", node.Network, node.ID))
+	logger.Log(3, fmt.Sprintf("subscribed to node updates update/%s/%s", node.Network, node.ID))
 }
 
 // should only ever use node client configs

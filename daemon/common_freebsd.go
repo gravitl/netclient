@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+// ExecDir - freebsd binary dir
 const ExecDir = "/sbin/"
 
 // install -- sets up daemon for freebsd

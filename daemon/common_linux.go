@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+// ExecDir - linux exec dir
 const ExecDir = "/sbin/"
 
 func install() error {
@@ -38,22 +39,19 @@ func stop() error {
 // cleanUp - cleans up neclient configs
 func cleanUp() error {
 	var faults string
-	host := config.Netclient()
-	if host.DaemonInstalled {
-		if err := stop(); err != nil {
-			logger.Log(0, "failed to stop netclient service", err.Error())
-			faults = "failed to stop netclient service: "
-		}
-		if err := removeSystemDServices(); err != nil {
-			faults = faults + err.Error()
-		}
+	if err := stop(); err != nil {
+		logger.Log(0, "failed to stop netclient service", err.Error())
+		faults = "failed to stop netclient service: "
+	}
+	if err := removeSystemDServices(); err != nil {
+		faults = faults + err.Error()
 	}
 	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
-		logger.Log(1, "Removing netclient configs: ", err.Error())
+		logger.Log(1, "error removing netclient configs: ", err.Error())
 		faults = faults + err.Error()
 	}
 	if err := os.Remove(ExecDir + "netclient"); err != nil {
-		logger.Log(1, "Removing netclient binary: ", err.Error())
+		logger.Log(1, "error removing netclient binary: ", err.Error())
 		faults = faults + err.Error()
 	}
 	if faults != "" {
