@@ -92,11 +92,6 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
-	for _, mqclient := range ServerSet {
-		if mqclient != nil {
-			mqclient.Disconnect(250)
-		}
-	}
 	wg.Wait()
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
