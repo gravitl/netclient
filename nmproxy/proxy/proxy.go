@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -97,40 +96,5 @@ func GetInterfaceListenAddr(port int) (*net.UDPAddr, error) {
 	if err != nil {
 		return udpAddr, err
 	}
-	if !config.GetCfg().IsHostNetwork() {
-		addrs, err := getBroadCastAddress()
-		if err != nil {
-			return udpAddr, err
-		}
-		for _, addr := range addrs {
-			if liAddr := addr.(*net.IPNet).IP; liAddr != nil {
-				udpAddr.IP = liAddr
-				break
-			}
-		}
-	}
-
 	return udpAddr, nil
-}
-
-// getBoardCastAddress - gets the broadcast address
-func getBroadCastAddress() ([]net.Addr, error) {
-	localnets, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	var (
-		ief   net.Interface
-		addrs []net.Addr
-	)
-	for _, ief = range localnets {
-		if ief.Flags&net.FlagBroadcast != 0 && ief.Flags&net.FlagUp != 0 {
-			addrs, err = ief.Addrs()
-			if err == nil {
-				return addrs, nil
-			}
-
-		}
-	}
-	return nil, errors.New("couldn't obtain the broadcast addr")
 }
