@@ -9,7 +9,10 @@ import (
 	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
+// MacServiceName - the service name for macs
 const MacServiceName = "com.gravitl.netclient"
+
+// MacExecDir - the exec dir for mac binary
 const MacExecDir = "/usr/local/bin/"
 
 // install- Creates a daemon service from the netclient under LaunchAgents for MacOS

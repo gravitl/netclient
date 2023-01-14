@@ -223,7 +223,6 @@ func setupMQTTSingleton(server *config.Server) error {
 			setSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
-
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -248,11 +247,17 @@ func setupMQTTSingleton(server *config.Server) error {
 // should be called for each server host is registered on.
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
-	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		logger.Log(0, "MQ host peer sub: ", hostID.String(), token.Error().Error())
 		return
 	}
+	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
+
+	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host update sub: ", hostID.String(), server, token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subscribed to host updates host/update/%s/%s", hostID.String(), server))
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config
@@ -266,7 +271,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		}
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to peer updates peers/%s/%s", node.Network, node.ID))
+	logger.Log(3, fmt.Sprintf("subscribed to node updates update/%s/%s", node.Network, node.ID))
 }
 
 // should only ever use node client configs

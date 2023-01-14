@@ -2,11 +2,13 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -196,7 +198,68 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		UpdateLocalListenPort(&node)
 	}
+}
 
+// HostUpdate - mq handler for host update /host/update/<HOSTID>
+func HostUpdate(client mqtt.Client, msg mqtt.Message) {
+	// 1) Get new Host settings
+	// 2) Notify all attached servers that host has changed
+	// 3) restart daemon
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+
+	var hostUpdate models.Host
+	logger.Log(3, "received peer update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal([]byte(data), &hostUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling peer data")
+		return
+	}
+	// Update settings of host, write it and inform servers of changes and reset
+	// any change to host will and should trigger a daemon restart
+	if err = updateHost(&hostUpdate); err != nil {
+		logger.Log(0, "failed to update host settings after update from server", serverName, "-", err.Error())
+		return
+	}
+
+	for _, v := range config.GetNodes() {
+		if err = publish(&v, fmt.Sprintf("host/update/%s", config.Netclient().ID.String()), []byte{ACK}, 1); err != nil {
+			logger.Log(0, "failed to infor server", v.Server, "that host update was completed -", err.Error())
+		}
+	}
+
+	if err = daemon.Restart(); err != nil {
+		logger.Log(0, "failed to restart daemon -", err.Error())
+	}
+}
+
+func updateHost(hostUpdate *models.Host) error {
+	config.Netclient().MTU = hostUpdate.MTU
+	config.Netclient().ListenPort = hostUpdate.ListenPort
+	config.Netclient().ProxyEnabled = hostUpdate.ProxyEnabled
+	if hostUpdate.ProxyEnabled {
+		config.Netclient().ProxyListenPort = hostUpdate.ProxyListenPort
+	}
+	config.Netclient().IsDefault = hostUpdate.IsDefault
+	config.Netclient().Debug = hostUpdate.Debug
+	config.Netclient().IsStatic = hostUpdate.IsStatic
+	config.Netclient().IsRelay = hostUpdate.IsRelay
+	config.Netclient().RelayedBy = hostUpdate.RelayedBy
+	config.Netclient().Verbosity = hostUpdate.Verbosity
+	config.Netclient().Name = hostUpdate.Name
+	config.Netclient().Nodes = hostUpdate.Nodes
+	if config.Netclient().IsStatic {
+		config.Netclient().EndpointIP = hostUpdate.EndpointIP
+	}
+	return config.WriteNetclientConfig()
 }
 
 func parseNetworkFromTopic(topic string) string {
