@@ -99,7 +99,6 @@ func checkin() {
 						logger.Log(0, "Network: ", network, " could not publish local address change")
 					}
 				}
-				_ = UpdateLocalListenPort()
 
 			} else if node.IsLocal && host.LocalRange.IP != nil {
 				localIP, err := ncutils.GetLocalIP(host.LocalRange)
@@ -126,6 +125,7 @@ func checkin() {
 			publishMetrics(&node)
 		}
 	}
+	_ = UpdateLocalListenPort()
 }
 
 // PublishNodeUpdate -- pushes node to broker

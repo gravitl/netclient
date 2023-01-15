@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
@@ -77,18 +76,6 @@ func UpdateLocalListenPort() error {
 	}
 
 	return err
-}
-
-func getRealIface(ifacename string, address net.IPNet) string {
-	var deviceiface = ifacename
-	var err error
-	if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
-		deviceiface, err = local.GetMacIface(address.IP.String())
-		if err != nil || deviceiface == "" {
-			deviceiface = ifacename
-		}
-	}
-	return deviceiface
 }
 
 func getInterfaces() (*[]models.Iface, error) {

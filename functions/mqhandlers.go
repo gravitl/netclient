@@ -223,8 +223,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				return
 			}
 		}
-		UpdateLocalListenPort()
 	}
+	UpdateLocalListenPort()
 
 }
 
