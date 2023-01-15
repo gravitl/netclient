@@ -67,14 +67,14 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
+	// stopProxy := startProxy(&wg)
 	for {
 		select {
 		case <-quit:
 			logger.Log(0, "shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
+				// stopProxy,
 			}, &wg)
 			logger.Log(0, "shutdown complete")
 			return
@@ -82,11 +82,11 @@ func Daemon() {
 			logger.Log(0, "received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
+				// stopProxy,
 			}, &wg)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
-			stopProxy = startProxy(&wg)
+			// stopProxy = startProxy(&wg)
 		}
 	}
 }
