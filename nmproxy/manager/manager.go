@@ -62,7 +62,6 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	if !config.GetCfg().IsIfaceNil() && wgIface.Device.ListenPort != config.GetCfg().GetInterfaceListenPort() {
 		// reset proxy
 		cleanUpInterface()
-		return nil
 	}
 	config.GetCfg().SetIface(wgIface)
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
