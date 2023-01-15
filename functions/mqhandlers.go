@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -121,7 +122,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		//			logger.Log(0, "error applying dns" + err.Error())
 		//		}
 	}
-	_ = UpdateLocalListenPort(&newNode)
+	_ = UpdateLocalListenPort()
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
@@ -157,9 +158,37 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
-	config.Netclient().ProxyEnabled = peerUpdate.Host.ProxyEnabled
-	config.UpdateHostPeers(serverName, peerUpdate.Peers)
+	// update host fields
+	host := peerUpdate.Host
+	config.Netclient().Verbosity = host.Verbosity
+	config.Netclient().Name = host.Name
+	config.Netclient().MTU = host.MTU
+	config.Netclient().ProxyEnabled = host.ProxyEnabled
+	listenPortChanged := false
+	if host.ListenPort != 0 && config.Netclient().ListenPort != host.ListenPort {
+		config.Netclient().ListenPort = host.ListenPort
+		listenPortChanged = true
+	}
+	if host.ProxyListenPort != 0 {
+		config.Netclient().ProxyListenPort = host.ProxyListenPort
+	}
+	if host.EndpointIP != nil {
+		config.Netclient().EndpointIP = host.EndpointIP
+	}
 	config.WriteNetclientConfig()
+	if listenPortChanged {
+		logger.Log(0, "Wireguard listen port is changed to ", fmt.Sprint(host.ListenPort))
+		nc := wireguard.GetInterface()
+		nc.Close()
+	}
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	if listenPortChanged {
+		nc.Create()
+	}
+	if err := nc.Configure(); err != nil {
+		logger.Log(0, "could not configure netmaker interface", err.Error())
+		return
+	}
 	wireguard.SetPeers()
 
 	if config.Netclient().ProxyEnabled {
@@ -194,7 +223,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				return
 			}
 		}
-		UpdateLocalListenPort(&node)
+		UpdateLocalListenPort()
 	}
 
 }

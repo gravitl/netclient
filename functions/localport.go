@@ -35,10 +35,10 @@ func GetLocalListenPort(ifacename string) (int, error) {
 }
 
 // UpdateLocalListenPort - check local port, if different, mod config and publish
-func UpdateLocalListenPort(node *config.Node) error {
+func UpdateLocalListenPort() error {
 	var err error
 	publishMsg := false
-	ifacename := getRealIface(ncutils.GetInterfaceName(), node.Address)
+	ifacename := ncutils.GetInterfaceName()
 	var proxylistenPort int
 	if config.Netclient().ProxyEnabled {
 		proxylistenPort = proxyCfg.GetCfg().HostInfo.PubPort
@@ -48,9 +48,9 @@ func UpdateLocalListenPort(node *config.Node) error {
 	}
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
-		logger.Log(1, "network:", node.Network, "error encountered checking local listen port: ", ifacename, err.Error())
+		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
 	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 {
-		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(config.Netclient().LocalListenPort), " to ", strconv.Itoa(localPort))
+		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().LocalListenPort), " to ", strconv.Itoa(localPort))
 		config.Netclient().LocalListenPort = localPort
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
@@ -58,7 +58,7 @@ func UpdateLocalListenPort(node *config.Node) error {
 		publishMsg = true
 	}
 	if config.Netclient().ProxyEnabled && config.Netclient().ProxyListenPort != proxylistenPort {
-		logger.Log(1, fmt.Sprint("network:", node.Network, "proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
+		logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
 		config.Netclient().ProxyListenPort = proxylistenPort
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
@@ -67,9 +67,13 @@ func UpdateLocalListenPort(node *config.Node) error {
 
 	}
 	if publishMsg {
-		if err := PublishNodeUpdate(node); err != nil {
-			logger.Log(0, "could not publish local port change", err.Error())
+		servers := config.GetServers()
+		for _, server := range servers {
+			if err := PublishHostUpdate(server); err != nil {
+				logger.Log(0, "could not publish local port change to server: ", server, err.Error())
+			}
 		}
+
 	}
 
 	return err

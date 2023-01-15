@@ -99,7 +99,7 @@ func checkin() {
 						logger.Log(0, "Network: ", network, " could not publish local address change")
 					}
 				}
-				_ = UpdateLocalListenPort(&node)
+				_ = UpdateLocalListenPort()
 
 			} else if node.IsLocal && host.LocalRange.IP != nil {
 				localIP, err := ncutils.GetLocalIP(host.LocalRange)
@@ -138,11 +138,25 @@ func PublishNodeUpdate(node *config.Node) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(node, fmt.Sprintf("update/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("update/%s", node.ID), data, 1); err != nil {
 		return err
 	}
 
 	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
+	return nil
+}
+
+// PublishHostUpdate - pushes host updates to broker
+func PublishHostUpdate(server string) error {
+	host := config.Netclient()
+	serverHost, _ := config.Convert(host, nil)
+	data, err := json.Marshal(serverHost)
+	if err != nil {
+		return err
+	}
+	if err = publish(server, fmt.Sprintf("host/update/%s", serverHost.ID.String()), data, 1); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -169,7 +183,7 @@ func Hello(node *config.Node) {
 		logger.Log(0, "unable to marshal checkin data", err.Error())
 		return
 	}
-	if err := publish(node, fmt.Sprintf("ping/%s", node.ID), data, 0); err != nil {
+	if err := publish(node.Server, fmt.Sprintf("ping/%s", node.ID), data, 0); err != nil {
 		logger.Log(0, fmt.Sprintf("Network: %s error publishing ping, %v", node.Network, err))
 		logger.Log(0, "running pull on "+node.Network+" to reconnect")
 		_, err := Pull(node.Network, true)
@@ -221,7 +235,7 @@ func publishMetrics(node *config.Node) {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
 	}
 
-	if err = publish(node, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 		logger.Log(0, "aggregating metrics locally until broker connection re-established")
 		val, ok := metricsCache.Load(node.ID)
@@ -253,9 +267,9 @@ func publishMetrics(node *config.Node) {
 }
 
 // node cfg is required  in order to fetch the traffic keys of that node for encryption
-func publish(node *config.Node, dest string, msg []byte, qos byte) error {
+func publish(serverName string, dest string, msg []byte, qos byte) error {
 	// setup the keys
-	server := config.GetServer(node.Server)
+	server := config.GetServer(serverName)
 	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {
 		return err
@@ -268,12 +282,12 @@ func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	if err != nil {
 		return err
 	}
-	mqclient, ok := ServerSet[node.Server]
+	mqclient, ok := ServerSet[serverName]
 	if !ok {
 		return errors.New("unable to publish ... no mqclient")
 	}
 	if token := mqclient.Publish(dest, qos, false, encrypted); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
-		logger.Log(0, "could not connect to broker at "+node.Server)
+		logger.Log(0, "could not connect to broker at "+serverName)
 		var err error
 		if token.Error() == nil {
 			err = errors.New("connection timeout")
@@ -321,7 +335,7 @@ func checkBroker(broker string, port string) error {
 
 // publishes a message to server to update peers on this peer's behalf
 func publishSignal(node *config.Node, signal byte) error {
-	if err := publish(node, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
+	if err := publish(node.Server, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
 		return err
 	}
 	return nil
