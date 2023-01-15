@@ -26,6 +26,8 @@ func GetMetricByServer(server string) map[string]*models.Metric {
 func GetMetric(server, peerKey string) models.Metric {
 	metric := models.Metric{}
 	peerMetricMap := GetMetricByServer(server)
+	metricsMapLock.RLock()
+	defer metricsMapLock.RUnlock()
 	if peerMetricMap == nil {
 		return metric
 	}
