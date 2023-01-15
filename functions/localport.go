@@ -48,9 +48,9 @@ func UpdateLocalListenPort() error {
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
-	} else if config.Netclient().LocalListenPort != localPort && localPort != 0 {
-		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().LocalListenPort), " to ", strconv.Itoa(localPort))
-		config.Netclient().LocalListenPort = localPort
+	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
+		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
+		config.Netclient().ListenPort = localPort
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}
