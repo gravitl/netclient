@@ -25,7 +25,7 @@ func Start(ctx context.Context, mgmChan chan *nm_models.HostPeerUpdate, stunAddr
 		return
 	}
 	config.InitializeCfg()
-	defer config.GetCfg().SetProxyStatus(false)
+	defer config.Reset()
 	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort))
 	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetCfg().GetHostInfo()))
 	config.GetCfg().SetNATStatus()

@@ -51,7 +51,6 @@ func (p *ProxyServer) Close() {
 		peerI.StopConn()
 		peerI.Mutex.Unlock()
 	}
-	config.Reset()
 	// close server connection
 	NmProxyServer.Server.Close()
 }

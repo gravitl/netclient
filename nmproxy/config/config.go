@@ -56,8 +56,6 @@ func InitializeCfg() {
 
 // Config.IsProxyRunning - checks if proxy is running
 func (c *Config) IsProxyRunning() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
 	return c.ProxyStatus
 }
 
