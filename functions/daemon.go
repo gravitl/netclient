@@ -254,10 +254,6 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
-	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
-		return
-	}
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config
