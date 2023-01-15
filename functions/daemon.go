@@ -23,8 +23,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const lastNodeUpdate = "lnu"
-const lastPeerUpdate = "lpu"
+const (
+	lastNodeUpdate = "lnu"
+	lastPeerUpdate = "lpu"
+	lastHostUpdate = "lhu"
+)
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
@@ -93,6 +96,10 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		closers[i]()
 	}
 	wg.Wait()
+	for k, mqClient := range ServerSet {
+		mqClient.Disconnect(250)
+		delete(ServerSet, k)
+	}
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
@@ -143,9 +150,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 		logger.Log(0, "unable to connect to broker", server.Broker, err.Error())
 		return
 	}
-	defer ServerSet[server.Name].Disconnect(250)
 	<-ctx.Done()
-	delete(ServerSet, server.Name)
 	logger.Log(0, "shutting down message queue for server", server.Name)
 }
 
