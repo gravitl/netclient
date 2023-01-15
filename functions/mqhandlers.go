@@ -218,6 +218,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err != nil {
 		return
 	}
+	fmt.Printf("GOT DATA: %+v \n", data)
 	err = json.Unmarshal([]byte(data), &hostUpdate)
 	if err != nil {
 		logger.Log(0, "error unmarshalling peer data")
@@ -231,10 +232,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	for _, v := range config.GetNodes() {
+		fmt.Printf("publishing message ACK to %s \n", config.Netclient().ID.String())
 		if err = publish(&v, fmt.Sprintf("update/%s", config.Netclient().ID.String()), []byte{ACK}, 1); err != nil {
 			logger.Log(0, "failed to infor server", v.Server, "that host update was completed -", err.Error())
 		}
 	}
+
+	fmt.Printf("I'm RESTARTING")
 
 	if err = daemon.Restart(); err != nil {
 		logger.Log(0, "failed to restart daemon -", err.Error())
