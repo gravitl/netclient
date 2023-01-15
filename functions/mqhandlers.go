@@ -213,7 +213,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	var hostUpdate models.Host
-	logger.Log(3, "received peer update for host from: ", serverName)
+	logger.Log(0, "received update for host from: ", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		return
