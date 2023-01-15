@@ -88,13 +88,8 @@ func Join(flags *viper.Viper) error {
 		logger.Log(0, "error saving wireguard conf", err.Error())
 	}
 	logger.Log(1, "joined", node.Network)
-	if config.Netclient().DaemonInstalled {
-		if err := daemon.Restart(); err != nil {
-			logger.Log(3, "daemon restart failed:", err.Error())
-			if err := daemon.Start(); err != nil {
-				logger.FatalLog("error restarting deamon", err.Error())
-			}
-		}
+	if err := daemon.Restart(); err != nil {
+		logger.Log(3, "daemon restart failed:", err.Error())
 	}
 	return nil
 }
