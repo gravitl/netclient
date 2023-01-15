@@ -253,8 +253,8 @@ func setHostSubscription(client mqtt.Client, server string) {
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
 
-	if token := client.Subscribe(fmt.Sprintf("update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host peer sub: ", hostID.String(), token.Error().Error())
+	if token := client.Subscribe(fmt.Sprintf("update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host update sub: ", hostID.String(), token.Error().Error())
 		return
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))

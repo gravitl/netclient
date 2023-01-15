@@ -231,7 +231,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	for _, v := range config.GetNodes() {
-		if err = publish(&v, fmt.Sprintf("host/update/%s", config.Netclient().ID.String()), []byte{ACK}, 1); err != nil {
+		if err = publish(&v, fmt.Sprintf("update/%s", config.Netclient().ID.String()), []byte{ACK}, 1); err != nil {
 			logger.Log(0, "failed to infor server", v.Server, "that host update was completed -", err.Error())
 		}
 	}
