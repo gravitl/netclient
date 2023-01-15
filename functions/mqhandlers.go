@@ -205,7 +205,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	// 1) Get new Host settings
 	// 2) Notify all attached servers that host has changed
 	// 3) restart daemon
-	serverName := parseServerFromTopic(msg.Topic())
+	serverName := parseServerFromHostTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
 		logger.Log(0, "server ", serverName, " not found in config")
@@ -268,4 +268,8 @@ func parseNetworkFromTopic(topic string) string {
 
 func parseServerFromTopic(topic string) string {
 	return strings.Split(topic, "/")[3]
+}
+
+func parseServerFromHostTopic(topic string) string {
+	return strings.Split(topic, "/")[2]
 }
