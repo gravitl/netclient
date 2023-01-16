@@ -57,6 +57,10 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 				faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
 			}
 		}
+	} else { // was called from CLI so restart daemon
+		if err := daemon.Restart(); err != nil {
+			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))
+		}
 	}
 
 	if len(faults) > 0 {
