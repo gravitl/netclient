@@ -59,13 +59,6 @@ func (c *Config) IsProxyRunning() bool {
 	return c.ProxyStatus
 }
 
-// Config.SetProxyStatus - sets the proxy status
-func (c *Config) SetProxyStatus(s bool) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.ProxyStatus = s
-}
-
 // Config.SetHostInfo - sets host info
 func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
 	c.mutex.Lock()
