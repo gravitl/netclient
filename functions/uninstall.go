@@ -50,11 +50,9 @@ func LeaveNetwork(network string) ([]error, error) {
 	if err := removeHostDNS(node.Network); err != nil {
 		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
-	if config.Netclient().DaemonInstalled {
-		fmt.Println("restarting daemon")
-		if err := daemon.Restart(); err != nil {
-			faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
-		}
+	fmt.Println("restarting daemon")
+	if err := daemon.Restart(); err != nil {
+		faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
 	}
 	if len(faults) > 0 {
 		return faults, errors.New("error(s) leaving nework")
