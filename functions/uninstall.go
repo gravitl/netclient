@@ -10,6 +10,7 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -18,7 +19,7 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 	for network := range config.Nodes {
-		faults, err := LeaveNetwork(network)
+		faults, err := LeaveNetwork(network, false)
 		if err != nil {
 			allfaults = append(allfaults, faults...)
 		}
@@ -30,30 +31,38 @@ func Uninstall() ([]error, error) {
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) ([]error, error) {
+func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	faults := []error{}
-	fmt.Println("\nleaving network", network)
 	node, ok := config.Nodes[network]
 	if !ok {
-		fmt.Printf("\nnot connected to network: %s", network)
 		return faults, fmt.Errorf("not connected to network: %s", network)
 	}
-	fmt.Println("deleting node from server")
 	if err := deleteNodeFromServer(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
 	}
-	fmt.Println("deleting wireguard interface")
+	// remove node from config
 	if err := deleteLocalNetwork(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	fmt.Println("removing dns entries")
 	if err := removeHostDNS(node.Network); err != nil {
 		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
-	fmt.Println("restarting daemon")
-	if err := daemon.Restart(); err != nil {
-		faults = append(faults, fmt.Errorf("error restarting daemon %w", err))
+	// re-configure interface if daemon is calling leave
+	if isDaemon {
+		nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		if err := nc.Configure(); err != nil {
+			faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
+		} else {
+			if err = wireguard.SetPeers(); err != nil {
+				faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
+			}
+		}
+	} else { // was called from CLI so restart daemon
+		if err := daemon.Restart(); err != nil {
+			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))
+		}
 	}
+
 	if len(faults) > 0 {
 		return faults, errors.New("error(s) leaving nework")
 	}
