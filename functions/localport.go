@@ -68,7 +68,7 @@ func UpdateLocalListenPort() error {
 	if publishMsg {
 		servers := config.GetServers()
 		for _, server := range servers {
-			if err := PublishHostUpdate(server); err != nil {
+			if err := PublishSingleHostUpdate(server); err != nil {
 				logger.Log(0, "could not publish local port change to server: ", server, err.Error())
 			}
 		}

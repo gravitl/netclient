@@ -73,57 +73,58 @@ func checkin() {
 		logger.Log(0, "skipping checkin: no nodes configured")
 		return
 	}
+	var api string
 	for network, node := range config.GetNodes() {
 		server := config.GetServer(node.Server)
-		if node.Connected {
-			if !config.Netclient().IsStatic {
-				extIP, err := ncutils.GetPublicIP(server.API)
-				if err != nil {
-					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-				}
-				if config.Netclient().EndpointIP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", network, "endpoint has changed from ", config.Netclient().EndpointIP.String(), " to ", extIP)
-					config.Netclient().EndpointIP = net.ParseIP(extIP)
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", network, "could not publish endpoint change")
-					}
-				}
-				intIP, err := getPrivateAddr()
-				if err != nil {
-					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
-				}
-				if host.LocalAddress.String() != intIP.String() && intIP.IP != nil {
-					logger.Log(1, "network:", network, "local Address has changed from ", host.LocalAddress.String(), " to ", intIP.String())
-					host.LocalAddress = intIP
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "Network: ", network, " could not publish local address change")
-					}
-				}
-
-			} else if node.IsLocal && host.LocalRange.IP != nil {
-				localIP, err := ncutils.GetLocalIP(host.LocalRange)
-				if err != nil {
-					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
-				}
-				if config.Netclient().EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", localIP.String())
-					config.Netclient().EndpointIP = localIP.IP
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", network, "could not publish localip change")
-					}
+		if api == "" {
+			api = server.API
+		}
+		if node.Connected && node.IsLocal && host.LocalRange.IP != nil {
+			localIP, err := ncutils.GetLocalIP(host.LocalRange)
+			if err != nil {
+				logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
+			}
+			if config.Netclient().EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
+				logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", localIP.String())
+				config.Netclient().EndpointIP = localIP.IP
+				if err := PublishNodeUpdate(&node); err != nil {
+					logger.Log(0, "network:", network, "could not publish localip change")
 				}
 			}
 		}
-		//check version
-		//if node.Version != ncutils.Version {
-		//node.Version = ncutils.Version
-		//config.Write(&nodeCfg, nodeCfg.Network)
-		//}
 		Hello(&node)
 		if server.Is_EE && node.Connected {
 			logger.Log(0, "collecting metrics for node", host.Name)
 			publishMetrics(&node)
 		}
+	}
+	if !config.Netclient().IsStatic {
+		publishMsg := false
+		extIP, err := ncutils.GetPublicIP(api)
+		if err != nil {
+			logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
+		}
+		if config.Netclient().EndpointIP.String() != extIP && extIP != "" {
+			logger.Log(1, "endpoint has changed from ", config.Netclient().EndpointIP.String(), " to ", extIP)
+			config.Netclient().EndpointIP = net.ParseIP(extIP)
+			publishMsg = true
+
+		}
+		intIP, err := getPrivateAddr()
+		if err != nil {
+			logger.Log(1, "error encountered checking private ip addresses: ", err.Error())
+		}
+		if host.LocalAddress.String() != intIP.String() && intIP.IP != nil {
+			logger.Log(1, "local Address has changed from ", host.LocalAddress.String(), " to ", intIP.String())
+			host.LocalAddress = intIP
+			publishMsg = true
+		}
+		if publishMsg {
+			if err := PublishHostUpdate(); err != nil {
+				logger.Log(0, "could not publish endpoint change")
+			}
+		}
+
 	}
 	_ = UpdateLocalListenPort()
 }
@@ -146,8 +147,8 @@ func PublishNodeUpdate(node *config.Node) error {
 	return nil
 }
 
-// PublishHostUpdate - pushes host updates to broker
-func PublishHostUpdate(server string) error {
+// PublishSingleHostUpdate - pushes host updates to broker
+func PublishSingleHostUpdate(server string) error {
 	host := config.Netclient()
 	serverHost, _ := config.Convert(host, nil)
 	data, err := json.Marshal(serverHost)
@@ -156,6 +157,24 @@ func PublishHostUpdate(server string) error {
 	}
 	if err = publish(server, fmt.Sprintf("host/update/%s", serverHost.ID.String()), data, 1); err != nil {
 		return err
+	}
+	return nil
+}
+
+// PublishHostUpdate - pushes host updates to all the servers host is registered.
+func PublishHostUpdate() error {
+	servers := config.GetServers()
+	host := config.Netclient()
+	serverHost, _ := config.Convert(host, nil)
+	data, err := json.Marshal(serverHost)
+	if err != nil {
+		return err
+	}
+	for _, server := range servers {
+		if err = publish(server, fmt.Sprintf("host/update/%s", serverHost.ID.String()), data, 1); err != nil {
+			logger.Log(1, "failed to publish host update to: ", server, err.Error())
+			continue
+		}
 	}
 	return nil
 }
