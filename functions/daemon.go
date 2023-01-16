@@ -36,16 +36,14 @@ type cachedMessage struct {
 }
 
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
-
 	ctx, cancel := context.WithCancel(context.Background())
-	for _, server := range config.Servers {
-		wg.Add(1)
-		go func(server config.Server) {
-			defer wg.Done()
-			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort)
-		}(server)
-		break
+	servers := config.GetServers()
+	if len(servers) == 0 {
+		return cancel
 	}
+	server := config.GetServer(servers[0])
+	wg.Add(1)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort)
 	return cancel
 }
 
@@ -59,12 +57,13 @@ func Daemon() {
 		logger.Log(0, "unable to set IPForwarding", err.Error())
 	}
 	wg := sync.WaitGroup{}
+	proxyWg := sync.WaitGroup{}
 	quit := make(chan os.Signal, 1)
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
+	stopProxy := startProxy(&proxyWg)
 	for {
 		select {
 		case <-quit:
@@ -72,23 +71,25 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 				stopProxy,
-			}, &wg)
+			}, &wg, &proxyWg)
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
 			logger.Log(0, "received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
-			}, &wg)
+			}, &wg, nil)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
-			stopProxy = startProxy(&wg)
+			if !nmproxy.IsProxyRunning() {
+				stopProxy = startProxy(&proxyWg)
+			}
+
 		}
 	}
 }
 
-func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
+func closeRoutines(closers []context.CancelFunc, wg, proxyWg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
@@ -98,6 +99,9 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		}
 	}
 	wg.Wait()
+	if proxyWg != nil { // should only wait during shutdown
+		proxyWg.Wait()
+	}
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
