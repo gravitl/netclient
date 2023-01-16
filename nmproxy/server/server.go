@@ -38,9 +38,8 @@ type ProxyServer struct {
 
 // ProxyServer.Close - closes the proxy server
 func (p *ProxyServer) Close() {
-	logger.Log(1, "--------->### Shutting down Proxy.....")
+	logger.Log(0, "Shutting down Proxy.....")
 	// clean up proxy connections
-
 	for _, peerI := range config.GetCfg().GetAllProxyPeers() {
 		peerI.Mutex.Lock()
 		peerI.StopConn()
@@ -51,6 +50,10 @@ func (p *ProxyServer) Close() {
 		peerI.StopConn()
 		peerI.Mutex.Unlock()
 	}
+	// close metrics thread
+	if config.GetCfg().GetMetricsCollectionStatus() {
+		config.GetCfg().StopMetricsCollectionThread()
+	}
 	// close server connection
 	NmProxyServer.Server.Close()
 }
@@ -60,45 +63,42 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 
 	// Buffer with indicated body size
 	buffer := make([]byte, p.Config.BodySize)
+	go func() {
+		<-ctx.Done()
+		p.Close()
+	}()
 	for {
 
-		select {
-		case <-ctx.Done():
-			p.Close()
+		// Read Packet
+		n, source, err := p.Server.ReadFromUDP(buffer)
+		if err != nil {
+			logger.Log(3, "failed to read from server: ", err.Error())
 			return
-		default:
-			// Read Packet
-
-			n, source, err := p.Server.ReadFromUDP(buffer)
-			if err != nil || source == nil {
-				logger.Log(3, "failed to read from server: ", err.Error())
-				continue
-			}
-
-			if !handleNoProxyPeer(buffer[:], n, source) {
-				proxyTransportMsg := true
-				var srcPeerKeyHash, dstPeerKeyHash string
-				n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
-				if err != nil {
-					logger.Log(2, "proxy transport message not found: ", err.Error())
-					proxyTransportMsg = false
-				}
-				if proxyTransportMsg {
-					p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
-					continue
-				} else {
-					// unknown peer to proxy -> check if extclient and handle it
-					if handleExtClients(buffer[:], n, source) {
-						continue
-					}
-
-				}
-			}
-
-			p.handleMsgs(buffer, n, source)
-
 		}
+		if !handleNoProxyPeer(buffer[:], n, source) {
+			proxyTransportMsg := true
+			var srcPeerKeyHash, dstPeerKeyHash string
+			n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
+			if err != nil {
+				logger.Log(2, "proxy transport message not found: ", err.Error())
+				proxyTransportMsg = false
+			}
+			if proxyTransportMsg {
+				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
+				continue
+			} else {
+				// unknown peer to proxy -> check if extclient and handle it
+				if handleExtClients(buffer[:], n, source) {
+					continue
+				}
+
+			}
+		}
+
+		p.handleMsgs(buffer, n, source)
+
 	}
+
 }
 
 func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
