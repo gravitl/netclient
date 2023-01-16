@@ -22,7 +22,7 @@ For example:
 netclient leave my-network`,
 	Run: func(cmd *cobra.Command, args []string) {
 		logger.Log(0, "leave called")
-		faults, err := functions.LeaveNetwork(args[0])
+		faults, err := functions.LeaveNetwork(args[0], false)
 		if err != nil {
 			fmt.Println(err.Error())
 			for _, fault := range faults {
