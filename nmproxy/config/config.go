@@ -19,8 +19,6 @@ var (
 type Config struct {
 	HostInfo                models.HostInfo
 	ProxyStatus             bool
-	isHostNetwork           bool
-	isServer                bool
 	isBehindNAT             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
@@ -63,16 +61,22 @@ func (c *Config) IsProxyRunning() bool {
 
 // Config.SetProxyStatus - sets the proxy status
 func (c *Config) SetProxyStatus(s bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.ProxyStatus = s
 }
 
 // Config.SetHostInfo - sets host info
 func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.HostInfo = hostInfo
 }
 
 // Config.StopMetricsCollectionThread - stops the metrics thread // only when host proxy is disabled
 func (c *Config) StopMetricsCollectionThread() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if c.metricsThreadDone != nil {
 		c.metricsThreadDone()
 	}
@@ -80,17 +84,23 @@ func (c *Config) StopMetricsCollectionThread() {
 
 // Config.GetMetricsCollectionStatus - fetchs metrics collection status when proxy is disabled for host
 func (c *Config) GetMetricsCollectionStatus() bool {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	return c.metricsCollectionStatus
 }
 
 // Config.SetMetricsThreadCtx - sets the metrics thread ctx
 func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.metricsThreadDone = cancelFunc
 	c.metricsCollectionStatus = true
 }
 
 // Config.GetHostInfo - gets the host info
 func (c *Config) GetHostInfo() models.HostInfo {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	return c.HostInfo
 }
 
@@ -106,6 +116,8 @@ func GetCfg() *Config {
 
 // Config.GetSettings - fetches host settings
 func (c *Config) GetSettings(server string) models.Settings {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	if settings, ok := c.settings[server]; ok {
 		return settings
 	}
@@ -114,17 +126,9 @@ func (c *Config) GetSettings(server string) models.Settings {
 
 // Config.UpdateSettings - updates network settings
 func (c *Config) UpdateSettings(server string, settings models.Settings) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.settings[server] = settings
-}
-
-// Config.SetIsHostNetwork - sets host network value
-func (c *Config) SetIsHostNetwork(value bool) {
-	c.isHostNetwork = value
-}
-
-// Config.IsHostNetwork - checks if proxy is using host network
-func (c *Config) IsHostNetwork() bool {
-	return c.isHostNetwork
 }
 
 // Config.SetRelayStatus - sets host relay status
@@ -141,6 +145,8 @@ func (c *Config) IsRelay(server string) bool {
 
 // Config.IsGlobalRelay - checks if host relay globally
 func (c *Config) IsGlobalRelay() bool {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	for _, settings := range c.settings {
 		if settings.IsRelay {
 			return true
@@ -174,18 +180,10 @@ func (c *Config) GetRelayedStatus(server string) bool {
 	return c.GetSettings(server).IsRelayed
 }
 
-// Config.SetIsServer - sets value for IsServer
-func (c *Config) SetIsServer(value bool) {
-	c.isServer = value
-}
-
-// Config.IsServer - checks if proxy operating on server
-func (c *Config) IsServer() bool {
-	return c.isServer
-}
-
 // Config.SetBehindNATStatus - sets NAT status for the device
 func (c *Config) SetNATStatus() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if c.HostInfo.PrivIp != nil && models.IsPublicIP(c.HostInfo.PrivIp) {
 		logger.Log(1, "Host is public facing!!!")
 	} else {
@@ -196,6 +194,8 @@ func (c *Config) SetNATStatus() {
 
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	return c.isBehindNAT
 }
 

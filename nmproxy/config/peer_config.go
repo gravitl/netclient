@@ -33,12 +33,16 @@ func (c *Config) IsIfaceNil() bool {
 
 // Config.SetIface - sets the iface value in the config
 func (c *Config) SetIface(iface *wg.WGIface) {
+	c.mutex.Lock()
 	c.ifaceConfig.iface = iface
+	c.mutex.Unlock()
 	c.setIfaceKeyHash()
 }
 
 // Config.GetGetIfaceDeviceIface - gets the wg device value
 func (c *Config) GetIfaceDevice() wgtypes.Device {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	var iface wgtypes.Device
 	if c.ifaceConfig.iface != nil {
 		iface = *c.ifaceConfig.iface.Device
@@ -54,12 +58,16 @@ func (c *Config) GetIface() *wg.WGIface {
 // sets the interface pubky hash in the config
 func (c *Config) setIfaceKeyHash() {
 	if !c.IsIfaceNil() {
+		c.mutex.Lock()
 		c.ifaceConfig.ifaceKeyHash = models.ConvPeerKeyToHash(c.ifaceConfig.iface.Device.PublicKey.String())
+		c.mutex.Unlock()
 	}
 }
 
 // Config.GetDeviceKeyHash - gets the interface pubkey hash
 func (c *Config) GetDeviceKeyHash() string {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	if !c.IsIfaceNil() {
 		return c.ifaceConfig.ifaceKeyHash
 	}
@@ -69,8 +77,9 @@ func (c *Config) GetDeviceKeyHash() string {
 // Config.GetDeviceKeys - fetches interface private,pubkey
 func (c *Config) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtypes.Key) {
 	if !c.IsIfaceNil() {
-		privateKey = c.GetIfaceDevice().PrivateKey
-		publicKey = c.GetIfaceDevice().PublicKey
+		iface := c.GetIfaceDevice()
+		privateKey = iface.PrivateKey
+		publicKey = iface.PublicKey
 	}
 	return
 }
@@ -78,15 +87,10 @@ func (c *Config) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtypes.Key)
 // Config.GetDevicePubKey - fetches device public key
 func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 	if !c.IsIfaceNil() {
-		publicKey = c.GetIfaceDevice().PublicKey
+		iface := c.GetIfaceDevice()
+		publicKey = iface.PublicKey
 	}
 	return
-}
-
-// Config.CheckIfNetworkExists - checks if network exists
-func (c *Config) CheckIfNetworkExists(network string) bool {
-	_, found := c.ifaceConfig.proxyPeerMap[network]
-	return found
 }
 
 // Config.GetAllProxyPeers - fetches all peers in the network
