@@ -36,16 +36,14 @@ type cachedMessage struct {
 }
 
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
-
 	ctx, cancel := context.WithCancel(context.Background())
-	for _, server := range config.Servers {
-		wg.Add(1)
-		go func(server config.Server) {
-			defer wg.Done()
-			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort)
-		}(server)
-		break
+	servers := config.GetServers()
+	if len(servers) == 0 {
+		return cancel
 	}
+	server := config.GetServer(servers[0])
+	wg.Add(1)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort)
 	return cancel
 }
 
@@ -64,7 +62,8 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
+	proxyWg := sync.WaitGroup{}
+	stopProxy := startProxy(&proxyWg)
 	for {
 		select {
 		case <-quit:
@@ -72,23 +71,24 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 				stopProxy,
-			}, &wg)
+			}, &wg, &proxyWg)
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
 			logger.Log(0, "received reset")
+			logger.Log(0, "restarting daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
-			}, &wg)
-			logger.Log(0, "restarting daemon")
+			}, &wg, nil)
 			cancel = startGoRoutines(&wg)
-			stopProxy = startProxy(&wg)
+			if !nmproxy.IsProxyRunning() {
+				stopProxy = startProxy(&proxyWg)
+			}
 		}
 	}
 }
 
-func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
+func closeRoutines(closers []context.CancelFunc, wg, proxyWg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
@@ -98,6 +98,9 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		}
 	}
 	wg.Wait()
+	if proxyWg != nil {
+		proxyWg.Wait()
+	}
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
@@ -254,6 +257,11 @@ func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  host/update/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}

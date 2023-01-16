@@ -59,7 +59,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.NODE_DELETE:
 		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.ID.String())
 		unsubscribeNode(client, &newNode)
-		if _, err = LeaveNetwork(newNode.Network); err != nil {
+		if _, err = LeaveNetwork(newNode.Network, true); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
 				logger.Log(0, "failed to leave, please check that local files for network", newNode.Network, "were removed")
 				return
@@ -225,6 +225,55 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	UpdateLocalListenPort()
 
+}
+
+// HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
+func HostUpdate(client mqtt.Client, msg mqtt.Message) {
+	var hostUpdate models.HostUpdate
+	var err error
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	logger.Log(3, "received host update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal([]byte(data), &hostUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling host update data")
+		return
+	}
+	node := config.ConvertServerNode(&hostUpdate.Node)
+	if node == nil {
+		logger.Log(0, "couldn't convert server node to config node")
+		return
+	}
+	logger.Log(0, fmt.Sprintf("-----------> Host UPDate: %+v\n", hostUpdate))
+	switch hostUpdate.Action {
+	case models.JoinHostToNetwork:
+		config.UpdateNodeMap(hostUpdate.Network, *node)
+		config.WriteNodeConfig()
+		nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		if err := nc.Configure(); err != nil {
+			logger.Log(0, "could not configure netmaker interface", err.Error())
+			return
+		}
+		wireguard.SetPeers()
+	case models.DeleteHostFromNetwork:
+		logger.Log(0, "network:", hostUpdate.Node.Network, " received delete request for %s", hostUpdate.Node.ID.String())
+		unsubscribeNode(client, node)
+		if _, err = LeaveNetwork(hostUpdate.Node.Network, false); err != nil {
+			if !strings.Contains("rpc error", err.Error()) {
+				logger.Log(0, "failed to leave, please check that local files for network", hostUpdate.Node.Network, "were removed")
+				return
+			}
+		}
+		logger.Log(0, hostUpdate.Host.ID.String(), "was removed from network", hostUpdate.Node.Network)
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {

@@ -61,8 +61,6 @@ func (c *Config) IsProxyRunning() bool {
 
 // Config.SetProxyStatus - sets the proxy status
 func (c *Config) SetProxyStatus(s bool) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	c.ProxyStatus = s
 }
 

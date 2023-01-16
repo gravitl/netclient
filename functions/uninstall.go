@@ -18,7 +18,7 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 	for network := range config.Nodes {
-		faults, err := LeaveNetwork(network)
+		faults, err := LeaveNetwork(network, true)
 		if err != nil {
 			allfaults = append(allfaults, faults...)
 		}
@@ -30,7 +30,7 @@ func Uninstall() ([]error, error) {
 }
 
 // LeaveNetwork - client exits a network
-func LeaveNetwork(network string) ([]error, error) {
+func LeaveNetwork(network string, deleteOnServer bool) ([]error, error) {
 	faults := []error{}
 	fmt.Println("\nleaving network", network)
 	node, ok := config.Nodes[network]
@@ -39,9 +39,12 @@ func LeaveNetwork(network string) ([]error, error) {
 		return faults, fmt.Errorf("not connected to network: %s", network)
 	}
 	fmt.Println("deleting node from server")
-	if err := deleteNodeFromServer(&node); err != nil {
-		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
+	if deleteOnServer {
+		if err := deleteNodeFromServer(&node); err != nil {
+			faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
+		}
 	}
+
 	fmt.Println("deleting wireguard interface")
 	if err := deleteLocalNetwork(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))

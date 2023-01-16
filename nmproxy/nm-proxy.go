@@ -3,6 +3,7 @@ package nmproxy
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/manager"
@@ -13,13 +14,15 @@ import (
 )
 
 // Start - setups the global cfg for proxy and starts the proxy server
-func Start(ctx context.Context, mgmChan chan *nm_models.HostPeerUpdate, stunAddr string, stunPort int) {
+func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.HostPeerUpdate, stunAddr string, stunPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
 		return
 	}
 	logger.Log(1, "Starting Proxy...")
+	config.GetCfg().SetProxyStatus(true)
+	defer wg.Done()
 	if stunAddr == "" || stunPort == 0 {
 		logger.Log(1, "stun config values cannot be empty")
 		return
@@ -37,4 +40,8 @@ func Start(ctx context.Context, mgmChan chan *nm_models.HostPeerUpdate, stunAddr
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	go manager.Start(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)
+}
+
+func IsProxyRunning() bool {
+	return config.GetCfg().IsProxyRunning()
 }

@@ -537,3 +537,17 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 	}
 	return host, node
 }
+
+func ConvertServerNode(serverNode *models.Node) *Node {
+	var node *Node
+	temp, err := json.Marshal(serverNode)
+	if err != nil {
+		logger.Log(0, "node marshal error", serverNode.ID.String(), err.Error())
+		return nil
+	}
+	if err := json.Unmarshal(temp, &node); err != nil {
+		logger.Log(0, "node unmarshal err", serverNode.ID.String(), err.Error())
+		return nil
+	}
+	return node
+}
