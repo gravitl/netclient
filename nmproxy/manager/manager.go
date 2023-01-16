@@ -180,7 +180,7 @@ func (m *proxyPayload) processPayload() error {
 	for peerPubKey, peerConn := range peerConnMap {
 		if _, ok := m.PeerMap[peerPubKey]; !ok {
 
-			if peerConn.IsAttachedExtClient {
+			if peerConn.IsExtClient {
 				logger.Log(1, "------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
 				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
 				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
@@ -201,7 +201,7 @@ func (m *proxyPayload) processPayload() error {
 
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
-			if currentPeer.IsAttachedExtClient {
+			if currentPeer.IsExtClient {
 				_, found := gCfg.GetExtClientInfo(currentPeer.Config.PeerEndpoint)
 				if found {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
@@ -330,7 +330,7 @@ func (m *proxyPayload) peerUpdate() error {
 	}
 	for _, peerI := range m.Peers {
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
-		if peerI.Endpoint == nil && !peerConf.IsAttachedExtClient {
+		if peerI.Endpoint == nil && !peerConf.IsExtClient {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())
 			continue
 		}
@@ -346,7 +346,7 @@ func (m *proxyPayload) peerUpdate() error {
 			relayedTo = peerConf.RelayedTo
 
 		}
-		if peerConf.IsAttachedExtClient {
+		if peerConf.IsExtClient {
 			if _, found := config.GetCfg().GetExtClientWaitCfg(peerI.PublicKey.String()); found {
 				continue
 			}
@@ -357,10 +357,10 @@ func (m *proxyPayload) peerUpdate() error {
 				commChan := make(chan *net.UDPAddr, 5)
 				ctx, cancel := context.WithCancel(context.Background())
 				extPeer := models.RemotePeer{
-					PeerKey:             peer.PublicKey.String(),
-					CancelFunc:          cancel,
-					CommChan:            commChan,
-					IsAttachedExtClient: true,
+					PeerKey:     peer.PublicKey.String(),
+					CancelFunc:  cancel,
+					CommChan:    commChan,
+					IsExtClient: true,
 				}
 				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {

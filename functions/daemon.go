@@ -42,7 +42,7 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 		wg.Add(1)
 		go func(server config.Server) {
 			defer wg.Done()
-			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort, false)
+			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort)
 		}(server)
 		break
 	}
