@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
@@ -17,13 +18,18 @@ import (
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
-	for network := range config.Nodes {
-		faults, err := LeaveNetwork(network)
-		if err != nil {
-			allfaults = append(allfaults, faults...)
+	hostID := config.Netclient().ID
+	servers := config.GetServers()
+	for _, name := range servers {
+		server := config.GetServer(name)
+		if err = setupMQTTSingleton(server); err != nil {
+			allfaults = append(allfaults, fmt.Errorf("mqtt setup failed %w", err))
+		}
+		if token := ServerSet[name].Publish(fmt.Sprintf("host/delete/%s", hostID), 0, false, nil); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+			allfaults = append(allfaults, fmt.Errorf("mq message to delete host failed"))
 		}
 	}
-	if err := daemon.CleanUp(); err != nil {
+	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
 	}
 	return allfaults, err
