@@ -168,7 +168,7 @@ func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
 	return nil
 }
 
-// PublishHostUpdate - publishes host updates to broker
+// PublishHostUpdate - publishes host updates to server
 func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	host := config.Netclient()
 	serverHost, _ := config.Convert(host, nil)
