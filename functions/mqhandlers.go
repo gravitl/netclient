@@ -218,15 +218,47 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
-
+	var resetInterface bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
 		// TODO: add logic to delete host
 	case models.UpdateHost:
-		// TODO: add logic to update host
+		resetInterface = updateHostConfig(&hostUpdate.Host)
 	}
+
+	if resetInterface {
+		nc := wireguard.GetInterface()
+		nc.Close()
+		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		nc.Create()
+		if err := nc.Configure(); err != nil {
+			logger.Log(0, "could not configure netmaker interface", err.Error())
+			return
+		}
+		wireguard.SetPeers()
+	}
+
+}
+
+func updateHostConfig(host *models.Host) (resetInterface bool) {
+	hostCfg := config.Netclient()
+	if hostCfg == nil || host == nil {
+		return
+	}
+	if hostCfg.ListenPort != host.ListenPort {
+		resetInterface = true
+	}
+	if hostCfg.ProxyListenPort != host.ProxyListenPort {
+		// TODO: handle proxy listen port change
+	}
+	// store password before updating
+	host.HostPass = hostCfg.HostPass
+	hostCfg.Host = *host
+	config.UpdateNetclient(*hostCfg)
+	config.WriteNetclientConfig()
+	return
 }
 
 func parseNetworkFromTopic(topic string) string {
