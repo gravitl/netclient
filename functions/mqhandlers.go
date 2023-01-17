@@ -224,11 +224,18 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
-		// TODO: add logic to delete host
+		unsubscribeHost(client, serverName)
+		deleteHostCfg(serverName)
+		config.WriteNodeConfig()
+		config.WriteServerConfig()
+		resetInterface = true
 	case models.UpdateHost:
 		resetInterface = updateHostConfig(&hostUpdate.Host)
+	default:
+		logger.Log(1, "unknown host action")
+		return
 	}
-
+	config.WriteNetclientConfig()
 	if resetInterface {
 		nc := wireguard.GetInterface()
 		nc.Close()
@@ -241,6 +248,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetPeers()
 	}
 
+}
+
+func deleteHostCfg(server string) {
+	config.DeleteServerHostPeerCfg(server)
+	config.DeleteServerNodes(server)
+	// delete mq client from ServerSet map
+	delete(ServerSet, server)
 }
 
 func updateHostConfig(host *models.Host) (resetInterface bool) {
@@ -266,7 +280,6 @@ func updateHostConfig(host *models.Host) (resetInterface bool) {
 		hostCfg.EndpointIP = host.EndpointIP
 	}
 	config.UpdateNetclient(*hostCfg)
-	config.WriteNetclientConfig()
 	if listenPortChanged {
 		logger.Log(0, "Wireguard listen port is changed to ", fmt.Sprint(host.ListenPort))
 		resetInterface = true
