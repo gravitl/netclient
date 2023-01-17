@@ -262,6 +262,11 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
+	logger.Log(3, fmt.Sprintf("subscribed to host updates  host/update/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config

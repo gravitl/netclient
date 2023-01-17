@@ -198,6 +198,37 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 }
 
+// HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
+func HostUpdate(client mqtt.Client, msg mqtt.Message) {
+	var hostUpdate models.HostUpdate
+	var err error
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	logger.Log(3, "received host update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal([]byte(data), &hostUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling host update data")
+		return
+	}
+
+	switch hostUpdate.Action {
+	case models.JoinHostToNetwork:
+		// TODO: add logic here to handle joining host to a network
+	case models.DeleteHost:
+		// TODO: add logic to delete host
+	case models.UpdateHost:
+		// TODO: add logic to update host
+	}
+}
+
 func parseNetworkFromTopic(topic string) string {
 	return strings.Split(topic, "/")[1]
 }
