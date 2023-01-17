@@ -224,7 +224,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
 		unsubscribeHost(client, serverName)
-		deleteHostCfg(serverName)
+		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		resetInterface = true
@@ -249,9 +249,15 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 
 }
 
-func deleteHostCfg(server string) {
+func deleteHostCfg(client mqtt.Client, server string) {
 	config.DeleteServerHostPeerCfg(server)
-	config.DeleteServerNodes(server)
+	nodes := config.GetNodes()
+	for k, node := range nodes {
+		if node.Server == server {
+			unsubscribeNode(client, &node)
+			config.DeleteNode(k)
+		}
+	}
 	// delete mq client from ServerSet map
 	delete(ServerSet, server)
 }

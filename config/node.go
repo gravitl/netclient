@@ -75,15 +75,6 @@ func DeleteNode(k string) {
 	delete(Nodes, k)
 }
 
-// DeleteServerNodes - deletes all nodes of a server on host
-func DeleteServerNodes(server string) {
-	for k, node := range Nodes {
-		if node.Server == server {
-			delete(Nodes, k)
-		}
-	}
-}
-
 // PrimaryAddress returns the primary address of a node
 func (node *Node) PrimaryAddress() net.IPNet {
 	if node.Address.IP != nil {
