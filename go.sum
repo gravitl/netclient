@@ -347,8 +347,8 @@ github.com/vishvananda/netns v0.0.2 h1:Cn05BRLm+iRP/DZxyVSsfVyrzgjDbwHwkVt38qvXn
 github.com/vishvananda/netns v0.0.2/go.mod h1:yitZXdAVI+yPFSb4QUe+VW3vOVl4PZPNcBgbPxAtJxw=
 github.com/wailsapp/mimetype v1.4.1 h1:pQN9ycO7uo4vsUUuPeHEYoUkLVkaRntMnHJxVwYhwHs=
 github.com/wailsapp/mimetype v1.4.1/go.mod h1:9aV5k31bBOv5z6u+QP8TltzvNGJPmNJD4XlAL3U+j3o=
-github.com/wailsapp/wails/v2 v2.2.0 h1:+zRTNjwqyz1kofT0J2R1FpxXB+m3cZJzW3RjxDgxWNw=
-github.com/wailsapp/wails/v2 v2.2.0/go.mod h1:zdc9YVrIijjuNNkLOO3UpTU6M12TJe6TlriL+3ttlMM=
+github.com/wailsapp/wails/v2 v2.3.1 h1:ZJz+pyIBKyASkgO8JO31NuHO1gTTHmvwiHYHwei1CqM=
+github.com/wailsapp/wails/v2 v2.3.1/go.mod h1:zlNLI0E2c2qA6miiuAHtp0Bac8FaGH0tlhA19OssR/8=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
 github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c h1:3lbZUMbMiGUW/LMkfsEABsc5zNT9+b1CvsJx47JzJ8g=
 github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c/go.mod h1:UrdRz5enIKZ63MEE3IF9l2/ebyx59GyGgPi+tICQdmM=
