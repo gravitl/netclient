@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
@@ -449,6 +450,16 @@ func CheckConfig() {
 			logger.Log(0, "error getting free port", err.Error())
 		} else {
 			netclient.ListenPort = port
+			saveRequired = true
+		}
+	}
+	if netclient.ProxyListenPort == 0 {
+		logger.Log(0, "setting proxyListenPort")
+		port, err := ncutils.GetFreePort(proxy_models.NmProxyPort)
+		if err != nil {
+			logger.Log(0, "error getting free port", err.Error())
+		} else {
+			netclient.ProxyListenPort = port
 			saveRequired = true
 		}
 	}
