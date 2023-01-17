@@ -160,7 +160,7 @@ func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
 		return err
 	}
 	for _, server := range servers {
-		if err = publish(server, fmt.Sprintf("host/update/%s", serverHost.ID.String()), data, 1); err != nil {
+		if err = publish(server, fmt.Sprintf("host/serverupdate/%s", serverHost.ID.String()), data, 1); err != nil {
 			logger.Log(1, "failed to publish host update to: ", server, err.Error())
 			continue
 		}
@@ -180,7 +180,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(server, fmt.Sprintf("host/update/%s", serverHost.ID.String()), data, 1); err != nil {
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s", serverHost.ID.String()), data, 1); err != nil {
 		return err
 	}
 	return nil
