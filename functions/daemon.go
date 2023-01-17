@@ -349,6 +349,21 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 	}
 }
 
+// unsubscribe client broker communications for host topics
+func unsubscribeHost(client mqtt.Client, server string) {
+	hostID := config.Netclient().ID
+	logger.Log(3, fmt.Sprintf("removing subscription for host peer updates peers/host/%s/%s", hostID.String(), server))
+	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		logger.Log(0, "unable to unsubscribe from host peer updates: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("removing subscription for host updates  host/update/%s/%s", hostID.String(), server))
+	if token := client.Unsubscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		logger.Log(0, "unable to unsubscribe from host updates: ", hostID.String(), token.Error().Error())
+		return
+	}
+}
+
 // UpdateKeys -- updates private key and returns new publickey
 func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) error {
 	var err error
