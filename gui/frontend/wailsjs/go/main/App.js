@@ -57,3 +57,7 @@ export function GoUninstall() {
 export function GoWriteToClipboard(arg1) {
   return window['go']['gui']['App']['GoWriteToClipboard'](arg1);
 }
+
+export function GoGetNodePeers(arg1) {
+  return window['go']['gui']['App']['GoGetNodePeers'](arg1);
+}
