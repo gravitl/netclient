@@ -30,7 +30,7 @@ func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Log(1, "shutting down proxy manager...")
+			logger.Log(0, "shutting down proxy manager...")
 			return
 		case mI := <-managerChan:
 			if mI == nil {

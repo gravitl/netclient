@@ -129,11 +129,12 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 
 // StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
 func StartMetricsCollectionForHostPeers(ctx context.Context) {
-	logger.Log(0, "Starting Metrics Thread...")
+	logger.Log(1, "Starting Metrics Thread...")
 	ticker := time.NewTicker(metrics.MetricCollectionInterval)
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Log(1, "Stopping metrics collection...")
 			return
 		case <-ticker.C:
 
