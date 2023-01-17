@@ -2,7 +2,6 @@ package functions
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -259,31 +258,23 @@ func deleteHostCfg(server string) {
 
 func updateHostConfig(host *models.Host) (resetInterface bool) {
 	hostCfg := config.Netclient()
-	if hostCfg == nil {
+	if hostCfg == nil || host == nil {
 		return
 	}
-	hostCfg.Verbosity = host.Verbosity
-	hostCfg.Name = host.Name
-	hostCfg.MTU = host.MTU
-	hostCfg.ProxyEnabled = host.ProxyEnabled
-	hostCfg.IsDefault = host.IsDefault
-	listenPortChanged := false
-	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
+	if hostCfg.ListenPort != host.ListenPort {
 		hostCfg.ListenPort = host.ListenPort
-		listenPortChanged = true
+		resetInterface = true
 	}
-	if host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort {
+	if hostCfg.ProxyListenPort != host.ProxyListenPort {
 		hostCfg.ProxyListenPort = host.ProxyListenPort
 		// TODO: handle proxy listen port change
 	}
 	if host.EndpointIP != nil {
 		hostCfg.EndpointIP = host.EndpointIP
 	}
+	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
-	if listenPortChanged {
-		logger.Log(0, "Wireguard listen port is changed to ", fmt.Sprint(host.ListenPort))
-		resetInterface = true
-	}
+	config.WriteNetclientConfig()
 	return
 }
 
