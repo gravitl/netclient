@@ -248,15 +248,10 @@ func updateHostConfig(host *models.Host) (resetInterface bool) {
 		return
 	}
 	if hostCfg.ListenPort != host.ListenPort {
-		hostCfg.ListenPort = host.ListenPort
 		resetInterface = true
 	}
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
-		hostCfg.ProxyListenPort = host.ProxyListenPort
 		// TODO: handle proxy listen port change
-	}
-	if host.EndpointIP != nil {
-		hostCfg.EndpointIP = host.EndpointIP
 	}
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
