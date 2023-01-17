@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -218,15 +219,59 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
-
+	var resetInterface bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
 		// TODO: add logic to delete host
 	case models.UpdateHost:
-		// TODO: add logic to update host
+		resetInterface = updateHostConfig(&hostUpdate.Host)
 	}
+
+	if resetInterface {
+		nc := wireguard.GetInterface()
+		nc.Close()
+		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		nc.Create()
+		if err := nc.Configure(); err != nil {
+			logger.Log(0, "could not configure netmaker interface", err.Error())
+			return
+		}
+		wireguard.SetPeers()
+	}
+
+}
+
+func updateHostConfig(host *models.Host) (resetInterface bool) {
+	hostCfg := config.Netclient()
+	if hostCfg == nil {
+		return
+	}
+	hostCfg.Verbosity = host.Verbosity
+	hostCfg.Name = host.Name
+	hostCfg.MTU = host.MTU
+	hostCfg.ProxyEnabled = host.ProxyEnabled
+	hostCfg.IsDefault = host.IsDefault
+	listenPortChanged := false
+	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
+		hostCfg.ListenPort = host.ListenPort
+		listenPortChanged = true
+	}
+	if host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort {
+		hostCfg.ProxyListenPort = host.ProxyListenPort
+		// TODO: handle proxy listen port change
+	}
+	if host.EndpointIP != nil {
+		hostCfg.EndpointIP = host.EndpointIP
+	}
+	config.UpdateNetclient(*hostCfg)
+	config.WriteNetclientConfig()
+	if listenPortChanged {
+		logger.Log(0, "Wireguard listen port is changed to ", fmt.Sprint(host.ListenPort))
+		resetInterface = true
+	}
+	return
 }
 
 func parseNetworkFromTopic(topic string) string {
