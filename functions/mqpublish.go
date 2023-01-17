@@ -146,11 +146,37 @@ func PublishNodeUpdate(node *config.Node) error {
 	return nil
 }
 
-// PublishHostUpdate - pushes host updates to broker
-func PublishHostUpdate(server string, hostUpdate *models.HostUpdate) error {
+// PublishGlobalHostUpdate - publishes host updates to all the servers host is registered.
+func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
+	servers := config.GetServers()
 	host := config.Netclient()
 	serverHost, _ := config.Convert(host, nil)
-	data, err := json.Marshal(serverHost)
+	hostUpdate := models.HostUpdate{
+		Action: hostAction,
+		Host:   serverHost,
+	}
+	data, err := json.Marshal(hostUpdate)
+	if err != nil {
+		return err
+	}
+	for _, server := range servers {
+		if err = publish(server, fmt.Sprintf("host/update/%s", serverHost.ID.String()), data, 1); err != nil {
+			logger.Log(1, "failed to publish host update to: ", server, err.Error())
+			continue
+		}
+	}
+	return nil
+}
+
+// PublishHostUpdate - publishes host updates to broker
+func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
+	host := config.Netclient()
+	serverHost, _ := config.Convert(host, nil)
+	hostUpdate := models.HostUpdate{
+		Action: hostAction,
+		Host:   serverHost,
+	}
+	data, err := json.Marshal(hostUpdate)
 	if err != nil {
 		return err
 	}
