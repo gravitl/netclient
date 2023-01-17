@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy"
+	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -81,7 +82,7 @@ func Daemon() {
 			}, &wg, nil)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
-			if !nmproxy.IsProxyRunning() {
+			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&proxyWg)
 			}
 

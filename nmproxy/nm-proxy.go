@@ -40,8 +40,3 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.Host
 	go manager.Start(ctx, mgmChan)
 	server.NmProxyServer.Listen(ctx)
 }
-
-// IsProxyRunning - fetches the proxy status
-func IsProxyRunning() bool {
-	return config.GetCfg().ProxyStatus
-}
