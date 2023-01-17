@@ -253,6 +253,8 @@ func updateHostConfig(host *models.Host) (resetInterface bool) {
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
 		// TODO: handle proxy listen port change
 	}
+	// store password before updating
+	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
