@@ -15,7 +15,7 @@ var proxyCmd = &cobra.Command{
 
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Println("\nstatus missing in the command")
+			fmt.Println("\nmissing status [ on | off ] argument in the command")
 			return
 		}
 		err := functions.ChangeProxyStatus(getStatus(args[0]))
