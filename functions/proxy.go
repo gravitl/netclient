@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+// ChangeProxyStatus - updates proxy status on host and publishes global host update
 func ChangeProxyStatus(status bool) error {
 	logger.Log(1, fmt.Sprint("changing proxy status to ", status))
 	servers := config.GetServers()
