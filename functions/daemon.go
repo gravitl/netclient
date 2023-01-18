@@ -58,13 +58,12 @@ func Daemon() {
 		logger.Log(0, "unable to set IPForwarding", err.Error())
 	}
 	wg := sync.WaitGroup{}
-	proxyWg := sync.WaitGroup{}
 	quit := make(chan os.Signal, 1)
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&proxyWg)
+	stopProxy := startProxy(&wg)
 	for {
 		select {
 		case <-quit:
@@ -72,25 +71,26 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 				stopProxy,
-			}, &wg, &proxyWg)
+			}, &wg)
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
 			logger.Log(0, "received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-			}, &wg, nil)
+				stopProxy,
+			}, &wg)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
-				stopProxy = startProxy(&proxyWg)
+				stopProxy = startProxy(&wg)
 			}
 
 		}
 	}
 }
 
-func closeRoutines(closers []context.CancelFunc, wg, proxyWg *sync.WaitGroup) {
+func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
@@ -100,9 +100,6 @@ func closeRoutines(closers []context.CancelFunc, wg, proxyWg *sync.WaitGroup) {
 		}
 	}
 	wg.Wait()
-	if proxyWg != nil { // should only wait during shutdown
-		proxyWg.Wait()
-	}
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()

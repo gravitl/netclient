@@ -7,6 +7,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -217,7 +218,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
-	var resetInterface bool
+	var resetInterface, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
@@ -228,12 +229,19 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface = updateHostConfig(&hostUpdate.Host)
+		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
 	}
 	config.WriteNetclientConfig()
+	if restartDaemon {
+		unsubscribeHost(client, serverName)
+		if err := daemon.Restart(); err != nil {
+			logger.Log(0, "failed to restart daemon: ", err.Error())
+		}
+		return
+	}
 	if resetInterface {
 		nc := wireguard.GetInterface()
 		nc.Close()
@@ -261,7 +269,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface bool) {
+func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
@@ -270,7 +278,7 @@ func updateHostConfig(host *models.Host) (resetInterface bool) {
 		resetInterface = true
 	}
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
-		// TODO: handle proxy listen port change
+		restart = true
 	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
