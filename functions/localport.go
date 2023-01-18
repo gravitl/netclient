@@ -67,8 +67,8 @@ func UpdateLocalListenPort() error {
 
 		}
 		if config.Netclient().PublicListenPort != proxypublicport {
-			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
-			config.Netclient().ProxyListenPort = proxylistenPort
+			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
+			config.Netclient().PublicListenPort = proxypublicport
 			publishMsg = true
 		}
 	}
@@ -76,6 +76,7 @@ func UpdateLocalListenPort() error {
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}
+		logger.Log(0, "publishing global host update for port changes")
 		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
 			logger.Log(0, "could not publish local port change", err.Error())
 		}
