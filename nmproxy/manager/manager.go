@@ -226,7 +226,8 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
 			if err == nil {
-				logger.Log(0, "---------> COMPARING ENDPOINT: DEV: %s, Proxy: %s", devPeer.Endpoint.String(), currentPeer.Config.LocalConnAddr.String())
+				logger.Log(0, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+					currentPeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", currentPeer.Key.String())
 					currentPeer.StopConn()
@@ -299,7 +300,8 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, noProxypeer.Key.String())
 			if err == nil {
-				logger.Log(0, "---------> COMPARING ENDPOINT: DEV: %s, Proxy: %s", devPeer.Endpoint.String(), noProxypeer.Config.LocalConnAddr.String())
+				logger.Log(0, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+					noProxypeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())
 					noProxypeer.StopConn()
@@ -312,7 +314,7 @@ func (m *proxyPayload) processPayload() error {
 			if noProxypeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
 				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0 {
 				// listen port has been changed, reset conn
-				logger.Log(1, "--------> peer proxy listen port has been changed", noProxypeer.Key.String())
+				logger.Log(1, "-------->[noProxy] peer proxy listen port has been changed", noProxypeer.Key.String())
 				noProxypeer.StopConn()
 				noProxypeer.Mutex.Unlock()
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
@@ -328,7 +330,7 @@ func (m *proxyPayload) processPayload() error {
 
 	gCfg.UpdateProxyPeers(&peerConnMap)
 	gCfg.UpdateNoProxyPeers(&noProxyPeerMap)
-	logger.Log(1, "CLEANED UP..........")
+	logger.Log(1, "--> processed peer update for proxy")
 	return nil
 }
 
@@ -376,7 +378,7 @@ func (m *proxyPayload) peerUpdate() error {
 				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {
 					if addExtClient {
-						logger.Log(1, "GOT ENDPOINT for Extclient adding peer...", extPeer.Endpoint.String())
+						logger.Log(1, "Got endpoint for Extclient adding peer...", extPeer.Endpoint.String())
 						peerpkg.AddNew(server, peer, peerConf, isRelayed, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
