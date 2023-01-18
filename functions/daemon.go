@@ -44,7 +44,7 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	server := config.GetServer(servers[0])
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -346,6 +346,21 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 
 	if ok {
 		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID.String())
+	}
+}
+
+// unsubscribe client broker communications for host topics
+func unsubscribeHost(client mqtt.Client, server string) {
+	hostID := config.Netclient().ID
+	logger.Log(3, fmt.Sprintf("removing subscription for host peer updates peers/host/%s/%s", hostID.String(), server))
+	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		logger.Log(0, "unable to unsubscribe from host peer updates: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("removing subscription for host updates  host/update/%s/%s", hostID.String(), server))
+	if token := client.Unsubscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		logger.Log(0, "unable to unsubscribe from host updates: ", hostID.String(), token.Error().Error())
+		return
 	}
 }
 

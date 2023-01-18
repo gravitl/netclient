@@ -138,7 +138,6 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	host.ListenPort = int(netmakerNode.ListenPort)
-	host.LocalListenPort = int(netmakerNode.LocalListenPort)
 	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
 	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)

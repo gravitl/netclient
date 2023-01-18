@@ -18,6 +18,7 @@ require (
 	github.com/go-ping/ping v1.1.0
 	github.com/google/gopacket v1.1.19
 	github.com/gravitl/netmaker v0.17.2-0.20230118033153-89f8c3a5b83e
+	github.com/gravitl/netmaker v0.17.2-0.20230118093637-6b3a636ca9cc
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0

@@ -46,9 +46,11 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	if config.Netclient().ProxyEnabled && len(peers) > 0 {
 		peers = peer.SetPeersEndpointToProxy(peers)
 	}
+	iface := netmaker.Iface // store current iface cfg before it gets overwritten
 	netmaker = NCIface{
 		Name:      ncutils.GetInterfaceName(),
 		MTU:       host.MTU,
+		Iface:     iface,
 		Addresses: addrs,
 		Config: wgtypes.Config{
 			PrivateKey:   &host.PrivateKey,

@@ -201,7 +201,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 					if peerInfoHash.Endpoint.String() != source.String() {
 						// update ext client endpoint
 						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
-							logger.Log(1, "----> ExtClient [%s] endpoint has changed: ", peerKey, extPeer.Endpoint.String(), " to: ", source.String())
+							logger.Log(1, "----> ExtClient  endpoint has changed: ", peerKey, extPeer.Endpoint.String(), " to: ", source.String())
 							// Extclient Endpoint has changed so reset connection
 							config.GetCfg().DeleteExtClientInfo(extPeer.Endpoint)
 							config.GetCfg().DeletePeerHash(peerKey)
@@ -241,7 +241,7 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
 	fromNoProxyPeer := false
 	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found {
-		logger.Log(0, fmt.Sprintf("PROXING No Proxy Peer TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ SourceIP: [%s] ]]\n",
+		logger.Log(3, fmt.Sprintf("PROXING No Proxy Peer TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
 			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), source.IP.String()))
 		_, err := peerInfo.LocalConn.Write(buffer[:n])
@@ -287,7 +287,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 	if peerInfo, ok := config.GetCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
 
-		logger.Log(0, fmt.Sprintf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], SourceIP: [%s] ]]\n",
+		logger.Log(3, fmt.Sprintf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], SourceIP: [%s] ]]\n",
 			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
 			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), srcPeerKeyHash, dstPeerKeyHash, source.IP.String()))
 		_, err = peerInfo.LocalConn.Write(buffer[:n])
