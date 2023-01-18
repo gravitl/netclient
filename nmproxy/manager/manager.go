@@ -308,6 +308,16 @@ func (m *proxyPayload) processPayload() error {
 					continue
 				}
 			}
+			// check if proxy listen port has changed for the peer
+			if noProxypeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
+				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0 {
+				// listen port has been changed, reset conn
+				logger.Log(1, "--------> peer proxy listen port has been changed", noProxypeer.Key.String())
+				noProxypeer.StopConn()
+				noProxypeer.Mutex.Unlock()
+				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
+				continue
+			}
 			// update network map
 			noProxypeer.ServerMap[m.Server] = struct{}{}
 			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
