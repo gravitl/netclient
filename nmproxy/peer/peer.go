@@ -58,7 +58,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 	}
 	p.Config.PeerEndpoint = peerEndpoint
 
-	logger.Log(0, "Starting proxy for Peer: %s\n", peer.PublicKey.String())
+	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())
 	err = p.Start()
 	if err != nil {
 		return err

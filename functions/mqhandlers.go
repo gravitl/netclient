@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -121,7 +122,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		//			logger.Log(0, "error applying dns" + err.Error())
 		//		}
 	}
-	_ = UpdateLocalListenPort(&newNode)
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
@@ -193,8 +193,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				return
 			}
 		}
-		UpdateLocalListenPort(&node)
 	}
+	UpdateLocalListenPort()
 
 }
 
@@ -208,7 +208,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "server ", serverName, " not found in config")
 		return
 	}
-	logger.Log(3, "received host update for host from: ", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		return
@@ -218,23 +217,33 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
-	var resetInterface bool
+	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
+	var resetInterface, sendHostUpdate bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
+		if msg.Retained() {
+			logger.Log(0, "not performing host deletion since it's a retained messsage")
+			return
+		}
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface = updateHostConfig(&hostUpdate.Host)
+		resetInterface, sendHostUpdate = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
 	}
 	config.WriteNetclientConfig()
+	if sendHostUpdate {
+		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
+			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
+		}
+	}
 	if resetInterface {
 		nc := wireguard.GetInterface()
 		nc.Close()
@@ -262,19 +271,23 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface bool) {
+func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort {
+	if hostCfg.ListenPort != host.ListenPort || hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
 		// TODO: handle proxy listen port change
 	}
+	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
+		sendHostUpdate = true
+	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
+	host.PublicListenPort = hostCfg.PublicListenPort
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
