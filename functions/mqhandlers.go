@@ -121,7 +121,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		//			logger.Log(0, "error applying dns" + err.Error())
 		//		}
 	}
-	_ = UpdateLocalListenPort(&newNode)
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
@@ -193,8 +192,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				return
 			}
 		}
-		UpdateLocalListenPort(&node)
 	}
+	UpdateLocalListenPort()
 
 }
 
