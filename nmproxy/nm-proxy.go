@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/manager"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
@@ -14,7 +15,7 @@ import (
 )
 
 // Start - setups the global cfg for proxy and starts the proxy server
-func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.HostPeerUpdate, stunAddr string, stunPort int) {
+func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.HostPeerUpdate, stunAddr string, stunPort, proxyPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -26,9 +27,12 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.Host
 		logger.Log(1, "stun config values cannot be empty")
 		return
 	}
+	if proxyPort == 0 {
+		proxyPort = models.NmProxyPort
+	}
 	config.InitializeCfg()
 	defer config.Reset()
-	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort))
+	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort, proxyPort))
 	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetCfg().GetHostInfo()))
 	config.GetCfg().SetNATStatus()
 	// start the netclient proxy server
