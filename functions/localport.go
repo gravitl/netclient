@@ -66,8 +66,8 @@ func UpdateLocalListenPort() error {
 			publishMsg = true
 
 		}
-		if config.Netclient().ProxyPublicListenPort != proxypublicport {
-			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyPublicListenPort, " to ", proxypublicport))
+		if config.Netclient().PublicListenPort != proxypublicport {
+			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
 			config.Netclient().ProxyListenPort = proxylistenPort
 			publishMsg = true
 		}
