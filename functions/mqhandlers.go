@@ -239,6 +239,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	config.WriteNetclientConfig()
+	if sendHostUpdate {
+		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
+			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
+		}
+	}
 	if resetInterface {
 		nc := wireguard.GetInterface()
 		nc.Close()
@@ -249,11 +254,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			return
 		}
 		wireguard.SetPeers()
-	}
-	if sendHostUpdate {
-		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
-			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
-		}
 	}
 
 }
@@ -276,7 +276,7 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort {
+	if hostCfg.ListenPort != host.ListenPort || hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
@@ -287,6 +287,7 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate bool) {
 	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
+	host.PublicListenPort = hostCfg.PublicListenPort
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
