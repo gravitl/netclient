@@ -284,7 +284,7 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restar
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort {
+	if hostCfg.ListenPort != host.ListenPort || hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
@@ -295,6 +295,7 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restar
 	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
+	host.PublicListenPort = hostCfg.PublicListenPort
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
