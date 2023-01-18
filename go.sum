@@ -202,6 +202,8 @@ github.com/gravitl/netmaker v0.17.2-0.20230114051441-5f4a81cc07de h1:1dI3p78euKk
 github.com/gravitl/netmaker v0.17.2-0.20230114051441-5f4a81cc07de/go.mod h1:hCxTSSH3F76pu4fH+utug8Omr5K6peZuZAdnPdaZ4Lg=
 github.com/gravitl/netmaker v0.17.2-0.20230117060851-cf0b54c1ebf4 h1:ttt2ntkjjxdXMOgDIJuP6CkHYuJqMGR6TIssaFXHnLw=
 github.com/gravitl/netmaker v0.17.2-0.20230117060851-cf0b54c1ebf4/go.mod h1:hCxTSSH3F76pu4fH+utug8Omr5K6peZuZAdnPdaZ4Lg=
+github.com/gravitl/netmaker v0.17.2-0.20230117203319-c077e3d1c1d6 h1:5NT3QSAHOIkpyj9+/K+X7ySGrsYD7QmUbyzN4eXXPF8=
+github.com/gravitl/netmaker v0.17.2-0.20230117203319-c077e3d1c1d6/go.mod h1:hCxTSSH3F76pu4fH+utug8Omr5K6peZuZAdnPdaZ4Lg=
 github.com/guumaster/hostctl v1.1.3 h1:b/yR3svkYsbr5VBdvfdyLXUl2xaKopSzgE/Xi7+1WRo=
 github.com/guumaster/hostctl v1.1.3/go.mod h1:h5rDx5Z8Hj2bYZfDt/eX4BNS2RSq7iRcGVQqfROJyH8=
 github.com/guumaster/tablewriter v0.0.10 h1:A0HD94yMdt4usgxBjoEceNeE0XMJ027euoHAzsPqBQs=
