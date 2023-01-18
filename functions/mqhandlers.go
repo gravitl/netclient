@@ -284,11 +284,11 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restar
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort || hostCfg.MTU != host.MTU {
-		resetInterface = true
-	}
-	if hostCfg.ProxyListenPort != host.ProxyListenPort {
+	if hostCfg.ListenPort != host.ListenPort || hostCfg.ProxyListenPort != host.ProxyListenPort {
 		restart = true
+	}
+	if hostCfg.MTU != host.MTU {
+		resetInterface = true
 	}
 	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
 		sendHostUpdate = true
