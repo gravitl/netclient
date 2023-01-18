@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -207,7 +208,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "server ", serverName, " not found in config")
 		return
 	}
-	logger.Log(3, "received host update for host from: ", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		return
@@ -217,11 +217,16 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
+	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
 	var resetInterface bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
+		if msg.Retained() {
+			logger.Log(0, "not performing host deletion since it's a retained messsage")
+			return
+		}
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
