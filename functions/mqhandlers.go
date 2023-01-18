@@ -219,7 +219,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
-	var resetInterface, restartDaemon bool
+	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
@@ -234,12 +234,17 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
 	}
 	config.WriteNetclientConfig()
+	if sendHostUpdate {
+		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
+			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
+		}
+	}
 	if restartDaemon {
 		unsubscribeHost(client, serverName)
 		if err := daemon.Restart(); err != nil {
@@ -274,7 +279,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
+func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
@@ -284,6 +289,9 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	}
 	if hostCfg.ProxyListenPort != host.ProxyListenPort {
 		restart = true
+	}
+	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
+		sendHostUpdate = true
 	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
