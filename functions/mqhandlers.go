@@ -8,6 +8,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -218,7 +219,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
-	var resetInterface, sendHostUpdate bool
+	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
@@ -233,7 +234,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, sendHostUpdate = updateHostConfig(&hostUpdate.Host)
+		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
@@ -243,6 +244,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
 			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
 		}
+	}
+	if restartDaemon {
+		unsubscribeHost(client, serverName)
+		if err := daemon.Restart(); err != nil {
+			logger.Log(0, "failed to restart daemon: ", err.Error())
+		}
+		return
 	}
 	if resetInterface {
 		nc := wireguard.GetInterface()
@@ -271,16 +279,16 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate bool) {
+func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort || hostCfg.MTU != host.MTU {
-		resetInterface = true
+	if hostCfg.ListenPort != host.ListenPort || hostCfg.ProxyListenPort != host.ProxyListenPort {
+		restart = true
 	}
-	if hostCfg.ProxyListenPort != host.ProxyListenPort {
-		// TODO: handle proxy listen port change
+	if hostCfg.MTU != host.MTU {
+		resetInterface = true
 	}
 	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
 		sendHostUpdate = true
