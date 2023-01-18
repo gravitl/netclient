@@ -7,13 +7,10 @@ import (
 	"errors"
 	"net"
 
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 	"golang.org/x/net/route"
 )
 
-func getDefautltInterface() (*string, error) {
+func getDefaultInterface() (*string, error) {
 	var defaultRoute = [4]byte{0, 0, 0, 0}
 	var index int
 	rib, _ := route.FetchRIB(0, route.RIBTypeRoute, 0)
@@ -46,7 +43,7 @@ func getDefautltInterface() (*string, error) {
 	}
 	for _, iface := range ifaces {
 		if iface.Index == index {
-			return iface.Name, nil
+			return &iface.Name, nil
 		}
 	}
 	return nil, errors.New("defautl gw not found")
