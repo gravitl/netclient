@@ -1,5 +1,5 @@
-//go:build freebsd
-// +build freebsd
+//go:build freebsd || darwin
+// +build freebsd darwin
 
 package functions
 
@@ -15,68 +15,41 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
-// GetLocalListenPort - Gets the port running on the local interface
-func GetLocalListenPort(ifacename string) (int32, error) {
-	portstring, err := ncutils.RunCmd("wg show "+ifacename+" listen-port", false)
+func getDefautltInterface() (*string, error) {
+	var defaultRoute = [4]byte{0, 0, 0, 0}
+	var index int
+	rib, _ := route.FetchRIB(0, route.RIBTypeRoute, 0)
+	messages, err := route.ParseRIB(route.RIBTypeRoute, rib)
 	if err != nil {
-		return 0, err
+		return
 	}
-	portstring = strings.TrimSuffix(portstring, "\n")
-	i, err := strconv.ParseInt(portstring, 10, 32)
-	if err != nil {
-		return 0, err
-	} else if i == 0 {
-		return 0, errors.New("parsed port is unset or invalid")
-	}
-	return int32(i), nil
-}
-
-// UpdateLocalListenPort - check local port, if different, mod config and publish
-func UpdateLocalListenPort(node *config.Node) error {
-	var err error
-	localPort, err := GetLocalListenPort("netmaker")
-	if err != nil {
-		logger.Log(1, "network:", node.Network, "error encountered checking local listen port for interface netmaker", err.Error())
-	} else if config.Netclient().LocalListenPort != int(localPort) && localPort != 0 {
-		logger.Log(1, "network:", node.Network, "local port has changed from ", strconv.Itoa(int(config.Netclient().LocalListenPort)), " to ", strconv.Itoa(int(localPort)))
-		config.Netclient().LocalListenPort = int(localPort)
-		if err := config.WriteNetclientConfig(); err != nil {
-			return err
+	for _, message := range messages {
+		route_message := message.(*route.RouteMessage)
+		addresses := route_message.Addrs
+		var destination, gateway *route.Inet4Addr
+		ok := false
+		if destination, ok = addresses[0].(*route.Inet4Addr); !ok {
+			continue
 		}
-		if err := PublishNodeUpdate(node); err != nil {
-			logger.Log(0, "could not publish local port change", err.Error())
+		if gateway, ok = addresses[1].(*route.Inet4Addr); !ok {
+			continue
+		}
+		if destination == nil || gateway == nil {
+			continue
+		}
+		if destination.IP == defaultRoute {
+			index = route_message.Index
+			break
 		}
 	}
-	return err
-}
-
-func getInterfaces() (*[]models.Iface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
-	var data []models.Iface
-	var link models.Iface
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue // interface down
-		}
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue // loopback interface
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			return nil, err
-		}
-		for _, addr := range addrs {
-			link.Name = iface.Name
-			_, cidr, err := net.ParseCIDR(addr.String())
-			if err != nil {
-				continue
-			}
-			link.Address = *cidr
-			data = append(data, link)
+	for _, iface := range iface {
+		if iface.Index == index {
+			return iface.Name, nil
 		}
 	}
-	return &data, nil
+	return nil, errors.New("defautl gw not found")
 }
