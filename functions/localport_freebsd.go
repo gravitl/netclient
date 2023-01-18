@@ -6,13 +6,11 @@ package functions
 import (
 	"errors"
 	"net"
-	"strconv"
-	"strings"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/net/route"
 )
 
 func getDefautltInterface() (*string, error) {
@@ -21,7 +19,7 @@ func getDefautltInterface() (*string, error) {
 	rib, _ := route.FetchRIB(0, route.RIBTypeRoute, 0)
 	messages, err := route.ParseRIB(route.RIBTypeRoute, rib)
 	if err != nil {
-		return
+		return nil, err
 	}
 	for _, message := range messages {
 		route_message := message.(*route.RouteMessage)
@@ -46,7 +44,7 @@ func getDefautltInterface() (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, iface := range iface {
+	for _, iface := range ifaces {
 		if iface.Index == index {
 			return iface.Name, nil
 		}
