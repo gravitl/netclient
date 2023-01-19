@@ -22,11 +22,13 @@ func Uninstall() ([]error, error) {
 	for _, v := range config.Servers {
 		if err = setupMQTTSingleton(&v); err != nil {
 			logger.Log(0, "failed to connect to server on uninstall", v.Name)
+			allfaults = append(allfaults, err)
 			continue
 		}
 		defer ServerSet[v.Name].Disconnect(250)
 		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
 			logger.Log(0, "failed to notify server", v.Name, "of host removal")
+			allfaults = append(allfaults, err)
 		}
 	}
 
