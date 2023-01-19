@@ -28,7 +28,14 @@ interface PeersTableProps {
   emptyMsg?: string;
 }
 
-const rowsPerPageOptions = [10, 25, 50, 100, 256, { label: "All", value: -1 }];
+const rowsPerPageOptions = [
+  { label: "10", value: 10 },
+  { label: "25", value: 25 },
+  { label: "50", value: 50 },
+  { label: "100", value: 100 },
+  { label: "256", value: 256 },
+  { label: "All", value: -1 },
+];
 
 export default function PeersTable(props: PeersTableProps) {
   const [page, setPage] = React.useState(0);
@@ -113,7 +120,9 @@ export default function PeersTable(props: PeersTableProps) {
                   </TableCell>
                   <TableCell data-testid="public-key">
                     <span
-                      onClick={() => onCopyClicked(byteArrayToString(p.PublicKey))}
+                      onClick={() =>
+                        onCopyClicked(byteArrayToString(p.PublicKey))
+                      }
                       title="Copy"
                       style={{ cursor: "pointer" }}
                     >

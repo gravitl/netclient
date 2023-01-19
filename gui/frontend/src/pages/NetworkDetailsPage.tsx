@@ -23,6 +23,7 @@ export default function NetworkDetailsPage() {
   );
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [isLeavingNetwork, setIsLeavingNetwork] = useState(false);
+  const [isFreshLoad, setIsFreshLoad] = useState(true);
   const [networkPeers, setNetworkPeers] = useState<Peer[]>([]);
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
@@ -99,6 +100,7 @@ export default function NetworkDetailsPage() {
     async (shouldNotifyOnError = false) => {
       if (!networkDetails?.node) return;
       try {
+        if (shouldNotifyOnError) console.log("testing");
         const peers = await GoGetNodePeers(networkDetails.node);
         setNetworkPeers(peers);
       } catch (err) {
@@ -113,7 +115,8 @@ export default function NetworkDetailsPage() {
 
   useEffect(() => {
     loadNetworkDetails();
-    loadPeers(true);
+    loadPeers(isFreshLoad);
+    setIsFreshLoad(false);
     const id = setInterval(async () => {
       try {
         if (!networkName) {
@@ -122,13 +125,19 @@ export default function NetworkDetailsPage() {
         await refreshNetworks(networksDispatch);
         const network = await getNetwork(networksState, networkName);
         setNetworkDetails(network);
-        loadPeers();
       } catch (err) {
         console.error(err);
       }
     }, 5000);
     return () => clearInterval(id);
-  }, [loadNetworkDetails, networkName, networksState, networksDispatch, loadPeers, setNetworkDetails]);
+  }, [
+    loadNetworkDetails,
+    networkName,
+    networksState,
+    networksDispatch,
+    loadPeers,
+    setNetworkDetails,
+  ]);
 
   return (
     <Grid
