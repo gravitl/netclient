@@ -25,7 +25,6 @@ import (
 )
 
 const lastNodeUpdate = "lnu"
-const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
