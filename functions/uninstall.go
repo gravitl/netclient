@@ -19,9 +19,14 @@ import (
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
-	if err = PublishGlobalHostUpdate(models.DeleteHost); err != nil {
-		allfaults = append(allfaults, err)
+	for _, v := range config.Servers {
+		setupMQTTSingleton(&v)
+		defer ServerSet[v.Name].Disconnect(250)
+		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
+			logger.Log(0, "failed to notify server", v.Name, "of host removal")
+		}
 	}
+
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
 	}
