@@ -64,7 +64,6 @@ func init() {
 	joinCmd.Flags().Bool("ipforwarding", true, "set ipforwarding on/off")
 	joinCmd.Flags().Int("keepalive", 20, "persistent keepalive for wireguard peers")
 	joinCmd.Flags().Int("port", 51821, "port for wireguard interface, will turn udpholepunching off")
-	joinCmd.Flags().Bool("proxy", false, "set proxy on/off for the node")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
