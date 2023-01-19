@@ -20,7 +20,7 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 	for _, v := range config.Servers {
-		if err = setupMQTTSingleton(&v); err != nil {
+		if err = setupMQTTSingleton(&v, true); err != nil {
 			logger.Log(0, "failed to connect to server on uninstall", v.Name)
 			allfaults = append(allfaults, err)
 			continue

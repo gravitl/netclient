@@ -212,7 +212,7 @@ func setupMQTT(server *config.Server) error {
 
 // func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
-func setupMQTTSingleton(server *config.Server) error {
+func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
@@ -226,13 +226,14 @@ func setupMQTTSingleton(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		logger.Log(0, "mqtt connect handler")
-		nodes := config.GetNodes()
-		for _, node := range nodes {
-			setSubscriptions(client, &node)
+		if !publishOnly {
+			logger.Log(0, "mqtt connect handler")
+			nodes := config.GetNodes()
+			for _, node := range nodes {
+				setSubscriptions(client, &node)
+			}
+			setHostSubscription(client, server.Name)
 		}
-		setHostSubscription(client, server.Name)
-
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)

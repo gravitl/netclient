@@ -24,7 +24,7 @@ func Disconnect(network string) error {
 		return fmt.Errorf("error writing node config %w", err)
 	}
 	server := config.GetServer(node.Server)
-	if err := setupMQTTSingleton(server); err != nil {
+	if err := setupMQTTSingleton(server, true); err != nil {
 		return err
 	}
 	if err := PublishNodeUpdate(&node); err != nil {
@@ -55,7 +55,7 @@ func Connect(network string) error {
 		return fmt.Errorf("error writing node config %w", err)
 	}
 	server := config.GetServer(node.Server)
-	if err := setupMQTTSingleton(server); err != nil {
+	if err := setupMQTTSingleton(server, true); err != nil {
 		return err
 	}
 	if err := PublishNodeUpdate(&node); err != nil {
