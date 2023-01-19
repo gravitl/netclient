@@ -20,7 +20,10 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 	for _, v := range config.Servers {
-		setupMQTTSingleton(&v)
+		if err = setupMQTTSingleton(&v); err != nil {
+			logger.Log(0, "failed to connect to server on uninstall", v.Name)
+			continue
+		}
 		defer ServerSet[v.Name].Disconnect(250)
 		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
 			logger.Log(0, "failed to notify server", v.Name, "of host removal")
