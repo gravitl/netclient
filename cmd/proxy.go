@@ -13,12 +13,9 @@ var proxyCmd = &cobra.Command{
 	Use:   "proxy [ on | off ]",
 	Short: "proxy on/off",
 	Long:  `switches proxy on/off`,
+	Args:  cobra.ExactArgs(1),
 
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 0 {
-			fmt.Println("\nmissing status [ on | off ] argument in the command")
-			return
-		}
 		status, err := getStatus(args[0])
 		if err != nil {
 			fmt.Println(err)
