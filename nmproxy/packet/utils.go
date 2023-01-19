@@ -134,6 +134,7 @@ func isZero(val []byte) bool {
 func sharedSecret(sk *NoisePrivateKey, pk NoisePublicKey) (ss [NoisePublicKeySize]byte) {
 	apk := (*[NoisePublicKeySize]byte)(&pk)
 	ask := (*[NoisePrivateKeySize]byte)(sk)
+	//lint:ignore SA1019 no need of back and forth conversion between arrays and slices required by curve25519.X25519 function
 	curve25519.ScalarMult(&ss, ask, apk)
 	return ss
 }
