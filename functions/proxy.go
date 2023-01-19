@@ -18,7 +18,7 @@ func ChangeProxyStatus(status bool) error {
 		if serverCfg == nil {
 			continue
 		}
-		setupMQTTSingleton(serverCfg)
+		setupMQTTSingleton(serverCfg, true)
 	}
 	config.Netclient().ProxyEnabled = status
 	if err := config.WriteNetclientConfig(); err != nil {

@@ -278,6 +278,13 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 			host.Interfaces = *ip
 		}
 	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		host.DefaultInterface = defaultInterface
+		host.LocalAddress = setLocalAddress(defaultInterface, host.Interfaces)
+	}
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
 	host.EndpointIP = net.ParseIP(flags.GetString("endpoint"))

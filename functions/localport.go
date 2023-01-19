@@ -1,6 +1,3 @@
-//go:build !freebsd
-// +build !freebsd
-
 package functions
 
 import (
@@ -104,13 +101,23 @@ func getInterfaces() (*[]models.Iface, error) {
 		}
 		for _, addr := range addrs {
 			link.Name = iface.Name
-			_, cidr, err := net.ParseCIDR(addr.String())
+			ip, cidr, err := net.ParseCIDR(addr.String())
 			if err != nil {
 				continue
 			}
 			link.Address = *cidr
+			link.Address.IP = ip
 			data = append(data, link)
 		}
 	}
 	return &data, nil
+}
+
+func setLocalAddress(name string, ifaces []models.Iface) net.IPNet {
+	for _, iface := range ifaces {
+		if iface.Name == name {
+			return iface.Address
+		}
+	}
+	return net.IPNet{}
 }
