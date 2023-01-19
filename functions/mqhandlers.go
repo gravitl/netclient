@@ -158,7 +158,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
-	config.Netclient().ProxyEnabled = peerUpdate.Host.ProxyEnabled
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
@@ -201,6 +200,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
+	if msg.Retained() {
+		logger.Log(0, "not performing host updates since it's a retained messsage")
+		return
+	}
 	var hostUpdate models.HostUpdate
 	var err error
 	serverName := parseServerFromTopic(msg.Topic())
@@ -224,10 +227,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
-		if msg.Retained() {
-			logger.Log(0, "not performing host deletion since it's a retained messsage")
-			return
-		}
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
