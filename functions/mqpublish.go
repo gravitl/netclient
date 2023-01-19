@@ -149,18 +149,17 @@ func PublishNodeUpdate(node *config.Node) error {
 // PublishGlobalHostUpdate - publishes host updates to all the servers host is registered.
 func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
 	servers := config.GetServers()
-	host := config.Netclient()
-	serverHost, _ := config.Convert(host, nil)
+	hostCfg := config.Netclient()
 	hostUpdate := models.HostUpdate{
 		Action: hostAction,
-		Host:   serverHost,
+		Host:   hostCfg.Host,
 	}
 	data, err := json.Marshal(hostUpdate)
 	if err != nil {
 		return err
 	}
 	for _, server := range servers {
-		if err = publish(server, fmt.Sprintf("host/serverupdate/%s", serverHost.ID.String()), data, 1); err != nil {
+		if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
 			logger.Log(1, "failed to publish host update to: ", server, err.Error())
 			continue
 		}
@@ -170,17 +169,16 @@ func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
 
 // PublishHostUpdate - publishes host updates to server
 func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
-	host := config.Netclient()
-	serverHost, _ := config.Convert(host, nil)
+	hostCfg := config.Netclient()
 	hostUpdate := models.HostUpdate{
 		Action: hostAction,
-		Host:   serverHost,
+		Host:   hostCfg.Host,
 	}
 	data, err := json.Marshal(hostUpdate)
 	if err != nil {
 		return err
 	}
-	if err = publish(server, fmt.Sprintf("host/serverupdate/%s", serverHost.ID.String()), data, 1); err != nil {
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
 		return err
 	}
 	return nil

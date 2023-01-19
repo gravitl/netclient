@@ -8,6 +8,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -157,7 +158,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
-	config.Netclient().ProxyEnabled = peerUpdate.Host.ProxyEnabled
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
@@ -200,6 +200,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
+	if msg.Retained() {
+		logger.Log(0, "not performing host updates since it's a retained messsage")
+		return
+	}
 	var hostUpdate models.HostUpdate
 	var err error
 	serverName := parseServerFromTopic(msg.Topic())
@@ -218,22 +222,18 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
-	var resetInterface, sendHostUpdate bool
+	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		// TODO: add logic here to handle joining host to a network
 	case models.DeleteHost:
-		if msg.Retained() {
-			logger.Log(0, "not performing host deletion since it's a retained messsage")
-			return
-		}
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, sendHostUpdate = updateHostConfig(&hostUpdate.Host)
+		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
@@ -243,6 +243,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
 			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
 		}
+	}
+	if restartDaemon {
+		unsubscribeHost(client, serverName)
+		if err := daemon.Restart(); err != nil {
+			logger.Log(0, "failed to restart daemon: ", err.Error())
+		}
+		return
 	}
 	if resetInterface {
 		nc := wireguard.GetInterface()
@@ -271,16 +278,16 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate bool) {
+func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort || hostCfg.MTU != host.MTU {
-		resetInterface = true
+	if hostCfg.ListenPort != host.ListenPort || hostCfg.ProxyListenPort != host.ProxyListenPort {
+		restart = true
 	}
-	if hostCfg.ProxyListenPort != host.ProxyListenPort {
-		// TODO: handle proxy listen port change
+	if hostCfg.MTU != host.MTU {
+		resetInterface = true
 	}
 	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
 		sendHostUpdate = true

@@ -25,7 +25,6 @@ import (
 )
 
 const lastNodeUpdate = "lnu"
-const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
@@ -58,13 +57,12 @@ func Daemon() {
 		logger.Log(0, "unable to set IPForwarding", err.Error())
 	}
 	wg := sync.WaitGroup{}
-	proxyWg := sync.WaitGroup{}
 	quit := make(chan os.Signal, 1)
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&proxyWg)
+	stopProxy := startProxy(&wg)
 	for {
 		select {
 		case <-quit:
@@ -72,25 +70,26 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 				stopProxy,
-			}, &wg, &proxyWg)
+			}, &wg)
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
 			logger.Log(0, "received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-			}, &wg, nil)
+				stopProxy,
+			}, &wg)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
-				stopProxy = startProxy(&proxyWg)
+				stopProxy = startProxy(&wg)
 			}
 
 		}
 	}
 }
 
-func closeRoutines(closers []context.CancelFunc, wg, proxyWg *sync.WaitGroup) {
+func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
@@ -100,9 +99,6 @@ func closeRoutines(closers []context.CancelFunc, wg, proxyWg *sync.WaitGroup) {
 		}
 	}
 	wg.Wait()
-	if proxyWg != nil { // should only wait during shutdown
-		proxyWg.Wait()
-	}
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
@@ -212,7 +208,7 @@ func setupMQTT(server *config.Server) error {
 
 // func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
-func setupMQTTSingleton(server *config.Server) error {
+func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
@@ -226,13 +222,14 @@ func setupMQTTSingleton(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		logger.Log(0, "mqtt connect handler")
-		nodes := config.GetNodes()
-		for _, node := range nodes {
-			setSubscriptions(client, &node)
+		if !publishOnly {
+			logger.Log(0, "mqtt connect handler")
+			nodes := config.GetNodes()
+			for _, node := range nodes {
+				setSubscriptions(client, &node)
+			}
+			setHostSubscription(client, server.Name)
 		}
-		setHostSubscription(client, server.Name)
-
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
