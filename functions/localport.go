@@ -84,18 +84,6 @@ func UpdateLocalListenPort() error {
 	return err
 }
 
-// func getRealIface(ifacename string, address net.IPNet) string {
-// 	var deviceiface = ifacename
-// 	var err error
-// 	if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
-// 		deviceiface, err = local.GetMacIface(address.IP.String())
-// 		if err != nil || deviceiface == "" {
-// 			deviceiface = ifacename
-// 		}
-// 	}
-// 	return deviceiface
-// }
-
 func getInterfaces() (*[]models.Iface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
