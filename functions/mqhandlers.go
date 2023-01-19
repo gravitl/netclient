@@ -225,7 +225,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
-		// TODO: add logic here to handle joining host to a network
+		commonNode := hostUpdate.Node.CommonNode
+		nodeCfg := config.Node{
+			CommonNode: commonNode,
+		}
+		config.UpdateNodeMap(hostUpdate.Node.Network, nodeCfg)
+		config.WriteNodeConfig()
+		resetInterface = true
 	case models.DeleteHost:
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
