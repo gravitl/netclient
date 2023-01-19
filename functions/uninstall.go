@@ -49,7 +49,10 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
-		nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		nc := wireguard.GetInterface()
+		nc.Iface.Close()
+		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		nc.Create()
 		if err := nc.Configure(); err != nil {
 			faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
 		} else {
@@ -115,8 +118,7 @@ func deleteLocalNetwork(node *config.Node) error {
 		delete(server.Nodes, node.Network)
 	}
 	if len(server.Nodes) == 0 {
-		logger.Log(3, "removing server", server.Name)
-		config.DeleteServer(node.Server)
+		logger.Log(3, "removing server peers", server.Name)
 		config.DeleteServerHostPeerCfg(node.Server)
 	}
 	config.WriteNetclientConfig()
