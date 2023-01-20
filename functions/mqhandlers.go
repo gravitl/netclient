@@ -225,7 +225,20 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
-		// TODO: add logic here to handle joining host to a network
+		commonNode := hostUpdate.Node.CommonNode
+		nodeCfg := config.Node{
+			CommonNode: commonNode,
+		}
+		config.UpdateNodeMap(hostUpdate.Node.Network, nodeCfg)
+		server := config.GetServer(serverName)
+		if server == nil {
+			return
+		}
+		server.Nodes[hostUpdate.Node.Network] = true
+		config.UpdateServer(serverName, *server)
+		config.WriteNodeConfig()
+		config.WriteServerConfig()
+		restartDaemon = true
 	case models.DeleteHost:
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
@@ -245,7 +258,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if restartDaemon {
-		unsubscribeHost(client, serverName)
 		if err := daemon.Restart(); err != nil {
 			logger.Log(0, "failed to restart daemon: ", err.Error())
 		}
