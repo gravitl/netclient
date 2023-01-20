@@ -93,11 +93,11 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
-	// for _, mqclient := range ServerSet {
-	// 	if mqclient != nil {
-	// 		mqclient.Disconnect(250)
-	// 	}
-	// }
+	for _, mqclient := range ServerSet {
+		if mqclient != nil {
+			mqclient.Disconnect(250)
+		}
+	}
 	wg.Wait()
 	logger.Log(0, "closing netmaker interface")
 	iface := wireguard.GetInterface()
@@ -161,7 +161,7 @@ func setupMQTT(server *config.Server) error {
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
 	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.Password)
+	opts.SetPassword(server.MQPassword)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
@@ -214,7 +214,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
 	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.Password)
+	opts.SetPassword(server.MQPassword)
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)

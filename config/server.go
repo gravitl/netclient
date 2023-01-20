@@ -23,12 +23,10 @@ const ServerLockfile = "netclient-servers.lck"
 // Server represents a server configuration
 type Server struct {
 	models.ServerConfig
-	Name       string          `json:"name" yaml:"name"`
-	MQUserName string          `json:"mq_username" yaml:"mq_username"`
-	MQID       uuid.UUID       `json:"mqid" yaml:"mqid"`
-	Password   string          `json:"password" yaml:"password"`
-	Nodes      map[string]bool `json:"nodes" yaml:"nodes"`
-	AccessKey  string          `json:"accesskey" yaml:"accesskey"`
+	Name      string          `json:"name" yaml:"name"`
+	MQID      uuid.UUID       `json:"mqid" yaml:"mqid"`
+	Nodes     map[string]bool `json:"nodes" yaml:"nodes"`
+	AccessKey string          `json:"accesskey" yaml:"accesskey"`
 }
 
 // OldNetmakerServerConfig - pre v0.18.0 server configuration
@@ -133,7 +131,7 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.Password = netclient.HostPass
+	//server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE
@@ -156,7 +154,12 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.Broker = cfg.Broker
 	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.Password = netclient.HostPass
+	server.MQUserName = cfg.MQUserName
+	server.MQPassword = cfg.MQPassword
+	server.Server = cfg.Server
+	server.StunHost = cfg.StunHost
+	server.StunPort = cfg.StunPort
+	server.TrafficKey = cfg.TrafficKey
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE

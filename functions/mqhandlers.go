@@ -200,10 +200,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
-	if msg.Retained() {
-		logger.Log(0, "not performing host updates since it's a retained messsage")
-		return
-	}
 	var hostUpdate models.HostUpdate
 	var err error
 	serverName := parseServerFromTopic(msg.Topic())
@@ -221,7 +217,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
-	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
+	logger.Log(1, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
 	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
@@ -244,6 +240,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		clearRetainedMsg(client, msg.Topic())
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
@@ -258,6 +255,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if restartDaemon {
+		clearRetainedMsg(client, msg.Topic())
 		if err := daemon.Restart(); err != nil {
 			logger.Log(0, "failed to restart daemon: ", err.Error())
 		}
@@ -286,6 +284,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	config.DeleteServer(server)
 	// delete mq client from ServerSet map
 	delete(ServerSet, server)
 }

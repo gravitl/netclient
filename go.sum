@@ -177,8 +177,8 @@ github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB7
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/gravitl/netmaker v0.17.2-0.20230118212956-f844e8435f11 h1:XMgq2EedeCbBec1zEkhKN4Ekp32UNRRHW1S/ozoqriQ=
-github.com/gravitl/netmaker v0.17.2-0.20230118212956-f844e8435f11/go.mod h1:hCxTSSH3F76pu4fH+utug8Omr5K6peZuZAdnPdaZ4Lg=
+github.com/gravitl/netmaker v0.17.2-0.20230120041943-fffcf6ba5d42 h1:liZFEHFwlFJxiPUiJ6VM1GPaJFktxWL0sw0FEqPSnL8=
+github.com/gravitl/netmaker v0.17.2-0.20230120041943-fffcf6ba5d42/go.mod h1:hCxTSSH3F76pu4fH+utug8Omr5K6peZuZAdnPdaZ4Lg=
 github.com/guumaster/hostctl v1.1.3 h1:b/yR3svkYsbr5VBdvfdyLXUl2xaKopSzgE/Xi7+1WRo=
 github.com/guumaster/hostctl v1.1.3/go.mod h1:h5rDx5Z8Hj2bYZfDt/eX4BNS2RSq7iRcGVQqfROJyH8=
 github.com/guumaster/tablewriter v0.0.10 h1:A0HD94yMdt4usgxBjoEceNeE0XMJ027euoHAzsPqBQs=

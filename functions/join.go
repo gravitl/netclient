@@ -348,18 +348,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
 	pretty.Println(joinResponse)
+	config.UpdateServerConfig(&joinResponse.ServerConfig)
 	server := config.GetServer(joinResponse.ServerConfig.Server)
-	// if new server, populate attributes
-	if server == nil {
-		server = &config.Server{}
-		server.ServerConfig = joinResponse.ServerConfig
-		server.Name = joinResponse.ServerConfig.Server
-		server.MQID = config.Netclient().ID
-		server.Password = joinResponse.ServerConfig.Server
-		server.Nodes = make(map[string]bool)
-	}
-	// reset attributes that should not be changed by server
-
 	server.Nodes[joinResponse.Node.Network] = true
 	newNode := config.Node{}
 	newNode.CommonNode = joinResponse.Node.CommonNode
