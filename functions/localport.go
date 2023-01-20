@@ -1,6 +1,3 @@
-//go:build !freebsd
-// +build !freebsd
-
 package functions
 
 import (
@@ -9,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	proxy_models "github.com/gravitl/netclient/nmproxy/models"
@@ -85,18 +81,6 @@ func UpdateLocalListenPort() error {
 	return err
 }
 
-func getRealIface(ifacename string, address net.IPNet) string {
-	var deviceiface = ifacename
-	var err error
-	if ncutils.IsMac() { // if node is Mac (Darwin) get the tunnel name first
-		deviceiface, err = local.GetMacIface(address.IP.String())
-		if err != nil || deviceiface == "" {
-			deviceiface = ifacename
-		}
-	}
-	return deviceiface
-}
-
 func getInterfaces() (*[]models.Iface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -117,13 +101,23 @@ func getInterfaces() (*[]models.Iface, error) {
 		}
 		for _, addr := range addrs {
 			link.Name = iface.Name
-			_, cidr, err := net.ParseCIDR(addr.String())
+			ip, cidr, err := net.ParseCIDR(addr.String())
 			if err != nil {
 				continue
 			}
 			link.Address = *cidr
+			link.Address.IP = ip
 			data = append(data, link)
 		}
 	}
 	return &data, nil
+}
+
+func setLocalAddress(name string, ifaces []models.Iface) net.IPNet {
+	for _, iface := range ifaces {
+		if iface.Name == name {
+			return iface.Address
+		}
+	}
+	return net.IPNet{}
 }

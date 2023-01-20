@@ -12,19 +12,27 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 )
 
 // Uninstall - uninstalls networks from client
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
-	for network := range config.Nodes {
-		faults, err := LeaveNetwork(network, false)
-		if err != nil {
-			allfaults = append(allfaults, faults...)
+	for _, v := range config.Servers {
+		if err = setupMQTTSingleton(&v, true); err != nil {
+			logger.Log(0, "failed to connect to server on uninstall", v.Name)
+			allfaults = append(allfaults, err)
+			continue
+		}
+		defer ServerSet[v.Name].Disconnect(250)
+		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
+			logger.Log(0, "failed to notify server", v.Name, "of host removal")
+			allfaults = append(allfaults, err)
 		}
 	}
-	if err := daemon.CleanUp(); err != nil {
+
+	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
 	}
 	return allfaults, err

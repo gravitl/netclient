@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/clipboard"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // App.GoJoinNetworkByToken joins a network with the given token
@@ -87,7 +88,7 @@ func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
 
 // App.GoLeaveNetwork leaves a known network
 func (app *App) GoLeaveNetwork(networkName string) (any, error) {
-	errs, err := functions.LeaveNetwork(networkName)
+	errs, err := functions.LeaveNetwork(networkName, false)
 	if len(errs) == 0 && err == nil {
 		return nil, nil
 	}
@@ -192,5 +193,10 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 
 	server := config.GetServer(node.Server)
 
-	return Network{ Node: node, Server: server, }, nil
+	return Network{Node: node, Server: server}, nil
+}
+
+// App.GoGetNodePeers returns the peers for the given node
+func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
+	return functions.GetNodePeers(node)
 }
