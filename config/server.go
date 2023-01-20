@@ -144,25 +144,17 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
 func UpdateServerConfig(cfg *models.ServerConfig) {
+	if cfg == nil {
+		return
+	}
 	server, ok := Servers[cfg.Server]
 	if !ok {
 		server = Server{}
 		server.Nodes = make(map[string]bool)
 	}
 	server.Name = cfg.Server
-	server.Version = cfg.Version
-	server.Broker = cfg.Broker
-	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.MQUserName = cfg.MQUserName
-	server.MQPassword = cfg.MQPassword
-	server.Server = cfg.Server
-	server.StunHost = cfg.StunHost
-	server.StunPort = cfg.StunPort
-	server.TrafficKey = cfg.TrafficKey
-	server.API = cfg.API
-	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.Is_EE = cfg.Is_EE
-	server.DNSMode = cfg.DNSMode
+	server.ServerConfig = *cfg
+
 	Servers[cfg.Server] = server
 }
