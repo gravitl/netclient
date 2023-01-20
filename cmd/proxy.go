@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/gravitl/netclient/functions"
@@ -10,36 +9,22 @@ import (
 
 // proxyCmd represents the proxy command
 var proxyCmd = &cobra.Command{
-	Use:   "proxy [ on | off ]",
-	Short: "proxy on/off",
-	Long:  `switches proxy on/off`,
-
+	Use:       "proxy [ on | off ]",
+	Short:     "proxy on/off",
+	Long:      `switches proxy on/off`,
+	Args:      cobra.ExactArgs(1),
+	ValidArgs: []string{"on", "off"},
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 0 {
-			fmt.Println("\nmissing status [ on | off ] argument in the command")
-			return
-		}
-		status, err := getStatus(args[0])
+		err := cobra.OnlyValidArgs(cmd, args)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		err = functions.ChangeProxyStatus(status)
+		err = functions.ChangeProxyStatus(args[0] == "on")
 		if err != nil {
 			fmt.Println(err.Error())
 		}
 	},
-}
-
-func getStatus(arg string) (status bool, err error) {
-	if arg == "on" {
-		status = true
-	} else if arg == "off" {
-		status = false
-	} else {
-		err = errors.New("invalid argument")
-	}
-	return
 }
 
 func init() {

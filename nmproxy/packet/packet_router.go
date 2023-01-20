@@ -3,7 +3,6 @@ package packet
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -133,22 +132,22 @@ func StartRouter() error {
 	return nil
 }
 
-func printPktInfo(packet gopacket.Packet, inbound bool) {
+// func printPktInfo(packet gopacket.Packet, inbound bool) {
 
-	ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	if ipLayer != nil {
-		fmt.Println("IPv4 layer detected.  ", inbound)
-		ip, _ := ipLayer.(*layers.IPv4)
-		fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
-		fmt.Println("Protocol: ", ip.Protocol)
-		fmt.Println()
+// 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+// 	if ipLayer != nil {
+// 		fmt.Println("IPv4 layer detected.  ", inbound)
+// 		ip, _ := ipLayer.(*layers.IPv4)
+// 		fmt.Printf("From %s to %s\n", ip.SrcIP, ip.DstIP)
+// 		fmt.Println("Protocol: ", ip.Protocol)
+// 		fmt.Println()
 
-	}
-	// Check for errors
-	if err := packet.ErrorLayer(); err != nil {
-		fmt.Println("Error decoding some part of the packet:", err)
-	}
-}
+// 	}
+// 	// Check for errors
+// 	if err := packet.ErrorLayer(); err != nil {
+// 		fmt.Println("Error decoding some part of the packet:", err)
+// 	}
+// }
 
 func routePkt(pkt gopacket.Packet, inbound bool) ([]byte, bool) {
 	if pkt.NetworkLayer() != nil {

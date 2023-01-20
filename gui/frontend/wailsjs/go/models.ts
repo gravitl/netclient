@@ -77,34 +77,23 @@ export namespace config {
 	}
 	export class Node {
 	    id: string;
+	    hostid: string;
 	    network: string;
-	    // Go type: net.IPNet
-	    networkrange: any;
-	    // Go type: net.IPNet
-	    networkrange6: any;
-	    // Go type: net.UDPAddr
-	    internetgateway?: any;
+	    networkrange: any; // Go type: net.IPNet
+	    networkrange6: any; // Go type: net.IPNet
+	    internetgateway?: any; // Go type: net.UDPAddr
 	    server: string;
 	    connected: boolean;
-	    interfaces: any[];  // models.Iface[]
-	    endpointip: number[];
-	    // Go type: net.IPNet
-	    address: any;
-	    // Go type: net.IPNet
-	    address6: any;
+	    address: any; // Go type: net.IPNet
+	    address6: any; // Go type: net.IPNet
 	    postup: string;
 	    postdown: string;
 	    action: string;
-	    isserver: boolean;
 	    islocal: boolean;
 	    isegressgateway: boolean;
 	    isingressgateway: boolean;
-	    isstatic: boolean;
-	    ispending: boolean;
 	    dnson: boolean;
-	    ishub: boolean;
 	    persistentkeepalive: number;
-	    peers: any[];  // wgtypes.PeerConfig[]
 	
 	    static createFrom(source: any = {}) {
 	        return new Node(source);
@@ -113,29 +102,23 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.hostid = source["hostid"];
 	        this.network = source["network"];
 	        this.networkrange = this.convertValues(source["networkrange"], null);
 	        this.networkrange6 = this.convertValues(source["networkrange6"], null);
 	        this.internetgateway = this.convertValues(source["internetgateway"], null);
 	        this.server = source["server"];
 	        this.connected = source["connected"];
-	        this.interfaces = this.convertValues(source["interfaces"], Object);
-	        this.endpointip = source["endpointip"];
 	        this.address = this.convertValues(source["address"], null);
 	        this.address6 = this.convertValues(source["address6"], null);
 	        this.postup = source["postup"];
 	        this.postdown = source["postdown"];
 	        this.action = source["action"];
-	        this.isserver = source["isserver"];
 	        this.islocal = source["islocal"];
 	        this.isegressgateway = source["isegressgateway"];
 	        this.isingressgateway = source["isingressgateway"];
-	        this.isstatic = source["isstatic"];
-	        this.ispending = source["ispending"];
 	        this.dnson = source["dnson"];
-	        this.ishub = source["ishub"];
 	        this.persistentkeepalive = source["persistentkeepalive"];
-	        this.peers = this.convertValues(source["peers"], Object);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
