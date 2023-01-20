@@ -85,6 +85,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt install libpcap-dev
+          mkdir gui/frontend/dist
+          touch gut/frontend/dist/index.html
           go install honnef.co/go/tools/cmd/staticcheck@latest
           { ~/go/bin/staticcheck  ./... ; }
 
