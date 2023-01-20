@@ -508,7 +508,7 @@ func CheckConfig() {
 	}
 	_ = ReadServerConf()
 	for _, server := range Servers {
-		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
+		if server.MQID != netclient.ID {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}

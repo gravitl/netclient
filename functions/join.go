@@ -349,7 +349,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		server.ServerConfig = joinResponse.ServerConfig
 		server.Name = joinResponse.ServerConfig.Server
 		server.MQID = config.Netclient().ID
-		server.Password = config.Netclient().HostPass
+		server.Password = joinResponse.ServerConfig.Server
 		server.Nodes = make(map[string]bool)
 	}
 	// reset attributes that should not be changed by server
