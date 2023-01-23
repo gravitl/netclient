@@ -1,11 +1,11 @@
 package functions
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/guumaster/hostctl/pkg/file"
 	"github.com/guumaster/hostctl/pkg/parser"
@@ -20,15 +20,10 @@ func removeHostDNS(network string) error {
 		etchosts = "c:\\windows\\system32\\drivers\\etc\\hosts"
 		lockfile = temp + "\\netclient-lock"
 	}
-	if _, err := os.Stat(lockfile); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("/etc/hosts file is locked .... aborting")
-	}
-	lock, err := os.Create(lockfile)
-	if err != nil {
+	if err := config.Lock(lockfile); err != nil {
 		return fmt.Errorf("could not create lock file %w", err)
 	}
-	lock.Close()
-	defer os.Remove(lockfile)
+	defer config.Unlock(lockfile)
 	hosts, err := file.NewFile(etchosts)
 	if err != nil {
 		return err
@@ -53,15 +48,10 @@ func setHostDNS(dns, network string) error {
 		etchosts = "c:\\windows\\system32\\drivers\\etc\\hosts"
 		lockfile = temp + "\\netclient-lock"
 	}
-	if _, err := os.Stat(lockfile); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("/etc/hosts file is locked .... aborting")
-	}
-	lock, err := os.Create(lockfile)
-	if err != nil {
+	if err := config.Lock(lockfile); err != nil {
 		return fmt.Errorf("could not create lock file %w", err)
 	}
-	lock.Close()
-	defer os.Remove(lockfile)
+	defer config.Unlock(lockfile)
 	dnsdata := strings.NewReader(dns)
 	profile, err := parser.ParseProfile(dnsdata)
 	if err != nil {
