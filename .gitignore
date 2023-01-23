@@ -2,6 +2,7 @@ netclient
 netclient.syso
 build/*
 !build/netclient.service
+!build/appicon.png
 files/netclient
 netclient-amd64
 netclient-arm
