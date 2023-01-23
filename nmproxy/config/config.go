@@ -72,6 +72,7 @@ func (c *Config) StopMetricsCollectionThread() {
 	defer c.mutex.Unlock()
 	if c.metricsThreadDone != nil {
 		c.metricsThreadDone()
+		c.metricsCollectionStatus = false
 	}
 }
 
