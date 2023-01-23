@@ -1,9 +1,16 @@
 package functions
 
+import (
+	"net"
+
+	"golang.org/x/net/nettest"
+)
+
 func getDefaultInterface() (string, error) {
 
-	//TODO --- function needs to be defined for windows
-	//
-	//
-	return "", nil
+	iface, err := nettest.RoutedInterface("ip", net.FlagUp|net.FlagBroadcast)
+	if err != nil {
+		return "", err
+	}
+	return iface.Name, err
 }
