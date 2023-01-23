@@ -355,7 +355,7 @@ func checkBroker(broker string, port string) error {
 	return nil
 }
 
-// UpdateHostSettings - check local port, if different, mod config and publish
+// UpdateHostSettings - checks local host settings, if different, mod config and publish
 func UpdateHostSettings() error {
 	var err error
 	publishMsg := false
