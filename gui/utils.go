@@ -26,7 +26,7 @@ func OpenUrlInBrowser(url string) error {
 }
 
 // GetFileAsBytes returns the byte array form files
-// It can be used return th app icon
+// It can be used to return the app icon
 func GetFileAsBytes(path string) []byte {
 	b, err := os.ReadFile(path)
 	if err != nil {
