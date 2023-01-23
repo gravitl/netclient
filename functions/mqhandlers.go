@@ -244,6 +244,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		clearRetainedMsg(client, msg.Topic())
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
@@ -258,6 +259,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if restartDaemon {
+		clearRetainedMsg(client, msg.Topic())
 		if err := daemon.Restart(); err != nil {
 			logger.Log(0, "failed to restart daemon: ", err.Error())
 		}
