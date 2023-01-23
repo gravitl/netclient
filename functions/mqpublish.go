@@ -13,6 +13,7 @@ import (
 
 	"github.com/cloverstd/tcping/ping"
 	"github.com/devilcove/httpclient"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -362,4 +363,11 @@ func publishSignal(node *config.Node, signal byte) error {
 		return err
 	}
 	return nil
+}
+
+// publishes a blank message to the topic to clear the unwanted retained message
+func clearRetainedMsg(client mqtt.Client, topic string) {
+	if token := client.Publish(topic, 0, true, []byte{}); token.Error() != nil {
+		logger.Log(0, "failed to clear retained message: ", topic, token.Error().Error())
+	}
 }
