@@ -16,6 +16,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -70,10 +72,6 @@ func checkin() {
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
-	if len(config.GetNodes()) == 0 {
-		logger.Log(0, "skipping checkin: no nodes configured")
-		return
-	}
 	for network, node := range config.GetNodes() {
 		server := config.GetServer(node.Server)
 		if node.Connected {
@@ -126,7 +124,7 @@ func checkin() {
 			publishMetrics(&node)
 		}
 	}
-	_ = UpdateLocalListenPort()
+	_ = UpdateHostSettings()
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -355,6 +353,62 @@ func checkBroker(broker string, port string) error {
 		return errors.New("unable to connect to broker port ... check netmaker server and firewalls")
 	}
 	return nil
+}
+
+// UpdateHostSettings - check local port, if different, mod config and publish
+func UpdateHostSettings() error {
+	var err error
+	publishMsg := false
+	ifacename := ncutils.GetInterfaceName()
+	var proxylistenPort int
+	var proxypublicport int
+	if config.Netclient().ProxyEnabled {
+		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
+		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
+		if proxylistenPort == 0 {
+			proxylistenPort = proxy_models.NmProxyPort
+		}
+		if proxypublicport == 0 {
+			proxypublicport = proxy_models.NmProxyPort
+		}
+	}
+	localPort, err := GetLocalListenPort(ifacename)
+	if err != nil {
+		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
+	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
+		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
+		config.Netclient().ListenPort = localPort
+		publishMsg = true
+	}
+	if config.Netclient().ProxyEnabled {
+		if config.Netclient().ProxyListenPort != proxylistenPort {
+			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
+			config.Netclient().ProxyListenPort = proxylistenPort
+			publishMsg = true
+
+		}
+		if config.Netclient().PublicListenPort != proxypublicport {
+			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
+			config.Netclient().PublicListenPort = proxypublicport
+			publishMsg = true
+		}
+	}
+	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
+		logger.Log(0, "Host is behind NAT, enabling proxy...")
+		config.Netclient().ProxyEnabled = true
+		publishMsg = true
+	}
+	if publishMsg {
+		if err := config.WriteNetclientConfig(); err != nil {
+			return err
+		}
+		logger.Log(0, "publishing global host update for port changes")
+		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
+			logger.Log(0, "could not publish local port change", err.Error())
+		}
+	}
+
+	return err
 }
 
 // publishes a message to server to update peers on this peer's behalf
