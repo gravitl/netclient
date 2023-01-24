@@ -64,7 +64,7 @@ func List(net string, long bool) {
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server.API, node.Network, config.Netclient())
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		return nil, err
 	}
