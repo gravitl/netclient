@@ -81,11 +81,11 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 }
 
 func deleteNodeFromServer(node *config.Node) error {
-	token, err := Authenticate(node, config.Netclient())
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
-	server := config.GetServer(node.Server)
 	if err != nil {
 		return fmt.Errorf("could not read sever config %w", err)
 	}

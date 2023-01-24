@@ -222,12 +222,12 @@ func Hello(node *config.Node) {
 
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
-	token, err := Authenticate(node, config.Netclient())
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
 	}
-	server := config.GetServer(node.Server)
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           url,
