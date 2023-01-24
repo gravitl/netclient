@@ -20,7 +20,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, errors.New("no such network")
 	}
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server.API, node.Network, config.Netclient())
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		return nil, err
 	}
