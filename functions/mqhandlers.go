@@ -194,7 +194,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	UpdateHostSettings()
+	_ = UpdateHostSettings()
 
 }
 
