@@ -251,6 +251,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("no network provided")
 	}
 	host := config.Netclient()
+	host.Name = flags.GetString("name")
 	node := config.GetNode(flags.GetString("network"))
 	node.Network = flags.GetString("network")
 	nodes := config.GetNodes()
