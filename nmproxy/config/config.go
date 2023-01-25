@@ -23,7 +23,6 @@ type Config struct {
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
 	settings                map[string]models.Settings // host settings per server
-	RouterCfg               Router
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
 	serverConn              *net.UDPConn
@@ -45,12 +44,6 @@ func InitializeCfg() {
 			allPeersConf:     make(map[string]nm_models.HostPeerMap),
 		},
 		settings: make(map[string]models.Settings),
-		RouterCfg: Router{
-			mutex:           &sync.RWMutex{},
-			IsRunning:       false,
-			InboundRouting:  map[string]Routing{},
-			OutboundRouting: map[string]Routing{},
-		},
 	}
 }
 
