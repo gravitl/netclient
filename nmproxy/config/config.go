@@ -188,8 +188,6 @@ func (c *Config) SetNATStatus() {
 
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
 	return c.isBehindNAT
 }
 
