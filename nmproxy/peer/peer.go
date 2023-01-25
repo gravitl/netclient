@@ -90,6 +90,10 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 		config.GetCfg().SaveNoProxyPeer(&connConf)
 	}
 	config.GetCfg().SavePeerByHash(&rPeer)
+	if peerConf.IsExtClient {
+		config.GetCfg().SaveExtClientInfo(&rPeer)
+
+	}
 	return nil
 }
 
