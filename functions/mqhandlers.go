@@ -279,6 +279,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	config.DeleteServerHostPeerCfg(server)
 	nodes := config.GetNodes()
 	for k, node := range nodes {
+		node := node
 		if node.Server == server {
 			unsubscribeNode(client, &node)
 			config.DeleteNode(k)
