@@ -16,7 +16,6 @@ require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/go-ping/ping v1.1.0
-	github.com/google/gopacket v1.1.19
 	github.com/gravitl/netmaker v0.17.2-0.20230122213405-5e3162d9fb64
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
