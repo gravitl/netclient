@@ -92,12 +92,6 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf,
 	config.GetCfg().SavePeerByHash(&rPeer)
 	if peerConf.IsExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
-		//add rules to router
-		routingInfo := &config.Routing{
-			InternalIP: peerConf.ExtInternalIp,
-			ExternalIP: peerConf.Address,
-		}
-		config.GetCfg().SaveRoutingInfo(routingInfo)
 
 	}
 	return nil
