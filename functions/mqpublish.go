@@ -381,15 +381,16 @@ func UpdateHostSettings() error {
 		publishMsg = true
 	}
 	if config.Netclient().ProxyEnabled {
-		publishMsg = true
+
 		if config.Netclient().ProxyListenPort != proxylistenPort {
 			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
 			config.Netclient().ProxyListenPort = proxylistenPort
-
+			publishMsg = true
 		}
 		if config.Netclient().PublicListenPort != proxypublicport {
 			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
 			config.Netclient().PublicListenPort = proxypublicport
+			publishMsg = true
 		}
 	}
 	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
