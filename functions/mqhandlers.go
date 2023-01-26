@@ -243,7 +243,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
@@ -289,7 +289,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restart bool) {
+func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
@@ -300,12 +300,8 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restar
 	if hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
-	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
-		sendHostUpdate = true
-	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
-	host.PublicListenPort = hostCfg.PublicListenPort
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
