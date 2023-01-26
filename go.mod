@@ -14,11 +14,13 @@ require (
 
 require (
 	github.com/cloverstd/tcping v0.1.1
+	github.com/coreos/go-iptables v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/go-ping/ping v1.1.0
 	github.com/gravitl/netmaker v0.17.2-0.20230122213405-5e3162d9fb64
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
+	github.com/sirupsen/logrus v1.9.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.3.1
 	golang.design/x/clipboard v0.6.3
@@ -69,7 +71,6 @@ require (
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/rqlite/gorqlite v0.0.0-20210514125552-08ff1e76b22f // indirect
 	github.com/samber/lo v1.27.1 // indirect
-	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.5 // indirect
 	github.com/txn2/txeh v1.3.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
