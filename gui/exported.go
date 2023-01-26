@@ -1,3 +1,6 @@
+//go:build !headless
+// +build !headless
+
 // This file contains methods intended to be called in frontend
 package gui
 
@@ -22,7 +25,6 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 	flags.Set("token", token)
 	flags.Set("server", "")
 
-	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -35,9 +37,6 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
 	configs := make([]Network, 0, 5)
-
-	// read fresh config from disk
-	config.InitConfig(viper.New())
 
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
@@ -52,7 +51,6 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
 	// read fresh config from disk
-	config.InitConfig(viper.New())
 
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
@@ -116,7 +114,6 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	flags.Set("server", serverName)
 	flags.Set("network", networkName)
 
-	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -135,7 +132,6 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 	flags.Set("readPassFromStdIn", false)
 	flags.Set("pass", password)
 
-	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
