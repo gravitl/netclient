@@ -10,11 +10,9 @@ Copyright © 2023 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"github.com/gravitl/netclient/config"
 	app "github.com/gravitl/netclient/gui"
 	assets "github.com/gravitl/netclient/gui/frontend"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -53,11 +51,6 @@ func init() {
 }
 
 func gui() {
-	flags := viper.New()
-	config.InitConfig(flags)
-	//config.SetVersion(version)
-	//fmt.Printf("wails: netclient version set to: %s\n", version)
-
 	// Create an instance of the guiApp structure
 	guiApp := app.NewApp()
 

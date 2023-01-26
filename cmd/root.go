@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/yaml.v3"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -59,37 +58,15 @@ func init() {
 
 func initConfig() {
 	checkUID()
-	viper.AddConfigPath(config.GetNetclientPath())
-	viper.SetConfigName("netclient.yml")
-	viper.SetConfigType("yml")
-	viper.BindPFlags(rootCmd.PersistentFlags())
-	viper.AutomaticEnv() // read in environment variables that match
-
-	// If a config file is found, read it in
-	if err := config.Lock(config.ConfigLockfile); err != nil {
-		logger.Log(0, "failed to obtain lockfile", err.Error())
+	netclient, _ := config.ReadNetclientConfig()
+	if rootCmd.Flags().Lookup("verbosity").Changed {
+		vebosity, _ := rootCmd.Flags().GetInt("verbosity")
+		netclient.Verbosity = vebosity
+		_ = config.WriteNetclientConfig()
 	}
-	if err := viper.ReadInConfig(); err == nil {
-		logger.Log(0, "Using config file:", viper.ConfigFileUsed())
-	} else {
-		logger.Log(0, "error reading config file", err.Error())
-	}
-	if err := config.Unlock(config.ConfigLockfile); err != nil {
-		logger.Log(0, "failed to releas lockfile", err.Error())
-	}
-	var netclient config.Config
-	//viper cannot unmarshal net.IPNet so need to do a funky conversion
-	//if err := viper.Unmarshal(&netclient); err != nil {
-	//logger.Log(0, "could not read netclient config file", err.Error())
-	//}
-	c := viper.AllSettings()
-	b, _ := yaml.Marshal(c)
-	if err := yaml.Unmarshal(b, &netclient); err != nil {
-		logger.Log(0, "could not read netclient config file", err.Error())
-	}
-
 	logger.Verbosity = netclient.Verbosity
-	config.UpdateNetclient(netclient)
+
+	config.UpdateNetclient(*netclient)
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	checkConfig()
@@ -110,6 +87,7 @@ func checkConfig() {
 	fail := false
 	saveRequired := false
 	netclient := config.Netclient()
+
 	if netclient.OS != runtime.GOOS {
 		logger.Log(0, "setting OS")
 		netclient.OS = runtime.GOOS
