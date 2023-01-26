@@ -35,9 +35,6 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.Host
 	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort, proxyPort))
 	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetCfg().GetHostInfo()))
 	config.GetCfg().SetNATStatus()
-	// nc_config.Netclient().ProxyListenPort = proxyPort
-	// nc_config.Netclient().PublicListenPort = config.GetCfg().GetHostInfo().PubPort
-	// nc_config.WriteNetclientConfig()
 	// start the netclient proxy server
 	err := server.NmProxyServer.CreateProxyServer(proxyPort, 0, config.GetCfg().GetHostInfo().PrivIp.String())
 	if err != nil {
