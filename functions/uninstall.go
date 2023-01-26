@@ -56,20 +56,20 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	if err := removeHostDNS(node.Network); err != nil {
 		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
-	// re-configure interface if daemon is calling leave
-	if isDaemon {
-		nc := wireguard.GetInterface()
-		nc.Iface.Close()
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		nc.Create()
-		if err := nc.Configure(); err != nil {
-			faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
-		} else {
-			if err = wireguard.SetPeers(); err != nil {
-				faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
-			}
+	// re-configure interface
+	nc := wireguard.GetInterface()
+	nc.Iface.Close()
+	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	if err := nc.Configure(); err != nil {
+		faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
+	} else {
+		if err = wireguard.SetPeers(); err != nil {
+			faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
 		}
-	} else { // was called from CLI so restart daemon
+	}
+	// restart daemon if CLI
+	if !isDaemon {
 		if err := daemon.Restart(); err != nil {
 			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))
 		}
