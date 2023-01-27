@@ -58,8 +58,8 @@ func init() {
 
 func initConfig() {
 	checkUID()
-	checkConfig()
 	netclient, _ := config.ReadNetclientConfig()
+	checkConfig()
 	if rootCmd.Flags().Lookup("verbosity").Changed {
 		vebosity, _ := rootCmd.Flags().GetInt("verbosity")
 		netclient.Verbosity = vebosity
