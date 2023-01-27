@@ -49,7 +49,6 @@ func Join(flags *viper.Viper) error {
 		}
 		flags.Set("network", ssoAccessToken.ClientConfig.Network)
 		flags.Set("accesskey", ssoAccessToken.ClientConfig.Key)
-		flags.Set("localrange", ssoAccessToken.ClientConfig.LocalRange)
 		flags.Set("apiconn", ssoAccessToken.APIConnString)
 	}
 	token := flags.GetString("token")
@@ -62,7 +61,6 @@ func Join(flags *viper.Viper) error {
 		}
 		flags.Set("network", accessToken.ClientConfig.Network)
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
-		flags.Set("localrange", accessToken.ClientConfig.LocalRange)
 		flags.Set("apiconn", accessToken.APIConnString)
 	}
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
@@ -262,14 +260,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	node.HostID = host.ID
 	node.Connected = true
 	// == end handle keys ==
-	if host.LocalAddress.IP == nil {
-		intIP, err := getPrivateAddr()
-		if err == nil {
-			host.LocalAddress = intIP
-		} else {
-			logger.Log(1, "network:", node.Network, "error retrieving private address: ", err.Error())
-		}
-	}
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
@@ -284,7 +274,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		logger.Log(0, "default gateway not found", err.Error())
 	} else {
 		host.DefaultInterface = defaultInterface
-		host.LocalAddress = setLocalAddress(defaultInterface, host.Interfaces)
 	}
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
@@ -295,14 +284,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		node.IsLocal = true
 	}
 	if host.EndpointIP == nil {
-		if node.IsLocal && host.LocalAddress.IP != nil {
-			host.EndpointIP = host.LocalAddress.IP
-		} else {
-			ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
-			host.EndpointIP = net.ParseIP(ip)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error setting public ip %w", err)
-			}
+		ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
+		host.EndpointIP = net.ParseIP(ip)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error setting public ip %w", err)
 		}
 		if host.EndpointIP == nil {
 			logger.Log(0, "network:", node.Network, "error setting node.Endpoint.")
