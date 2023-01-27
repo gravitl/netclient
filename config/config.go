@@ -134,11 +134,6 @@ func SetVersion(ver string) {
 	Version = ver
 }
 
-// setLogVerbosity sets the logger verbosity from config
-func setLogVerbosity() {
-	logger.Verbosity = netclient.Verbosity
-}
-
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
