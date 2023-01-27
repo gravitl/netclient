@@ -25,7 +25,6 @@ import (
 )
 
 const lastNodeUpdate = "lnu"
-const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
@@ -132,6 +131,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
+		// see https://www.evanjones.ca/go-gotcha-loop-variables.html
+		server := server
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
@@ -174,6 +175,7 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "mqtt connect handler")
 		nodes := config.GetNodes()
 		for _, node := range nodes {
+			node := node
 			setSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
@@ -209,7 +211,7 @@ func setupMQTT(server *config.Server) error {
 
 // func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
-func setupMQTTSingleton(server *config.Server) error {
+func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
@@ -223,13 +225,15 @@ func setupMQTTSingleton(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		logger.Log(0, "mqtt connect handler")
-		nodes := config.GetNodes()
-		for _, node := range nodes {
-			setSubscriptions(client, &node)
+		if !publishOnly {
+			logger.Log(0, "mqtt connect handler")
+			nodes := config.GetNodes()
+			for _, node := range nodes {
+				node := node
+				setSubscriptions(client, &node)
+			}
+			setHostSubscription(client, server.Name)
 		}
-		setHostSubscription(client, server.Name)
-
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)

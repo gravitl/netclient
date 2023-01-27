@@ -14,6 +14,8 @@ import {
   updateConnectionStatusAndRefreshNetworks,
 } from "../store/helpers";
 import { getUserConfirmation, notifyUser } from "../utils/messaging";
+import { Peer } from "../models/Peer";
+import { GoGetNodePeers } from "../../wailsjs/go/main/App";
 
 export default function NetworkDetailsPage() {
   const [networkDetails, setNetworkDetails] = useState<main.Network | null>(
@@ -21,6 +23,8 @@ export default function NetworkDetailsPage() {
   );
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [isLeavingNetwork, setIsLeavingNetwork] = useState(false);
+  const [isFreshLoad, setIsFreshLoad] = useState(true);
+  const [networkPeers, setNetworkPeers] = useState<Peer[]>([]);
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
   const { networkName } = useParams();
@@ -92,22 +96,48 @@ export default function NetworkDetailsPage() {
     }
   }, [navigate, networksDispatch, setIsLeavingNetwork, networkName]);
 
+  const loadPeers = useCallback(
+    async (shouldNotifyOnError = false) => {
+      if (!networkDetails?.node) return;
+      try {
+        if (shouldNotifyOnError) console.log("testing");
+        const peers = await GoGetNodePeers(networkDetails.node);
+        setNetworkPeers(peers);
+      } catch (err) {
+        console.error(err);
+        if (shouldNotifyOnError) {
+          await notifyUser(("Failed to load peers\n" + err) as string);
+        }
+      }
+    },
+    [networkDetails, setNetworkPeers]
+  );
+
   useEffect(() => {
     loadNetworkDetails();
+    loadPeers(isFreshLoad);
+    setIsFreshLoad(false);
     const id = setInterval(async () => {
       try {
         if (!networkName) {
           throw new Error("No network name");
         }
-        await refreshNetworks(networksDispatch)
+        await refreshNetworks(networksDispatch);
         const network = await getNetwork(networksState, networkName);
         setNetworkDetails(network);
       } catch (err) {
         console.error(err);
       }
-    }, 5000)
+    }, 5000);
     return () => clearInterval(id);
-  }, [loadNetworkDetails, networkName, networksState, networksDispatch]);
+  }, [
+    loadNetworkDetails,
+    networkName,
+    networksState,
+    networksDispatch,
+    loadPeers,
+    setNetworkDetails,
+  ]);
 
   return (
     <Grid
@@ -174,7 +204,7 @@ export default function NetworkDetailsPage() {
               xs={12}
               style={{ marginTop: "2rem", maxHeight: "60vh", overflow: "auto" }}
             >
-              <PeersTable peers={networkDetails?.node?.peers ?? []} />
+              <PeersTable peers={networkPeers} />
             </Grid>
           </Grid>
         )}

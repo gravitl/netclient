@@ -9,20 +9,20 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/guumaster/hostctl v1.1.3
 	github.com/kr/pretty v0.3.1
-	golang.org/x/term v0.3.0
+	golang.org/x/term v0.4.0
 )
 
 require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/go-ping/ping v1.1.0
-	github.com/google/gopacket v1.1.19
-	github.com/gravitl/netmaker v0.17.2-0.20230118093637-6b3a636ca9cc
+	github.com/gravitl/netmaker v0.17.2-0.20230122213405-5e3162d9fb64
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.3.1
 	golang.design/x/clipboard v0.6.3
+	golang.org/x/net v0.5.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/windows v0.5.3
 	gortc.io/stun v1.23.0
@@ -81,7 +81,6 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20221208044002-44028be4359e // indirect
 	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd // indirect
 	golang.org/x/mobile v0.0.0-20211207041440-4e6c2922fdee // indirect
-	golang.org/x/net v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -105,7 +104,7 @@ require (
 	github.com/subosito/gotenv v1.4.1 // indirect
 	golang.org/x/crypto v0.3.0
 	golang.org/x/sys v0.4.0
-	golang.org/x/text v0.5.0 // indirect
+	golang.org/x/text v0.6.0 // indirect
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20220324164955-056925b7df31
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v3 v3.0.1

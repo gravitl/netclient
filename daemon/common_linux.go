@@ -112,14 +112,14 @@ WantedBy=multi-user.target
 
 // startSystemD - starts systemd service
 func startSystemD() error {
-	logger.Log(3, "calling systemclt start netclient")
+	logger.Log(3, "calling systemctl start netclient")
 	_, err := ncutils.RunCmd("systemctl stop netclient.service", false)
 	return err
 }
 
 // stopSystemD - tells system to stop systemd
 func stopSystemD() error {
-	log.Println("calling systemclt stop netclient")
+	log.Println("calling systemctl stop netclient")
 	_, err := ncutils.RunCmd("systemctl stop netclient.service", false)
 	return err
 }

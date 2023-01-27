@@ -13,8 +13,11 @@ import (
 
 	"github.com/cloverstd/tcping/ping"
 	"github.com/devilcove/httpclient"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -69,10 +72,6 @@ func checkin() {
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
-	if len(config.GetNodes()) == 0 {
-		logger.Log(0, "skipping checkin: no nodes configured")
-		return
-	}
 	for network, node := range config.GetNodes() {
 		server := config.GetServer(node.Server)
 		if node.Connected {
@@ -125,7 +124,7 @@ func checkin() {
 			publishMetrics(&node)
 		}
 	}
-	_ = UpdateLocalListenPort()
+	_ = UpdateHostSettings()
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -221,12 +220,12 @@ func Hello(node *config.Node) {
 
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
-	token, err := Authenticate(node, config.Netclient())
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
 	}
-	server := config.GetServer(node.Server)
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           url,
@@ -356,10 +355,73 @@ func checkBroker(broker string, port string) error {
 	return nil
 }
 
+// UpdateHostSettings - checks local host settings, if different, mod config and publish
+func UpdateHostSettings() error {
+	var err error
+	publishMsg := false
+	ifacename := ncutils.GetInterfaceName()
+	var proxylistenPort int
+	var proxypublicport int
+	if config.Netclient().ProxyEnabled {
+		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
+		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
+		if proxylistenPort == 0 {
+			proxylistenPort = proxy_models.NmProxyPort
+		}
+		if proxypublicport == 0 {
+			proxypublicport = proxy_models.NmProxyPort
+		}
+	}
+	localPort, err := GetLocalListenPort(ifacename)
+	if err != nil {
+		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
+	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
+		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
+		config.Netclient().ListenPort = localPort
+		publishMsg = true
+	}
+	if config.Netclient().ProxyEnabled {
+
+		if config.Netclient().ProxyListenPort != proxylistenPort {
+			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
+			config.Netclient().ProxyListenPort = proxylistenPort
+			publishMsg = true
+		}
+		if config.Netclient().PublicListenPort != proxypublicport {
+			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
+			config.Netclient().PublicListenPort = proxypublicport
+			publishMsg = true
+		}
+	}
+	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
+		logger.Log(0, "Host is behind NAT, enabling proxy...")
+		config.Netclient().ProxyEnabled = true
+		publishMsg = true
+	}
+	if publishMsg {
+		if err := config.WriteNetclientConfig(); err != nil {
+			return err
+		}
+		logger.Log(0, "publishing global host update for port changes")
+		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
+			logger.Log(0, "could not publish local port change", err.Error())
+		}
+	}
+
+	return err
+}
+
 // publishes a message to server to update peers on this peer's behalf
 func publishSignal(node *config.Node, signal byte) error {
 	if err := publish(node.Server, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
 		return err
 	}
 	return nil
+}
+
+// publishes a blank message to the topic to clear the unwanted retained message
+func clearRetainedMsg(client mqtt.Client, topic string) {
+	if token := client.Publish(topic, 0, true, []byte{}); token.Error() != nil {
+		logger.Log(0, "failed to clear retained message: ", topic, token.Error().Error())
+	}
 }

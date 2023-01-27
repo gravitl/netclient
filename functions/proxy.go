@@ -18,7 +18,10 @@ func ChangeProxyStatus(status bool) error {
 		if serverCfg == nil {
 			continue
 		}
-		setupMQTTSingleton(serverCfg)
+		err := setupMQTTSingleton(serverCfg, true)
+		if err != nil {
+			logger.Log(0, "failed to set up mq conn for server ", server)
+		}
 	}
 	config.Netclient().ProxyEnabled = status
 	if err := config.WriteNetclientConfig(); err != nil {

@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"runtime"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
-	"github.com/gravitl/netclient/nmproxy/packet"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -97,17 +95,7 @@ func (m *proxyPayload) settingsUpdate(server string) (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(server) {
 		config.GetCfg().DeleteRelayedPeers()
 	}
-	if m.IsIngress && runtime.GOOS == "linux" {
-		packet.TurnOffIpFowarding()
-	}
-	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
-		// start router on the ingress node
-		config.GetCfg().SetRouterToRunning()
-		go packet.StartRouter()
 
-	} else if !m.IsIngress && config.GetCfg().CheckIfRouterIsRunning() {
-		config.GetCfg().StopRouter()
-	}
 	config.GetCfg().SetRelayStatus(server, m.IsRelay)
 	config.GetCfg().SetIngressGwStatus(server, m.IsIngress)
 	if config.GetCfg().GetRelayedStatus(server) != m.IsRelayed {

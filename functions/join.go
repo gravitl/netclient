@@ -251,6 +251,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("no network provided")
 	}
 	host := config.Netclient()
+	host.Name = flags.GetString("name")
 	node := config.GetNode(flags.GetString("network"))
 	node.Network = flags.GetString("network")
 	nodes := config.GetNodes()
@@ -260,7 +261,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	node.Server = flags.GetString("server")
 	node.HostID = host.ID
 	node.Connected = true
-	host.ProxyEnabled = flags.GetBool("proxy")
 	// == end handle keys ==
 	if host.LocalAddress.IP == nil {
 		intIP, err := getPrivateAddr()
@@ -278,6 +278,13 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		if ip != nil {
 			host.Interfaces = *ip
 		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		host.DefaultInterface = defaultInterface
+		host.LocalAddress = setLocalAddress(defaultInterface, host.Interfaces)
 	}
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not

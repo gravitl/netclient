@@ -194,16 +194,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	UpdateLocalListenPort()
+	_ = UpdateHostSettings()
 
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
-	if msg.Retained() {
-		logger.Log(0, "not performing host updates since it's a retained messsage")
-		return
-	}
 	var hostUpdate models.HostUpdate
 	var err error
 	serverName := parseServerFromTopic(msg.Topic())
@@ -230,16 +226,24 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			CommonNode: commonNode,
 		}
 		config.UpdateNodeMap(hostUpdate.Node.Network, nodeCfg)
+		server := config.GetServer(serverName)
+		if server == nil {
+			return
+		}
+		server.Nodes[hostUpdate.Node.Network] = true
+		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
-		resetInterface = true
+		config.WriteServerConfig()
+		restartDaemon = true
 	case models.DeleteHost:
+		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
@@ -251,7 +255,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if restartDaemon {
-		unsubscribeHost(client, serverName)
+		clearRetainedMsg(client, msg.Topic())
 		if err := daemon.Restart(); err != nil {
 			logger.Log(0, "failed to restart daemon: ", err.Error())
 		}
@@ -275,6 +279,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	config.DeleteServerHostPeerCfg(server)
 	nodes := config.GetNodes()
 	for k, node := range nodes {
+		node := node
 		if node.Server == server {
 			unsubscribeNode(client, &node)
 			config.DeleteNode(k)
@@ -284,7 +289,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restart bool) {
+func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
@@ -295,12 +300,8 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restar
 	if hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
-	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
-		sendHostUpdate = true
-	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
-	host.PublicListenPort = hostCfg.PublicListenPort
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
