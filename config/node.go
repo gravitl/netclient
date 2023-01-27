@@ -184,9 +184,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 		netmakerNode.Address6 = node.Address6.IP.String()
 	}
 	netmakerNode.LocalListenPort = int32(host.ListenPort)
-	netmakerNode.LocalAddress = host.LocalAddress.String()
 	netmakerNode.ProxyListenPort = int32(host.ProxyListenPort)
-	netmakerNode.LocalRange = host.LocalRange.String()
 	netmakerNode.MTU = int32(host.MTU)
 	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive.Seconds())
 	netmakerNode.PublicKey = host.PublicKey.String()

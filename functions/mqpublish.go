@@ -87,26 +87,15 @@ func checkin() {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
 				}
+
+			} else if node.IsLocal {
 				intIP, err := getPrivateAddr()
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
 				}
-				if host.LocalAddress.String() != intIP.String() && intIP.IP != nil {
-					logger.Log(1, "network:", network, "local Address has changed from ", host.LocalAddress.String(), " to ", intIP.String())
-					host.LocalAddress = intIP
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "Network: ", network, " could not publish local address change")
-					}
-				}
-
-			} else if node.IsLocal && host.LocalRange.IP != nil {
-				localIP, err := ncutils.GetLocalIP(host.LocalRange)
-				if err != nil {
-					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
-				}
-				if config.Netclient().EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", localIP.String())
-					config.Netclient().EndpointIP = localIP.IP
+				if !config.Netclient().EndpointIP.Equal(intIP.IP) {
+					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", intIP.IP.String())
+					config.Netclient().EndpointIP = intIP.IP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish localip change")
 					}
