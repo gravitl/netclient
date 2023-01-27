@@ -8,11 +8,10 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -24,7 +23,7 @@ func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
+func Start(ctx context.Context, managerChan chan *models.HostPeerUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -44,7 +43,7 @@ func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 }
 
 // configureProxy - confgures proxy by payload action
-func configureProxy(payload *nm_models.HostPeerUpdate) error {
+func configureProxy(payload *models.HostPeerUpdate) error {
 	var err error
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
@@ -75,7 +74,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	return err
 }
 
-func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
+func noProxy(peerUpdate *models.HostPeerUpdate) {
 	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")

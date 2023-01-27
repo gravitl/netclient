@@ -10,13 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/metrics"
-	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/metrics"
+	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -141,7 +140,7 @@ func StartMetricsCollectionForHostPeers(ctx context.Context) {
 	}
 }
 
-func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
+func collectMetricsForServerPeers(server string, peerIDAndAddrMap models.HostPeerMap) {
 
 	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
 	if err != nil {

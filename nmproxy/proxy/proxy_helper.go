@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/metrics"
-	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/metrics"
+	"github.com/gravitl/netmaker/models"
 )
 
 // New - gets new proxy config

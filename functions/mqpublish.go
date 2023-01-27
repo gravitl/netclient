@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
-	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -355,10 +354,10 @@ func UpdateHostSettings() error {
 		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
 		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
 		if proxylistenPort == 0 {
-			proxylistenPort = proxy_models.NmProxyPort
+			proxylistenPort = models.NmProxyPort
 		}
 		if proxypublicport == 0 {
-			proxypublicport = proxy_models.NmProxyPort
+			proxypublicport = models.NmProxyPort
 		}
 	}
 	localPort, err := GetLocalListenPort(ifacename)

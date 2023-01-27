@@ -5,9 +5,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/models"
 )
 
 var (
@@ -41,7 +40,7 @@ func InitializeCfg() {
 			extClientWaitMap: make(map[string]*models.RemotePeer),
 			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
 			noProxyPeerMap:   make(models.PeerConnMap),
-			allPeersConf:     make(map[string]nm_models.HostPeerMap),
+			allPeersConf:     make(map[string]models.HostPeerMap),
 		},
 		settings: make(map[string]models.Settings),
 	}
