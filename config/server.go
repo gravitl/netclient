@@ -120,8 +120,9 @@ func GetServers() (servers []string) {
 }
 
 // DeleteServer deletes the specified server name from the server map
-func DeleteServer(k string) {
+func DeleteServer(k string) error {
 	delete(Servers, k)
+	return WriteServerConfig()
 }
 
 // ConvertServerCfg converts a netmaker ServerConfig to netclient server struct
