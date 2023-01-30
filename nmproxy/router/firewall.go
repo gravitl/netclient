@@ -5,41 +5,45 @@ import (
 	"fmt"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/gravitl/netmaker/logger"
 	log "github.com/sirupsen/logrus"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-type firewallManager interface {
-	// RestoreOrCreateContainers restores or creates a firewall container set of rules, tables and default rules
-	RestoreOrCreateContainers() error
+var (
+	fwCrtl  firewallController
+	running bool
+)
+
+type firewallController interface {
+	// CreateChains  creates a firewall chains and default rules
+	CreateChains() error
 	// InsertRoutingRules inserts a routing firewall rule
-	InsertRoutingRules(pair routerPair) error
+	InsertIngressRoutingRules(r ingressRoute) error
 	// RemoveRoutingRules removes a routing firewall rule
-	RemoveRoutingRules(pair routerPair) error
+	RemoveRoutingRules() error
 	// CleanRoutingRules cleans a firewall set of containers
 	CleanRoutingRules()
 }
-
-const (
-	ipv6Forwarding     = "netmaker-rt-ipv6-forwarding"
-	ipv4Forwarding     = "netmaker-rt-ipv4-forwarding"
-	ipv6Nat            = "netmaker-rt-ipv6-nat"
-	ipv4Nat            = "netmaker-rt-ipv4-nat"
-	natFormat          = "netmaker-nat-%s"
-	forwardingFormat   = "netmaker-fwd-%s"
-	inNatFormat        = "netmaker-nat-in-%s"
-	inForwardingFormat = "netmaker-fwd-in-%s"
-	ipv6               = "ipv6"
-	ipv4               = "ipv4"
-)
 
 func genKey(format string, input string) string {
 	return fmt.Sprintf(format, input)
 }
 
-// NewFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
-func NewFirewall(parentCTX context.Context) firewallManager {
+func Init(ctx context.Context) {
+	if !running {
+		fwCrtl = NewFirewall(ctx)
+		fwCrtl.CreateChains()
+	} else {
+		logger.Log(0, "filrewall controller is intialized already")
+	}
 
-	var manager firewallManager
+}
+
+// NewFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
+func NewFirewall(parentCTX context.Context) firewallController {
+
+	var manager firewallController
 	if isIptablesSupported() {
 		log.Debugf("iptables is supported")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -50,7 +54,7 @@ func NewFirewall(parentCTX context.Context) firewallManager {
 			stop:       cancel,
 			ipv4Client: ipv4Client,
 			ipv6Client: ipv6Client,
-			rules:      make(map[string]map[string][]string),
+			ingRules:   make(map[string]map[string][]RuleInfo),
 		}
 	}
 
@@ -67,12 +71,10 @@ func NewFirewall(parentCTX context.Context) firewallManager {
 	return manager
 }
 
-func getInPair(pair routerPair) routerPair {
-	return routerPair{
-		ID: pair.ID,
-		// invert source/destination
-		source:      pair.destination,
-		destination: pair.source,
-		masquerade:  pair.masquerade,
-	}
+func FlushAllRulesForPeer(peerKey wgtypes.Key) {
+
+}
+
+func FlushRulesForPeer(src, dst wgtypes.Key) {
+
 }

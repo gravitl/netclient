@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	log "github.com/sirupsen/logrus"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func isIptablesSupported() bool {
@@ -20,31 +22,38 @@ func isIptablesSupported() bool {
 
 // constants needed to manage and create iptable rules
 const (
-	iptablesFilterTable            = "filter"
-	iptablesNatTable               = "nat"
-	iptablesForwardChain           = "FORWARD"
-	iptablesPostRoutingChain       = "POSTROUTING"
-	iptablesRoutingNatChain        = "NETMAKER-RT-NAT"
-	iptablesRoutingForwardingChain = "NETMAKER-RT-FWD"
-	routingFinalForwardJump        = "ACCEPT"
-	routingFinalNatJump            = "MASQUERADE"
+	ipv6                    = "ipv6"
+	ipv4                    = "ipv4"
+	defaultIpTable          = "filter"
+	defaultNetmakerChain    = "netmakerfilter"
+	defaultNatTable         = "nat"
+	defaultNetmakerNatChain = "netmakernat"
+	defaultIptableFWDChain  = "FORWARD"
 )
 
-// some presets for building nftable rules
-var (
-	iptablesDefaultForwardingRule         = []string{"-j", iptablesRoutingForwardingChain, "-m", "comment", "--comment"}
-	iptablesDefaultNetmakerForwardingRule = []string{"-j", "RETURN"}
-	iptablesDefaultNatRule                = []string{"-j", iptablesRoutingNatChain, "-m", "comment", "--comment"}
-	iptablesDefaultNetmakerNatRule        = []string{"-j", "RETURN"}
-)
+type RuleInfo struct {
+	ipVersion string
+	rule      []string
+	table     string
+	chain     string
+}
 
 type iptablesManager struct {
 	ctx        context.Context
 	stop       context.CancelFunc
 	ipv4Client *iptables.IPTables
 	ipv6Client *iptables.IPTables
-	rules      map[string]map[string][]string
+	ingRules   map[string]map[string][]RuleInfo
 	mux        sync.Mutex
+}
+
+func createChain(iptables *iptables.IPTables, table, newChain string) error {
+
+	err := iptables.NewChain(table, newChain)
+	if err != nil {
+		return fmt.Errorf("couldn't create %s chain %s in %s table, error: %v", iptablesProtoToString(iptables.Proto()), newChain, table, err)
+	}
+	return nil
 }
 
 // CleanRoutingRules cleans existing iptables resources that we created by the agent
@@ -53,153 +62,79 @@ func (i *iptablesManager) CleanRoutingRules() {
 	defer i.mux.Unlock()
 
 	log.Debug("flushing tables")
-	errMSGFormat := "iptables: failed cleaning %s chain %s,error: %v"
-	err := i.ipv4Client.ClearAndDeleteChain(iptablesFilterTable, iptablesRoutingForwardingChain)
-	if err != nil {
-		log.Errorf(errMSGFormat, ipv4, iptablesRoutingForwardingChain, err)
-	}
-
-	err = i.ipv4Client.ClearAndDeleteChain(iptablesNatTable, iptablesRoutingNatChain)
-	if err != nil {
-		log.Errorf(errMSGFormat, ipv4, iptablesRoutingNatChain, err)
-	}
-
-	err = i.ipv6Client.ClearAndDeleteChain(iptablesFilterTable, iptablesRoutingForwardingChain)
-	if err != nil {
-		log.Errorf(errMSGFormat, ipv6, iptablesRoutingForwardingChain, err)
-	}
-
-	err = i.ipv6Client.ClearAndDeleteChain(iptablesNatTable, iptablesRoutingNatChain)
-	if err != nil {
-		log.Errorf(errMSGFormat, ipv6, iptablesRoutingNatChain, err)
-	}
+	// errMSGFormat := "iptables: failed cleaning %s chain %s,error: %v"
 
 	log.Info("done cleaning up iptables rules")
 }
 
-// RestoreOrCreateContainers restores existing iptables containers (chains and rules)
-// if they don't exist, we create them
-func (i *iptablesManager) RestoreOrCreateContainers() error {
+// CreateChains - creates default chains and rules
+func (i *iptablesManager) CreateChains() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
 
-	if i.rules[ipv4][ipv4Forwarding] != nil && i.rules[ipv6][ipv6Forwarding] != nil {
-		return nil
-	}
+	cleanup(i.ipv4Client, defaultIpTable, defaultNetmakerChain)
+	cleanup(i.ipv4Client, defaultNatTable, defaultNetmakerNatChain)
+	cleanup(i.ipv6Client, defaultIpTable, defaultNetmakerChain)
+	cleanup(i.ipv6Client, defaultNatTable, defaultNetmakerNatChain)
 
-	errMSGFormat := "iptables: failed creating %s chain %s,error: %v"
+	//errMSGFormat := "iptables: failed creating %s chain %s,error: %v"
 
-	err := createChain(i.ipv4Client, iptablesFilterTable, iptablesRoutingForwardingChain)
+	err := createChain(i.ipv4Client, defaultIpTable, defaultNetmakerChain)
 	if err != nil {
-		return fmt.Errorf(errMSGFormat, ipv4, iptablesRoutingForwardingChain, err)
+		log.Fatal("failed to create netmaker chain: ", err)
 	}
-
-	err = createChain(i.ipv4Client, iptablesNatTable, iptablesRoutingNatChain)
+	err = createChain(i.ipv4Client, defaultNatTable, defaultNetmakerNatChain)
 	if err != nil {
-		return fmt.Errorf(errMSGFormat, ipv4, iptablesRoutingNatChain, err)
+		log.Fatal("failed to create netmaker chain: ", err)
 	}
+	// set default rules
+	insertDefaultRules(i.ipv4Client, defaultIpTable, defaultNetmakerChain)
+	insertDefaultRules(i.ipv4Client, defaultNatTable, defaultNetmakerNatChain)
 
-	err = createChain(i.ipv6Client, iptablesFilterTable, iptablesRoutingForwardingChain)
+	err = createChain(i.ipv6Client, defaultIpTable, defaultNetmakerChain)
 	if err != nil {
-		return fmt.Errorf(errMSGFormat, ipv6, iptablesRoutingForwardingChain, err)
+		log.Fatal("failed to create netmaker chain: ", err)
 	}
-
-	err = createChain(i.ipv6Client, iptablesNatTable, iptablesRoutingNatChain)
+	err = createChain(i.ipv6Client, defaultNatTable, defaultNetmakerNatChain)
 	if err != nil {
-		return fmt.Errorf(errMSGFormat, ipv6, iptablesRoutingNatChain, err)
+		log.Fatal("failed to create netmaker chain: ", err)
 	}
-
-	err = i.restoreRules(i.ipv4Client)
-	if err != nil {
-		return fmt.Errorf("iptables: error while restoring ipv4 rules: %v", err)
-	}
-
-	err = i.restoreRules(i.ipv6Client)
-	if err != nil {
-		return fmt.Errorf("iptables: error while restoring ipv6 rules: %v", err)
-	}
+	// set default rules
+	insertDefaultRules(i.ipv6Client, defaultIpTable, defaultNetmakerChain)
+	insertDefaultRules(i.ipv6Client, defaultNatTable, defaultNetmakerNatChain)
 
 	return nil
 }
 
-func iptablesProtoToString(proto iptables.Protocol) string {
-	if proto == iptables.ProtocolIPv6 {
-		return ipv6
-	}
-	return ipv4
-}
-
-// restoreRules restores existing NetMaker rules
-func (i *iptablesManager) restoreRules(iptablesClient *iptables.IPTables) error {
-	ipVersion := iptablesProtoToString(iptablesClient.Proto())
-
-	if i.rules[ipVersion] == nil {
-		i.rules[ipVersion] = make(map[string][]string)
-	}
-	table := iptablesFilterTable
-	for _, chain := range []string{iptablesForwardChain, iptablesRoutingForwardingChain} {
-		rules, err := iptablesClient.List(table, chain)
+func insertDefaultRules(i *iptables.IPTables, table, chain string) {
+	//iptables -A newchain -i netmaker -j DROP
+	//iptables -A newchain -j RETURN
+	if table == defaultIpTable {
+		ruleSpec := []string{"-i", "netmaker", "-j", "DROP"}
+		err := i.Append(table, chain, ruleSpec...)
 		if err != nil {
-			return err
+			log.Println("failed to add rule: ", ruleSpec, err.Error())
 		}
-		for _, ruleString := range rules {
-			rule := strings.Fields(ruleString)
-			id := getRuleRouteID(rule)
-			if id != "" {
-				i.rules[ipVersion][id] = rule[2:]
-			}
-		}
-	}
-
-	table = iptablesNatTable
-	for _, chain := range []string{iptablesPostRoutingChain, iptablesRoutingNatChain} {
-		rules, err := iptablesClient.List(table, chain)
+		ruleSpec = []string{"-j", "RETURN"}
+		err = i.Append(table, chain, ruleSpec...)
 		if err != nil {
-			return err
+			log.Println("failed to add rule: ", ruleSpec, err.Error())
 		}
-		for _, ruleString := range rules {
-			rule := strings.Fields(ruleString)
-			id := getRuleRouteID(rule)
-			if id != "" {
-				i.rules[ipVersion][id] = rule[2:]
-			}
-		}
-	}
-
-	return nil
-}
-
-// createChain create NetMaker chains
-func createChain(iptables *iptables.IPTables, table, newChain string) error {
-	chains, err := iptables.ListChains(table)
-	if err != nil {
-		return fmt.Errorf("couldn't get %s %s table chains, error: %v", iptablesProtoToString(iptables.Proto()), table, err)
-	}
-
-	shouldCreateChain := true
-	for _, chain := range chains {
-		if chain == newChain {
-			shouldCreateChain = false
-		}
-	}
-
-	if shouldCreateChain {
-		err = iptables.NewChain(table, newChain)
+	} else {
+		//	iptables -t nat -A POSTROUTING  -o netmaker -j netmakernat
+		ruleSpec := []string{"-o", "netmaker", "-j", chain}
+		err := i.Append(table, "POSTROUTING", ruleSpec...)
 		if err != nil {
-			return fmt.Errorf("couldn't create %s chain %s in %s table, error: %v", iptablesProtoToString(iptables.Proto()), newChain, table, err)
+			log.Println("failed to add rule: ", ruleSpec, err.Error())
 		}
-
-		if table == iptablesNatTable {
-			err = iptables.Append(table, newChain, iptablesDefaultNetmakerNatRule...)
-		} else {
-			err = iptables.Append(table, newChain, iptablesDefaultNetmakerForwardingRule...)
-		}
+		// iptables -t nat -A netmakernat -j RETURN
+		ruleSpec = []string{"-j", "RETURN"}
+		err = i.Append(table, chain, ruleSpec...)
 		if err != nil {
-			return fmt.Errorf("couldn't create %s chain %s default rule, error: %v", iptablesProtoToString(iptables.Proto()), newChain, err)
+			log.Println("failed to add rule: ", ruleSpec, err.Error())
 		}
-
 	}
-	return nil
+
 }
 
 // genRuleSpec generates rule specification with comment identifier
@@ -220,131 +155,126 @@ func getRuleRouteID(rule []string) string {
 	return ""
 }
 
-// InsertRoutingRules inserts an iptables rule pair to the forwarding chain and if enabled, to the nat chain
-func (i *iptablesManager) InsertRoutingRules(pair routerPair) error {
+// InsertIngressRoutingRules inserts an iptables rule pair to the forwarding chain and if enabled, to the nat chain
+func (i *iptablesManager) InsertIngressRoutingRules(r ingressRoute) error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
-
-	err := i.insertRoutingRule(forwardingFormat, iptablesFilterTable, iptablesRoutingForwardingChain, routingFinalForwardJump, pair)
+	prefix, err := netip.ParsePrefix(r.remoteClientAddr.String())
 	if err != nil {
 		return err
 	}
-
-	err = i.insertRoutingRule(inForwardingFormat, iptablesFilterTable, iptablesRoutingForwardingChain, routingFinalForwardJump, getInPair(pair))
-	if err != nil {
-		return err
-	}
-
-	if !pair.masquerade {
-		return nil
-	}
-
-	err = i.insertRoutingRule(natFormat, iptablesNatTable, iptablesRoutingNatChain, routingFinalNatJump, pair)
-	if err != nil {
-		return err
-	}
-
-	err = i.insertRoutingRule(inNatFormat, iptablesNatTable, iptablesRoutingNatChain, routingFinalNatJump, getInPair(pair))
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// insertRoutingRule inserts an iptable rule
-func (i *iptablesManager) insertRoutingRule(keyFormat, table, chain, jump string, pair routerPair) error {
-	var err error
-
-	prefix := netip.MustParsePrefix(pair.source)
 	ipVersion := ipv4
 	iptablesClient := i.ipv4Client
 	if prefix.Addr().Unmap().Is6() {
 		iptablesClient = i.ipv6Client
 		ipVersion = ipv6
 	}
-
-	ruleKey := genKey(keyFormat, pair.ID)
-	rule := genRuleSpec(jump, ruleKey, pair.source, pair.destination)
-	existingRule, found := i.rules[ipVersion][ruleKey]
-	if found {
-		err = iptablesClient.DeleteIfExists(table, chain, existingRule...)
-		if err != nil {
-			return fmt.Errorf("iptables: error while removing existing %s rule for %s: %v", getIptablesRuleType(table), pair.destination, err)
-		}
-		delete(i.rules[ipVersion], ruleKey)
-	}
-	err = iptablesClient.Insert(table, chain, 1, rule...)
+	i.ingRules[r.remotePeerKey.String()] = make(map[string][]RuleInfo)
+	//iptables -A FORWARD -s 10.24.52.252/32 ! -d 10.24.52.4/32 -p icmp -j newchain
+	//iptables -A newchain -d 10.24.52.3/32 -p icmp -j ACCEPT
+	ruleSpec := []string{"-s", r.remoteClientAddr.String(), "!", "-d", r.ingGWAddr.String(), "-j", defaultNetmakerChain}
+	err = iptablesClient.Insert(defaultIpTable, defaultIptableFWDChain, 1, ruleSpec...)
 	if err != nil {
-		return fmt.Errorf("iptables: error while adding new %s rule for %s: %v", getIptablesRuleType(table), pair.destination, err)
+		log.Println("failed to add rule: ", ruleSpec, err.Error())
+	}
+	i.ingRules[r.remotePeerKey.String()][r.remotePeerKey.String()] = []RuleInfo{
+
+		{
+			ipVersion: ipVersion,
+			rule:      ruleSpec,
+			chain:     defaultIptableFWDChain,
+			table:     defaultIpTable,
+		},
 	}
 
-	i.rules[ipVersion][ruleKey] = rule
+	for _, peerInfo := range r.peers {
+		ruleSpec := []string{"-d", peerInfo.peerAddr.String(), "-j", "ACCEPT"}
+		err := iptablesClient.Insert(defaultIpTable, defaultNetmakerChain, 1, ruleSpec...)
+		if err != nil {
+			log.Println("failed to add rule: ", ruleSpec, err.Error())
+		}
+		i.ingRules[r.remotePeerKey.String()][peerInfo.peerKey.String()] = []RuleInfo{
+			{
+				ipVersion: ipVersion,
+				rule:      ruleSpec,
+				chain:     defaultNetmakerChain,
+				table:     defaultIpTable,
+			},
+		}
+
+	}
+	if !r.masquerade {
+		return nil
+	}
+	// iptables -t nat -A netmakernat  -s 10.24.52.252/32 -o netmaker -j MASQUERADE
+	// iptables -t nat -A netmakernat -d 10.24.52.252/32 -o netmaker -j MASQUERADE
+	ruleSpec = []string{"-s", r.remoteClientAddr.String(), "-o", "netmaker", "-j", "MASQUERADE"}
+	err = iptablesClient.Append(defaultNatTable, defaultNetmakerNatChain, ruleSpec...)
+	if err != nil {
+		log.Println("failed to add rule: ", ruleSpec, err.Error())
+	}
+	routes := i.ingRules[r.remotePeerKey.String()][r.remotePeerKey.String()]
+	routes = append(routes, RuleInfo{
+		ipVersion: ipVersion,
+		rule:      ruleSpec,
+		table:     defaultNatTable,
+		chain:     defaultNetmakerNatChain,
+	})
+	ruleSpec = []string{"-d", r.remoteClientAddr.String(), "-o", "netmaker", "-j", "MASQUERADE"}
+	err = iptablesClient.Append(defaultNatTable, defaultNetmakerNatChain, ruleSpec...)
+	if err != nil {
+		log.Println("failed to add rule: ", ruleSpec, err.Error())
+	}
+	routes = append(routes, RuleInfo{
+		ipVersion: ipVersion,
+		rule:      ruleSpec,
+		table:     defaultNatTable,
+		chain:     defaultNetmakerNatChain,
+	})
+	i.ingRules[r.remotePeerKey.String()][r.remotePeerKey.String()] = routes
 
 	return nil
 }
+func cleanup(i *iptables.IPTables, table, chain string) {
+
+	i.ClearAndDeleteChain(table, chain)
+	i.ClearAll()
+}
 
 // RemoveRoutingRules removes an iptables rule pair from forwarding and nat chains
-func (i *iptablesManager) RemoveRoutingRules(pair routerPair) error {
+func (i *iptablesManager) RemoveRoutingRules() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
-
-	err := i.removeRoutingRule(forwardingFormat, iptablesFilterTable, iptablesRoutingForwardingChain, pair)
-	if err != nil {
-		return err
-	}
-
-	err = i.removeRoutingRule(inForwardingFormat, iptablesFilterTable, iptablesRoutingForwardingChain, getInPair(pair))
-	if err != nil {
-		return err
-	}
-
-	if !pair.masquerade {
-		return nil
-	}
-
-	err = i.removeRoutingRule(natFormat, iptablesNatTable, iptablesRoutingNatChain, pair)
-	if err != nil {
-		return err
-	}
-
-	err = i.removeRoutingRule(inNatFormat, iptablesNatTable, iptablesRoutingNatChain, getInPair(pair))
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
 
 // removeRoutingRule removes an iptables rule
-func (i *iptablesManager) removeRoutingRule(keyFormat, table, chain string, pair routerPair) error {
+func (i *iptablesManager) removeIngRoutingRule(indexedPeerKey, peerKey wgtypes.Key) error {
 	var err error
-
-	prefix := netip.MustParsePrefix(pair.source)
-	ipVersion := ipv4
-	iptablesClient := i.ipv4Client
-	if prefix.Addr().Unmap().Is6() {
-		iptablesClient = i.ipv6Client
-		ipVersion = ipv6
+	var rulesInfo []RuleInfo
+	var ok bool
+	if rulesInfo, ok = i.ingRules[indexedPeerKey.String()][peerKey.String()]; !ok {
+		return errors.New("no rules found")
 	}
-
-	ruleKey := genKey(keyFormat, pair.ID)
-	existingRule, found := i.rules[ipVersion][ruleKey]
-	if found {
-		err = iptablesClient.DeleteIfExists(table, chain, existingRule...)
+	for _, rInfo := range rulesInfo {
+		iptablesClient := i.ipv4Client
+		if rInfo.ipVersion == ipv6 {
+			iptablesClient = i.ipv6Client
+		}
+		err = iptablesClient.DeleteIfExists(rInfo.table, rInfo.chain, rInfo.rule...)
 		if err != nil {
-			return fmt.Errorf("iptables: error while removing existing %s rule for %s: %v", getIptablesRuleType(table), pair.destination, err)
+			return fmt.Errorf("iptables: error while removing existing %v rule from %s: %v", rInfo.rule, rInfo.chain, err)
 		}
 	}
-	delete(i.rules[ipVersion], ruleKey)
 
+	delete(i.ingRules[indexedPeerKey.String()], peerKey.String())
 	return nil
 }
 
-func getIptablesRuleType(table string) string {
-	ruleType := "forwarding"
-	if table == iptablesNatTable {
-		ruleType = "nat"
+func iptablesProtoToString(proto iptables.Protocol) string {
+	if proto == iptables.ProtocolIPv6 {
+		return ipv6
 	}
-	return ruleType
+	return ipv4
 }
