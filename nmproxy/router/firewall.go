@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/gravitl/netmaker/logger"
@@ -20,14 +19,12 @@ type firewallController interface {
 	CreateChains() error
 	// InsertRoutingRules inserts a routing firewall rule
 	InsertIngressRoutingRules(r ingressRoute) error
-	// RemoveRoutingRules removes a routing firewall rule
-	RemoveRoutingRules() error
+	// RemoveRoutingRules removes all routing rules firewall rules of a peer
+	RemoveRoutingRules(peerKey wgtypes.Key) error
+	// DeleteRoutingRule removes rules related to a peer
+	DeleteRoutingRule(srcPeer, dstPeer wgtypes.Key) error
 	// CleanRoutingRules cleans a firewall set of containers
 	CleanRoutingRules()
-}
-
-func genKey(format string, input string) string {
-	return fmt.Sprintf(format, input)
 }
 
 func Init(ctx context.Context) {
@@ -72,9 +69,9 @@ func NewFirewall(parentCTX context.Context) firewallController {
 }
 
 func FlushAllRulesForPeer(peerKey wgtypes.Key) {
-
+	fwCrtl.RemoveRoutingRules(peerKey)
 }
 
-func FlushRulesForPeer(src, dst wgtypes.Key) {
+func RemoveRouteForPeer(indexedPeerKey, peerKey wgtypes.Key) {
 
 }
