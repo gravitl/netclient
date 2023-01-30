@@ -29,6 +29,7 @@ const (
 	defaultNatTable     = "nat"
 	netmakerNatChain    = "netmakernat"
 	iptableFWDChain     = "FORWARD"
+	nattablePRTChain    = "POSTROUTING"
 )
 
 type RuleInfo struct {
@@ -140,7 +141,7 @@ func insertDefaultRules(i *iptables.IPTables, table, chain string) {
 	} else {
 		//	iptables -t nat -A POSTROUTING  -o netmaker -j netmakernat
 		ruleSpec := []string{"-o", ncutils.GetInterfaceName(), "-j", chain}
-		err := i.Append(table, "POSTROUTING", ruleSpec...)
+		err := i.Append(table, nattablePRTChain, ruleSpec...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 		}
