@@ -1,9 +1,7 @@
-//go:build !freebsd
-// +build !freebsd
-
 package wireguard
 
 import (
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -67,6 +65,7 @@ func Configure() error {
 		FirewallMark: &firewallMark,
 		ListenPort:   &host.ListenPort,
 	}
+	log.Println("applying config ", config)
 	return apply(nil, &config)
 }
 
@@ -251,6 +250,8 @@ func apply(n *config.Node, c *wgtypes.Config) error {
 		return err
 	}
 	defer wg.Close()
+	log.Println("applying config to ", ncutils.GetInterfaceName(), "with config ", c)
 
-	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
+	//return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
+	return wg.ConfigureDevice("netmaker", *c)
 }
