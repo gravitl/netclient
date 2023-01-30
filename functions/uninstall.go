@@ -56,9 +56,6 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	if err := removeHostDNS(node.Network); err != nil {
 		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
 	}
-	if err := config.DeleteServer(node.Server); err != nil {
-		faults = append(faults, fmt.Errorf("failed to delete entry from servers.yml %w", err))
-	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
 		nc := wireguard.GetInterface()
@@ -130,6 +127,8 @@ func deleteLocalNetwork(node *config.Node) error {
 		delete(server.Nodes, node.Network)
 	}
 	if len(server.Nodes) == 0 {
+		logger.Log(3, "removing server from servers.yml", server.Name)
+		config.DeleteServer(node.Server)
 		logger.Log(3, "removing server peers", server.Name)
 		config.DeleteServerHostPeerCfg(node.Server)
 	}
