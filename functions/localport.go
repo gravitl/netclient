@@ -55,12 +55,3 @@ func getInterfaces() (*[]models.Iface, error) {
 	}
 	return &data, nil
 }
-
-func setLocalAddress(name string, ifaces []models.Iface) net.IPNet {
-	for _, iface := range ifaces {
-		if iface.Name == name {
-			return iface.Address
-		}
-	}
-	return net.IPNet{}
-}
