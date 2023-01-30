@@ -14,15 +14,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/metrics"
-	"github.com/gravitl/netmaker/models"
+	nm_models "github.com/gravitl/netmaker/models"
 )
 
 // New - gets new proxy config
-func New(config models.Proxy) *Proxy {
+func New(config nm_models.Proxy) *Proxy {
 	p := &Proxy{Config: config}
 	p.Ctx, p.Cancel = context.WithCancel(context.Background())
 	return p
@@ -46,7 +47,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				continue
 			}
 
-			go func(n int, cfg models.Proxy) {
+			go func(n int, cfg nm_models.Proxy) {
 				peerConnCfg := models.Conn{}
 				if p.Config.ProxyStatus {
 					peerConnCfg, _ = config.GetCfg().GetPeer(cfg.PeerPublicKey.String())

@@ -8,15 +8,16 @@ import (
 
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	nm_models "github.com/gravitl/netmaker/models"
 )
 
 // Proxy -  struct for wg proxy
 type Proxy struct {
 	Ctx        context.Context
 	Cancel     context.CancelFunc
-	Config     models.Proxy
+	Config     nm_models.Proxy
 	RemoteConn *net.UDPAddr
 	LocalConn  net.Conn
 }

@@ -4,9 +4,10 @@ import (
 	"net"
 	"sync"
 
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -22,7 +23,7 @@ type wgIfaceConf struct {
 	extClientWaitMap map[string]*models.RemotePeer
 	relayPeerMap     map[string]map[string]*models.RemotePeer
 	noProxyPeerMap   models.PeerConnMap
-	allPeersConf     map[string]models.HostPeerMap
+	allPeersConf     map[string]nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -348,20 +349,20 @@ func (c *Config) DeleteNoProxyPeer(peerIP string) {
 }
 
 // Config.GetAllPeersIDsAndAddrs - get all peers
-func (c *Config) GetAllPeersIDsAndAddrs() map[string]models.HostPeerMap {
+func (c *Config) GetAllPeersIDsAndAddrs() map[string]nm_models.HostPeerMap {
 	return c.ifaceConfig.allPeersConf
 }
 
 // Config.SetPeersIDsAndAddrs - sets the peers in the config
-func (c *Config) SetPeersIDsAndAddrs(server string, peers models.HostPeerMap) {
+func (c *Config) SetPeersIDsAndAddrs(server string, peers nm_models.HostPeerMap) {
 	c.ifaceConfig.allPeersConf[server] = peers
 }
 
 // Config.GetPeersIDsAndAddrs - get peer conf
-func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]models.IDandAddr, bool) {
+func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_models.IDandAddr, bool) {
 	if peersIDsAndAddrs, ok := c.ifaceConfig.allPeersConf[server]; ok {
 		return peersIDsAndAddrs[peerKey], ok
 	}
 
-	return make(map[string]models.IDandAddr), false
+	return make(map[string]nm_models.IDandAddr), false
 }

@@ -8,22 +8,23 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-type proxyPayload models.ProxyManagerPayload
+type proxyPayload nm_models.ProxyManagerPayload
 
-func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
+func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	mI := proxyPayload(*m)
 	return &mI
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *models.HostPeerUpdate) {
+func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -43,7 +44,7 @@ func Start(ctx context.Context, managerChan chan *models.HostPeerUpdate) {
 }
 
 // configureProxy - confgures proxy by payload action
-func configureProxy(payload *models.HostPeerUpdate) error {
+func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	var err error
 	m := getRecieverType(&payload.ProxyUpdate)
 	m.InterfaceName = ncutils.GetInterfaceName()
@@ -65,26 +66,26 @@ func configureProxy(payload *models.HostPeerUpdate) error {
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
 	switch m.Action {
-	case models.ProxyUpdate:
+	case nm_models.ProxyUpdate:
 		m.peerUpdate()
-	case models.ProxyDeleteAllPeers:
+	case nm_models.ProxyDeleteAllPeers:
 		cleanUpInterface()
 
 	}
 	return err
 }
 
-func noProxy(peerUpdate *models.HostPeerUpdate) {
-	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
+func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
+	if peerUpdate.ProxyUpdate.Action != nm_models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
 		config.GetCfg().StopMetricsCollectionThread()
-	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
+	} else if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
 	}
-	if peerUpdate.ProxyUpdate.Action == models.NoProxy {
+	if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy {
 		cleanUpInterface()
 	}
 }
@@ -375,7 +376,7 @@ func (m *proxyPayload) peerUpdate() error {
 			}
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
 			go func(server string, peer wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
-				peerConf models.PeerConf) {
+				peerConf nm_models.PeerConf) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 5)
 				ctx, cancel := context.WithCancel(context.Background())

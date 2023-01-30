@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/metrics"
-	"github.com/gravitl/netmaker/models"
+	nm_models "github.com/gravitl/netmaker/models"
 )
 
 var (
@@ -112,7 +113,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 			logger.Log(3, fmt.Sprintf("------->Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source.String()))
 			_, pubKey := config.GetCfg().GetDeviceKeys()
 			if metricMsg.Sender == pubKey {
-				metric := models.ProxyMetric{}
+				metric := nm_models.ProxyMetric{}
 				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
 				metric.LastRecordedLatency = uint64(latency)
 				metric.TrafficRecieved = int64(n)
@@ -227,7 +228,7 @@ func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 		}
 		go func(n int, peerKey string) {
 
-			metric := models.ProxyMetric{
+			metric := nm_models.ProxyMetric{
 				TrafficRecieved: int64(n),
 			}
 			metrics.UpdateMetricByPeer(peerKey, &metric, true)
@@ -250,7 +251,7 @@ func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
 		}
 		go func(n int, peerKey string) {
 
-			metric := models.ProxyMetric{
+			metric := nm_models.ProxyMetric{
 				TrafficRecieved: int64(n),
 			}
 			metrics.UpdateMetricByPeer(peerKey, &metric, true)
@@ -298,7 +299,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 
 		go func(n int, peerKey string) {
 
-			metric := models.ProxyMetric{
+			metric := nm_models.ProxyMetric{
 				TrafficRecieved: int64(n),
 			}
 			metrics.UpdateMetricByPeer(peerKey, &metric, true)
