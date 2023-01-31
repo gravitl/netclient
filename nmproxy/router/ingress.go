@@ -1,22 +1,13 @@
 package router
 
 import (
-	"net"
-
 	"github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
-
-type peerInfo struct {
-	peerKey  wgtypes.Key
-	peerAddr net.IPNet
-	Allow    bool
-}
 
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
-	for extIndexKey, peerRuleMap := range ruleTable {
+	for extIndexKey, ruleCfg := range ruleTable {
 		// check if ext client route exists already for peer
 
 		if _, ok := ingressUpdate.ExtPeers[extIndexKey]; !ok {
@@ -25,7 +16,7 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 			continue
 		}
 		extPeers := ingressUpdate.ExtPeers[extIndexKey]
-		for peerKey := range peerRuleMap {
+		for peerKey := range ruleCfg.rulesMap {
 			if _, ok := extPeers.Peers[peerKey]; !ok {
 				// peer is deleted for ext client, remove routing rule
 				fwCrtl.DeleteRoutingRule(server, ingressTable, extIndexKey, peerKey)
@@ -39,7 +30,7 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 		} else {
 			peerRules := ruleTable[extInfo.ExtPeerKey.String()]
 			for _, peer := range extInfo.Peers {
-				if _, ok := peerRules[peer.PeerKey.String()]; !ok {
+				if _, ok := peerRules.rulesMap[peer.PeerKey.String()]; !ok {
 					fwCrtl.AddIngRoutingRule(server, extInfo.ExtPeerKey.String(), peer)
 				}
 			}

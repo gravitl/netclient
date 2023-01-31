@@ -33,10 +33,9 @@ const (
 )
 
 type RuleInfo struct {
-	ipVersion string
-	rule      []string
-	table     string
-	chain     string
+	rule  []string
+	table string
+	chain string
 }
 
 type iptablesManager struct {
@@ -164,11 +163,9 @@ func (i *iptablesManager) AddIngRoutingRule(server, extPeerKey string, peerInfo 
 	if err != nil {
 		return err
 	}
-	ipVersion := ipv4
 	iptablesClient := i.ipv4Client
 	if prefix.Addr().Unmap().Is6() {
 		iptablesClient = i.ipv6Client
-		ipVersion = ipv6
 	}
 
 	ruleSpec := []string{"-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
@@ -176,12 +173,11 @@ func (i *iptablesManager) AddIngRoutingRule(server, extPeerKey string, peerInfo 
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	ruleTable[extPeerKey][peerInfo.PeerKey.String()] = []RuleInfo{
+	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey.String()] = []RuleInfo{
 		{
-			ipVersion: ipVersion,
-			rule:      ruleSpec,
-			chain:     netmakerFilterChain,
-			table:     defaultIpTable,
+			rule:  ruleSpec,
+			chain: netmakerFilterChain,
+			table: defaultIpTable,
 		},
 	}
 	return nil
@@ -195,14 +191,17 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	if err != nil {
 		return err
 	}
-	ipVersion := ipv4
+	isIpv4 := true
 	iptablesClient := i.ipv4Client
 	if prefix.Addr().Unmap().Is6() {
 		iptablesClient = i.ipv6Client
-		ipVersion = ipv6
+		isIpv4 = false
 	}
 	ruleTable := i.FetchRuleTable(server, ingressTable)
-	ruleTable[extinfo.ExtPeerKey.String()] = make(map[string][]RuleInfo)
+	ruleTable[extinfo.ExtPeerKey.String()] = rulesCfg{
+		isIpv4:   isIpv4,
+		rulesMap: make(map[string][]RuleInfo),
+	}
 	//iptables -A FORWARD -s 10.24.52.252/32 -j netmakerfilter
 	//iptables -A newchain -d 10.24.52.3/32 -j ACCEPT
 	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-j", netmakerFilterChain}
@@ -210,13 +209,13 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	ruleTable[extinfo.ExtPeerKey.String()][extinfo.ExtPeerKey.String()] = []RuleInfo{
+	ruleTable[extinfo.ExtPeerKey.String()].rulesMap[extinfo.ExtPeerKey.String()] = []RuleInfo{
 
 		{
-			ipVersion: ipVersion,
-			rule:      ruleSpec,
-			chain:     iptableFWDChain,
-			table:     defaultIpTable,
+
+			rule:  ruleSpec,
+			chain: iptableFWDChain,
+			table: defaultIpTable,
 		},
 	}
 
@@ -226,12 +225,12 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 		}
-		ruleTable[extinfo.ExtPeerKey.String()][peerInfo.PeerKey.String()] = []RuleInfo{
+		ruleTable[extinfo.ExtPeerKey.String()].rulesMap[peerInfo.PeerKey.String()] = []RuleInfo{
 			{
-				ipVersion: ipVersion,
-				rule:      ruleSpec,
-				chain:     netmakerFilterChain,
-				table:     defaultIpTable,
+
+				rule:  ruleSpec,
+				chain: netmakerFilterChain,
+				table: defaultIpTable,
 			},
 		}
 
@@ -246,12 +245,11 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	routes := ruleTable[extinfo.ExtPeerKey.String()][extinfo.ExtPeerKey.String()]
+	routes := ruleTable[extinfo.ExtPeerKey.String()].rulesMap[extinfo.ExtPeerKey.String()]
 	routes = append(routes, RuleInfo{
-		ipVersion: ipVersion,
-		rule:      ruleSpec,
-		table:     defaultNatTable,
-		chain:     netmakerNatChain,
+		rule:  ruleSpec,
+		table: defaultNatTable,
+		chain: netmakerNatChain,
 	})
 	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-o", "netmaker", "-j", "MASQUERADE"}
 	err = iptablesClient.Append(defaultNatTable, netmakerNatChain, ruleSpec...)
@@ -259,12 +257,11 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	routes = append(routes, RuleInfo{
-		ipVersion: ipVersion,
-		rule:      ruleSpec,
-		table:     defaultNatTable,
-		chain:     netmakerNatChain,
+		rule:  ruleSpec,
+		table: defaultNatTable,
+		chain: netmakerNatChain,
 	})
-	ruleTable[extinfo.ExtPeerKey.String()][extinfo.ExtPeerKey.String()] = routes
+	ruleTable[extinfo.ExtPeerKey.String()].rulesMap[extinfo.ExtPeerKey.String()] = routes
 
 	return nil
 }
@@ -298,7 +295,11 @@ func (i *iptablesManager) SaveRules(server, tableName string, rules ruletable) {
 func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey string) error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
-
+	// err := iptablesClient.DeleteIfExists(table, chain, existingRule...)
+	// if err != nil {
+	// 	return fmt.Errorf("iptables: error while removing existing %s rule for %s: %v", getIptablesRuleType(table), pair.destination, err)
+	// }
+	// delete(i.rules[ipVersion], ruleKey)
 	return nil
 }
 
@@ -316,12 +317,16 @@ func (i *iptablesManager) removeIngRoutingRule(server, indexedPeerKey, peerKey s
 	var rulesInfo []RuleInfo
 	var ok bool
 	ruleTable := i.FetchRuleTable(server, ingressTable)
-	if rulesInfo, ok = ruleTable[indexedPeerKey][peerKey]; !ok {
-		return errors.New("no rules found")
+	if _, ok = ruleTable[indexedPeerKey]; ok {
+		if rulesInfo, ok = ruleTable[indexedPeerKey].rulesMap[peerKey]; !ok {
+			return errors.New("no rules found: " + indexedPeerKey + ", " + peerKey)
+		}
+	} else {
+		return errors.New("no rules found: " + indexedPeerKey)
 	}
 	for _, rInfo := range rulesInfo {
 		iptablesClient := i.ipv4Client
-		if rInfo.ipVersion == ipv6 {
+		if !ruleTable[indexedPeerKey].isIpv4 {
 			iptablesClient = i.ipv6Client
 		}
 		err = iptablesClient.DeleteIfExists(rInfo.table, rInfo.chain, rInfo.rule...)

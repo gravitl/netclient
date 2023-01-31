@@ -35,7 +35,11 @@ type firewallController interface {
 	SaveRules(server, ruleTableName string, ruleTable ruletable)
 }
 
-type ruletable map[string]map[string][]RuleInfo
+type rulesCfg struct {
+	isIpv4   bool
+	rulesMap map[string][]RuleInfo
+}
+type ruletable map[string]rulesCfg
 
 type serverrulestable map[string]ruletable
 
