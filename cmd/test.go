@@ -52,9 +52,9 @@ to quickly create a Cobra application.`,
 		}
 		out, _ := ncutils.RunCmd("wg", true)
 		log.Println(out)
-		//if err := nc.Configure(); err != nil {
-		//log.Fatal("configure ", err)
-		//}
+		if err := nc.Configure(); err != nil {
+			log.Fatal("configure ", err)
+		}
 		time.Sleep(time.Second * 5)
 		wgMutex := sync.Mutex{}
 		wgMutex.Lock()
