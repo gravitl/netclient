@@ -1,19 +1,13 @@
 FROM gravitl/go-builder:latest as builder
-# add glib support daemon manager
 WORKDIR /app
-
-
-ENV GO111MODULE=auto
-RUN apk add --update git build-base libmnl-dev iptables libpcap-dev
 COPY . .
-
-RUN GOOS=linux CGO_ENABLED=1 /usr/local/go/bin/go build -tags headless -ldflags="-w -s" -o netclient-app .
+RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -tags headless -ldflags="-w -s" -o netclient-app .
 
 FROM alpine:3.16.2
 
 WORKDIR /root/
 
-RUN apk add --no-cache --update bash libmnl gcompat iptables openresolv iproute2 libpcap
+RUN apk add --no-cache --update bash 
 COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
