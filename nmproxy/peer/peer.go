@@ -28,7 +28,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		d := nm_models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
 	}
-	c := nm_models.Proxy{
+	c := models.Proxy{
 		PeerPublicKey: peer.PublicKey,
 		IsExtClient:   peerConf.IsExtClient,
 		PeerConf:      peer,

@@ -7,7 +7,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -21,6 +20,18 @@ const (
 // PeerConnMap - type for peer conn config map
 type PeerConnMap map[string]*Conn
 
+// Proxy - struct for proxy config
+type Proxy struct {
+	PeerPublicKey  wgtypes.Key
+	IsExtClient    bool
+	PeerConf       wgtypes.PeerConfig
+	PeerEndpoint   *net.UDPAddr
+	RemoteConnAddr *net.UDPAddr
+	LocalConnAddr  *net.UDPAddr
+	ListenPort     int
+	ProxyStatus    bool
+}
+
 // Conn is a peer Connection configuration
 type Conn struct {
 	// Key is a public key of a remote peer
@@ -28,7 +39,7 @@ type Conn struct {
 	IsExtClient     bool
 	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
-	Config          models.Proxy
+	Config          Proxy
 	StopConn        func()
 	ResetConn       func()
 	LocalConn       net.Conn
