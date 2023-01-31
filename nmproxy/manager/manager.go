@@ -72,6 +72,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 		m.peerUpdate()
 	case models.ProxyDeleteAllPeers:
 		cleanUpInterface()
+
 	}
 	return err
 }
@@ -186,6 +187,16 @@ func (m *proxyPayload) processPayload() error {
 	// sync peer map with new update
 	for peerPubKey, peerConn := range peerConnMap {
 		if _, ok := m.PeerMap[peerPubKey]; !ok {
+			_, found := peerConn.ServerMap[m.Server]
+			if !found {
+				continue
+			} else {
+				delete(peerConn.ServerMap, m.Server)
+				peerConnMap[peerPubKey] = peerConn
+				if len(peerConn.ServerMap) > 0 {
+					continue
+				}
+			}
 
 			if peerConn.IsExtClient {
 				logger.Log(1, "------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
@@ -199,7 +210,19 @@ func (m *proxyPayload) processPayload() error {
 
 	// update no proxy peers map with peer update
 	for peerIP, peerConn := range noProxyPeerMap {
+
 		if _, ok := m.PeerMap[peerConn.Key.String()]; !ok {
+			_, found := peerConn.ServerMap[m.Server]
+			if !found {
+				continue
+			} else {
+				delete(peerConn.ServerMap, m.Server)
+				noProxyPeerMap[peerIP] = peerConn
+				if len(peerConn.ServerMap) > 0 {
+					continue
+				}
+
+			}
 			gCfg.DeleteNoProxyPeer(peerIP)
 		}
 	}
