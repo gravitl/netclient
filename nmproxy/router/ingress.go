@@ -15,26 +15,37 @@ type peerInfo struct {
 
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 
-	ruleTable := fwCrtl.FetchRules(server, true)
+	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
 	for extIndexKey, peerRuleMap := range ruleTable {
 		// check if ext client route exists already for peer
 
 		if _, ok := ingressUpdate.ExtPeers[extIndexKey]; !ok {
 			// ext peer is deleted, flush out all rules
-			fwCrtl.RemoveRoutingRules(server, extIndexKey)
+			fwCrtl.RemoveRoutingRules(server, ingressTable, extIndexKey)
 			continue
 		}
 		extPeers := ingressUpdate.ExtPeers[extIndexKey]
 		for peerKey := range peerRuleMap {
 			if _, ok := extPeers.Peers[peerKey]; !ok {
 				// peer is deleted for ext client, remove routing rule
-				fwCrtl.DeleteRoutingRule(server, extIndexKey, peerKey)
+				fwCrtl.DeleteRoutingRule(server, ingressTable, extIndexKey, peerKey)
 			}
 		}
 	}
 
 	for _, extInfo := range ingressUpdate.ExtPeers {
-		fwCrtl.InsertIngressRoutingRules(server, extInfo)
+		if _, ok := ruleTable[extInfo.ExtPeerKey.String()]; !ok {
+			fwCrtl.InsertIngressRoutingRules(server, extInfo)
+		} else {
+			peerRules := ruleTable[extInfo.ExtPeerKey.String()]
+			for _, peer := range extInfo.Peers {
+				if _, ok := peerRules[peer.PeerKey.String()]; !ok {
+					fwCrtl.AddIngRoutingRule(server, extInfo.ExtPeerKey.String(), peer)
+				}
+			}
+
+		}
+
 	}
 
 	return nil

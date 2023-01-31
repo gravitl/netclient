@@ -13,21 +13,26 @@ var (
 	running bool
 )
 
+const (
+	ingressTable = "ingress"
+)
+
 type firewallController interface {
 	// CreateChains  creates a firewall chains and default rules
 	CreateChains() error
-	// InsertRoutingRules inserts a routing firewall rule
+	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
 	InsertIngressRoutingRules(server string, r models.ExtClientInfo) error
+	AddIngRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
-	RemoveRoutingRules(server, peerKey string) error
+	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer
-	DeleteRoutingRule(server, srcPeer, dstPeer string) error
+	DeleteRoutingRule(server, tableName, srcPeer, dstPeer string) error
 	// CleanRoutingRules cleans a firewall set of containers
 	CleanRoutingRules(server string)
 	// FetchRules - fetches current state of rules from controller
-	FetchRules(server string, ingress bool) ruletable
-
-	SaveRules(server string, ruleTable ruletable)
+	FetchRuleTable(server string, ruleTableName string) ruletable
+	// SaveRules - saves the ruleTable under the given server
+	SaveRules(server, ruleTableName string, ruleTable ruletable)
 }
 
 type ruletable map[string]map[string][]RuleInfo
