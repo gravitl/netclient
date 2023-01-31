@@ -293,49 +293,57 @@ func (i *iptablesManager) SaveRules(server, tableName string, rules ruletable) {
 
 // RemoveRoutingRules removes an iptables rule pair from forwarding and nat chains
 func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey string) error {
+	rulesTable := i.FetchRuleTable(server, ruletableName)
+	defer i.SaveRules(server, ruletableName, rulesTable)
 	i.mux.Lock()
 	defer i.mux.Unlock()
-	// err := iptablesClient.DeleteIfExists(table, chain, existingRule...)
-	// if err != nil {
-	// 	return fmt.Errorf("iptables: error while removing existing %s rule for %s: %v", getIptablesRuleType(table), pair.destination, err)
-	// }
-	// delete(i.rules[ipVersion], ruleKey)
+	if _, ok := rulesTable[peerKey]; !ok {
+		return errors.New("peer not found in rule table: " + peerKey)
+	}
+	iptablesClient := i.ipv4Client
+	if !rulesTable[peerKey].isIpv4 {
+		iptablesClient = i.ipv6Client
+	}
+
+	for _, rules := range rulesTable[peerKey].rulesMap {
+		for _, rule := range rules {
+			err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				return fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, peerKey, err)
+			}
+		}
+
+	}
+	delete(rulesTable, peerKey)
 	return nil
 }
 
 // RemoveRoutingRules removes an iptables rule pair from forwarding and nat chains
 func (i *iptablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, dstPeerKey string) error {
+	rulesTable := i.FetchRuleTable(server, ruletableName)
+	defer i.SaveRules(server, ruletableName, rulesTable)
 	i.mux.Lock()
 	defer i.mux.Unlock()
-
-	return nil
-}
-
-// removeRoutingRule removes an iptables rule
-func (i *iptablesManager) removeIngRoutingRule(server, indexedPeerKey, peerKey string) error {
-	var err error
-	var rulesInfo []RuleInfo
-	var ok bool
-	ruleTable := i.FetchRuleTable(server, ingressTable)
-	if _, ok = ruleTable[indexedPeerKey]; ok {
-		if rulesInfo, ok = ruleTable[indexedPeerKey].rulesMap[peerKey]; !ok {
-			return errors.New("no rules found: " + indexedPeerKey + ", " + peerKey)
+	if _, ok := rulesTable[srcPeerKey]; !ok {
+		return errors.New("peer not found in rule table: " + srcPeerKey)
+	}
+	iptablesClient := i.ipv4Client
+	if !rulesTable[srcPeerKey].isIpv4 {
+		iptablesClient = i.ipv6Client
+	}
+	if rules, ok := rulesTable[srcPeerKey].rulesMap[dstPeerKey]; ok {
+		for _, rule := range rules {
+			err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				return fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, srcPeerKey, err)
+			}
 		}
 	} else {
-		return errors.New("no rules found: " + indexedPeerKey)
-	}
-	for _, rInfo := range rulesInfo {
-		iptablesClient := i.ipv4Client
-		if !ruleTable[indexedPeerKey].isIpv4 {
-			iptablesClient = i.ipv6Client
-		}
-		err = iptablesClient.DeleteIfExists(rInfo.table, rInfo.chain, rInfo.rule...)
-		if err != nil {
-			return fmt.Errorf("iptables: error while removing existing %v rule from %s: %v", rInfo.rule, rInfo.chain, err)
-		}
+		return errors.New("rules not found for: " + dstPeerKey)
 	}
 
-	delete(i.ingRules[indexedPeerKey], peerKey)
 	return nil
 }
 
