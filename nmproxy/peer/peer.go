@@ -151,8 +151,9 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
+			connectionStatus := metrics.PeerConnectionStatus(peer.PublicKey.String())
 			for peerID := range peerIDMap {
-				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peer.PublicKey.String())
+				metric.NodeConnectionStatus[peerID] = connectionStatus
 			}
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes

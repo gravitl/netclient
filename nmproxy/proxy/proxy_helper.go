@@ -146,8 +146,9 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 				metric := metrics.GetMetric(server, p.Config.PeerPublicKey.String())
 				metric.NodeConnectionStatus = make(map[string]bool)
 				metric.LastRecordedLatency = 999
+				connectionStatus := metrics.PeerConnectionStatus(p.Config.PeerPublicKey.String())
 				for peerID := range peerIDsAndAddrs {
-					metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(p.Config.PeerPublicKey.String())
+					metric.NodeConnectionStatus[peerID] = connectionStatus
 				}
 				metrics.UpdateMetric(server, p.Config.PeerPublicKey.String(), &metric)
 			}
