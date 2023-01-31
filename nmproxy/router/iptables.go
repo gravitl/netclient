@@ -172,7 +172,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(r ingressRoute) error {
 	i.ingRules[r.remotePeerKey.String()] = make(map[string][]RuleInfo)
 	//iptables -A FORWARD -s 10.24.52.252/32 ! -d 10.24.52.4/32 -p icmp -j newchain
 	//iptables -A newchain -d 10.24.52.3/32 -p icmp -j ACCEPT
-	ruleSpec := []string{"-s", r.remoteClientAddr.String(), "!", "-d", r.ingGWAddr.String(), "-j", netmakerFilterChain}
+	ruleSpec := []string{"-s", r.remoteClientAddr.String(), "-j", netmakerFilterChain}
 	err = iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))

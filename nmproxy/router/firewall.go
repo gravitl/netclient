@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/gravitl/netmaker/logger"
 	log "github.com/sirupsen/logrus"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -27,18 +26,13 @@ type firewallController interface {
 	CleanRoutingRules()
 }
 
-func Init(ctx context.Context) {
-	if !running {
-		fwCrtl = NewFirewall(ctx)
-		fwCrtl.CreateChains()
-	} else {
-		logger.Log(0, "filrewall controller is intialized already")
-	}
-
+func Init(ctx context.Context) error {
+	fwCrtl = newFirewall(ctx)
+	return fwCrtl.CreateChains()
 }
 
-// NewFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
-func NewFirewall(parentCTX context.Context) firewallController {
+// newFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
+func newFirewall(parentCTX context.Context) firewallController {
 
 	var manager firewallController
 	if isIptablesSupported() {
@@ -72,6 +66,6 @@ func FlushAllRulesForPeer(peerKey wgtypes.Key) {
 	fwCrtl.RemoveRoutingRules(peerKey)
 }
 
-func RemoveRouteForPeer(indexedPeerKey, peerKey wgtypes.Key) {
+func DeletePeerRoute(indexedPeerKey, peerKey wgtypes.Key) {
 
 }
