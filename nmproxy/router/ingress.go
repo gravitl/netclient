@@ -13,37 +13,29 @@ type peerInfo struct {
 	Allow    bool
 }
 
-type ingressRoute struct {
-	remotePeerKey    wgtypes.Key
-	remoteClientAddr net.IPNet
-	masquerade       bool
-	peers            []peerInfo
-}
+func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 
-func SetIngressRoutes(ingressUpdate []models.IngressInfo) error {
-	r := ingressRoute{}
-	// r = ingressRoute{
-	// 	ingGWAddr: net.IPNet{
-	// 		IP:   net.ParseIP("10.24.52.4"),
-	// 		Mask: net.CIDRMask(32, 32),
-	// 	},
-	// 	remotePeerKey: wgtypes.Key{},
-	// 	remoteClientAddr: net.IPNet{
-	// 		IP:   net.ParseIP("10.24.52.252"),
-	// 		Mask: net.CIDRMask(32, 32),
-	// 	},
-	// 	peers: []peerInfo{
-	// 		{
-	// 			peerAddr: net.IPNet{
-	// 				IP:   net.ParseIP("10.24.52.1"),
-	// 				Mask: net.CIDRMask(32, 32),
-	// 			},
-	// 			Allow: true,
-	// 		},
-	// 	},
-	// }
+	ruleTable := fwCrtl.FetchRules(server, true)
+	for extIndexKey, peerRuleMap := range ruleTable {
+		// check if ext client route exists already for peer
 
-	// set routing rules
-	return fwCrtl.InsertIngressRoutingRules(r)
+		if _, ok := ingressUpdate.ExtPeers[extIndexKey]; !ok {
+			// ext peer is deleted, flush out all rules
+			fwCrtl.RemoveRoutingRules(server, extIndexKey)
+			continue
+		}
+		extPeers := ingressUpdate.ExtPeers[extIndexKey]
+		for peerKey := range peerRuleMap {
+			if _, ok := extPeers.Peers[peerKey]; !ok {
+				// peer is deleted for ext client, remove routing rule
+				fwCrtl.DeleteRoutingRule(server, extIndexKey, peerKey)
+			}
+		}
+	}
 
+	for _, extInfo := range ingressUpdate.ExtPeers {
+		fwCrtl.InsertIngressRoutingRules(server, extInfo)
+	}
+
+	return nil
 }

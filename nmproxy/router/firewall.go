@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/gravitl/netmaker/models"
 	log "github.com/sirupsen/logrus"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var (
@@ -17,14 +17,22 @@ type firewallController interface {
 	// CreateChains  creates a firewall chains and default rules
 	CreateChains() error
 	// InsertRoutingRules inserts a routing firewall rule
-	InsertIngressRoutingRules(r ingressRoute) error
+	InsertIngressRoutingRules(server string, r models.ExtClientInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
-	RemoveRoutingRules(peerKey wgtypes.Key) error
+	RemoveRoutingRules(server, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer
-	DeleteRoutingRule(srcPeer, dstPeer wgtypes.Key) error
+	DeleteRoutingRule(server, srcPeer, dstPeer string) error
 	// CleanRoutingRules cleans a firewall set of containers
-	CleanRoutingRules()
+	CleanRoutingRules(server string)
+	// FetchRules - fetches current state of rules from controller
+	FetchRules(server string, ingress bool) ruletable
+
+	SaveRules(server string, ruleTable ruletable)
 }
+
+type ruletable map[string]map[string][]RuleInfo
+
+type serverrulestable map[string]ruletable
 
 func Init(ctx context.Context) error {
 	fwCrtl = newFirewall(ctx)
@@ -45,7 +53,7 @@ func newFirewall(parentCTX context.Context) firewallController {
 			stop:       cancel,
 			ipv4Client: ipv4Client,
 			ipv6Client: ipv6Client,
-			ingRules:   make(map[string]map[string][]RuleInfo),
+			ingRules:   make(serverrulestable),
 		}
 	}
 
@@ -60,12 +68,4 @@ func newFirewall(parentCTX context.Context) firewallController {
 	// }
 
 	return manager
-}
-
-func FlushAllRulesForPeer(peerKey wgtypes.Key) {
-	fwCrtl.RemoveRoutingRules(peerKey)
-}
-
-func DeletePeerRoute(indexedPeerKey, peerKey wgtypes.Key) {
-
 }

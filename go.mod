@@ -17,7 +17,7 @@ require (
 	github.com/coreos/go-iptables v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/go-ping/ping v1.1.0
-	github.com/gravitl/netmaker v0.17.2-0.20230131062110-56d26b5ea007
+	github.com/gravitl/netmaker v0.17.2-0.20230131093315-62e7cc366e8a
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/sirupsen/logrus v1.9.0
