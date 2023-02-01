@@ -55,6 +55,9 @@ func (p *ProxyServer) Close() {
 	if config.GetCfg().GetMetricsCollectionStatus() {
 		config.GetCfg().StopMetricsCollectionThread()
 	}
+	if config.GetCfg().GetFwStatus() {
+		config.GetCfg().StopFw()
+	}
 	// close server connection
 	NmProxyServer.Server.Close()
 }
