@@ -5,6 +5,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+// SetIngressRoutes - feed ingress update to firewall controller to add/remove routing rules
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 	logger.Log(0, "----> setting ingress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
@@ -42,6 +43,7 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 	return nil
 }
 
+// DeleteIngressRules - removes the rules of ingressGW
 func DeleteIngressRules(server string) {
 	fwCrtl.CleanRoutingRules(server, ingressTable)
 }

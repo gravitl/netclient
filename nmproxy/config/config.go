@@ -207,18 +207,22 @@ func (c *Config) SetServerConn(conn *net.UDPConn) {
 	c.serverConn = conn
 }
 
+// Config.SetFwStatus - sets the firewall status
 func (c *Config) SetFwStatus(s bool) {
 	c.fireWallStatus = s
 }
 
+// Config.SetFwCloseFunc - sets the firewall flush func
 func (c *Config) SetFwCloseFunc(fwFlush func()) {
 	c.fireWallClose = fwFlush
 }
 
+// Config.GetFwStatus - gets the firewall status
 func (c *Config) GetFwStatus() bool {
 	return c.fireWallStatus
 }
 
+// Config.StopFw - flushes all the firewall rules
 func (c *Config) StopFw() {
 	c.fireWallClose()
 }
