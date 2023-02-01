@@ -246,7 +246,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", extinfo.IngGwAddr.String(), "-j", "ACCEPT"}
+	ruleSpec := []string{"-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
