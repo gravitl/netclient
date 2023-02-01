@@ -39,7 +39,7 @@ func init() {
 
 var (
 	allJumpRules []ruleInfo
-	// filter table netmaker jump rule
+	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
 		{
 			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
@@ -52,6 +52,7 @@ var (
 			chain: netmakerFilterChain,
 		},
 	}
+	// nat table nm jump rules
 	natNmJumpRules = []ruleInfo{
 		{
 			rule:  []string{"-o", ncutils.GetInterfaceName(), "-j", netmakerNatChain},
@@ -109,7 +110,7 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 
 }
 
-// CreateChains - creates default chains and rules
+// iptablesManager.CreateChains - creates default chains and rules
 func (i *iptablesManager) CreateChains() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
@@ -183,6 +184,7 @@ func (i *iptablesManager) removeJumpRules() {
 
 }
 
+// iptablesManager.AddIngressRoutingRule - adds a ingress route for a peer
 func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error {
 	ruleTable := i.FetchRuleTable(server, ingressTable)
 	defer i.SaveRules(server, ingressTable, ruleTable)
@@ -212,7 +214,7 @@ func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 	return nil
 }
 
-// InsertIngressRoutingRules inserts an iptables rule pair to the netmaker chain and if enabled, to the nat chain
+// iptablesManager.InsertIngressRoutingRules inserts an iptables rules for an ext. client to the netmaker chain and if enabled, to the nat chain
 func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo models.ExtClientInfo) error {
 	ruleTable := i.FetchRuleTable(server, ingressTable)
 	defer i.SaveRules(server, ingressTable, ruleTable)
@@ -329,6 +331,7 @@ func (i *iptablesManager) cleanup(table, chain string) {
 	}
 }
 
+// iptablesManager.FetchRuleTable - fetches the rule table by table name
 func (i *iptablesManager) FetchRuleTable(server string, tableName string) ruletable {
 	i.mux.Lock()
 	defer i.mux.Unlock()
@@ -343,6 +346,7 @@ func (i *iptablesManager) FetchRuleTable(server string, tableName string) ruleta
 	return rules
 }
 
+// iptablesManager.SaveRules - saves the rule table by tablename
 func (i *iptablesManager) SaveRules(server, tableName string, rules ruletable) {
 	i.mux.Lock()
 	defer i.mux.Unlock()
@@ -353,7 +357,7 @@ func (i *iptablesManager) SaveRules(server, tableName string, rules ruletable) {
 	}
 }
 
-// RemoveRoutingRules removes an iptables rule pair from forwarding and nat chains
+// iptablesManager.RemoveRoutingRules removes an iptables rules related to a peer
 func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey string) error {
 	rulesTable := i.FetchRuleTable(server, ruletableName)
 	defer i.SaveRules(server, ruletableName, rulesTable)
@@ -381,7 +385,7 @@ func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	return nil
 }
 
-// RemoveRoutingRules removes an iptables rule pair from forwarding and nat chains
+// iptablesManager.DeleteRoutingRule - removes an iptables rule pair from forwarding and nat chains
 func (i *iptablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, dstPeerKey string) error {
 	rulesTable := i.FetchRuleTable(server, ruletableName)
 	defer i.SaveRules(server, ruletableName, rulesTable)
@@ -409,6 +413,7 @@ func (i *iptablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 	return nil
 }
 
+// iptablesManager.FlushAll - removes all the rules added by netmaker and deletes the netmaker chains
 func (i *iptablesManager) FlushAll() {
 	i.mux.Lock()
 	defer i.mux.Unlock()
