@@ -106,9 +106,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 // startGoRoutines starts the daemon goroutines
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
-	if _, err := config.ReadNetclientConfig(); err != nil {
-		logger.Log(0, "error reading neclient config file", err.Error())
-	}
+	config.ReadNetclientConfig()
 	if err := config.ReadNodeConfig(); err != nil {
 		logger.Log(0, "error reading node map from disk", err.Error())
 	}
