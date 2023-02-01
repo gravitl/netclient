@@ -246,7 +246,19 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-
+	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", extinfo.IngGwAddr.String(), "-j", "ACCEPT"}
+	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+	if err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	}
+	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{
+		{
+			rule:  ruleSpec,
+			chain: netmakerFilterChain,
+			table: defaultIpTable,
+		},
+	}
 	for _, peerInfo := range extinfo.Peers {
 		if !peerInfo.Allow {
 			continue
@@ -256,6 +268,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			continue
 		}
 		ruleTable[extinfo.ExtPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
 			{
@@ -270,31 +283,35 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	if !extinfo.Masquerade {
 		return nil
 	}
+	routes := ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
 	// iptables -t nat -A netmakernat  -s 10.24.52.252/32 -o netmaker -j MASQUERADE
 	// iptables -t nat -A netmakernat -d 10.24.52.252/32 -o netmaker -j MASQUERADE
-	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-o", "netmaker", "-j", "MASQUERADE"}
+	ruleSpec = []string{"-s", extinfo.ExtPeerAddr.String(), "-o", "netmaker", "-j", "MASQUERADE"}
 	logger.Log(2, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultNatTable, netmakerNatChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	} else {
+		routes = append(routes, ruleInfo{
+			rule:  ruleSpec,
+			table: defaultNatTable,
+			chain: netmakerNatChain,
+		})
 	}
-	routes := ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
-	routes = append(routes, ruleInfo{
-		rule:  ruleSpec,
-		table: defaultNatTable,
-		chain: netmakerNatChain,
-	})
+
 	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-o", "netmaker", "-j", "MASQUERADE"}
 	logger.Log(2, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultNatTable, netmakerNatChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	} else {
+		routes = append(routes, ruleInfo{
+			rule:  ruleSpec,
+			table: defaultNatTable,
+			chain: netmakerNatChain,
+		})
 	}
-	routes = append(routes, ruleInfo{
-		rule:  ruleSpec,
-		table: defaultNatTable,
-		chain: netmakerNatChain,
-	})
+
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
 
 	return nil
