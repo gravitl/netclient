@@ -8,18 +8,18 @@ import (
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 	logger.Log(0, "----> setting ingress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
-	for extIndexKey, ruleCfg := range ruleTable {
+	for extPeerKey, ruleCfg := range ruleTable {
 
-		if _, ok := ingressUpdate.ExtPeers[extIndexKey]; !ok {
+		if _, ok := ingressUpdate.ExtPeers[extPeerKey]; !ok {
 			// ext peer is deleted, flush out all rules
-			fwCrtl.RemoveRoutingRules(server, ingressTable, extIndexKey)
+			fwCrtl.RemoveRoutingRules(server, ingressTable, extPeerKey)
 			continue
 		}
-		extPeers := ingressUpdate.ExtPeers[extIndexKey]
+		extPeers := ingressUpdate.ExtPeers[extPeerKey]
 		for peerKey := range ruleCfg.rulesMap {
-			if _, ok := extPeers.Peers[peerKey]; !ok {
+			if _, ok := extPeers.Peers[peerKey]; !ok && peerKey != extPeerKey {
 				// peer is deleted for ext client, remove routing rule
-				fwCrtl.DeleteRoutingRule(server, ingressTable, extIndexKey, peerKey)
+				fwCrtl.DeleteRoutingRule(server, ingressTable, extPeerKey, peerKey)
 			}
 		}
 	}
