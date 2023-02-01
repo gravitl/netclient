@@ -27,7 +27,7 @@ type Config struct {
 	metricsCollectionStatus bool
 	serverConn              *net.UDPConn
 	fireWallStatus          bool
-	fireWallClose           context.CancelFunc
+	fireWallClose           func()
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -211,8 +211,8 @@ func (c *Config) SetFwStatus(s bool) {
 	c.fireWallStatus = s
 }
 
-func (c *Config) SetFwCancelCtx(cancel context.CancelFunc) {
-	c.fireWallClose = cancel
+func (c *Config) SetFwCloseFunc(fwFlush func()) {
+	c.fireWallClose = fwFlush
 }
 
 func (c *Config) GetFwStatus() bool {

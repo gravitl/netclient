@@ -4,8 +4,6 @@
 package router
 
 import (
-	"context"
-
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -43,6 +41,6 @@ func (unimplementedFirewall) FlushAll() {
 }
 
 // newFirewall returns an unimplemented Firewall manager
-func newFirewall(parentCtx context.Context) firewallController {
+func newFirewall() firewallController {
 	return unimplementedFirewall{}
 }

@@ -1,8 +1,6 @@
 package router
 
 import (
-	"context"
-
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -50,13 +48,12 @@ type firewallController interface {
 	FlushAll()
 }
 
-func Init(ctx context.Context) error {
+// Init - initialises the firewall controller,return a close func to flush all rules
+func Init() (func(), error) {
 	logger.Log(0, "Starting firewall...")
-	fwCrtl = newFirewall(ctx)
-	go func() {
-		<-ctx.Done()
-		logger.Log(0, "Stopping Firewall...")
-		fwCrtl.FlushAll()
-	}()
-	return fwCrtl.CreateChains()
+	fwCrtl = newFirewall()
+	if err := fwCrtl.CreateChains(); err != nil {
+		return fwCrtl.FlushAll, err
+	}
+	return fwCrtl.FlushAll, nil
 }

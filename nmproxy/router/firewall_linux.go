@@ -1,24 +1,20 @@
 package router
 
 import (
-	"context"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/gravitl/netmaker/logger"
 	"os/exec"
 )
 
 // newFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
-func newFirewall(parentCTX context.Context) firewallController {
+func newFirewall() firewallController {
 
 	var manager firewallController
 	if isIptablesSupported() {
 		logger.Log(0, "iptables is supported")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		ipv6Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv6)
-		ctx, cancel := context.WithCancel(parentCTX)
 		manager = &iptablesManager{
-			ctx:        ctx,
-			stop:       cancel,
 			ipv4Client: ipv4Client,
 			ipv6Client: ipv6Client,
 			ingRules:   make(serverrulestable),
