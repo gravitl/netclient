@@ -218,3 +218,7 @@ func (c *Config) SetFwCancelCtx(cancel context.CancelFunc) {
 func (c *Config) GetFwStatus() bool {
 	return c.fireWallStatus
 }
+
+func (c *Config) StopFw() {
+	c.fireWallClose()
+}

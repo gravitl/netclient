@@ -23,7 +23,7 @@ type firewallController interface {
 	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
 	InsertIngressRoutingRules(server string, r models.ExtClientInfo) error
 	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
-	AddIngRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error
+	AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer
@@ -40,7 +40,7 @@ type firewallController interface {
 
 type rulesCfg struct {
 	isIpv4   bool
-	rulesMap map[string][]RuleInfo
+	rulesMap map[string][]ruleInfo
 }
 type ruletable map[string]rulesCfg
 
@@ -51,7 +51,8 @@ func Init(ctx context.Context) error {
 	fwCrtl = newFirewall(ctx)
 	go func() {
 		<-ctx.Done()
-
+		logger.Log(0, "Stopping Firewall...")
+		fwCrtl.FlushAll()
 	}()
 	return fwCrtl.CreateChains()
 }
@@ -72,17 +73,12 @@ func newFirewall(parentCTX context.Context) firewallController {
 			ipv6Client: ipv6Client,
 			ingRules:   make(serverrulestable),
 		}
+		return manager
 	}
 
 	logger.Log(0, "iptables is not supported, using nftables")
 
-	// manager := &nftablesManager{
-	// 	ctx:    ctx,
-	// 	stop:   cancel,
-	// 	conn:   &nftables.Conn{},
-	// 	chains: make(map[string]map[string]*nftables.Chain),
-	// 	rules:  make(map[string]*nftables.Rule),
-	// }
+	// TODO - nft table manager
 
 	return manager
 }

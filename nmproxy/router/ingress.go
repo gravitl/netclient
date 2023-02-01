@@ -34,14 +34,11 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 			peerRules := ruleTable[extInfo.ExtPeerKey]
 			for _, peer := range extInfo.Peers {
 				if _, ok := peerRules.rulesMap[peer.PeerKey]; !ok {
-					fwCrtl.AddIngRoutingRule(server, extInfo.ExtPeerKey, peer)
+					fwCrtl.AddIngressRoutingRule(server, extInfo.ExtPeerKey, peer)
 				}
 			}
-
 		}
-
 	}
-
 	return nil
 }
 

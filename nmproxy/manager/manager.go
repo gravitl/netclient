@@ -82,7 +82,11 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 	if isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw {
 		if !config.GetCfg().GetFwStatus() {
 			ctx, cancel := context.WithCancel(context.Background())
-			router.Init(ctx)
+			if err := router.Init(ctx); err != nil {
+				logger.Log(0, "failed to intialize firewall: ", err.Error())
+				cancel()
+				return
+			}
 			config.GetCfg().SetFwStatus(true)
 			config.GetCfg().SetFwCancelCtx(cancel)
 		}
