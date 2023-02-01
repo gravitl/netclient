@@ -1,3 +1,6 @@
+//go:build !headless
+// +build !headless
+
 package gui
 
 const NETMAKER_DOCS_LINK = "https://docs.netmaker.org/"
