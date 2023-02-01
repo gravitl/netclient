@@ -144,6 +144,17 @@ func (c *Config) IsGlobalRelay() bool {
 	return false
 }
 
+func (c *Config) IsGlobalIngress() bool {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	for _, settings := range c.settings {
+		if settings.IsIngressGateway {
+			return true
+		}
+	}
+	return false
+}
+
 // Config.SetIngressGwStatus - sets ingressGW status
 func (c *Config) SetIngressGwStatus(server string, value bool) {
 	settings := c.GetSettings(server)

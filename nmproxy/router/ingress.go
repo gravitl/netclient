@@ -1,14 +1,14 @@
 package router
 
 import (
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
-
+	logger.Log(0, "----> setting ingress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
 	for extIndexKey, ruleCfg := range ruleTable {
-		// check if ext client route exists already for peer
 
 		if _, ok := ingressUpdate.ExtPeers[extIndexKey]; !ok {
 			// ext peer is deleted, flush out all rules
@@ -26,7 +26,10 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 
 	for _, extInfo := range ingressUpdate.ExtPeers {
 		if _, ok := ruleTable[extInfo.ExtPeerKey.String()]; !ok {
-			fwCrtl.InsertIngressRoutingRules(server, extInfo)
+			err := fwCrtl.InsertIngressRoutingRules(server, extInfo)
+			if err != nil {
+				logger.Log(0, "falied to set ingress routes: ", err.Error())
+			}
 		} else {
 			peerRules := ruleTable[extInfo.ExtPeerKey.String()]
 			for _, peer := range extInfo.Peers {
@@ -40,4 +43,8 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 	}
 
 	return nil
+}
+
+func DeleteIngressRules(server string) {
+	fwCrtl.CleanRoutingRules(server, ingressTable)
 }

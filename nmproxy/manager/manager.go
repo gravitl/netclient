@@ -79,16 +79,24 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 
 func fwUpdate(payload *nm_models.HostPeerUpdate) {
 	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
-	if config.GetCfg().IsIngressGw(payload.ProxyUpdate.Server) != isingressGw && !config.GetCfg().GetFwStatus() {
-		ctx, cancel := context.WithCancel(context.Background())
-		router.Init(ctx)
-		config.GetCfg().SetFwStatus(true)
-		config.GetCfg().SetFwCancelCtx(cancel)
+	if isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw {
+		if !config.GetCfg().GetFwStatus() {
+			ctx, cancel := context.WithCancel(context.Background())
+			router.Init(ctx)
+			config.GetCfg().SetFwStatus(true)
+			config.GetCfg().SetFwCancelCtx(cancel)
+		}
+		config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
 	} else {
 		logger.Log(0, "firewall controller is intialized already")
 	}
+
 	if isingressGw {
+		logger.Log(0, fmt.Sprintf("-------iNGRESS PAYLOAD: %+v", payload.IngressInfo))
 		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
+	}
+	if config.GetCfg().GetFwStatus() && !isingressGw {
+		router.DeleteIngressRules(payload.Server)
 	}
 
 }
