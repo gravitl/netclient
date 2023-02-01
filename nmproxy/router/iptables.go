@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/netip"
 	"os/exec"
 	"sync"
@@ -190,7 +191,7 @@ func (i *iptablesManager) AddIngRoutingRule(server, extPeerKey string, peerInfo 
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey.String()] = []RuleInfo{
+	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey] = []RuleInfo{
 		{
 			rule:  ruleSpec,
 			chain: netmakerFilterChain,
@@ -219,7 +220,7 @@ func (i *iptablesManager) InsertRoutingRule(server, extPeerKey string, peerInfo 
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey.String()] = []RuleInfo{
+	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey] = []RuleInfo{
 		{
 			rule:  ruleSpec,
 			chain: netmakerFilterChain,
@@ -248,7 +249,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4 = false
 	}
 
-	ruleTable[extinfo.ExtPeerKey.String()] = rulesCfg{
+	ruleTable[extinfo.ExtPeerKey] = rulesCfg{
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]RuleInfo),
 	}
@@ -264,7 +265,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 		}
-		ruleTable[extinfo.ExtPeerKey.String()].rulesMap[peerInfo.PeerKey.String()] = []RuleInfo{
+		ruleTable[extinfo.ExtPeerKey].rulesMap[peerInfo.PeerKey] = []RuleInfo{
 			{
 
 				rule:  ruleSpec,
@@ -285,7 +286,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	routes := ruleTable[extinfo.ExtPeerKey.String()].rulesMap[extinfo.ExtPeerKey.String()]
+	routes := ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
 	routes = append(routes, RuleInfo{
 		rule:  ruleSpec,
 		table: defaultNatTable,
@@ -302,7 +303,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		table: defaultNatTable,
 		chain: netmakerNatChain,
 	})
-	ruleTable[extinfo.ExtPeerKey.String()].rulesMap[extinfo.ExtPeerKey.String()] = routes
+	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
 
 	return nil
 }
@@ -331,6 +332,8 @@ func (i *iptablesManager) FetchRuleTable(server string, tableName string) ruleta
 func (i *iptablesManager) SaveRules(server, tableName string, rules ruletable) {
 	i.mux.Lock()
 	defer i.mux.Unlock()
+	logger.Log(0, "Saving rules to table: ", tableName)
+	log.Printf("--------------> $$$$$ -------> %+v\n", rules)
 	switch tableName {
 	case ingressTable:
 		i.ingRules[server] = rules

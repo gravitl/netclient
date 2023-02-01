@@ -34,6 +34,7 @@ type firewallController interface {
 	FetchRuleTable(server string, ruleTableName string) ruletable
 	// SaveRules - saves the ruleTable under the given server
 	SaveRules(server, ruleTableName string, ruleTable ruletable)
+	// FlushAll - clears all rules from netmaker chains and deletes the chains
 	FlushAll()
 }
 
