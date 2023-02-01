@@ -96,7 +96,6 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 	}
 
 	if isingressGw {
-		logger.Log(0, fmt.Sprintf("-------iNGRESS PAYLOAD: %+v", payload.IngressInfo))
 		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
 	}
 	if config.GetCfg().GetFwStatus() && !isingressGw {

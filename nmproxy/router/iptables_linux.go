@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"os/exec"
 	"sync"
 
 	"github.com/coreos/go-iptables/iptables"
@@ -13,12 +12,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
-
-func isIptablesSupported() bool {
-	_, err4 := exec.LookPath("iptables")
-	_, err6 := exec.LookPath("ip6tables")
-	return err4 == nil && err6 == nil
-}
 
 // constants needed to manage and create iptable rules
 const (
@@ -31,6 +24,16 @@ const (
 	iptableFWDChain     = "FORWARD"
 	nattablePRTChain    = "POSTROUTING"
 )
+
+type iptablesManager struct {
+	ctx          context.Context
+	stop         context.CancelFunc
+	ipv4Client   *iptables.IPTables
+	ipv6Client   *iptables.IPTables
+	ingRules     serverrulestable
+	defaultRules ruletable
+	mux          sync.Mutex
+}
 
 var (
 
@@ -65,22 +68,6 @@ var (
 		},
 	}
 )
-
-type ruleInfo struct {
-	rule  []string
-	table string
-	chain string
-}
-
-type iptablesManager struct {
-	ctx          context.Context
-	stop         context.CancelFunc
-	ipv4Client   *iptables.IPTables
-	ipv6Client   *iptables.IPTables
-	ingRules     serverrulestable
-	defaultRules ruletable
-	mux          sync.Mutex
-}
 
 func createChain(iptables *iptables.IPTables, table, newChain string) error {
 
