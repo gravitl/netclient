@@ -58,7 +58,8 @@ func init() {
 
 func initConfig() {
 	checkUID()
-	netclient, _ := config.ReadNetclientConfig()
+	config.ReadNetclientConfig()
+	netclient := config.Netclient()
 	checkConfig()
 	if rootCmd.Flags().Lookup("verbosity").Changed {
 		vebosity, _ := rootCmd.Flags().GetInt("verbosity")
@@ -67,10 +68,8 @@ func initConfig() {
 	}
 	logger.Verbosity = netclient.Verbosity
 	config.UpdateNetclient(*netclient)
-
 	config.ReadNodeConfig()
 	config.ReadServerConf()
-	//check netclient dirs exist
 	if _, err := os.Stat(config.GetNetclientPath()); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.Mkdir(config.GetNetclientPath(), os.ModePerm); err != nil {
@@ -86,6 +85,7 @@ func initConfig() {
 func checkConfig() {
 	fail := false
 	saveRequired := false
+	config.ReadNetclientConfig()
 	netclient := config.Netclient()
 
 	if netclient.OS != runtime.GOOS {

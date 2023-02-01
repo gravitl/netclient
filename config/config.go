@@ -134,22 +134,23 @@ func SetVersion(ver string) {
 	Version = ver
 }
 
-// ReadNetclientConfig reads the host configuration file and returns it as an instance.
-func ReadNetclientConfig() (*Config, error) {
+// ReadNetclientConfig loads the host configuration into memory.
+func ReadNetclientConfig() {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
-		return nil, err
+		logger.Log(0, "unable to obtain lockfile for host config", err.Error())
+		return
 	}
 	defer Unlock(lockfile)
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, err
+		logger.Log(0, "failed to open host config", err.Error())
+		return
 	}
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
-		return nil, err
+		logger.Log(0, "failed to decode host config", err.Error())
 	}
-	return &netclient, nil
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk
