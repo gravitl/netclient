@@ -16,9 +16,9 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-type proxyPayload models.ProxyManagerPayload
+type proxyPayload nm_models.ProxyManagerPayload
 
-func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
+func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	mI := proxyPayload(*m)
 	return &mI
 }
@@ -66,9 +66,9 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
 	switch m.Action {
-	case models.ProxyUpdate:
+	case nm_models.ProxyUpdate:
 		m.peerUpdate()
-	case models.ProxyDeleteAllPeers:
+	case nm_models.ProxyDeleteAllPeers:
 		cleanUpInterface()
 
 	}
@@ -76,16 +76,16 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 }
 
 func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
-	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
+	if peerUpdate.ProxyUpdate.Action != nm_models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
 		config.GetCfg().StopMetricsCollectionThread()
-	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
+	} else if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
 	}
-	if peerUpdate.ProxyUpdate.Action == models.NoProxy {
+	if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy {
 		cleanUpInterface()
 	}
 }
@@ -376,7 +376,7 @@ func (m *proxyPayload) peerUpdate() error {
 			}
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
 			go func(server string, peer wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
-				peerConf models.PeerConf) {
+				peerConf nm_models.PeerConf) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 5)
 				ctx, cancel := context.WithCancel(context.Background())
