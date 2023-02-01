@@ -34,6 +34,7 @@ type firewallController interface {
 	FetchRuleTable(server string, ruleTableName string) ruletable
 	// SaveRules - saves the ruleTable under the given server
 	SaveRules(server, ruleTableName string, ruleTable ruletable)
+	FlushAll()
 }
 
 type rulesCfg struct {
@@ -47,6 +48,10 @@ type serverrulestable map[string]ruletable
 func Init(ctx context.Context) error {
 	logger.Log(0, "Starting firewall...")
 	fwCrtl = newFirewall(ctx)
+	go func() {
+		<-ctx.Done()
+
+	}()
 	return fwCrtl.CreateChains()
 }
 
