@@ -40,11 +40,6 @@ var (
 	// filter table netmaker jump rule
 	filterNmJumpRules = []ruleInfo{
 		{
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
 			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
 			table: defaultIpTable,
 			chain: netmakerFilterChain,
@@ -246,13 +241,27 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-	ruleSpec := []string{"-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
+
+	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
+		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
+	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+	err = iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+	if err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	}
+	fwdRule := ruleInfo{
+		rule:  ruleSpec,
+		chain: iptableFWDChain,
+		table: defaultIpTable,
+	}
+	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{
+		fwdRule,
 		{
 			rule:  ruleSpec,
 			chain: netmakerFilterChain,
