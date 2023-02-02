@@ -68,11 +68,17 @@ func (app *App) GoGetNetwork(networkName string) (Network, error) {
 
 // App.GoGetNetclientConfig retrieves the netclient config
 // (params the remain constant regardless the networks nc is connected to)
-func (app *App) GoGetNetclientConfig() (config.Config, error) {
+func (app *App) GoGetNetclientConfig() (NcConfig, error) {
 	// read fresh config from disk
 	config.InitConfig(viper.New())
 
-	return *config.Netclient(), nil
+	conf := *config.Netclient()
+	ncConf := NcConfig{
+		Config:        conf,
+		MacAddressStr: conf.MacAddress.String(),
+	}
+
+	return ncConf, nil
 }
 
 // App.GoParseAccessToken parses a valid access token and returns the deconstructed parts

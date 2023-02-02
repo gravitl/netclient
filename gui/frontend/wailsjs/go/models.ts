@@ -1,5 +1,5 @@
 export namespace config {
-  export class Config {
+  export class NcConfig {
     id: string;
     verbosity: number;
     firewallinuse: string;
@@ -33,9 +33,10 @@ export namespace config {
     isk8s: boolean;
     isstatic: boolean;
     isdefault: boolean;
+		macaddressstr: string;
 
     static createFrom(source: any = {}) {
-      return new Config(source);
+      return new NcConfig(source);
     }
 
     constructor(source: any = {}) {
@@ -75,6 +76,7 @@ export namespace config {
       this.isk8s = source["isk8s"];
       this.isstatic = source["isstatic"];
       this.isdefault = source["isdefault"];
+      this.macaddressstr = source["macaddressstr"];
     }
 
     convertValues(a: any, classs: any, asMap: boolean = false): any {

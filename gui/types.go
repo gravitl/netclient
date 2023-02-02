@@ -11,3 +11,9 @@ type Network struct {
 	Node   *config.Node   `json:"node"`
 	Server *config.Server `json:"server"`
 }
+
+// NcConfig is a wrapper of the host/netclient config for GUI
+type NcConfig struct {
+	config.Config
+	MacAddressStr string `json:"macaddressstr"`
+}
