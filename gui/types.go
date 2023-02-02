@@ -1,3 +1,6 @@
+//go:build !headless
+// +build !headless
+
 // this file contains types to serve as wrappers since wails supports only
 // up to two function return values: (data, error) or (data)
 // https://wails.io/docs/howdoesitwork#method-binding:~:text=The%20generated%20methods,passed%20to%20it.
