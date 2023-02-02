@@ -16,7 +16,7 @@ require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/coreos/go-iptables v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
-	github.com/gravitl/netmaker v0.17.2-0.20230202062220-04ac036b685d
+	github.com/gravitl/netmaker v0.17.2-0.20230202173350-f565d59af3ce
 	github.com/hashicorp/go-version v1.6.0
 	github.com/matryer/is v1.4.0
 	github.com/vishvananda/netlink v1.1.0

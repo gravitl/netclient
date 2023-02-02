@@ -27,11 +27,14 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 	for egressNodeID, egressInfo := range egressUpdate {
 		if _, ok := ruleTable[egressNodeID]; !ok {
 			// set up rules for the GW on first time creation
+			fwCrtl.InsertEgressRoutingRules(server, egressInfo)
 		} else {
 			peerRules := ruleTable[egressNodeID]
 			for _, peer := range egressInfo.GwPeers {
 				if _, ok := peerRules.rulesMap[peer.PeerKey]; !ok {
-					// add egress rule for the peer
+					// add egress rules for the peer
+					fwCrtl.AddEgressRoutingRule(server, egressInfo, peer)
+
 				}
 			}
 		}

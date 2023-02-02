@@ -40,6 +40,13 @@ func (unimplementedFirewall) FlushAll() {
 
 }
 
+func (unimplementedFirewall) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
+	return nil
+}
+func (unimplementedFirewall) AddEgressRoutingRule(server string, egressInfo models.EgressInfo, peerInfo models.PeerRouteInfo) error {
+	return nil
+}
+
 // newFirewall returns an unimplemented Firewall manager
 func newFirewall() firewallController {
 	return unimplementedFirewall{}
