@@ -234,17 +234,13 @@ func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 	defer i.SaveRules(server, ingressTable, ruleTable)
 	i.mux.Lock()
 	defer i.mux.Unlock()
-	prefix, err := netip.ParsePrefix(peerInfo.PeerAddr.String())
-	if err != nil {
-		return err
-	}
 	iptablesClient := i.ipv4Client
-	if prefix.Addr().Unmap().Is6() {
+	if !isAddrIpv4(peerInfo.PeerAddr.String()) {
 		iptablesClient = i.ipv6Client
 	}
 
 	ruleSpec := []string{"-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
-	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+	err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
@@ -265,13 +261,9 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	logger.Log(0, "Adding Ingress Rules For Ext. Client: ", extinfo.ExtPeerKey)
-	prefix, err := netip.ParsePrefix(extinfo.ExtPeerAddr.String())
-	if err != nil {
-		return err
-	}
 	isIpv4 := true
 	iptablesClient := i.ipv4Client
-	if prefix.Addr().Unmap().Is6() {
+	if !isAddrIpv4(extinfo.ExtPeerAddr.String()) {
 		iptablesClient = i.ipv6Client
 		isIpv4 = false
 	}
@@ -284,7 +276,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
 		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain, "-m", "comment", "--comment", netmakerSignature}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	err = iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
@@ -368,7 +360,36 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	// add jump Rules for egress GW
+	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
+		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), egressGwRange, "-j", netmakerFilterChain}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		iptablesClient := i.ipv4Client
+		if !isAddrIpv4(egressGwRange) {
+			iptablesClient = i.ipv6Client
+		}
+		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		}
+		for _, peer := range egressInfo.GwPeers {
+			ruleSpec := []string{"-s", peer.PeerAddr.String(), "-d", egressGwRange, "-j", "ACCEPT"}
+			err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			}
+		}
 
+	}
+
+	// 	#
+	// iptables -A FORWARD -i netmaker -d 10.182.0.0/24 -j netmakerfilter
+	// # netmakerfilter chain
+	// iptables -A netmakerfilter -s 10.24.52.2 -d 10.182.0.0/24 -j ACCEPT
+	// iptables -A netmakerfilter -s 10.24.52.1 -d 10.182.0.0/24 -j ACCEPT
+	// iptables -A netmakerfilter -j DROP
+
+	// # NAT
+	// iptables -t nat -A POSTROUTING -o ens4 -j MASQUERADE
 	return nil
 }
 
@@ -481,4 +502,23 @@ func iptablesProtoToString(proto iptables.Protocol) string {
 		return ipv6
 	}
 	return ipv4
+}
+
+// addr - CIDR notation (198.0.0.1/24) return if ipnet is ipv4 or ipv6
+func isAddrIpv4(addr string) bool {
+	isIpv4 := true
+	prefix, err := netip.ParsePrefix(addr)
+	if err != nil {
+		return isIpv4
+	}
+
+	if prefix.Addr().Unmap().Is6() {
+		isIpv4 = false
+	}
+	return isIpv4
+}
+
+func appendNetmakerCommentToRule(ruleSpec []string) []string {
+	ruleSpec = append(ruleSpec, "-m", "comment", "--comment", netmakerSignature)
+	return ruleSpec
 }
