@@ -185,7 +185,10 @@ func (i *iptablesManager) removeJumpRules() {
 	if err == nil {
 		for _, rule := range rules {
 			if addedByNetmaker(rule) {
-				i.ipv4Client.Delete(defaultIpTable, iptableFWDChain)
+				err := i.ipv4Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+				}
 			}
 		}
 	}
@@ -193,7 +196,10 @@ func (i *iptablesManager) removeJumpRules() {
 	if err == nil {
 		for _, rule := range rules {
 			if addedByNetmaker(rule) {
-				i.ipv6Client.Delete(defaultIpTable, iptableFWDChain)
+				err := i.ipv6Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+				}
 			}
 		}
 	}
@@ -201,7 +207,10 @@ func (i *iptablesManager) removeJumpRules() {
 	if err == nil {
 		for _, rule := range rules {
 			if addedByNetmaker(rule) {
-				i.ipv4Client.Delete(defaultNatTable, nattablePRTChain)
+				err := i.ipv4Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+				}
 			}
 		}
 	}
@@ -209,7 +218,10 @@ func (i *iptablesManager) removeJumpRules() {
 	if err == nil {
 		for _, rule := range rules {
 			if addedByNetmaker(rule) {
-				i.ipv6Client.Delete(defaultNatTable, nattablePRTChain)
+				err := i.ipv6Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+				}
 			}
 		}
 	}
