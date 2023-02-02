@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 	"sync"
 
 	"github.com/coreos/go-iptables/iptables"
@@ -22,6 +23,7 @@ const (
 	netmakerNatChain    = "netmakernat"
 	iptableFWDChain     = "FORWARD"
 	nattablePRTChain    = "POSTROUTING"
+	netmakerSignature   = "NETMAKER"
 )
 
 type iptablesManager struct {
@@ -32,22 +34,17 @@ type iptablesManager struct {
 	mux          sync.Mutex
 }
 
-func init() {
-	allJumpRules = append(allJumpRules, filterNmJumpRules...)
-	allJumpRules = append(allJumpRules, natNmJumpRules...)
-}
-
 var (
-	allJumpRules []ruleInfo
+
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
 		{
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
+			rule:  []string{"-j", "DROP"},
 			table: defaultIpTable,
 			chain: netmakerFilterChain,
 		},
 		{
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "RETURN"},
+			rule:  []string{"-j", "RETURN"},
 			table: defaultIpTable,
 			chain: netmakerFilterChain,
 		},
@@ -55,7 +52,8 @@ var (
 	// nat table nm jump rules
 	natNmJumpRules = []ruleInfo{
 		{
-			rule:  []string{"-o", ncutils.GetInterfaceName(), "-j", netmakerNatChain},
+			rule: []string{"-o", ncutils.GetInterfaceName(), "-j", netmakerNatChain,
+				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultNatTable,
 			chain: nattablePRTChain,
 		},
@@ -170,15 +168,49 @@ func (i *iptablesManager) addJumpRules() {
 	}
 }
 
-func (i *iptablesManager) removeJumpRules() {
-	for _, rule := range allJumpRules {
-		err := i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
+// checks if rule has been added by netmaker
+func addedByNetmaker(ruleString string) bool {
+	rule := strings.Fields(ruleString)
+	for i, flag := range rule {
+		if flag == "--comment" && len(rule)-1 > i {
+			if rule[i+1] == netmakerSignature {
+				return true
+			}
 		}
-		err = i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
+	}
+	return false
+}
+func (i *iptablesManager) removeJumpRules() {
+	rules, err := i.ipv4Client.List(defaultIpTable, iptableFWDChain)
+	if err == nil {
+		for _, rule := range rules {
+			if addedByNetmaker(rule) {
+				i.ipv4Client.Delete(defaultIpTable, iptableFWDChain)
+			}
+		}
+	}
+	rules, err = i.ipv6Client.List(defaultIpTable, iptableFWDChain)
+	if err == nil {
+		for _, rule := range rules {
+			if addedByNetmaker(rule) {
+				i.ipv6Client.Delete(defaultIpTable, iptableFWDChain)
+			}
+		}
+	}
+	rules, err = i.ipv4Client.List(defaultNatTable, nattablePRTChain)
+	if err == nil {
+		for _, rule := range rules {
+			if addedByNetmaker(rule) {
+				i.ipv4Client.Delete(defaultNatTable, nattablePRTChain)
+			}
+		}
+	}
+	rules, err = i.ipv6Client.List(defaultNatTable, nattablePRTChain)
+	if err == nil {
+		for _, rule := range rules {
+			if addedByNetmaker(rule) {
+				i.ipv6Client.Delete(defaultNatTable, nattablePRTChain)
+			}
 		}
 	}
 
@@ -238,7 +270,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 
 	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
-		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
+		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain, "-m", "comment", "--comment", netmakerSignature}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
 	if err != nil {
@@ -249,7 +281,6 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		chain: iptableFWDChain,
 		table: defaultIpTable,
 	}
-	allJumpRules = append(allJumpRules, fwdJumpRule)
 	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
