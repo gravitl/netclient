@@ -69,6 +69,9 @@ func (app *App) GoGetNetwork(networkName string) (Network, error) {
 // App.GoGetNetclientConfig retrieves the netclient config
 // (params the remain constant regardless the networks nc is connected to)
 func (app *App) GoGetNetclientConfig() (config.Config, error) {
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
 	return *config.Netclient(), nil
 }
 
@@ -200,4 +203,12 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 // App.GoGetNodePeers returns the peers for the given node
 func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	return functions.GetNodePeers(node)
+}
+
+// App.GoUpdateNetclientConfig updates netclient/host configs
+func (app *App) GoUpdateNetclientConfig(updatedConfig config.Config) (any, error) {
+	// should update in-memory config
+	// should update on-disk config
+	// should send MQ updates to all registered servers
+	panic("unimplemented function")
 }
