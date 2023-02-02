@@ -36,8 +36,12 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
-	configs := make([]Network, 0, 5)
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
 
+	configs := make([]Network, 0, 5)
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
 		node := node
@@ -51,6 +55,9 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
 	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return Network{}, err
+	}
 
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
@@ -68,7 +75,9 @@ func (app *App) GoGetNetwork(networkName string) (Network, error) {
 // (params the remain constant regardless the networks nc is connected to)
 func (app *App) GoGetNetclientConfig() (NcConfig, error) {
 	// read fresh config from disk
-	config.InitConfig(viper.New())
+	if err := config.RefreshConfigs(); err != nil {
+		return NcConfig{}, err
+	}
 
 	conf := *config.Netclient()
 	ncConf := NcConfig{
