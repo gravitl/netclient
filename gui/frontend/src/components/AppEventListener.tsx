@@ -18,15 +18,21 @@ export default function AppEventListener() {
     navigate(AppRoutes.LOGS_ROUTE)
   }, [navigate])
 
+  const openSettingsPage = useCallback(() => {
+    navigate(AppRoutes.SETTINGS_ROUTE)
+  }, [navigate])
+
   // register event handlers
   useEffect(() => {
     wailsRuntime?.EventsOn(AppEvents.EV_OPEN_NETWORKS_PAGE, openNetworksPage)
     wailsRuntime?.EventsOn(AppEvents.EV_OPEN_LOGS_PAGE, openServerLogsPage)
+    wailsRuntime?.EventsOn(AppEvents.EV_OPEN_SETTINGS_PAGE, openSettingsPage)
     
     // cleanup
     return () => {
       wailsRuntime?.EventsOff(AppEvents.EV_OPEN_NETWORKS_PAGE)
       wailsRuntime?.EventsOff(AppEvents.EV_OPEN_LOGS_PAGE)
+      wailsRuntime?.EventsOff(AppEvents.EV_OPEN_SETTINGS_PAGE)
     }
   })
 
