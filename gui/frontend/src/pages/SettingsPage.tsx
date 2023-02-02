@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { FormControlLabel, Grid, Switch, TextField } from "@mui/material";
+import {
+  Button,
+  FormControlLabel,
+  Grid,
+  Switch,
+  TextField,
+} from "@mui/material";
 import LoopIcon from "@mui/icons-material/Loop";
 import { notifyUser } from "../utils/messaging";
 import { config } from "../../wailsjs/go/models";
+import { LoadingButton } from "@mui/lab";
 
 export default function SettingsPage() {
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [ncSettings, setNcSettings] = useState<Omit<
     config.Config,
     "convertValues"
@@ -34,6 +42,7 @@ export default function SettingsPage() {
     try {
       // validate
       // make call to save settings
+      setIsSavingSettings(true);
       await saveSettings();
       // update ncSettings with ncSettingsFormData
       // switch back to view mode
@@ -41,6 +50,8 @@ export default function SettingsPage() {
     } catch (err) {
       await notifyUser(("Failed to save settings\n" + err) as string);
       console.error(err);
+    } finally {
+      setIsSavingSettings(false);
     }
   }, [saveSettings, setIsEditing]);
 
@@ -265,6 +276,21 @@ export default function SettingsPage() {
                 }
               />
             </Grid>
+
+            {isEditing && (
+              <Grid item xs={12} textAlign="right">
+                <Button variant="outlined" onClick={onCancelEdit}>
+                  Cancel
+                </Button>
+                <LoadingButton
+                  variant="contained"
+                  loading={isSavingSettings}
+                  onClick={() => onSaveSettings()}
+                >
+                  Save
+                </LoadingButton>
+              </Grid>
+            )}
           </Grid>
         )}
       </Grid>
