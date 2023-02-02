@@ -185,7 +185,7 @@ func (i *iptablesManager) removeJumpRules() {
 }
 
 // iptablesManager.AddIngressRoutingRule - adds a ingress route for a peer
-func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error {
+func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
 	ruleTable := i.FetchRuleTable(server, ingressTable)
 	defer i.SaveRules(server, ingressTable, ruleTable)
 	i.mux.Lock()
@@ -315,6 +315,16 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
+
+	return nil
+}
+
+func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
+	ruleTable := i.FetchRuleTable(server, egressTable)
+	defer i.SaveRules(server, egressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	// add jump Rules for egress GW
 
 	return nil
 }

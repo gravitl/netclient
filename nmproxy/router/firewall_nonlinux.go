@@ -15,7 +15,7 @@ func (unimplementedFirewall) CreateChains() error {
 func (unimplementedFirewall) InsertIngressRoutingRules(server string, r models.ExtClientInfo) error {
 	return nil
 }
-func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error {
+func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
 	return nil
 }
 
