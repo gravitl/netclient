@@ -25,11 +25,10 @@ const (
 )
 
 type iptablesManager struct {
-	ipv4Client   *iptables.IPTables
-	ipv6Client   *iptables.IPTables
-	ingRules     serverrulestable
-	defaultRules ruletable
-	mux          sync.Mutex
+	ipv4Client *iptables.IPTables
+	ipv6Client *iptables.IPTables
+	ingRules   serverrulestable
+	mux        sync.Mutex
 }
 
 func init() {
