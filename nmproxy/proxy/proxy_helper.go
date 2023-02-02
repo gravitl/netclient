@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/metrics"
 )
 
 // New - gets new proxy config
@@ -146,8 +146,9 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 				metric := metrics.GetMetric(server, p.Config.PeerPublicKey.String())
 				metric.NodeConnectionStatus = make(map[string]bool)
 				metric.LastRecordedLatency = 999
-				for peerID, peerInfo := range peerIDsAndAddrs {
-					metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+				connectionStatus := metrics.PeerConnectionStatus(p.Config.PeerPublicKey.String())
+				for peerID := range peerIDsAndAddrs {
+					metric.NodeConnectionStatus[peerID] = connectionStatus
 				}
 				metrics.UpdateMetric(server, p.Config.PeerPublicKey.String(), &metric)
 			}
