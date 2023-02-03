@@ -58,7 +58,9 @@ func init() {
 
 func initConfig() {
 	checkUID()
-	config.ReadNetclientConfig()
+	if err := config.ReadNetclientConfig(); err != nil {
+		logger.Log(0, "failed to read netclient config", err.Error())
+	}
 	netclient := config.Netclient()
 	checkConfig()
 	if rootCmd.Flags().Lookup("verbosity").Changed {
@@ -85,7 +87,9 @@ func initConfig() {
 func checkConfig() {
 	fail := false
 	saveRequired := false
-	config.ReadNetclientConfig()
+	if err := config.ReadNetclientConfig(); err != nil {
+		logger.Log(0, "failed to read netclient config", err.Error())
+	}
 	netclient := config.Netclient()
 
 	if netclient.OS != runtime.GOOS {

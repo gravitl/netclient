@@ -131,22 +131,21 @@ func SetVersion(ver string) {
 }
 
 // ReadNetclientConfig loads the host configuration into memory.
-func ReadNetclientConfig() {
+func ReadNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
-		logger.Log(0, "unable to obtain lockfile for host config", err.Error())
-		return
+		return err
 	}
 	defer Unlock(lockfile)
 	f, err := os.Open(file)
 	if err != nil {
-		logger.Log(0, "failed to open host config", err.Error())
-		return
+		return err
 	}
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
-		logger.Log(0, "failed to decode host config", err.Error())
+		return err
 	}
+	return nil
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk
@@ -379,4 +378,18 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 		logger.Log(0, "node unmarshal err", h.Name, err.Error())
 	}
 	return host, node
+}
+
+// RefreshConfigs refreshes in-memory data with latest disk data
+func RefreshConfigs() error {
+	if err := ReadNetclientConfig(); err != nil {
+		return err
+	}
+	if err := ReadNodeConfig(); err != nil {
+		return err
+	}
+	if err := ReadServerConf(); err != nil {
+		return err
+	}
+	return nil
 }
