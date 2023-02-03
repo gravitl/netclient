@@ -68,6 +68,7 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 type ifaceAddress struct {
 	IP      net.IP
 	Network net.IPNet
+	IsRoute bool
 }
 
 // Close closes a netclient interface
@@ -120,6 +121,7 @@ func (nc *NCIface) getPeerRoutes() {
 				routes = append(routes, ifaceAddress{
 					IP:      allowedIP.IP,
 					Network: allowedIP,
+					IsRoute: true,
 				})
 			}
 		}

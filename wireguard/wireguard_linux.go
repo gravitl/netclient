@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -98,12 +97,22 @@ func (nc *NCIface) ApplyAddrs() error {
 	for _, addr := range nc.Addresses {
 		log.Println("adding address to wg interface", addr)
 		if addr.IP != nil {
-
 			logger.Log(3, "adding address", addr.IP.String(), "to netmaker interface")
-			err = netlink.AddrAdd(l, &netlink.Addr{IPNet: &addr.Network})
-			if err != nil {
-				logger.Log(0, "error adding addr", err.Error())
-				return err
+			if !addr.IsRoute {
+				err = netlink.AddrAdd(l, &netlink.Addr{IPNet: &addr.Network})
+				if err != nil {
+					logger.Log(0, "error adding addr", err.Error())
+					return err
+				}
+			} else {
+				err = netlink.RouteAdd(&netlink.Route{
+					LinkIndex: l.Attrs().Index,
+					Dst:       &addr.Network,
+				})
+				if err != nil {
+					logger.Log(0, "error adding addr", err.Error())
+					return err
+				}
 			}
 
 		}
