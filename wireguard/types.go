@@ -108,18 +108,19 @@ func (nc *NCIface) getPeerRoutes() {
 	var routes []ifaceAddress
 	for _, peer := range nc.Config.Peers {
 		for _, allowedIP := range peer.AllowedIPs {
+			addRoute := true
 			for _, address := range nc.Addresses {
-				addRoute := true
 				if logic.IsAddressInCIDR(allowedIP.IP, address.Network.String()) {
 					addRoute = false
+					break
 				}
-				if addRoute {
-					// add route to the interface
-					routes = append(routes, ifaceAddress{
-						IP:      allowedIP.IP,
-						Network: allowedIP,
-					})
-				}
+			}
+			if addRoute {
+				// add route to the interface
+				routes = append(routes, ifaceAddress{
+					IP:      allowedIP.IP,
+					Network: allowedIP,
+				})
 			}
 		}
 	}
