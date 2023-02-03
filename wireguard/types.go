@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -81,6 +82,7 @@ func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	logger.Log(3, "adding addresses to netmaker interface")
+	n.getPeerRoutes()
 	if err := n.ApplyAddrs(); err != nil {
 		return err
 	}
@@ -100,6 +102,28 @@ func (n *NCIface) UpdatePeer(p wgtypes.PeerConfig) {
 	n.Config.ReplacePeers = false
 	n.Config.Peers = peers
 	apply(nil, &n.Config)
+}
+
+func (nc *NCIface) getPeerRoutes() {
+	var routes []ifaceAddress
+	for _, peer := range nc.Config.Peers {
+		for _, allowedIP := range peer.AllowedIPs {
+			for _, address := range nc.Addresses {
+				addRoute := true
+				if logic.IsAddressInCIDR(allowedIP.IP, address.Network.String()) {
+					addRoute = false
+				}
+				if addRoute {
+					// add route to the interface
+					routes = append(routes, ifaceAddress{
+						IP:      allowedIP.IP,
+						Network: allowedIP,
+					})
+				}
+			}
+		}
+	}
+	nc.Addresses = append(nc.Addresses, routes...)
 }
 
 // == private ==
