@@ -257,9 +257,8 @@ func (m *proxyPayload) processPayload() error {
 				_, found := gCfg.GetExtClientInfo(currentPeer.Config.PeerEndpoint)
 				if found {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-					currentPeer.Mutex.Unlock()
-
 				}
+				currentPeer.Mutex.Unlock()
 				continue
 
 			}
@@ -340,9 +339,9 @@ func (m *proxyPayload) processPayload() error {
 			continue
 		}
 		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
+			noProxypeer.Mutex.Lock()
 			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
-				noProxypeer.Mutex.Lock()
 				noProxypeer.StopConn()
 				noProxypeer.Mutex.Unlock()
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
@@ -375,6 +374,7 @@ func (m *proxyPayload) processPayload() error {
 			noProxypeer.ServerMap[m.Server] = struct{}{}
 			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+			noProxypeer.Mutex.Unlock()
 		}
 
 	}
