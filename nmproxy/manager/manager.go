@@ -79,7 +79,9 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 
 func fwUpdate(payload *nm_models.HostPeerUpdate) {
 	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
-	if isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw {
+	isEgressGw := len(payload.EgressInfo) > 0
+	if (isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw) ||
+		(isEgressGw && config.GetCfg().IsEgressGw(payload.Server) != isEgressGw) {
 		if !config.GetCfg().GetFwStatus() {
 
 			fwClose, err := router.Init()
@@ -90,17 +92,25 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 			config.GetCfg().SetFwStatus(true)
 			config.GetCfg().SetFwCloseFunc(fwClose)
 
+		} else {
+			logger.Log(0, "firewall controller is intialized already")
 		}
-		config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
-	} else {
-		logger.Log(0, "firewall controller is intialized already")
+
 	}
+	config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
+	config.GetCfg().SetEgressGwStatus(payload.Server, isEgressGw)
 
 	if isingressGw {
 		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
 	}
+	if isEgressGw {
+		router.SetEgressRoutes(payload.Server, payload.EgressInfo)
+	}
 	if config.GetCfg().GetFwStatus() && !isingressGw {
 		router.DeleteIngressRules(payload.Server)
+	}
+	if config.GetCfg().GetFwStatus() && !isEgressGw {
+		router.DeleteEgressGwRoutes(payload.Server)
 	}
 
 }

@@ -21,11 +21,9 @@ func getInterfaceName(addr string) (string, error) {
 			continue
 		}
 		for _, a := range addrs {
-			normalizedAddr, err := logic.NormalizeCIDR(a.String())
-			if err == nil {
-				if addr == normalizedAddr {
-					return i.Name, nil
-				}
+			prefix, err := netip.ParsePrefix(a.String())
+			if err == nil && logic.IsAddressInCIDR(net.ParseIP(prefix.Addr().String()), addr) {
+				return i.Name, nil
 			}
 
 		}
