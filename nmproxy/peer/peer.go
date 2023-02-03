@@ -9,42 +9,38 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/metrics"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/metrics"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
+func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
-		d := models.DefaultPersistentKeepaliveInterval
+		d := nm_models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
-		LocalKey:            config.GetCfg().GetDevicePubKey(),
-		RemoteKey:           peer.PublicKey,
-		IsExtClient:         peerConf.IsExtClient,
-		PeerConf:            peer,
-		PersistentKeepalive: peer.PersistentKeepaliveInterval,
-		Network:             network,
-		ListenPort:          int(peerConf.PublicListenPort),
-		ProxyStatus:         peerConf.Proxy,
+		PeerPublicKey: peer.PublicKey,
+		IsExtClient:   peerConf.IsExtClient,
+		PeerConf:      peer,
+		ListenPort:    int(peerConf.PublicListenPort),
+		ProxyStatus:   peerConf.Proxy,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
 	if peerPort == 0 {
 		peerPort = models.NmProxyPort
 	}
-	if peerConf.IsAttachedExtClient || !peerConf.Proxy {
+	if peerConf.IsExtClient || !peerConf.Proxy {
 		peerPort = peer.Endpoint.Port
 
 	}
@@ -62,65 +58,64 @@ func AddNew(network string, peer *wgtypes.PeerConfig, peerConf models.PeerConf,
 	}
 	p.Config.PeerEndpoint = peerEndpoint
 
-	logger.Log(0, "Starting proxy for Peer: %s\n", peer.PublicKey.String())
+	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())
 	err = p.Start()
 	if err != nil {
 		return err
 	}
 
 	connConf := models.Conn{
-		Mutex:               &sync.RWMutex{},
-		Key:                 peer.PublicKey,
-		IsRelayed:           isRelayed,
-		RelayedEndpoint:     relayTo,
-		IsAttachedExtClient: peerConf.IsAttachedExtClient,
-		Config:              p.Config,
-		StopConn:            p.Close,
-		ResetConn:           p.Reset,
-		LocalConn:           p.LocalConn,
+		Mutex:           &sync.RWMutex{},
+		Key:             peer.PublicKey,
+		IsExtClient:     peerConf.IsExtClient,
+		Config:          p.Config,
+		StopConn:        p.Close,
+		ResetConn:       p.Reset,
+		LocalConn:       p.LocalConn,
+		NetworkSettings: make(map[string]models.Settings),
+		ServerMap:       make(map[string]struct{}),
 	}
+	connConf.ServerMap[server] = struct{}{}
 	rPeer := models.RemotePeer{
-		Network:             network,
-		Interface:           config.GetCfg().GetIface().Name,
-		PeerKey:             peer.PublicKey.String(),
-		IsExtClient:         peerConf.IsExtClient,
-		Endpoint:            peerEndpoint,
-		IsAttachedExtClient: peerConf.IsAttachedExtClient,
-		LocalConn:           p.LocalConn,
+		PeerKey:     peer.PublicKey.String(),
+		IsExtClient: peerConf.IsExtClient,
+		Endpoint:    peerEndpoint,
+		LocalConn:   p.LocalConn,
 	}
-	if peerConf.Proxy {
+	if peerConf.Proxy || peerConf.IsExtClient {
 		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
-		config.GetCfg().SavePeer(network, &connConf)
+		config.GetCfg().SavePeer(&connConf)
 	} else {
 		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
 		config.GetCfg().SaveNoProxyPeer(&connConf)
 	}
 	config.GetCfg().SavePeerByHash(&rPeer)
-	if peerConf.IsAttachedExtClient {
+	if peerConf.IsExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
-		//add rules to router
-		routingInfo := &config.Routing{
-			InternalIP: peerConf.ExtInternalIp,
-			ExternalIP: peerConf.Address,
-		}
-		config.GetCfg().SaveRoutingInfo(routingInfo)
 
 	}
 	return nil
 }
 
 // SetPeersEndpointToProxy - sets peer endpoints to local addresses connected to proxy
-func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
-	logger.Log(1, "Setting peers endpoints to proxy: ", network)
-	if !config.GetCfg().ProxyStatus {
-		return peers
-	}
+func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
+	logger.Log(1, "Setting peers endpoints to proxy...")
 	for i := range peers {
-		proxyPeer, found := config.GetCfg().GetPeer(network, peers[i].PublicKey.String())
+		proxyPeer, found := config.GetCfg().GetPeer(peers[i].PublicKey.String())
 		if found {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
+		} else {
+			if peers[i].Endpoint == nil {
+				continue
+			}
+			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
+			if found {
+				noProxyPeer.Mutex.RLock()
+				peers[i].Endpoint = noProxyPeer.Config.LocalConnAddr
+				noProxyPeer.Mutex.RUnlock()
+			}
 		}
 	}
 	return peers
@@ -128,48 +123,55 @@ func SetPeersEndpointToProxy(network string, peers []wgtypes.PeerConfig) []wgtyp
 
 // StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
 func StartMetricsCollectionForHostPeers(ctx context.Context) {
-	logger.Log(0, "Starting Metrics Thread...")
-	ticker := time.NewTicker(time.Minute)
+	logger.Log(1, "Starting Metrics Thread...")
+	ticker := time.NewTicker(metrics.MetricCollectionInterval)
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Log(1, "Stopping metrics collection...")
 			return
 		case <-ticker.C:
-			allPeers := config.GetCfg().GetAllPeersConf()
 
-			for network, peerMap := range allPeers {
-				for peerKey, peer := range peerMap {
-					go collectMetricsForPeer(network, peerKey, peer)
-				}
+			peersServerMap := config.GetCfg().GetAllPeersIDsAndAddrs()
+			for server, peerMap := range peersServerMap {
+				go collectMetricsForServerPeers(server, peerMap)
 			}
 
 		}
 	}
 }
 
-func collectMetricsForPeer(network, peerKey string, peerInfo nm_models.IDandAddr) {
+func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
 
-	devPeer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
+	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
 	if err != nil {
 		return
 	}
-	connectionStatus := metrics.PeerConnectionStatus(peerInfo.Address)
-	metric := models.Metric{
-		LastRecordedLatency: 999,
-		ConnectionStatus:    connectionStatus,
-	}
-	metric.TrafficRecieved = float64(devPeer.ReceiveBytes) / (1 << 20) // collected in MB
-	metric.TrafficSent = float64(devPeer.TransmitBytes) / (1 << 20)    // collected in MB
-	metrics.UpdateMetric(network, peerKey, &metric)
-	pkt, err := packet.CreateMetricPacket(uuid.New().ID(), network, config.GetCfg().GetDevicePubKey(), devPeer.PublicKey)
-	if err == nil {
-		conn := config.GetCfg().GetServerConn()
-		if conn != nil {
-			_, err = conn.WriteToUDP(pkt, devPeer.Endpoint)
-			if err != nil {
-				logger.Log(1, "Failed to send to metric pkt: ", err.Error())
+	for _, peer := range ifacePeers {
+		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
+			metric := metrics.GetMetric(server, peer.PublicKey.String())
+			metric.NodeConnectionStatus = make(map[string]bool)
+			connectionStatus := metrics.PeerConnectionStatus(peer.PublicKey.String())
+			for peerID := range peerIDMap {
+				metric.NodeConnectionStatus[peerID] = connectionStatus
+			}
+			metric.LastRecordedLatency = 999
+			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
+			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
+			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
+			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
+			if err == nil {
+				conn := config.GetCfg().GetServerConn()
+				if conn != nil {
+					_, err = conn.WriteToUDP(pkt, peer.Endpoint)
+					if err != nil {
+						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
+					}
+				}
+
 			}
 		}
 
 	}
+
 }

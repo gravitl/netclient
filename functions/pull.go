@@ -20,7 +20,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 		return nil, errors.New("no such network")
 	}
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(&node, config.Netclient())
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		return nil, err
 	}
@@ -53,13 +53,9 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	config.WriteNetclientConfig()
 	logger.Log(1, "node settings for network ", network)
-	if config.Netclient().DaemonInstalled {
-		logger.Log(3, "restarting daemon")
-		if err := daemon.Restart(); err != nil {
-			if err := daemon.Start(); err != nil {
-				return newNode, err
-			}
-		}
+	logger.Log(3, "restarting daemon")
+	if err := daemon.Restart(); err != nil {
+		return newNode, err
 	}
 	return newNode, err
 }

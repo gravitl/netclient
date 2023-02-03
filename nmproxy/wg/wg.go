@@ -132,7 +132,6 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 			logger.Log(0, "got error while closing wgctl: ", err.Error())
 		}
 	}()
-
 	wgDevice, err := wg.Device(ifaceName)
 	if err != nil {
 		return wgtypes.Peer{}, err

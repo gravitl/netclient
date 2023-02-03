@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy"
+	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -23,11 +24,10 @@ import (
 )
 
 const lastNodeUpdate = "lnu"
-const lastPeerUpdate = "lpu"
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
-var ProxyManagerChan = make(chan *models.PeerUpdate)
+var ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
 
 type cachedMessage struct {
 	Message  string
@@ -35,16 +35,14 @@ type cachedMessage struct {
 }
 
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
-
 	ctx, cancel := context.WithCancel(context.Background())
-	for _, server := range config.Servers {
-		wg.Add(1)
-		go func(server config.Server) {
-			defer wg.Done()
-			nmproxy.Start(ctx, ProxyManagerChan, server.StunHost, server.StunPort, false)
-		}(server)
-		break
+	servers := config.GetServers()
+	if len(servers) == 0 {
+		return cancel
 	}
+	server := config.GetServer(servers[0])
+	wg.Add(1)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -63,40 +61,46 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	proxyWg := sync.WaitGroup{}
-	stopProxy := startProxy(&proxyWg)
+	stopProxy := startProxy(&wg)
 	for {
 		select {
 		case <-quit:
-			cancel()
-			stopProxy()
-			proxyWg.Wait()
 			logger.Log(0, "shutting down netclient daemon")
-			wg.Wait()
-			for _, mqclient := range ServerSet {
-				if mqclient != nil {
-					mqclient.Disconnect(250)
-				}
-			}
-			logger.Log(0, "closing netmaker interface")
-			iface := wireguard.GetInterface()
-			iface.Close()
+			closeRoutines([]context.CancelFunc{
+				cancel,
+				stopProxy,
+			}, &wg)
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
 			logger.Log(0, "received reset")
-			cancel()
-			wg.Wait()
-			for _, mqclient := range ServerSet {
-				if mqclient != nil {
-					mqclient.Disconnect(250)
-				}
-			}
+			closeRoutines([]context.CancelFunc{
+				cancel,
+				stopProxy,
+			}, &wg)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
-			stopProxy = startProxy(&proxyWg)
+			if !proxy_cfg.GetCfg().ProxyStatus {
+				stopProxy = startProxy(&wg)
+			}
+
 		}
 	}
+}
+
+func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
+	for i := range closers {
+		closers[i]()
+	}
+	for _, mqclient := range ServerSet {
+		if mqclient != nil {
+			mqclient.Disconnect(250)
+		}
+	}
+	wg.Wait()
+	logger.Log(0, "closing netmaker interface")
+	iface := wireguard.GetInterface()
+	iface.Close()
 }
 
 // startGoRoutines starts the daemon goroutines
@@ -117,8 +121,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	nc.Create()
 	nc.Configure()
 	wireguard.SetPeers()
+	if len(config.Servers) == 0 {
+		ProxyManagerChan <- &models.HostPeerUpdate{
+			ProxyUpdate: models.ProxyManagerPayload{
+				Action: models.ProxyDeleteAllPeers,
+			},
+		}
+	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
+		// see https://www.evanjones.ca/go-gotcha-loop-variables.html
+		server := server
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
@@ -161,13 +174,10 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "mqtt connect handler")
 		nodes := config.GetNodes()
 		for _, node := range nodes {
+			node := node
 			setSubscriptions(client, &node)
 		}
-		servers := config.GetServers()
-		for _, server := range servers {
-			setHostSubscription(client, server)
-		}
-
+		setHostSubscription(client, server.Name)
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -200,7 +210,7 @@ func setupMQTT(server *config.Server) error {
 
 // func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
-func setupMQTTSingleton(server *config.Server) error {
+func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	broker := server.Broker
 	port := server.MQPort
@@ -214,16 +224,15 @@ func setupMQTTSingleton(server *config.Server) error {
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		logger.Log(0, "mqtt connect handler")
-		nodes := config.GetNodes()
-		for _, node := range nodes {
-			setSubscriptions(client, &node)
+		if !publishOnly {
+			logger.Log(0, "mqtt connect handler")
+			nodes := config.GetNodes()
+			for _, node := range nodes {
+				node := node
+				setSubscriptions(client, &node)
+			}
+			setHostSubscription(client, server.Name)
 		}
-		servers := config.GetServers()
-		for _, server := range servers {
-			setHostSubscription(client, server)
-		}
-
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -253,6 +262,11 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
+	logger.Log(3, fmt.Sprintf("subscribed to host updates  host/update/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config
@@ -263,15 +277,6 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 			logger.Log(0, "network:", node.Network, "connection timeout")
 		} else {
 			logger.Log(0, "network:", node.Network, token.Error().Error())
-		}
-		return
-	}
-	logger.Log(3, fmt.Sprintf("subscribed to proxy updates  /%s/%s", node.Network, node.ID))
-	if token := client.Subscribe(fmt.Sprintf("proxy/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(ProxyUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		if token.Error() == nil {
-			logger.Log(0, "###### network:", node.Network, "connection timeout")
-		} else {
-			logger.Log(0, "###### network:", node.Network, token.Error().Error())
 		}
 		return
 	}
@@ -337,17 +342,25 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", token.Error().Error())
 		}
 		ok = false
-	}
-	if token := client.Unsubscribe(fmt.Sprintf("peers/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		if token.Error() == nil {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID.String(), "\n", "connection timeout")
-		} else {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from peer updates for node", node.ID.String(), "\n", token.Error().Error())
-		}
-		ok = false
-	}
+	} // peer updates belong to host now
+
 	if ok {
 		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID.String())
+	}
+}
+
+// unsubscribe client broker communications for host topics
+func unsubscribeHost(client mqtt.Client, server string) {
+	hostID := config.Netclient().ID
+	logger.Log(3, fmt.Sprintf("removing subscription for host peer updates peers/host/%s/%s", hostID.String(), server))
+	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		logger.Log(0, "unable to unsubscribe from host peer updates: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("removing subscription for host updates  host/update/%s/%s", hostID.String(), server))
+	if token := client.Unsubscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		logger.Log(0, "unable to unsubscribe from host updates: ", hostID.String(), token.Error().Error())
+		return
 	}
 }
 

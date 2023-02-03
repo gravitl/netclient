@@ -56,7 +56,7 @@ jobs:
         with:
           go-version: 1.19
       - name: Setup npm
-        uses: actions/setup-nodev3
+        uses: actions/setup-node@v3
       - name: build gui
         run: |
           sudo apt-get update
@@ -517,7 +517,7 @@ jobs:
     needs: [version, netclient-x86, netclient-arm]
     steps:
       - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v2.0.0
+        uses: peter-evans/repository-dispatch@v2.1.1
         with:
           token: ${{ secrets.PERS_TOKEN_FOR_NETMAKER_DEVOPS}}
           repository: gravitl/netmaker-devops

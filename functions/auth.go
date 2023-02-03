@@ -13,16 +13,15 @@ import (
 )
 
 // Authenticate authenticates with netmaker api to permit subsequent interactions with the api
-func Authenticate(node *config.Node, host *config.Config) (string, error) {
+func Authenticate(url string, host *config.Config) (string, error) {
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
-		ID:         node.ID.String(),
+		ID:         host.ID.String(),
 		Password:   host.HostPass,
 	}
-	server := config.GetServer(node.Server)
 	endpoint := httpclient.Endpoint{
-		URL:    "https://" + server.API,
-		Route:  "/api/nodes/adm/" + node.Network + "/authenticate",
+		URL:    "https://" + url,
+		Route:  "/api/hosts/adm/authenticate",
 		Method: http.MethodPost,
 		Data:   data,
 	}

@@ -12,7 +12,7 @@ import (
 )
 
 // GetHostInfo - calls stun server for udp hole punch and fetches host info
-func GetHostInfo(stunHostAddr string, stunPort int) (info models.HostInfo) {
+func GetHostInfo(stunHostAddr string, stunPort, proxyPort int) (info models.HostInfo) {
 
 	s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", stunHostAddr, stunPort))
 	if err != nil {
@@ -21,7 +21,7 @@ func GetHostInfo(stunHostAddr string, stunPort int) (info models.HostInfo) {
 	}
 	l := &net.UDPAddr{
 		IP:   net.ParseIP(""),
-		Port: models.NmProxyPort,
+		Port: proxyPort,
 	}
 	conn, err := net.DialUDP("udp", l, s)
 	if err != nil {

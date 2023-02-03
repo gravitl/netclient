@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeAll, beforeEach, describe } from "vitest";
+import { beforeEach, describe } from "vitest";
 
 import Networks from "../../src/pages/Networks";
 import {
@@ -56,15 +56,19 @@ describe("NetworksPage", () => {
     });
   });
 
-  it("provides a search bar to search for a network", async () => {
-    act(() => {
-      expect(screen.getByTestId("networks-search-inp")).toBeInTheDocument();
+  it("provides a search bar to search for a network", () => {
+    act(async () => {
+      await waitFor(() =>
+        expect(screen.getByTestId("networks-search-inp")).toBeInTheDocument()
+      );
     });
   });
 
-  it("provides a button to add new network", async () => {
-    act(() => {
-      expect(screen.getByTestId("add-network-btn")).toBeInTheDocument();
+  it("provides a button to add new network", () => {
+    act(async () => {
+      await waitFor(() =>
+        expect(screen.getByTestId("add-network-btn")).toBeInTheDocument()
+      );
     });
   });
 });

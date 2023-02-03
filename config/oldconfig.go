@@ -138,9 +138,6 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Connected = ParseBool(netmakerNode.Connected)
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	host.ListenPort = int(netmakerNode.ListenPort)
-	host.LocalListenPort = int(netmakerNode.LocalListenPort)
-	host.LocalAddress = ToIPNet(netmakerNode.LocalAddress)
-	host.LocalRange = ToIPNet(netmakerNode.LocalRange)
 	host.MTU = int(netmakerNode.MTU)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
 
@@ -159,8 +156,6 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
 	node.Address6.Mask = node.NetworkRange6.Mask
 	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
-	node.PostUp = netmakerNode.PostUp
-	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
 	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)

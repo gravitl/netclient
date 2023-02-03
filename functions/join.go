@@ -49,7 +49,6 @@ func Join(flags *viper.Viper) error {
 		}
 		flags.Set("network", ssoAccessToken.ClientConfig.Network)
 		flags.Set("accesskey", ssoAccessToken.ClientConfig.Key)
-		flags.Set("localrange", ssoAccessToken.ClientConfig.LocalRange)
 		flags.Set("apiconn", ssoAccessToken.APIConnString)
 	}
 	token := flags.GetString("token")
@@ -62,7 +61,6 @@ func Join(flags *viper.Viper) error {
 		}
 		flags.Set("network", accessToken.ClientConfig.Network)
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
-		flags.Set("localrange", accessToken.ClientConfig.LocalRange)
 		flags.Set("apiconn", accessToken.APIConnString)
 	}
 	logger.Log(1, "Joining network: ", flags.GetString("network"))
@@ -88,13 +86,8 @@ func Join(flags *viper.Viper) error {
 		logger.Log(0, "error saving wireguard conf", err.Error())
 	}
 	logger.Log(1, "joined", node.Network)
-	if config.Netclient().DaemonInstalled {
-		if err := daemon.Restart(); err != nil {
-			logger.Log(3, "daemon restart failed:", err.Error())
-			if err := daemon.Start(); err != nil {
-				logger.FatalLog("error restarting deamon", err.Error())
-			}
-		}
+	if err := daemon.Restart(); err != nil {
+		logger.Log(3, "daemon restart failed:", err.Error())
 	}
 	return nil
 }
@@ -256,6 +249,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("no network provided")
 	}
 	host := config.Netclient()
+	host.Name = flags.GetString("name")
 	node := config.GetNode(flags.GetString("network"))
 	node.Network = flags.GetString("network")
 	nodes := config.GetNodes()
@@ -265,16 +259,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	node.Server = flags.GetString("server")
 	node.HostID = host.ID
 	node.Connected = true
-	host.ProxyEnabled = flags.GetBool("proxy")
 	// == end handle keys ==
-	if host.LocalAddress.IP == nil {
-		intIP, err := getPrivateAddr()
-		if err == nil {
-			host.LocalAddress = intIP
-		} else {
-			logger.Log(1, "network:", node.Network, "error retrieving private address: ", err.Error())
-		}
-	}
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
@@ -283,6 +268,12 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		if ip != nil {
 			host.Interfaces = *ip
 		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		host.DefaultInterface = defaultInterface
 	}
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
@@ -293,14 +284,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		node.IsLocal = true
 	}
 	if host.EndpointIP == nil {
-		if node.IsLocal && host.LocalAddress.IP != nil {
-			host.EndpointIP = host.LocalAddress.IP
-		} else {
-			ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
-			host.EndpointIP = net.ParseIP(ip)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error setting public ip %w", err)
-			}
+		ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
+		host.EndpointIP = net.ParseIP(ip)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error setting public ip %w", err)
 		}
 		if host.EndpointIP == nil {
 			logger.Log(0, "network:", node.Network, "error setting node.Endpoint.")

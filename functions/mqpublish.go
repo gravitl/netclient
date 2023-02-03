@@ -13,8 +13,10 @@ import (
 
 	"github.com/cloverstd/tcping/ping"
 	"github.com/devilcove/httpclient"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -69,10 +71,6 @@ func checkin() {
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
-	if len(config.GetNodes()) == 0 {
-		logger.Log(0, "skipping checkin: no nodes configured")
-		return
-	}
 	for network, node := range config.GetNodes() {
 		server := config.GetServer(node.Server)
 		if node.Connected {
@@ -88,27 +86,15 @@ func checkin() {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
 				}
+
+			} else if node.IsLocal {
 				intIP, err := getPrivateAddr()
 				if err != nil {
 					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
 				}
-				if host.LocalAddress.String() != intIP.String() && intIP.IP != nil {
-					logger.Log(1, "network:", network, "local Address has changed from ", host.LocalAddress.String(), " to ", intIP.String())
-					host.LocalAddress = intIP
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "Network: ", network, " could not publish local address change")
-					}
-				}
-				_ = UpdateLocalListenPort(&node)
-
-			} else if node.IsLocal && host.LocalRange.IP != nil {
-				localIP, err := ncutils.GetLocalIP(host.LocalRange)
-				if err != nil {
-					logger.Log(1, "network:", network, "error encountered checking local ip addresses: ", err.Error())
-				}
-				if config.Netclient().EndpointIP.String() != localIP.IP.String() && localIP.IP != nil {
-					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", localIP.String())
-					config.Netclient().EndpointIP = localIP.IP
+				if !config.Netclient().EndpointIP.Equal(intIP.IP) {
+					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", intIP.IP.String())
+					config.Netclient().EndpointIP = intIP.IP
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish localip change")
 					}
@@ -126,6 +112,7 @@ func checkin() {
 			publishMetrics(&node)
 		}
 	}
+	_ = UpdateHostSettings()
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -134,16 +121,53 @@ func PublishNodeUpdate(node *config.Node) error {
 	if server.Name == "" {
 		return errors.New("no server for " + node.Network)
 	}
-	oldNode := config.ConvertToNetmakerNode(node, server, config.Netclient())
-	data, err := json.Marshal(oldNode)
+	data, err := json.Marshal(node)
 	if err != nil {
 		return err
 	}
-	if err = publish(node, fmt.Sprintf("update/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("update/%s", node.ID), data, 1); err != nil {
 		return err
 	}
 
 	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
+	return nil
+}
+
+// PublishGlobalHostUpdate - publishes host updates to all the servers host is registered.
+func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
+	servers := config.GetServers()
+	hostCfg := config.Netclient()
+	hostUpdate := models.HostUpdate{
+		Action: hostAction,
+		Host:   hostCfg.Host,
+	}
+	data, err := json.Marshal(hostUpdate)
+	if err != nil {
+		return err
+	}
+	for _, server := range servers {
+		if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
+			logger.Log(1, "failed to publish host update to: ", server, err.Error())
+			continue
+		}
+	}
+	return nil
+}
+
+// PublishHostUpdate - publishes host updates to server
+func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
+	hostCfg := config.Netclient()
+	hostUpdate := models.HostUpdate{
+		Action: hostAction,
+		Host:   hostCfg.Host,
+	}
+	data, err := json.Marshal(hostUpdate)
+	if err != nil {
+		return err
+	}
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -170,7 +194,7 @@ func Hello(node *config.Node) {
 		logger.Log(0, "unable to marshal checkin data", err.Error())
 		return
 	}
-	if err := publish(node, fmt.Sprintf("ping/%s", node.ID), data, 0); err != nil {
+	if err := publish(node.Server, fmt.Sprintf("ping/%s", node.ID), data, 0); err != nil {
 		logger.Log(0, fmt.Sprintf("Network: %s error publishing ping, %v", node.Network, err))
 		logger.Log(0, "running pull on "+node.Network+" to reconnect")
 		_, err := Pull(node.Network, true)
@@ -184,12 +208,12 @@ func Hello(node *config.Node) {
 
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
-	token, err := Authenticate(node, config.Netclient())
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
 	}
-	server := config.GetServer(node.Server)
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           url,
@@ -210,20 +234,19 @@ func publishMetrics(node *config.Node) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), nodeGET.Node.Network, nodeGET.Node.Proxy, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), node.Server, nodeGET.Node.Network, nodeGET.PeerIDs)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 	}
 	metrics.Network = node.Network
 	metrics.NodeName = config.Netclient().Name
 	metrics.NodeID = node.ID.String()
-	metrics.IsServer = "no"
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
 	}
 
-	if err = publish(node, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 		logger.Log(0, "aggregating metrics locally until broker connection re-established")
 		val, ok := metricsCache.Load(node.ID)
@@ -254,10 +277,9 @@ func publishMetrics(node *config.Node) {
 	}
 }
 
-// node cfg is required  in order to fetch the traffic keys of that node for encryption
-func publish(node *config.Node, dest string, msg []byte, qos byte) error {
+func publish(serverName, dest string, msg []byte, qos byte) error {
 	// setup the keys
-	server := config.GetServer(node.Server)
+	server := config.GetServer(serverName)
 	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
 	if err != nil {
 		return err
@@ -270,12 +292,12 @@ func publish(node *config.Node, dest string, msg []byte, qos byte) error {
 	if err != nil {
 		return err
 	}
-	mqclient, ok := ServerSet[node.Server]
+	mqclient, ok := ServerSet[serverName]
 	if !ok {
 		return errors.New("unable to publish ... no mqclient")
 	}
 	if token := mqclient.Publish(dest, qos, false, encrypted); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
-		logger.Log(0, "could not connect to broker at "+node.Server)
+		logger.Log(0, "could not connect to broker at "+serverName)
 		var err error
 		if token.Error() == nil {
 			err = errors.New("connection timeout")
@@ -321,10 +343,73 @@ func checkBroker(broker string, port string) error {
 	return nil
 }
 
+// UpdateHostSettings - checks local host settings, if different, mod config and publish
+func UpdateHostSettings() error {
+	var err error
+	publishMsg := false
+	ifacename := ncutils.GetInterfaceName()
+	var proxylistenPort int
+	var proxypublicport int
+	if config.Netclient().ProxyEnabled {
+		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
+		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
+		if proxylistenPort == 0 {
+			proxylistenPort = models.NmProxyPort
+		}
+		if proxypublicport == 0 {
+			proxypublicport = models.NmProxyPort
+		}
+	}
+	localPort, err := GetLocalListenPort(ifacename)
+	if err != nil {
+		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
+	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
+		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
+		config.Netclient().ListenPort = localPort
+		publishMsg = true
+	}
+	if config.Netclient().ProxyEnabled {
+
+		if config.Netclient().ProxyListenPort != proxylistenPort {
+			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
+			config.Netclient().ProxyListenPort = proxylistenPort
+			publishMsg = true
+		}
+		if config.Netclient().PublicListenPort != proxypublicport {
+			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
+			config.Netclient().PublicListenPort = proxypublicport
+			publishMsg = true
+		}
+	}
+	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
+		logger.Log(0, "Host is behind NAT, enabling proxy...")
+		config.Netclient().ProxyEnabled = true
+		publishMsg = true
+	}
+	if publishMsg {
+		if err := config.WriteNetclientConfig(); err != nil {
+			return err
+		}
+		logger.Log(0, "publishing global host update for port changes")
+		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
+			logger.Log(0, "could not publish local port change", err.Error())
+		}
+	}
+
+	return err
+}
+
 // publishes a message to server to update peers on this peer's behalf
 func publishSignal(node *config.Node, signal byte) error {
-	if err := publish(node, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
+	if err := publish(node.Server, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
 		return err
 	}
 	return nil
+}
+
+// publishes a blank message to the topic to clear the unwanted retained message
+func clearRetainedMsg(client mqtt.Client, topic string) {
+	if token := client.Publish(topic, 0, true, []byte{}); token.Error() != nil {
+		logger.Log(0, "failed to clear retained message: ", topic, token.Error().Error())
+	}
 }

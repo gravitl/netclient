@@ -104,6 +104,15 @@ func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
 	netclient.HostPeers = hostPeerMap
 }
 
+// DeleteServerHostPeerCfg - deletes the host peers for the server
+func DeleteServerHostPeerCfg(server string) {
+	if netclient.HostPeers == nil {
+		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		return
+	}
+	delete(netclient.HostPeers, server)
+}
+
 func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
 	uniqueIpList := []net.IPNet{}
 	ipMap := make(map[string]struct{})
@@ -443,6 +452,16 @@ func CheckConfig() {
 			saveRequired = true
 		}
 	}
+	if netclient.ProxyListenPort == 0 {
+		logger.Log(0, "setting proxyListenPort")
+		port, err := ncutils.GetFreePort(models.NmProxyPort)
+		if err != nil {
+			logger.Log(0, "error getting free port", err.Error())
+		} else {
+			netclient.ProxyListenPort = port
+			saveRequired = true
+		}
+	}
 	if netclient.MTU == 0 {
 		logger.Log(0, "setting MTU")
 		netclient.MTU = DefaultMTU
@@ -486,14 +505,14 @@ func CheckConfig() {
 			logger.FatalLog("could not save netclient config " + err.Error())
 		}
 	}
-	ReadServerConf()
+	_ = ReadServerConf()
 	for _, server := range Servers {
 		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
 	}
-	ReadNodeConfig()
+	_ = ReadNodeConfig()
 	nodes := GetNodes()
 	for _, node := range nodes {
 		//make sure server config exists
