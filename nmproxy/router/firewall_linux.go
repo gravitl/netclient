@@ -1,9 +1,11 @@
 package router
 
 import (
-	"github.com/coreos/go-iptables/iptables"
-	"github.com/gravitl/netmaker/logger"
 	"os/exec"
+
+	"github.com/coreos/go-iptables/iptables"
+	"github.com/google/nftables"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // newFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
@@ -24,8 +26,16 @@ func newFirewall() firewallController {
 
 	logger.Log(0, "iptables is not supported, using nftables")
 
-	// TODO - nft table manager
+	if isNftablesSupported() {
+		logger.Log(0, "nftables is supported")
+		manager = &nftablesManager{
+			nftClient: &nftables.Conn{},
+			ingRules:  make(serverrulestable),
+		}
+		return manager
+	}
 
+	logger.Log(0, "failed to initialize firewall, either iptables or nftables is required")
 	return manager
 }
 
@@ -33,4 +43,9 @@ func isIptablesSupported() bool {
 	_, err4 := exec.LookPath("iptables")
 	_, err6 := exec.LookPath("ip6tables")
 	return err4 == nil && err6 == nil
+}
+
+func isNftablesSupported() bool {
+	_, err := exec.LookPath("nft")
+	return err == nil
 }
