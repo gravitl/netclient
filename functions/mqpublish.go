@@ -381,11 +381,11 @@ func UpdateHostSettings() error {
 			publishMsg = true
 		}
 	}
-	// if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
-	// 	logger.Log(0, "Host is behind NAT, enabling proxy...")
-	// 	config.Netclient().ProxyEnabled = true
-	// 	publishMsg = true
-	// }
+	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
+		logger.Log(0, "Host is behind NAT, enabling proxy...")
+		config.Netclient().ProxyEnabled = true
+		publishMsg = true
+	}
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
