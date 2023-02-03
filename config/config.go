@@ -135,17 +135,15 @@ func ReadNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if err := Lock(lockfile); err != nil {
-		logger.Log(0, "unable to obtain lockfile for host config", err.Error())
 		return err
 	}
 	defer Unlock(lockfile)
 	f, err := os.Open(file)
 	if err != nil {
-		logger.Log(0, "failed to open host config", err.Error())
 		return err
 	}
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
-		logger.Log(0, "failed to decode host config", err.Error())
+		return err
 	}
 	return nil
 }
