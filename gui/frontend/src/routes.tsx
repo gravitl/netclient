@@ -5,6 +5,7 @@ import UsernameLogin from "./pages/UsernameLogin";
 import Networks from "./pages/Networks";
 import NetworkDetailsPage from "./pages/NetworkDetailsPage";
 import LogsPage from "./pages/Logs";
+import SettingsPage from "./pages/SettingsPage";
 
 export class AppRoutes {
   static HOME_ROUTE = '/'
@@ -14,6 +15,7 @@ export class AppRoutes {
   static NETWORKS_ROUTE = '/networks'
   static NETWORK_DETAILS_ROUTE = '/networks/:networkName'
   static LOGS_ROUTE = '/logs'
+  static SETTINGS_ROUTE = '/settings'
 }
 
 export const routes = [
@@ -24,6 +26,7 @@ export const routes = [
   { path: AppRoutes.NETWORKS_ROUTE, element: <Networks />, },
   { path: AppRoutes.NETWORK_DETAILS_ROUTE, element: <NetworkDetailsPage />, },
   { path: AppRoutes.LOGS_ROUTE, element: <LogsPage />, },
+  { path: AppRoutes.SETTINGS_ROUTE, element: <SettingsPage />, },
   
   // fallback route
   { path: '*', element: <Networks />, },

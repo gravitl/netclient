@@ -68,7 +68,11 @@ func List(net string, long bool) {
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server.API, config.Netclient())
+	host := config.Netclient()
+	if host == nil {
+		return nil, fmt.Errorf("no configured host found")
+	}
+	token, err := Authenticate(server.API, host)
 	if err != nil {
 		return nil, err
 	}

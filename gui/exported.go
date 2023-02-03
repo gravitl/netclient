@@ -1,3 +1,6 @@
+//go:build !headless
+// +build !headless
+
 // This file contains methods intended to be called in frontend
 package gui
 
@@ -22,7 +25,6 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 	flags.Set("token", token)
 	flags.Set("server", "")
 
-	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -35,9 +37,6 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
 	configs := make([]Network, 0, 5)
-
-	// read fresh config from disk
-	config.InitConfig(viper.New())
 
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
@@ -52,7 +51,6 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
 	// read fresh config from disk
-	config.InitConfig(viper.New())
 
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
@@ -68,8 +66,17 @@ func (app *App) GoGetNetwork(networkName string) (Network, error) {
 
 // App.GoGetNetclientConfig retrieves the netclient config
 // (params the remain constant regardless the networks nc is connected to)
-func (app *App) GoGetNetclientConfig() (config.Config, error) {
-	return *config.Netclient(), nil
+func (app *App) GoGetNetclientConfig() (NcConfig, error) {
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
+	conf := *config.Netclient()
+	ncConf := NcConfig{
+		Config:        conf,
+		MacAddressStr: conf.MacAddress.String(),
+	}
+
+	return ncConf, nil
 }
 
 // App.GoParseAccessToken parses a valid access token and returns the deconstructed parts
@@ -116,7 +123,6 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	flags.Set("server", serverName)
 	flags.Set("network", networkName)
 
-	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -135,7 +141,6 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 	flags.Set("readPassFromStdIn", false)
 	flags.Set("pass", password)
 
-	config.InitConfig(flags)
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -200,4 +205,12 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 // App.GoGetNodePeers returns the peers for the given node
 func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	return functions.GetNodePeers(node)
+}
+
+// App.GoUpdateNetclientConfig updates netclient/host configs
+func (app *App) GoUpdateNetclientConfig(updatedConfig config.Config) (any, error) {
+	// should update in-memory config
+	// should update on-disk config
+	// should send MQ updates to all registered servers
+	panic("unimplemented function")
 }
