@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netmaker/logic"
 )
 
+// gets the interface name for the network addr (198.0.0.1/24)
 func getInterfaceName(addr string) (string, error) {
 	var interfaceName string
 	var err error
