@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/google/nftables"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -17,6 +18,7 @@ type rulesCfg struct {
 
 type ruleInfo struct {
 	rule          []string
+	nfRule        *nftables.Rule
 	table         string
 	chain         string
 	egressExtRule bool
