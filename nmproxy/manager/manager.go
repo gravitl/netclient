@@ -79,7 +79,9 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 
 func fwUpdate(payload *nm_models.HostPeerUpdate) {
 	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
-	if isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw {
+	isEgressGw := len(payload.EgressInfo) > 0
+	if (isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw) ||
+		(isEgressGw && config.GetCfg().IsEgressGw(payload.Server) != isEgressGw) {
 		if !config.GetCfg().GetFwStatus() {
 
 			fwClose, err := router.Init()
@@ -90,17 +92,25 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 			config.GetCfg().SetFwStatus(true)
 			config.GetCfg().SetFwCloseFunc(fwClose)
 
+		} else {
+			logger.Log(0, "firewall controller is intialized already")
 		}
-		config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
-	} else {
-		logger.Log(0, "firewall controller is intialized already")
+
 	}
+	config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
+	config.GetCfg().SetEgressGwStatus(payload.Server, isEgressGw)
 
 	if isingressGw {
 		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
 	}
+	if isEgressGw {
+		router.SetEgressRoutes(payload.Server, payload.EgressInfo)
+	}
 	if config.GetCfg().GetFwStatus() && !isingressGw {
 		router.DeleteIngressRules(payload.Server)
+	}
+	if config.GetCfg().GetFwStatus() && !isEgressGw {
+		router.DeleteEgressGwRoutes(payload.Server)
 	}
 
 }
@@ -247,9 +257,8 @@ func (m *proxyPayload) processPayload() error {
 				_, found := gCfg.GetExtClientInfo(currentPeer.Config.PeerEndpoint)
 				if found {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-					currentPeer.Mutex.Unlock()
-
 				}
+				currentPeer.Mutex.Unlock()
 				continue
 
 			}
@@ -330,9 +339,9 @@ func (m *proxyPayload) processPayload() error {
 			continue
 		}
 		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
+			noProxypeer.Mutex.Lock()
 			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
-				noProxypeer.Mutex.Lock()
 				noProxypeer.StopConn()
 				noProxypeer.Mutex.Unlock()
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
@@ -365,6 +374,7 @@ func (m *proxyPayload) processPayload() error {
 			noProxypeer.ServerMap[m.Server] = struct{}{}
 			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+			noProxypeer.Mutex.Unlock()
 		}
 
 	}
