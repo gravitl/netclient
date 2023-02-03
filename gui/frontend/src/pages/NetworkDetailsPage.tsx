@@ -29,6 +29,24 @@ export default function NetworkDetailsPage() {
   const { networksState, networksDispatch } = useNetworksContext();
   const { networkName } = useParams();
 
+  const loadPeers = useCallback(
+    async (shouldNotifyOnError = false) => {
+      if (!networkDetails?.node) return;
+      try {
+        const peers = await GoGetNodePeers(networkDetails.node);
+        setNetworkPeers(() => peers);
+      } catch (err) {
+        console.error(err);
+        if (shouldNotifyOnError) {
+          await notifyUser(("Failed to load peers\n" + err) as string);
+        }
+      } finally {
+        setIsLoadingPeers(() => false);
+      }
+    },
+    [networkDetails, setNetworkPeers]
+  );
+
   const loadNetworkDetails = useCallback(async () => {
     try {
       if (!networkName) {
@@ -43,7 +61,7 @@ export default function NetworkDetailsPage() {
     } finally {
       setIsLoadingDetails(() => false);
     }
-  }, [setIsLoadingDetails, setNetworkDetails, networksState]);
+  }, [loadPeers, setIsLoadingDetails, setNetworkDetails, networksState]);
 
   const onConnectionStatusChange = useCallback(
     async (newStatus: boolean) => {
@@ -96,24 +114,6 @@ export default function NetworkDetailsPage() {
       setIsLeavingNetwork(false);
     }
   }, [navigate, networksDispatch, setIsLeavingNetwork, networkName]);
-
-  const loadPeers = useCallback(
-    async (shouldNotifyOnError = false) => {
-      if (!networkDetails?.node) return;
-      try {
-        const peers = await GoGetNodePeers(networkDetails.node);
-        setNetworkPeers(() => peers);
-      } catch (err) {
-        console.error(err);
-        if (shouldNotifyOnError) {
-          await notifyUser(("Failed to load peers\n" + err) as string);
-        }
-      } finally {
-        setIsLoadingPeers(() => false);
-      }
-    },
-    [networkDetails, setNetworkPeers]
-  );
 
   useEffect(() => {
     loadNetworkDetails();

@@ -25,6 +25,11 @@ func (app *App) GoJoinNetworkByToken(token string) (any, error) {
 	flags.Set("token", token)
 	flags.Set("server", "")
 
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
+
 	err := functions.Join(flags)
 	if err != nil {
 		fmt.Println(err)
@@ -41,7 +46,7 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 		return nil, err
 	}
 
-	configs := make([]Network, 0, 5)
+	configs := make([]Network, 0)
 	nodesMap := config.GetNodes()
 	for _, node := range nodesMap {
 		node := node
@@ -95,16 +100,31 @@ func (app *App) GoParseAccessToken(token string) (*models.AccessToken, error) {
 
 // App.goConnectToNetwork connects to the given network
 func (app *App) GoConnectToNetwork(networkName string) (any, error) {
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
+
 	return nil, functions.Connect(networkName)
 }
 
 // App.goDisconnectFromNetwork disconnects from the given network
 func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
+
 	return nil, functions.Disconnect(networkName)
 }
 
 // App.GoLeaveNetwork leaves a known network
 func (app *App) GoLeaveNetwork(networkName string) (any, error) {
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
+
 	errs, err := functions.LeaveNetwork(networkName, false)
 	if len(errs) == 0 && err == nil {
 		return nil, nil
@@ -118,6 +138,11 @@ func (app *App) GoLeaveNetwork(networkName string) (any, error) {
 
 // App.GoGetRecentServerNames returns names of all known (joined) servers
 func (app *App) GoGetRecentServerNames() ([]string, error) {
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
+
 	serverNames := []string{}
 	for name := range config.Servers {
 		name := name
@@ -131,6 +156,11 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) 
 	flags := viper.New()
 	flags.Set("server", serverName)
 	flags.Set("network", networkName)
+
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
 
 	err := functions.Join(flags)
 	if err != nil {
@@ -149,6 +179,11 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 	flags.Set("network", networkName)
 	flags.Set("readPassFromStdIn", false)
 	flags.Set("pass", password)
+
+	// read fresh config from disk
+	if err := config.RefreshConfigs(); err != nil {
+		return nil, err
+	}
 
 	err := functions.Join(flags)
 	if err != nil {
