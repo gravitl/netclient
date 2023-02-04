@@ -103,7 +103,7 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 			for _, rule := range rules {
 				err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 				if err != nil {
-					logger.Log(0, fmt.Sprintf("failed to deleete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
+					logger.Log(0, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
 				}
 			}
 		}
@@ -277,7 +277,8 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 
 	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
-		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain, "-m", "comment", "--comment", netmakerSignature}
+		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
+	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
 	if err != nil {
@@ -288,7 +289,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		chain: iptableFWDChain,
 		table: defaultIpTable,
 	}
-	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
+	ruleSpec = []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
@@ -397,6 +398,8 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			} else {
 				ruleSpec := []string{"-s", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				// to avoid duplicate iface route rule,delete if exists
+				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
 				err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
 				if err != nil {
 					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -575,6 +578,7 @@ func (i *iptablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 					rule.table, rule.rule, srcPeerKey, err)
 			}
 		}
+		delete(rulesTable[srcPeerKey].rulesMap, dstPeerKey)
 	} else {
 		return errors.New("rules not found for: " + dstPeerKey)
 	}

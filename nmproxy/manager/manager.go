@@ -80,8 +80,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 func fwUpdate(payload *nm_models.HostPeerUpdate) {
 	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
 	isEgressGw := len(payload.EgressInfo) > 0
-	if (isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw) ||
-		(isEgressGw && config.GetCfg().IsEgressGw(payload.Server) != isEgressGw) {
+	if isingressGw || isEgressGw {
 		if !config.GetCfg().GetFwStatus() {
 
 			fwClose, err := router.Init()
