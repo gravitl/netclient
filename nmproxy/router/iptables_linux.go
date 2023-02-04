@@ -91,16 +91,20 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 // CleanRoutingRules cleans existing iptables resources that we created by the agent
 func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 	ruleTable := i.FetchRuleTable(server, ruleTableName)
+	defer i.DeleteRuleTable(server, ruleTableName)
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	for _, rulesCfg := range ruleTable {
-		for _, rules := range rulesCfg.rulesMap {
+		for key, rules := range rulesCfg.rulesMap {
 			iptablesClient := i.ipv4Client
 			if !rulesCfg.isIpv4 {
 				iptablesClient = i.ipv6Client
 			}
 			for _, rule := range rules {
-				iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+				err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+				if err != nil {
+					logger.Log(0, fmt.Sprintf("failed to deleete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
+				}
 			}
 		}
 	}
@@ -361,10 +365,10 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	defer i.mux.Unlock()
 	// add jump Rules for egress GW
 	iptablesClient := i.ipv4Client
-	isIpv4 := false
+	isIpv4 := true
 	if !isAddrIpv4(egressInfo.EgressGwAddr.String()) {
 		iptablesClient = i.ipv6Client
-		isIpv4 = true
+		isIpv4 = false
 	}
 	ruleTable[egressInfo.EgressID] = rulesCfg{
 		isIpv4:   isIpv4,
@@ -399,7 +403,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				} else {
 					egressGwRoutes = append(egressGwRoutes, ruleInfo{
 						table: defaultNatTable,
-						chain: netmakerNatChain,
+						chain: nattablePRTChain,
 						rule:  ruleSpec,
 					})
 				}
@@ -496,6 +500,17 @@ func (i *iptablesManager) FetchRuleTable(server string, tableName string) ruleta
 		}
 	}
 	return rules
+}
+func (i *iptablesManager) DeleteRuleTable(server, ruleTableName string) {
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	logger.Log(1, "Deleting rules table: ", server, ruleTableName)
+	switch ruleTableName {
+	case ingressTable:
+		delete(i.ingRules, server)
+	case egressTable:
+		delete(i.engressRules, server)
+	}
 }
 
 // iptablesManager.SaveRules - saves the rule table by tablename

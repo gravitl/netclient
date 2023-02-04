@@ -46,5 +46,6 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 }
 
 func DeleteEgressGwRoutes(server string) {
+	logger.Log(0, "------> DELETING EGRESS ROUTES")
 	fwCrtl.CleanRoutingRules(server, egressTable)
 }

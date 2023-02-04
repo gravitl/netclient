@@ -47,6 +47,10 @@ func (unimplementedFirewall) AddEgressRoutingRule(server string, egressInfo mode
 	return nil
 }
 
+func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
+
+}
+
 // newFirewall returns an unimplemented Firewall manager
 func newFirewall() firewallController {
 	return unimplementedFirewall{}

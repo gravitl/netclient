@@ -45,7 +45,9 @@ type firewallController interface {
 	// CleanRoutingRules cleans a firewall set of containers related to a server
 	CleanRoutingRules(server, tableName string)
 	// FetchRules - fetches current state of rules from controller
-	FetchRuleTable(server string, ruleTableName string) ruletable
+	FetchRuleTable(server, ruleTableName string) ruletable
+	// DeleteRuleTable - deletes the entire rule table by server
+	DeleteRuleTable(server, ruleTableName string)
 	// SaveRules - saves the ruleTable under the given server
 	SaveRules(server, ruleTableName string, ruleTable ruletable)
 	// FlushAll - clears all rules from netmaker chains and deletes the chains
