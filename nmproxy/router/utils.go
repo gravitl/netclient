@@ -5,25 +5,42 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logic"
 )
 
 func getInterfaceName(addr string) (string, error) {
 	var interfaceName string
 	var err error
+	ip, _, err := net.ParseCIDR(addr)
+	if err != nil {
+		return interfaceName, err
+	}
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return interfaceName, err
 	}
 	for _, i := range ifaces {
+		if i.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
 		addrs, err := i.Addrs()
 		if err != nil {
 			continue
 		}
 		for _, a := range addrs {
-			prefix, err := netip.ParsePrefix(a.String())
-			if err == nil && logic.IsAddressInCIDR(net.ParseIP(prefix.Addr().String()), addr) {
-				return i.Name, nil
+			// check if gw range is in cidr range of the interface
+			addrIPNet := config.ToIPNet(a.String())
+			if isAddrIpv4(addrIPNet.String()) {
+				addrIPNet.Mask = net.CIDRMask(8, 32)
+			} else {
+				addrIPNet.Mask = net.CIDRMask(64, 128)
+			}
+			normCIDR, err := logic.NormalizeCIDR(addrIPNet.String())
+			if err == nil {
+				if logic.IsAddressInCIDR(ip, normCIDR) {
+					return i.Name, nil
+				}
 			}
 
 		}

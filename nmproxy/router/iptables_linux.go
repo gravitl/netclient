@@ -391,7 +391,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-				ruleSpec := []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec := []string{"-s", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
 				if err != nil {
