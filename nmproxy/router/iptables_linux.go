@@ -304,7 +304,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		},
 	}
 	for _, peerInfo := range extinfo.Peers {
-		if !peerInfo.Allow {
+		if !peerInfo.Allow || peerInfo.PeerKey == extinfo.ExtPeerKey {
 			continue
 		}
 		ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
