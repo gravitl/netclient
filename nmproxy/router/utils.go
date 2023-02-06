@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netmaker/logic"
 )
 
+// getInterfaceName addr is CIDR notation (198.0.0.1/24) returns matching interface
 func getInterfaceName(addr string) (string, error) {
 	var interfaceName string
 	var err error
@@ -48,7 +49,7 @@ func getInterfaceName(addr string) (string, error) {
 	return interfaceName, errors.New("interface not found for addr: " + addr)
 }
 
-// addr - CIDR notation (198.0.0.1/24) return if ipnet is ipv4 or ipv6
+// isAddrIpv4 - CIDR notation (198.0.0.1/24) return if ipnet is ipv4 or ipv6
 func isAddrIpv4(addr string) bool {
 	isIpv4 := true
 	prefix, err := netip.ParsePrefix(addr)

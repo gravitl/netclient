@@ -1,15 +1,12 @@
 package router
 
 import (
-	"log"
-
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) error {
 	logger.Log(0, "----> setting egress routes")
-	log.Printf("-----> EGRESSS: %+v\n", egressUpdate)
 	ruleTable := fwCrtl.FetchRuleTable(server, egressTable)
 	for egressNodeID, ruleCfg := range ruleTable {
 
@@ -45,7 +42,7 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 	return nil
 }
 
+// DeleteEgressGwRoutes - deletes egress routes for the gateway
 func DeleteEgressGwRoutes(server string) {
-	logger.Log(0, "------> DELETING EGRESS ROUTES")
 	fwCrtl.CleanRoutingRules(server, egressTable)
 }
