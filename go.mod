@@ -8,6 +8,7 @@ require (
 	github.com/coreos/go-iptables v0.6.0
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
+	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/gravitl/netmaker v0.17.2-0.20230201201950-fba69404261e

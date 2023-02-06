@@ -29,8 +29,8 @@ func newFirewall() firewallController {
 	if isNftablesSupported() {
 		logger.Log(0, "nftables is supported")
 		manager = &nftablesManager{
-			nftClient: &nftables.Conn{},
-			ingRules:  make(serverrulestable),
+			conn:     &nftables.Conn{},
+			ingRules: make(serverrulestable),
 		}
 		return manager
 	}

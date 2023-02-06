@@ -693,7 +693,6 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 					rule.table, rule.rule, peerKey, err)
 			}
 		}
-
 	}
 	delete(rulesTable, peerKey)
 	return nil
@@ -816,7 +815,6 @@ func (n *nftablesManager) removeJumpRules() {
 			logger.Log(1, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
 	}
-
 }
 
 func genRuleKey(rule ...string) string {
