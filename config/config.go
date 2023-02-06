@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -386,10 +387,14 @@ func RefreshConfigs() error {
 		return err
 	}
 	if err := ReadNodeConfig(); err != nil {
-		return err
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	if err := ReadServerConf(); err != nil {
-		return err
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	return nil
 }
