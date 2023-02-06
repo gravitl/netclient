@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/sys/unix"
 )
 
 // constants needed to create nftable rules
@@ -195,13 +196,26 @@ func (n *nftablesManager) CleanRoutingRules(server, ruleTableName string) {
 	}
 }
 
+func (n *nftablesManager) DeleteRuleTable(server, ruleTableName string) {
+}
+func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
+	return nil
+}
+func (n *nftablesManager) AddEgressRoutingRule(server string, egressInfo models.EgressInfo, peerInfo models.PeerRouteInfo) error {
+	return nil
+}
+
 // AddIngressRoutingRule - adds a ingress route for a peer
-func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error {
+func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
 	ruleTable := n.FetchRuleTable(server, ingressTable)
 	defer n.SaveRules(server, ingressTable, ruleTable)
 	n.mux.Lock()
 	defer n.mux.Unlock()
 	prefix, err := netip.ParsePrefix(peerInfo.PeerAddr.String())
+	if err != nil {
+		return err
+	}
+	peerIP, _, err := net.ParseCIDR(peerInfo.PeerAddr.String())
 	if err != nil {
 		return err
 	}
@@ -225,7 +239,7 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(peerInfo.PeerAddr.String()).To16(),
+					Data:     peerIP.To16(),
 				},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
@@ -248,7 +262,7 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(peerInfo.PeerAddr.String()).To4(),
+					Data:     peerIP.To4(),
 				},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
@@ -257,7 +271,7 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
 		{
@@ -278,6 +292,14 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	defer n.mux.Unlock()
 	logger.Log(0, "Adding Ingress Rules For Ext. Client: ", extinfo.ExtPeerKey)
 	prefix, err := netip.ParsePrefix(extinfo.ExtPeerAddr.String())
+	if err != nil {
+		return err
+	}
+	extPeerIP, _, err := net.ParseCIDR(extinfo.ExtPeerAddr.String())
+	if err != nil {
+		return err
+	}
+	ingwIP, _, err := net.ParseCIDR(extinfo.IngGwAddr.String())
 	if err != nil {
 		return err
 	}
@@ -305,7 +327,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To16(),
+					Data:     extPeerIP.To16(),
 				},
 				&expr.Payload{
 					DestRegister: 1,
@@ -316,7 +338,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpNeq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.IngGwAddr.String()).To16(),
+					Data:     ingwIP.To16(),
 				},
 				&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
 			},
@@ -338,7 +360,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To4(),
+					Data:     extPeerIP.To4(),
 				},
 				&expr.Payload{
 					DestRegister: 1,
@@ -349,7 +371,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpNeq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.IngGwAddr.String()).To4(),
+					Data:     ingwIP.To4(),
 				},
 				&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
 			},
@@ -359,11 +381,11 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+	logger.Log(0, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	fwdJumpRule := ruleInfo{
 		nfRule: rule,
@@ -391,7 +413,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To4(),
+					Data:     extPeerIP.To4(),
 				},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
@@ -413,17 +435,17 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To16(),
+					Data:     extPeerIP.To16(),
 				},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
 		}
 	}
-	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+	logger.Log(0, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{
 		fwdJumpRule,
@@ -436,6 +458,11 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 	for _, peerInfo := range extinfo.Peers {
 		if !peerInfo.Allow {
+			continue
+		}
+		peerIP, _, err := net.ParseCIDR(extinfo.IngGwAddr.String())
+		if err != nil {
+			logger.Log(0, "Error parsing peer IP CIDR: ", err.Error())
 			continue
 		}
 		ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
@@ -456,7 +483,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To4(),
+						Data:     extPeerIP.To4(),
 					},
 					&expr.Payload{
 						DestRegister: 1,
@@ -467,7 +494,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     net.ParseIP(peerInfo.PeerAddr.String()).To4(),
+						Data:     peerIP.To4(),
 					},
 					&expr.Verdict{Kind: expr.VerdictAccept},
 				},
@@ -489,7 +516,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To16(),
+						Data:     extPeerIP.To16(),
 					},
 					&expr.Payload{
 						DestRegister: 1,
@@ -500,17 +527,17 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     net.ParseIP(peerInfo.PeerAddr.String()).To16(),
+						Data:     peerIP.To16(),
 					},
 					&expr.Verdict{Kind: expr.VerdictAccept},
 				},
 			}
 		}
-		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+		logger.Log(0, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
 		rule.Position = 1
 		n.conn.InsertRule(rule)
 		if err := n.conn.Flush(); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 			continue
 		}
 		ruleTable[extinfo.ExtPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
@@ -527,7 +554,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 	routes := ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
 	ruleSpec = []string{"-s", extinfo.ExtPeerAddr.String(), "-o", ncutils.GetInterfaceName(), "-j", "MASQUERADE"}
-	logger.Log(2, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
+	logger.Log(0, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
 	if isIpv4 {
 		rule = &nftables.Rule{
 			Table:    natTable,
@@ -545,7 +572,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To4(),
+					Data:     extPeerIP.To4(),
 				},
 				&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
 				&expr.Cmp{
@@ -573,7 +600,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To16(),
+					Data:     extPeerIP.To16(),
 				},
 				&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
 				&expr.Cmp{
@@ -588,7 +615,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	} else {
 		routes = append(routes, ruleInfo{
 			nfRule: rule,
@@ -599,7 +626,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 
 	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-o", ncutils.GetInterfaceName(), "-j", "MASQUERADE"}
-	logger.Log(2, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
+	logger.Log(0, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
 	if isIpv4 {
 		rule = &nftables.Rule{
 			Table:    natTable,
@@ -617,7 +644,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To4(),
+					Data:     extPeerIP.To4(),
 				},
 				&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
 				&expr.Cmp{
@@ -645,7 +672,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     net.ParseIP(extinfo.ExtPeerAddr.String()).To16(),
+					Data:     extPeerIP.To16(),
 				},
 				&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
 				&expr.Cmp{
@@ -660,7 +687,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	} else {
 		routes = append(routes, ruleInfo{
 			nfRule: rule,
@@ -694,7 +721,7 @@ func (n *nftablesManager) FetchRuleTable(server string, tableName string) ruleta
 func (n *nftablesManager) SaveRules(server, tableName string, rules ruletable) {
 	n.mux.Lock()
 	defer n.mux.Unlock()
-	logger.Log(1, "Saving rules to table: ", tableName)
+	logger.Log(0, "Saving rules to table: ", tableName)
 	switch tableName {
 	case ingressTable:
 		n.ingRules[server] = rules
@@ -823,20 +850,21 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 
 func (n *nftablesManager) addJumpRules() {
 	for _, rule := range nfFilterJumpRules {
-		n.conn.AddRule(rule.nfRule)
+		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
 	}
 	for _, rule := range nfNatJumpRules {
-		n.conn.AddRule(rule.nfRule)
+		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
 	}
 	if err := n.conn.Flush(); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add jump rules, Err: %s", err.Error()))
+		logger.Log(0, fmt.Sprintf("failed to add jump rules, Err: %s", err.Error()))
 	}
 }
 
 func (n *nftablesManager) removeJumpRules() {
 	for _, rule := range nfJumpRules {
-		if err := n.deleteRule(rule.nfRule.Table.Name, rule.nfRule.Chain.Name, string(rule.nfRule.UserData)); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
+		r := rule.nfRule.(*nftables.Rule)
+		if err := n.deleteRule(r.Table.Name, r.Chain.Name, string(r.UserData)); err != nil {
+			logger.Log(0, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
 	}
 }
