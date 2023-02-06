@@ -5,6 +5,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+// SetEgressRoutes - sets the egress route for the gateway
 func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) error {
 	logger.Log(0, "----> setting egress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, egressTable)
