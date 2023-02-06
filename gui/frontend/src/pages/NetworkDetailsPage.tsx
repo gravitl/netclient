@@ -101,7 +101,8 @@ export default function NetworkDetailsPage() {
     async (shouldNotifyOnError = false) => {
       if (!networkDetails?.node) return;
       try {
-        const peers = await GoGetNodePeers(networkDetails.node);
+        const peers = await GoGetNodePeers(networkDetails.node) ?? [];
+        peers.sort((a, b) => a.Endpoint.IP.localeCompare(b.Endpoint.IP))
         setNetworkPeers(() => peers);
       } catch (err) {
         console.error(err);
