@@ -10,7 +10,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.17.2-0.20230204122446-6a3fcaf664af
+	github.com/gravitl/netmaker v0.17.2-0.20230206161811-7be2771ea83f
 	github.com/guumaster/hostctl v1.1.3
 	github.com/hashicorp/go-version v1.6.0
 	github.com/kr/pretty v0.3.1
