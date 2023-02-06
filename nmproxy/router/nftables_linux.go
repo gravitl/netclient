@@ -214,6 +214,8 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 			Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -235,6 +237,8 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 			Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -290,6 +294,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: iptableFWDChain, Table: filterTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -321,6 +327,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: iptableFWDChain, Table: filterTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -372,6 +380,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -392,6 +402,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -433,6 +445,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
 				UserData: []byte(genRuleKey(ruleSpec...)),
 				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+					&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
 					&expr.Payload{
 						DestRegister: 1,
 						Base:         expr.PayloadBaseNetworkHeader,
@@ -464,6 +478,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 				Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
 				UserData: []byte(genRuleKey(ruleSpec...)),
 				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+					&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
 					&expr.Payload{
 						DestRegister: 1,
 						Base:         expr.PayloadBaseNetworkHeader,
@@ -518,6 +534,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: netmakerNatChain, Table: natTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -544,6 +562,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: netmakerNatChain, Table: natTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -586,6 +606,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: netmakerNatChain, Table: natTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -612,6 +634,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 			Chain:    &nftables.Chain{Name: netmakerNatChain, Table: natTable},
 			UserData: []byte(genRuleKey(ruleSpec...)),
 			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
