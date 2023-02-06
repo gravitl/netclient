@@ -439,6 +439,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	return nil
 }
 
+// iptablesManager.AddEgressRoutingRule - inserts iptable rule for gateway peer
 func (i *iptablesManager) AddEgressRoutingRule(server string, egressInfo models.EgressInfo,
 	peer models.PeerRouteInfo) error {
 	if !peer.Allow {
@@ -504,6 +505,8 @@ func (i *iptablesManager) FetchRuleTable(server string, tableName string) ruleta
 	}
 	return rules
 }
+
+// iptablesManager.DeleteRuleTable - deletes all rules from a table
 func (i *iptablesManager) DeleteRuleTable(server, ruleTableName string) {
 	i.mux.Lock()
 	defer i.mux.Unlock()

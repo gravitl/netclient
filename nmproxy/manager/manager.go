@@ -78,9 +78,9 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 }
 
 func fwUpdate(payload *nm_models.HostPeerUpdate) {
-	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
+	isIngressGw := len(payload.IngressInfo.ExtPeers) > 0
 	isEgressGw := len(payload.EgressInfo) > 0
-	if isingressGw || isEgressGw {
+	if isIngressGw || isEgressGw {
 		if !config.GetCfg().GetFwStatus() {
 
 			fwClose, err := router.Init()
@@ -96,16 +96,16 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 		}
 
 	}
-	config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
+	config.GetCfg().SetIngressGwStatus(payload.Server, isIngressGw)
 	config.GetCfg().SetEgressGwStatus(payload.Server, isEgressGw)
 
-	if isingressGw {
+	if isIngressGw {
 		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
 	}
 	if isEgressGw {
 		router.SetEgressRoutes(payload.Server, payload.EgressInfo)
 	}
-	if config.GetCfg().GetFwStatus() && !isingressGw {
+	if config.GetCfg().GetFwStatus() && !isIngressGw {
 		router.DeleteIngressRules(payload.Server)
 	}
 	if config.GetCfg().GetFwStatus() && !isEgressGw {
