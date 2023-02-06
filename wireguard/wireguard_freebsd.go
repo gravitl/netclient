@@ -58,7 +58,7 @@ func (nc *NCIface) ApplyAddrs() error {
 		return fmt.Errorf("failed to locate ifconfig %w", err)
 	}
 	for _, address := range nc.Addresses {
-		if address.IP.To4() != nil {
+		if !address.AddRoute && address.IP.To4() != nil {
 			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
 				return fmt.Errorf("error adding address to interface %w", err)
 			}
@@ -66,6 +66,18 @@ func (nc *NCIface) ApplyAddrs() error {
 			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
 				return fmt.Errorf("error adding address to interface %w", err)
 			}
+		}
+		if address.AddRoute {
+			if address.IP.To4() != nil {
+				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
+					return fmt.Errorf("error adding address to interface %w", err)
+				}
+			} else {
+				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
+					return fmt.Errorf("error adding address to interface %w", err)
+				}
+			}
+
 		}
 	}
 	return nil

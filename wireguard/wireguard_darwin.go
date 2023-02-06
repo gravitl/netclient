@@ -10,7 +10,6 @@ import (
 
 // NCIface.Create - makes a new Wireguard interface for darwin users (userspace)
 func (nc *NCIface) Create() error {
-
 	return nc.createUserSpaceWG()
 }
 
@@ -38,13 +37,13 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 		if address.Network.IP != nil {
 			if address.Network.IP.To4() != nil {
-				cmd := exec.Command("route", "add", "-net", address.Network.String(), "-interface", nc.Name)
+				cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), "-interface", nc.Name)
 				if out, err := cmd.CombinedOutput(); err != nil {
 					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
 					continue
 				}
 			} else {
-				cmd := exec.Command("route", "add", "-inet6", address.Network.String(), "-interface", nc.Name)
+				cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), "-interface", nc.Name)
 				if out, err := cmd.CombinedOutput(); err != nil {
 					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
 					continue
