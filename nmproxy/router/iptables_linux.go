@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -392,7 +393,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		}
 
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
-			egressRangeIface, err := getInterfaceName(egressGwRange)
+			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
