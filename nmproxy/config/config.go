@@ -157,6 +157,18 @@ func (c *Config) IsIngressGw(server string) bool {
 	return c.GetSettings(server).IsIngressGateway
 }
 
+// Config.IsEgressGw - checks if egressGW by server
+func (c *Config) IsEgressGw(server string) bool {
+	return c.GetSettings(server).IsEgressGateway
+}
+
+// Config.SetEgressGwStatus - sets egressGW status
+func (c *Config) SetEgressGwStatus(server string, value bool) {
+	settings := c.GetSettings(server)
+	settings.IsEgressGateway = value
+	c.UpdateSettings(server, settings)
+}
+
 // Config.SetRelayedStatus - sets relayed status
 func (c *Config) SetRelayedStatus(server string, value bool) {
 	settings := c.GetSettings(server)
