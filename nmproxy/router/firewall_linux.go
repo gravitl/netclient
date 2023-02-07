@@ -46,6 +46,9 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 		return "", err
 	}
 	routes, err := h.RouteGet(dst.IP)
+	if err != nil {
+		return "", err
+	}
 	for _, r := range routes {
 		iface, err := net.InterfaceByIndex(r.LinkIndex)
 		if err == nil {
