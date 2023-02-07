@@ -5,22 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"runtime"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
-	"github.com/gravitl/netclient/nmproxy/packet"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-type proxyPayload models.ProxyManagerPayload
+type proxyPayload nm_models.ProxyManagerPayload
 
-func getRecieverType(m *models.ProxyManagerPayload) *proxyPayload {
+func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	mI := proxyPayload(*m)
 	return &mI
 }
@@ -67,26 +66,56 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	config.GetCfg().SetIface(wgIface)
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
+	fwUpdate(payload)
 	switch m.Action {
-	case models.ProxyUpdate:
+	case nm_models.ProxyUpdate:
 		m.peerUpdate()
-	case models.ProxyDeleteAllPeers:
+	case nm_models.ProxyDeleteAllPeers:
 		cleanUpInterface()
+
 	}
 	return err
 }
 
+func fwUpdate(payload *nm_models.HostPeerUpdate) {
+	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
+	if isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw {
+		if !config.GetCfg().GetFwStatus() {
+
+			fwClose, err := router.Init()
+			if err != nil {
+				logger.Log(0, "failed to intialize firewall: ", err.Error())
+				return
+			}
+			config.GetCfg().SetFwStatus(true)
+			config.GetCfg().SetFwCloseFunc(fwClose)
+
+		}
+		config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
+	} else {
+		logger.Log(0, "firewall controller is intialized already")
+	}
+
+	if isingressGw {
+		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
+	}
+	if config.GetCfg().GetFwStatus() && !isingressGw {
+		router.DeleteIngressRules(payload.Server)
+	}
+
+}
+
 func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
-	if peerUpdate.ProxyUpdate.Action != models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
+	if peerUpdate.ProxyUpdate.Action != nm_models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
 		// stop the metrics thread since proxy is switched on for the host
 		logger.Log(0, "Stopping Metrics Thread...")
 		config.GetCfg().StopMetricsCollectionThread()
-	} else if peerUpdate.ProxyUpdate.Action == models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
+	} else if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
 	}
-	if peerUpdate.ProxyUpdate.Action == models.NoProxy {
+	if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy {
 		cleanUpInterface()
 	}
 }
@@ -96,17 +125,7 @@ func (m *proxyPayload) settingsUpdate(server string) (reset bool) {
 	if !m.IsRelay && config.GetCfg().IsRelay(server) {
 		config.GetCfg().DeleteRelayedPeers()
 	}
-	if m.IsIngress && runtime.GOOS == "linux" {
-		packet.TurnOffIpFowarding()
-	}
-	if m.IsIngress && !config.GetCfg().CheckIfRouterIsRunning() {
-		// start router on the ingress node
-		config.GetCfg().SetRouterToRunning()
-		go packet.StartRouter()
 
-	} else if !m.IsIngress && config.GetCfg().CheckIfRouterIsRunning() {
-		config.GetCfg().StopRouter()
-	}
 	config.GetCfg().SetRelayStatus(server, m.IsRelay)
 	config.GetCfg().SetIngressGwStatus(server, m.IsIngress)
 	if config.GetCfg().GetRelayedStatus(server) != m.IsRelayed {
@@ -180,6 +199,16 @@ func (m *proxyPayload) processPayload() error {
 	// sync peer map with new update
 	for peerPubKey, peerConn := range peerConnMap {
 		if _, ok := m.PeerMap[peerPubKey]; !ok {
+			_, found := peerConn.ServerMap[m.Server]
+			if !found {
+				continue
+			} else {
+				delete(peerConn.ServerMap, m.Server)
+				peerConnMap[peerPubKey] = peerConn
+				if len(peerConn.ServerMap) > 0 {
+					continue
+				}
+			}
 
 			if peerConn.IsExtClient {
 				logger.Log(1, "------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
@@ -193,7 +222,19 @@ func (m *proxyPayload) processPayload() error {
 
 	// update no proxy peers map with peer update
 	for peerIP, peerConn := range noProxyPeerMap {
+
 		if _, ok := m.PeerMap[peerConn.Key.String()]; !ok {
+			_, found := peerConn.ServerMap[m.Server]
+			if !found {
+				continue
+			} else {
+				delete(peerConn.ServerMap, m.Server)
+				noProxyPeerMap[peerIP] = peerConn
+				if len(peerConn.ServerMap) > 0 {
+					continue
+				}
+
+			}
 			gCfg.DeleteNoProxyPeer(peerIP)
 		}
 	}
@@ -365,7 +406,7 @@ func (m *proxyPayload) peerUpdate() error {
 			}
 			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
 			go func(server string, peer wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
-				peerConf models.PeerConf) {
+				peerConf nm_models.PeerConf) {
 				addExtClient := false
 				commChan := make(chan *net.UDPAddr, 5)
 				ctx, cancel := context.WithCancel(context.Background())

@@ -85,6 +85,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt install libpcap-dev
+          mkdir gui/frontend/dist
+          touch gui/frontend/dist/index.html
           go install honnef.co/go/tools/cmd/staticcheck@latest
           { ~/go/bin/staticcheck  ./... ; }
 
@@ -116,13 +118,15 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - uses: dAppServer/wails-build-action@v2
+      - uses: actions/setup-node@v3
         with:
-          build-name: netclient
-          build-platform: darwin/universal
-          package: false
+          node-version: 19
+      - uses: actions/setup-go@v3
+        with:
           go-version: 1.19
-          node-version: 19.x
+      - run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest 
+          ~/go/bin/wails build
 
   windows:
     runs-on: windows-latest

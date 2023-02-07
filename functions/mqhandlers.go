@@ -9,7 +9,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -165,7 +164,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 	} else {
-		peerUpdate.ProxyUpdate.Action = proxy_models.NoProxy
+		peerUpdate.ProxyUpdate.Action = models.NoProxy
 	}
 	peerUpdate.ProxyUpdate.Server = serverName
 	ProxyManagerChan <- &peerUpdate
@@ -194,7 +193,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	UpdateLocalListenPort()
+	_ = UpdateHostSettings()
 
 }
 
@@ -236,6 +235,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		restartDaemon = true
 	case models.DeleteHost:
+		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
@@ -243,7 +243,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic())
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, sendHostUpdate, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
 	default:
 		logger.Log(1, "unknown host action")
 		return
@@ -279,6 +279,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	config.DeleteServerHostPeerCfg(server)
 	nodes := config.GetNodes()
 	for k, node := range nodes {
+		node := node
 		if node.Server == server {
 			unsubscribeNode(client, &node)
 			config.DeleteNode(k)
@@ -289,7 +290,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	delete(ServerSet, server)
 }
 
-func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restart bool) {
+func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	hostCfg := config.Netclient()
 	if hostCfg == nil || host == nil {
 		return
@@ -300,12 +301,8 @@ func updateHostConfig(host *models.Host) (resetInterface, sendHostUpdate, restar
 	if hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
-	if hostCfg.PublicListenPort != 0 && hostCfg.PublicListenPort != host.PublicListenPort {
-		sendHostUpdate = true
-	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
-	host.PublicListenPort = hostCfg.PublicListenPort
 	hostCfg.Host = *host
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()

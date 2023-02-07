@@ -10,13 +10,13 @@ import (
 	"golang.org/x/net/route"
 )
 
-func getDefaultInterface() (*string, error) {
+func getDefaultInterface() (string, error) {
 	var defaultRoute = [4]byte{0, 0, 0, 0}
 	var index int
 	rib, _ := route.FetchRIB(0, route.RIBTypeRoute, 0)
 	messages, err := route.ParseRIB(route.RIBTypeRoute, rib)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	for _, message := range messages {
 		route_message := message.(*route.RouteMessage)
@@ -39,12 +39,12 @@ func getDefaultInterface() (*string, error) {
 	}
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	for _, iface := range ifaces {
 		if iface.Index == index {
-			return &iface.Name, nil
+			return iface.Name, nil
 		}
 	}
-	return nil, errors.New("defautl gw not found")
+	return "", errors.New("defautl gw not found")
 }

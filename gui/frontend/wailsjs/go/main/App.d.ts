@@ -12,7 +12,7 @@ export function GoDisconnectFromNetwork(arg1:string):Promise<any>;
 
 export function GoGetKnownNetworks():Promise<Array<main.Network>>;
 
-export function GoGetNetclientConfig():Promise<config.Config>;
+export function GoGetNetclientConfig():Promise<config.NcConfig>;
 
 export function GoGetNetwork(arg1:string):Promise<main.Network>;
 
@@ -35,3 +35,5 @@ export function GoUninstall():Promise<any>;
 export function GoWriteToClipboard(arg1:string):Promise<any>;
 
 export function GoGetNodePeers(arg1:config.Node):Promise<Peer[]>;
+
+export function GoUpdateNetclientConfig(arg1:config.NcConfig): Promise<any>;

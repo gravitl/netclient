@@ -5,18 +5,16 @@ import (
 	"fmt"
 	"sync"
 
-	nc_config "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/manager"
-	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/models"
 )
 
 // Start - setups the global cfg for proxy and starts the proxy server
-func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.HostPeerUpdate, stunAddr string, stunPort, proxyPort int) {
+func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPeerUpdate, stunAddr string, stunPort, proxyPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -35,9 +33,6 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *nm_models.Host
 	defer config.Reset()
 	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort, proxyPort))
 	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetCfg().GetHostInfo()))
-	nc_config.Netclient().ProxyListenPort = proxyPort
-	nc_config.Netclient().PublicListenPort = config.GetCfg().GetHostInfo().PubPort
-	nc_config.WriteNetclientConfig()
 	config.GetCfg().SetNATStatus()
 	// start the netclient proxy server
 	err := server.NmProxyServer.CreateProxyServer(proxyPort, 0, config.GetCfg().GetHostInfo().PrivIp.String())

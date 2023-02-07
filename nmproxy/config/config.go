@@ -5,9 +5,9 @@ import (
 	"net"
 	"sync"
 
-	"github.com/gravitl/netclient/nmproxy/models"
+	proxy "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/models"
 )
 
 var (
@@ -17,16 +17,17 @@ var (
 
 // Config - struct for proxy config
 type Config struct {
-	HostInfo                models.HostInfo
+	HostInfo                proxy.HostInfo
 	ProxyStatus             bool
 	isBehindNAT             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
-	settings                map[string]models.Settings // host settings per server
-	RouterCfg               Router
+	settings                map[string]proxy.Settings // host settings per server
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
 	serverConn              *net.UDPConn
+	fireWallStatus          bool
+	fireWallClose           func()
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -36,21 +37,15 @@ func InitializeCfg() {
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:            nil,
-			proxyPeerMap:     make(models.PeerConnMap),
-			peerHashMap:      make(map[string]*models.RemotePeer),
-			extSrcIpMap:      make(map[string]*models.RemotePeer),
-			extClientWaitMap: make(map[string]*models.RemotePeer),
-			relayPeerMap:     make(map[string]map[string]*models.RemotePeer),
-			noProxyPeerMap:   make(models.PeerConnMap),
-			allPeersConf:     make(map[string]nm_models.HostPeerMap),
+			proxyPeerMap:     make(proxy.PeerConnMap),
+			peerHashMap:      make(map[string]*proxy.RemotePeer),
+			extSrcIpMap:      make(map[string]*proxy.RemotePeer),
+			extClientWaitMap: make(map[string]*proxy.RemotePeer),
+			relayPeerMap:     make(map[string]map[string]*proxy.RemotePeer),
+			noProxyPeerMap:   make(proxy.PeerConnMap),
+			allPeersConf:     make(map[string]models.HostPeerMap),
 		},
-		settings: make(map[string]models.Settings),
-		RouterCfg: Router{
-			mutex:           &sync.RWMutex{},
-			IsRunning:       false,
-			InboundRouting:  map[string]Routing{},
-			OutboundRouting: map[string]Routing{},
-		},
+		settings: make(map[string]proxy.Settings),
 	}
 }
 
@@ -60,7 +55,7 @@ func (c *Config) IsProxyRunning() bool {
 }
 
 // Config.SetHostInfo - sets host info
-func (c *Config) SetHostInfo(hostInfo models.HostInfo) {
+func (c *Config) SetHostInfo(hostInfo proxy.HostInfo) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.HostInfo = hostInfo
@@ -72,6 +67,7 @@ func (c *Config) StopMetricsCollectionThread() {
 	defer c.mutex.Unlock()
 	if c.metricsThreadDone != nil {
 		c.metricsThreadDone()
+		c.metricsCollectionStatus = false
 	}
 }
 
@@ -91,7 +87,7 @@ func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
 }
 
 // Config.GetHostInfo - gets the host info
-func (c *Config) GetHostInfo() models.HostInfo {
+func (c *Config) GetHostInfo() proxy.HostInfo {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.HostInfo
@@ -108,17 +104,17 @@ func GetCfg() *Config {
 }
 
 // Config.GetSettings - fetches host settings
-func (c *Config) GetSettings(server string) models.Settings {
+func (c *Config) GetSettings(server string) proxy.Settings {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	if settings, ok := c.settings[server]; ok {
 		return settings
 	}
-	return models.Settings{}
+	return proxy.Settings{}
 }
 
 // Config.UpdateSettings - updates network settings
-func (c *Config) UpdateSettings(server string, settings models.Settings) {
+func (c *Config) UpdateSettings(server string, settings proxy.Settings) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.settings[server] = settings
@@ -177,7 +173,7 @@ func (c *Config) GetRelayedStatus(server string) bool {
 func (c *Config) SetNATStatus() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if c.HostInfo.PrivIp != nil && models.IsPublicIP(c.HostInfo.PrivIp) {
+	if c.HostInfo.PrivIp != nil && proxy.IsPublicIP(c.HostInfo.PrivIp) {
 		logger.Log(1, "Host is public facing!!!")
 	} else {
 		c.isBehindNAT = true
@@ -187,8 +183,6 @@ func (c *Config) SetNATStatus() {
 
 // Config.IsBehindNAT - checks if proxy is running behind NAT
 func (c *Config) IsBehindNAT() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
 	return c.isBehindNAT
 }
 
@@ -200,4 +194,24 @@ func (c *Config) GetServerConn() *net.UDPConn {
 // Config.SetServerConn - sets server connection
 func (c *Config) SetServerConn(conn *net.UDPConn) {
 	c.serverConn = conn
+}
+
+// Config.SetFwStatus - sets the firewall status
+func (c *Config) SetFwStatus(s bool) {
+	c.fireWallStatus = s
+}
+
+// Config.SetFwCloseFunc - sets the firewall flush func
+func (c *Config) SetFwCloseFunc(fwFlush func()) {
+	c.fireWallClose = fwFlush
+}
+
+// Config.GetFwStatus - gets the firewall status
+func (c *Config) GetFwStatus() bool {
+	return c.fireWallStatus
+}
+
+// Config.StopFw - flushes all the firewall rules
+func (c *Config) StopFw() {
+	c.fireWallClose()
 }

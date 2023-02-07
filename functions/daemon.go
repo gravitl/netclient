@@ -16,7 +16,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy"
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
-	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -124,13 +123,15 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wireguard.SetPeers()
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
-			ProxyUpdate: proxy_models.ProxyManagerPayload{
-				Action: proxy_models.ProxyDeleteAllPeers,
+			ProxyUpdate: models.ProxyManagerPayload{
+				Action: models.ProxyDeleteAllPeers,
 			},
 		}
 	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
+		// see https://www.evanjones.ca/go-gotcha-loop-variables.html
+		server := server
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
@@ -173,6 +174,7 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "mqtt connect handler")
 		nodes := config.GetNodes()
 		for _, node := range nodes {
+			node := node
 			setSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
@@ -226,6 +228,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			logger.Log(0, "mqtt connect handler")
 			nodes := config.GetNodes()
 			for _, node := range nodes {
+				node := node
 				setSubscriptions(client, &node)
 			}
 			setHostSubscription(client, server.Name)

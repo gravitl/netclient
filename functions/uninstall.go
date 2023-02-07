@@ -20,6 +20,7 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 	for _, v := range config.Servers {
+		v := v
 		if err = setupMQTTSingleton(&v, true); err != nil {
 			logger.Log(0, "failed to connect to server on uninstall", v.Name)
 			allfaults = append(allfaults, err)
@@ -81,11 +82,11 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 }
 
 func deleteNodeFromServer(node *config.Node) error {
-	token, err := Authenticate(node, config.Netclient())
+	server := config.GetServer(node.Server)
+	token, err := Authenticate(server.API, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
-	server := config.GetServer(node.Server)
 	if err != nil {
 		return fmt.Errorf("could not read sever config %w", err)
 	}
