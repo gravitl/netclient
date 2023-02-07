@@ -84,6 +84,7 @@ func IsPublicIP(ip net.IP) bool {
 type Settings struct {
 	IsRelay          bool
 	IsIngressGateway bool
+	IsEgressGateway  bool
 	IsRelayed        bool
 	RelayedTo        *net.UDPAddr
 }

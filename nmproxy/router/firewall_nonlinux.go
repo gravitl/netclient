@@ -15,7 +15,7 @@ func (unimplementedFirewall) CreateChains() error {
 func (unimplementedFirewall) InsertIngressRoutingRules(server string, r models.ExtClientInfo) error {
 	return nil
 }
-func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerExtInfo) error {
+func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
 	return nil
 }
 
@@ -37,6 +37,17 @@ func (unimplementedFirewall) SaveRules(server, ruleTableName string, ruleTable r
 
 }
 func (unimplementedFirewall) FlushAll() {
+
+}
+
+func (unimplementedFirewall) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
+	return nil
+}
+func (unimplementedFirewall) AddEgressRoutingRule(server string, egressInfo models.EgressInfo, peerInfo models.PeerRouteInfo) error {
+	return nil
+}
+
+func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
 
 }
 
