@@ -216,7 +216,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error unmarshalling host update data")
 		return
 	}
-	logger.Log(1, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
+	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
 	var resetInterface, sendHostUpdate, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
@@ -240,7 +240,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
-		clearRetainedMsg(client, msg.Topic())
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)

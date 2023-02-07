@@ -131,12 +131,9 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	//server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE
-	//server.StunHost = cfg.StunHost
-	//server.StunPort = cfg.StunPort
 	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)
 	return &server
