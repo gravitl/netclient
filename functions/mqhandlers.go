@@ -306,6 +306,12 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := json.Unmarshal([]byte(data), &dns); err != nil {
 		logger.Log(0, "error unmarshalling dns update")
 	}
+	var currentMessage = read("dns", lastDNSUpdate)
+	if currentMessage == string(data) {
+		logger.Log(3, "cache hit on dns update ... skipping")
+		return
+	}
+	insert("dns", lastDNSUpdate, string(data))
 	logger.Log(3, "recieved dns update for", dns.Name)
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {

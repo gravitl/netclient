@@ -23,7 +23,10 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const lastNodeUpdate = "lnu"
+const (
+	lastNodeUpdate = "lnu"
+	lastDNSUpdate  = "ldu"
+)
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
