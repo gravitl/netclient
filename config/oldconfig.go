@@ -176,7 +176,6 @@ func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE

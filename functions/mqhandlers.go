@@ -286,6 +286,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	config.DeleteServer(server)
 	// delete mq client from ServerSet map
 	delete(ServerSet, server)
 }
