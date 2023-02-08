@@ -32,6 +32,9 @@ func Uninstall() ([]error, error) {
 			allfaults = append(allfaults, err)
 		}
 	}
+	if err := deleteAllDNS(); err != nil {
+		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
+	}
 
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)

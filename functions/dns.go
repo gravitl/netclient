@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/txeh"
 	"github.com/guumaster/hostctl/pkg/file"
 	"github.com/guumaster/hostctl/pkg/types"
 )
@@ -38,6 +39,29 @@ func removeHostDNS(network string) error {
 		return err
 	}
 	if err := hosts.Flush(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deleteAllDNS() error {
+	temp := os.TempDir()
+	lockfile := temp + "/netclient-lock"
+	if err := config.Lock(lockfile); err != nil {
+		return err
+	}
+	defer config.Unlock(lockfile)
+	hosts, err := txeh.NewHostsDefault()
+	if err != nil {
+		return err
+	}
+	lines := hosts.GetHostFileLines()
+	for _, line := range *lines {
+		if line.Comment == etcHostsComment {
+			hosts.RemoveHosts(line.Hostnames, etcHostsComment)
+		}
+	}
+	if err := hosts.Save(); err != nil {
 		return err
 	}
 	return nil
