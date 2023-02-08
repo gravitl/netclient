@@ -7,7 +7,7 @@ import (
 
 // SetIngressRoutes - feed ingress update to firewall controller to add/remove routing rules
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
-	logger.Log(0, "----> setting ingress routes")
+	logger.Log(1, "----> setting ingress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
 	for extPeerKey, ruleCfg := range ruleTable {
 

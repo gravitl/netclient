@@ -35,10 +35,10 @@ func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 			if mI == nil {
 				continue
 			}
-			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
+			logger.Log(3, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
 			err := configureProxy(mI)
 			if err != nil {
-				logger.Log(0, "failed to configure proxy:  ", err.Error())
+				logger.Log(1, "failed to configure proxy:  ", err.Error())
 			}
 		}
 	}
@@ -275,7 +275,7 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
 			if err == nil {
-				logger.Log(0, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+				logger.Log(3, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					currentPeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", currentPeer.Key.String())
@@ -349,7 +349,7 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, noProxypeer.Key.String())
 			if err == nil {
-				logger.Log(0, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+				logger.Log(3, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					noProxypeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())

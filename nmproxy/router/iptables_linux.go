@@ -104,7 +104,7 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 			for _, rule := range rules {
 				err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 				if err != nil {
-					logger.Log(0, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
+					logger.Log(1, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
 				}
 			}
 		}
@@ -191,7 +191,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv4Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -202,7 +202,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv6Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -213,7 +213,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv4Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -224,7 +224,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv6Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -479,11 +479,11 @@ func (i *iptablesManager) cleanup(table, chain string) {
 
 	err := i.ipv4Client.ClearAndDeleteChain(table, chain)
 	if err != nil {
-		logger.Log(0, "[ipv4] failed to clear chain: ", table, chain, err.Error())
+		logger.Log(1, "[ipv4] failed to clear chain: ", table, chain, err.Error())
 	}
 	err = i.ipv6Client.ClearAndDeleteChain(table, chain)
 	if err != nil {
-		logger.Log(0, "[ipv6] failed to clear chain: ", table, chain, err.Error())
+		logger.Log(1, "[ipv6] failed to clear chain: ", table, chain, err.Error())
 	}
 }
 

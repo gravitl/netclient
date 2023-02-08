@@ -149,7 +149,7 @@ func ProcessPacketBeforeSending(buf []byte, n int, srckey, dstKey string) ([]byt
 	writer := bytes.NewBuffer(msgBuffer[:0])
 	err := binary.Write(writer, binary.LittleEndian, m)
 	if err != nil {
-		logger.Log(0, "errror writing msg to bytes: ", err.Error())
+		logger.Log(1, "error writing msg to bytes: ", err.Error())
 		return buf, n, "", ""
 	}
 	if n > len(buf)-MessageProxyTransportSize {

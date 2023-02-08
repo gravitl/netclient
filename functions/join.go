@@ -22,7 +22,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
-	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
@@ -68,8 +67,6 @@ func Join(flags *viper.Viper) error {
 	if err != nil {
 		return err
 	}
-	log.Println("server response to join")
-	pretty.Println(node, server)
 	//save new configurations
 	config.UpdateNodeMap(node.Network, *node)
 	config.UpdateServer(node.Server, *server)
@@ -319,8 +316,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Response:      models.NodeJoinResponse{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	log.Println("sending join request")
-	pretty.Println(joinData)
 	joinResponse, errData, err := api.GetJSON(models.NodeJoinResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
@@ -333,7 +328,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("incompatible server version")
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
-	pretty.Println(joinResponse)
 	config.UpdateServerConfig(&joinResponse.ServerConfig)
 	server := config.GetServer(joinResponse.ServerConfig.Server)
 	server.Nodes[joinResponse.Node.Network] = true
