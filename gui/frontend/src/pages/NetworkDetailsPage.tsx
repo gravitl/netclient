@@ -22,8 +22,8 @@ export default function NetworkDetailsPage() {
     null
   );
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
+  const [isLoadingPeers, setIsLoadingPeers] = useState(true);
   const [isLeavingNetwork, setIsLeavingNetwork] = useState(false);
-  const [isFreshLoad, setIsFreshLoad] = useState(true);
   const [networkPeers, setNetworkPeers] = useState<Peer[]>([]);
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
@@ -36,6 +36,7 @@ export default function NetworkDetailsPage() {
       }
       const network = await getNetwork(networksState, networkName);
       setNetworkDetails(network);
+      await loadPeers(true);
     } catch (err) {
       await notifyUser(("Failed to load network\n" + err) as string);
       console.error(err);
@@ -100,14 +101,16 @@ export default function NetworkDetailsPage() {
     async (shouldNotifyOnError = false) => {
       if (!networkDetails?.node) return;
       try {
-        if (shouldNotifyOnError) console.log("testing");
-        const peers = await GoGetNodePeers(networkDetails.node);
-        setNetworkPeers(peers);
+        const peers = await GoGetNodePeers(networkDetails.node) ?? [];
+        peers.sort((a, b) => a.Endpoint.IP.localeCompare(b.Endpoint.IP))
+        setNetworkPeers(() => peers);
       } catch (err) {
         console.error(err);
         if (shouldNotifyOnError) {
           await notifyUser(("Failed to load peers\n" + err) as string);
         }
+      } finally {
+        setIsLoadingPeers(() => false);
       }
     },
     [networkDetails, setNetworkPeers]
@@ -115,8 +118,6 @@ export default function NetworkDetailsPage() {
 
   useEffect(() => {
     loadNetworkDetails();
-    loadPeers(isFreshLoad);
-    setIsFreshLoad(false);
     const id = setInterval(async () => {
       try {
         if (!networkName) {
@@ -125,6 +126,7 @@ export default function NetworkDetailsPage() {
         await refreshNetworks(networksDispatch);
         const network = await getNetwork(networksState, networkName);
         setNetworkDetails(network);
+        await loadPeers(false);
       } catch (err) {
         console.error(err);
       }
@@ -204,7 +206,13 @@ export default function NetworkDetailsPage() {
               xs={12}
               style={{ marginTop: "2rem", maxHeight: "60vh", overflow: "auto" }}
             >
-              <PeersTable peers={networkPeers} />
+              {isLoadingPeers ? (
+                <div style={{ textAlign: "center", height: "5rem" }}>
+                  <LoopIcon fontSize="large" className="spinning" />
+                </div>
+              ) : (
+                <PeersTable peers={networkPeers} />
+              )}
             </Grid>
           </Grid>
         )}

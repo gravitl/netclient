@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -65,8 +66,9 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
-	IP      net.IP
-	Network net.IPNet
+	IP       net.IP
+	Network  net.IPNet
+	AddRoute bool
 }
 
 // Close closes a netclient interface
@@ -80,7 +82,8 @@ type ifaceAddress struct {
 func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-	logger.Log(3, "adding addresses to netmaker interface")
+	logger.Log(0, "adding addresses to netmaker interface")
+	n.getPeerRoutes()
 	if err := n.ApplyAddrs(); err != nil {
 		return err
 	}
@@ -88,6 +91,40 @@ func (n *NCIface) Configure() error {
 		return err
 	}
 	return apply(nil, &n.Config)
+}
+
+func (nc *NCIface) getPeerRoutes() {
+	var routes []ifaceAddress
+	if len(nc.Addresses) == 0 {
+		return
+	}
+	routeMap := make(map[string]struct{})
+	for _, peer := range nc.Config.Peers {
+		for _, allowedIP := range peer.AllowedIPs {
+			addRoute := true
+			for _, address := range nc.Addresses {
+				normCIDR, err := logic.NormalizeCIDR(address.Network.String())
+				if err == nil {
+					if logic.IsAddressInCIDR(allowedIP.IP, normCIDR) {
+						addRoute = false
+					}
+				}
+			}
+			if addRoute {
+				// add route to the interface
+				if _, ok := routeMap[allowedIP.String()]; !ok {
+					routeMap[allowedIP.String()] = struct{}{}
+					routes = append(routes, ifaceAddress{
+						IP:       allowedIP.IP,
+						Network:  allowedIP,
+						AddRoute: true,
+					})
+				}
+
+			}
+		}
+	}
+	nc.Addresses = append(nc.Addresses, routes...)
 }
 
 func GetInterface() *NCIface {

@@ -161,8 +161,8 @@ func setupMQTT(server *config.Server) error {
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
-	opts.SetUsername(server.MQID.String())
-	opts.SetPassword(server.Password)
+	opts.SetUsername(server.MQUserName)
+	opts.SetPassword(server.MQPassword)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
@@ -215,8 +215,8 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
-	opts.SetUsername(server.MQID.String())
-	opts.SetPassword(server.Password)
+	opts.SetUsername(server.MQUserName)
+	opts.SetPassword(server.MQPassword)
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)

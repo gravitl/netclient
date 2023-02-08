@@ -7,6 +7,7 @@ import { NetworksContextDispatcherProps, useNetworksContext } from "../store/Net
 import { getNetworkDetailsPageUrl } from "../utils/networks";
 import { LoadingButton } from "@mui/lab";
 import { notifyUser } from "../utils/messaging";
+import { AppRoutes } from "../routes";
 
 function TokenLogin() {
   const [isFormValid, setIsFormValid] = useState(true);
@@ -42,8 +43,9 @@ function TokenLogin() {
       }
       networksDispatch(data)
 
-      const { network: networkName } = await GoParseAccessToken(token)
-      navigate(getNetworkDetailsPageUrl(networkName));
+      // const { network: networkName } = await GoParseAccessToken(token)
+      // navigate(getNetworkDetailsPageUrl(networkName));
+      navigate(AppRoutes.NETWORKS_ROUTE);
     } catch (err) {
       await notifyUser("Failed to connect to network\n" + err as string);
       console.error(err);

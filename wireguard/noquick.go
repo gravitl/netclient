@@ -49,19 +49,11 @@ func ApplyWithoutWGQuick(nc *NCIface) error {
 		logger.Log(1, "attempted to remove interface before editing")
 		return err
 	}
-	// **********TODO *********
-	// figure out firewalls
-	//if node.PostDown != "" {
-	//ncutils.RunCmd(node.PostDown, false)
-	//}
 	// set MTU of node interface
 	if _, err := ncutils.RunCmd(ipExec+" link set mtu "+strconv.Itoa(config.Netclient().MTU)+" up dev "+nc.Name, true); err != nil {
 		logger.Log(1, "failed to create interface with mtu ", strconv.Itoa(config.Netclient().MTU), "-", nc.Name)
 		return err
 	}
-	//if node.PostUp != "" {
-	//ncutils.RunCmd(node.PostUp, false)
-	//}
 	return nil
 }
 
@@ -75,13 +67,6 @@ func RemoveWithoutWGQuick(ifacename string) error {
 	dontprint := strings.Contains(out, "does not exist") || strings.Contains(out, "Cannot find device")
 	if err != nil && !dontprint {
 		logger.Log(1, out)
-	}
-	network := strings.ReplaceAll(ifacename, "nm-", "")
-	node := config.GetNode(network)
-	if node.PostDown != "" {
-		if _, err := ncutils.RunCmd(node.PostDown, false); err != nil {
-			return err
-		}
 	}
 	return nil
 }

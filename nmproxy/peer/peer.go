@@ -83,10 +83,10 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		LocalConn:   p.LocalConn,
 	}
 	if peerConf.Proxy || peerConf.IsExtClient {
-		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
+		logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
 		config.GetCfg().SavePeer(&connConf)
 	} else {
-		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
+		logger.Log(1, "-----> saving as no proxy peer: ", connConf.Key.String())
 		config.GetCfg().SaveNoProxyPeer(&connConf)
 	}
 	config.GetCfg().SavePeerByHash(&rPeer)
@@ -151,8 +151,9 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
-			for peerID, peerInfo := range peerIDMap {
-				metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+			connectionStatus := metrics.PeerConnectionStatus(peer.PublicKey.String())
+			for peerID := range peerIDMap {
+				metric.NodeConnectionStatus[peerID] = connectionStatus
 			}
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes

@@ -1,6 +1,3 @@
-//go:build !freebsd
-// +build !freebsd
-
 package wireguard
 
 import (
@@ -181,25 +178,6 @@ func RemovePeers(node *config.Node) error {
 	//if node.DNSOn == "yes" {
 	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
 	//}
-	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
-	if node.PostUp != "" {
-		parts := strings.Split(node.PostUp, " ; ")
-		for i, part := range parts {
-			if i == 0 {
-				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
-			}
-			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
-		}
-	}
-	if node.PostDown != "" {
-		parts := strings.Split(node.PostDown, " ; ")
-		for i, part := range parts {
-			if i == 0 {
-				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
-			}
-			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
-		}
-	}
 	if config.Netclient().MTU != 0 {
 		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient().MTU), 10))
 	}

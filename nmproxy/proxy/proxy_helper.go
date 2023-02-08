@@ -66,7 +66,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(buf, n,
 					config.GetCfg().GetDevicePubKey().String(), p.Config.PeerPublicKey.String())
 				if err != nil {
-					logger.Log(0, "failed to process pkt before sending: ", err.Error())
+					logger.Log(1, "failed to process pkt before sending: ", err.Error())
 				}
 			}
 
@@ -75,7 +75,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
-				logger.Log(0, "Failed to send to remote: ", err.Error())
+				logger.Log(1, "Failed to send to remote: ", err.Error())
 			}
 
 		}
@@ -88,7 +88,7 @@ func (p *Proxy) Reset() {
 	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.PeerPublicKey.String())
 	p.Close()
 	if err := p.pullLatestConfig(); err != nil {
-		logger.Log(0, "couldn't perform reset: ", p.Config.PeerPublicKey.String(), err.Error())
+		logger.Log(1, "couldn't perform reset: ", p.Config.PeerPublicKey.String(), err.Error())
 	}
 	p.Start()
 	// update peer configs
@@ -146,15 +146,16 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 				metric := metrics.GetMetric(server, p.Config.PeerPublicKey.String())
 				metric.NodeConnectionStatus = make(map[string]bool)
 				metric.LastRecordedLatency = 999
-				for peerID, peerInfo := range peerIDsAndAddrs {
-					metric.NodeConnectionStatus[peerID] = metrics.PeerConnectionStatus(peerInfo.Address)
+				connectionStatus := metrics.PeerConnectionStatus(p.Config.PeerPublicKey.String())
+				for peerID := range peerIDsAndAddrs {
+					metric.NodeConnectionStatus[peerID] = connectionStatus
 				}
 				metrics.UpdateMetric(server, p.Config.PeerPublicKey.String(), &metric)
 			}
 
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), p.Config.PeerPublicKey)
 			if err == nil {
-				logger.Log(0, "-----------> ##### $$$$$ SENDING METRIC PACKET TO: \n", p.RemoteConn.String())
+				logger.Log(3, "-----------> Sending metric packet to: ", p.RemoteConn.String())
 				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())

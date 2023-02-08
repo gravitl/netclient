@@ -156,8 +156,6 @@ func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
 	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
 	node.Address6.Mask = node.NetworkRange6.Mask
 	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
-	node.PostUp = netmakerNode.PostUp
-	node.PostDown = netmakerNode.PostDown
 	node.Action = netmakerNode.Action
 	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
@@ -178,7 +176,6 @@ func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE

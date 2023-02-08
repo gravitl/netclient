@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
@@ -34,10 +35,10 @@ func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 			if mI == nil {
 				continue
 			}
-			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
+			logger.Log(3, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
 			err := configureProxy(mI)
 			if err != nil {
-				logger.Log(0, "failed to configure proxy:  ", err.Error())
+				logger.Log(1, "failed to configure proxy:  ", err.Error())
 			}
 		}
 	}
@@ -65,6 +66,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	config.GetCfg().SetIface(wgIface)
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
+	fwUpdate(payload)
 	switch m.Action {
 	case nm_models.ProxyUpdate:
 		m.peerUpdate()
@@ -73,6 +75,43 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 
 	}
 	return err
+}
+
+func fwUpdate(payload *nm_models.HostPeerUpdate) {
+	isIngressGw := len(payload.IngressInfo.ExtPeers) > 0
+	isEgressGw := len(payload.EgressInfo) > 0
+	if isIngressGw || isEgressGw {
+		if !config.GetCfg().GetFwStatus() {
+
+			fwClose, err := router.Init()
+			if err != nil {
+				logger.Log(0, "failed to intialize firewall: ", err.Error())
+				return
+			}
+			config.GetCfg().SetFwStatus(true)
+			config.GetCfg().SetFwCloseFunc(fwClose)
+
+		} else {
+			logger.Log(0, "firewall controller is intialized already")
+		}
+
+	}
+	config.GetCfg().SetIngressGwStatus(payload.Server, isIngressGw)
+	config.GetCfg().SetEgressGwStatus(payload.Server, isEgressGw)
+
+	if isIngressGw {
+		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
+	}
+	if isEgressGw {
+		router.SetEgressRoutes(payload.Server, payload.EgressInfo)
+	}
+	if config.GetCfg().GetFwStatus() && !isIngressGw {
+		router.DeleteIngressRules(payload.Server)
+	}
+	if config.GetCfg().GetFwStatus() && !isEgressGw {
+		router.DeleteEgressGwRoutes(payload.Server)
+	}
+
 }
 
 func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
@@ -217,9 +256,8 @@ func (m *proxyPayload) processPayload() error {
 				_, found := gCfg.GetExtClientInfo(currentPeer.Config.PeerEndpoint)
 				if found {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-					currentPeer.Mutex.Unlock()
-
 				}
+				currentPeer.Mutex.Unlock()
 				continue
 
 			}
@@ -237,7 +275,7 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
 			if err == nil {
-				logger.Log(0, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+				logger.Log(3, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					currentPeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", currentPeer.Key.String())
@@ -300,9 +338,9 @@ func (m *proxyPayload) processPayload() error {
 			continue
 		}
 		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
+			noProxypeer.Mutex.Lock()
 			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
-				noProxypeer.Mutex.Lock()
 				noProxypeer.StopConn()
 				noProxypeer.Mutex.Unlock()
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
@@ -311,7 +349,7 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, noProxypeer.Key.String())
 			if err == nil {
-				logger.Log(0, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+				logger.Log(3, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					noProxypeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())
@@ -335,6 +373,7 @@ func (m *proxyPayload) processPayload() error {
 			noProxypeer.ServerMap[m.Server] = struct{}{}
 			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+			noProxypeer.Mutex.Unlock()
 		}
 
 	}

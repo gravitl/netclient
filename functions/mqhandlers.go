@@ -159,6 +159,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Configure()
 	wireguard.SetPeers()
 
 	if config.Netclient().ProxyEnabled {
@@ -284,6 +286,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	config.DeleteServer(server)
 	// delete mq client from ServerSet map
 	delete(ServerSet, server)
 }
