@@ -83,10 +83,10 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		LocalConn:   p.LocalConn,
 	}
 	if peerConf.Proxy || peerConf.IsExtClient {
-		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
+		logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
 		config.GetCfg().SavePeer(&connConf)
 	} else {
-		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
+		logger.Log(1, "-----> saving as no proxy peer: ", connConf.Key.String())
 		config.GetCfg().SaveNoProxyPeer(&connConf)
 	}
 	config.GetCfg().SavePeerByHash(&rPeer)
