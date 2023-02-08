@@ -57,8 +57,12 @@ type firewallController interface {
 
 // Init - initialises the firewall controller,return a close func to flush all rules
 func Init() (func(), error) {
+	var err error
 	logger.Log(0, "Starting firewall...")
-	fwCrtl = newFirewall()
+	fwCrtl, err = newFirewall()
+	if err != nil {
+		return nil, err
+	}
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err
 	}

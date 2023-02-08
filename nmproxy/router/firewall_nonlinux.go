@@ -52,6 +52,6 @@ func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
 }
 
 // newFirewall returns an unimplemented Firewall manager
-func newFirewall() firewallController {
-	return unimplementedFirewall{}
+func newFirewall() (firewallController, error) {
+	return unimplementedFirewall{}, nil
 }
