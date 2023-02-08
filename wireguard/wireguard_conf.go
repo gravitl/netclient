@@ -49,25 +49,6 @@ func UpdateWgInterface(node *config.Node, host *config.Config) error {
 	//if node.DNSOn == "yes" {
 	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
 	//}
-	//need to split postup/postdown because ini lib adds a quotes which breaks freebsd
-	if node.PostUp != "" {
-		parts := strings.Split(node.PostUp, " ; ")
-		for i, part := range parts {
-			if i == 0 {
-				wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
-			}
-			wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
-		}
-	}
-	if node.PostDown != "" {
-		parts := strings.Split(node.PostDown, " ; ")
-		for i, part := range parts {
-			if i == 0 {
-				wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
-			}
-			wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
-		}
-	}
 	if host.MTU != 0 {
 		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))
 	}
@@ -187,32 +168,6 @@ func WriteWgConfig(host *config.Config, nodes config.NodeMap) error {
 		//}
 		//need to split postup/postdown because ini lib adds a ` and the ` breaks freebsd
 		//works fine on others
-		if node.PostUp != "" {
-			if host.OS == "freebsd" {
-				parts := strings.Split(node.PostUp, " ; ")
-				for i, part := range parts {
-					if i == 0 {
-						wireguard.Section(sectionInterface).Key("PostUp").SetValue(part)
-					}
-					wireguard.Section(sectionInterface).Key("PostUp").AddShadow(part)
-				}
-			} else {
-				wireguard.Section(sectionInterface).Key("PostUp").SetValue((node.PostUp))
-			}
-		}
-		if node.PostDown != "" {
-			if host.OS == "freebsd" {
-				parts := strings.Split(node.PostDown, " ; ")
-				for i, part := range parts {
-					if i == 0 {
-						wireguard.Section(sectionInterface).Key("PostDown").SetValue(part)
-					}
-					wireguard.Section(sectionInterface).Key("PostDown").AddShadow(part)
-				}
-			} else {
-				wireguard.Section(sectionInterface).Key("PostDown").SetValue((node.PostDown))
-			}
-		}
 	}
 	if host.MTU != 0 {
 		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(host.MTU), 10))

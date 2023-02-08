@@ -37,6 +37,10 @@ func List(net string, long bool) {
 					logger.Log(1, "failed to get peers for node: ", node.ID.String(), " Err: ", err.Error())
 					continue
 				}
+				if len(peers) == 0 {
+					logger.Log(1, "no peers present on network", node.Network)
+					continue
+				}
 				entry["peers"] = make([]map[string]any, 0)
 				for _, peer := range peers {
 					p := map[string]any{
@@ -64,7 +68,11 @@ func List(net string, long bool) {
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server.API, config.Netclient())
+	host := config.Netclient()
+	if host == nil {
+		return nil, fmt.Errorf("no configured host found")
+	}
+	token, err := Authenticate(server.API, host)
 	if err != nil {
 		return nil, err
 	}

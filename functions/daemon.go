@@ -16,7 +16,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy"
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
-	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -124,8 +123,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wireguard.SetPeers()
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
-			ProxyUpdate: proxy_models.ProxyManagerPayload{
-				Action: proxy_models.ProxyDeleteAllPeers,
+			ProxyUpdate: models.ProxyManagerPayload{
+				Action: models.ProxyDeleteAllPeers,
 			},
 		}
 	}
@@ -162,8 +161,8 @@ func setupMQTT(server *config.Server) error {
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
-	opts.SetUsername(server.MQID.String())
-	opts.SetPassword(server.Password)
+	opts.SetUsername(server.MQUserName)
+	opts.SetPassword(server.MQPassword)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
@@ -216,8 +215,8 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	broker := server.Broker
 	port := server.MQPort
 	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
-	opts.SetUsername(server.MQID.String())
-	opts.SetPassword(server.Password)
+	opts.SetUsername(server.MQUserName)
+	opts.SetPassword(server.MQPassword)
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)

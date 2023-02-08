@@ -15,6 +15,7 @@ import {
   GoJoinNetworkBySso,
 } from "../../wailsjs/go/main/App";
 import { notifyUser } from "../utils/messaging";
+import { AppRoutes } from "../routes";
 
 export default function UsernameLogin() {
   const [recentServerNames, setRecentServerNames] = useState<string[]>([]);
@@ -114,8 +115,8 @@ export default function UsernameLogin() {
       };
       networksDispatch(data);
 
-      // redirect
-      navigate(getNetworkDetailsPageUrl(networkName));
+      // navigate(getNetworkDetailsPageUrl(networkName));
+      navigate(AppRoutes.NETWORKS_ROUTE);
     } catch (err) {
       await notifyUser("Failed to login to network\n" + err as string);
       console.error(err);

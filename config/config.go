@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
-	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
@@ -455,7 +454,7 @@ func CheckConfig() {
 	}
 	if netclient.ProxyListenPort == 0 {
 		logger.Log(0, "setting proxyListenPort")
-		port, err := ncutils.GetFreePort(proxy_models.NmProxyPort)
+		port, err := ncutils.GetFreePort(models.NmProxyPort)
 		if err != nil {
 			logger.Log(0, "error getting free port", err.Error())
 		} else {
@@ -508,7 +507,7 @@ func CheckConfig() {
 	}
 	_ = ReadServerConf()
 	for _, server := range Servers {
-		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
+		if server.MQID != netclient.ID {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
