@@ -55,6 +55,7 @@ var (
 						Register: 1,
 						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
+					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictDrop},
 				},
 				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", "DROP")),
@@ -74,6 +75,7 @@ var (
 						Register: 1,
 						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
+					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictReturn},
 				},
 				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", "RETURN")),
@@ -96,6 +98,7 @@ var (
 						Register: 1,
 						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
+					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerNatChain},
 				},
 				UserData: []byte(genRuleKey("-o", ncutils.GetInterfaceName(), "-j", netmakerNatChain)),
@@ -109,6 +112,7 @@ var (
 				Table: natTable,
 				Chain: &nftables.Chain{Name: netmakerNatChain},
 				Exprs: []expr.Any{
+					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictReturn},
 				},
 				UserData: []byte(genRuleKey("-j", "RETURN")),
@@ -138,7 +142,7 @@ func (n *nftablesManager) CreateChains() error {
 	n.deleteChain(defaultNatTable, netmakerNatChain)
 
 	defaultForwardPolicy := new(nftables.ChainPolicy)
-	*defaultForwardPolicy = nftables.ChainPolicyDrop
+	*defaultForwardPolicy = nftables.ChainPolicyAccept
 
 	forwardChain := &nftables.Chain{
 		Name:     iptableFWDChain,
@@ -150,6 +154,21 @@ func (n *nftablesManager) CreateChains() error {
 	}
 	n.conn.AddChain(forwardChain)
 
+	n.conn.AddChain(&nftables.Chain{
+		Name:     "INPUT",
+		Table:    filterTable,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+	})
+	n.conn.AddChain(&nftables.Chain{
+		Name:     "OUTPUT",
+		Table:    filterTable,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookOutput,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
 	postroutingChain := &nftables.Chain{
 		Name:     nattablePRTChain,
 		Table:    natTable,
@@ -158,6 +177,28 @@ func (n *nftablesManager) CreateChains() error {
 		Priority: nftables.ChainPriorityNATSource,
 	}
 	n.conn.AddChain(postroutingChain)
+
+	n.conn.AddChain(&nftables.Chain{
+		Name:     "PREROUTING",
+		Table:    natTable,
+		Type:     nftables.ChainTypeNAT,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityNATDest,
+	})
+	n.conn.AddChain(&nftables.Chain{
+		Name:     "INPUT",
+		Table:    natTable,
+		Type:     nftables.ChainTypeNAT,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityNATSource,
+	})
+	n.conn.AddChain(&nftables.Chain{
+		Name:     "OUTPUT",
+		Table:    natTable,
+		Type:     nftables.ChainTypeNAT,
+		Hooknum:  nftables.ChainHookOutput,
+		Priority: nftables.ChainPriorityNATDest,
+	})
 
 	filterChain := &nftables.Chain{
 		Name:  netmakerFilterChain,
@@ -241,6 +282,7 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 					Register: 1,
 					Data:     peerIP.To16(),
 				},
+				&expr.Counter{},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
 		}
@@ -264,11 +306,11 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 					Register: 1,
 					Data:     peerIP.To4(),
 				},
+				&expr.Counter{},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
 		}
 	}
-	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -340,6 +382,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     ingwIP.To16(),
 				},
+				&expr.Counter{},
 				&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
 			},
 		}
@@ -373,6 +416,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     ingwIP.To4(),
 				},
+				&expr.Counter{},
 				&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
 			},
 		}
@@ -382,7 +426,6 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 		rulesMap: make(map[string][]ruleInfo),
 	}
 	logger.Log(0, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -395,7 +438,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 	nfJumpRules = append(nfJumpRules, fwdJumpRule)
 
-	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
+	ruleSpec = []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
 	if isIpv4 {
 		rule = &nftables.Rule{
 			Table:    filterTable,
@@ -415,6 +458,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     extPeerIP.To4(),
 				},
+				&expr.Counter{},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
 		}
@@ -437,12 +481,12 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     extPeerIP.To16(),
 				},
+				&expr.Counter{},
 				&expr.Verdict{Kind: expr.VerdictAccept},
 			},
 		}
 	}
 	logger.Log(0, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -496,6 +540,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 						Register: 1,
 						Data:     peerIP.To4(),
 					},
+					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictAccept},
 				},
 			}
@@ -529,12 +574,12 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 						Register: 1,
 						Data:     peerIP.To16(),
 					},
+					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictAccept},
 				},
 			}
 		}
 		logger.Log(0, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-		rule.Position = 1
 		n.conn.InsertRule(rule)
 		if err := n.conn.Flush(); err != nil {
 			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -580,6 +625,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 				},
+				&expr.Counter{},
 				&expr.Masq{},
 			},
 		}
@@ -608,11 +654,11 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 				},
+				&expr.Counter{},
 				&expr.Masq{},
 			},
 		}
 	}
-	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -652,6 +698,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 				},
+				&expr.Counter{},
 				&expr.Masq{},
 			},
 		}
@@ -680,11 +727,11 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					Register: 1,
 					Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 				},
+				&expr.Counter{},
 				&expr.Masq{},
 			},
 		}
 	}
-	rule.Position = 1
 	n.conn.InsertRule(rule)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
