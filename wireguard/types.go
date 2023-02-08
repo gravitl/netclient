@@ -82,7 +82,7 @@ type ifaceAddress struct {
 func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-	logger.Log(3, "adding addresses to netmaker interface")
+	logger.Log(0, "adding addresses to netmaker interface")
 	n.getPeerRoutes()
 	if err := n.ApplyAddrs(); err != nil {
 		return err
