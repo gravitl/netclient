@@ -332,6 +332,12 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.DNSDeleteByIP:
 		hosts.RemoveAddress(dns.Address, etcHostsComment)
 	case models.DNSReplaceName:
+		ok, ip, _ := hosts.HostAddressLookup(dns.Name, etcHostsComment)
+		if !ok {
+			logger.Log(2, "failed to find dns address for host", dns.Name)
+			return
+		}
+		dns.Address = ip
 		hosts.RemoveHost(dns.Name, etcHostsComment)
 		hosts.AddHost(dns.Address, dns.NewName, etcHostsComment)
 	case models.DNSReplaceIP:
