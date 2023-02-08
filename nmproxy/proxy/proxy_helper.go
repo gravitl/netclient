@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/metrics"
 )
@@ -146,7 +147,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 				metric := metrics.GetMetric(server, p.Config.PeerPublicKey.String())
 				metric.NodeConnectionStatus = make(map[string]bool)
 				metric.LastRecordedLatency = 999
-				connectionStatus := metrics.PeerConnectionStatus(p.Config.PeerPublicKey.String())
+				connectionStatus := PeerConnectionStatus(p.Config.PeerPublicKey.String())
 				for peerID := range peerIDsAndAddrs {
 					metric.NodeConnectionStatus[peerID] = connectionStatus
 				}
@@ -238,4 +239,18 @@ func GetFreeIp(cidrAddr string, dstPort int) (string, error) {
 		}
 
 	}
+}
+
+// PeerConnectionStatus - get peer connection status from wireguard interface
+func PeerConnectionStatus(peerPublicKey string) bool {
+	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
+	if err != nil {
+		return false
+	}
+	for _, peer := range ifacePeers {
+		if peer.PublicKey.String() == peerPublicKey {
+			return peer.LastHandshakeTime.After(time.Now().Add(-3*time.Minute)) && peer.ReceiveBytes+peer.TransmitBytes > 0
+		}
+	}
+	return false
 }
