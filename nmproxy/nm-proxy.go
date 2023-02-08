@@ -31,6 +31,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPee
 	}
 	config.InitializeCfg()
 	defer config.Reset()
+	config.GetCfg().SetProxyStatus(true)
 	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunAddr, stunPort, proxyPort))
 	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetCfg().GetHostInfo()))
 	config.GetCfg().SetNATStatus()

@@ -33,8 +33,7 @@ type Config struct {
 // InitializeCfg - intializes all the variables and sets defaults
 func InitializeCfg() {
 	config = &Config{
-		ProxyStatus: true,
-		mutex:       &sync.RWMutex{},
+		mutex: &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:            nil,
 			proxyPeerMap:     make(proxy.PeerConnMap),
@@ -52,6 +51,11 @@ func InitializeCfg() {
 // Config.IsProxyRunning - checks if proxy is running
 func (c *Config) IsProxyRunning() bool {
 	return c.ProxyStatus
+}
+
+// Config.SetProxyStatus - sets proxy status
+func (c *Config) SetProxyStatus(s bool) {
+	c.ProxyStatus = s
 }
 
 // Config.SetHostInfo - sets host info
@@ -95,7 +99,7 @@ func (c *Config) GetHostInfo() proxy.HostInfo {
 
 // Reset - resets Config // to be called only when proxy is shutting down
 func Reset() {
-	config = &Config{}
+	InitializeCfg()
 }
 
 // GetCfg - fethes Config
