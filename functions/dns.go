@@ -58,7 +58,34 @@ func deleteAllDNS() error {
 	lines := hosts.GetHostFileLines()
 	for _, line := range *lines {
 		if line.Comment == etcHostsComment {
-			hosts.RemoveHosts(line.Hostnames, etcHostsComment)
+			hosts.RemoveAddress(line.Address, etcHostsComment)
+		}
+	}
+	if err := hosts.Save(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deleteNetworkDNS(network string) error {
+	temp := os.TempDir()
+	lockfile := temp + "/netclient-lock"
+	if err := config.Lock(lockfile); err != nil {
+		return err
+	}
+	defer config.Unlock(lockfile)
+	hosts, err := txeh.NewHostsDefault()
+	if err != nil {
+		return err
+	}
+	lines := hosts.GetHostFileLines()
+	for _, line := range *lines {
+		if line.Comment == etcHostsComment {
+			for _, host := range line.Hostnames {
+				if strings.Contains(host, network) {
+					hosts.RemoveAddress(line.Address, etcHostsComment)
+				}
+			}
 		}
 	}
 	if err := hosts.Save(); err != nil {
