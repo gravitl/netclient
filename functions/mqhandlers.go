@@ -3,6 +3,7 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
+	"github.com/kr/pretty"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -293,6 +295,7 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	defer config.Unlock(lockfile)
 	var dns models.DNSUpdate
+	log.Println(msg.Topic())
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -309,10 +312,13 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	var currentMessage = read("dns", lastDNSUpdate)
 	if currentMessage == string(data) {
 		logger.Log(3, "cache hit on dns update ... skipping")
+		pretty.Println(currentMessage)
+		pretty.Println(string(data))
 		return
 	}
 	insert("dns", lastDNSUpdate, string(data))
 	logger.Log(3, "recieved dns update for", dns.Name)
+	pretty.Println(dns)
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
 		logger.Log(0, "failed to read hosts file", err.Error())
@@ -320,17 +326,17 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	switch dns.Action {
 	case models.DNSInsert:
-		hosts.AddHost(dns.Address, dns.Name, "netmaker")
+		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
 	case models.DNSDeleteByName:
-		hosts.RemoveHost(dns.Name, "netmaker")
+		hosts.RemoveHost(dns.Name, etcHostsComment)
 	case models.DNSDeleteByIP:
-		hosts.RemoveAddress(dns.Address, "netmaker")
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
 	case models.DNSReplaceName:
-		hosts.RemoveHost(dns.Name, "netmaker")
-		hosts.AddHost(dns.Address, dns.NewName, "netmaker")
+		hosts.RemoveHost(dns.Name, etcHostsComment)
+		hosts.AddHost(dns.Address, dns.NewName, etcHostsComment)
 	case models.DNSReplaceIP:
-		hosts.RemoveAddress(dns.Address, "netmaker")
-		hosts.AddHost(dns.NewAddress, dns.Name, "netmaker")
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
+		hosts.AddHost(dns.NewAddress, dns.Name, etcHostsComment)
 	}
 	if err := hosts.Save(); err != nil {
 		logger.Log(0, "error saving hosts file", err.Error())
@@ -371,7 +377,7 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 		if entry.Action != models.DNSInsert {
 			logger.Log(0, "invalid dns actions", entry.Action.String())
 		}
-		hosts.AddHost(entry.Address, entry.Name, "netmaker")
+		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
 	}
 
 	if err := hosts.Save(); err != nil {

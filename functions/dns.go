@@ -11,6 +11,8 @@ import (
 	"github.com/guumaster/hostctl/pkg/types"
 )
 
+const etcHostsComment = "netmaker"
+
 // removeHostDNS -remove dns entries from /etc/hosts using hostctl
 // this function should only be called from the migrate function
 func removeHostDNS(network string) error {
