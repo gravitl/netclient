@@ -11,6 +11,7 @@ import (
 
 	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
 )
 
 // TODO: use -ldflags to set the right version at build time
@@ -24,6 +25,9 @@ func main() {
 	if len(ncArgs) > 1 && ncArgs[1] != "gui" ||
 		len(ncArgs) == 1 && runtime.GOOS != "windows" { // windows by default uses gui
 		config.SetVersion(version)
+		if version != "dev" {
+			functions.SelfUpdate(version, true)
+		}
 		cmd.Execute()
 	} else {
 		guiFunc()

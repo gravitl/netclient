@@ -11,7 +11,7 @@ import (
 )
 
 // newFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
-func newFirewall() firewallController {
+func newFirewall() (firewallController, error) {
 
 	var manager firewallController
 	if isIptablesSupported() {
@@ -24,14 +24,14 @@ func newFirewall() firewallController {
 			ingRules:     make(serverrulestable),
 			engressRules: make(serverrulestable),
 		}
-		return manager
+		return manager, nil
 	}
 
-	logger.Log(0, "iptables is not supported, using nftables")
+	//logger.Log(0, "iptables is not supported, using nftables")
 
 	// TODO - nft table manager
 
-	return manager
+	return manager, errors.New("firewall support not found")
 }
 
 func isIptablesSupported() bool {
