@@ -499,6 +499,11 @@ func CheckConfig() {
 			netclient.FirewallInUse = models.FIREWALL_IPTABLES
 		}
 	}
+	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
+		if _, err := os.Create(GetNetclientPath() + "netmaker.conf"); err != nil {
+			logger.Log(0, "failed to create netmaker.conf: ", err.Error())
+		}
+	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")
 		if err := WriteNetclientConfig(); err != nil {
