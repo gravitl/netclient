@@ -2,6 +2,7 @@ package functions
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -56,11 +57,13 @@ func deleteAllDNS() error {
 		return err
 	}
 	lines := hosts.GetHostFileLines()
+	addressesToDelete := []string{}
 	for _, line := range *lines {
 		if line.Comment == etcHostsComment {
-			hosts.RemoveAddress(line.Address, etcHostsComment)
+			addressesToDelete = append(addressesToDelete, line.Address)
 		}
 	}
+	hosts.RemoveAddresses(addressesToDelete, etcHostsComment)
 	if err := hosts.Save(); err != nil {
 		return err
 	}
@@ -79,17 +82,29 @@ func deleteNetworkDNS(network string) error {
 		return err
 	}
 	lines := hosts.GetHostFileLines()
+	addressesToRemove := []string{}
 	for _, line := range *lines {
 		if line.Comment == etcHostsComment {
-			for _, host := range line.Hostnames {
-				if strings.Contains(host, network) {
-					hosts.RemoveAddress(line.Address, etcHostsComment)
-				}
+			log.Println("checking line", line.Address, line.Hostnames, network)
+			if sliceContains(line.Hostnames, network) {
+				log.Println("adding address", line.Address)
+				addressesToRemove = append(addressesToRemove, line.Address)
 			}
 		}
 	}
+	log.Println("removing addresses", addressesToRemove)
+	hosts.RemoveAddresses(addressesToRemove, etcHostsComment)
 	if err := hosts.Save(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func sliceContains(s []string, v string) bool {
+	for _, e := range s {
+		if strings.Contains(e, v) {
+			return true
+		}
+	}
+	return false
 }
