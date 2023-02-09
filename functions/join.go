@@ -29,19 +29,16 @@ import (
 // Join joins a netmaker network with flags specified on command line
 func Join(flags *viper.Viper) error {
 	//config.ParseJoinFlags(cmd)
-	fmt.Println("join called")
 	if flags.Get("server") != "" {
 		//SSO sign on
 		if flags.Get("network") == "" {
 			logger.Log(0, "no network provided")
 		}
-		log.Println()
 		ssoAccessToken, err := JoinViaSSo(flags)
 		if err != nil {
 			logger.Log(0, "Join failed:", err.Error())
 			return err
 		}
-		log.Println("token from SSo")
 		if ssoAccessToken == nil {
 			fmt.Println("login failed")
 			return errors.New("could not get SSO access token")
@@ -62,7 +59,7 @@ func Join(flags *viper.Viper) error {
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
 		flags.Set("apiconn", accessToken.APIConnString)
 	}
-	logger.Log(1, "Joining network: ", flags.GetString("network"))
+	fmt.Println("Joining network: ", flags.GetString("network"))
 	node, server, err := JoinNetwork(flags)
 	if err != nil {
 		return err
@@ -82,7 +79,7 @@ func Join(flags *viper.Viper) error {
 	if err := wireguard.WriteWgConfig(config.Netclient(), config.GetNodes()); err != nil {
 		logger.Log(0, "error saving wireguard conf", err.Error())
 	}
-	logger.Log(1, "joined", node.Network)
+	fmt.Println("joined", node.Network)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
@@ -300,7 +297,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Key:  flags.GetString("accesskey"),
 	}
 	joinData.Key = flags.GetString("accesskey")
-	logger.Log(0, "joining "+node.Network+" at "+url)
+	logger.Log(2, "joining "+node.Network+" at "+url)
 	api := httpclient.JSONEndpoint[models.NodeJoinResponse, models.ErrorResponse]{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,
