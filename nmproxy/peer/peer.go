@@ -51,6 +51,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 			return errors.New("relay endpoint is nil")
 		}
 		peerEndpointIP = relayTo.IP
+		peerPort = relayTo.Port
 	}
 	peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerEndpointIP, peerPort))
 	if err != nil {
