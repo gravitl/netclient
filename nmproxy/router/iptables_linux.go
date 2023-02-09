@@ -233,7 +233,7 @@ func (i *iptablesManager) removeJumpRules() {
 }
 
 // iptablesManager.AddIngressRoutingRule - adds a ingress route for a peer
-func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
+func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
 	ruleTable := i.FetchRuleTable(server, ingressTable)
 	defer i.SaveRules(server, ingressTable, ruleTable)
 	i.mux.Lock()
@@ -243,7 +243,7 @@ func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 		iptablesClient = i.ipv6Client
 	}
 
-	ruleSpec := []string{"-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
+	ruleSpec := []string{"-s", extPeerAddr, "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
 	err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))

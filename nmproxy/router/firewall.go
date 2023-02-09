@@ -34,7 +34,7 @@ type firewallController interface {
 	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
 	InsertIngressRoutingRules(server string, r models.ExtClientInfo) error
 	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
-	AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error
+	AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// AddEgressRoutingRule - adds a egress routing rules for a peer
