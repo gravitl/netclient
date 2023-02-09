@@ -59,7 +59,7 @@ func Join(flags *viper.Viper) error {
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
 		flags.Set("apiconn", accessToken.APIConnString)
 	}
-	logger.Log(0, "Joining network: ", flags.GetString("network"))
+	fmt.Println("Joining network: ", flags.GetString("network"))
 	node, server, err := JoinNetwork(flags)
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func Join(flags *viper.Viper) error {
 	if err := wireguard.WriteWgConfig(config.Netclient(), config.GetNodes()); err != nil {
 		logger.Log(0, "error saving wireguard conf", err.Error())
 	}
-	logger.Log(0, "joined", node.Network)
+	fmt.Println("joined", node.Network)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
@@ -297,7 +297,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Key:  flags.GetString("accesskey"),
 	}
 	joinData.Key = flags.GetString("accesskey")
-	logger.Log(1, "joining "+node.Network+" at "+url)
+	logger.Log(2, "joining "+node.Network+" at "+url)
 	api := httpclient.JSONEndpoint[models.NodeJoinResponse, models.ErrorResponse]{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,
