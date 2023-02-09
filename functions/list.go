@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,26 +11,44 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+type output struct {
+	Network   string    `json:"network"`
+	NodeID    string    `json:"node_id"`
+	Connected bool      `json:"connected"`
+	Ipv4Addr  string    `json:"ipv4_addr"`
+	Ipv6Addr  string    `json:"ipv6_addr"`
+	Peers     []peerOut `json:"peers"`
+}
+
+type peerOut struct {
+	PublicKey  string   `json:"public_key"`
+	Endpoint   string   `json:"endpoint"`
+	AllowedIps []string `json:"allowed_ips"`
+}
 
 // List - list network details for specified networks
 // long flag passed passed to cmd line will list additional details about network including peers
 func List(net string, long bool) {
-	output := make([]map[string]any, 0)
+	listOutput := []output{}
 	found := false
 	nodes := config.GetNodes()
 	for network := range nodes {
 		if network == net || net == "" {
 			found = true
 			node := nodes[network]
-			entry := map[string]any{
-				"network":      node.Network,
-				"connected":    node.Connected,
-				"id":           node.ID,
-				"ipv4_address": node.Address.String(),
-				"ipv6_address": node.Address6.String(),
+			output := output{
+				Network:   node.Network,
+				Connected: node.Connected,
+				NodeID:    node.ID.String(),
+			}
+			if node.Address.IP != nil {
+				output.Ipv4Addr = node.Address.String()
+			}
+			if node.Address6.IP != nil {
+				output.Ipv6Addr = node.Address6.String()
 			}
 			if long {
 				peers, err := GetNodePeers(node)
@@ -41,26 +60,29 @@ func List(net string, long bool) {
 					logger.Log(1, "no peers present on network", node.Network)
 					continue
 				}
-				entry["peers"] = make([]map[string]any, 0)
 				for _, peer := range peers {
-					p := map[string]any{
-						"public_key":  peer.PublicKey,
-						"endpoint":    peer.Endpoint,
-						"allowed_ips": make([]string, 0),
+					p := peerOut{
+						PublicKey: peer.PublicKey.String(),
+						Endpoint:  peer.Endpoint.String(),
 					}
+
 					for _, cidr := range peer.AllowedIPs {
-						p["allowed_ips"] = append(p["allowed_ips"].([]string), cidr.String())
+						p.AllowedIps = append(p.AllowedIps, cidr.String())
 					}
-					entry["peers"] = append(entry["peers"].([]map[string]any), p)
+					output.Peers = append(output.Peers, p)
 				}
 			}
-			output = append(output, entry)
+			listOutput = append(listOutput, output)
 		}
 	}
 	if !found {
 		fmt.Println("\nno such network")
 	} else {
-		pretty.Print(output)
+		out, err := json.MarshalIndent(listOutput, "", " ")
+		if err != nil {
+			logger.Log(0, "failed to marshal list output: ", err.Error())
+		}
+		fmt.Println(string(out))
 	}
 }
 
