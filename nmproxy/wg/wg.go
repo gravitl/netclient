@@ -75,7 +75,6 @@ func (w *WGIface) configureDevice(config wgtypes.Config) error {
 	if err != nil {
 		return err
 	}
-	logger.Log(0, "got Wireguard device %s\n", w.Name)
 
 	return wg.ConfigureDevice(w.Name, config)
 }
