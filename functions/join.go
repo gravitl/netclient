@@ -68,8 +68,10 @@ func Join(flags *viper.Viper) error {
 	if err != nil {
 		return err
 	}
-	log.Println("server response to join")
-	pretty.Println(node, server)
+	if config.Netclient().Debug {
+		log.Println("server response to join")
+		pretty.Println(node, server)
+	}
 	//save new configurations
 	config.UpdateNodeMap(node.Network, *node)
 	config.UpdateServer(node.Server, *server)
@@ -319,8 +321,10 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Response:      models.NodeJoinResponse{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	log.Println("sending join request")
-	pretty.Println(joinData)
+	if config.Netclient().Debug {
+		log.Println("sending join request")
+		pretty.Println(joinData)
+	}
 	joinResponse, errData, err := api.GetJSON(models.NodeJoinResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
@@ -333,7 +337,9 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("incompatible server version")
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
-	pretty.Println(joinResponse)
+	if config.Netclient().Debug {
+		pretty.Println(joinResponse)
+	}
 	server := config.GetServer(joinResponse.ServerConfig.Server)
 	// if new server, populate attributes
 	if server == nil {
