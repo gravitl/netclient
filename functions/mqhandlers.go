@@ -3,7 +3,6 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
-	"github.com/kr/pretty"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -295,7 +293,6 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	defer config.Unlock(lockfile)
 	var dns models.DNSUpdate
-	log.Println(msg.Topic())
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -312,13 +309,10 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	var currentMessage = read("dns", lastDNSUpdate)
 	if currentMessage == string(data) {
 		logger.Log(3, "cache hit on dns update ... skipping")
-		pretty.Println(currentMessage)
-		pretty.Println(string(data))
 		return
 	}
 	insert("dns", lastDNSUpdate, string(data))
 	logger.Log(3, "recieved dns update for", dns.Name)
-	pretty.Println(dns)
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
 		logger.Log(0, "failed to read hosts file", err.Error())
