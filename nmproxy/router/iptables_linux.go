@@ -411,6 +411,20 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:  ruleSpec,
 					})
 				}
+				ruleSpec = []string{"-d", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				// to avoid duplicate iface route rule,delete if exists
+				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
+				err = iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						table: defaultNatTable,
+						chain: nattablePRTChain,
+						rule:  ruleSpec,
+					})
+				}
 			}
 
 		}
