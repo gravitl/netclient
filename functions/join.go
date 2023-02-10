@@ -291,31 +291,15 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
-	serverHost, serverNode := config.Convert(host, &node)
-	if len(config.GetServers()) == 0 { // should indicate a first join
-		// do a double check of name and uuid
-		logger.Log(1, "performing first join")
-		var shouldUpdateHost bool
-		if len(host.Name) == 0 {
-			if name, err := os.Hostname(); err == nil {
-				host.Name = name
-			} else {
-				hostName := ncutils.MakeRandomString(12)
-				logger.Log(0, "host name not found, continuing with", hostName)
-				host.Name = hostName
-			}
-			shouldUpdateHost = true
-		}
-		if host.ID == uuid.Nil {
-			if host.ID, err = uuid.NewUUID(); err != nil {
-				return nil, nil, fmt.Errorf("invalid host ID provided on initial join")
-			}
-			shouldUpdateHost = true
-		}
-		if shouldUpdateHost {
-			config.UpdateNetclient(*host)
-		}
+	shouldUpdate, err := doubleCheck(host)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error occurred before joining - %v", err)
 	}
+	if shouldUpdate {
+		config.UpdateNetclient(*host)
+	}
+
+	serverHost, serverNode := config.Convert(host, &node)
 	joinData := models.JoinData{
 		Host: serverHost,
 		Node: serverNode,
@@ -408,4 +392,37 @@ func getPrivateAddrBackup() (net.IPNet, error) {
 	}
 	err = errors.New("local ip address not found")
 	return address, err
+}
+
+func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
+	if len(config.GetServers()) == 0 { // should indicate a first join
+		// do a double check of name and uuid
+		logger.Log(1, "performing first join")
+		var shouldUpdateHost bool
+		if len(host.Name) == 0 {
+			if name, err := os.Hostname(); err == nil {
+				host.Name = name
+			} else {
+				hostName := ncutils.MakeRandomString(12)
+				logger.Log(0, "host name not found, continuing with", hostName)
+				host.Name = hostName
+			}
+			shouldUpdateHost = true
+		}
+		if host.ID == uuid.Nil {
+			if host.ID, err = uuid.NewUUID(); err != nil {
+				return false, err
+			}
+			shouldUpdateHost = true
+		}
+		if len(host.HostPass) == 0 {
+			host.HostPass = ncutils.MakeRandomString(32)
+			shouldUpdateHost = true
+		}
+		if shouldUpdateHost {
+			config.UpdateNetclient(*host)
+			return true, nil
+		}
+	}
+	return
 }
