@@ -2,7 +2,6 @@ package functions
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -85,14 +84,11 @@ func deleteNetworkDNS(network string) error {
 	addressesToRemove := []string{}
 	for _, line := range *lines {
 		if line.Comment == etcHostsComment {
-			log.Println("checking line", line.Address, line.Hostnames, network)
 			if sliceContains(line.Hostnames, network) {
-				log.Println("adding address", line.Address)
 				addressesToRemove = append(addressesToRemove, line.Address)
 			}
 		}
 	}
-	log.Println("removing addresses", addressesToRemove)
 	hosts.RemoveAddresses(addressesToRemove, etcHostsComment)
 	if err := hosts.Save(); err != nil {
 		return err

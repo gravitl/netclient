@@ -235,11 +235,7 @@ func Lock(lockfile string) error {
 						}
 					}
 				}
-				if debug {
-					logger.Log(0, "error unmarhalling data from lockfile", err.Error())
-				}
-			}
-			if debug {
+			} else if debug {
 				logger.Log(0, "error reading lockfile", err.Error())
 			}
 		} else {

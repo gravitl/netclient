@@ -3,6 +3,7 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -306,13 +307,19 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := json.Unmarshal([]byte(data), &dns); err != nil {
 		logger.Log(0, "error unmarshalling dns update")
 	}
+	if config.Netclient().Debug {
+		log.Println("dnsUpdate received", dns)
+	}
 	var currentMessage = read("dns", lastDNSUpdate)
 	if currentMessage == string(data) {
 		logger.Log(3, "cache hit on dns update ... skipping")
 		return
 	}
 	insert("dns", lastDNSUpdate, string(data))
-	logger.Log(3, "recieved dns update for", dns.Name)
+	logger.Log(3, "received dns update for", dns.Name)
+	if config.Netclient().Debug {
+		log.Println(dns)
+	}
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
 		logger.Log(0, "failed to read hosts file", err.Error())
@@ -367,7 +374,19 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 	if err := json.Unmarshal([]byte(data), &dns); err != nil {
 		logger.Log(0, "error unmarshalling dns update")
 	}
-	logger.Log(3, "recieved initial dns")
+	if config.Netclient().Debug {
+		log.Println("all dns", dns)
+	}
+	var currentMessage = read("dnsall", lastALLDNSUpdate)
+	logger.Log(3, "received initial dns")
+	if currentMessage == string(data) {
+		logger.Log(3, "cache hit on all dns ... skipping")
+		if config.Netclient().Debug {
+			log.Println("dns cache", currentMessage, string(data))
+		}
+		return
+	}
+	insert("dnsall", lastALLDNSUpdate, string(data))
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
 		logger.Log(0, "failed to read hosts file", err.Error())
@@ -376,6 +395,7 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 	for _, entry := range dns {
 		if entry.Action != models.DNSInsert {
 			logger.Log(0, "invalid dns actions", entry.Action.String())
+			continue
 		}
 		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
 	}

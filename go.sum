@@ -176,10 +176,10 @@ github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB7
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/gravitl/netmaker v0.17.2-0.20230207210322-71f41fefb843 h1:o4Iix8Pgd6WmjwD27llN8gzoU9ac1bp8PgH7+GnYLQ4=
-github.com/gravitl/netmaker v0.17.2-0.20230207210322-71f41fefb843/go.mod h1:TP5sLejWupIB8gGx/q2YiJGNE2/C2UMey8YLswVGw/s=
-github.com/gravitl/txeh v0.0.0-20230207190503-9356e056ee29 h1:Kw5G1O71Qfy8tKCcxK91RSn3rt8F9N62tyN6ckyk7AE=
-github.com/gravitl/txeh v0.0.0-20230207190503-9356e056ee29/go.mod h1:92b/CoEzM+PNkeuYN1YyIf2SMH/8KNg5tlQYvuivbD8=
+github.com/gravitl/netmaker v0.17.2-0.20230210115800-c7338888e41e h1:jeM7cDGoRMgmSFP8jz7Y1lrv8rNbW8b9MhNzWs/+9Kg=
+github.com/gravitl/netmaker v0.17.2-0.20230210115800-c7338888e41e/go.mod h1:TP5sLejWupIB8gGx/q2YiJGNE2/C2UMey8YLswVGw/s=
+github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc h1:PF7f+zhhn5pQDjAGNckcdola8ap7IkTa6OOMIEZcq0Q=
+github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc/go.mod h1:92b/CoEzM+PNkeuYN1YyIf2SMH/8KNg5tlQYvuivbD8=
 github.com/guumaster/hostctl v1.1.3 h1:b/yR3svkYsbr5VBdvfdyLXUl2xaKopSzgE/Xi7+1WRo=
 github.com/guumaster/hostctl v1.1.3/go.mod h1:h5rDx5Z8Hj2bYZfDt/eX4BNS2RSq7iRcGVQqfROJyH8=
 github.com/guumaster/tablewriter v0.0.10 h1:A0HD94yMdt4usgxBjoEceNeE0XMJ027euoHAzsPqBQs=
