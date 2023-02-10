@@ -296,7 +296,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, fmt.Errorf("error occurred before joining - %v", err)
 	}
 	if shouldUpdate {
-		config.UpdateNetclient(*host)
+		host = config.Netclient()
 	}
 
 	serverHost, serverNode := config.Convert(host, &node)
@@ -421,6 +421,7 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 		}
 		if shouldUpdateHost {
 			config.UpdateNetclient(*host)
+			config.WriteNetclientConfig()
 			return true, nil
 		}
 	}
