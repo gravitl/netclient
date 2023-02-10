@@ -244,6 +244,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	isExtClient := false
 	if peerInfo, ok := config.GetCfg().GetExtClientInfo(source); ok {
+		logger.Log(3, "------------->  ext client pkt from: ", source.String())
 		_, err := peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
 			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
