@@ -162,6 +162,8 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 				}
 
+			} else {
+				logger.Log(0, "failed to create metric pkt: ", err.Error())
 			}
 		}
 	}

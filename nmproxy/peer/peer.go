@@ -73,6 +73,8 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		StopConn:        p.Close,
 		ResetConn:       p.Reset,
 		LocalConn:       p.LocalConn,
+		IsRelayed:       isRelayed,
+		RelayedEndpoint: relayTo,
 		NetworkSettings: make(map[string]models.Settings),
 		ServerMap:       make(map[string]struct{}),
 	}
@@ -93,7 +95,6 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	config.GetCfg().SavePeerByHash(&rPeer)
 	if peerConf.IsExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
-
 	}
 	return nil
 }
