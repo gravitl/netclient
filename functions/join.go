@@ -295,6 +295,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	if len(config.GetServers()) == 0 { // should indicate a first join
 		// do a double check of name and uuid
 		logger.Log(1, "performing first join")
+		var shouldUpdateHost bool
 		if len(host.Name) == 0 {
 			if name, err := os.Hostname(); err == nil {
 				host.Name = name
@@ -303,11 +304,16 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 				logger.Log(0, "host name not found, continuing with", hostName)
 				host.Name = hostName
 			}
+			shouldUpdateHost = true
 		}
 		if host.ID == uuid.Nil {
 			if host.ID, err = uuid.NewUUID(); err != nil {
 				return nil, nil, fmt.Errorf("invalid host ID provided on initial join")
 			}
+			shouldUpdateHost = true
+		}
+		if shouldUpdateHost {
+			config.UpdateNetclient(*host)
 		}
 	}
 	joinData := models.JoinData{
