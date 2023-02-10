@@ -121,11 +121,22 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.LastRecordedLatency = uint64(latency)
 				metric.TrafficRecieved = int64(n)
 				metrics.UpdateMetricByPeer(metricMsg.Reciever.String(), &metric, false)
+				if metricMsg.ListenPort != 0 &&
+					config.GetCfg().HostInfo.PubPort != int(metricMsg.ListenPort) {
+					// update public listen port
+					logger.Log(0, fmt.Sprintf("-----> Updating My Public Listen Port From: %d --> %d",
+						config.GetCfg().HostInfo.PubPort, metricMsg.ListenPort))
+					config.GetCfg().HostInfo.PubPort = int(metricMsg.ListenPort)
+				}
 
 			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
 				logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source.String())
 				metricMsg.Reply = 1
+				if metricMsg.ListenPort == 0 {
+					metricMsg.ListenPort = uint32(source.Port)
+				}
+
 				buf, err := packet.EncodePacketMetricMsg(metricMsg)
 				if err == nil {
 					copy(buffer[:n], buf[:])
@@ -147,6 +158,15 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 					} else {
 						srcPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
 						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Reciever.String())
+					}
+					if metricMsg.ListenPort == 0 {
+						metricMsg.ListenPort = uint32(source.Port)
+					}
+					buf, err := packet.EncodePacketMetricMsg(metricMsg)
+					if err == nil {
+						copy(buffer[:n], buf[:])
+					} else {
+						logger.Log(1, "--------> failed to encode metric relay message")
 					}
 					p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
 					return
@@ -224,6 +244,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
 	isExtClient := false
 	if peerInfo, ok := config.GetCfg().GetExtClientInfo(source); ok {
+		logger.Log(3, "------------->  ext client pkt from: ", source.String())
 		_, err := peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
 			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())

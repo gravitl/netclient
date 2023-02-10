@@ -317,13 +317,24 @@ func (m *proxyPayload) processPayload() error {
 				continue
 			}
 
-			if currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
+			if currentPeer.Config.PeerConf.Endpoint.IP.String() != m.Peers[i].Endpoint.IP.String() {
+				logger.Log(1, fmt.Sprintf("----> Peer Endpoint has changed from %s to %s",
+					currentPeer.Config.PeerConf.Endpoint.String(), m.Peers[i].Endpoint.String()))
 				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
 				currentPeer.StopConn()
 				currentPeer.Mutex.Unlock()
 				delete(peerConnMap, currentPeer.Key.String())
 				continue
 
+			}
+			if !config.GetCfg().IsGlobalRelay() && !currentPeer.IsRelayed && currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
+				logger.Log(1, fmt.Sprintf("----> Peer RemoteConn has changed from %s to %s",
+					currentPeer.Config.RemoteConnAddr.String(), m.Peers[i].Endpoint.String()))
+				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
+				currentPeer.StopConn()
+				currentPeer.Mutex.Unlock()
+				delete(peerConnMap, currentPeer.Key.String())
+				continue
 			}
 			// delete the peer from the list
 			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
@@ -442,6 +453,7 @@ func (m *proxyPayload) peerUpdate() error {
 							addExtClient = true
 							peer.Endpoint = endpoint
 							peerI.Endpoint = endpoint
+							peerConf.PublicListenPort = int32(endpoint.Port)
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}
