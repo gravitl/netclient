@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/devilcove/httpclient"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -291,6 +292,24 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
 	serverHost, serverNode := config.Convert(host, &node)
+	if len(config.GetServers()) == 0 { // should indicate a first join
+		// do a double check of name and uuid
+		logger.Log(1, "performing first join")
+		if len(host.Name) == 0 {
+			if name, err := os.Hostname(); err == nil {
+				host.Name = name
+			} else {
+				hostName := ncutils.MakeRandomString(12)
+				logger.Log(0, "host name not found, continuing with", hostName)
+				host.Name = hostName
+			}
+		}
+		if host.ID == uuid.Nil {
+			if host.ID, err = uuid.NewUUID(); err != nil {
+				return nil, nil, fmt.Errorf("invalid host ID provided on initial join")
+			}
+		}
+	}
 	joinData := models.JoinData{
 		Host: serverHost,
 		Node: serverNode,
