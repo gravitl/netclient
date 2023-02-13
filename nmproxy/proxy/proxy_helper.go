@@ -97,7 +97,12 @@ func (p *Proxy) Reset() {
 		logger.Log(1, "couldn't perform reset: ", p.Config.PeerPublicKey.String(), err.Error())
 	}
 	p = New(p.Config)
-	p.Start()
+	err := p.Start()
+	if err != nil {
+		logger.Log(0, "Failed to reset proxy for peer: ",
+			p.Config.PeerPublicKey.String(), "Err: ", err.Error())
+		return
+	}
 	// update peer configs
 	if peer, found := config.GetCfg().GetPeer(p.Config.PeerPublicKey.String()); found {
 		peer.Config = p.Config
