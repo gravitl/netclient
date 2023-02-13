@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/gravitl/netmaker/releases">
-    <img src="https://img.shields.io/badge/Version-0.16.1-informational?style=flat-square" />
+    <img src="https://img.shields.io/badge/Version-0.18.0-informational?style=flat-square" />
   </a>
   <a href="https://hub.docker.com/r/gravitl/netclient/tags">
     <img src="https://img.shields.io/docker/pulls/gravitl/netclient?label=downloads" />
@@ -17,7 +17,7 @@
   </a>
 </p>
 
-# It Manages WireGuard® so You Don't Have To 
+# Automated WireGuard® Management Client 
 
 This is the client for Netmaker networks. To learn more about Netmaker, [see here](http://github.com/gravitl/netmaker).
 
@@ -79,4 +79,4 @@ For more information on the GUI, check [here](./gui/README.md)
 
 ## License
 
-Netmaker's source code and all artifacts in this repository are freely available. All versions are published under the Server Side Public License (SSPL), version 1, which can be found here: [LICENSE.txt](./LICENSE.txt).
+Netclient's source code and all artifacts in this repository are freely available under the Apache 2.0 License, which can be found here: [LICENSE.txt](./LICENSE.txt).
