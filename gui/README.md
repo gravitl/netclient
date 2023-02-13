@@ -6,7 +6,7 @@ Netclient. A lightweight client GUI for [Netmaker](http://netmaker.io/).
 
 ## Development
 
-Due to addition of the `github.com/gravitl/netclient` library, you will need root priviledges to run the app, even in dev mode.
+Due to addition of the `github.com/gravitl/netclient` library, you will need root privileges to run the app, even in dev mode.
 Always skip automatic TS modules generation when building or starting dev mode with `-skipbindings` because 
 the models of some Go types are not generated.
 Only generate modules when you are sure. you will have to change the unkown types to any after generation.
