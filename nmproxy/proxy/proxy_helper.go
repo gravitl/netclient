@@ -89,7 +89,10 @@ func (p *Proxy) Reset() {
 	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.PeerPublicKey.String())
 	p.Close()
 	time.Sleep(time.Second * 3)
-	endpoint := p.Config.PeerEndpoint
+	if p.Config.PeerEndpoint == nil {
+		return
+	}
+	endpoint := *p.Config.PeerEndpoint
 	if err := p.pullLatestConfig(); err != nil {
 		logger.Log(1, "couldn't perform reset: ", p.Config.PeerPublicKey.String(), err.Error())
 	}
@@ -107,7 +110,7 @@ func (p *Proxy) Reset() {
 		peer.LocalConn = p.LocalConn
 		config.GetCfg().SavePeerByHash(&peer)
 	}
-	if extpeer, found := config.GetCfg().GetExtClientInfo(endpoint); found {
+	if extpeer, found := config.GetCfg().GetExtClientInfo(&endpoint); found {
 		extpeer.LocalConn = p.LocalConn
 		extpeer.Endpoint = p.Config.PeerEndpoint
 		config.GetCfg().SaveExtClientInfo(&extpeer)
