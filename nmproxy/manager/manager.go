@@ -222,7 +222,7 @@ func (m *proxyPayload) processPayload() error {
 			if peerConn.IsExtClient {
 				logger.Log(1, "------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
 				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
-				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
+				gCfg.DeleteExtClientInfo(peerConn.Config.PeerEndpoint)
 			}
 			gCfg.DeletePeerHash(peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Key.String())
@@ -439,7 +439,7 @@ func (m *proxyPayload) peerUpdate() error {
 				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {
 					if addExtClient {
-						logger.Log(1, "Got endpoint for Extclient adding peer...", extPeer.Endpoint.String())
+						logger.Log(1, "Got endpoint for Extclient adding peer...", peer.Endpoint.String())
 						peerpkg.AddNew(server, peer, peerConf, isRelayed, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
