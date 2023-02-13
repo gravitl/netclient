@@ -132,7 +132,7 @@ var (
 	}
 )
 
-// CreateChains - creates default chains and rules
+// nftables.CreateChains - creates default chains and rules
 func (n *nftablesManager) CreateChains() error {
 	n.mux.Lock()
 	defer n.mux.Unlock()
@@ -228,7 +228,7 @@ func (n *nftablesManager) CreateChains() error {
 	return nil
 }
 
-// CleanRoutingRules cleans existing nftable resources that we created by the agent
+// nftables.CleanRoutingRules cleans existing nftable resources that we created by the agent
 func (n *nftablesManager) CleanRoutingRules(server, ruleTableName string) {
 	ruleTable := n.FetchRuleTable(server, ruleTableName)
 	defer n.DeleteRuleTable(server, ruleTableName)
@@ -245,7 +245,7 @@ func (n *nftablesManager) CleanRoutingRules(server, ruleTableName string) {
 	}
 }
 
-// DeleteRuleTable - deletes all rules from a table
+// nftables.DeleteRuleTable - deletes all rules from a table
 func (n *nftablesManager) DeleteRuleTable(server, ruleTableName string) {
 	n.mux.Lock()
 	defer n.mux.Unlock()
@@ -258,7 +258,7 @@ func (n *nftablesManager) DeleteRuleTable(server, ruleTableName string) {
 	}
 }
 
-// InsertEgressRoutingRules - inserts egress routes for the GW peers
+// nftables.InsertEgressRoutingRules - inserts egress routes for the GW peers
 func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
 	ruleTable := n.FetchRuleTable(server, egressTable)
 	defer n.SaveRules(server, egressTable, ruleTable)
@@ -583,7 +583,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	return nil
 }
 
-// AddEgressRoutingRule - inserts an nftable rule for gateway peer
+// nftables.AddEgressRoutingRule - inserts an nftable rule for gateway peer
 func (n *nftablesManager) AddEgressRoutingRule(server string, egressInfo models.EgressInfo, peer models.PeerRouteInfo) error {
 	if !peer.Allow {
 		return nil
@@ -704,7 +704,7 @@ func (n *nftablesManager) AddEgressRoutingRule(server string, egressInfo models.
 	return nil
 }
 
-// AddIngressRoutingRule - adds a ingress route for a peer
+// nftables.AddIngressRoutingRule - adds a ingress route for a peer
 func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
 	ruleTable := n.FetchRuleTable(server, ingressTable)
 	defer n.SaveRules(server, ingressTable, ruleTable)
@@ -802,7 +802,7 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr 
 	return nil
 }
 
-// InsertIngressRoutingRules inserts an nftables rules for an ext. client to the netmaker chain and if enabled, to the nat chain
+// nftables.InsertIngressRoutingRules inserts an nftables rules for an ext. client to the netmaker chain and if enabled, to the nat chain
 func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo models.ExtClientInfo) error {
 	ruleTable := n.FetchRuleTable(server, ingressTable)
 	defer n.SaveRules(server, ingressTable, ruleTable)
@@ -1217,7 +1217,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 	return nil
 }
 
-// FetchRuleTable - fetches the rule table by table name
+// nftables.FetchRuleTable - fetches the rule table by table name
 func (n *nftablesManager) FetchRuleTable(server string, tableName string) ruletable {
 	n.mux.Lock()
 	defer n.mux.Unlock()
@@ -1237,7 +1237,7 @@ func (n *nftablesManager) FetchRuleTable(server string, tableName string) ruleta
 	return rules
 }
 
-// SaveRules - saves the rule table by tablename
+// nftables.SaveRules - saves the rule table by tablename
 func (n *nftablesManager) SaveRules(server, tableName string, rules ruletable) {
 	n.mux.Lock()
 	defer n.mux.Unlock()
@@ -1250,7 +1250,7 @@ func (n *nftablesManager) SaveRules(server, tableName string, rules ruletable) {
 	}
 }
 
-// RemoveRoutingRules removes an nfatbles rules related to a peer
+// nftables.RemoveRoutingRules removes an nfatbles rules related to a peer
 func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey string) error {
 	rulesTable := n.FetchRuleTable(server, ruletableName)
 	defer n.SaveRules(server, ruletableName, rulesTable)
@@ -1271,7 +1271,7 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	return nil
 }
 
-// DeleteRoutingRule - removes an nftables rule pair from forwarding and nat chains
+// nftables.DeleteRoutingRule - removes an nftables rule pair from forwarding and nat chains
 func (n *nftablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, dstPeerKey string) error {
 	rulesTable := n.FetchRuleTable(server, ruletableName)
 	defer n.SaveRules(server, ruletableName, rulesTable)
@@ -1293,7 +1293,7 @@ func (n *nftablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 	return nil
 }
 
-// FlushAll - removes all the rules added by netmaker and deletes the netmaker chains
+// nftables.FlushAll - removes all the rules added by netmaker and deletes the netmaker chains
 func (n *nftablesManager) FlushAll() {
 	n.mux.Lock()
 	defer n.mux.Unlock()
