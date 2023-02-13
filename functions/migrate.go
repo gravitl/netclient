@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -123,6 +124,7 @@ func Migrate() {
 		if err := config.WriteNetclientConfig(); err != nil {
 			logger.Log(0, "error saving netclient config", err.Error())
 		}
+		log.Printf("UPDATING NODE MIGRATE %v\n", node)
 		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "error saving node map", err.Error())
 		}

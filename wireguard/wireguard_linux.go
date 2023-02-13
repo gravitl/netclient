@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 
@@ -79,7 +80,11 @@ func (l *netLink) Close() error {
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
 func (nc *NCIface) ApplyAddrs() error {
+	// if len(nc.Addresses) == 0 {
+	// 	return nil
+	// }
 	l := nc.getKernelLink()
+	log.Printf("UPDATING ADDRESSES TO %v \n", nc.Addresses)
 
 	currentAddrs, err := netlink.AddrList(l, 0)
 	if err != nil {

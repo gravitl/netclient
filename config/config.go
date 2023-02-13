@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -176,6 +177,7 @@ func WriteNetclientConfig() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("Writing host: %v \n", netclient)
 	defer f.Close()
 	err = yaml.NewEncoder(f).Encode(netclient)
 	if err != nil {

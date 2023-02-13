@@ -66,6 +66,7 @@ func Join(flags *viper.Viper) error {
 		return err
 	}
 	//save new configurations
+	log.Printf("UPDATING NODE %v\n", node)
 	config.UpdateNodeMap(node.Network, *node)
 	config.UpdateServer(node.Server, *server)
 	if err := config.SaveServer(node.Server, *server); err != nil {

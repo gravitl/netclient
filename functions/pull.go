@@ -2,6 +2,7 @@ package functions
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -41,6 +42,7 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	}
 	newNode := config.ConvertNode(&nodeGet)
 	config.UpdateNodeMap(newNode.Network, *newNode)
+	log.Printf("NODE UPDATE TWICE %v \n", newNode)
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}

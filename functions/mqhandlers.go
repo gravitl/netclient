@@ -3,6 +3,7 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -83,6 +84,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
+	log.Printf("UPDATING NODE HANDLER %v\n", newNode)
 	config.UpdateNodeMap(network, newNode)
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
@@ -181,6 +183,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		node := config.GetNode(network)
 		oldGateway := node.InternetGateway
 		if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
+			log.Printf("UPDATING NODE INTERNET GATEWAY!! %v\n", node)
 			node.InternetGateway = internetGateway
 			config.UpdateNodeMap(node.Network, node)
 			if err := config.WriteNodeConfig(); err != nil {
@@ -238,6 +241,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		server.Nodes[hostUpdate.Node.Network] = true
 		config.UpdateServer(serverName, *server)
+		log.Printf("ADDING NODE %v \n", hostUpdate.Node)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		restartDaemon = true
@@ -288,6 +292,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 		node := node
 		if node.Server == server {
 			unsubscribeNode(client, &node)
+			log.Printf("DELETEING NODE %s \n", k)
 			config.DeleteNode(k)
 		}
 	}

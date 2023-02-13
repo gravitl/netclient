@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -183,6 +184,7 @@ func Hello(node *config.Node) {
 		// just in case getInterfaces() returned nil, nil
 		if ip != nil {
 			config.Netclient().Interfaces = *ip
+			log.Printf("NODE BEING UPDATED? ON CHECKIN%v \n", node)
 			if err := config.WriteNodeConfig(); err != nil {
 				logger.Log(0, "error saving node map", err.Error())
 			}
