@@ -128,6 +128,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
 	var err error
+	if len(config.GetNodes()) == 0 {
+		logger.Log(3, "skipping unwanted peer update, no nodes exist")
+		return
+	}
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -157,8 +161,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
+
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Configure()
 	wireguard.SetPeers()
 
 	if config.Netclient().ProxyEnabled {
@@ -284,6 +291,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	config.DeleteServer(server)
 	// delete mq client from ServerSet map
 	delete(ServerSet, server)
 }

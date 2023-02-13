@@ -25,7 +25,6 @@ type Server struct {
 	models.ServerConfig
 	Name      string          `json:"name" yaml:"name"`
 	MQID      uuid.UUID       `json:"mqid" yaml:"mqid"`
-	Password  string          `json:"password" yaml:"password"`
 	Nodes     map[string]bool `json:"nodes" yaml:"nodes"`
 	AccessKey string          `json:"accesskey" yaml:"accesskey"`
 }
@@ -132,12 +131,9 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 	server.Broker = cfg.Server
 	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.Password = netclient.HostPass
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE
-	//server.StunHost = cfg.StunHost
-	//server.StunPort = cfg.StunPort
 	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)
 	return &server
@@ -145,20 +141,17 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
 func UpdateServerConfig(cfg *models.ServerConfig) {
+	if cfg == nil {
+		return
+	}
 	server, ok := Servers[cfg.Server]
 	if !ok {
 		server = Server{}
 		server.Nodes = make(map[string]bool)
 	}
 	server.Name = cfg.Server
-	server.Version = cfg.Version
-	server.Broker = cfg.Broker
-	server.MQPort = cfg.MQPort
 	server.MQID = netclient.ID
-	server.Password = netclient.HostPass
-	server.API = cfg.API
-	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.Is_EE = cfg.Is_EE
-	server.DNSMode = cfg.DNSMode
+	server.ServerConfig = *cfg
+
 	Servers[cfg.Server] = server
 }

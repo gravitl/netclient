@@ -49,7 +49,7 @@ func (p *Proxy) Start() error {
 		return err
 	}
 
-	logger.Log(0, "Dialing to local Wireguard port %s --> %s\n", p.LocalConn.LocalAddr().String(), p.LocalConn.RemoteAddr().String())
+	logger.Log(1, fmt.Sprintf("Dialing to local Wireguard port %s --> %s\n", p.LocalConn.LocalAddr().String(), p.LocalConn.RemoteAddr().String()))
 	err = p.updateEndpoint()
 	if err != nil {
 		logger.Log(0, "error while updating Wireguard peer endpoint [%s] %v\n", p.Config.PeerPublicKey.String(), err.Error())

@@ -33,10 +33,12 @@ func (c *Config) IsIfaceNil() bool {
 
 // Config.SetIface - sets the iface value in the config
 func (c *Config) SetIface(iface *wg.WGIface) {
-	c.mutex.Lock()
-	c.ifaceConfig.iface = iface
-	c.mutex.Unlock()
-	c.setIfaceKeyHash()
+	if c != nil {
+		c.mutex.Lock()
+		c.ifaceConfig.iface = iface
+		c.mutex.Unlock()
+		c.setIfaceKeyHash()
+	}
 }
 
 // Config.GetGetIfaceDeviceIface - gets the wg device value

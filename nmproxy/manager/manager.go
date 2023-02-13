@@ -35,10 +35,10 @@ func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
 			if mI == nil {
 				continue
 			}
-			logger.Log(0, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
+			logger.Log(3, fmt.Sprintf("-------> PROXY-MANAGER: %+v\n", mI.ProxyUpdate))
 			err := configureProxy(mI)
 			if err != nil {
-				logger.Log(0, "failed to configure proxy:  ", err.Error())
+				logger.Log(1, "failed to configure proxy:  ", err.Error())
 			}
 		}
 	}
@@ -78,8 +78,9 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 }
 
 func fwUpdate(payload *nm_models.HostPeerUpdate) {
-	isingressGw := len(payload.IngressInfo.ExtPeers) > 0
-	if isingressGw && config.GetCfg().IsIngressGw(payload.Server) != isingressGw {
+	isIngressGw := len(payload.IngressInfo.ExtPeers) > 0
+	isEgressGw := len(payload.EgressInfo) > 0
+	if isIngressGw || isEgressGw {
 		if !config.GetCfg().GetFwStatus() {
 
 			fwClose, err := router.Init()
@@ -90,17 +91,25 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 			config.GetCfg().SetFwStatus(true)
 			config.GetCfg().SetFwCloseFunc(fwClose)
 
+		} else {
+			logger.Log(0, "firewall controller is intialized already")
 		}
-		config.GetCfg().SetIngressGwStatus(payload.Server, isingressGw)
-	} else {
-		logger.Log(0, "firewall controller is intialized already")
-	}
 
-	if isingressGw {
+	}
+	config.GetCfg().SetIngressGwStatus(payload.Server, isIngressGw)
+	config.GetCfg().SetEgressGwStatus(payload.Server, isEgressGw)
+
+	if isIngressGw {
 		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
 	}
-	if config.GetCfg().GetFwStatus() && !isingressGw {
+	if isEgressGw {
+		router.SetEgressRoutes(payload.Server, payload.EgressInfo)
+	}
+	if config.GetCfg().GetFwStatus() && !isIngressGw {
 		router.DeleteIngressRules(payload.Server)
+	}
+	if config.GetCfg().GetFwStatus() && !isEgressGw {
+		router.DeleteEgressGwRoutes(payload.Server)
 	}
 
 }
@@ -213,7 +222,7 @@ func (m *proxyPayload) processPayload() error {
 			if peerConn.IsExtClient {
 				logger.Log(1, "------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
 				gCfg.DeleteExtWaitCfg(peerConn.Key.String())
-				gCfg.DeleteExtClientInfo(peerConn.Config.PeerConf.Endpoint)
+				gCfg.DeleteExtClientInfo(peerConn.Config.PeerEndpoint)
 			}
 			gCfg.DeletePeerHash(peerConn.Key.String())
 			gCfg.RemovePeer(peerConn.Key.String())
@@ -247,9 +256,8 @@ func (m *proxyPayload) processPayload() error {
 				_, found := gCfg.GetExtClientInfo(currentPeer.Config.PeerEndpoint)
 				if found {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-					currentPeer.Mutex.Unlock()
-
 				}
+				currentPeer.Mutex.Unlock()
 				continue
 
 			}
@@ -267,7 +275,7 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
 			if err == nil {
-				logger.Log(0, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+				logger.Log(3, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					currentPeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", currentPeer.Key.String())
@@ -309,13 +317,24 @@ func (m *proxyPayload) processPayload() error {
 				continue
 			}
 
-			if currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
+			if currentPeer.Config.PeerConf.Endpoint.IP.String() != m.Peers[i].Endpoint.IP.String() {
+				logger.Log(1, fmt.Sprintf("----> Peer Endpoint has changed from %s to %s",
+					currentPeer.Config.PeerConf.Endpoint.String(), m.Peers[i].Endpoint.String()))
 				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
 				currentPeer.StopConn()
 				currentPeer.Mutex.Unlock()
 				delete(peerConnMap, currentPeer.Key.String())
 				continue
 
+			}
+			if !config.GetCfg().IsGlobalRelay() && !currentPeer.IsRelayed && currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
+				logger.Log(1, fmt.Sprintf("----> Peer RemoteConn has changed from %s to %s",
+					currentPeer.Config.RemoteConnAddr.String(), m.Peers[i].Endpoint.String()))
+				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
+				currentPeer.StopConn()
+				currentPeer.Mutex.Unlock()
+				delete(peerConnMap, currentPeer.Key.String())
+				continue
 			}
 			// delete the peer from the list
 			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())
@@ -330,9 +349,9 @@ func (m *proxyPayload) processPayload() error {
 			continue
 		}
 		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
+			noProxypeer.Mutex.Lock()
 			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
-				noProxypeer.Mutex.Lock()
 				noProxypeer.StopConn()
 				noProxypeer.Mutex.Unlock()
 				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
@@ -341,7 +360,7 @@ func (m *proxyPayload) processPayload() error {
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, noProxypeer.Key.String())
 			if err == nil {
-				logger.Log(0, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
+				logger.Log(3, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					noProxypeer.Config.LocalConnAddr.String()))
 				if devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())
@@ -365,6 +384,7 @@ func (m *proxyPayload) processPayload() error {
 			noProxypeer.ServerMap[m.Server] = struct{}{}
 			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
 			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+			noProxypeer.Mutex.Unlock()
 		}
 
 	}
@@ -419,7 +439,7 @@ func (m *proxyPayload) peerUpdate() error {
 				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
 				defer func() {
 					if addExtClient {
-						logger.Log(1, "Got endpoint for Extclient adding peer...", extPeer.Endpoint.String())
+						logger.Log(1, "Got endpoint for Extclient adding peer...", peer.Endpoint.String())
 						peerpkg.AddNew(server, peer, peerConf, isRelayed, relayedTo)
 					}
 					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
@@ -433,6 +453,7 @@ func (m *proxyPayload) peerUpdate() error {
 							addExtClient = true
 							peer.Endpoint = endpoint
 							peerI.Endpoint = endpoint
+							peerConf.PublicListenPort = int32(endpoint.Port)
 							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
 							return
 						}

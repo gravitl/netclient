@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/devilcove/httpclient"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -22,7 +23,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/models/promodels"
-	"github.com/kr/pretty"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
@@ -30,19 +30,16 @@ import (
 // Join joins a netmaker network with flags specified on command line
 func Join(flags *viper.Viper) error {
 	//config.ParseJoinFlags(cmd)
-	fmt.Println("join called")
 	if flags.Get("server") != "" {
 		//SSO sign on
 		if flags.Get("network") == "" {
 			logger.Log(0, "no network provided")
 		}
-		log.Println()
 		ssoAccessToken, err := JoinViaSSo(flags)
 		if err != nil {
 			logger.Log(0, "Join failed:", err.Error())
 			return err
 		}
-		log.Println("token from SSo")
 		if ssoAccessToken == nil {
 			fmt.Println("login failed")
 			return errors.New("could not get SSO access token")
@@ -63,13 +60,11 @@ func Join(flags *viper.Viper) error {
 		flags.Set("accesskey", accessToken.ClientConfig.Key)
 		flags.Set("apiconn", accessToken.APIConnString)
 	}
-	logger.Log(1, "Joining network: ", flags.GetString("network"))
+	fmt.Println("Joining network: ", flags.GetString("network"))
 	node, server, err := JoinNetwork(flags)
 	if err != nil {
 		return err
 	}
-	log.Println("server response to join")
-	pretty.Println(node, server)
 	//save new configurations
 	config.UpdateNodeMap(node.Network, *node)
 	config.UpdateServer(node.Server, *server)
@@ -85,7 +80,7 @@ func Join(flags *viper.Viper) error {
 	if err := wireguard.WriteWgConfig(config.Netclient(), config.GetNodes()); err != nil {
 		logger.Log(0, "error saving wireguard conf", err.Error())
 	}
-	logger.Log(1, "joined", node.Network)
+	fmt.Println("joined", node.Network)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
@@ -296,6 +291,14 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
+	shouldUpdate, err := doubleCheck(host)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error occurred before joining - %v", err)
+	}
+	if shouldUpdate {
+		host = config.Netclient()
+	}
+
 	serverHost, serverNode := config.Convert(host, &node)
 	joinData := models.JoinData{
 		Host: serverHost,
@@ -303,7 +306,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Key:  flags.GetString("accesskey"),
 	}
 	joinData.Key = flags.GetString("accesskey")
-	logger.Log(0, "joining "+node.Network+" at "+url)
+	logger.Log(2, "joining "+node.Network+" at "+url)
 	api := httpclient.JSONEndpoint[models.NodeJoinResponse, models.ErrorResponse]{
 		URL:           "https://" + url,
 		Route:         "/api/nodes/" + node.Network,
@@ -319,8 +322,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		Response:      models.NodeJoinResponse{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	log.Println("sending join request")
-	pretty.Println(joinData)
 	joinResponse, errData, err := api.GetJSON(models.NodeJoinResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
@@ -333,19 +334,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		return nil, nil, errors.New("incompatible server version")
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
-	pretty.Println(joinResponse)
+	config.UpdateServerConfig(&joinResponse.ServerConfig)
 	server := config.GetServer(joinResponse.ServerConfig.Server)
-	// if new server, populate attributes
-	if server == nil {
-		server = &config.Server{}
-		server.ServerConfig = joinResponse.ServerConfig
-		server.Name = joinResponse.ServerConfig.Server
-		server.MQID = config.Netclient().ID
-		server.Password = config.Netclient().HostPass
-		server.Nodes = make(map[string]bool)
-	}
-	// reset attributes that should not be changed by server
-
 	server.Nodes[joinResponse.Node.Network] = true
 	newNode := config.Node{}
 	newNode.CommonNode = joinResponse.Node.CommonNode
@@ -402,4 +392,38 @@ func getPrivateAddrBackup() (net.IPNet, error) {
 	}
 	err = errors.New("local ip address not found")
 	return address, err
+}
+
+func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
+	if len(config.GetServers()) == 0 { // should indicate a first join
+		// do a double check of name and uuid
+		logger.Log(1, "performing first join")
+		var shouldUpdateHost bool
+		if len(host.Name) == 0 {
+			if name, err := os.Hostname(); err == nil {
+				host.Name = name
+			} else {
+				hostName := ncutils.MakeRandomString(12)
+				logger.Log(0, "host name not found, continuing with", hostName)
+				host.Name = hostName
+			}
+			shouldUpdateHost = true
+		}
+		if host.ID == uuid.Nil {
+			if host.ID, err = uuid.NewUUID(); err != nil {
+				return false, err
+			}
+			shouldUpdateHost = true
+		}
+		if len(host.HostPass) == 0 {
+			host.HostPass = ncutils.MakeRandomString(32)
+			shouldUpdateHost = true
+		}
+		if shouldUpdateHost {
+			config.UpdateNetclient(*host)
+			config.WriteNetclientConfig()
+			return true, nil
+		}
+	}
+	return
 }

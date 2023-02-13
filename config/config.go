@@ -499,6 +499,11 @@ func CheckConfig() {
 			netclient.FirewallInUse = models.FIREWALL_IPTABLES
 		}
 	}
+	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
+		if _, err := os.Create(GetNetclientPath() + "netmaker.conf"); err != nil {
+			logger.Log(0, "failed to create netmaker.conf: ", err.Error())
+		}
+	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")
 		if err := WriteNetclientConfig(); err != nil {
@@ -507,7 +512,7 @@ func CheckConfig() {
 	}
 	_ = ReadServerConf()
 	for _, server := range Servers {
-		if server.MQID != netclient.ID || server.Password != netclient.HostPass {
+		if server.MQID != netclient.ID {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
