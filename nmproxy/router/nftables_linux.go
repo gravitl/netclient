@@ -705,7 +705,7 @@ func (n *nftablesManager) AddEgressRoutingRule(server string, egressInfo models.
 }
 
 // AddIngressRoutingRule - adds a ingress route for a peer
-func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
+func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
 	ruleTable := n.FetchRuleTable(server, ingressTable)
 	defer n.SaveRules(server, ingressTable, ruleTable)
 	n.mux.Lock()
@@ -714,7 +714,7 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 	if err != nil {
 		return err
 	}
-	ruleSpec := []string{"-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
+	ruleSpec := []string{"-s", extPeerAddr, "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
 	var rule *nftables.Rule
 	if prefix.Addr().Unmap().Is6() {
 		// ipv6 rule
@@ -725,6 +725,17 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 			Exprs: []expr.Any{
 				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
 				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseNetworkHeader,
+					Offset:       ipv6SrcOffset,
+					Len:          ipv6Len,
+				},
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     net.ParseIP(extPeerAddr).To16(),
+				},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
@@ -749,6 +760,17 @@ func (n *nftablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 			Exprs: []expr.Any{
 				&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
 				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseNetworkHeader,
+					Offset:       ipv4SrcOffset,
+					Len:          ipv4Len,
+				},
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     net.ParseIP(extPeerAddr).To4(),
+				},
 				&expr.Payload{
 					DestRegister: 1,
 					Base:         expr.PayloadBaseNetworkHeader,
