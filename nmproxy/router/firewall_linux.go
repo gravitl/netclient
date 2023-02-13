@@ -15,11 +15,14 @@ import (
 func newFirewall() (firewallController, error) {
 
 	var manager firewallController
+
+	// for testing purposes, after testing will move it below iptables section
 	if isNftablesSupported() {
 		logger.Log(0, "nftables is supported")
 		manager = &nftablesManager{
-			conn:     &nftables.Conn{},
-			ingRules: make(serverrulestable),
+			conn:         &nftables.Conn{},
+			ingRules:     make(serverrulestable),
+			engressRules: make(serverrulestable),
 		}
 		return manager, nil
 	}
