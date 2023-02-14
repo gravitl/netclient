@@ -17,3 +17,4 @@ gui/build/
 **/node_modules/
 gui/**/dist/
 backup/*
+dist/*
