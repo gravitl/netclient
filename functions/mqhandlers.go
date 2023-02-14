@@ -241,6 +241,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		restartDaemon = true
 	case models.DeleteHost:
+		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
@@ -276,7 +277,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetPeers()
 	}
-	clearRetainedMsg(client, msg.Topic())
 
 }
 
