@@ -3,6 +3,7 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -167,9 +168,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Configure()
 	wireguard.SetPeers()
-
+	log.Println("-----------> $$$$$: PROXY STATRUS: ", config.Netclient().ProxyEnabled)
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
 	} else {
 		peerUpdate.ProxyUpdate.Action = models.NoProxy
 	}
@@ -242,7 +244,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		restartDaemon = true
 	case models.DeleteHost:
-		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
@@ -278,6 +279,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetPeers()
 	}
+	clearRetainedMsg(client, msg.Topic())
 
 }
 
@@ -307,6 +309,7 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
+	log.Printf("-----> HOST UPDATE: %v, %v\n", host.ProxyEnabled, hostCfg.ProxyEnabled)
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
