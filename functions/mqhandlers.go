@@ -167,9 +167,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Configure()
 	wireguard.SetPeers()
-
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
 	} else {
 		peerUpdate.ProxyUpdate.Action = models.NoProxy
 	}
@@ -200,7 +200,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	_ = UpdateHostSettings()
 
 }
 
