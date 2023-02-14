@@ -329,7 +329,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		}
 		return nil, nil, fmt.Errorf("error creating node %w", err)
 	}
-	log.Println("checking for version compatibility ", joinResponse.ServerConfig.Version)
+	fmt.Println("checking for version compatibility ", joinResponse.ServerConfig.Version)
 	if !IsVersionComptatible(joinResponse.ServerConfig.Version) {
 		return nil, nil, errors.New("incompatible server version")
 	}
