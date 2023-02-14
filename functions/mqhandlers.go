@@ -315,7 +315,7 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 }
 
 func parseNetworkFromTopic(topic string) string {
-	return strings.Split(topic, "/")[1]
+	return strings.Split(topic, "/")[2]
 }
 
 func parseServerFromTopic(topic string) string {
