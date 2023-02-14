@@ -44,7 +44,6 @@ func Pull(network string, iface bool) (*config.Node, error) {
 	if err = config.WriteNodeConfig(); err != nil {
 		return nil, err
 	}
-	config.WriteNodeConfig()
 	//update wg config
 	config.UpdateHostPeers(node.Server, nodeGet.HostPeers)
 	internetGateway, err := wireguard.UpdateWgPeers(nodeGet.HostPeers)
