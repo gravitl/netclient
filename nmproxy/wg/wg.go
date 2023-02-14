@@ -38,7 +38,7 @@ func (w *WGIface) UpdatePeerEndpoint(peer wgtypes.PeerConfig) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	logger.Log(0, "updating interface %s peer %s: endpoint %s ", w.Name, peer.PublicKey.String(), peer.Endpoint.String())
+	logger.Log(0, fmt.Sprintf("updating interface %s peer %s: endpoint %s ", w.Name, peer.PublicKey.String(), peer.Endpoint.String()))
 
 	// //parse allowed ips
 	// _, ipNet, err := net.ParseCIDR(allowedIps)
