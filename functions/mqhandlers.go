@@ -3,7 +3,6 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -168,7 +167,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Configure()
 	wireguard.SetPeers()
-	log.Println("-----------> $$$$$: PROXY STATRUS: ", config.Netclient().ProxyEnabled)
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
@@ -202,7 +200,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	_ = UpdateHostSettings()
 
 }
 
@@ -309,7 +306,6 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
-	log.Printf("-----> HOST UPDATE: %v, %v\n", host.ProxyEnabled, hostCfg.ProxyEnabled)
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
