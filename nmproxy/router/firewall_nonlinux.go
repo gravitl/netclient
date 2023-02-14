@@ -15,7 +15,7 @@ func (unimplementedFirewall) CreateChains() error {
 func (unimplementedFirewall) InsertIngressRoutingRules(server string, r models.ExtClientInfo) error {
 	return nil
 }
-func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
+func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
 	return nil
 }
 
@@ -52,6 +52,6 @@ func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
 }
 
 // newFirewall returns an unimplemented Firewall manager
-func newFirewall() firewallController {
-	return unimplementedFirewall{}
+func newFirewall() (firewallController, error) {
+	return unimplementedFirewall{}, nil
 }

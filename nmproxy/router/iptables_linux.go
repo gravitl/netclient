@@ -104,7 +104,7 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 			for _, rule := range rules {
 				err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 				if err != nil {
-					logger.Log(0, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
+					logger.Log(1, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
 				}
 			}
 		}
@@ -191,7 +191,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv4Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -202,7 +202,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv6Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -213,7 +213,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv4Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -224,7 +224,7 @@ func (i *iptablesManager) removeJumpRules() {
 			if addedByNetmaker(rule) {
 				err := i.ipv6Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
-					logger.Log(0, "failed to delete rule: ", rule, err.Error())
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
 			}
 		}
@@ -233,7 +233,7 @@ func (i *iptablesManager) removeJumpRules() {
 }
 
 // iptablesManager.AddIngressRoutingRule - adds a ingress route for a peer
-func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error {
+func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
 	ruleTable := i.FetchRuleTable(server, ingressTable)
 	defer i.SaveRules(server, ingressTable, ruleTable)
 	i.mux.Lock()
@@ -243,7 +243,7 @@ func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey string, peerI
 		iptablesClient = i.ipv6Client
 	}
 
-	ruleSpec := []string{"-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
+	ruleSpec := []string{"-s", extPeerAddr, "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
 	err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
@@ -411,6 +411,20 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:  ruleSpec,
 					})
 				}
+				ruleSpec = []string{"-d", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				// to avoid duplicate iface route rule,delete if exists
+				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
+				err = iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						table: defaultNatTable,
+						chain: nattablePRTChain,
+						rule:  ruleSpec,
+					})
+				}
 			}
 
 		}
@@ -479,11 +493,11 @@ func (i *iptablesManager) cleanup(table, chain string) {
 
 	err := i.ipv4Client.ClearAndDeleteChain(table, chain)
 	if err != nil {
-		logger.Log(0, "[ipv4] failed to clear chain: ", table, chain, err.Error())
+		logger.Log(1, "[ipv4] failed to clear chain: ", table, chain, err.Error())
 	}
 	err = i.ipv6Client.ClearAndDeleteChain(table, chain)
 	if err != nil {
-		logger.Log(0, "[ipv6] failed to clear chain: ", table, chain, err.Error())
+		logger.Log(1, "[ipv6] failed to clear chain: ", table, chain, err.Error())
 	}
 }
 

@@ -100,7 +100,6 @@ func Migrate() {
 			server.ServerConfig = joinResponse.ServerConfig
 			server.Name = joinResponse.ServerConfig.Server
 			server.MQID = config.Netclient().ID
-			server.Password = config.Netclient().HostPass
 			server.Nodes = make(map[string]bool)
 		}
 		server.Nodes[joinResponse.Node.Network] = true

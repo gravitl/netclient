@@ -34,7 +34,7 @@ type firewallController interface {
 	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
 	InsertIngressRoutingRules(server string, r models.ExtClientInfo) error
 	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
-	AddIngressRoutingRule(server, extPeerKey string, peerInfo models.PeerRouteInfo) error
+	AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// AddEgressRoutingRule - adds a egress routing rules for a peer
@@ -57,8 +57,12 @@ type firewallController interface {
 
 // Init - initialises the firewall controller,return a close func to flush all rules
 func Init() (func(), error) {
+	var err error
 	logger.Log(0, "Starting firewall...")
-	fwCrtl = newFirewall()
+	fwCrtl, err = newFirewall()
+	if err != nil {
+		return nil, err
+	}
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err
 	}

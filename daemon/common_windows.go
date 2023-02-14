@@ -14,6 +14,18 @@ import (
 
 // install - sets up the Windows daemon service
 func install() error {
+	binarypath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	binary, err := os.ReadFile(binarypath)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(config.GetNetclientInstallPath(), binary, 0711)
+	if err != nil {
+		return err
+	}
 
 	if ncutils.FileExists(config.GetNetclientPath() + "winsw.xml") {
 		logger.Log(0, "updating netclient service")
@@ -25,7 +37,7 @@ func install() error {
 	if ncutils.FileExists(config.GetNetclientPath() + "winsw.exe") {
 		logger.Log(0, "updating netclient binary")
 	}
-	err := ncutils.GetEmbedded()
+	err = ncutils.GetEmbedded()
 	if err != nil {
 		return err
 	}
@@ -57,23 +69,23 @@ func restart() error {
 
 // cleanup - cleans up windows files
 func cleanUp() error {
-	if !ncutils.FileExists(config.GetNetclientPath() + "winsw.xml") {
-		writeServiceConfig()
-	}
-	runWinSWCMD("stop")
-	runWinSWCMD("uninstall")
+	_ = writeServiceConfig() // will auto check if file is present before writing
+	_ = runWinSWCMD("stop")
+	_ = runWinSWCMD("uninstall")
 	return os.RemoveAll(config.GetNetclientPath())
 }
 
 func writeServiceConfig() error {
 	serviceConfigPath := config.GetNetclientPath() + "winsw.xml"
 	scriptString := fmt.Sprintf(`<service>
-<id>netclient</id>
+<id>Netclient</id>
 <name>Netclient</name>
-<description>Connects Windows nodes to one or more Netmaker networks.</description>
+<description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
 <executable>%v</executable>
 <arguments>daemon</arguments>
 <log mode="roll"></log>
+<startmode>Automatic</startmode>
+<delayedAutoStart>true</delayedAutoStart>
 </service>
 `, strings.Replace(config.GetNetclientPath()+"netclient.exe", `\\`, `\`, -1))
 	if !ncutils.FileExists(serviceConfigPath) {

@@ -51,6 +51,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 			return errors.New("relay endpoint is nil")
 		}
 		peerEndpointIP = relayTo.IP
+		peerPort = relayTo.Port
 	}
 	peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerEndpointIP, peerPort))
 	if err != nil {
@@ -72,6 +73,8 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		StopConn:        p.Close,
 		ResetConn:       p.Reset,
 		LocalConn:       p.LocalConn,
+		IsRelayed:       isRelayed,
+		RelayedEndpoint: relayTo,
 		NetworkSettings: make(map[string]models.Settings),
 		ServerMap:       make(map[string]struct{}),
 	}
@@ -83,16 +86,15 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		LocalConn:   p.LocalConn,
 	}
 	if peerConf.Proxy || peerConf.IsExtClient {
-		logger.Log(0, "-----> saving as proxy peer: ", connConf.Key.String())
+		logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
 		config.GetCfg().SavePeer(&connConf)
 	} else {
-		logger.Log(0, "-----> saving as no proxy peer: ", connConf.Key.String())
+		logger.Log(1, "-----> saving as no proxy peer: ", connConf.Key.String())
 		config.GetCfg().SaveNoProxyPeer(&connConf)
 	}
 	config.GetCfg().SavePeerByHash(&rPeer)
 	if peerConf.IsExtClient {
 		config.GetCfg().SaveExtClientInfo(&rPeer)
-
 	}
 	return nil
 }
@@ -151,7 +153,7 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
-			connectionStatus := metrics.PeerConnectionStatus(peer.PublicKey.String())
+			connectionStatus := proxy.PeerConnectionStatus(peer.PublicKey.String())
 			for peerID := range peerIDMap {
 				metric.NodeConnectionStatus[peerID] = connectionStatus
 			}

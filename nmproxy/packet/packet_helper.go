@@ -33,12 +33,13 @@ type MessageInitiation struct {
 
 // MetricMessage - struct for metric message
 type MetricMessage struct {
-	Type      MessageType
-	ID        uint32
-	Reply     uint32
-	Sender    wgtypes.Key
-	Reciever  wgtypes.Key
-	TimeStamp int64
+	Type       MessageType
+	ID         uint32
+	Reply      uint32
+	Sender     wgtypes.Key
+	Reciever   wgtypes.Key
+	TimeStamp  int64
+	ListenPort uint32
 }
 
 // ProxyMessage - struct for proxy message
