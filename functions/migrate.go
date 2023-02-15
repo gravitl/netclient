@@ -129,6 +129,7 @@ func Migrate() {
 		if err := wireguard.WriteWgConfig(config.Netclient(), config.GetNodes()); err != nil {
 			logger.Log(0, "error saving wireguard conf", err.Error())
 		}
+		_ = removeHostDNS(network)
 	}
 	//delete old config dir
 	logger.Log(3, "removing old config files")

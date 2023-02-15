@@ -3,6 +3,8 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/txeh"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -52,7 +55,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
-	shouldDNSChange := node.DNSOn != newNode.DNSOn
 	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
@@ -111,17 +113,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
 		}
 	}
-	//deal with DNS
-	if newNode.DNSOn && shouldDNSChange {
-		logger.Log(0, "network:", newNode.Network, "settng DNS off")
-		if err := removeHostDNS(newNode.Network); err != nil {
-			logger.Log(0, "network:", newNode.Network, "error removing netmaker profile from /etc/hosts "+err.Error())
-		}
-		//		_, err := ncutils.RunCmd("/usr/bin/resolvectl revert "+nodeCfg.Node.Interface, true)
-		//		if err != nil {
-		//			logger.Log(0, "error applying dns" + err.Error())
-		//		}
-	}
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
@@ -156,7 +147,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	internetGateway, err := wireguard.UpdateWgPeers(peerUpdate.Peers)
+	_, err = wireguard.UpdateWgPeers(peerUpdate.Peers)
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
@@ -175,32 +166,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	peerUpdate.ProxyUpdate.Server = serverName
 	ProxyManagerChan <- &peerUpdate
-
-	for network, networkInfo := range peerUpdate.Network {
-		//check if internet gateway has changed
-		node := config.GetNode(network)
-		oldGateway := node.InternetGateway
-		if (internetGateway == nil && oldGateway != nil) || (internetGateway != nil && internetGateway.String() != oldGateway.String()) {
-			node.InternetGateway = internetGateway
-			config.UpdateNodeMap(node.Network, node)
-			if err := config.WriteNodeConfig(); err != nil {
-				logger.Log(0, "failed to save internet gateway", err.Error())
-			}
-		}
-		logger.Log(0, "network:", node.Network, "received peer update for node "+node.ID.String()+" "+node.Network)
-		if node.DNSOn {
-			if err := setHostDNS(networkInfo.DNS, node.Network); err != nil {
-				logger.Log(0, "network:", node.Network, "error updating /etc/hosts "+err.Error())
-				return
-			}
-		} else {
-			if err := removeHostDNS(node.Network); err != nil {
-				logger.Log(0, "network:", node.Network, "error removing profile from /etc/hosts "+err.Error())
-				return
-			}
-		}
-	}
-
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -319,4 +284,134 @@ func parseNetworkFromTopic(topic string) string {
 
 func parseServerFromTopic(topic string) string {
 	return strings.Split(topic, "/")[3]
+}
+
+// dnsUpdate - mq handler for host update dns/<HOSTID>/server
+func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
+	temp := os.TempDir()
+	lockfile := temp + "/netclient-lock"
+	if err := config.Lock(lockfile); err != nil {
+		logger.Log(0, "could not create lock file", err.Error())
+		return
+	}
+	defer config.Unlock(lockfile)
+	var dns models.DNSUpdate
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	if err := json.Unmarshal([]byte(data), &dns); err != nil {
+		logger.Log(0, "error unmarshalling dns update")
+	}
+	if config.Netclient().Debug {
+		log.Println("dnsUpdate received", dns)
+	}
+	var currentMessage = read("dns", lastDNSUpdate)
+	if currentMessage == string(data) {
+		logger.Log(3, "cache hit on dns update ... skipping")
+		return
+	}
+	insert("dns", lastDNSUpdate, string(data))
+	logger.Log(3, "received dns update for", dns.Name)
+	applyDNSUpdate(dns)
+}
+
+func applyDNSUpdate(dns models.DNSUpdate) {
+	if config.Netclient().Debug {
+		log.Println(dns)
+	}
+	hosts, err := txeh.NewHostsDefault()
+	if err != nil {
+		logger.Log(0, "failed to read hosts file", err.Error())
+		return
+	}
+	switch dns.Action {
+	case models.DNSInsert:
+		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
+	case models.DNSDeleteByName:
+		hosts.RemoveHost(dns.Name, etcHostsComment)
+	case models.DNSDeleteByIP:
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
+	case models.DNSReplaceName:
+		ok, ip, _ := hosts.HostAddressLookup(dns.Name, etcHostsComment)
+		if !ok {
+			logger.Log(2, "failed to find dns address for host", dns.Name)
+			return
+		}
+		dns.Address = ip
+		hosts.RemoveHost(dns.Name, etcHostsComment)
+		hosts.AddHost(dns.Address, dns.NewName, etcHostsComment)
+	case models.DNSReplaceIP:
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
+		hosts.AddHost(dns.NewAddress, dns.Name, etcHostsComment)
+	}
+	if err := hosts.Save(); err != nil {
+		logger.Log(0, "error saving hosts file", err.Error())
+		return
+	}
+}
+
+// dnsAll- mq handler for host update dnsall/<HOSTID>/server
+func dnsAll(client mqtt.Client, msg mqtt.Message) {
+	temp := os.TempDir()
+	lockfile := temp + "/netclient-lock"
+	if err := config.Lock(lockfile); err != nil {
+		logger.Log(0, "could not create lock file", err.Error())
+		return
+	}
+	defer config.Unlock(lockfile)
+	var dns []models.DNSUpdate
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	if err := json.Unmarshal([]byte(data), &dns); err != nil {
+		logger.Log(0, "error unmarshalling dns update")
+	}
+	if config.Netclient().Debug {
+		log.Println("all dns", dns)
+	}
+	var currentMessage = read("dnsall", lastALLDNSUpdate)
+	logger.Log(3, "received initial dns")
+	if currentMessage == string(data) {
+		logger.Log(3, "cache hit on all dns ... skipping")
+		if config.Netclient().Debug {
+			log.Println("dns cache", currentMessage, string(data))
+		}
+		return
+	}
+	insert("dnsall", lastALLDNSUpdate, string(data))
+	applyAllDNS(dns)
+}
+
+func applyAllDNS(dns []models.DNSUpdate) {
+	hosts, err := txeh.NewHostsDefault()
+	if err != nil {
+		logger.Log(0, "failed to read hosts file", err.Error())
+		return
+	}
+	for _, entry := range dns {
+		if entry.Action != models.DNSInsert {
+			logger.Log(0, "invalid dns actions", entry.Action.String())
+			continue
+		}
+		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
+	}
+
+	if err := hosts.Save(); err != nil {
+		logger.Log(0, "error saving hosts file", err.Error())
+		return
+	}
 }

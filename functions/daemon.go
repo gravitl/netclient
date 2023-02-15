@@ -23,7 +23,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const lastNodeUpdate = "lnu"
+const (
+	lastNodeUpdate   = "lnu"
+	lastDNSUpdate    = "ldu"
+	lastALLDNSUpdate = "ladu"
+)
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
@@ -267,6 +271,16 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
+	logger.Log(3, fmt.Sprintf("subcribed to dns updates dns/update/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subcribed to all dns updates dns/all/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config
@@ -286,7 +300,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 // should only ever use node client configs
 func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
-		return nil, fmt.Errorf("recieved invalid message from broker %v", msg)
+		return nil, fmt.Errorf("received invalid message from broker %v", msg)
 	}
 	host := config.Netclient()
 	// setup the keys
