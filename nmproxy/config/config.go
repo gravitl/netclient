@@ -12,7 +12,8 @@ import (
 
 var (
 	// contains all the config related to proxy
-	config = &Config{}
+	config        = &Config{}
+	natAutoSwitch bool
 )
 
 // Config - struct for proxy config
@@ -191,6 +192,16 @@ func (c *Config) SetNATStatus() {
 		c.isBehindNAT = true
 	}
 
+}
+
+// NatAutoSwitchDone - check if nat automatically swithed on already for devices behind NAT
+func NatAutoSwitchDone() bool {
+	return natAutoSwitch
+}
+
+// SetNatAutoSwitch - set NAT auto switch to true
+func SetNatAutoSwitch() {
+	natAutoSwitch = true
 }
 
 // Config.IsBehindNAT - checks if proxy is running behind NAT
