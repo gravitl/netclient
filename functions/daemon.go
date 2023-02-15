@@ -286,7 +286,7 @@ func setHostSubscription(client mqtt.Client, server string) {
 // setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
-	if token := client.Subscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Subscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			logger.Log(0, "network:", node.Network, "connection timeout")
 		} else {
@@ -347,9 +347,8 @@ func insert(network, which, cache string) {
 // on a delete usually, pass in the nodecfg to unsubscribe client broker communications
 // for the node in nodeCfg
 func unsubscribeNode(client mqtt.Client, node *config.Node) {
-	client.Unsubscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID))
 	var ok = true
-	if token := client.Unsubscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Unsubscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", "connection timeout")
 		} else {

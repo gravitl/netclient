@@ -158,17 +158,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Configure()
 	wireguard.SetPeers()
-
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
 	} else {
 		peerUpdate.ProxyUpdate.Action = models.NoProxy
 	}
 	peerUpdate.ProxyUpdate.Server = serverName
 	ProxyManagerChan <- &peerUpdate
-
-	_ = UpdateHostSettings()
-
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -191,7 +188,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
-	var resetInterface, sendHostUpdate, restartDaemon bool
+	var resetInterface, restartDaemon bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
@@ -221,12 +218,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(1, "unknown host action")
 		return
 	}
-	config.WriteNetclientConfig()
-	if sendHostUpdate {
-		if err := PublishHostUpdate(serverName, models.UpdateHost); err != nil {
-			logger.Log(0, "failed to send host update to server ", serverName, err.Error())
-		}
+	if err = config.WriteNetclientConfig(); err != nil {
+		logger.Log(0, "failed to write host config -", err.Error())
+		return
 	}
+
 	if restartDaemon {
 		clearRetainedMsg(client, msg.Topic())
 		if err := daemon.Restart(); err != nil {
@@ -283,7 +279,7 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 }
 
 func parseNetworkFromTopic(topic string) string {
-	return strings.Split(topic, "/")[1]
+	return strings.Split(topic, "/")[2]
 }
 
 func parseServerFromTopic(topic string) string {

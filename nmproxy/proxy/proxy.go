@@ -26,7 +26,7 @@ func (p *Proxy) Start() error {
 
 	var err error
 	p.RemoteConn = p.Config.PeerEndpoint
-	logger.Log(0, "----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.PeerPublicKey.String(), p.RemoteConn.String())
+	logger.Log(0, fmt.Sprintf("----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.PeerPublicKey.String(), p.RemoteConn.String()))
 	addr, err := GetFreeIp(models.DefaultCIDR, config.GetCfg().GetInterfaceListenPort())
 	if err != nil {
 		logger.Log(1, "Failed to get freeIp: ", err.Error())
