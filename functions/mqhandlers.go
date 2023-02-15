@@ -323,6 +323,10 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	insert("dns", lastDNSUpdate, string(data))
 	logger.Log(3, "received dns update for", dns.Name)
+	applyDNSUpdate(dns)
+}
+
+func applyDNSUpdate(dns models.DNSUpdate) {
 	if config.Netclient().Debug {
 		log.Println(dns)
 	}
@@ -393,6 +397,10 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	insert("dnsall", lastALLDNSUpdate, string(data))
+	applyAllDNS(dns)
+}
+
+func applyAllDNS(dns []models.DNSUpdate) {
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
 		logger.Log(0, "failed to read hosts file", err.Error())
