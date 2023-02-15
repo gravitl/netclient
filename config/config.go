@@ -496,6 +496,9 @@ func CheckConfig() {
 		}
 	}
 	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
+		if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+			logger.Log(0, "failed to create /etc/netclient", err.Error())
+		}
 		if _, err := os.Create(GetNetclientPath() + "netmaker.conf"); err != nil {
 			logger.Log(0, "failed to create netmaker.conf: ", err.Error())
 		}
