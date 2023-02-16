@@ -392,6 +392,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	return nil
 }
 
+// iptablesManager.RefreshEgressRangesOnIngressGw - deletes/adds rules for egress ranges for ext clients on the ingressGW
 func (i *iptablesManager) RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error {
 	ruleTable := i.FetchRuleTable(server, ingressTable)
 	defer i.SaveRules(server, ingressTable, ruleTable)
@@ -432,10 +433,11 @@ func (i *iptablesManager) RefreshEgressRangesOnIngressGw(server string, ingressU
 		}
 
 	} else {
+		// no changes oberserved in the egress ranges so return
 		return nil
 	}
 
-	// re-create rules for egress ranges for ext clients
+	// re-create rules for egress ranges routes for ext clients
 	logger.Log(0, "Refreshing Engress ranges for ext clients")
 	for extKey, extinfo := range ingressUpdate.ExtPeers {
 
