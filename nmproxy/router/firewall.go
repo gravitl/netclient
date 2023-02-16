@@ -7,7 +7,7 @@ import (
 
 var (
 	fwCrtl              firewallController
-	currEgressRangesMap map[string][]string
+	currEgressRangesMap = make(map[string][]string)
 )
 
 type rulesCfg struct {

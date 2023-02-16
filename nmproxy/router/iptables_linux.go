@@ -389,7 +389,6 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 	}
 
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
-
 	return nil
 }
 
@@ -432,6 +431,8 @@ func (i *iptablesManager) RefreshEgressRangesOnIngressGw(server string, ingressU
 			return nil
 		}
 
+	} else {
+		return nil
 	}
 
 	// re-create rules for egress ranges for ext clients
