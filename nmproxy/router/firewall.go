@@ -6,7 +6,8 @@ import (
 )
 
 var (
-	fwCrtl firewallController
+	fwCrtl              firewallController
+	currEgressRangesMap = make(map[string][]string)
 )
 
 type rulesCfg struct {
@@ -15,9 +16,10 @@ type rulesCfg struct {
 }
 
 type ruleInfo struct {
-	rule  []string
-	table string
-	chain string
+	rule          []string
+	table         string
+	chain         string
+	egressExtRule bool
 }
 type ruletable map[string]rulesCfg
 
@@ -32,9 +34,11 @@ type firewallController interface {
 	// CreateChains  creates a firewall chains and jump rules
 	CreateChains() error
 	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
-	InsertIngressRoutingRules(server string, r models.ExtClientInfo) error
+	InsertIngressRoutingRules(server string, r models.ExtClientInfo, egressRanges []string) error
 	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
 	AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error
+	// RefreshEgressRangesOnIngressGw - deletes/adds rules for egress ranges for ext clients on the ingressGW
+	RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// AddEgressRoutingRule - adds a egress routing rules for a peer

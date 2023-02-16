@@ -27,7 +27,7 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 
 	for _, extInfo := range ingressUpdate.ExtPeers {
 		if _, ok := ruleTable[extInfo.ExtPeerKey]; !ok {
-			err := fwCrtl.InsertIngressRoutingRules(server, extInfo)
+			err := fwCrtl.InsertIngressRoutingRules(server, extInfo, ingressUpdate.EgressRanges)
 			if err != nil {
 				logger.Log(0, "falied to set ingress routes: ", err.Error())
 			}
@@ -36,11 +36,14 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 			for _, peer := range extInfo.Peers {
 				if _, ok := peerRules.rulesMap[peer.PeerKey]; !ok &&
 					peer.PeerKey != extInfo.ExtPeerKey {
-					fwCrtl.AddIngressRoutingRule(server, extInfo.ExtPeerKey, extInfo.ExtPeerAddr.String(), peer)
+					fwCrtl.AddIngressRoutingRule(server, extInfo.ExtPeerKey,
+						extInfo.ExtPeerAddr.String(), peer)
 				}
 			}
 		}
 	}
+	fwCrtl.RefreshEgressRangesOnIngressGw(server, ingressUpdate)
+
 	return nil
 }
 
