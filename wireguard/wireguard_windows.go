@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os/exec"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -97,4 +98,15 @@ func (nc *NCIface) Close() {
 func (nc *NCIface) SetMTU() error {
 	// TODO figure out how to change MTU of adapter
 	return nil
+}
+
+// DeleteOldInterface - removes named interface
+func DeleteOldInterface(iface string) {
+	netsh, err := exec.LookPath("netsh")
+	if err != nil {
+		logger.Log(0, "failed to locate netsh", err.Error())
+	}
+	if _, err := ncutils.RunCmd(netsh+" "+iface+" destroy", true); err != nil {
+		logger.Log(0, "error removing interface", iface, err.Error())
+	}
 }
