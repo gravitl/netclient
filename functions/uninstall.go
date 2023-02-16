@@ -32,6 +32,9 @@ func Uninstall() ([]error, error) {
 			allfaults = append(allfaults, err)
 		}
 	}
+	if err := deleteAllDNS(); err != nil {
+		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
+	}
 
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
@@ -53,8 +56,8 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	if err := deleteLocalNetwork(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	if err := removeHostDNS(node.Network); err != nil {
-		faults = append(faults, fmt.Errorf("failed to delete dns entries %w", err))
+	if err := deleteNetworkDNS(network); err != nil {
+		faults = append(faults, fmt.Errorf("error deleting dns entries %w", err))
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
