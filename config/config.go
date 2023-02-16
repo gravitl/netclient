@@ -53,9 +53,7 @@ var (
 type Config struct {
 	models.Host
 	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
-	MacAddress        net.HardwareAddr                `json:"macaddress" yaml:"macaddress"`
 	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte                          `json:"traffickeypublic" yaml:"trafficekeypublic"`
 	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
 	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
