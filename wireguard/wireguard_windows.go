@@ -102,6 +102,7 @@ func (nc *NCIface) SetMTU() error {
 
 // DeleteOldInterface - removes named interface
 func DeleteOldInterface(iface string) {
+	logger.Log(3, "deleting interface", iface)
 	netsh, err := exec.LookPath("netsh")
 	if err != nil {
 		logger.Log(0, "failed to locate netsh", err.Error())

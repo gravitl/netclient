@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,10 +15,12 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/kr/pretty"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Migrate update data from older versions of netclient to new format
 func Migrate() {
+	delete := true
 	if _, err := os.Stat("/etc/netclient/config"); err != nil {
 		//nothing to migrate ... exiting"
 		return
@@ -83,12 +86,14 @@ func Migrate() {
 			logger.Log(0, "err migrating data", err.Error())
 			if errors.Is(err, httpclient.ErrStatus) {
 				logger.Log(0, "error joining network", strconv.Itoa(errData.Code), errData.Message)
+				delete = false
 				continue
 			}
 		}
 		//process server response
 		if !IsVersionComptatible(joinResponse.ServerConfig.Version) {
 			logger.Log(0, "incompatible server version")
+			delete = false
 			continue
 		}
 		logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
@@ -130,11 +135,32 @@ func Migrate() {
 			logger.Log(0, "error saving wireguard conf", err.Error())
 		}
 		_ = removeHostDNS(network)
+		legacyPeers, err := wireguard.GetDevicePeers(cfg.Node.Interface)
+		if err != nil {
+			logger.Log(0, "failed to obtain wg info for legacy interface", cfg.Node.Interface)
+		}
+		peers := []wgtypes.PeerConfig{}
+		for _, peer := range legacyPeers {
+			log.Println("processing peer", peer.PublicKey)
+			peerConfig := wgtypes.PeerConfig{
+				PublicKey:         peer.PublicKey,
+				Endpoint:          peer.Endpoint,
+				AllowedIPs:        peer.AllowedIPs,
+				ReplaceAllowedIPs: true,
+			}
+			peers = append(peers, peerConfig)
+		}
+		config.UpdateHostPeers(server.Name, peers)
+		if err := config.WriteNetclientConfig(); err != nil {
+			logger.Log(0, "error saving netclient config", err.Error())
+		}
 		wireguard.DeleteOldInterface(cfg.Node.Interface)
 	}
 	//delete old config dir
-	logger.Log(3, "removing old config files")
-	if err := os.RemoveAll(config.GetNetclientPath() + "config/"); err != nil {
-		logger.Log(0, "failed to delete old configuration files ", err.Error())
+	if delete {
+		logger.Log(3, "removing old config files")
+		if err := os.RemoveAll(config.GetNetclientPath() + "config/"); err != nil {
+			logger.Log(0, "failed to delete old configuration files ", err.Error())
+		}
 	}
 }

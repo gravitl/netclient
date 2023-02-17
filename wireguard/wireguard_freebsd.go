@@ -99,6 +99,7 @@ func (nc *NCIface) SetMTU() error {
 
 // DeleteOldInterface - removes named interface
 func DeleteOldInterface(iface string) {
+	logger.Log(3, "deleting interface", iface)
 	ifconfig, err := exec.LookPath("ifconfig")
 	if err != nil {
 		logger.Log(0, "failed to locate ifconfig", err.Error())

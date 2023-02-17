@@ -151,6 +151,7 @@ func getNewLink(name string) *netLink {
 
 // DeleteOldInterface - removes named interface
 func DeleteOldInterface(iface string) {
+	logger.Log(3, "deleting interface", iface)
 	ip, err := exec.LookPath("ip")
 	if err != nil {
 		logger.Log(0, "failed to locate if", err.Error())

@@ -133,8 +133,13 @@ func SetVersion(ver string) {
 }
 
 // setLogVerbosity sets the logger verbosity from config
-func setLogVerbosity() {
-	logger.Verbosity = netclient.Verbosity
+func setLogVerbosity(flags *viper.Viper) {
+	verbosity := flags.GetInt("verbosity")
+	if netclient.Verbosity > verbosity {
+		logger.Verbosity = netclient.Verbosity
+		return
+	}
+	logger.Verbosity = verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -366,7 +371,7 @@ func InCharSet(name string) bool {
 func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
-	setLogVerbosity()
+	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
