@@ -22,17 +22,18 @@ token: netclient register -t <token> // join using an enrollment token`,
 		flags.BindPFlags(cmd.Flags())
 		// CLI should always take password from stdin
 		flags.Set("readPassFromStdIn", true)
-		if flags.Get("token") == "" {
+		token := flags.GetString("token")
+		if token == "" {
 			cmd.Usage()
 			return
 		}
-		if err := functions.Register(flags); err != nil {
-			logger.Log(0, "join failed", err.Error())
+		if err := functions.Register(token); err != nil {
+			logger.Log(0, "registration failed", err.Error())
 		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(registerCmd)
-	joinCmd.Flags().StringP("token", "t", "", "enrollment token for registering to a Netmaker instance")
+	registerCmd.Flags().StringP("token", "t", "", "enrollment token for registering to a Netmaker instance")
 }

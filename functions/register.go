@@ -13,12 +13,10 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/spf13/viper"
 )
 
 // Register - should be simple to register with a token
-func Register(flags *viper.Viper) error {
-	token := flags.GetString("token")
+func Register(token string) error {
 	data, err := b64.StdEncoding.DecodeString(token)
 	if err != nil {
 		logger.FatalLog("could not read enrollment token")
@@ -28,7 +26,7 @@ func Register(flags *viper.Viper) error {
 		logger.FatalLog("could not read enrollment token")
 	}
 	host := config.Netclient()
-	shouldUpdateHost, err := doubleCheck(host)
+	shouldUpdateHost, err := doubleCheck(host, serverData.Server)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
 	}
@@ -37,22 +35,22 @@ func Register(flags *viper.Viper) error {
 	}
 	api := httpclient.JSONEndpoint[models.ServerConfig, models.ErrorResponse]{
 		URL:           "https://" + serverData.Server,
-		Route:         "/api/v1/host/register" + token,
+		Route:         "/api/v1/host/register/" + token,
 		Method:        http.MethodPost,
 		Data:          host,
 		Response:      models.ServerConfig{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	joinResponse, errData, err := api.GetJSON(models.ServerConfig{}, models.ErrorResponse{})
+	registerResponse, errData, err := api.GetJSON(models.ServerConfig{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
-			logger.FatalLog("error registering to server", strconv.Itoa(errData.Code), errData.Message)
+			logger.FatalLog("error registering with server", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return err
 	}
-	config.UpdateServerConfig(&joinResponse)
-	server := config.GetServer(joinResponse.Server)
-	if err := config.SaveServer(serverData.Server, *server); err != nil {
+	config.UpdateServerConfig(&registerResponse)
+	server := config.GetServer(registerResponse.Server)
+	if err := config.SaveServer(registerResponse.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
 	if err := config.WriteNetclientConfig(); err != nil {
@@ -61,6 +59,6 @@ func Register(flags *viper.Viper) error {
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
-	fmt.Printf("Completed registration to server %s \n", serverData.Server)
+	fmt.Printf("registered with server %s\n", serverData.Server)
 	return nil
 }
