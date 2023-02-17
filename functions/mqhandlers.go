@@ -204,6 +204,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
+			logger.Log(0, "failed to response with ACK to server", serverName)
+		}
 		restartDaemon = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
