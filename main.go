@@ -15,7 +15,7 @@ import (
 )
 
 // TODO: use -ldflags to set the right version at build time
-var version = "v0.18.0"
+var version = "v0.18.1"
 
 var guiFunc = func() {}
 
