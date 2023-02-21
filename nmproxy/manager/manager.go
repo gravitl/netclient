@@ -64,7 +64,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 		return nil
 	}
 	config.GetCfg().SetIface(wgIface)
-	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.PeerIDs)
+	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.HostPeerIDs)
 	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
 	fwUpdate(payload)
 	switch m.Action {

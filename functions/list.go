@@ -20,7 +20,7 @@ type output struct {
 	Connected bool      `json:"connected"`
 	Ipv4Addr  string    `json:"ipv4_addr"`
 	Ipv6Addr  string    `json:"ipv6_addr"`
-	Peers     []peerOut `json:"peers"`
+	Peers     []peerOut `json:"peers,omitempty"`
 }
 
 type peerOut struct {
@@ -43,6 +43,7 @@ func List(net string, long bool) {
 				Network:   node.Network,
 				Connected: node.Connected,
 				NodeID:    node.ID.String(),
+				Peers:     []peerOut{},
 			}
 			if node.Address.IP != nil {
 				output.Ipv4Addr = node.Address.String()

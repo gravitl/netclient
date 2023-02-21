@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -118,27 +117,25 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	//server = ConvertServerCfg(nodeGet.ServerConfig)
 	//}
 	var node Node
-	node.ID, _ = uuid.Parse(netmakerNode.ID)
+	node.ID = nodeGet.Node.ID
 	//n.Name = s.Name
 	node.Network = netmakerNode.Network
 	//node.Password = netmakerNode.Password
-	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
-	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
+	node.NetworkRange = nodeGet.Node.NetworkRange
+	node.NetworkRange6 = nodeGet.Node.NetworkRange6
+	node.InternetGateway = nodeGet.Node.InternetGateway
 	//n.Interface = s.Interface
 	node.Server = netmakerNode.Server
-	node.Connected = ParseBool(netmakerNode.Connected)
+	node.Connected = nodeGet.Node.Connected
 	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
-	node.Address.IP = net.ParseIP(netmakerNode.Address)
-	node.Address.Mask = node.NetworkRange.Mask
-	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
-	node.Address6.Mask = node.NetworkRange6.Mask
+	node.Address = nodeGet.Node.Address
+	node.Address6 = nodeGet.Node.Address6
 	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
 	node.Action = netmakerNode.Action
-	node.IsLocal = ParseBool(netmakerNode.IsLocal)
-	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
-	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
-	node.DNSOn = ParseBool(netmakerNode.DNSOn)
+	node.IsLocal = nodeGet.Node.IsLocal
+	node.IsEgressGateway = nodeGet.Node.IsEgressGateway
+	node.IsIngressGateway = nodeGet.Node.IsIngressGateway
+	node.DNSOn = nodeGet.Node.DNSOn
 	//node.Peers = nodeGet.Peers
 	//add items not provided by server
 	return &node
