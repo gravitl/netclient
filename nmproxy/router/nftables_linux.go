@@ -1757,6 +1757,7 @@ func (n *nftablesManager) FlushAll() {
 
 // private functions
 
+//lint:ignore U1000 might be useful in future
 func (n *nftablesManager) getTable(tableName string) (*nftables.Table, error) {
 	tables, err := n.conn.ListTables()
 	if err != nil {
