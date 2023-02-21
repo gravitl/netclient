@@ -113,13 +113,12 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 }
 
 // ConvertOldNode accepts a netmaker node struct and converts to the structs used by netclient
-func ConvertOldNode(nodeGet *models.NodeGet) (*Node, *Server, *Config) {
+func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (*Node, *Server, *Config) {
 	var node Node
 	host := Netclient()
-	netmakerNode := nodeGet.Node
 	//server := GetServer(netmakerNode.Server)
 	//if server == nil {
-	server := ConvertOldServerCfg(&nodeGet.ServerConfig)
+	server := ConvertOldServerCfg(cfg)
 	//}
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	//n.Name = s.Name

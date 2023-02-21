@@ -19,6 +19,7 @@ import (
 )
 
 // Migrate update data from older versions of netclient to new format
+// TODO fix it
 func Migrate() {
 	delete := true
 	if _, err := os.Stat("/etc/netclient/config"); err != nil {
@@ -41,15 +42,12 @@ func Migrate() {
 			logger.Log(0, "failed to read config for network", network, "skipping ...")
 			continue
 		}
-		nodeGet := models.NodeGet{
-			Node: cfg.Node,
-		}
 		pass, err := os.ReadFile(config.GetNetclientPath() + "config/secret-" + network)
 		if err != nil {
 			logger.Log(0, "could not read secrets file", err.Error())
 			continue
 		}
-		node, _, _ := config.ConvertOldNode(&nodeGet)
+		node, _, _ := config.ConvertOldNode(&cfg.Node, &cfg.Server)
 		server := config.ConvertOldServerCfg(&cfg.Server)
 		node.Server = server.Name
 		migrationData := models.MigrationData{
