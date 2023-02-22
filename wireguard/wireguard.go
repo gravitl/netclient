@@ -22,6 +22,7 @@ func SetPeers() error {
 		peers = peer.SetPeersEndpointToProxy(peers)
 	}
 	config := wgtypes.Config{
+		// TODO - after fixing server-side peer send for deletions, change ReplacePeers to false
 		ReplacePeers: true,
 		Peers:        peers,
 	}
