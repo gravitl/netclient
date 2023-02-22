@@ -8,7 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"unicode"
 
+	"github.com/blang/semver"
 	"github.com/gravitl/netclient/daemon"
 )
 
@@ -54,6 +57,24 @@ func downloadVersion(version string) error {
 		return err
 	}
 	return nil
+}
+
+// versionLessThan checks if v1 < v2 semantically
+// dev is the latest version
+func versionLessThan(v1, v2 string) bool {
+	if v1 == "dev" {
+		return false
+	}
+	if v2 == "dev" {
+		return true
+	}
+	semVer1 := strings.TrimFunc(v1, func(r rune) bool {
+		return !unicode.IsNumber(r)
+	})
+	semVer2 := strings.TrimFunc(v2, func(r rune) bool {
+		return !unicode.IsNumber(r)
+	})
+	return semver.MustParse(semVer1).LT(semver.MustParse(semVer2))
 }
 
 // UseVersion switches the current netclient version to the one specified if available in the github releases page
