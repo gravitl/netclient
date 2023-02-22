@@ -1,13 +1,11 @@
 package wireguard
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
@@ -27,8 +25,6 @@ func SetPeers() error {
 		ReplacePeers: true,
 		Peers:        peers,
 	}
-	fmt.Printf("DELETEME SetPeers \n")
-	spew.Dump(config)
 	return apply(&config)
 }
 
@@ -199,8 +195,6 @@ func RemovePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{*p},
 	}
-	fmt.Printf("DELETEME RemovePeer \n")
-	spew.Dump(config)
 	return apply(&config)
 }
 
@@ -211,15 +205,12 @@ func UpdatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{*p},
 	}
-	fmt.Printf("DELETEME UpdatePeer \n")
-	spew.Dump(config)
 	return apply(&config)
 }
 
 func apply(c *wgtypes.Config) error {
 	wg, err := wgctrl.New()
 	if err != nil {
-		fmt.Printf("DELETEME ERROR: %v \n", err.Error())
 		return err
 	}
 	defer wg.Close()
