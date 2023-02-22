@@ -264,10 +264,11 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort || hostCfg.ProxyListenPort != host.ProxyListenPort {
+	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
+		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
 		restart = true
 	}
-	if hostCfg.MTU != host.MTU {
+	if host.MTU != 0 && hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
 	// store password before updating
