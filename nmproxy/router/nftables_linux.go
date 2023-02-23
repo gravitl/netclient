@@ -494,6 +494,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 							Len:          ipv4Len,
 						},
 						&expr.Cmp{
+							Op:       expr.CmpOpEq,
 							Register: 1,
 							Data:     peer.PeerAddr.IP.To4(),
 						},
@@ -536,6 +537,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 							Len:          ipv6Len,
 						},
 						&expr.Cmp{
+							Op:       expr.CmpOpEq,
 							Register: 1,
 							Data:     peer.PeerAddr.IP.To16(),
 						},
@@ -618,6 +620,7 @@ func (n *nftablesManager) AddEgressRoutingRule(server string, egressInfo models.
 						Len:          ipv4Len,
 					},
 					&expr.Cmp{
+						Op:       expr.CmpOpEq,
 						Register: 1,
 						Data:     peer.PeerAddr.IP.To4(),
 					},
@@ -660,6 +663,7 @@ func (n *nftablesManager) AddEgressRoutingRule(server string, egressInfo models.
 						Len:          ipv6Len,
 					},
 					&expr.Cmp{
+						Op:       expr.CmpOpEq,
 						Register: 1,
 						Data:     peer.PeerAddr.IP.To16(),
 					},
