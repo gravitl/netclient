@@ -973,7 +973,6 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 		if !peerInfo.Allow || peerInfo.PeerKey == extinfo.ExtPeerKey {
 			continue
 		}
-		peerIP, _, err := net.ParseCIDR(extinfo.IngGwAddr.String())
 		if err != nil {
 			logger.Log(0, "Error parsing peer IP CIDR: ", err.Error())
 			continue
@@ -1007,7 +1006,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     peerIP.To4(),
+						Data:     peerInfo.PeerAddr.IP.To4(),
 					},
 					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictAccept},
@@ -1041,7 +1040,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, extinfo model
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     peerIP.To16(),
+						Data:     peerInfo.PeerAddr.IP.To16(),
 					},
 					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictAccept},
