@@ -162,8 +162,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
+
+	// TODO - after fixing server-side peer send, remove these 2 lines
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Configure()
+	// end TODO
+
 	wireguard.SetPeers()
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -271,10 +275,11 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort || hostCfg.ProxyListenPort != host.ProxyListenPort {
+	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
+		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
 		restart = true
 	}
-	if hostCfg.MTU != host.MTU {
+	if host.MTU != 0 && hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
 	// store password before updating

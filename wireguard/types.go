@@ -90,7 +90,7 @@ func (n *NCIface) Configure() error {
 	if err := n.SetMTU(); err != nil {
 		return err
 	}
-	return apply(nil, &n.Config)
+	return apply(&n.Config)
 }
 
 func (nc *NCIface) getPeerRoutes() {
@@ -131,12 +131,13 @@ func GetInterface() *NCIface {
 	return &netmaker
 }
 
+// NCIface.UpdatePeer - Updates Peers from provided PeerConfig
 func (n *NCIface) UpdatePeer(p wgtypes.PeerConfig) {
 	peers := []wgtypes.PeerConfig{}
 	peers = append(peers, p)
 	n.Config.ReplacePeers = false
 	n.Config.Peers = peers
-	apply(nil, &n.Config)
+	apply(&n.Config)
 }
 
 // == private ==
