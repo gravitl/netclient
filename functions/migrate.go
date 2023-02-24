@@ -48,15 +48,14 @@ func Migrate() {
 			logger.Log(0, "could not read secrets file", err.Error())
 			continue
 		}
-		node, _, _ := config.ConvertOldNode(&cfg.Node, &cfg.Server)
-		server := config.ConvertOldServerCfg(&cfg.Server)
+		node, server, netclient := config.ConvertOldNode(&cfg.Node, &cfg.Server)
 		node.Server = server.Name
 		migrationData := models.MigrationData{
 			JoinData: models.JoinData{
 				Node: models.Node{
 					CommonNode: node.CommonNode,
 				},
-				Host: config.Netclient().Host,
+				Host: netclient.Host,
 			},
 			LegacyNodeID: cfg.Node.ID,
 			Password:     string(pass),
