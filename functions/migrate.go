@@ -22,7 +22,8 @@ import (
 // TODO fix it
 func Migrate() {
 	delete := true
-	if _, err := os.Stat("/etc/netclient/config"); err != nil {
+	config_dir := config.GetNetclientPath() + "config"
+	if _, err := os.Stat(config_dir); err != nil {
 		//nothing to migrate ... exiting"
 		return
 	}
