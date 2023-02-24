@@ -163,11 +163,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
 
-	// TODO - after fixing server-side peer send, remove these 2 lines
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Configure()
-	// end TODO
-
 	wireguard.SetPeers()
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
