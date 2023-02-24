@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 )
@@ -13,7 +15,9 @@ var useCmd = &cobra.Command{
 	Long: `use a specific version of netclient if available
 For example:- netclient use v0.18.0`,
 	Run: func(cmd *cobra.Command, args []string) {
-		functions.UseVersion(args[0])
+		if err := functions.UseVersion(args[0], true); err != nil {
+			fmt.Println("Error using specified version: ", err.Error())
+		}
 	},
 }
 

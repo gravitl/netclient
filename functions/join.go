@@ -319,7 +319,12 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	fmt.Println("checking for version compatibility ", joinResponse.ServerConfig.Version)
 	if !IsVersionComptatible(joinResponse.ServerConfig.Version) {
-		return nil, nil, errors.New("incompatible server version")
+		logger.Log(1, "server/client version mismatch, trying to update to server version: ", joinResponse.ServerConfig.Version)
+		if versionLessThan(config.Version, joinResponse.ServerConfig.Version) {
+			if err := UseVersion(joinResponse.ServerConfig.Version, true); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
 	config.UpdateServerConfig(&joinResponse.ServerConfig)
