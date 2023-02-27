@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -321,7 +322,12 @@ func checkBroker(broker string) error {
 		return errors.New("nslookup failed for broker ... check dns records")
 	}
 	pinger := ping.NewTCPing()
-	intPort, err := strconv.Atoi(u.Port())
+	var intPort int
+	if strings.Contains(broker, "mqtt") {
+		intPort = 8083
+	} else {
+		intPort = 1883
+	}
 	if err != nil {
 		logger.Log(1, "error converting port to int: "+err.Error())
 	}
