@@ -7,13 +7,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/cloverstd/tcping/ping"
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
@@ -309,40 +306,6 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func checkBroker(broker string) error {
-	u, err := url.Parse(broker)
-	if err != nil {
-		return err
-	}
-	if _, err := net.LookupIP(u.Hostname()); err != nil {
-		return errors.New("nslookup failed for broker ... check dns records")
-	}
-	pinger := ping.NewTCPing()
-	var intPort int
-	if strings.Contains(broker, "mqtt") {
-		intPort = 8083
-	} else {
-		intPort = 1883
-	}
-	if err != nil {
-		logger.Log(1, "error converting port to int: "+err.Error())
-	}
-	pinger.SetTarget(&ping.Target{
-		Protocol: ping.TCP,
-		Host:     u.Hostname(),
-		Port:     intPort,
-		Counter:  3,
-		Interval: 1 * time.Second,
-		Timeout:  2 * time.Second,
-	})
-	pingerDone := pinger.Start()
-	<-pingerDone
-	if pinger.Result().SuccessCounter == 0 {
-		return errors.New("unable to connect to broker port ... check netmaker server and firewalls")
 	}
 	return nil
 }
