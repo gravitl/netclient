@@ -7,7 +7,7 @@ require (
 	github.com/c-robinson/iplib v1.0.6
 	github.com/cloverstd/tcping v0.1.1
 	github.com/coreos/go-iptables v0.6.0
-	github.com/devilcove/httpclient v0.6.0
+	github.com/devilcove/httpclient v0.6.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
