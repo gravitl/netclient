@@ -67,7 +67,7 @@ jobs:
           echo "NETMAKER_VERSION=${TAG}"  >> $GITHUB_ENV
           echo "PACKAGE_VERSION=${VERSION}" >> $GITHUB_ENV
       - name: Setup go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: 1.19
       - name: Build
@@ -142,7 +142,7 @@ jobs:
           echo "NETMAKER_VERSION=${TAG}"  >> $GITHUB_ENV
           echo "PACKAGE_VERSION=${VERSION}" >> $GITHUB_ENV
       - name: Setup go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: 1.19
       - name: Build
