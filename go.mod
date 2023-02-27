@@ -15,7 +15,7 @@ require (
 	github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc
 	github.com/hashicorp/go-version v1.6.0
 	github.com/kr/pretty v0.3.1
-	github.com/matryer/is v1.4.0
+	github.com/matryer/is v1.4.1
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
