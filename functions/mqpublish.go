@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -311,25 +312,22 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 	return nil
 }
 
-func checkBroker(broker string, port string) error {
-	if broker == "" {
-		return errors.New("error: broker address is blank")
-	}
-	if port == "" {
-		return errors.New("error: broker port is blank")
-	}
-	_, err := net.LookupIP(broker)
+func checkBroker(broker string) error {
+	u, err := url.Parse(broker)
 	if err != nil {
+		return err
+	}
+	if _, err := net.LookupIP(u.Host); err != nil {
 		return errors.New("nslookup failed for broker ... check dns records")
 	}
 	pinger := ping.NewTCPing()
-	intPort, err := strconv.Atoi(port)
+	intPort, err := strconv.Atoi(u.Port())
 	if err != nil {
 		logger.Log(1, "error converting port to int: "+err.Error())
 	}
 	pinger.SetTarget(&ping.Target{
 		Protocol: ping.TCP,
-		Host:     broker,
+		Host:     u.Host,
 		Port:     intPort,
 		Counter:  3,
 		Interval: 1 * time.Second,
