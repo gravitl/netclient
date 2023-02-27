@@ -317,7 +317,7 @@ func checkBroker(broker string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := net.LookupIP(u.Host); err != nil {
+	if _, err := net.LookupIP(u.Hostname()); err != nil {
 		return errors.New("nslookup failed for broker ... check dns records")
 	}
 	pinger := ping.NewTCPing()
@@ -327,7 +327,7 @@ func checkBroker(broker string) error {
 	}
 	pinger.SetTarget(&ping.Target{
 		Protocol: ping.TCP,
-		Host:     u.Host,
+		Host:     u.Hostname(),
 		Port:     intPort,
 		Counter:  3,
 		Interval: 1 * time.Second,
