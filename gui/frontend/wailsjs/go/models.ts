@@ -34,6 +34,8 @@ export namespace config {
     isstatic: boolean;
     isdefault: boolean;
 		macaddressstr: string;
+    privatekey: string;
+    traffickeyprivate: string;
 
     static createFrom(source: any = {}) {
       return new NcConfig(source);
@@ -77,6 +79,8 @@ export namespace config {
       this.isstatic = source["isstatic"];
       this.isdefault = source["isdefault"];
       this.macaddressstr = source["macaddressstr"];
+      this.traffickeyprivate = source["traffickeyprivate"];
+      this.privatekey = source["privatekey"];
     }
 
     convertValues(a: any, classs: any, asMap: boolean = false): any {
