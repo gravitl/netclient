@@ -85,19 +85,6 @@ func checkin() {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
 					}
 				}
-
-			} else if node.IsLocal {
-				intIP, err := getPrivateAddr()
-				if err != nil {
-					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
-				}
-				if !config.Netclient().EndpointIP.Equal(intIP.IP) {
-					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", intIP.IP.String())
-					config.Netclient().EndpointIP = intIP.IP
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", network, "could not publish localip change")
-					}
-				}
 			}
 		}
 		//check version

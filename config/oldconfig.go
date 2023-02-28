@@ -116,31 +116,23 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (*Node, *Server, *Config) {
 	var node Node
 	host := Netclient()
-	//server := GetServer(netmakerNode.Server)
-	//if server == nil {
 	server := ConvertOldServerCfg(cfg)
-	//}
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
-	//n.Name = s.Name
+	node.HostID = host.ID
 	node.Network = netmakerNode.Network
-	//node.Password = netmakerNode.Password
 	server.AccessKey = netmakerNode.AccessKey
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
 	host.ProxyEnabled = netmakerNode.Proxy
-	//n.Interface = s.Interface
 	node.Server = server.Name
 	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
-	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	host.ListenPort = int(netmakerNode.ListenPort)
 	host.MTU = int(netmakerNode.MTU)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
-
-	// node settings
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	node.Network = netmakerNode.Network
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
@@ -156,7 +148,6 @@ func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (
 	node.Address6.Mask = node.NetworkRange6.Mask
 	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
 	node.Action = netmakerNode.Action
-	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
 	host.IsStatic = ParseBool(netmakerNode.IsStatic)

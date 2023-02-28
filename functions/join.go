@@ -272,11 +272,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
 	host.EndpointIP = net.ParseIP(flags.GetString("endpoint"))
-	isLocal := flags.GetBool("islocal")
-	node.IsLocal = false
-	if isLocal {
-		node.IsLocal = true
-	}
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
 	shouldUpdate, err := doubleCheck(host, flags.GetString("apiconn"))
