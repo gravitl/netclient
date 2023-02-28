@@ -1,0 +1,219 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "new version number"
+        required: true
+      prerelease:
+        required: true
+        type: boolean
+        description: Is this a pre-release
+
+jobs:
+  release-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          ref: develop
+      - name: setup go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - name: setup git
+        run: |
+          git config user.name "Github Actions"
+          git config user.email "info@netmaker.io"
+      - name: create release branch
+        run: |
+          git switch -c release_${{ github.event.inputs.version }}
+      - name: fix go mod
+        run: |
+          go get github.com/gravitl/netmaker@${{ github.event.inputs.version }}
+          go mod tidy
+          git commit -am 'update go.mod for release'
+      - name: update release Branch
+        run: |
+          git tag -f ${{ github.event.inputs.version }}
+          git push origin release_${{ github.event.inputs.version }}
+          git push origin ${{ github.event.inputs.version }}
+  
+  linux-headless:
+    runs-on: ubuntu-latest
+    needs: release-branch
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          ref: release_${{ github.event.inputs.version }}
+          fetch-depth: 0
+      - run: |
+          git fetch --force --tags
+      - name: Setup go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - name: goreleaser (full release)
+        if: ${{ github.event.inputs.prerelease == 'false'}}
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          args: release --clean --release-notes release.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN  }}
+      - name: goreleaser (prerelease)
+        if: ${{ github.event.inputs.prerelease == 'true'}}
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          args: release --clean --release-notes release.md -f .goreleaser.prerelease.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN  }}
+        
+  freebsd-headless:
+    runs-on: ubuntu-latest
+    needs: release-branch
+    steps:
+      - name: build freebsd
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: freebsd.clustercat.com
+          username: freebsd
+          key: ${{ secrets.TESTING_SSH_KEY }}
+          script: |
+            cd netclient
+            git fetch
+            git switch release_${{ github.event.inputs.version }}
+            git restore .
+            git pull
+            go build -tags headless .
+      - name: setup ssh
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SSH_KEY" > ~/.ssh/id_devops
+          chmod 600 ~/.ssh/id_devops
+          cat >>~/.ssh/config <<END
+          Host *.clustercat.com
+            User freebsd
+            IdentityFile ~/.ssh/id_devops
+            StrictHostKeyChecking no
+          END
+        env:
+          SSH_KEY: ${{ secrets.TESTING_SSH_KEY }}
+      - name: get freebsd binary
+        run: |
+          scp freebsd@freebsd.clustercat.com:~/netclient/netclient /tmp/
+      - name: upload freebsd to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: /tmp/netclient
+          tag: ${{ github.event.inputs.version }}
+          overwrite: true
+          asset_name: netclient-freebsd-amd64
+
+  windows:
+    needs: release-branch
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: release_${{ github.event.inputs.version}}
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 19
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - name: build gui
+        run: |
+          cd gui/frontend
+          npm ci
+          npm run build
+          cd ../..
+          go generate
+          go build -tags desktop,production -ldflags "-w -s -H windowsgui"
+      - name: upload windows to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: netclient.exe
+          tag: ${{ github.event.inputs.version }}
+          overwrite: true
+          asset_name: netclient-windows-amd64.exe
+
+  darwin:
+    needs: release-branch
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: release_${{ github.event.inputs.version}}
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 19
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest 
+          ~/go/bin/wails build -platform darwin/amd64 
+          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_amd64
+          ~/go/bin/wails build -platform darwin/arm64 
+          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_arm64
+      - name: upload darwin/amd to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: /tmp/netclient_darwin_amd64
+          tag: ${{ github.event.inputs.version }}
+          overwrite: true
+          asset_name: netclient-darwin-amd64
+      - name: upload darwin_arm64 to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: /tmp/netclient_darwin_arm64
+          tag: ${{ github.event.inputs.version }}
+          overwrite: true
+          asset_name: netclient-darwin_amd64
+
+  docker:
+    needs: release-branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: release_${{ github.event.inputs.version}}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          platforms: linux/amd64, linux/arm64, linux/arm/v7
+          push: true
+          tags: gravitl/netclient:${{ github.event.inputs.version }}
+  
+  packages:
+    if: ${{ github.event.inputs.prerelease == 'false' }}
+    needs: release-branch
+    uses: ./.github/workflows/packages.yml
+    with:
+      version: ${{ github.event.inputs.version }}
+
+  pull-request:
+    if: ${{ github.event.inputs.prerelease == 'false' }}
+    needs: release-branch
+    uses: ./.github/workflows/pull-request.yml
+    with:
+      version: ${{ github.event.inputs.version }}
