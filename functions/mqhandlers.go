@@ -210,6 +210,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
+			logger.Log(0, "failed to response with ACK to server", serverName)
+		}
 		restartDaemon = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -220,6 +223,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+	case models.RequestAck:
+		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
+			logger.Log(0, "failed to response with ACK to server", serverName)
+		}
 	default:
 		logger.Log(1, "unknown host action")
 		return
