@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloverstd/tcping/ping"
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
@@ -307,38 +306,6 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func checkBroker(broker string, port string) error {
-	if broker == "" {
-		return errors.New("error: broker address is blank")
-	}
-	if port == "" {
-		return errors.New("error: broker port is blank")
-	}
-	_, err := net.LookupIP(broker)
-	if err != nil {
-		return errors.New("nslookup failed for broker ... check dns records")
-	}
-	pinger := ping.NewTCPing()
-	intPort, err := strconv.Atoi(port)
-	if err != nil {
-		logger.Log(1, "error converting port to int: "+err.Error())
-	}
-	pinger.SetTarget(&ping.Target{
-		Protocol: ping.TCP,
-		Host:     broker,
-		Port:     intPort,
-		Counter:  3,
-		Interval: 1 * time.Second,
-		Timeout:  2 * time.Second,
-	})
-	pingerDone := pinger.Start()
-	<-pingerDone
-	if pinger.Result().SuccessCounter == 0 {
-		return errors.New("unable to connect to broker port ... check netmaker server and firewalls")
 	}
 	return nil
 }

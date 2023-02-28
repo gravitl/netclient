@@ -22,10 +22,10 @@ func SetPeers() error {
 		peers = peer.SetPeersEndpointToProxy(peers)
 	}
 	config := wgtypes.Config{
-		ReplacePeers: true,
+		ReplacePeers: false,
 		Peers:        peers,
 	}
-	return apply(nil, &config)
+	return apply(&config)
 }
 
 // GetDevicePeers - gets the current device's peers
@@ -50,21 +50,6 @@ func GetDevicePeers(iface string) ([]wgtypes.Peer, error) {
 		}
 		return device.Peers, nil
 	}
-}
-
-// Configure - configures a pre-installed network interface with WireGuard
-func Configure() error {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	host := config.Netclient()
-	firewallMark := 0
-	config := wgtypes.Config{
-		PrivateKey:   &host.PrivateKey,
-		ReplacePeers: true,
-		FirewallMark: &firewallMark,
-		ListenPort:   &host.ListenPort,
-	}
-	return apply(nil, &config)
 }
 
 // GetPeers - gets the peers from a given WireGuard interface
@@ -210,7 +195,7 @@ func RemovePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{*p},
 	}
-	return apply(n, &config)
+	return apply(&config)
 }
 
 // UpdatePeer replaces a wireguard peer
@@ -220,10 +205,10 @@ func UpdatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 	config := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{*p},
 	}
-	return apply(n, &config)
+	return apply(&config)
 }
 
-func apply(n *config.Node, c *wgtypes.Config) error {
+func apply(c *wgtypes.Config) error {
 	wg, err := wgctrl.New()
 	if err != nil {
 		return err

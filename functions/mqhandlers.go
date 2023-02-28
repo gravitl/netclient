@@ -141,6 +141,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
+		if versionLessThan(config.Version, peerUpdate.ServerVersion) {
+			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
+				logger.Log(0, "error updating client to server's version", err.Error())
+			} else {
+				logger.Log(0, "updated client to server's version: ", peerUpdate.ServerVersion, " ,restart daemon to reflect changes")
+			}
+		}
 	}
 	if peerUpdate.ServerVersion != server.Version {
 		logger.Log(1, "updating server version")
@@ -155,8 +162,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Configure()
+
 	wireguard.SetPeers()
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -204,6 +210,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
+			logger.Log(0, "failed to response with ACK to server", serverName)
+		}
 		restartDaemon = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -214,6 +223,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+	case models.RequestAck:
+		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
+			logger.Log(0, "failed to response with ACK to server", serverName)
+		}
 	default:
 		logger.Log(1, "unknown host action")
 		return
@@ -264,10 +277,11 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if hostCfg.ListenPort != host.ListenPort || hostCfg.ProxyListenPort != host.ProxyListenPort {
+	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
+		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
 		restart = true
 	}
-	if hostCfg.MTU != host.MTU {
+	if host.MTU != 0 && hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
 	// store password before updating
