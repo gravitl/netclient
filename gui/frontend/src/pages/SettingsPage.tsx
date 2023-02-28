@@ -283,42 +283,6 @@ export default function SettingsPage() {
             <Grid item xs={4} md={3}>
               <TextField
                 disabled={!isEditing}
-                name="privatekey"
-                label="Private Key"
-                value={
-                  isEditing
-                    ? ncSettingsFormData?.privatekey
-                    : ncSettings?.privatekey
-                }
-                onChange={(ev) =>
-                  setNcSettingsFormData({
-                    ...ncSettingsFormData!,
-                    // privatekey: ev.target.value, // how to convert
-                  })
-                }
-              />
-            </Grid>
-            <Grid item xs={4} md={3}>
-              <TextField
-                disabled={!isEditing}
-                name="traffickeyprivate"
-                label="Private Traffic Key"
-                value={
-                  isEditing
-                    ? ncSettingsFormData?.traffickeyprivate
-                    : ncSettings?.traffickeyprivate
-                }
-                onChange={(ev) =>
-                  setNcSettingsFormData({
-                    ...ncSettingsFormData!,
-                    // traffickeyprivate: ev.target.value, // how to convert
-                  })
-                }
-              />
-            </Grid>
-            <Grid item xs={4} md={3}>
-              <TextField
-                disabled={!isEditing}
                 name="trafickeypublic"
                 label="Public Traffic Key"
                 value={
@@ -350,6 +314,24 @@ export default function SettingsPage() {
                   setNcSettingsFormData({
                     ...ncSettingsFormData!,
                     internetgateway: ev.target.value,
+                  })
+                }
+              />
+            </Grid>
+            <Grid item xs={4} md={3}>
+              <TextField
+                disabled={!isEditing}
+                name="endpointip"
+                label="Endpoint IP"
+                value={
+                  isEditing
+                    ? ncSettingsFormData?.endpointip
+                    : ncSettings?.endpointip
+                }
+                onChange={(ev) =>
+                  setNcSettingsFormData({
+                    ...ncSettingsFormData!,
+                    endpointip: ev.target.value,
                   })
                 }
               />
@@ -395,8 +377,24 @@ export default function SettingsPage() {
             <Grid item xs={4} md={3}>
               <TextField
                 disabled={!isEditing}
+                name="mtu"
+                label="MTU"
+                type="number"
+                value={isEditing ? ncSettingsFormData?.mtu : ncSettings?.mtu}
+                onChange={(ev) =>
+                  setNcSettingsFormData({
+                    ...ncSettingsFormData!,
+                    mtu: +ev.target.value,
+                  })
+                }
+              />
+            </Grid>
+            <Grid item xs={4} md={3}>
+              <TextField
+                disabled={!isEditing}
                 name="endpointip"
                 label="Endpoint IP"
+                type="number"
                 value={
                   isEditing
                     ? ncSettingsFormData?.endpointip
@@ -425,6 +423,25 @@ export default function SettingsPage() {
                   setNcSettingsFormData({
                     ...ncSettingsFormData!,
                     listenport: +ev.target.value,
+                  })
+                }
+              />
+            </Grid>
+            <Grid item xs={4} md={3}>
+              <TextField
+                disabled={!isEditing}
+                name="proxy_listen_port"
+                label="Proxy Listen Port"
+                type="number"
+                value={
+                  isEditing
+                    ? ncSettingsFormData?.proxy_listen_port
+                    : ncSettings?.proxy_listen_port
+                }
+                onChange={(ev) =>
+                  setNcSettingsFormData({
+                    ...ncSettingsFormData!,
+                    proxy_listen_port: +ev.target.value,
                   })
                 }
               />
