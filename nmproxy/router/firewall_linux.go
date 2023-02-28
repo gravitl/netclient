@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/google/nftables"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -14,6 +15,17 @@ import (
 func newFirewall() (firewallController, error) {
 
 	var manager firewallController
+
+	// for testing purposes, after testing will move it below iptables section
+	if isNftablesSupported() {
+		logger.Log(0, "nftables is supported")
+		manager = &nftablesManager{
+			conn:         &nftables.Conn{},
+			ingRules:     make(serverrulestable),
+			engressRules: make(serverrulestable),
+		}
+		return manager, nil
+	}
 	if isIptablesSupported() {
 		logger.Log(0, "iptables is supported")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -28,8 +40,6 @@ func newFirewall() (firewallController, error) {
 	}
 
 	//logger.Log(0, "iptables is not supported, using nftables")
-
-	// TODO - nft table manager
 
 	return manager, errors.New("firewall support not found")
 }
@@ -56,4 +66,9 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 		}
 	}
 	return "", errors.New("interface not found for: " + dst.String())
+}
+
+func isNftablesSupported() bool {
+	_, err := exec.LookPath("nft")
+	return err == nil
 }

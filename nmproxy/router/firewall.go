@@ -17,6 +17,7 @@ type rulesCfg struct {
 
 type ruleInfo struct {
 	rule          []string
+	nfRule        any
 	table         string
 	chain         string
 	egressExtRule bool
