@@ -162,9 +162,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 // setupMQTT creates a connection to broker
 func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
-	broker := server.Broker
-	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
@@ -199,9 +197,6 @@ func setupMQTT(server *config.Server) error {
 				connecterr = errors.New("connect timeout")
 			} else {
 				connecterr = token.Error()
-			}
-			if err := checkBroker(server.Broker, server.MQPort); err != nil {
-				logger.Log(0, "could not connect to broker", server.Broker, err.Error())
 			}
 		}
 	}
