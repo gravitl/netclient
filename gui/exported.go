@@ -218,3 +218,10 @@ func (app *App) GoUpdateNetclientConfig(updatedConfig config.Config) (any, error
 	// should send MQ updates to all registered servers
 	panic("unimplemented function")
 }
+
+func (app *App) GoRegisterWithEnrollmentKey(key string) (any, error) {
+	// read fresh config from disk
+	config.InitConfig(viper.New())
+
+	return nil, functions.Register(key)
+}
