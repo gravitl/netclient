@@ -16,16 +16,6 @@ func newFirewall() (firewallController, error) {
 
 	var manager firewallController
 
-	// for testing purposes, after testing will move it below iptables section
-	if isNftablesSupported() {
-		logger.Log(0, "nftables is supported")
-		manager = &nftablesManager{
-			conn:         &nftables.Conn{},
-			ingRules:     make(serverrulestable),
-			engressRules: make(serverrulestable),
-		}
-		return manager, nil
-	}
 	if isIptablesSupported() {
 		logger.Log(0, "iptables is supported")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -38,8 +28,16 @@ func newFirewall() (firewallController, error) {
 		}
 		return manager, nil
 	}
-
-	//logger.Log(0, "iptables is not supported, using nftables")
+	logger.Log(0, "iptables is not supported, using nftables")
+	if isNftablesSupported() {
+		logger.Log(0, "nftables is supported")
+		manager = &nftablesManager{
+			conn:         &nftables.Conn{},
+			ingRules:     make(serverrulestable),
+			engressRules: make(serverrulestable),
+		}
+		return manager, nil
+	}
 
 	return manager, errors.New("firewall support not found")
 }
