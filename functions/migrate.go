@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/devilcove/httpclient"
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
@@ -48,14 +50,14 @@ func Migrate() {
 			logger.Log(0, "could not read secrets file", err.Error())
 			continue
 		}
-		node, server, netclient := config.ConvertOldNode(&cfg.Node, &cfg.Server)
-		node.Server = server.Name
+		node, netclient := config.ConvertOldNode(&cfg.Node)
+		node.Server = strings.Replace(cfg.Server.Server, "broker.", "", 1)
+		serverHost, serverNode := config.Convert(netclient, node)
+		serverNode.ID = uuid.Nil
 		migrationData := models.MigrationData{
 			JoinData: models.JoinData{
-				Node: models.Node{
-					CommonNode: node.CommonNode,
-				},
-				Host: netclient.Host,
+				Node: serverNode,
+				Host: serverHost,
 			},
 			LegacyNodeID: cfg.Node.ID,
 			Password:     string(pass),
@@ -90,21 +92,18 @@ func Migrate() {
 		}
 		//process server response
 		if !IsVersionComptatible(joinResponse.ServerConfig.Version) {
-			logger.Log(0, "incompatible server version")
+			logger.Log(0, "incompatible server version", joinResponse.ServerConfig.Version)
 			delete = false
 			continue
 		}
 		logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
-		// reset attributes that should not be changed by server
-		server = config.GetServer(joinResponse.ServerConfig.Server)
-		// if new server, populate attributes
-		if server == nil {
-			server = &config.Server{}
-			server.ServerConfig = joinResponse.ServerConfig
-			server.Name = joinResponse.ServerConfig.Server
-			server.MQID = config.Netclient().ID
-			server.Nodes = make(map[string]bool)
+		if config.Netclient().Debug {
+			pretty.Println(joinResponse)
+			log.Println(joinResponse.Node.ID)
 		}
+		// reset attributes that should not be changed by server
+		config.UpdateServerConfig(&joinResponse.ServerConfig)
+		server := config.GetServer(joinResponse.ServerConfig.Server)
 		server.Nodes[joinResponse.Node.Network] = true
 		newNode := config.Node{}
 		newNode.CommonNode = joinResponse.Node.CommonNode
@@ -117,14 +116,20 @@ func Migrate() {
 		if internetGateway != nil {
 			config.Netclient().InternetGateway = *internetGateway
 		}
+
 		//save new configurations
-		config.UpdateNodeMap(node.Network, *node)
-		config.UpdateServer(node.Server, *server)
-		if err := config.SaveServer(node.Server, *server); err != nil {
+		config.UpdateNodeMap(newNode.Network, newNode)
+		config.UpdateServer(newNode.Server, *server)
+		if err := config.SaveServer(newNode.Server, *server); err != nil {
 			logger.Log(0, "failed to save server", err.Error())
 		}
 		if err := config.WriteNetclientConfig(); err != nil {
 			logger.Log(0, "error saving netclient config", err.Error())
+		}
+		if config.Netclient().Debug {
+			pretty.Println(newNode)
+			log.Println(newNode.ID)
+			pretty.Println(config.Nodes)
 		}
 		if err := config.WriteNodeConfig(); err != nil {
 			logger.Log(0, "error saving node map", err.Error())

@@ -22,15 +22,15 @@ import (
 
 // ClientConfig - struct for dealing with client configuration
 type ClientConfig struct {
-	Server          models.ServerConfig `yaml:"server"`
-	Node            models.LegacyNode   `yaml:"node"`
-	NetworkSettings models.Network      `yaml:"networksettings"`
-	Network         string              `yaml:"network"`
-	Daemon          string              `yaml:"daemon"`
-	OperatingSystem string              `yaml:"operatingsystem"`
-	AccessKey       string              `yaml:"accesskey"`
-	PublicIPService string              `yaml:"publicipservice"`
-	SsoServer       string              `yaml:"sso"`
+	Server          OldNetmakerServerConfig `yaml:"server"`
+	Node            models.LegacyNode       `yaml:"node"`
+	NetworkSettings models.Network          `yaml:"networksettings"`
+	Network         string                  `yaml:"network"`
+	Daemon          string                  `yaml:"daemon"`
+	OperatingSystem string                  `yaml:"operatingsystem"`
+	AccessKey       string                  `yaml:"accesskey"`
+	PublicIPService string                  `yaml:"publicipservice"`
+	SsoServer       string                  `yaml:"sso"`
 }
 
 // ReadConfig - reads a config of a older version of client from disk for specified network
@@ -113,21 +113,17 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 }
 
 // ConvertOldNode accepts a netmaker node struct and converts to the structs used by netclient
-func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (*Node, *Server, *Config) {
+func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
 	var node Node
 	host := Netclient()
-	server := ConvertOldServerCfg(cfg)
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	node.HostID = host.ID
 	node.Network = netmakerNode.Network
-	server.AccessKey = netmakerNode.AccessKey
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
 	host.ProxyEnabled = netmakerNode.Proxy
-	node.Server = server.Name
-	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	host.ListenPort = int(netmakerNode.ListenPort)
@@ -139,7 +135,6 @@ func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
-	node.Server = server.Name
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	node.Address.IP = net.ParseIP(netmakerNode.Address)
@@ -154,7 +149,7 @@ func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
 	//node.Peers = nodeGet.Peers
 	//add items not provided by server
-	return &node, server, host
+	return &node, host
 }
 
 // ConvertOldServerCfg converts a netmaker ServerConfig to netclient server struct
