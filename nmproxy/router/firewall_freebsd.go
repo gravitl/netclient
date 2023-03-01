@@ -2,19 +2,19 @@ package router
 
 import (
 	"errors"
-	"net"
 	"os/exec"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/vishvananda/netlink"
 )
 
 // newFirewall if supported, returns an ipfw manager
 func newFirewall() (firewallController, error) {
 	if isIpfwSupported() {
 		logger.Log(0, "ipfw is supported")
-		return &ipfwManager{}, nil
+		return &ipfwManager{
+			ingRules:     make(serverrulestable),
+			engressRules: make(serverrulestable),
+		}, nil
 	}
 	return nil, errors.New("firewall support not found")
 }
