@@ -282,10 +282,11 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 			logger.Log(0, "network:", node.Network, "error setting node.Endpoint.")
 			return nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", node.Network, err)
 		}
+
 	}
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
-	shouldUpdate, err := doubleCheck(host)
+	shouldUpdate, err := doubleCheck(host, flags.GetString("apiconn"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("error occurred before joining - %v", err)
 	}
@@ -351,6 +352,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 }
 
 func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
+
 	if len(config.GetServers()) == 0 { // should indicate a first join
 		// do a double check of name and uuid
 		logger.Log(1, "performing first join")
@@ -373,6 +375,20 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 		}
 		if len(host.HostPass) == 0 {
 			host.HostPass = ncutils.MakeRandomString(32)
+			shouldUpdateHost = true
+		}
+		if host.EndpointIP == nil {
+			ip, err := ncutils.GetPublicIP(apiServer)
+			if err != nil {
+				return false, err
+			}
+			host.EndpointIP = net.ParseIP(ip)
+			if err != nil {
+				return false, fmt.Errorf("error setting public ip %w", err)
+			}
+			if host.EndpointIP == nil {
+				return false, fmt.Errorf("error setting public endpoint for host - %v", err)
+			}
 			shouldUpdateHost = true
 		}
 		if shouldUpdateHost {

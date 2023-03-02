@@ -5,17 +5,17 @@ go 1.19
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.6
-	github.com/cloverstd/tcping v0.1.1
 	github.com/coreos/go-iptables v0.6.0
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
+	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.18.2-0.20230226212816-828b3f71622f
+	github.com/gravitl/netmaker v0.18.2-0.20230228142623-ad4bab064bd1
 	github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc
 	github.com/hashicorp/go-version v1.6.0
 	github.com/kr/pretty v0.3.1
-	github.com/matryer/is v1.4.0
+	github.com/matryer/is v1.4.1
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
@@ -35,8 +35,14 @@ require (
 )
 
 require (
+	cloud.google.com/go/compute v1.14.0 // indirect
+	cloud.google.com/go/compute/metadata v0.2.3 // indirect
+	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
+	github.com/coreos/go-oidc/v3 v3.5.0 // indirect
+	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -46,6 +52,7 @@ require (
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
+	github.com/gorilla/handlers v1.5.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
@@ -76,6 +83,7 @@ require (
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/rqlite/gorqlite v0.0.0-20210514125552-08ff1e76b22f // indirect
 	github.com/samber/lo v1.27.1 // indirect
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
