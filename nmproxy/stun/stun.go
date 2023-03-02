@@ -42,6 +42,7 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 		c, err := stun.NewClient(conn)
 		if err != nil {
 			logger.Log(1, "failed to create stun client: ", err.Error())
+			conn.Close()
 			continue
 		}
 		defer c.Close()
@@ -67,12 +68,15 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 			endpointList = append(endpointList, xorAddr)
 		}); err != nil {
 			logger.Log(1, "2:stun error: ", err.Error())
+			conn.Close()
 			continue
 		}
 		if len(endpointList) > 1 {
 			info.NatType = getNatType(endpointList[:], proxyPort)
+			conn.Close()
 			break
 		}
+		conn.Close()
 	}
 	return
 }
