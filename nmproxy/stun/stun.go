@@ -23,10 +23,9 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 	stunServers := strings.Split(stunList, ",")
 
 	// need to store results from two different stun servers to determine nat type
-	var ip1 net.IP
-	var ip2 net.IP
-	var port1 int
-	var port2 int
+	endpointList := []stun.XORMappedAddress{}
+
+	info.NatType = DOUBLE_NAT
 
 	// traverse through stun servers, continue if any error is encountered
 	for _, stunServer := range stunServers {
@@ -70,27 +69,13 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 			}
 			info.PublicIp = xorAddr.IP
 			info.PubPort = xorAddr.Port
+			endpointList = append(endpointList, xorAddr)
 		}); err != nil {
 			logger.Log(1, "2:stun error: ", err.Error())
 			continue
 		}
-		// if ip1 is unset, set it; else, if ip2 is unset, set it
-		if ip1.String() == "" && info.PublicIp.String() != "" {
-			ip1 = info.PublicIp
-		} else if ip1.String() != "" && ip2.String() == "" && info.PublicIp.String() != "" {
-			ip2 = info.PublicIp
-		}
-
-		// if port1 is unset, set it; else, if port2 is unset, set it
-		if port1 == 0 && info.PubPort != 0 {
-			port1 = info.PubPort
-		} else if port1 != 0 && port2 == 0 && info.PubPort != 0 {
-			port2 = info.PubPort
-		}
-
-		// if ip1, ip2, port1, and port2 are all set, get the nat type, and exit loop
-		if ip1.String() != "" && ip2.String() == "" && port1 != 0 && port2 != 0 {
-			info.NatType = getNatType(ip1.String(), ip2.String(), port1, port2, proxyPort)
+		if len(endpointList) > 1 {
+			info.NatType = getNatType(endpointList[:], proxyPort)
 			break
 		}
 	}
@@ -98,14 +83,16 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 }
 
 // compare ports and endpoints between stun results to determine nat type
-func getNatType(ip1, ip2 string, port1, port2, proxyPort int) string {
-	natType := ""
-	if ip1 == ip2 && port1 == port2 && port1 == proxyPort {
+func getNatType(endpointList []stun.XORMappedAddress, proxyPort int) string {
+	natType := DOUBLE_NAT
+	ip1 := endpointList[0].IP
+	ip2 := endpointList[1].IP
+	port1 := endpointList[0].Port
+	port2 := endpointList[1].Port
+	if ip1.Equal(ip2) && port1 == port2 && port1 == proxyPort {
 		natType = SYMMETRIC_NAT
-	} else if ip1 == ip2 && port1 == port2 {
+	} else if ip1.Equal(ip2) && port1 == port2 && port1 != proxyPort {
 		natType = ASYMMETRIC_NAT
-	} else if port1 != port2 {
-		natType = DOUBLE_NAT
 	}
 	return natType
 }
