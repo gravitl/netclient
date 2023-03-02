@@ -156,7 +156,6 @@ func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (
 	node.Address6.Mask = node.NetworkRange6.Mask
 	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
 	node.Action = netmakerNode.Action
-	node.IsLocal = ParseBool(netmakerNode.IsLocal)
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
 	host.IsStatic = ParseBool(netmakerNode.IsStatic)
