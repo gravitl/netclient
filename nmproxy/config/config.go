@@ -7,7 +7,6 @@ import (
 
 	nconf "github.com/gravitl/netclient/config"
 	proxy "github.com/gravitl/netclient/nmproxy/models"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -183,19 +182,7 @@ func (c *Config) GetRelayedStatus(server string) bool {
 	return c.GetSettings(server).IsRelayed
 }
 
-// Config.SetBehindNATStatus - sets NAT status for the device
-func (c *Config) SetNATStatus() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.HostInfo.PrivIp != nil && proxy.IsPublicIP(c.HostInfo.PrivIp) {
-		logger.Log(1, "Host is public facing!!!")
-	} else {
-		c.isBehindNAT = true
-	}
-
-}
-
-// NatAutoSwitchDone - check if nat automatically swithed on already for devices behind NAT
+// NatAutoSwitchDone - check if nat automatically switched on already for devices behind NAT
 func NatAutoSwitchDone() bool {
 	return natAutoSwitch
 }
