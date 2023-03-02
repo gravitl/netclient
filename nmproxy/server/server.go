@@ -296,7 +296,7 @@ func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, src
 
 		logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
 			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash))
-		_, err := p.Server.WriteToUDP(buffer[:n+packet.MessageProxyTransportSize], remotePeer.Endpoint)
+		_, err := p.Server.WriteToUDP(buffer[:n], remotePeer.Endpoint)
 		if err != nil {
 			logger.Log(1, "Failed to relay to remote: ", err.Error())
 		}
@@ -310,7 +310,7 @@ func (p *ProxyServer) proxyIncomingPacket(buffer []byte, source *net.UDPAddr, n 
 	//logger.Log(0,"--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
 
 	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsGlobalRelay() {
-		p.relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
+		p.relayPacket(buffer, source, n+packet.MessageProxyTransportSize, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
 
