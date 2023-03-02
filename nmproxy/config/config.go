@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 
+	nconf "github.com/gravitl/netclient/config"
 	proxy "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -204,9 +205,9 @@ func SetNatAutoSwitch() {
 	natAutoSwitch = true
 }
 
-// Config.IsBehindNAT - checks if proxy is running behind NAT
-func (c *Config) IsBehindNAT() bool {
-	return c.isBehindNAT
+// Config.ShouldUseProxy - checks if proxy is running behind NAT
+func (c *Config) ShouldUseProxy() bool {
+	return c.HostInfo.NatType == nconf.ASYMMETRIC_NAT || c.HostInfo.NatType == nconf.DOUBLE_NAT
 }
 
 // Config.GetServerConn - fetches the server connection

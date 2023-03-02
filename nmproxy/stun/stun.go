@@ -5,15 +5,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"gortc.io/stun"
-)
-
-const (
-	SYMMETRIC_NAT  = "symnat"
-	ASYMMETRIC_NAT = "asymnat"
-	DOUBLE_NAT     = "doublenat"
 )
 
 // GetHostInfo - calls stun server for udp hole punch and fetches host info
@@ -25,7 +20,7 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 	// need to store results from two different stun servers to determine nat type
 	endpointList := []stun.XORMappedAddress{}
 
-	info.NatType = DOUBLE_NAT
+	info.NatType = config.DOUBLE_NAT
 
 	// traverse through stun servers, continue if any error is encountered
 	for _, stunServer := range stunServers {
@@ -84,15 +79,15 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 
 // compare ports and endpoints between stun results to determine nat type
 func getNatType(endpointList []stun.XORMappedAddress, proxyPort int) string {
-	natType := DOUBLE_NAT
+	natType := config.DOUBLE_NAT
 	ip1 := endpointList[0].IP
 	ip2 := endpointList[1].IP
 	port1 := endpointList[0].Port
 	port2 := endpointList[1].Port
 	if ip1.Equal(ip2) && port1 == port2 && port1 == proxyPort {
-		natType = SYMMETRIC_NAT
+		natType = config.SYMMETRIC_NAT
 	} else if ip1.Equal(ip2) && port1 == port2 && port1 != proxyPort {
-		natType = ASYMMETRIC_NAT
+		natType = config.ASYMMETRIC_NAT
 	}
 	return natType
 }

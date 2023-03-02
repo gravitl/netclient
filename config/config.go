@@ -40,6 +40,12 @@ const (
 	DefaultListenPort = 51821
 	// DefaultMTU default MTU for wireguard
 	DefaultMTU = 1420
+	// SYMMETRIC_NAT - symmetric NAT string
+	SYMMETRIC_NAT = "symnat"
+	// ASYMMETRIC_NAT - asymmetric NAT string
+	ASYMMETRIC_NAT = "asymnat"
+	// DOUBLE_NAT - double nat NAT string
+	DOUBLE_NAT = "doublenat"
 )
 
 var (
