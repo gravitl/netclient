@@ -351,7 +351,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	return &newNode, server, nil
 }
 
-func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
+func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err error) {
 
 	if len(config.GetServers()) == 0 { // should indicate a first join
 		// do a double check of name and uuid
