@@ -132,7 +132,6 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.Address6 = nodeGet.Node.Address6
 	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
 	node.Action = netmakerNode.Action
-	node.IsLocal = nodeGet.Node.IsLocal
 	node.IsEgressGateway = nodeGet.Node.IsEgressGateway
 	node.IsIngressGateway = nodeGet.Node.IsIngressGateway
 	node.DNSOn = nodeGet.Node.DNSOn
@@ -184,7 +183,6 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive.Seconds())
 	netmakerNode.PublicKey = host.PublicKey.String()
 	netmakerNode.Action = node.Action
-	netmakerNode.IsLocal = FormatBool(node.IsLocal)
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
 	netmakerNode.IsStatic = FormatBool(host.IsStatic)

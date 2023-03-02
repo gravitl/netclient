@@ -115,7 +115,6 @@ export namespace config {
     postup: string;
     postdown: string;
     action: string;
-    islocal: boolean;
     isegressgateway: boolean;
     isingressgateway: boolean;
     dnson: boolean;
@@ -143,7 +142,6 @@ export namespace config {
       this.postup = source["postup"];
       this.postdown = source["postdown"];
       this.action = source["action"];
-      this.islocal = source["islocal"];
       this.isegressgateway = source["isegressgateway"];
       this.isingressgateway = source["isingressgateway"];
       this.dnson = source["dnson"];
@@ -246,7 +244,6 @@ export namespace models {
     apiconnstring: string;
     network: string;
     key: string;
-    localrange: string;
 
     static createFrom(source: any = {}) {
       return new AccessToken(source);
@@ -257,7 +254,6 @@ export namespace models {
       this.apiconnstring = source["apiconnstring"];
       this.network = source["network"];
       this.key = source["key"];
-      this.localrange = source["localrange"];
     }
   }
 }
