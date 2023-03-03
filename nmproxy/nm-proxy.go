@@ -14,7 +14,7 @@ import (
 )
 
 // Start - setups the global cfg for proxy and starts the proxy server
-func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPeerUpdate, stunList string, proxyPort int) {
+func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPeerUpdate, stunList []models.StunServer, proxyPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -22,7 +22,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPee
 	}
 	logger.Log(0, "Starting Proxy...")
 	defer wg.Done()
-	if stunList == "" {
+	if len(stunList) == 0 {
 		logger.Log(1, "stun config values cannot be empty")
 		return
 	}

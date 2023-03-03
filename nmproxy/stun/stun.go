@@ -1,6 +1,7 @@
 package stun
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -8,14 +9,12 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
+	nmmodels "github.com/gravitl/netmaker/models"
 	"gortc.io/stun"
 )
 
 // GetHostInfo - calls stun server for udp hole punch and fetches host info
-func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
-
-	// list of stun servers to traverse
-	stunServers := strings.Split(stunList, ",")
+func GetHostInfo(stunList []nmmodels.StunServer, proxyPort int) (info models.HostInfo) {
 
 	// need to store results from two different stun servers to determine nat type
 	endpointList := []stun.XORMappedAddress{}
@@ -23,8 +22,8 @@ func GetHostInfo(stunList string, proxyPort int) (info models.HostInfo) {
 	info.NatType = config.DOUBLE_NAT
 
 	// traverse through stun servers, continue if any error is encountered
-	for _, stunServer := range stunServers {
-		s, err := net.ResolveUDPAddr("udp", stunServer)
+	for _, stunServer := range stunList {
+		s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
 		if err != nil {
 			logger.Log(1, "failed to resolve udp addr: ", err.Error())
 			continue

@@ -190,6 +190,10 @@ github.com/gravitl/netmaker v0.18.2-0.20230228150102-d19f292e6cd6 h1:LSbRwMXHq2M
 github.com/gravitl/netmaker v0.18.2-0.20230228150102-d19f292e6cd6/go.mod h1:QEy/5E6JtG+qNh3gZ/DZo6O/AIDuhZQnkkHMZdwGakI=
 github.com/gravitl/netmaker v0.18.2-0.20230301221036-4ff135e19666 h1:ic2t95TAEVXUh/Lm6hzVku9BrTK7FD83nFpmIIAGR7g=
 github.com/gravitl/netmaker v0.18.2-0.20230301221036-4ff135e19666/go.mod h1:QEy/5E6JtG+qNh3gZ/DZo6O/AIDuhZQnkkHMZdwGakI=
+github.com/gravitl/netmaker v0.18.2-0.20230303152850-bf8a5bbc6928 h1:8voctGys9nGxHG/38Cm1SyQwu+1xMtHsxkW+YHSQ/6I=
+github.com/gravitl/netmaker v0.18.2-0.20230303152850-bf8a5bbc6928/go.mod h1:QEy/5E6JtG+qNh3gZ/DZo6O/AIDuhZQnkkHMZdwGakI=
+github.com/gravitl/netmaker v0.18.2-0.20230303153704-dba954c5299a h1:7qJpoPVmFgyeOiyDLpkiF9nDbW4+SNEvrYXwEgJ2+Ak=
+github.com/gravitl/netmaker v0.18.2-0.20230303153704-dba954c5299a/go.mod h1:QEy/5E6JtG+qNh3gZ/DZo6O/AIDuhZQnkkHMZdwGakI=
 github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc h1:PF7f+zhhn5pQDjAGNckcdola8ap7IkTa6OOMIEZcq0Q=
 github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc/go.mod h1:92b/CoEzM+PNkeuYN1YyIf2SMH/8KNg5tlQYvuivbD8=
 github.com/hashicorp/go-version v1.6.0 h1:feTTfFNnjP967rlCxM/I9g701jU+RN74YKx2mOkIeek=
