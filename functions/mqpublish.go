@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloverstd/tcping/ping"
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
@@ -84,19 +83,6 @@ func checkin() {
 					config.Netclient().EndpointIP = net.ParseIP(extIP)
 					if err := PublishNodeUpdate(&node); err != nil {
 						logger.Log(0, "network:", network, "could not publish endpoint change")
-					}
-				}
-
-			} else if node.IsLocal {
-				intIP, err := getPrivateAddr()
-				if err != nil {
-					logger.Log(1, "network:", network, "error encountered checking private ip addresses: ", err.Error())
-				}
-				if !config.Netclient().EndpointIP.Equal(intIP.IP) {
-					logger.Log(1, "network:", network, "endpoint has changed from "+config.Netclient().EndpointIP.String()+" to ", intIP.IP.String())
-					config.Netclient().EndpointIP = intIP.IP
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", network, "could not publish localip change")
 					}
 				}
 			}
@@ -311,38 +297,6 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 	return nil
 }
 
-func checkBroker(broker string, port string) error {
-	if broker == "" {
-		return errors.New("error: broker address is blank")
-	}
-	if port == "" {
-		return errors.New("error: broker port is blank")
-	}
-	_, err := net.LookupIP(broker)
-	if err != nil {
-		return errors.New("nslookup failed for broker ... check dns records")
-	}
-	pinger := ping.NewTCPing()
-	intPort, err := strconv.Atoi(port)
-	if err != nil {
-		logger.Log(1, "error converting port to int: "+err.Error())
-	}
-	pinger.SetTarget(&ping.Target{
-		Protocol: ping.TCP,
-		Host:     broker,
-		Port:     intPort,
-		Counter:  3,
-		Interval: 1 * time.Second,
-		Timeout:  2 * time.Second,
-	})
-	pingerDone := pinger.Start()
-	<-pingerDone
-	if pinger.Result().SuccessCounter == 0 {
-		return errors.New("unable to connect to broker port ... check netmaker server and firewalls")
-	}
-	return nil
-}
-
 // UpdateHostSettings - checks local host settings, if different, mod config and publish
 func UpdateHostSettings() error {
 	var err error
@@ -381,8 +335,10 @@ func UpdateHostSettings() error {
 			publishMsg = true
 		}
 	}
-	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled {
+	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled &&
+		!proxyCfg.NatAutoSwitchDone() {
 		logger.Log(0, "Host is behind NAT, enabling proxy...")
+		proxyCfg.SetNatAutoSwitch()
 		config.Netclient().ProxyEnabled = true
 		publishMsg = true
 	}

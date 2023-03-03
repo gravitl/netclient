@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -273,11 +272,6 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
 	host.EndpointIP = net.ParseIP(flags.GetString("endpoint"))
-	isLocal := flags.GetBool("islocal")
-	node.IsLocal = false
-	if isLocal {
-		node.IsLocal = true
-	}
 	if host.EndpointIP == nil {
 		ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
 		host.EndpointIP = net.ParseIP(ip)
@@ -288,10 +282,11 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 			logger.Log(0, "network:", node.Network, "error setting node.Endpoint.")
 			return nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", node.Network, err)
 		}
+
 	}
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
-	shouldUpdate, err := doubleCheck(host)
+	shouldUpdate, err := doubleCheck(host, flags.GetString("apiconn"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("error occurred before joining - %v", err)
 	}
@@ -329,9 +324,14 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 		}
 		return nil, nil, fmt.Errorf("error creating node %w", err)
 	}
-	log.Println("checking for version compatiblitity ", joinResponse.ServerConfig.Version)
+	fmt.Println("checking for version compatibility ", joinResponse.ServerConfig.Version)
 	if !IsVersionComptatible(joinResponse.ServerConfig.Version) {
-		return nil, nil, errors.New("incompatible server version")
+		logger.Log(1, "server/client version mismatch, trying to update to server version: ", joinResponse.ServerConfig.Version)
+		if versionLessThan(config.Version, joinResponse.ServerConfig.Version) {
+			if err := UseVersion(joinResponse.ServerConfig.Version, true); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
 	config.UpdateServerConfig(&joinResponse.ServerConfig)
@@ -351,50 +351,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	return &newNode, server, nil
 }
 
-func getPrivateAddr() (net.IPNet, error) {
-	local := net.IPNet{}
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err == nil {
-		defer conn.Close()
+func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err error) {
 
-		localAddr := conn.LocalAddr().(*net.UDPAddr)
-		local = config.ToIPNet(localAddr.String())
-	}
-	if local.IP == nil {
-		local, err = getPrivateAddrBackup()
-	}
-
-	if local.IP == nil {
-		err = errors.New("could not find local ip")
-	}
-
-	return local, err
-}
-
-func getPrivateAddrBackup() (net.IPNet, error) {
-	address := net.IPNet{}
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return address, err
-	}
-	for _, i := range ifaces {
-		if i.Flags&net.FlagUp == 0 {
-			continue // interface down
-		}
-		if i.Flags&net.FlagLoopback != 0 {
-			continue // loopback interface
-		}
-		local, err := i.Addrs()
-		if err != nil || len(local) == 0 {
-			continue
-		}
-		return config.ToIPNet(local[0].String()), nil
-	}
-	err = errors.New("local ip address not found")
-	return address, err
-}
-
-func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 	if len(config.GetServers()) == 0 { // should indicate a first join
 		// do a double check of name and uuid
 		logger.Log(1, "performing first join")
@@ -417,6 +375,20 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 		}
 		if len(host.HostPass) == 0 {
 			host.HostPass = ncutils.MakeRandomString(32)
+			shouldUpdateHost = true
+		}
+		if host.EndpointIP == nil {
+			ip, err := ncutils.GetPublicIP(apiServer)
+			if err != nil {
+				return false, err
+			}
+			host.EndpointIP = net.ParseIP(ip)
+			if err != nil {
+				return false, fmt.Errorf("error setting public ip %w", err)
+			}
+			if host.EndpointIP == nil {
+				return false, fmt.Errorf("error setting public endpoint for host - %v", err)
+			}
 			shouldUpdateHost = true
 		}
 		if shouldUpdateHost {

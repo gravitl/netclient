@@ -23,7 +23,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const lastNodeUpdate = "lnu"
+const (
+	lastNodeUpdate   = "lnu"
+	lastDNSUpdate    = "ldu"
+	lastALLDNSUpdate = "ladu"
+)
 
 var messageCache = new(sync.Map)
 var ServerSet = make(map[string]mqtt.Client)
@@ -115,9 +119,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
-	nodes := config.GetNodes()
 	logger.Log(3, "configuring netmaker wireguard interface")
-	nc := wireguard.NewNCIface(config.Netclient(), nodes)
+
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
 	wireguard.SetPeers()
@@ -158,9 +162,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 // setupMQTT creates a connection to broker
 func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
-	broker := server.Broker
-	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
 	//opts.SetClientID(ncutils.MakeRandomString(23))
@@ -195,9 +197,6 @@ func setupMQTT(server *config.Server) error {
 				connecterr = errors.New("connect timeout")
 			} else {
 				connecterr = token.Error()
-			}
-			if err := checkBroker(server.Broker, server.MQPort); err != nil {
-				logger.Log(0, "could not connect to broker", server.Broker, err.Error())
 			}
 		}
 	}
@@ -267,12 +266,22 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
+	logger.Log(3, fmt.Sprintf("subcribed to dns updates dns/update/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subcribed to all dns updates dns/all/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
-	if token := client.Subscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Subscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			logger.Log(0, "network:", node.Network, "connection timeout")
 		} else {
@@ -286,7 +295,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 // should only ever use node client configs
 func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
-		return nil, fmt.Errorf("recieved invalid message from broker %v", msg)
+		return nil, fmt.Errorf("received invalid message from broker %v", msg)
 	}
 	host := config.Netclient()
 	// setup the keys
@@ -333,9 +342,8 @@ func insert(network, which, cache string) {
 // on a delete usually, pass in the nodecfg to unsubscribe client broker communications
 // for the node in nodeCfg
 func unsubscribeNode(client mqtt.Client, node *config.Node) {
-	client.Unsubscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID))
 	var ok = true
-	if token := client.Unsubscribe(fmt.Sprintf("update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Unsubscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", "connection timeout")
 		} else {

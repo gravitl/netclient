@@ -1,14 +1,11 @@
 FROM gravitl/go-builder as builder
 # add glib support daemon manager
 WORKDIR /app
-ARG version
 
-RUN apk add git libpcap-dev
 COPY . . 
 
-ENV GO111MODULE=auto
 RUN go mod tidy
-RUN GOOS=linux CGO_ENABLED=1 /usr/local/go/bin/go build -ldflags="-X 'main.version=${version}'" -tags headless -o netclient-app .
+RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-s -w" -tags headless -o netclient-app .
 
 FROM alpine:3.16.2
 
