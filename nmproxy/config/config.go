@@ -20,7 +20,6 @@ var (
 type Config struct {
 	HostInfo                proxy.HostInfo
 	ProxyStatus             bool
-	isBehindNAT             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
 	settings                map[string]proxy.Settings // host settings per server

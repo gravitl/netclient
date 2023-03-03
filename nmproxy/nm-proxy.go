@@ -35,8 +35,8 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPee
 	config.GetCfg().SetHostInfo(stun.GetHostInfo(stunList, proxyPort))
 	logger.Log(0, fmt.Sprintf("HOSTINFO: %+v", config.GetCfg().GetHostInfo()))
 	if config.GetCfg().HostInfo.PrivIp == nil || config.GetCfg().HostInfo.PublicIp == nil {
-		logger.FatalLog("failed to create proxy, check if stun is configured correctly on your server: ",
-			fmt.Sprintf("%s", stunList))
+		logger.FatalLog("failed to create proxy, check if stun list is configured correctly on your server: ",
+			fmt.Sprintf("%v", stunList))
 	}
 	// start the netclient proxy server
 	err := server.NmProxyServer.CreateProxyServer(proxyPort, 0, config.GetCfg().GetHostInfo().PrivIp.String())
