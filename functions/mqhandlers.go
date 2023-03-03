@@ -59,7 +59,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
-		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.ID.String())
+		logger.Log(0, "network:", newNode.Network, "received delete request for", newNode.ID.String())
 		unsubscribeNode(client, &newNode)
 		if _, err = LeaveNetwork(newNode.Network, true); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
