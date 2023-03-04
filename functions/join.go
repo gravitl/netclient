@@ -272,6 +272,18 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 
 	// set endpoint if blank. set to local if local net, retrieve from function if not
 	host.EndpointIP = net.ParseIP(flags.GetString("endpoint"))
+	if host.EndpointIP == nil {
+		ip, err := ncutils.GetPublicIP(flags.GetString("apiconn"))
+		host.EndpointIP = net.ParseIP(ip)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error setting public ip %w", err)
+		}
+		if host.EndpointIP == nil {
+			logger.Log(0, "network:", node.Network, "error setting node.Endpoint.")
+			return nil, nil, fmt.Errorf("error setting node.Endpoint for %s network, %w", node.Network, err)
+		}
+
+	}
 	// make sure name is appropriate, if not, give blank name
 	url := flags.GetString("apiconn")
 	shouldUpdate, err := doubleCheck(host, flags.GetString("apiconn"))
@@ -339,50 +351,8 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	return &newNode, server, nil
 }
 
-func getPrivateAddr() (net.IPNet, error) {
-	local := net.IPNet{}
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err == nil {
-		defer conn.Close()
-
-		localAddr := conn.LocalAddr().(*net.UDPAddr)
-		local = config.ToIPNet(localAddr.String())
-	}
-	if local.IP == nil {
-		local, err = getPrivateAddrBackup()
-	}
-
-	if local.IP == nil {
-		err = errors.New("could not find local ip")
-	}
-
-	return local, err
-}
-
-func getPrivateAddrBackup() (net.IPNet, error) {
-	address := net.IPNet{}
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return address, err
-	}
-	for _, i := range ifaces {
-		if i.Flags&net.FlagUp == 0 {
-			continue // interface down
-		}
-		if i.Flags&net.FlagLoopback != 0 {
-			continue // loopback interface
-		}
-		local, err := i.Addrs()
-		if err != nil || len(local) == 0 {
-			continue
-		}
-		return config.ToIPNet(local[0].String()), nil
-	}
-	err = errors.New("local ip address not found")
-	return address, err
-}
-
 func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err error) {
+
 	if len(config.GetServers()) == 0 { // should indicate a first join
 		// do a double check of name and uuid
 		logger.Log(1, "performing first join")

@@ -5,8 +5,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/netclient/ncutils"
 )
 
 const MacServiceName = "com.gravitl.netclient"
@@ -59,7 +60,7 @@ func cleanUp() error {
 			logger.Log(1, err.Error())
 		}
 	}
-	if err := os.RemoveAll(ncutils.GetNetclientPath()); err != nil {
+	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		faults = true
 	}
 	if err := os.Remove(MacExecDir + "netclient"); err != nil {
