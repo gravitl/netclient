@@ -53,6 +53,21 @@ func Migrate() {
 		node, netclient := config.ConvertOldNode(&cfg.Node)
 		node.Server = strings.Replace(cfg.Server.Server, "broker.", "", 1)
 		serverHost, serverNode := config.Convert(netclient, node)
+		ip, err := getInterfaces()
+		if err != nil {
+			logger.Log(0, "failed to retrieve local interfaces", err.Error())
+		} else {
+			// just in case getInterfaces() returned nil, nil
+			if ip != nil {
+				serverHost.Interfaces = *ip
+			}
+		}
+		defaultInterface, err := getDefaultInterface()
+		if err != nil {
+			logger.Log(0, "default gateway not found", err.Error())
+		} else {
+			serverHost.DefaultInterface = defaultInterface
+		}
 		serverNode.ID = uuid.Nil
 		migrationData := models.MigrationData{
 			JoinData: models.JoinData{
