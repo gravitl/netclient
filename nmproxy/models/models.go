@@ -65,6 +65,7 @@ type HostInfo struct {
 	PubPort      int
 	PrivPort     int
 	ProxyEnabled bool
+	NatType      string
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash
