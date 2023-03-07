@@ -162,7 +162,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
-
+	wireguard.GetInterface().GetPeerRoutes()
+	wireguard.GetInterface().ApplyAddrs(true)
 	wireguard.SetPeers()
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition

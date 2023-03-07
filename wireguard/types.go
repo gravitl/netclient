@@ -83,8 +83,8 @@ func (n *NCIface) Configure() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	logger.Log(0, "adding addresses to netmaker interface")
-	n.getPeerRoutes()
-	if err := n.ApplyAddrs(); err != nil {
+	n.GetPeerRoutes()
+	if err := n.ApplyAddrs(false); err != nil {
 		return err
 	}
 	if err := n.SetMTU(); err != nil {
@@ -93,7 +93,7 @@ func (n *NCIface) Configure() error {
 	return apply(&n.Config)
 }
 
-func (nc *NCIface) getPeerRoutes() {
+func (nc *NCIface) GetPeerRoutes() {
 	var routes []ifaceAddress
 	if len(nc.Addresses) == 0 {
 		return
