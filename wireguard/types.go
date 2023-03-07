@@ -93,6 +93,7 @@ func (n *NCIface) Configure() error {
 	return apply(&n.Config)
 }
 
+// NCIface.GetPeerRoutes - fetches additional routes that are needed to be added to the interface
 func (nc *NCIface) GetPeerRoutes() {
 	var routes []ifaceAddress
 	if len(nc.Addresses) == 0 {
