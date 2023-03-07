@@ -87,7 +87,6 @@ func Daemon() {
 			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&wg)
 			}
-
 		}
 	}
 }
@@ -116,6 +115,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadNodeConfig(); err != nil {
 		logger.Log(0, "error reading node map from disk", err.Error())
 	}
+	fmt.Printf("NODES READ: %v \n", config.GetNodes())
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}

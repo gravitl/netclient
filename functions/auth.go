@@ -58,6 +58,9 @@ func cleanUpByServer(server *config.Server) error {
 	if err := config.ReadServerConf(); err != nil {
 		return err
 	}
+	if _, err := config.ReadNetclientConfig(); err != nil {
+		return err
+	}
 	serverNodes := config.GetNodesByServer(server.Name)
 	for i := range serverNodes {
 		node := serverNodes[i]
@@ -66,7 +69,11 @@ func cleanUpByServer(server *config.Server) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return err
 	}
-	config.DeleteServer(server.Server)
+	config.DeleteServerHostPeerCfg(server.Name)
+	if err := config.WriteNetclientConfig(); err != nil {
+		return err
+	}
+	config.DeleteServer(server.Name)
 	if err := config.WriteServerConfig(); err != nil {
 		return err
 	}

@@ -87,7 +87,9 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 
 	peerMap := make(map[string]int)
 	for _, serverPeers := range netclient.HostPeers {
+		serverPeers := serverPeers
 		for i, peerI := range serverPeers {
+			peerI := peerI
 			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
 				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
 			} else {
@@ -160,6 +162,7 @@ func ReadNetclientConfig() (*Config, error) {
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
+	setLogVerbosity()
 	return &netclient, nil
 }
 
@@ -374,7 +377,6 @@ func InCharSet(name string) bool {
 func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
-	setLogVerbosity()
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
