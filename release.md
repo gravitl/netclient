@@ -1,4 +1,4 @@
-# Netclient v0.18.2
+# Netclient v0.18.3
 
 ## whats new
 - Added NFTables support for egress + ingress on linux
