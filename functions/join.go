@@ -355,7 +355,7 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 
 	if len(config.GetServers()) == 0 { // should indicate a first join
 		// do a double check of name and uuid
-		logger.Log(1, "performing first join")
+		logger.Log(2, "performing first join")
 		var shouldUpdateHost bool
 		if len(host.Name) == 0 {
 			if name, err := os.Hostname(); err == nil {
