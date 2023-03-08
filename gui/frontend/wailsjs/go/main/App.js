@@ -65,3 +65,7 @@ export function GoGetNodePeers(arg1) {
 export function GoUpdateNetclientConfig(arg1) {
   return window['go']['gui']['App']['GoUpdateNetclientConfig'](arg1);
 }
+
+export function GoRegisterWithEnrollmentKey(arg1) {
+  return window['go']['gui']['App']['GoRegisterWithEnrollmentKey'](arg1);
+}
