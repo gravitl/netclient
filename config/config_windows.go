@@ -25,7 +25,6 @@ func getEmbedded() ([]byte, error) {
 }
 
 func checkUID() {
-
 	logger.Log(0, "checking for WireGuard driver...")
 
 	dllData, err := getEmbedded()
