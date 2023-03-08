@@ -41,11 +41,11 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	logger.Log(0, "finished daemon setup")
-	//get exact formatted commands
-	runWinSWCMD("install")
+	// get exact formatted commands
+	_ = runWinSWCMD("install")
 	time.Sleep(time.Millisecond)
-	runWinSWCMD("start")
+	_ = runWinSWCMD("start")
+	logger.Log(0, "finished daemon setup")
 
 	return nil
 }
@@ -62,9 +62,7 @@ func stop() error {
 
 // restart - restarts windows service
 func restart() error {
-	runWinSWCMD("stop")
-	time.Sleep(time.Millisecond)
-	return runWinSWCMD("start")
+	return runWinSWCMD("restart")
 }
 
 // cleanup - cleans up windows files
@@ -78,10 +76,10 @@ func cleanUp() error {
 func writeServiceConfig() error {
 	serviceConfigPath := config.GetNetclientPath() + "winsw.xml"
 	scriptString := fmt.Sprintf(`<service>
-<id>Netclient</id>
-<name>Netclient</name>
+<id>netclient</id>
+<name>netclient</name>
 <description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
-<executable>%v</executable>
+<executable>%s</executable>
 <arguments>daemon</arguments>
 <log mode="roll"></log>
 <startmode>Automatic</startmode>
@@ -107,6 +105,7 @@ func runWinSWCMD(command string) error {
 		"stop":      true,
 		"install":   true,
 		"uninstall": true,
+		"restart":   true,
 	}
 	if !allowedCommands[command] {
 		logger.Log(0, "command "+command+" unsupported by winsw")
@@ -118,6 +117,7 @@ func runWinSWCMD(command string) error {
 	winCmd := fmt.Sprintf(`"%swinsw.exe" "%s"`, dirPath, command)
 	logger.Log(0, "running "+command+" of Windows Netclient daemon")
 
+	fmt.Printf("RUNNING CMD: %s \n", winCmd)
 	// run command and log for success/failure
 	out, err := ncutils.RunCmdFormatted(winCmd, true)
 	if err != nil {
