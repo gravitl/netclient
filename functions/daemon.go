@@ -217,9 +217,7 @@ func setupMQTT(server *config.Server) error {
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
 func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
-	broker := server.Broker
-	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
 	opts.SetClientID(server.MQID.String())
@@ -238,6 +236,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			}
 			setHostSubscription(client, server.Name)
 		}
+		logger.Log(1, "successfully connected to", server.Broker)
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -248,7 +247,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	ServerSet[server.Name] = mqclient
 	var connecterr error
 	if token := mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
-		logger.Log(0, "unable to connect to broker, retrying ...")
+		logger.Log(0, "unable to connect to broker,", server.Broker+",", "retrying...")
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
 		} else {

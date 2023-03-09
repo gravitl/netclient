@@ -59,9 +59,7 @@ var (
 type Config struct {
 	models.Host
 	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
-	MacAddress        net.HardwareAddr                `json:"macaddress" yaml:"macaddress"`
 	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte                          `json:"traffickeypublic" yaml:"trafficekeypublic"`
 	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
 	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
@@ -159,8 +157,13 @@ func SetVersion(ver string) {
 }
 
 // setLogVerbosity sets the logger verbosity from config
-func setLogVerbosity() {
-	logger.Verbosity = netclient.Verbosity
+func setLogVerbosity(flags *viper.Viper) {
+	verbosity := flags.GetInt("verbosity")
+	if netclient.Verbosity > verbosity {
+		logger.Verbosity = netclient.Verbosity
+		return
+	}
+	logger.Verbosity = verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -179,7 +182,6 @@ func ReadNetclientConfig() (*Config, error) {
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
-	setLogVerbosity()
 	return &netclient, nil
 }
 
@@ -394,6 +396,7 @@ func InCharSet(name string) bool {
 func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
+	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()

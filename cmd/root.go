@@ -40,7 +40,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().IntP("verbosity", "v", 0, "set loggin verbosity 0-4")
+	rootCmd.PersistentFlags().IntP("verbosity", "v", 0, "set logging verbosity 0-4")
 	viper.BindPFlags(rootCmd.Flags())
 
 	// Cobra also supports local flags, which will only run

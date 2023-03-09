@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
 )
@@ -146,5 +148,17 @@ func getNewLink(name string) *netLink {
 	linkAttrs.Name = name
 	return &netLink{
 		attrs: &linkAttrs,
+	}
+}
+
+// DeleteOldInterface - removes named interface
+func DeleteOldInterface(iface string) {
+	logger.Log(3, "deleting interface", iface)
+	ip, err := exec.LookPath("ip")
+	if err != nil {
+		logger.Log(0, "failed to locate if", err.Error())
+	}
+	if _, err := ncutils.RunCmd(ip+" link del "+iface, true); err != nil {
+		logger.Log(0, "error removing interface", iface, err.Error())
 	}
 }
