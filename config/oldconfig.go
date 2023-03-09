@@ -15,6 +15,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
@@ -60,7 +61,11 @@ func ReadConfig(network string) (*ClientConfig, error) {
 // GetSystemNetworks - get networks for older version (pre v0.18.0) of netclient
 func GetSystemNetworks() ([]string, error) {
 	var networks []string
-	files, err := filepath.Glob(GetNetclientPath() + "config/netconfig-*")
+	confPath := "config/netconfig-*"
+	if ncutils.IsWindows() {
+		confPath = "config\\netconfig-*"
+	}
+	files, err := filepath.Glob(GetNetclientPath() + confPath)
 	if err != nil {
 		return nil, err
 	}
