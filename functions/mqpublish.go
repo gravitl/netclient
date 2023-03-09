@@ -335,7 +335,7 @@ func UpdateHostSettings() error {
 			publishMsg = true
 		}
 	}
-	if proxyCfg.GetCfg().IsBehindNAT() && !config.Netclient().ProxyEnabled &&
+	if proxyCfg.GetCfg().ShouldUseProxy() && !config.Netclient().ProxyEnabled &&
 		!proxyCfg.NatAutoSwitchDone() {
 		logger.Log(0, "Host is behind NAT, enabling proxy...")
 		proxyCfg.SetNatAutoSwitch()

@@ -40,6 +40,12 @@ const (
 	DefaultListenPort = 51821
 	// DefaultMTU default MTU for wireguard
 	DefaultMTU = 1420
+	// SYMMETRIC_NAT - symmetric NAT string
+	SYMMETRIC_NAT = "symnat"
+	// ASYMMETRIC_NAT - asymmetric NAT string
+	ASYMMETRIC_NAT = "asymnat"
+	// DOUBLE_NAT - double nat NAT string
+	DOUBLE_NAT = "doublenat"
 )
 
 var (
@@ -154,9 +160,11 @@ func ReadNetclientConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
+	setLogVerbosity()
 	return &netclient, nil
 }
 
@@ -371,7 +379,6 @@ func InCharSet(name string) bool {
 func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
-	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()

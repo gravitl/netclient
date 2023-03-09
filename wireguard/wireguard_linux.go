@@ -121,7 +121,7 @@ func (nc *NCIface) ApplyAddrs() error {
 				LinkIndex: l.Attrs().Index,
 				Dst:       &addr.Network,
 			}); err != nil {
-				logger.Log(0, "error adding addr", err.Error())
+				logger.Log(0, "error adding route", err.Error())
 				return err
 			}
 		}

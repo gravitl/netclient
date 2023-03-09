@@ -194,7 +194,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
-	var resetInterface, restartDaemon bool
+	var resetInterface, restartDaemon, clearMsg bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
@@ -210,6 +210,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		logger.Log(1, "added node for network", hostUpdate.Node.Network, "on server", serverName)
+		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
@@ -223,7 +225,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		clearMsg = true
 	case models.RequestAck:
+		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
@@ -237,7 +241,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	if restartDaemon {
-		clearRetainedMsg(client, msg.Topic())
+		if clearMsg {
+			clearRetainedMsg(client, msg.Topic())
+		}
 		if err := daemon.Restart(); err != nil {
 			logger.Log(0, "failed to restart daemon: ", err.Error())
 		}

@@ -46,7 +46,7 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	server := config.GetServer(servers[0])
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunList, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -203,6 +203,11 @@ func setupMQTT(server *config.Server) error {
 	if connecterr != nil {
 		logger.Log(0, "failed to establish connection to broker: ", connecterr.Error())
 		return connecterr
+	}
+	if err := PublishHostUpdate(server.Name, models.Acknowledgement); err != nil {
+		logger.Log(0, "failed to send initial ACK to server", server.Name, err.Error())
+	} else {
+		logger.Log(2, "successfully requested ACK on server", server.Name)
 	}
 	return nil
 }
