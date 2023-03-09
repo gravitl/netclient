@@ -164,7 +164,6 @@ func ReadNetclientConfig() (*Config, error) {
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
-	setLogVerbosity()
 	return &netclient, nil
 }
 
@@ -379,6 +378,7 @@ func InCharSet(name string) bool {
 func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
+	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
