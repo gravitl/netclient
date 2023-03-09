@@ -61,9 +61,10 @@ func ReadConfig(network string) (*ClientConfig, error) {
 // GetSystemNetworks - get networks for older version (pre v0.18.0) of netclient
 func GetSystemNetworks() ([]string, error) {
 	var networks []string
-	confPath := "config/netconfig-*"
+	confPath := GetNetclientPath() + "config/netconfig-*"
 	if ncutils.IsWindows() {
-		confPath = "config\\netconfig-*"
+		//for some reason windows does not use the config dir although it exists
+		confPath = GetNetclientPath() + "netconfig-*"
 	}
 	files, err := filepath.Glob(GetNetclientPath() + confPath)
 	if err != nil {
