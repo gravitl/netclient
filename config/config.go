@@ -121,6 +121,22 @@ func DeleteServerHostPeerCfg(server string) {
 	delete(netclient.HostPeers, server)
 }
 
+// RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
+func RemoveServerHostPeerCfg(serverName string) {
+	if netclient.HostPeers == nil {
+		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		return
+	}
+	peers := netclient.HostPeers[serverName]
+	for i := range peers {
+		peer := peers[i]
+		peer.Remove = true
+		peers[i] = peer
+	}
+	netclient.HostPeers[serverName] = peers
+	_ = WriteNetclientConfig()
+}
+
 func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
 	uniqueIpList := []net.IPNet{}
 	ipMap := make(map[string]struct{})
