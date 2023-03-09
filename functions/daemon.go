@@ -216,9 +216,7 @@ func setupMQTT(server *config.Server) error {
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
 func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
-	broker := server.Broker
-	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
 	opts.SetClientID(server.MQID.String())
