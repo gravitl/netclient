@@ -175,6 +175,7 @@ func ReadNetclientConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}

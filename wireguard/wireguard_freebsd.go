@@ -51,22 +51,25 @@ func (nc *NCIface) Close() {
 }
 
 // NCIface.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
-func (nc *NCIface) ApplyAddrs() error {
+func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 	ifconfig, err := exec.LookPath("ifconfig")
 	if err != nil {
 		logger.Log(0, "failed to locate ifconfig", err.Error())
 		return fmt.Errorf("failed to locate ifconfig %w", err)
 	}
 	for _, address := range nc.Addresses {
-		if !address.AddRoute && address.IP.To4() != nil {
-			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
-				return fmt.Errorf("error adding address to interface %w", err)
-			}
-		} else {
-			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
-				return fmt.Errorf("error adding address to interface %w", err)
+		if !addOnlyRoutes && !address.AddRoute {
+			if address.IP.To4() != nil {
+				if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
+					return fmt.Errorf("error adding address to interface %w", err)
+				}
+			} else {
+				if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
+					return fmt.Errorf("error adding address to interface %w", err)
+				}
 			}
 		}
+
 		if address.AddRoute {
 			if address.IP.To4() != nil {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s -interface %s", address.Network.String(), nc.Name), true); err != nil {

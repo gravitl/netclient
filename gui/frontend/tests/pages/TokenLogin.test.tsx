@@ -35,6 +35,12 @@ describe("TokenLoginPage", () => {
     });
   });
 
+  it("provides provides radio options to choose token type", () => {
+    act(() => {
+      expect(screen.getByText("Token type")).toBeInTheDocument()
+    });
+  });
+  
   it("provides provides an input to enter token", () => {
     act(() => {
       expect(screen.getByTestId("token-inp")).toBeInTheDocument()
