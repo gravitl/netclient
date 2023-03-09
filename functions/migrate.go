@@ -35,9 +35,11 @@ func Migrate() {
 		fmt.Println("error reading network data ", err.Error())
 		return
 	}
+	logger.Log(0, "stoping daemon")
 	if err := daemon.Stop(); err != nil {
 		logger.Log(0, "failed to stop daemon", err.Error())
 	}
+	logger.Log(0, "networks to be migrated", strings.Join(networks, " "))
 	for _, network := range networks {
 		logger.Log(0, "migrating", network)
 		cfg, err := config.ReadConfig(network)
