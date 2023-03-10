@@ -119,9 +119,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
-	fmt.Printf("PEERS READ: %v \n", config.GetHostPeerList())
 	logger.Log(3, "configuring netmaker wireguard interface")
-	fmt.Printf("NETLCIENT READ: %v \n", config.Netclient())
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
