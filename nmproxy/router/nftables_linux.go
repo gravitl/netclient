@@ -463,6 +463,92 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:   ruleSpec,
 					})
 				}
+				ruleSpec = []string{"-d", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
+				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
+				if isIpv4 {
+					rule = &nftables.Rule{
+						Table:    natTable,
+						Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+						UserData: []byte(genRuleKey(ruleSpec...)),
+						Exprs: []expr.Any{
+							&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+							&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+							&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+							&expr.Cmp{
+								Op:       expr.CmpOpEq,
+								Register: 1,
+								Data:     []byte(egressRangeIface + "\x00"),
+							},
+							&expr.Payload{
+								DestRegister: 1,
+								Base:         expr.PayloadBaseNetworkHeader,
+								Offset:       ipv4DestOffset,
+								Len:          ipv4Len,
+							},
+							// for CIDR ranges
+							&expr.Bitwise{
+								DestRegister:   1,
+								SourceRegister: 1,
+								Len:            ipv4Len,
+								Mask:           egressInfo.Network.Mask,
+								Xor:            zeroXor,
+							},
+							&expr.Cmp{
+								Register: 1,
+								Data:     egressInfo.Network.IP.To4(),
+							},
+							&expr.Counter{},
+							&expr.Masq{},
+						},
+					}
+				} else {
+					rule = &nftables.Rule{
+						Table:    natTable,
+						Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+						UserData: []byte(genRuleKey(ruleSpec...)),
+						Exprs: []expr.Any{
+							&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+							&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
+							&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+							&expr.Cmp{
+								Op:       expr.CmpOpEq,
+								Register: 1,
+								Data:     []byte(egressRangeIface + "\x00"),
+							},
+							&expr.Payload{
+								DestRegister: 1,
+								Base:         expr.PayloadBaseNetworkHeader,
+								Offset:       ipv6DestOffset,
+								Len:          ipv6Len,
+							},
+							// for CIDR ranges
+							&expr.Bitwise{
+								DestRegister:   1,
+								SourceRegister: 1,
+								Len:            ipv6Len,
+								Mask:           egressInfo.Network.Mask,
+								Xor:            zeroXor6,
+							},
+							&expr.Cmp{
+								Register: 1,
+								Data:     egressInfo.Network.IP.To16(),
+							},
+							&expr.Counter{},
+							&expr.Masq{},
+						},
+					}
+				}
+				n.conn.InsertRule(rule)
+				if err := n.conn.Flush(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						nfRule: rule,
+						table:  defaultNatTable,
+						chain:  nattablePRTChain,
+						rule:   ruleSpec,
+					})
+				}
 			}
 		}
 	}
