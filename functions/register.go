@@ -33,25 +33,31 @@ func Register(token string) error {
 	if shouldUpdateHost { // get most up to date values before submitting to server
 		host = config.Netclient()
 	}
-	api := httpclient.JSONEndpoint[models.ServerConfig, models.ErrorResponse]{
+	api := httpclient.JSONEndpoint[models.RegisterResponse, models.ErrorResponse]{
 		URL:           "https://" + serverData.Server,
 		Route:         "/api/v1/host/register/" + token,
 		Method:        http.MethodPost,
 		Data:          host,
-		Response:      models.ServerConfig{},
+		Response:      models.RegisterResponse{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	registerResponse, errData, err := api.GetJSON(models.ServerConfig{}, models.ErrorResponse{})
+	registerResponse, errData, err := api.GetJSON(models.RegisterResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.FatalLog("error registering with server", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return err
 	}
-	config.UpdateServerConfig(&registerResponse)
-	server := config.GetServer(registerResponse.Server)
-	if err := config.SaveServer(registerResponse.Server, *server); err != nil {
+	config.UpdateServerConfig(&registerResponse.ServerConf)
+	server := config.GetServer(registerResponse.ServerConf.Server)
+	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
+	}
+	if registerResponse.RequestedHost.ListenPort > 0 {
+		config.Netclient().ListenPort = registerResponse.RequestedHost.ListenPort
+	}
+	if registerResponse.RequestedHost.ProxyListenPort > 0 {
+		config.Netclient().ProxyListenPort = registerResponse.RequestedHost.ProxyListenPort
 	}
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saving netclient config", err.Error())
