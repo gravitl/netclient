@@ -14,7 +14,6 @@ import (
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -170,17 +169,19 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
 
-	// select best interface and set peers
-	if bestIface, ok := getBestHostInterface(peerUpdate.Host.Interfaces); ok {
-		for idx := range peerUpdate.Peers {
-			peerUpdate.Peers[idx].Endpoint.IP = bestIface.Address.IP
+	// select best interface for each peer and set it as endpoint
+	for idx := range peerUpdate.Peers {
+		if peerInfo, ok := peerUpdate.PeerIDs[peerUpdate.Peers[idx].PublicKey.String()]; ok {
+			if bestIface, ok := getBestHostInterface(peerInfo.Interfaces, peerInfo.ProxyListenPort); ok {
+				peerUpdate.Peers[idx].Endpoint.IP = bestIface.Address.IP
+			}
 		}
-		config.UpdateHostPeers(serverName, peerUpdate.Peers)
-		config.WriteNetclientConfig()
-		wireguard.SetPeers()
-		wireguard.GetInterface().GetPeerRoutes()
-		wireguard.GetInterface().ApplyAddrs(true)
 	}
+	config.UpdateHostPeers(serverName, peerUpdate.Peers)
+	config.WriteNetclientConfig()
+	wireguard.SetPeers()
+	wireguard.GetInterface().GetPeerRoutes()
+	wireguard.GetInterface().ApplyAddrs(true)
 
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -193,27 +194,29 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 }
 
 // getBestHostInterface - returns best interface from the list based on average round trip time
-func getBestHostInterface(ifaces []models.Iface) (models.Iface, bool) {
+func getBestHostInterface(ifaces []models.Iface, proxyListenPort int) (models.Iface, bool) {
 	if len(ifaces) == 0 {
 		return models.Iface{}, false
 	}
 	sort.Slice(ifaces, func(i, j int) bool {
-		return getRoundTripTime(ifaces[i].Address.IP.String()) < getRoundTripTime(ifaces[j].Address.IP.String())
+		return getRoundTripTime(ifaces[i].Address.IP.String(), proxyListenPort) < getRoundTripTime(ifaces[j].Address.IP.String(), proxyListenPort)
 	})
 	return ifaces[0], true
 }
 
 // getRoundTripTime - get average round trip by pinging an address
 // returns math.MaxInt64 in case of any error or unreachability
-func getRoundTripTime(address string) int64 {
-	pinger, err := ping.NewPinger(fmt.Sprintf("%s:%d", address, server.NmProxyServer.Config.Port))
+func getRoundTripTime(address string, proxyListenPort int) int64 {
+	if strings.Contains(address, "127.0.0.1") {
+		return math.MaxInt64
+	}
+	pinger, err := ping.NewPinger(fmt.Sprintf("%s:%d", address, proxyListenPort))
 	if err != nil {
 		logger.Log(0, "could not initiliaze ping peer address", address, err.Error())
 		return math.MaxInt64
 	} else {
 		pinger.Timeout = time.Second * 2
-		err = pinger.Run()
-		if err != nil {
+		if err := pinger.Run(); err != nil {
 			logger.Log(0, "failed to ping on peer address", address, err.Error())
 			return math.MaxInt64
 		} else {
