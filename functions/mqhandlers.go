@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -198,10 +197,17 @@ func getBestHostInterface(ifaces []models.Iface, proxyListenPort int) (models.If
 	if len(ifaces) == 0 {
 		return models.Iface{}, false
 	}
-	sort.Slice(ifaces, func(i, j int) bool {
-		return getRoundTripTime(ifaces[i].Address.IP.String(), proxyListenPort) < getRoundTripTime(ifaces[j].Address.IP.String(), proxyListenPort)
-	})
-	return ifaces[0], true
+	var (
+		bestIface         models.Iface
+		bestRoundTripTime = int64(math.MaxInt64)
+	)
+	for idx := range ifaces {
+		if rtt := getRoundTripTime(ifaces[idx].Address.IP.String(), proxyListenPort); rtt < bestRoundTripTime {
+			bestRoundTripTime = rtt
+			bestIface = ifaces[idx]
+		}
+	}
+	return bestIface, true
 }
 
 // getRoundTripTime - get average round trip by pinging an address
