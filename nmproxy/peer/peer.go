@@ -155,9 +155,12 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
 			connectionStatus := proxy.PeerConnectionStatus(peer.PublicKey.String())
-			for peerID := range peerIDMap {
+			var proxyListenPort int
+			for peerID, peerInfo := range peerIDMap {
+				proxyListenPort = peerInfo.ProxyListenPort
 				metric.NodeConnectionStatus[peerID] = connectionStatus
 			}
+			proxyConn, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.Endpoint.IP.String(), proxyListenPort))
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
 			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
@@ -166,7 +169,7 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			if err == nil {
 				conn := config.GetCfg().GetServerConn()
 				if conn != nil {
-					_, err = conn.WriteToUDP(pkt, peer.Endpoint)
+					_, err = conn.WriteToUDP(pkt, proxyConn)
 					if err != nil {
 						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 					}
