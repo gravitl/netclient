@@ -10,7 +10,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/metrics"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -21,7 +20,6 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPee
 		logger.Log(1, "Proxy is running already...")
 		return
 	}
-	metrics.Init()
 	logger.Log(0, "Starting Proxy...")
 	defer wg.Done()
 	if len(stunList) == 0 {
