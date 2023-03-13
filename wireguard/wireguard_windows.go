@@ -17,15 +17,21 @@ func (nc *NCIface) Create() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	windowsGUID, err := windows.GenerateGUID()
+	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
 	if err != nil {
-		return err
+		logger.Log(3, "creating Windows tunnel")
+		windowsGUID, err := windows.GenerateGUID()
+		if err != nil {
+			return err
+		}
+		adapter, err = driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
+		if err != nil {
+			return err
+		}
+	} else {
+		logger.Log(0, "re-using existing adapter")
 	}
-	logger.Log(3, "creating Windows tunnel")
-	adapter, err := driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
-	if err != nil {
-		return err
-	}
+
 	logger.Log(3, "created Windows tunnel")
 	nc.Iface = adapter
 	return adapter.SetAdapterState(driver.AdapterStateUp)
@@ -38,7 +44,7 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 	egressRanges := []ifaceAddress{}
 	var egressRoute *ifaceAddress
 	for i := range nc.Addresses {
-		if !addOnlyRoutes && !nc.Addresses[i].AddRoute {
+		if !nc.Addresses[i].AddRoute {
 			maskSize, _ := nc.Addresses[i].Network.Mask.Size()
 			logger.Log(1, "appending address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
 			addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))

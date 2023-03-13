@@ -349,6 +349,12 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	if internetGateway != nil {
 		config.Netclient().InternetGateway = *internetGateway
 	}
+	if joinResponse.Host.ListenPort != 0 { // just duct tape till access keys removed
+		config.Netclient().ListenPort = joinResponse.Host.ListenPort
+	}
+	if joinResponse.Host.ProxyListenPort != 0 {
+		config.Netclient().ProxyListenPort = joinResponse.Host.ProxyListenPort
+	}
 	return &newNode, server, nil
 }
 
