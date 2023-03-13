@@ -137,6 +137,7 @@ func (p *Proxy) pullLatestConfig() error {
 // Proxy.startMetricsThread - runs metrics loop for the peer
 func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 	ticker := time.NewTicker(metrics.MetricCollectionInterval)
+	proxyConn, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", p.Config.PeerEndpoint.IP, p.Config.ProxyListenPort))
 	defer ticker.Stop()
 	defer wg.Done()
 	for {
@@ -167,8 +168,9 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), p.Config.PeerPublicKey)
 			if err == nil {
-				logger.Log(3, "-----------> Sending metric packet to: ", p.RemoteConn.String())
-				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, p.RemoteConn)
+				logger.Log(3, "-----------> Sending metric packet to: ", proxyConn.String())
+
+				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, proxyConn)
 				if err != nil {
 					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 				}
