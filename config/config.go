@@ -80,8 +80,12 @@ func UpdateHost(newHost *models.Host) {
 	netclient.Host.Name = newHost.Name
 	netclient.Host.Verbosity = newHost.Verbosity
 	netclient.Host.MTU = newHost.MTU
-	netclient.Host.ListenPort = newHost.MTU
-	netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	if newHost.ListenPort > 0 {
+		netclient.Host.ListenPort = newHost.ListenPort
+	}
+	if newHost.ProxyListenPort > 0 {
+		netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	}
 	netclient.Host.IsDefault = newHost.IsDefault
 	netclient.Host.DefaultInterface = newHost.DefaultInterface
 	if !netclient.Host.ProxyEnabledSet {
