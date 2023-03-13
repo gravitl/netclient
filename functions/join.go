@@ -335,6 +335,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	}
 	logger.Log(1, "network:", node.Network, "node created on remote server...updating configs")
 	config.UpdateServerConfig(&joinResponse.ServerConfig)
+	config.UpdateHost(&joinResponse.Host)
 	server := config.GetServer(joinResponse.ServerConfig.Server)
 	server.Nodes[joinResponse.Node.Network] = true
 	newNode := config.Node{}

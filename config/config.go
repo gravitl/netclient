@@ -75,6 +75,25 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
+// UpdateHost - update host with data from server
+func UpdateHost(newHost *models.Host) {
+	netclient.Host.Name = newHost.Name
+	netclient.Host.Verbosity = newHost.Verbosity
+	netclient.Host.MTU = newHost.MTU
+	netclient.Host.ListenPort = newHost.MTU
+	netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	netclient.Host.IsDefault = newHost.IsDefault
+	netclient.Host.DefaultInterface = newHost.DefaultInterface
+	if !netclient.Host.ProxyEnabledSet {
+		netclient.Host.ProxyEnabled = newHost.ProxyEnabled
+		netclient.Host.ProxyEnabledSet = true
+	}
+	netclient.Host.IsStatic = newHost.IsStatic
+	if err := WriteNetclientConfig(); err != nil {
+		logger.Log(0, "error updating netclient config after update", err.Error())
+	}
+}
+
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
 	return &netclient
