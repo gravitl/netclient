@@ -26,6 +26,21 @@ func (i *ipfwManager) CreateChains() error {
 			return err
 		}
 	}
+	if err := exec.Command("kldload", "ipfw", "ipfw_nat").Run(); err != nil {
+		logger.Log(0, "error creating ipfw chains: ", err.Error())
+	}
+	if err := execFw("disable", "one_pass"); err != nil {
+		logger.Log(0, "error creating ipfw chains: ", err.Error())
+	}
+	if err := execFw("nat", "1", "config", "if", ncutils.GetInterfaceName(), "same_ports", "unreg_only", "reset"); err != nil {
+		logger.Log(0, "error creating ipfw chains: ", err.Error())
+	}
+	if err := execFw("add", getRuleNumber(), "reass", "all", "from", "any", "to", "any", "in"); err != nil {
+		logger.Log(0, "error creating ipfw chains: ", err.Error())
+	}
+	if err := execFw("add", getRuleNumber(), "nat", "1", "ip", "from", "any", "to", "any", "via", ncutils.GetInterfaceName()); err != nil {
+		logger.Log(0, "error creating ipfw chains: ", err.Error())
+	}
 	return nil
 }
 
