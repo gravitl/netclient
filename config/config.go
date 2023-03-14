@@ -82,9 +82,9 @@ func Netclient() *Config {
 
 // GetHostPeerList - gets the combined list of peers for the host
 func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
-
+	hostPeerMap := netclient.HostPeers
 	peerMap := make(map[string]int)
-	for _, serverPeers := range netclient.HostPeers {
+	for _, serverPeers := range hostPeerMap {
 		for i, peerI := range serverPeers {
 			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
 				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
