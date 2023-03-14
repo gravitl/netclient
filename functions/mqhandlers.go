@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -117,6 +118,8 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
+var bestIfaceMap sync.Map
+
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
@@ -171,8 +174,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// select best interface for each peer and set it as endpoint
 	for idx := range peerUpdate.Peers {
 		if peerInfo, ok := peerUpdate.PeerIDs[peerUpdate.Peers[idx].PublicKey.String()]; ok {
+			if bestIface, ok := bestIfaceMap.Load(peerUpdate.Peers[idx].PublicKey.String()); ok {
+				peerUpdate.Peers[idx].Endpoint.IP = bestIface.(models.Iface).Address.IP
+				continue
+			}
 			if bestIface, ok := getBestHostInterface(peerInfo.Interfaces, peerInfo.ProxyListenPort); ok {
 				peerUpdate.Peers[idx].Endpoint.IP = bestIface.Address.IP
+				bestIfaceMap.Store(peerUpdate.Peers[idx].PublicKey.String(), bestIface)
 			}
 		}
 	}
@@ -207,7 +215,7 @@ func getBestHostInterface(ifaces []models.Iface, proxyListenPort int) (models.If
 			bestIface = ifaces[idx]
 		}
 	}
-	return bestIface, true
+	return bestIface, bestRoundTripTime != math.MaxInt64
 }
 
 // getRoundTripTime - get average round trip by pinging an address
@@ -225,11 +233,8 @@ func getRoundTripTime(address string, proxyListenPort int) int64 {
 		if err := pinger.Run(); err != nil {
 			logger.Log(0, "failed to ping on peer address", address, err.Error())
 			return math.MaxInt64
-		} else {
-			pingStats := pinger.Statistics()
-			if pingStats.PacketsRecv > 0 {
-				return pingStats.AvgRtt.Microseconds()
-			}
+		} else if pingStats := pinger.Statistics(); pingStats.PacketsRecv > 0 {
+			return pingStats.AvgRtt.Microseconds()
 		}
 	}
 	return math.MaxInt64
