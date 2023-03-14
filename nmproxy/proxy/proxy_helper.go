@@ -137,7 +137,13 @@ func (p *Proxy) pullLatestConfig() error {
 // Proxy.startMetricsThread - runs metrics loop for the peer
 func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 	ticker := time.NewTicker(metrics.MetricCollectionInterval)
-	proxyConn, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", p.Config.PeerEndpoint.IP.String(), p.Config.ProxyListenPort))
+	proxyConn, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d",
+		p.Config.PeerEndpoint.IP.String(), p.Config.ProxyListenPort))
+	if err != nil {
+		logger.Log(0, "failed to resolve proxy udp addr: ", err.Error())
+		return
+	}
+
 	defer ticker.Stop()
 	defer wg.Done()
 	for {
