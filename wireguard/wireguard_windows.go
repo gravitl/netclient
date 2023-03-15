@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"os/exec"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -108,12 +107,8 @@ func (nc *NCIface) SetMTU() error {
 
 // DeleteOldInterface - removes named interface
 func DeleteOldInterface(iface string) {
-	logger.Log(3, "deleting interface", iface)
-	netsh, err := exec.LookPath("netsh")
-	if err != nil {
-		logger.Log(0, "failed to locate netsh", err.Error())
-	}
-	if _, err := ncutils.RunCmd(netsh+" "+iface+" destroy", true); err != nil {
-		logger.Log(0, "error removing interface", iface, err.Error())
+	logger.Log(0, "deleting interface", iface)
+	if _, err := ncutils.RunCmd("wireguard.exe /uninstalltunnelservice "+iface, true); err != nil {
+		logger.Log(1, err.Error())
 	}
 }

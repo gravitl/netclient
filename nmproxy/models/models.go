@@ -22,14 +22,15 @@ type PeerConnMap map[string]*Conn
 
 // Proxy - struct for proxy config
 type Proxy struct {
-	PeerPublicKey  wgtypes.Key
-	IsExtClient    bool
-	PeerConf       wgtypes.PeerConfig
-	PeerEndpoint   *net.UDPAddr
-	RemoteConnAddr *net.UDPAddr
-	LocalConnAddr  *net.UDPAddr
-	ListenPort     int
-	ProxyStatus    bool
+	PeerPublicKey   wgtypes.Key
+	IsExtClient     bool
+	PeerConf        wgtypes.PeerConfig
+	PeerEndpoint    *net.UDPAddr
+	RemoteConnAddr  *net.UDPAddr
+	LocalConnAddr   *net.UDPAddr
+	ListenPort      int
+	ProxyListenPort int
+	ProxyStatus     bool
 }
 
 // Conn is a peer Connection configuration
