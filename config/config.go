@@ -88,6 +88,7 @@ func UpdateHost(newHost *models.Host) {
 	}
 	netclient.Host.IsDefault = newHost.IsDefault
 	netclient.Host.DefaultInterface = newHost.DefaultInterface
+	// only update proxy enabled if it hasn't been modified by another server
 	if !netclient.Host.ProxyEnabledSet {
 		netclient.Host.ProxyEnabled = newHost.ProxyEnabled
 		netclient.Host.ProxyEnabledSet = true
