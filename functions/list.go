@@ -95,7 +95,7 @@ func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	if host == nil {
 		return nil, fmt.Errorf("no configured host found")
 	}
-	token, err := Authenticate(server.API, host)
+	token, err := Authenticate(server, host)
 	if err != nil {
 		return nil, err
 	}

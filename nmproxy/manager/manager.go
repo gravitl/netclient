@@ -307,8 +307,10 @@ func (m *proxyPayload) processPayload() error {
 			}
 
 			// check if proxy listen port has changed for the peer
-			if currentPeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
-				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0 {
+			if (currentPeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
+				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0) ||
+				(m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != currentPeer.Config.ProxyListenPort &&
+					m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != 0) {
 				// listen port has been changed, reset conn
 				logger.Log(1, "--------> peer proxy listen port has been changed", currentPeer.Key.String())
 				currentPeer.StopConn()
@@ -371,8 +373,10 @@ func (m *proxyPayload) processPayload() error {
 				}
 			}
 			// check if proxy listen port has changed for the peer
-			if noProxypeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
-				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0 {
+			if (noProxypeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
+				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0) ||
+				(m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != noProxypeer.Config.ProxyListenPort &&
+					m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != 0) {
 				// listen port has been changed, reset conn
 				logger.Log(1, "-------->[noProxy] peer proxy listen port has been changed", noProxypeer.Key.String())
 				noProxypeer.StopConn()
