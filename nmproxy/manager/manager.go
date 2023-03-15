@@ -287,7 +287,7 @@ func (m *proxyPayload) processPayload() error {
 			}
 
 			//check if peer is being relayed
-			if currentPeer.IsRelayed != m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
+			if !config.GetCfg().IsGlobalRelay() && currentPeer.IsRelayed != m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
 				logger.Log(1, "---------> peer relay status has been changed: ", currentPeer.Key.String())
 				currentPeer.StopConn()
 				currentPeer.Mutex.Unlock()
@@ -296,7 +296,7 @@ func (m *proxyPayload) processPayload() error {
 			}
 
 			// check if relay endpoint has been changed
-			if currentPeer.RelayedEndpoint != nil &&
+			if !config.GetCfg().IsGlobalRelay() && currentPeer.RelayedEndpoint != nil &&
 				m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo != nil &&
 				currentPeer.RelayedEndpoint.String() != m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo.String() {
 				logger.Log(1, "---------> peer relay endpoint has been changed: ", currentPeer.Key.String())
