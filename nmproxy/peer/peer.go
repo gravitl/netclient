@@ -29,11 +29,12 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
-		PeerPublicKey: peer.PublicKey,
-		IsExtClient:   peerConf.IsExtClient,
-		PeerConf:      peer,
-		ListenPort:    int(peerConf.PublicListenPort),
-		ProxyStatus:   peerConf.Proxy,
+		PeerPublicKey:   peer.PublicKey,
+		IsExtClient:     peerConf.IsExtClient,
+		PeerConf:        peer,
+		ListenPort:      int(peerConf.PublicListenPort),
+		ProxyListenPort: peerConf.ProxyListenPort,
+		ProxyStatus:     peerConf.Proxy,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
@@ -154,8 +155,14 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
 			connectionStatus := proxy.PeerConnectionStatus(peer.PublicKey.String())
-			for peerID := range peerIDMap {
+			var proxyListenPort int
+			for peerID, peerInfo := range peerIDMap {
+				proxyListenPort = peerInfo.ProxyListenPort
 				metric.NodeConnectionStatus[peerID] = connectionStatus
+			}
+			proxyConn, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.Endpoint.IP.String(), proxyListenPort))
+			if err != nil {
+				continue
 			}
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
@@ -165,7 +172,7 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			if err == nil {
 				conn := config.GetCfg().GetServerConn()
 				if conn != nil {
-					_, err = conn.WriteToUDP(pkt, peer.Endpoint)
+					_, err = conn.WriteToUDP(pkt, proxyConn)
 					if err != nil {
 						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 					}
