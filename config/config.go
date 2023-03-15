@@ -85,7 +85,9 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
 	peerMap := make(map[string]int)
 	for _, serverPeers := range hostPeerMap {
+		serverPeers := serverPeers
 		for i, peerI := range serverPeers {
+			peerI := peerI
 			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
 				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
 			} else {
@@ -115,6 +117,22 @@ func DeleteServerHostPeerCfg(server string) {
 		return
 	}
 	delete(netclient.HostPeers, server)
+}
+
+// RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
+func RemoveServerHostPeerCfg(serverName string) {
+	if netclient.HostPeers == nil {
+		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		return
+	}
+	peers := netclient.HostPeers[serverName]
+	for i := range peers {
+		peer := peers[i]
+		peer.Remove = true
+		peers[i] = peer
+	}
+	netclient.HostPeers[serverName] = peers
+	_ = WriteNetclientConfig()
 }
 
 func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
