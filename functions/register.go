@@ -53,15 +53,7 @@ func Register(token string) error {
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	if registerResponse.RequestedHost.ListenPort > 0 {
-		config.Netclient().ListenPort = registerResponse.RequestedHost.ListenPort
-	}
-	if registerResponse.RequestedHost.ProxyListenPort > 0 {
-		config.Netclient().ProxyListenPort = registerResponse.RequestedHost.ProxyListenPort
-	}
-	if err := config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error saving netclient config", err.Error())
-	}
+	config.UpdateHost(&registerResponse.RequestedHost)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}

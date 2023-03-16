@@ -195,7 +195,7 @@ func Hello(node *config.Node) {
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server.API, config.Netclient())
+	token, err := Authenticate(server, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
@@ -220,7 +220,7 @@ func publishMetrics(node *config.Node) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), node.Server, nodeGET.Node.Network, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), node.Server, nodeGET.Node.Network, nodeGET.PeerIDs, config.Netclient().ProxyEnabled)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 	}

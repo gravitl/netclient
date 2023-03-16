@@ -41,6 +41,10 @@ func ReadConfig(network string) (*ClientConfig, error) {
 		return nil, err
 	}
 	home := GetNetclientPath() + "config/"
+	if ncutils.IsWindows() {
+		//for some reason windows does not use the config dir although it exists
+		home = GetNetclientPath()
+	}
 	file := fmt.Sprintf(home + "netconfig-" + network)
 	log.Println("processing ", file)
 	f, err := os.Open(file)
@@ -66,7 +70,7 @@ func GetSystemNetworks() ([]string, error) {
 		//for some reason windows does not use the config dir although it exists
 		confPath = GetNetclientPath() + "netconfig-*"
 	}
-	files, err := filepath.Glob(GetNetclientPath() + confPath)
+	files, err := filepath.Glob(confPath)
 	if err != nil {
 		return nil, err
 	}

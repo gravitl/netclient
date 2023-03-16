@@ -75,6 +75,30 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
+// UpdateHost - update host with data from server
+func UpdateHost(newHost *models.Host) {
+	netclient.Host.Name = newHost.Name
+	netclient.Host.Verbosity = newHost.Verbosity
+	netclient.Host.MTU = newHost.MTU
+	if newHost.ListenPort > 0 {
+		netclient.Host.ListenPort = newHost.ListenPort
+	}
+	if newHost.ProxyListenPort > 0 {
+		netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	}
+	netclient.Host.IsDefault = newHost.IsDefault
+	netclient.Host.DefaultInterface = newHost.DefaultInterface
+	// only update proxy enabled if it hasn't been modified by another server
+	if !netclient.Host.ProxyEnabledSet {
+		netclient.Host.ProxyEnabled = newHost.ProxyEnabled
+		netclient.Host.ProxyEnabledSet = true
+	}
+	netclient.Host.IsStatic = newHost.IsStatic
+	if err := WriteNetclientConfig(); err != nil {
+		logger.Log(0, "error updating netclient config after update", err.Error())
+	}
+}
+
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
 	return &netclient
@@ -82,10 +106,12 @@ func Netclient() *Config {
 
 // GetHostPeerList - gets the combined list of peers for the host
 func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
-
+	hostPeerMap := netclient.HostPeers
 	peerMap := make(map[string]int)
-	for _, serverPeers := range netclient.HostPeers {
+	for _, serverPeers := range hostPeerMap {
+		serverPeers := serverPeers
 		for i, peerI := range serverPeers {
+			peerI := peerI
 			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
 				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
 			} else {
@@ -115,6 +141,22 @@ func DeleteServerHostPeerCfg(server string) {
 		return
 	}
 	delete(netclient.HostPeers, server)
+}
+
+// RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
+func RemoveServerHostPeerCfg(serverName string) {
+	if netclient.HostPeers == nil {
+		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		return
+	}
+	peers := netclient.HostPeers[serverName]
+	for i := range peers {
+		peer := peers[i]
+		peer.Remove = true
+		peers[i] = peer
+	}
+	netclient.HostPeers[serverName] = peers
+	_ = WriteNetclientConfig()
 }
 
 func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
