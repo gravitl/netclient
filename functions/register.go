@@ -26,6 +26,21 @@ func Register(token string) error {
 		logger.FatalLog("could not read enrollment token")
 	}
 	host := config.Netclient()
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces", err.Error())
+	} else {
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			host.Interfaces = *ip
+		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		host.DefaultInterface = defaultInterface
+	}
 	shouldUpdateHost, err := doubleCheck(host, serverData.Server)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
