@@ -202,9 +202,10 @@ func RemovePeer(n *config.Node, p *wgtypes.PeerConfig) error {
 // UpdatePeer replaces a wireguard peer
 // temporarily making public func to pass staticchecks
 // this function will be required in future when update node on server is refactored
-func UpdatePeer(n *config.Node, p *wgtypes.PeerConfig) error {
+func UpdatePeer(p *wgtypes.PeerConfig) error {
 	config := wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{*p},
+		Peers:        []wgtypes.PeerConfig{*p},
+		ReplacePeers: false,
 	}
 	return apply(&config)
 }
