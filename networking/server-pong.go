@@ -61,6 +61,11 @@ func handleRequest(c net.Conn) {
 	parts := strings.Split(string(buffer[:numBytes]), messages.Delimiter)
 	if len(parts) == 3 { // publickey + time
 		pubKey := parts[0]
+		currenHostPubKey := config.Netclient().PublicKey.String()
+		if pubKey == currenHostPubKey {
+			sendError(c)
+			return
+		}
 		serverName := parts[1]
 		timeString := parts[2]
 		_, err := wgtypes.ParseKey(pubKey)
