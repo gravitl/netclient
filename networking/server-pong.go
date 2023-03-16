@@ -32,6 +32,7 @@ func StartIfaceDetection(ctx context.Context, wg *sync.WaitGroup, port int) {
 	logger.Log(0, "initialized endpoint detection on port", fmt.Sprintf("%d", port))
 	go func(ctx context.Context, listener *net.TCPListener) {
 		<-ctx.Done()
+		logger.Log(0, "closed endpoint detection")
 		l.Close()
 	}(ctx, l)
 	for {
@@ -55,6 +56,7 @@ func handleRequest(c net.Conn) {
 		logger.Log(0, "error reading ping", err.Error())
 		return
 	}
+	fmt.Printf("DELETE server recv %s \n", string(buffer[:numBytes]))
 	recvTime := time.Now().Unix() // get the time received message
 	parts := strings.Split(string(buffer[:numBytes]), messages.Delimiter)
 	if len(parts) == 3 { // publickey + time
@@ -75,8 +77,10 @@ func handleRequest(c net.Conn) {
 		addrInfo := strings.Split(c.RemoteAddr().String(), ":")
 		if len(addrInfo) == 2 {
 			latency := time.Duration(recvTime - int64(sentTime))
+			fmt.Printf("DELETE latency calc'd %d \n", latency)
 			endpoint, err := netip.ParseAddr(addrInfo[0])
 			if err == nil {
+				fmt.Printf("DELETE endpoint calc'd %s \n", endpoint)
 				var foundNewIface bool
 				bestIface, ok := ifaceCache.Load(pubKey)
 				if ok { // check if iface already exists
@@ -87,6 +91,7 @@ func handleRequest(c net.Conn) {
 					foundNewIface = true
 				}
 				if foundNewIface { // iface not detected/calculated for peer, so set it
+					fmt.Printf("DELETE found server %s endpoint %s latency %d \n", serverName, endpoint, latency)
 					if err = sendSuccess(c); err != nil {
 						logger.Log(0, "failed to notify peer of new endpoint", pubKey)
 					} else {
@@ -134,6 +139,7 @@ func setPeerEndpoint(publicKey, serverName string, values ifaceCacheValue) error
 		currPeer := currentServerPeers[i]
 		if currPeer.PublicKey.String() == publicKey { // filter for current peer to overwrite endpoint
 			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(values.Endpoint, uint16(peerPort)))
+			fmt.Printf("DELETE: found peer to update %s %s %v", wgEndpoint, publicKey, currPeer.AllowedIPs)
 			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 				PublicKey:                   currPeer.PublicKey,
 				Endpoint:                    wgEndpoint,

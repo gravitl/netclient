@@ -26,6 +26,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey, serverName string,
 	if len(serverName) == 0 {
 		return fmt.Errorf("no server provided")
 	} // end validate
+	fmt.Printf("DELETE, dialing: %s \n", fmt.Sprintf("%s:%d", reqAddr, proxyPort))
 	c, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", reqAddr, proxyPort), reqTimeout)
 	if err != nil { // TODO: change verbosity for timeouts (probably frequent)
 		return err
@@ -37,6 +38,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey, serverName string,
 		serverName,
 		strconv.Itoa(int(sentTime)),
 	}, messages.Delimiter)
+	fmt.Printf("DELETE sending: %s \n", msg)
 	_, err = c.Write([]byte(msg))
 	if err != nil {
 		return err
@@ -51,6 +53,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey, serverName string,
 	}
 	latency := time.Now().UnixMilli() - sentTime
 	response := string(buf[:numBytes])
+	fmt.Printf("DELETE response: %s \n", response)
 	if response == messages.Success { // found new best interface, save it
 		if err = storeNewPeerIface(peerPubKey, serverName, peerAddr, time.Duration(latency)); err != nil {
 			return err

@@ -4,16 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -118,8 +116,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-var bestIfaceMap sync.Map
-
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
@@ -170,25 +166,32 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
-
+	hostPubKey := config.Netclient().PublicKey.String()
 	// select best interface for each peer and set it as endpoint
 	for idx := range peerUpdate.Peers {
-		if peerInfo, ok := peerUpdate.PeerIDs[peerUpdate.Peers[idx].PublicKey.String()]; ok {
-			if bestIface, ok := bestIfaceMap.Load(peerUpdate.Peers[idx].PublicKey.String()); ok {
-				peerUpdate.Peers[idx].Endpoint.IP = bestIface.(models.Iface).Address.IP
-				continue
-			}
-			if bestIface, ok := getBestHostInterface(peerInfo.Interfaces, peerInfo.ProxyListenPort); ok {
-				peerUpdate.Peers[idx].Endpoint.IP = bestIface.Address.IP
-				bestIfaceMap.Store(peerUpdate.Peers[idx].PublicKey.String(), bestIface)
+		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
+		fmt.Printf("DELETE Looking at peer idx: %d of peers %v \n", idx, peerUpdate.Peers)
+		fmt.Printf("DELETE HOST IDS? %v \n", peerUpdate.HostNetworkInfo)
+		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+			fmt.Printf("DELETE Looking at peer: %s \n", peerPubKey)
+			for i := range peerInfo.Interfaces {
+				peerIface := peerInfo.Interfaces[i]
+				peerAddr := peerIface.Address.IP.String()
+				if strings.Contains(peerAddr, "127.0.0.") {
+					continue
+				}
+				if err = networking.FindBestEndpoint(
+					peerAddr,
+					hostPubKey,
+					peerPubKey,
+					serverName,
+					peerInfo.ProxyListenPort,
+				); err != nil {
+					logger.Log(0, "failed to check for endpoint on peer", peerPubKey, err.Error())
+				}
 			}
 		}
 	}
-	config.UpdateHostPeers(serverName, peerUpdate.Peers)
-	config.WriteNetclientConfig()
-	wireguard.SetPeers()
-	wireguard.GetInterface().GetPeerRoutes()
-	wireguard.GetInterface().ApplyAddrs(true)
 
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -198,46 +201,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	peerUpdate.ProxyUpdate.Server = serverName
 	ProxyManagerChan <- &peerUpdate
-}
-
-// getBestHostInterface - returns best interface from the list based on average round trip time
-func getBestHostInterface(ifaces []models.Iface, proxyListenPort int) (models.Iface, bool) {
-	if len(ifaces) == 0 {
-		return models.Iface{}, false
-	}
-	var (
-		bestIface         models.Iface
-		bestRoundTripTime = int64(math.MaxInt64)
-	)
-	for idx := range ifaces {
-		if rtt := getRoundTripTime(ifaces[idx].Address.IP.String(), proxyListenPort); rtt < bestRoundTripTime {
-			bestRoundTripTime = rtt
-			bestIface = ifaces[idx]
-		}
-	}
-	return bestIface, bestRoundTripTime != math.MaxInt64
-}
-
-// getRoundTripTime - get average round trip by pinging an address
-// returns math.MaxInt64 in case of any error or unreachability
-func getRoundTripTime(address string, proxyListenPort int) int64 {
-	if strings.Contains(address, "127.0.0.1") {
-		return math.MaxInt64
-	}
-	pinger, err := ping.NewPinger(fmt.Sprintf("%s:%d", address, proxyListenPort))
-	if err != nil {
-		logger.Log(0, "could not initiliaze ping peer address", address, err.Error())
-		return math.MaxInt64
-	} else {
-		pinger.Timeout = time.Second * 2
-		if err := pinger.Run(); err != nil {
-			logger.Log(0, "failed to ping on peer address", address, err.Error())
-			return math.MaxInt64
-		} else if pingStats := pinger.Statistics(); pingStats.PacketsRecv > 0 {
-			return pingStats.AvgRtt.Microseconds()
-		}
-	}
-	return math.MaxInt64
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
