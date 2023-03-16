@@ -1,7 +1,6 @@
 package networking
 
 import (
-	"net/netip"
 	"time"
 )
 
@@ -19,10 +18,4 @@ var messages = struct {
 	Wrong:     "WRONG",
 	Delimiter: "(#)",
 	Success:   "PONG",
-}
-
-// ifaceCacheValue - type for storage for best local address
-type ifaceCacheValue struct {
-	Latency  time.Duration
-	Endpoint netip.Addr
 }

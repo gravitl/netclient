@@ -1,11 +1,13 @@
 package wireguard
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
@@ -21,6 +23,13 @@ func SetPeers() error {
 	GetInterface().Config.Peers = peers
 	if config.Netclient().ProxyEnabled && len(peers) > 0 {
 		peers = peer.SetPeersEndpointToProxy(peers)
+	}
+	for i := range peers {
+		peer := peers[i]
+		fmt.Printf("RE-USING existing best endpoint for peer %s and EP %v \n", peer.PublicKey.String(), peer.Endpoint)
+		if checkForBetterEndpoint(&peer) {
+			peers[i] = peer
+		}
 	}
 	config := wgtypes.Config{
 		ReplacePeers: false,
@@ -218,4 +227,14 @@ func apply(c *wgtypes.Config) error {
 	defer wg.Close()
 
 	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
+}
+
+// returns if better endpoint has been calculated for this peer already
+// if so sets it and returns true
+func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
+	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok {
+		peer.Endpoint.IP = net.ParseIP(endpoint.(cache.EndpointCacheValue).Endpoint.String())
+		return ok
+	}
+	return false
 }

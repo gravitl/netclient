@@ -170,10 +170,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// select best interface for each peer and set it as endpoint
 	for idx := range peerUpdate.Peers {
 		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
-		fmt.Printf("DELETE Looking at peer idx: %d of peers %v \n", idx, peerUpdate.Peers)
-		fmt.Printf("DELETE HOST IDS? %v \n", peerUpdate.HostNetworkInfo)
 		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
-			fmt.Printf("DELETE Looking at peer: %s \n", peerPubKey)
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerAddr := peerIface.Address.IP.String()
@@ -186,8 +183,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 					peerPubKey,
 					serverName,
 					peerInfo.ProxyListenPort,
-				); err != nil {
-					logger.Log(0, "failed to check for endpoint on peer", peerPubKey, err.Error())
+				); err != nil { // happens v often
+					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
 				}
 			}
 		}
