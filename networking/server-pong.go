@@ -76,11 +76,13 @@ func handleRequest(c net.Conn) {
 		addrInfo, err := netip.ParseAddrPort(c.RemoteAddr().String())
 		if err == nil {
 			endpoint := addrInfo.Addr()
-			latency := time.Duration(recvTime-int64(sentTime)) + latencyVarianceThreshold
+			latency := time.Duration(recvTime - int64(sentTime))
+			latencyTreshHold := latency + latencyVarianceThreshold
 			var foundNewIface bool
 			bestIface, ok := cache.EndpointCache.Load(pubKeyHash)
 			if ok { // check if iface already exists
-				if bestIface.(cache.EndpointCacheValue).Latency > latency { // replace it since new one is faster
+				if bestIface.(cache.EndpointCacheValue).Latency > latencyTreshHold &&
+					bestIface.(cache.EndpointCacheValue).Endpoint.String() != endpoint.String() { // replace it since new one is faster
 					foundNewIface = true
 				}
 			} else {
@@ -91,7 +93,7 @@ func handleRequest(c net.Conn) {
 					logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
 				} else {
 					if err = storeNewPeerIface(pubKeyHash, endpoint, latency); err != nil {
-						logger.Log(0, "failed to store best endpoint for peer", pubKeyHash, err.Error())
+						logger.Log(0, "failed to store best endpoint for peer", err.Error())
 					}
 					return
 				}
@@ -108,16 +110,17 @@ func sendError(c net.Conn) {
 	}
 }
 
-func storeNewPeerIface(clientPubKey string, endpoint netip.Addr, latency time.Duration) error {
+func storeNewPeerIface(clientPubKeyHash string, endpoint netip.Addr, latency time.Duration) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Latency:  latency,
 		Endpoint: endpoint,
 	}
-	if err := setPeerEndpoint(clientPubKey, newIfaceValue); err != nil {
+	err := setPeerEndpoint(clientPubKeyHash, newIfaceValue)
+	if err != nil {
 		return err
 	}
+	cache.EndpointCache.Store(clientPubKeyHash, newIfaceValue)
 
-	cache.EndpointCache.Store(clientPubKey, newIfaceValue)
 	return nil
 }
 
@@ -126,8 +129,8 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 	currentServerPeers := config.GetHostPeerList()
 	for i := range currentServerPeers {
 		currPeer := currentServerPeers[i]
-		peerPubkeyHash := sha1.Sum([]byte(currPeer.PublicKey.String()))
-		if string(peerPubkeyHash[:]) == publicKeyHash { // filter for current peer to overwrite endpoint
+		peerPubkeyHash := fmt.Sprintf("%v", sha1.Sum([]byte(currPeer.PublicKey.String())))
+		if peerPubkeyHash == publicKeyHash { // filter for current peer to overwrite endpoint
 			peerPort := currPeer.Endpoint.Port
 			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(value.Endpoint, uint16(peerPort)))
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())

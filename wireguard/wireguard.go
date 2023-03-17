@@ -1,6 +1,8 @@
 package wireguard
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"net"
 	"strconv"
 
@@ -19,8 +21,7 @@ func SetPeers() error {
 	GetInterface().Config.Peers = peers
 	if config.Netclient().ProxyEnabled && len(peers) > 0 {
 		peers = peer.SetPeersEndpointToProxy(peers)
-	}
-	if !config.Netclient().ProxyEnabled {
+	} else if !config.Netclient().ProxyEnabled && len(peers) > 0 {
 		for i := range peers {
 			peer := peers[i]
 			if checkForBetterEndpoint(&peer) {
@@ -119,7 +120,7 @@ func apply(c *wgtypes.Config) error {
 // returns if better endpoint has been calculated for this peer already
 // if so sets it and returns true
 func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
-	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok {
+	if endpoint, ok := cache.EndpointCache.Load(fmt.Sprintf("%v", sha1.Sum([]byte(peer.PublicKey.String())))); ok {
 		peer.Endpoint.IP = net.ParseIP(endpoint.(cache.EndpointCacheValue).Endpoint.String())
 		return ok
 	}

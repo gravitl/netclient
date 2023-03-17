@@ -24,17 +24,16 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 		return err
 	}
 	c, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", reqAddr, proxyPort), reqTimeout)
-	if err != nil { // TODO: change verbosity for timeouts (probably frequent)
+	if err != nil {
 		return err
 	}
 	defer c.Close()
 	sentTime := time.Now().UnixMilli()
-	hsha1 := sha1.Sum([]byte(currentHostPubKey))
 	msg := bestIfaceMsg{
-		Hash:      string(hsha1[:]),
+		Hash:      fmt.Sprintf("%v", sha1.Sum([]byte(currentHostPubKey))),
 		TimeStamp: sentTime,
 	}
-	reqData, err := json.Marshal(msg)
+	reqData, err := json.Marshal(&msg)
 	if err != nil {
 		return err
 	}
@@ -53,7 +52,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 	latency := time.Now().UnixMilli() - sentTime
 	response := string(buf[:numBytes])
 	if response == messages.Success { // found new best interface, save it
-		if err = storeNewPeerIface(peerPubKey, peerAddr, time.Duration(latency)); err != nil {
+		if err = storeNewPeerIface(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))), peerAddr, time.Duration(latency)); err != nil {
 			return err
 		}
 	}
