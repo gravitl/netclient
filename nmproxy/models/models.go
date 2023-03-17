@@ -74,14 +74,6 @@ func ConvPeerKeyToHash(peerKey string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
 }
 
-// IsPublicIP indicates whether IP is public or not.
-func IsPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return false
-	}
-	return true
-}
-
 // Settings - struct for host settings
 type Settings struct {
 	IsRelay          bool

@@ -47,14 +47,9 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		case <-ticker.C:
 			for server, mqclient := range ServerSet {
-				if !mqclient.IsConnected() {
+				mqclient := mqclient
+				if mqclient == nil || !mqclient.IsConnected() {
 					logger.Log(0, "MQ client is not connected, skipping checkin for server", server)
-					continue
-				}
-			}
-			for server, mqclient := range ServerSet {
-				if mqclient == nil {
-					logger.Log(0, "MQ client is not configured, skipping checkin for server", server)
 					continue
 				}
 			}
@@ -64,41 +59,67 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func checkin() {
-
-	host := config.Netclient()
 	//should not be required
-	config.ReadNodeConfig()
-	config.ReadServerConf()
+	_ = config.ReadNodeConfig()
+	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s) for all networks")
-	for network, node := range config.GetNodes() {
+	var (
+		publicIP         string
+		err              error
+		shouldUpdateHost bool
+	)
+	for _, node := range config.GetNodes() {
+		node := node
 		server := config.GetServer(node.Server)
-		if node.Connected {
+		if node.Connected && len(publicIP) == 0 {
 			if !config.Netclient().IsStatic {
-				extIP, err := ncutils.GetPublicIP(server.API)
+				publicIP, err = ncutils.GetPublicIP(server.API)
 				if err != nil {
 					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
 				}
-				if config.Netclient().EndpointIP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", network, "endpoint has changed from ", config.Netclient().EndpointIP.String(), " to ", extIP)
-					config.Netclient().EndpointIP = net.ParseIP(extIP)
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", network, "could not publish endpoint change")
-					}
+				if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
+					logger.Log(1, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
+					config.Netclient().EndpointIP = net.ParseIP(publicIP)
+					shouldUpdateHost = true
 				}
 			}
 		}
-		//check version
-		//if node.Version != ncutils.Version {
-		//node.Version = ncutils.Version
-		//config.Write(&nodeCfg, nodeCfg.Network)
-		//}
-		Hello(&node)
 		if server.Is_EE && node.Connected {
-			logger.Log(0, "collecting metrics for node", host.Name)
+			logger.Log(0, "collecting metrics for network", node.Network)
 			publishMetrics(&node)
 		}
 	}
-	_ = UpdateHostSettings()
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
+	} else {
+		if ip != nil {
+			if len(*ip) != len(config.Netclient().Interfaces) {
+				config.Netclient().Interfaces = *ip
+			}
+		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		if defaultInterface != config.Netclient().DefaultInterface {
+			shouldUpdateHost = true
+			config.Netclient().DefaultInterface = defaultInterface
+		}
+	}
+
+	if shouldUpdateHost {
+		if err = UpdateHostSettings(); err != nil {
+			logger.Log(0, "failed to update host settings -", err.Error())
+			return
+		}
+	}
+
+	if err = PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
+		logger.Log(0, "failed to check-in", err.Error())
+	}
+
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -155,41 +176,6 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 		return err
 	}
 	return nil
-}
-
-// Hello -- ping the broker to let server know node it's alive and well
-func Hello(node *config.Node) {
-	var checkin models.NodeCheckin
-	checkin.Version = config.Version
-	checkin.Connected = node.Connected
-	ip, err := getInterfaces()
-	if err != nil {
-		logger.Log(0, "failed to retrieve local interfaces", err.Error())
-	} else {
-		// just in case getInterfaces() returned nil, nil
-		if ip != nil {
-			config.Netclient().Interfaces = *ip
-			if err := config.WriteNodeConfig(); err != nil {
-				logger.Log(0, "error saving node map", err.Error())
-			}
-		}
-	}
-	checkin.Ifaces = config.Netclient().Interfaces
-	data, err := json.Marshal(checkin)
-	if err != nil {
-		logger.Log(0, "unable to marshal checkin data", err.Error())
-		return
-	}
-	if err := publish(node.Server, fmt.Sprintf("ping/%s", node.ID), data, 0); err != nil {
-		logger.Log(0, fmt.Sprintf("Network: %s error publishing ping, %v", node.Network, err))
-		logger.Log(0, "running pull on "+node.Network+" to reconnect")
-		_, err := Pull(node.Network, true)
-		if err != nil {
-			logger.Log(0, "could not run pull on "+node.Network+", error: "+err.Error())
-		}
-	} else {
-		logger.Log(3, "checkin for", node.Network, "complete")
-	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
