@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
@@ -156,7 +157,11 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			metric.NodeConnectionStatus = make(map[string]bool)
 			connectionStatus := proxy.PeerConnectionStatus(peer.PublicKey.String())
 			var proxyListenPort int
+			var isExtClient bool
 			for peerID, peerInfo := range peerIDMap {
+				if peerID == peer.PublicKey.String() {
+					isExtClient = true
+				}
 				proxyListenPort = peerInfo.ProxyListenPort
 				metric.NodeConnectionStatus[peerID] = connectionStatus
 			}
@@ -167,7 +172,13 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
 			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
+			if isExtClient {
+				metric.LastRecordedLatency = common.GetLatencyForPeerViaPinger(peer.AllowedIPs[0].IP.String())
+			}
 			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
+			if isExtClient {
+				continue
+			}
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
 			if err == nil {
 				conn := config.GetCfg().GetServerConn()

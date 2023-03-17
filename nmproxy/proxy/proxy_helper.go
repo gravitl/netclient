@@ -152,7 +152,7 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 			return
 		case <-ticker.C:
 			peerConnCfg := models.Conn{}
-			if p.Config.ProxyStatus {
+			if p.Config.ProxyStatus || p.Config.IsExtClient {
 				peerConnCfg, _ = config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
 			} else {
 				peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
@@ -169,9 +169,16 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 				for peerID := range peerIDsAndAddrs {
 					metric.NodeConnectionStatus[peerID] = connectionStatus
 				}
+				if peerConnCfg.IsExtClient {
+					metric.LastRecordedLatency = common.GetLatencyForPeerViaPinger(peerConnCfg.Config.PeerConf.AllowedIPs[0].IP.String())
+					logger.Log(0, "------> LAST RECORED LATENCY FOR EXT CLIENT: ", fmt.Sprint(metric.LastRecordedLatency))
+				}
 				metrics.UpdateMetric(server, p.Config.PeerPublicKey.String(), &metric)
 			}
-
+			if peerConnCfg.IsExtClient {
+				// skip sending metric pkt for an ext cleint.
+				continue
+			}
 			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), p.Config.PeerPublicKey)
 			if err == nil {
 				logger.Log(3, "-----------> Sending metric packet to: ", proxyConn.String())
