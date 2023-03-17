@@ -7,7 +7,7 @@ import (
 // reqTimeout - five seconds for client request to happen
 const (
 	reqTimeout               = time.Second * 5
-	latencyVarianceThreshold = 5
+	latencyVarianceThreshold = 3
 )
 
 // messages to hande client/server comms
