@@ -1,6 +1,7 @@
 package networking
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"net"
 	"net/netip"
@@ -12,7 +13,7 @@ import (
 )
 
 // FindBestEndpoint - requests against a given addr and port
-func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey, serverName string, proxyPort int) error {
+func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort int) error {
 	peerAddr, err := netip.ParseAddr(reqAddr) // begin validate
 	if err != nil {
 		return err
@@ -23,18 +24,15 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey, serverName string,
 	if _, err = wgtypes.ParseKey(currentHostPubKey); err != nil {
 		return err
 	}
-	if len(serverName) == 0 {
-		return fmt.Errorf("no server provided")
-	} // end validate
 	c, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", reqAddr, proxyPort), reqTimeout)
 	if err != nil { // TODO: change verbosity for timeouts (probably frequent)
 		return err
 	}
 	defer c.Close()
 	sentTime := time.Now().UnixMilli()
+	hsha1 := sha1.Sum([]byte(currentHostPubKey))
 	msg := strings.Join([]string{
-		currentHostPubKey,
-		serverName,
+		string(hsha1[:]),
 		strconv.Itoa(int(sentTime)),
 	}, messages.Delimiter)
 	_, err = c.Write([]byte(msg))
@@ -52,7 +50,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey, serverName string,
 	latency := time.Now().UnixMilli() - sentTime
 	response := string(buf[:numBytes])
 	if response == messages.Success { // found new best interface, save it
-		if err = storeNewPeerIface(peerPubKey, serverName, peerAddr, time.Duration(latency)); err != nil {
+		if err = storeNewPeerIface(peerPubKey, peerAddr, time.Duration(latency)); err != nil {
 			return err
 		}
 	}

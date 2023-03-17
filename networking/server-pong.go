@@ -2,6 +2,7 @@ package networking
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"net"
 	"net/netip"
@@ -59,20 +60,15 @@ func handleRequest(c net.Conn) {
 	}
 	recvTime := time.Now().UnixMilli() // get the time received message
 	parts := strings.Split(string(buffer[:numBytes]), messages.Delimiter)
-	if len(parts) == 3 { // publickey + time
-		pubKey := parts[0]
+	if len(parts) == 2 { // publickeyhash + time
+		pubKeyHash := parts[0]
 		currenHostPubKey := config.Netclient().PublicKey.String()
-		if pubKey == currenHostPubKey {
+		currentHostPubKeyHash := sha1.Sum([]byte(currenHostPubKey))
+		if pubKeyHash == string(currentHostPubKeyHash[:]) {
 			sendError(c)
 			return
 		}
-		serverName := parts[1]
-		timeString := parts[2]
-		_, err := wgtypes.ParseKey(pubKey)
-		if err != nil {
-			sendError(c)
-			return
-		}
+		timeString := parts[1]
 		sentTime, err := strconv.Atoi(timeString)
 		if err != nil {
 			sendError(c)
@@ -81,9 +77,9 @@ func handleRequest(c net.Conn) {
 		addrInfo, err := netip.ParseAddrPort(c.RemoteAddr().String())
 		if err == nil {
 			endpoint := addrInfo.Addr()
-			latency := time.Duration(recvTime - int64(sentTime))
+			latency := time.Duration(recvTime-int64(sentTime)) + latencyVarianceThreshold
 			var foundNewIface bool
-			bestIface, ok := cache.EndpointCache.Load(pubKey)
+			bestIface, ok := cache.EndpointCache.Load(pubKeyHash)
 			if ok { // check if iface already exists
 				if bestIface.(cache.EndpointCacheValue).Latency > latency { // replace it since new one is faster
 					foundNewIface = true
@@ -93,10 +89,10 @@ func handleRequest(c net.Conn) {
 			}
 			if foundNewIface { // iface not detected/calculated for peer, so set it
 				if err = sendSuccess(c); err != nil {
-					logger.Log(0, "failed to notify peer of new endpoint", pubKey)
+					logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
 				} else {
-					if err = storeNewPeerIface(pubKey, serverName, endpoint, latency); err != nil {
-						logger.Log(0, "failed to store best endpoint for peer", pubKey, err.Error())
+					if err = storeNewPeerIface(pubKeyHash, endpoint, latency); err != nil {
+						logger.Log(0, "failed to store best endpoint for peer", pubKeyHash, err.Error())
 					}
 					return
 				}
@@ -113,12 +109,12 @@ func sendError(c net.Conn) {
 	}
 }
 
-func storeNewPeerIface(clientPubKey, serverName string, endpoint netip.Addr, latency time.Duration) error {
+func storeNewPeerIface(clientPubKey string, endpoint netip.Addr, latency time.Duration) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Latency:  latency,
 		Endpoint: endpoint,
 	}
-	if err := setPeerEndpoint(clientPubKey, serverName, newIfaceValue); err != nil {
+	if err := setPeerEndpoint(clientPubKey, newIfaceValue); err != nil {
 		return err
 	}
 
@@ -126,16 +122,13 @@ func storeNewPeerIface(clientPubKey, serverName string, endpoint netip.Addr, lat
 	return nil
 }
 
-func setPeerEndpoint(publicKey, serverName string, value cache.EndpointCacheValue) error {
+func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error {
 
-	currentServerPeers, ok := config.Netclient().HostPeers[serverName] // get current server peers
-	if !ok {
-		return fmt.Errorf("no peers found")
-	}
-
+	currentServerPeers := config.GetHostPeerList()
 	for i := range currentServerPeers {
 		currPeer := currentServerPeers[i]
-		if currPeer.PublicKey.String() == publicKey { // filter for current peer to overwrite endpoint
+		peerPubkeyHash := sha1.Sum([]byte(currPeer.PublicKey.String()))
+		if string(peerPubkeyHash[:]) == publicKeyHash { // filter for current peer to overwrite endpoint
 			peerPort := currPeer.Endpoint.Port
 			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(value.Endpoint, uint16(peerPort)))
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())

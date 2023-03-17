@@ -174,7 +174,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerAddr := peerIface.Address.IP.String()
-				if strings.Contains(peerAddr, "127.0.0.") {
+				if strings.Contains(peerAddr, "127.0.0.") ||
+					peerUpdate.Peers[idx].Endpoint.IP.String() == peerAddr {
 					continue
 				}
 				if err = networking.FindBestEndpoint(
