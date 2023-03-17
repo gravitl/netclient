@@ -2,11 +2,10 @@ package networking
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/netip"
-	"strconv"
-	"strings"
 	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -31,11 +30,15 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 	defer c.Close()
 	sentTime := time.Now().UnixMilli()
 	hsha1 := sha1.Sum([]byte(currentHostPubKey))
-	msg := strings.Join([]string{
-		string(hsha1[:]),
-		strconv.Itoa(int(sentTime)),
-	}, messages.Delimiter)
-	_, err = c.Write([]byte(msg))
+	msg := bestIfaceMsg{
+		Hash:      string(hsha1[:]),
+		TimeStamp: sentTime,
+	}
+	reqData, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	_, err = c.Write(reqData)
 	if err != nil {
 		return err
 	}

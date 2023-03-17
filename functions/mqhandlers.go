@@ -166,35 +166,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
-	hostPubKey := config.Netclient().PublicKey.String()
-	// select best interface for each peer and set it as endpoint
-	for idx := range peerUpdate.Peers {
-		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
-		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
-			for i := range peerInfo.Interfaces {
-				peerIface := peerInfo.Interfaces[i]
-				peerAddr := peerIface.Address.IP.String()
-				if strings.Contains(peerAddr, "127.0.0.") ||
-					peerUpdate.Peers[idx].Endpoint.IP.String() == peerAddr {
-					continue
-				}
-				if err = networking.FindBestEndpoint(
-					peerAddr,
-					hostPubKey,
-					peerPubKey,
-					serverName,
-					peerInfo.ProxyListenPort,
-				); err != nil { // happens v often
-					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
-				}
-			}
-		}
-	}
 
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
 	} else {
+		handleEndpointDetection(&peerUpdate)
 		peerUpdate.ProxyUpdate.Action = models.NoProxy
 	}
 	peerUpdate.ProxyUpdate.Server = serverName
@@ -287,7 +264,32 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetPeers()
 	}
+}
 
+func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
+	hostPubKey := config.Netclient().PublicKey.String()
+	// select best interface for each peer and set it as endpoint
+	for idx := range peerUpdate.Peers {
+		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
+		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+			for i := range peerInfo.Interfaces {
+				peerIface := peerInfo.Interfaces[i]
+				peerAddr := peerIface.Address.IP.String()
+				if strings.Contains(peerAddr, "127.0.0.") ||
+					peerUpdate.Peers[idx].Endpoint.IP.String() == peerAddr {
+					continue
+				}
+				if err := networking.FindBestEndpoint(
+					peerAddr,
+					hostPubKey,
+					peerPubKey,
+					peerInfo.ProxyListenPort,
+				); err != nil { // happens v often
+					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
+				}
+			}
+		}
+	}
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {

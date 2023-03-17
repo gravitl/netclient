@@ -12,11 +12,15 @@ const (
 
 // messages to hande client/server comms
 var messages = struct {
-	Wrong     string
-	Delimiter string
-	Success   string
+	Wrong   string
+	Success string
 }{
-	Wrong:     "WRONG",
-	Delimiter: "(#)",
-	Success:   "PONG",
+	Wrong:   "WRONG",
+	Success: "PONG",
+}
+
+// the type to send between client + server for local address detection
+type bestIfaceMsg struct {
+	Hash      string `json:"hash"`
+	TimeStamp int64  `json:"time_stamp"`
 }

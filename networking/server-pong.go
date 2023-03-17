@@ -3,11 +3,10 @@ package networking
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/netip"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -59,21 +58,21 @@ func handleRequest(c net.Conn) {
 		return
 	}
 	recvTime := time.Now().UnixMilli() // get the time received message
-	parts := strings.Split(string(buffer[:numBytes]), messages.Delimiter)
-	if len(parts) == 2 { // publickeyhash + time
-		pubKeyHash := parts[0]
+	var request bestIfaceMsg
+	if err = json.Unmarshal(buffer[:numBytes], &request); err != nil {
+		sendError(c)
+		return
+	}
+
+	if len(request.Hash) > 0 { // publickeyhash + time
+		pubKeyHash := request.Hash
 		currenHostPubKey := config.Netclient().PublicKey.String()
 		currentHostPubKeyHash := sha1.Sum([]byte(currenHostPubKey))
 		if pubKeyHash == string(currentHostPubKeyHash[:]) {
 			sendError(c)
 			return
 		}
-		timeString := parts[1]
-		sentTime, err := strconv.Atoi(timeString)
-		if err != nil {
-			sendError(c)
-			return
-		}
+		sentTime := request.TimeStamp
 		addrInfo, err := netip.ParseAddrPort(c.RemoteAddr().String())
 		if err == nil {
 			endpoint := addrInfo.Addr()

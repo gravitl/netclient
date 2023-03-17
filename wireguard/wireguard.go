@@ -20,10 +20,12 @@ func SetPeers() error {
 	if config.Netclient().ProxyEnabled && len(peers) > 0 {
 		peers = peer.SetPeersEndpointToProxy(peers)
 	}
-	for i := range peers {
-		peer := peers[i]
-		if checkForBetterEndpoint(&peer) {
-			peers[i] = peer
+	if !config.Netclient().ProxyEnabled {
+		for i := range peers {
+			peer := peers[i]
+			if checkForBetterEndpoint(&peer) {
+				peers[i] = peer
+			}
 		}
 	}
 	config := wgtypes.Config{
