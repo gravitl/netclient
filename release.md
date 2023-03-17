@@ -1,24 +1,18 @@
 # Netclient v0.18.4
 
 ## Whats New
+- Client will automatically clean up servers/nodes if it detects attempted unauthorized access against a server
+- Default proxy mode (propogated from server)
 
 ## What's Fixed
-- More efficient Windows daemon handling
-- Better peer route setting on clients
-- Some commands involving the message queue on client have been fixed
-- NFTables masquerading issue
-- Some logging has been adjusted
-- Migrations on Linux work for 0.17.x - 0.18.3
-- Registration by enrollment key on client GUI
-- 
+- Interface data collected on registration
+- Bug around relay calculations fixed
+- Potential nil pointer addressed
+- Migration reworked
+- Metric collection fixed between nodes
 ## known issues
-- Network interface routes may be removed after sometime/unintended network update
-- Caddy does not handle netmaker exporter well for EE
-- Incorrect latency on metrics (EE)
-- Swagger docs not up to date
-- Lengthy delay when you create an ext client
-- issues connecting over IPv6 on Macs
-- Nodes on same local network may not always connect
-- Netclient GUI shows egress range(s) twice
-- DNS entries are not sent after registration with EnrollmentKeys
-- If you do NOT set STUN_LIST on server, it could lead to strange behavior on client
+- Incorrect metrics against ext clients
+- Host ListenPorts set to 0 after migration from 0.17.1 -> 0.18.4
+- Mac IPv6 addresses/route issues
+- Docker client can not re-join after complete deletion
+
