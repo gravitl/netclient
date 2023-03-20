@@ -121,7 +121,7 @@ function Networks() {
                 component={Link}
                 size="medium"
                 style={{ marginLeft: "2rem" }}
-                to={AppRoutes.LOGIN_OPTIONS_ROUTE}
+                to={AppRoutes.TOKEN_LOGIN_ROUTE}
                 data-testid="add-network-btn"
               >
                 Add New
