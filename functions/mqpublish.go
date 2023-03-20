@@ -132,7 +132,7 @@ func PublishNodeUpdate(node *config.Node) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(node.Server, fmt.Sprintf("update/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("update/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		return err
 	}
 
@@ -153,7 +153,7 @@ func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
 		return err
 	}
 	for _, server := range servers {
-		if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
+		if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
 			logger.Log(1, "failed to publish host update to: ", server, err.Error())
 			continue
 		}
@@ -172,7 +172,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
 		return err
 	}
 	return nil
@@ -218,7 +218,7 @@ func publishMetrics(node *config.Node) {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
 	}
 
-	if err = publish(node.Server, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 		logger.Log(0, "aggregating metrics locally until broker connection re-established")
 		val, ok := metricsCache.Load(node.ID)
@@ -343,7 +343,7 @@ func UpdateHostSettings() error {
 
 // publishes a message to server to update peers on this peer's behalf
 func publishSignal(node *config.Node, signal byte) error {
-	if err := publish(node.Server, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
+	if err := publish(node.Server, fmt.Sprintf("signal/%s/%s", node.Server, node.ID), []byte{signal}, 1); err != nil {
 		return err
 	}
 	return nil
