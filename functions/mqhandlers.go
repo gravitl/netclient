@@ -141,7 +141,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
-		if versionLessThan(config.Version, peerUpdate.ServerVersion) {
+		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
 				logger.Log(0, "error updating client to server's version", err.Error())
 			} else {

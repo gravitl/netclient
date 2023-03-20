@@ -327,7 +327,7 @@ func JoinNetwork(flags *viper.Viper) (*config.Node, *config.Server, error) {
 	fmt.Println("checking for version compatibility ", joinResponse.ServerConfig.Version)
 	if !IsVersionComptatible(joinResponse.ServerConfig.Version) {
 		logger.Log(1, "server/client version mismatch, trying to update to server version: ", joinResponse.ServerConfig.Version)
-		if versionLessThan(config.Version, joinResponse.ServerConfig.Version) {
+		if versionLessThan(config.Version, joinResponse.ServerConfig.Version) && joinResponse.Host.AutoUpdate {
 			if err := UseVersion(joinResponse.ServerConfig.Version, true); err != nil {
 				return nil, nil, err
 			}
