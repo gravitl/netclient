@@ -17,13 +17,8 @@ import (
 
 // App.GoJoinNetworkByToken joins a network with the given token
 func (app *App) GoJoinNetworkByToken(token string) (any, error) {
-	// setup flag
-	flags := viper.New()
-	flags.Set("token", token)
-	flags.Set("server", "")
-
-	config.InitConfig(flags)
-	err := functions.Join(flags)
+	config.InitConfig(viper.New())
+	err := functions.Register(token)
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
@@ -117,41 +112,6 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 		serverNames = append(serverNames, name)
 	}
 	return serverNames, nil
-}
-
-// App.GoJoinNetworkBySso joins a network by SSO
-func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) {
-	flags := viper.New()
-	flags.Set("server", serverName)
-	flags.Set("network", networkName)
-
-	config.InitConfig(flags)
-	err := functions.Join(flags)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-// App.GoJoinNetworkByBasicAuth joins a network by basic auth
-func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
-	flags := viper.New()
-	flags.Set("server", serverName)
-	flags.Set("user", username)
-	flags.Set("network", networkName)
-	flags.Set("readPassFromStdIn", false)
-	flags.Set("pass", password)
-
-	config.InitConfig(flags)
-	err := functions.Join(flags)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	return nil, nil
 }
 
 // App.GoUninstall uninstalls netclient form the machine
