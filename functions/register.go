@@ -30,6 +30,21 @@ func Register(token string) error {
 		logger.FatalLog("could not read enrollment token")
 	}
 	host := config.Netclient()
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces", err.Error())
+	} else {
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			host.Interfaces = *ip
+		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		host.DefaultInterface = defaultInterface
+	}
 	shouldUpdateHost, err := doubleCheck(host, serverData.Server)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
@@ -57,15 +72,7 @@ func Register(token string) error {
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	if registerResponse.RequestedHost.ListenPort > 0 {
-		config.Netclient().ListenPort = registerResponse.RequestedHost.ListenPort
-	}
-	if registerResponse.RequestedHost.ProxyListenPort > 0 {
-		config.Netclient().ProxyListenPort = registerResponse.RequestedHost.ProxyListenPort
-	}
-	if err := config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error saving netclient config", err.Error())
-	}
+	config.UpdateHost(&registerResponse.RequestedHost)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
