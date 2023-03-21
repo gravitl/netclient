@@ -87,7 +87,7 @@ jobs:
             git switch release_${{ github.event.inputs.version }}
             git restore .
             git pull
-            go build -tags headless .
+            go build .
       - name: setup ssh
         run: |
           mkdir -p ~/.ssh/
@@ -131,7 +131,7 @@ jobs:
           cd gui/frontend
           npm ci
           npm run build
-          cd ../..
+          cd ..
           go generate
           go build -tags desktop,production -ldflags "-w -s -H windowsgui"
       - name: upload windows to release
