@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
@@ -140,6 +141,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
+	wg.Add(1)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
