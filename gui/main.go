@@ -1,5 +1,3 @@
-//go:build !headless
-
 package main
 
 import (
@@ -7,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
-	app "github.com/gravitl/netclient/gui"
 	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -16,26 +13,26 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
-//go:embed all:gui/frontend/dist
+//go:embed all:frontend/dist
+//go:embed appicon.png
+
 var assets embed.FS
 
-var appIcon = app.GetFileAsBytes("./build/appicon.png")
+var appIcon = GetFileAsBytes(".appicon.png")
 
-func init() {
-	guiFunc = setupNetclientGui
-}
+var version = "v0.18.4"
 
-func setupNetclientGui() {
+func main() {
 	flags := viper.New()
 	config.InitConfig(flags)
 	config.SetVersion(version)
 	fmt.Printf("wails: netclient version set to: %s\n", version)
 
 	// Create an instance of the guiApp structure
-	guiApp := app.NewApp()
+	guiApp := NewApp()
 
 	// Application menu
-	appMenu := app.GetAppMenu(guiApp)
+	appMenu := GetAppMenu(guiApp)
 
 	// Application options
 	appOptions := &options.App{

@@ -1,5 +1,5 @@
 // This file contains methods intended to be called in frontend
-package gui
+package main
 
 import (
 	"errors"
