@@ -97,7 +97,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	wireguard.SetPeers()
 	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
-
 		logger.Log(0, "error updating wireguard config "+err.Error())
 		return
 	}
@@ -154,14 +153,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	_, err = wireguard.UpdateWgPeers(peerUpdate.Peers)
+
+	config.UpdateHostPeers(serverName, peerUpdate.Peers)
+	_, err = wireguard.UpdateWgPeers()
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
-
-	config.UpdateHostPeers(serverName, peerUpdate.Peers)
-	config.WriteNetclientConfig()
+	_ = config.WriteNetclientConfig()
 	wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)

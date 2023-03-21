@@ -124,11 +124,31 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 	return
 }
 
-// UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
+// OverwriteHostPeers - overwrites the host peer map in the netclient config
+func OverwriteHostPeers(server string, peers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
 		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
+	}
+	hostPeerMap[server] = peers
+	netclient.HostPeers = hostPeerMap
+}
+
+// UpdateHostPeers - updates the current peers list for given server
+func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
+	hostPeerMap := netclient.HostPeers
+	if hostPeerMap == nil {
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, len(peers))
+	}
+	currentPeers := hostPeerMap[server]
+	for i := range currentPeers {
+		currPeer := currentPeers[i]
+		for j := range peers {
+			newPeer := peers[j]
+			if currPeer.PublicKey.String() == newPeer.PublicKey.String() {
+				currentPeers[i] = newPeer // replace existing peer
+			}
+		}
 	}
 	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
