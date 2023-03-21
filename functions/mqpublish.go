@@ -59,64 +59,13 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func checkin() {
-	//should not be required
-	_ = config.ReadNodeConfig()
-	_ = config.ReadServerConf()
-	logger.Log(3, "checkin with server(s) for all networks")
-	var (
-		publicIP         string
-		err              error
-		shouldUpdateHost bool
-	)
-	for _, node := range config.GetNodes() {
-		node := node
-		server := config.GetServer(node.Server)
-		if node.Connected && len(publicIP) == 0 {
-			if !config.Netclient().IsStatic {
-				publicIP, err = ncutils.GetPublicIP(server.API)
-				if err != nil {
-					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-				}
-				if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
-					logger.Log(1, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
-					config.Netclient().EndpointIP = net.ParseIP(publicIP)
-					shouldUpdateHost = true
-				}
-			}
-		}
-		if server.Is_EE && node.Connected {
-			logger.Log(0, "collecting metrics for network", node.Network)
-			publishMetrics(&node)
-		}
-	}
-	ip, err := getInterfaces()
-	if err != nil {
-		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
-	} else {
-		if ip != nil {
-			if len(*ip) != len(config.Netclient().Interfaces) {
-				config.Netclient().Interfaces = *ip
-			}
-		}
-	}
-	defaultInterface, err := getDefaultInterface()
-	if err != nil {
-		logger.Log(0, "default gateway not found", err.Error())
-	} else {
-		if defaultInterface != config.Netclient().DefaultInterface {
-			shouldUpdateHost = true
-			config.Netclient().DefaultInterface = defaultInterface
-		}
+
+	if err := UpdateHostSettings(); err != nil {
+		logger.Log(0, "failed to update host settings -", err.Error())
+		return
 	}
 
-	if shouldUpdateHost {
-		if err = UpdateHostSettings(); err != nil {
-			logger.Log(0, "failed to update host settings -", err.Error())
-			return
-		}
-	}
-
-	if err = PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
+	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
 		logger.Log(0, "failed to check-in", err.Error())
 	}
 
@@ -285,8 +234,36 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 
 // UpdateHostSettings - checks local host settings, if different, mod config and publish
 func UpdateHostSettings() error {
-	var err error
-	publishMsg := false
+	_ = config.ReadNodeConfig()
+	_ = config.ReadServerConf()
+	logger.Log(3, "checkin with server(s)")
+	var (
+		publicIP   string
+		err        error
+		publishMsg bool
+	)
+	for _, node := range config.GetNodes() {
+		node := node
+		server := config.GetServer(node.Server)
+		if node.Connected && len(publicIP) == 0 { // only run this until IP is found
+			if !config.Netclient().IsStatic {
+				publicIP, err = ncutils.GetPublicIP(server.API)
+				if err != nil {
+					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
+				}
+				if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
+					logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
+					config.Netclient().EndpointIP = net.ParseIP(publicIP)
+					publishMsg = true
+				}
+			}
+		}
+		if server.Is_EE && node.Connected {
+			logger.Log(0, "collecting metrics for network", node.Network)
+			publishMetrics(&node)
+		}
+	}
+
 	ifacename := ncutils.GetInterfaceName()
 	var proxylistenPort int
 	var proxypublicport int
@@ -327,6 +304,26 @@ func UpdateHostSettings() error {
 		proxyCfg.SetNatAutoSwitch()
 		config.Netclient().ProxyEnabled = true
 		publishMsg = true
+	}
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
+	} else {
+		if ip != nil {
+			if len(*ip) != len(config.Netclient().Interfaces) {
+				config.Netclient().Interfaces = *ip
+				publishMsg = true
+			}
+		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		if defaultInterface != config.Netclient().DefaultInterface {
+			publishMsg = true
+			config.Netclient().DefaultInterface = defaultInterface
+		}
 	}
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {
