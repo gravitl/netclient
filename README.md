@@ -67,7 +67,7 @@ Available Commands:
 Flags:
       --config string   use specified config file
   -h, --help            help for netclient
-  -v, --verbosity int   set loggin verbosity 0-4
+  -v, --verbosity int   set logging verbosity 0-4
 
 Use "netclient [command] --help" for more information about a command.
 ```
