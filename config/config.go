@@ -118,7 +118,6 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 				peerMap[peerI.PublicKey.String()] = i
 				allPeers = append(allPeers, peerI)
 			}
-
 		}
 	}
 	return
@@ -128,7 +127,7 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 func OverwriteHostPeers(server string, peers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
-		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
 	}
 	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
@@ -138,20 +137,45 @@ func OverwriteHostPeers(server string, peers []wgtypes.PeerConfig) {
 func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
-		hostPeerMap = make(map[string][]wgtypes.PeerConfig, len(peers))
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
 	}
 	currentPeers := hostPeerMap[server]
-	for i := range currentPeers {
-		currPeer := currentPeers[i]
-		for j := range peers {
-			newPeer := peers[j]
+	for i := range peers {
+		newPeer := peers[i]
+		var foundPeer bool
+		for j := range currentPeers {
+			currPeer := currentPeers[j]
 			if currPeer.PublicKey.String() == newPeer.PublicKey.String() {
-				currentPeers[i] = newPeer // replace existing peer
+				currentPeers[j] = newPeer // replace existing peer
+				foundPeer = true
 			}
 		}
+		if !foundPeer {
+			currentPeers = append(currentPeers, newPeer)
+		}
 	}
-	hostPeerMap[server] = peers
+	hostPeerMap[server] = currentPeers
 	netclient.HostPeers = hostPeerMap
+}
+
+// CleanPeers - removes any peers that have remove flag set to true
+func CleanPeers(server string) {
+	hostPeerMap := netclient.HostPeers
+	if hostPeerMap == nil {
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
+	}
+	currentPeers := hostPeerMap[server]
+	filteredPeers := []wgtypes.PeerConfig{}
+	for j := range currentPeers {
+		currPeer := currentPeers[j]
+		if !currPeer.Remove {
+			filteredPeers = append(filteredPeers, currPeer)
+		}
+	}
+	if len(filteredPeers) != len(currentPeers) {
+		hostPeerMap[server] = filteredPeers
+		netclient.HostPeers = hostPeerMap
+	}
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
