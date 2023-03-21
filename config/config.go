@@ -474,7 +474,11 @@ func CheckConfig() {
 		}
 		netclient.MacAddress = mac[0]
 		if runtime.GOOS == "darwin" && netclient.MacAddress.String() == "ac:de:48:00:11:22" {
-			netclient.MacAddress = ncutils.RandomMacAddress()
+			if len(mac) > 1 {
+				netclient.MacAddress = mac[1]
+			} else {
+				netclient.MacAddress = ncutils.RandomMacAddress()
+			}
 		}
 		saveRequired = true
 	}
