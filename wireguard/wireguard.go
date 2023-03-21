@@ -17,17 +17,17 @@ import (
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers() error {
+
 	peers := config.GetHostPeerList()
+	for i := range peers {
+		peer := peers[i]
+		if checkForBetterEndpoint(&peer) {
+			peers[i] = peer
+		}
+	}
 	GetInterface().Config.Peers = peers
 	if config.Netclient().ProxyEnabled && len(peers) > 0 {
 		peers = peer.SetPeersEndpointToProxy(peers)
-	} else if !config.Netclient().ProxyEnabled && len(peers) > 0 {
-		for i := range peers {
-			peer := peers[i]
-			if checkForBetterEndpoint(&peer) {
-				peers[i] = peer
-			}
-		}
 	}
 	config := wgtypes.Config{
 		ReplacePeers: false,

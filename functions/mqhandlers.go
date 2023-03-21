@@ -1,14 +1,17 @@
 package functions
 
 import (
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/networking"
@@ -166,12 +169,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
-
+	handleEndpointDetection(&peerUpdate)
 	if config.Netclient().ProxyEnabled {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
 	} else {
-		handleEndpointDetection(&peerUpdate)
 		peerUpdate.ProxyUpdate.Action = models.NoProxy
 	}
 	peerUpdate.ProxyUpdate.Server = serverName
@@ -286,6 +288,10 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerInfo.ProxyListenPort,
 				); err != nil { // happens v often
 					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
+				}
+				newEndpoint, ok := cache.EndpointCache.Load(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))))
+				if ok {
+					peerUpdate.Peers[idx].Endpoint.IP = net.ParseIP(newEndpoint.(cache.EndpointCacheValue).Endpoint.String())
 				}
 			}
 		}

@@ -134,6 +134,9 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 			peerPort := currPeer.Endpoint.Port
 			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(value.Endpoint, uint16(peerPort)))
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
+			if config.Netclient().ProxyEnabled {
+				return nil
+			}
 			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 				PublicKey:                   currPeer.PublicKey,
 				Endpoint:                    wgEndpoint,
