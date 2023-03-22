@@ -1,4 +1,4 @@
-# Netclient v0.18.4
+# Netclient v0.18.5
 
 ## Whats New
 - Client will automatically clean up servers/nodes if it detects attempted unauthorized access against a server
