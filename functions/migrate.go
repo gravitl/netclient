@@ -29,7 +29,7 @@ func Migrate() {
 		//nothing to migrate ... exiting"
 		return
 	}
-	logger.Log(0, "migration to v0.18.0 started")
+	logger.Log(0, "migration to v0.18 started")
 	networks, err := config.GetSystemNetworks()
 	if err != nil {
 		fmt.Println("error reading network data ", err.Error())
@@ -47,6 +47,12 @@ func Migrate() {
 	var legacyNodes = []models.LegacyNode{}
 	var servers = map[string]struct{}{}
 	var newHost models.Host
+	if config.Netclient().ListenPort == 0 {
+		config.Netclient().ListenPort = 51821
+	}
+	if config.Netclient().ProxyListenPort == 0 {
+		config.Netclient().ProxyListenPort = 51722
+	}
 	for _, network := range networks {
 		logger.Log(0, "migrating", network)
 		cfg, err := config.ReadConfig(network)
@@ -75,7 +81,6 @@ func Migrate() {
 		if err != nil {
 			logger.Log(0, "failed to retrieve local interfaces", err.Error())
 		} else {
-			// just in case getInterfaces() returned nil, nil
 			if ip != nil {
 				newHost.Interfaces = *ip
 			}
@@ -87,6 +92,12 @@ func Migrate() {
 			newHost.DefaultInterface = defaultInterface
 		}
 		wireguard.DeleteOldInterface(oldIface)
+	}
+	if newHost.ListenPort == 0 {
+		newHost.ListenPort = config.Netclient().ListenPort
+	}
+	if newHost.ProxyListenPort == 0 {
+		newHost.ProxyListenPort = config.Netclient().ProxyListenPort
 	}
 	var serversToWrite = []models.ServerConfig{}
 	var hostToWrite *models.Host
@@ -129,7 +140,8 @@ func Migrate() {
 		newHost.ListenPort = migrateResponse.RequestedHost.ListenPort
 		newHost.ProxyListenPort = migrateResponse.RequestedHost.ProxyListenPort
 		if hostToWrite == nil || newHost.ListenPort != hostToWrite.ListenPort {
-			hostToWrite = &newHost
+			config.Netclient().ListenPort = newHost.ListenPort
+			config.Netclient().ProxyListenPort = newHost.ProxyListenPort
 		}
 	}
 
@@ -157,10 +169,15 @@ func Migrate() {
 		}
 	}
 
-	if hostToWrite != nil {
-		if err := config.WriteNetclientConfig(); err != nil {
-			logger.Log(0, "error saving netclient config", err.Error())
-		}
+	if config.Netclient().ListenPort == 0 {
+		config.Netclient().ListenPort = 51821
+	}
+	if config.Netclient().ProxyListenPort == 0 {
+		config.Netclient().ProxyListenPort = 51722
+	}
+
+	if err := config.WriteNetclientConfig(); err != nil {
+		logger.Log(0, "error saving netclient config during migrate", err.Error())
 	}
 
 	_ = daemon.Restart()
