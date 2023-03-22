@@ -6,7 +6,7 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
-  "frontend:dir": "gui/frontend",
+  "frontend:dir": "frontend",
   "appargs": "gui",
   "author": {
     "name": "Netmaker",

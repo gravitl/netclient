@@ -18,7 +18,7 @@ import (
 
 var assets embed.FS
 
-var appIcon = GetFileAsBytes(".appicon.png")
+var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.18.4"
 
