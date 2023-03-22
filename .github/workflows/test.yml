@@ -29,8 +29,7 @@ jobs:
           key: ${{ secrets.TESTING_SSH_KEY }}
           script: |
             cd netclient
-            git switch develop
-            git restore .
+            git switch ${{ github.ref_name }}
             git pull
             go build .
   tests:
