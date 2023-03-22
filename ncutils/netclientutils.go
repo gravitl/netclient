@@ -536,3 +536,21 @@ func GetInterfaceName() string {
 	}
 	return "netmaker"
 }
+
+// RandomMacAddress returns a random macaddress
+func RandomMacAddress() net.HardwareAddr {
+	//var mac net.HardwareAddr
+	buff := make([]byte, 6)
+	if _, err := rand.Read(buff); err != nil {
+		logger.Log(0, "error reading buffer, setting macaddress to zeo value", err.Error())
+		return net.HardwareAddr{}
+	}
+	// Set local bit to ensure no clash with globally administered addresses
+	buff[0] |= 2
+	mac := net.HardwareAddr(buff)
+	if _, err := net.ParseMAC(mac.String()); err != nil {
+		logger.Log(0, "randommac is not valid mac", err.Error())
+		return net.HardwareAddr{}
+	}
+	return mac
+}
