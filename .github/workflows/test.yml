@@ -100,7 +100,7 @@ jobs:
           cd ..
           go build -tags desktop,production -ldflags "-w -s"
 
-  darwin-gui:
+  darwin:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
@@ -113,9 +113,10 @@ jobs:
         with:
           go-version: 1.19
       - run: |
+          CGO_ENABLED=0 go build .
           cd gui
           go install github.com/wailsapp/wails/v2/cmd/wails@latest 
-          ~/go/bin/wails build
+          ~/go/bin/wails build -skipbindings
 
   windows:
     runs-on: windows-latest
@@ -131,6 +132,7 @@ jobs:
           go-version: 1.19
       - name: build gui
         run: |
+          CGO_ENABLED=0 go build .
           cd gui/frontend
           npm ci
           npm run build
