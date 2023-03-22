@@ -75,8 +75,6 @@ jobs:
           go-version: 1.19
       - name: Run static checks
         run: |
-          mkdir gui/frontend/dist
-          touch gui/frontend/dist/index.html
           go install honnef.co/go/tools/cmd/staticcheck@latest
           { ~/go/bin/staticcheck  ./... ; }
 
