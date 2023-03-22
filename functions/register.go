@@ -15,6 +15,8 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/turnclient"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -106,7 +108,12 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 			host.HostPass = ncutils.MakeRandomString(32)
 			shouldUpdateHost = true
 		}
+		if proxyCfg.GetCfg().ShouldUseProxy() {
+			host.TurnRelayAddr = turnclient.AllocatedTurnAddr
+			host.ShouldUseTurn = true
+		}
 		if host.EndpointIP == nil {
+
 			ip, err := ncutils.GetPublicIP(apiServer)
 			if err != nil {
 				return false, err

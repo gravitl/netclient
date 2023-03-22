@@ -14,19 +14,20 @@ import (
 
 // Proxy -  struct for wg proxy
 type Proxy struct {
-	Ctx        context.Context
-	Cancel     context.CancelFunc
-	Config     models.Proxy
-	RemoteConn *net.UDPAddr
-	LocalConn  net.Conn
+	Ctx            context.Context
+	Cancel         context.CancelFunc
+	Config         models.Proxy
+	RemoteConnAddr *net.UDPAddr
+	TurnRelayConn  net.PacketConn
+	LocalConn      net.Conn
 }
 
 // Proxy.Start - starts proxying the peer
 func (p *Proxy) Start() error {
 
 	var err error
-	p.RemoteConn = p.Config.PeerEndpoint
-	logger.Log(0, fmt.Sprintf("----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.PeerPublicKey.String(), p.RemoteConn.String()))
+	p.RemoteConnAddr = p.Config.PeerEndpoint
+	logger.Log(0, fmt.Sprintf("----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.PeerPublicKey.String(), p.RemoteConnAddr.String()))
 	addr, err := GetFreeIp(models.DefaultCIDR, config.GetCfg().GetInterfaceListenPort())
 	if err != nil {
 		logger.Log(1, "Failed to get freeIp: ", err.Error())
@@ -61,7 +62,8 @@ func (p *Proxy) Start() error {
 		return err
 	}
 	p.Config.LocalConnAddr = localAddr
-	p.Config.RemoteConnAddr = p.RemoteConn
+	p.Config.RemoteConnAddr = p.RemoteConnAddr
+	p.TurnRelayConn = p.Config.TurnRelayConn
 	go p.ProxyPeer()
 
 	return nil

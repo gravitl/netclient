@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
+	"github.com/gravitl/netclient/turnclient"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/metrics"
 	nm_models "github.com/gravitl/netmaker/models"
@@ -23,7 +24,7 @@ import (
 // AddNew - adds new peer to proxy config and starts proxying the peer
 func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	isRelayed bool, relayTo *net.UDPAddr) error {
-
+	var err error
 	if peer.PersistentKeepaliveInterval == nil {
 		d := nm_models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
@@ -35,29 +36,43 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		ListenPort:      int(peerConf.PublicListenPort),
 		ProxyListenPort: peerConf.ProxyListenPort,
 		ProxyStatus:     peerConf.Proxy,
+		ShouldUseTurn:   peerConf.ShouldUseTurn,
+		TurnRelayConn:   turnclient.AllocatedTurnAddr,
 	}
 	p := proxy.New(c)
-	peerPort := int(peerConf.PublicListenPort)
-	if peerPort == 0 {
-		peerPort = models.NmProxyPort
-	}
-	if peerConf.IsExtClient || !peerConf.Proxy {
-		peerPort = peer.Endpoint.Port
-
-	}
-	peerEndpointIP := peer.Endpoint.IP
-	if isRelayed {
-		//go server.NmProxyServer.KeepAlive(peer.Endpoint.IP.String(), common.NmProxyPort)
-		if relayTo == nil {
-			return errors.New("relay endpoint is nil")
+	var peerEndpoint *net.UDPAddr
+	if c.ShouldUseTurn {
+		logger.Log(0, "####---------> USING TURN TO TALK WITH PEER: ", peer.PublicKey.String())
+		peerTurnAddr, err := net.ResolveUDPAddr("udp", peerConf.TurnRelayAddr.LocalAddr().String())
+		if err != nil {
+			logger.Log(0, "Failed to resolve turn addr: ", err.Error())
+			return err
 		}
-		peerEndpointIP = relayTo.IP
-		peerPort = relayTo.Port
+		peerEndpoint = peerTurnAddr
+	} else {
+		peerPort := int(peerConf.PublicListenPort)
+		if peerPort == 0 {
+			peerPort = models.NmProxyPort
+		}
+		if peerConf.IsExtClient || !peerConf.Proxy {
+			peerPort = peer.Endpoint.Port
+
+		}
+		peerEndpointIP := peer.Endpoint.IP
+		if isRelayed {
+			//go server.NmProxyServer.KeepAlive(peer.Endpoint.IP.String(), common.NmProxyPort)
+			if relayTo == nil {
+				return errors.New("relay endpoint is nil")
+			}
+			peerEndpointIP = relayTo.IP
+			peerPort = relayTo.Port
+		}
+		peerEndpoint, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerEndpointIP, peerPort))
+		if err != nil {
+			return err
+		}
 	}
-	peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerEndpointIP, peerPort))
-	if err != nil {
-		return err
-	}
+	logger.Log(0, "$$$$$$-----> PEEER ENDPOINT: ", peerEndpoint.String())
 	p.Config.PeerEndpoint = peerEndpoint
 
 	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())

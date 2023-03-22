@@ -47,7 +47,8 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	server := config.GetServer(servers[0])
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunList, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunList, server.TurnDomain, server.TurnPort,
+		config.Netclient().ProxyListenPort)
 	return cancel
 }
 

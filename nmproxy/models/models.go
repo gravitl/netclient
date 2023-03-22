@@ -31,6 +31,8 @@ type Proxy struct {
 	ListenPort      int
 	ProxyListenPort int
 	ProxyStatus     bool
+	ShouldUseTurn   bool
+	TurnRelayConn   net.PacketConn
 }
 
 // Conn is a peer Connection configuration

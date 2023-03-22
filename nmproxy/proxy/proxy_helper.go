@@ -72,9 +72,16 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			}
 
 			logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
+				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConnAddr.String(), srcPeerKeyHash, dstPeerKeyHash))
 
-			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
+			if p.Config.ShouldUseTurn {
+				_, err = p.TurnRelayConn.WriteTo(buf[:n], p.RemoteConnAddr)
+				if err != nil {
+					logger.Log(0, "Failed to send pkt to: ", p.TurnRelayConn.LocalAddr().String(), err.Error())
+				}
+				continue
+			}
+			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConnAddr)
 			if err != nil {
 				logger.Log(1, "Failed to send to remote: ", err.Error())
 			}
@@ -194,10 +201,37 @@ func (p *Proxy) ProxyPeer() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.toRemote(wg)
+
+	if p.Config.ShouldUseTurn {
+		wg.Add(1)
+		go p.toLocal(wg)
+	}
+
 	wg.Add(1)
 	go p.startMetricsThread(wg)
 	wg.Wait()
 
+}
+
+func (p *Proxy) toLocal(wg *sync.WaitGroup) {
+	buf := make([]byte, 65000)
+	defer wg.Done()
+	for {
+		select {
+		case <-p.Ctx.Done():
+			return
+		default:
+			n, _, err := p.TurnRelayConn.ReadFrom(buf)
+			if err != nil {
+				logger.Log(1, "error reading: ", p.TurnRelayConn.LocalAddr().String(), err.Error())
+				continue
+			}
+			_, err = p.LocalConn.Write(buf[:n])
+			if err != nil {
+				logger.Log(0, "failed to  write to localConn: ", p.LocalConn.LocalAddr().String(), err.Error())
+			}
+		}
+	}
 }
 
 // Proxy.updateEndpoint - updates peer endpoint to point to proxy
