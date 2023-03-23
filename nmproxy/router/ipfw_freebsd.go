@@ -44,18 +44,163 @@ func (i *ipfwManager) CreateChains() error {
 	return nil
 }
 
-// ipfwManager.InsertIngressRoutingRules - not implemented
-func (i *ipfwManager) InsertIngressRoutingRules(server string, r models.ExtClientInfo, egressRanges []string) error {
+// ipfwManager.InsertIngressRoutingRules - inserts an iptables rules for an ext. client to the netmaker chain and if enabled, to the nat chain
+func (i *ipfwManager) InsertIngressRoutingRules(server string, extinfo models.ExtClientInfo, egressRanges []string) error {
+	ruleTable := i.FetchRuleTable(server, ingressTable)
+	defer i.SaveRules(server, ingressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	currEgressRangesMap[server] = egressRanges
+	logger.Log(0, "Adding Ingress Rules For Ext. Client: ", extinfo.ExtPeerKey)
+	isIpv4 := isAddrIpv4(extinfo.ExtPeerAddr.String())
+
+	ruleTable[extinfo.ExtPeerKey] = rulesCfg{
+		isIpv4:   isIpv4,
+		rulesMap: make(map[string][]ruleInfo),
+	}
+	ruleSpec := []string{"add", getRuleNumber(), "allow", "all", "from", extinfo.Network.String(),
+		"to", extinfo.ExtPeerAddr.String(), "via", ncutils.GetInterfaceName()}
+	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+	if err := execFw(ruleSpec...); err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	}
+	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{{rule: ruleSpec}}
+	routes := ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
+	for _, peerInfo := range extinfo.Peers {
+		if !peerInfo.Allow || peerInfo.PeerKey == extinfo.ExtPeerKey {
+			continue
+		}
+		ruleSpec := []string{"add", getRuleNumber(), "allow", "all", "from", extinfo.ExtPeerAddr.String(),
+			"to", peerInfo.PeerAddr.String(), "via", ncutils.GetInterfaceName()}
+		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+		if err := execFw(ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			continue
+		}
+		ruleTable[extinfo.ExtPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
+			{
+				rule: ruleSpec,
+			},
+		}
+	}
+	for _, egressRangeI := range egressRanges {
+		ruleSpec := []string{"add", getRuleNumber(), "allow", "all", "from", extinfo.ExtPeerAddr.String(),
+			"to", egressRangeI, "via", ncutils.GetInterfaceName()}
+		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+		if err := execFw(ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			continue
+		} else {
+			routes = append(routes, ruleInfo{
+				rule:          ruleSpec,
+				egressExtRule: true,
+			})
+		}
+		ruleSpec = []string{"add", getRuleNumber(), "allow", "all", "from", egressRangeI,
+			"to", extinfo.ExtPeerAddr.String(), "via", ncutils.GetInterfaceName()}
+		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+		if err := execFw(ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			continue
+		} else {
+			routes = append(routes, ruleInfo{
+				rule:          ruleSpec,
+				egressExtRule: true,
+			})
+		}
+	}
+	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
 	return nil
 }
 
-// ipfwManager.AddIngressRoutingRule - not implemented
+// ipfwManager.AddIngressRoutingRule - adds a ingress route for a peer
 func (i *ipfwManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
+	ruleTable := i.FetchRuleTable(server, ingressTable)
+	defer i.SaveRules(server, ingressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	ruleSpec := []string{"add", getRuleNumber(), "allow", "all", "from", extPeerAddr,
+		"to", peerInfo.PeerAddr.String(), "via", ncutils.GetInterfaceName()}
+	if err := execFw(ruleSpec...); err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	}
+	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{{rule: ruleSpec}}
 	return nil
 }
 
-// ipfwManager.RefreshEgressRangesOnIngressGw - not implemented
+// ipfwManager.RefreshEgressRangesOnIngressGw - deletes/adds rules for egress ranges for ext clients on the ingressGW
 func (i *ipfwManager) RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error {
+	ruleTable := i.FetchRuleTable(server, ingressTable)
+	defer i.SaveRules(server, ingressTable, ruleTable)
+	i.mux.Lock()
+	defer func() {
+		currEgressRangesMap[server] = ingressUpdate.EgressRanges
+		i.mux.Unlock()
+	}()
+	currEgressRanges := currEgressRangesMap[server]
+	if len(ingressUpdate.EgressRanges) == 0 || len(ingressUpdate.EgressRanges) != len(currEgressRanges) {
+		// delete if any egress range exists for ext clients
+		logger.Log(0, "Deleting existing Engress ranges for ext clients")
+		for extKey, rulesCfg := range ruleTable {
+			if extRules, ok := rulesCfg.rulesMap[extKey]; ok {
+				updatedRules := []ruleInfo{}
+				for _, rule := range extRules {
+					if rule.egressExtRule {
+						if err := i.deleteRule(rule.rule[1]); err != nil {
+							return fmt.Errorf("ipfw: error while removing existing %s rules [%v] for %s: %v",
+								rule.table, rule.rule, extKey, err)
+						}
+					} else {
+						updatedRules = append(updatedRules, rule)
+					}
+				}
+				rulesCfg.rulesMap[extKey] = updatedRules
+				ruleTable[extKey] = rulesCfg
+			}
+		}
+		if len(ingressUpdate.EgressRanges) == 0 {
+			return nil
+		}
+	} else {
+		// no changes oberserved in the egress ranges so return
+		return nil
+	}
+	// re-create rules for egress ranges routes for ext clients
+	logger.Log(0, "Refreshing Engress ranges for ext clients")
+	for extKey, extinfo := range ingressUpdate.ExtPeers {
+		if _, ok := ruleTable[extKey]; !ok {
+			continue
+		}
+		routes := ruleTable[extKey].rulesMap[extKey]
+		for _, egressRangeI := range ingressUpdate.EgressRanges {
+			ruleSpec := []string{"add", getRuleNumber(), "allow", "all", "from", extinfo.ExtPeerAddr.String(),
+				"to", egressRangeI, "via", ncutils.GetInterfaceName()}
+			logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+			if err := execFw(ruleSpec...); err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				continue
+			} else {
+				routes = append(routes, ruleInfo{
+					rule:          ruleSpec,
+					egressExtRule: true,
+				})
+			}
+
+			ruleSpec = []string{"add", getRuleNumber(), "allow", "all", "from", egressRangeI,
+				"to", extinfo.ExtPeerAddr.String(), "via", ncutils.GetInterfaceName()}
+			logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+			if err := execFw(ruleSpec...); err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				continue
+			} else {
+				routes = append(routes, ruleInfo{
+					rule:          ruleSpec,
+					egressExtRule: true,
+				})
+			}
+		}
+		ruleTable[extKey].rulesMap[extKey] = routes
+	}
 	return nil
 }
 
