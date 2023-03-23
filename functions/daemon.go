@@ -143,6 +143,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
+	wg.Add(1)
+	go HttpServer(ctx, wg)
 	return cancel
 }
 
