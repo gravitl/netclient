@@ -156,14 +156,12 @@ func (app *App) GoWriteToClipboard(data string) (any, error) {
 
 // App.GoPullLatestNodeConfig pulls the latest node config from the server and returns the network config
 func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
-	node, err := functions.Pull(network, true)
+	err := functions.Pull()
 	if err != nil {
 		return Network{}, err
 	}
 
-	server := config.GetServer(node.Server)
-
-	return Network{Node: node, Server: server}, nil
+	return Network{}, nil
 }
 
 // App.GoGetNodePeers returns the peers for the given node

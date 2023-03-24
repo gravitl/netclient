@@ -8,7 +8,6 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 )
 
@@ -84,8 +83,8 @@ func UpdateKeepAlive(keepalive int) error {
 }
 
 // UpdateWgPeers updates the peers section of wg conf file with a new set of peers
-func UpdateWgPeers(peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
-
+func UpdateWgPeers() (*net.UDPAddr, error) {
+	peers := config.GetHostPeerList()
 	var internetGateway *net.UDPAddr
 	options := ini.LoadOptions{
 		AllowNonUniqueSections: true,
@@ -98,6 +97,10 @@ func UpdateWgPeers(peers []wgtypes.PeerConfig) (*net.UDPAddr, error) {
 	//delete the peers sections as they are going to be replaced
 	wireguard.DeleteSection(sectionPeers)
 	for i, peer := range peers {
+		peer := peer
+		if peer.Remove { // no need to write removed peers
+			continue
+		}
 		wireguard.SectionWithIndex(sectionPeers, i).Key("PublicKey").SetValue(peer.PublicKey.String())
 		if peer.PresharedKey != nil {
 			wireguard.SectionWithIndex(sectionPeers, i).Key("PreSharedKey").SetValue(peer.PresharedKey.String())

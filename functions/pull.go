@@ -2,6 +2,7 @@ package functions
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -14,47 +15,42 @@ import (
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(network string, iface bool) (*config.Node, error) {
-	node := config.GetNode(network)
-	if node.Network == "" {
-		return nil, errors.New("no such network")
-	}
-	server := config.GetServer(node.Server)
-	token, err := Authenticate(server, config.Netclient())
-	if err != nil {
-		return nil, err
-	}
-	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID.String(),
-		Method:        http.MethodGet,
-		Authorization: "Bearer " + token,
-		Response:      models.NodeGet{},
-		ErrorResponse: models.ErrorResponse{},
-	}
-	nodeGet, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "errror getting node", strconv.Itoa(errData.Code), errData.Message)
+func Pull() error {
+
+	currentServers := config.GetServers()
+	for i := range currentServers {
+		serverName := currentServers[i]
+		server := config.GetServer(serverName)
+		token, err := Authenticate(server, config.Netclient())
+		if err != nil {
+			return err
 		}
-		return nil, err
+		endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
+			URL:           "https://" + server.API,
+			Route:         "/api/v1/host",
+			Method:        http.MethodGet,
+			Authorization: "Bearer " + token,
+			Response:      models.HostPull{},
+			ErrorResponse: models.ErrorResponse{},
+		}
+		pullResponse, errData, err := endpoint.GetJSON(models.HostPull{}, models.ErrorResponse{})
+		if err != nil {
+			if errors.Is(err, httpclient.ErrStatus) {
+				logger.Log(0, "error pulling server", serverName, strconv.Itoa(errData.Code), errData.Message)
+			}
+			continue
+		}
+		config.UpdateHostPeers(server.Server, pullResponse.Peers)
+		pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
+		config.UpdateServerConfig(&pullResponse.ServerConfig)
+		fmt.Printf("completed pull for server %s\n", serverName)
 	}
-	newNode := config.ConvertNode(&nodeGet)
-	config.UpdateNodeMap(newNode.Network, *newNode)
-	if err = config.WriteNodeConfig(); err != nil {
-		return nil, err
-	}
-	//update wg config
-	config.UpdateHostPeers(node.Server, nodeGet.HostPeers)
-	internetGateway, err := wireguard.UpdateWgPeers(nodeGet.HostPeers)
+
+	internetGateway, err := wireguard.UpdateWgPeers()
 	if internetGateway != nil && err != nil {
 		config.Netclient().InternetGateway = *internetGateway
 	}
-	config.WriteNetclientConfig()
-	logger.Log(1, "node settings for network ", network)
+	_ = config.WriteNetclientConfig()
 	logger.Log(3, "restarting daemon")
-	if err := daemon.Restart(); err != nil {
-		return newNode, err
-	}
-	return newNode, err
+	return daemon.Restart()
 }
