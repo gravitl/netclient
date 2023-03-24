@@ -64,7 +64,9 @@ func List(net string, long bool) {
 				for _, peer := range peers {
 					p := peerOut{
 						PublicKey: peer.PublicKey.String(),
-						Endpoint:  peer.Endpoint.String(),
+					}
+					if peer.Endpoint != nil {
+						p.Endpoint = peer.Endpoint.String()
 					}
 
 					for _, cidr := range peer.AllowedIPs {

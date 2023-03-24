@@ -228,20 +228,23 @@ func (m *proxyPayload) processPayload() error {
 				gCfg.DeletePeerHash(peerConn.Key.String())
 				gCfg.RemovePeer(peerConn.Key.String())
 			}
-			if peerConn, ok := gCfg.GetNoProxyPeer(m.Peers[i].Endpoint.IP); ok {
-				_, found := peerConn.ServerMap[m.Server]
-				if !found {
-					continue
-				} else {
-					delete(peerConn.ServerMap, m.Server)
-					noProxyPeerMap[m.Peers[i].Endpoint.IP.String()] = &peerConn
-					if len(peerConn.ServerMap) > 0 {
+			if m.Peers[i].Endpoint != nil {
+				if peerConn, ok := gCfg.GetNoProxyPeer(m.Peers[i].Endpoint.IP); ok {
+					_, found := peerConn.ServerMap[m.Server]
+					if !found {
 						continue
-					}
+					} else {
+						delete(peerConn.ServerMap, m.Server)
+						noProxyPeerMap[m.Peers[i].Endpoint.IP.String()] = &peerConn
+						if len(peerConn.ServerMap) > 0 {
+							continue
+						}
 
+					}
+					gCfg.DeleteNoProxyPeer(m.Peers[i].Endpoint.IP.String())
 				}
-				gCfg.DeleteNoProxyPeer(m.Peers[i].Endpoint.IP.String())
 			}
+
 			continue
 		}
 
@@ -272,7 +275,7 @@ func (m *proxyPayload) processPayload() error {
 			if err == nil {
 				logger.Log(3, fmt.Sprintf("---------> comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					currentPeer.Config.LocalConnAddr.String()))
-				if devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
+				if devPeer.Endpoint != nil && devPeer.Endpoint.String() != currentPeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", currentPeer.Key.String())
 					currentPeer.StopConn()
 					currentPeer.Mutex.Unlock()
@@ -314,7 +317,7 @@ func (m *proxyPayload) processPayload() error {
 				continue
 			}
 
-			if currentPeer.Config.PeerConf.Endpoint.IP.String() != m.Peers[i].Endpoint.IP.String() {
+			if m.Peers[i].Endpoint != nil && currentPeer.Config.PeerConf.Endpoint.IP.String() != m.Peers[i].Endpoint.IP.String() {
 				logger.Log(1, fmt.Sprintf("----> Peer Endpoint has changed from %s to %s",
 					currentPeer.Config.PeerConf.Endpoint.String(), m.Peers[i].Endpoint.String()))
 				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
@@ -324,7 +327,7 @@ func (m *proxyPayload) processPayload() error {
 				continue
 
 			}
-			if !config.GetCfg().IsGlobalRelay() && !currentPeer.IsRelayed && currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
+			if !config.GetCfg().IsGlobalRelay() && !currentPeer.IsRelayed && m.Peers[i].Endpoint != nil && currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
 				logger.Log(1, fmt.Sprintf("----> Peer RemoteConn has changed from %s to %s",
 					currentPeer.Config.RemoteConnAddr.String(), m.Peers[i].Endpoint.String()))
 				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
@@ -359,7 +362,7 @@ func (m *proxyPayload) processPayload() error {
 			if err == nil {
 				logger.Log(3, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
 					noProxypeer.Config.LocalConnAddr.String()))
-				if devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
+				if devPeer.Endpoint != nil && devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
 					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())
 					noProxypeer.StopConn()
 					noProxypeer.Mutex.Unlock()

@@ -160,6 +160,9 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 				proxyListenPort = peerInfo.ProxyListenPort
 				metric.NodeConnectionStatus[peerID] = connectionStatus
 			}
+			if peer.Endpoint == nil {
+				continue
+			}
 			proxyConn, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.Endpoint.IP.String(), proxyListenPort))
 			if err != nil {
 				continue
