@@ -453,7 +453,7 @@ export default function SettingsPage() {
             <Grid item xs={8} md={9}>
               Interfaces:{" "}
               {ncSettings?.interfaces
-                .map((iface) => `${String(iface.address.IP)}`)
+                .map((iface) => `${String(iface.addressString)}`)
                 .join(", ")}
             </Grid>
 

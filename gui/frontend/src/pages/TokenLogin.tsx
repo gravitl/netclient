@@ -10,11 +10,7 @@ import {
 } from "@mui/material";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  GoJoinNetworkByToken,
-  GoParseAccessToken,
-  GoRegisterWithEnrollmentKey,
-} from "../../wailsjs/go/main/App";
+import { GoRegisterWithEnrollmentKey } from "../../wailsjs/go/main/App";
 import {
   NetworksContextDispatcherProps,
   useNetworksContext,
@@ -59,9 +55,6 @@ function TokenLogin() {
       setIsConnecting(true);
 
       switch (type) {
-        case "access-key":
-          await GoJoinNetworkByToken(token);
-          break;
         case "enrollment-key":
           await GoRegisterWithEnrollmentKey(enrollmentKey);
           break;

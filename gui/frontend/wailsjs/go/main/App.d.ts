@@ -4,7 +4,6 @@ import {main} from '../models';
 import {config} from '../models';
 import {wgtypes} from '../models';
 import {frontend} from '../models';
-import {models} from '../models';
 
 export function GoConnectToNetwork(arg1:string):Promise<any>;
 
@@ -26,7 +25,9 @@ export function GoLeaveNetwork(arg1:string):Promise<any>;
 
 export function GoOpenDialogue(arg1:frontend.DialogType,arg2:string,arg3:string):Promise<string>;
 
-export function GoParseAccessToken(arg1:string):Promise<models.AccessToken>;
+export function GoPullLatestNodeConfig(arg1:string):Promise<main.Network>;
+
+export function GoRegisterWithEnrollmentKey(arg1:string):Promise<any>;
 
 export function GoPullLatestNodeConfig(arg1:string):Promise<main.Network>;
 
