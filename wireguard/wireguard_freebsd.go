@@ -73,11 +73,11 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 		if address.AddRoute {
 			if address.IP.To4() != nil {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
-					return fmt.Errorf("error adding address to interface %w", err)
+					logger.Log(1, "error adding address to interface ", err.Error())
 				}
 			} else {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
-					return fmt.Errorf("error adding address to interface %w", err)
+					logger.Log(1, "error adding address to interface ", err.Error())
 				}
 			}
 

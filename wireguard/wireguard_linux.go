@@ -124,7 +124,7 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 				Dst:       &addr.Network,
 			}); err != nil {
 				logger.Log(0, "error adding route", err.Error())
-				return err
+				continue
 			}
 		}
 
