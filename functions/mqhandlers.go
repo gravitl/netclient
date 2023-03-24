@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -271,18 +272,20 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 	hostPubKey := config.Netclient().PublicKey.String()
 	// select best interface for each peer and set it as endpoint
+	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
 	for idx := range peerUpdate.Peers {
 		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
 		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
-				peerAddr := peerIface.Address.IP.String()
-				if strings.Contains(peerAddr, "127.0.0.") ||
-					peerUpdate.Peers[idx].Endpoint.IP.String() == peerAddr {
+				peerIP := peerIface.Address.IP
+				if strings.Contains(peerIP.String(), "127.0.0.") ||
+					peerUpdate.Peers[idx].Endpoint.IP.Equal(peerIP) ||
+					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
 				if err := networking.FindBestEndpoint(
-					peerAddr,
+					peerIP.String(),
 					hostPubKey,
 					peerPubKey,
 					peerInfo.ProxyListenPort,
@@ -469,4 +472,29 @@ func applyAllDNS(dns []models.DNSUpdate) {
 		logger.Log(0, "error saving hosts file", err.Error())
 		return
 	}
+}
+
+func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
+	if len(peers) > 0 { // nil check
+		for i := range peers {
+			peer := peers[i]
+			cidrs = append(cidrs, peer.AllowedIPs...)
+		}
+	}
+	if cidrs == nil {
+		cidrs = []net.IPNet{}
+	}
+	return
+}
+
+func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
+	if len(cidrs) > 0 {
+		for i := range cidrs {
+			currCidr := cidrs[i]
+			if currCidr.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
 }
