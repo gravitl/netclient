@@ -213,7 +213,7 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 		peerKey, err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n],
 			packet.NoisePublicKey(pub), packet.NoisePrivateKey(priv))
 		if err != nil {
-			logger.Log(1, "---------> @@@ failed to decode HS: ", err.Error())
+			logger.Log(4, "---------> @@@ failed to decode HS: ", err.Error())
 		} else {
 
 			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
