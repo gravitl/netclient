@@ -113,8 +113,8 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 		if !addOnlyRoutes && !addr.AddRoute && addr.IP != nil {
 			logger.Log(3, "adding address", addr.IP.String(), "to netmaker interface")
 			if err := netlink.AddrAdd(l, &netlink.Addr{IPNet: &net.IPNet{IP: addr.IP, Mask: addr.Network.Mask}}); err != nil {
-				logger.Log(0, "error adding addr", err.Error())
-				return err
+				logger.Log(1, "error adding addr", err.Error())
+
 			}
 		}
 		if addr.AddRoute {
@@ -123,8 +123,7 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 				LinkIndex: l.Attrs().Index,
 				Dst:       &addr.Network,
 			}); err != nil {
-				logger.Log(0, "error adding route", err.Error())
-				return err
+				logger.Log(1, "error adding route", err.Error())
 			}
 		}
 
