@@ -30,6 +30,7 @@ export default function SettingsPage() {
       setIsLoadingDetails(true);
       const config = await GoGetNetclientConfig();
       setNcSettings(config);
+      console.log(config)
     } catch (err) {
       await notifyUser(("Failed to load settings\n" + err) as string);
       console.error(err);
