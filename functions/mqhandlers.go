@@ -224,12 +224,16 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		restartDaemon = true
 	case models.DeleteHost:
-		clearRetainedMsg(client, msg.Topic())
-		unsubscribeHost(client, serverName)
-		deleteHostCfg(client, serverName)
-		config.WriteNodeConfig()
-		config.WriteServerConfig()
-		resetInterface = true
+		faults, err := LeaveNetwork(hostUpdate.Node.Network, true)
+		if err != nil {
+			fmt.Println(err.Error())
+			for _, fault := range faults {
+				fmt.Println(fault.Error())
+			}
+		} else {
+			fmt.Println("successfully left network ", hostUpdate.Node.Network)
+		}
+		return
 	case models.UpdateHost:
 		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
 		clearMsg = true
@@ -299,21 +303,6 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 			}
 		}
 	}
-}
-
-func deleteHostCfg(client mqtt.Client, server string) {
-	config.DeleteServerHostPeerCfg(server)
-	nodes := config.GetNodes()
-	for k, node := range nodes {
-		node := node
-		if node.Server == server {
-			unsubscribeNode(client, &node)
-			config.DeleteNode(k)
-		}
-	}
-	config.DeleteServer(server)
-	// delete mq client from ServerSet map
-	delete(ServerSet, server)
 }
 
 func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
