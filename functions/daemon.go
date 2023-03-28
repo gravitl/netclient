@@ -67,6 +67,11 @@ func Daemon() {
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
+	//start httpserver on its own -- doesn't need to restart on reset
+	httpctx, httpCancel := context.WithCancel(context.Background())
+	httpWg := sync.WaitGroup{}
+	httpWg.Add(1)
+	go HttpServer(httpctx, &httpWg)
 	for {
 		select {
 		case <-quit:
@@ -75,6 +80,8 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
+			httpCancel()
+			httpWg.Wait()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -143,8 +150,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
-	wg.Add(1)
-	go HttpServer(ctx, wg)
 	return cancel
 }
 
