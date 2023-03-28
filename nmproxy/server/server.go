@@ -352,7 +352,7 @@ func (p *ProxyServer) CreateProxyServer(port, bodySize int, addr string) (err er
 	p.setDefaults()
 	p.Server, err = net.ListenUDP("udp", &net.UDPAddr{
 		Port: p.Config.Port,
-		IP:   net.ParseIP(addr),
+		IP:   net.ParseIP("0.0.0.0"),
 	})
 	return
 }
