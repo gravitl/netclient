@@ -74,7 +74,7 @@ func (app *App) GoConnectToNetwork(networkName string) (any, error) {
 	}{
 		Connect: true,
 	}
-	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect", "", headers)
+	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
 	}{
 		Connect: false,
 	}
-	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect", "", headers)
+	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 // App.GoGetNodePeers returns the peers for the given node
 func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	var peers []wgtypes.PeerConfig
-	response, err := httpclient.GetResponse(node, http.MethodGet, url+"/nodepeers", "", headers)
+	response, err := httpclient.GetResponse(node, http.MethodPost, url+"/nodepeers", "", headers)
 	if err != nil {
 		return peers, err
 	}
