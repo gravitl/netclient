@@ -51,8 +51,6 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				peerConnCfg := models.Conn{}
 				if p.Config.ProxyStatus {
 					peerConnCfg, _ = config.GetCfg().GetPeer(cfg.PeerPublicKey.String())
-				} else {
-					peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
 				}
 				for server := range peerConnCfg.ServerMap {
 					metric := metrics.GetMetric(server, cfg.PeerPublicKey.String())
@@ -91,7 +89,6 @@ func (p *Proxy) Reset() {
 	if p.Config.PeerEndpoint == nil {
 		return
 	}
-	endpoint := *p.Config.PeerEndpoint
 	if err := p.pullLatestConfig(); err != nil {
 		logger.Log(1, "couldn't perform reset: ", p.Config.PeerPublicKey.String(), err.Error())
 	}
@@ -113,11 +110,6 @@ func (p *Proxy) Reset() {
 	if peer, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(p.Config.PeerPublicKey.String())); found {
 		peer.LocalConn = p.LocalConn
 		config.GetCfg().SavePeerByHash(&peer)
-	}
-	if extpeer, found := config.GetCfg().GetExtClientInfo(&endpoint); found {
-		extpeer.LocalConn = p.LocalConn
-		extpeer.Endpoint = p.Config.PeerEndpoint
-		config.GetCfg().SaveExtClientInfo(&extpeer)
 	}
 
 }
@@ -154,8 +146,6 @@ func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
 			peerConnCfg := models.Conn{}
 			if p.Config.ProxyStatus {
 				peerConnCfg, _ = config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
-			} else {
-				peerConnCfg, _ = config.GetCfg().GetNoProxyPeer(p.Config.PeerEndpoint.IP)
 			}
 			for server := range peerConnCfg.ServerMap {
 				peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(server, peerConnCfg.Config.PeerPublicKey.String())

@@ -14,7 +14,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type proxyPayload nm_models.ProxyManagerPayload
@@ -179,10 +178,6 @@ func cleanUpInterface() {
 	for _, peerI := range peerConnMap {
 		config.GetCfg().RemovePeer(peerI.Key.String())
 	}
-	noProxyPeers := config.GetCfg().GetNoProxyPeers()
-	for _, peerI := range noProxyPeers {
-		config.GetCfg().DeleteNoProxyPeer(peerI.Config.PeerEndpoint.IP.String())
-	}
 
 }
 
@@ -203,7 +198,6 @@ func (m *proxyPayload) processPayload() error {
 	}
 
 	peerConnMap := gCfg.GetAllProxyPeers()
-	noProxyPeerMap := gCfg.GetNoProxyPeers()
 	// check device conf different from proxy
 	// sync peer map with new update
 	for i := len(m.Peers) - 1; i >= 0; i-- {
@@ -219,30 +213,8 @@ func (m *proxyPayload) processPayload() error {
 						continue
 					}
 				}
-
-				if peerConn.IsExtClient {
-					logger.Log(1, "------> Deleting ExtClient Watch Thread: ", peerConn.Key.String())
-					gCfg.DeleteExtWaitCfg(peerConn.Key.String())
-					gCfg.DeleteExtClientInfo(peerConn.Config.PeerEndpoint)
-				}
 				gCfg.DeletePeerHash(peerConn.Key.String())
 				gCfg.RemovePeer(peerConn.Key.String())
-			}
-			if m.Peers[i].Endpoint != nil {
-				if peerConn, ok := gCfg.GetNoProxyPeer(m.Peers[i].Endpoint.IP); ok {
-					_, found := peerConn.ServerMap[m.Server]
-					if !found {
-						continue
-					} else {
-						delete(peerConn.ServerMap, m.Server)
-						noProxyPeerMap[m.Peers[i].Endpoint.IP.String()] = &peerConn
-						if len(peerConn.ServerMap) > 0 {
-							continue
-						}
-
-					}
-					gCfg.DeleteNoProxyPeer(m.Peers[i].Endpoint.IP.String())
-				}
 			}
 
 			continue
@@ -250,15 +222,6 @@ func (m *proxyPayload) processPayload() error {
 
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
-			if currentPeer.IsExtClient {
-				_, found := gCfg.GetExtClientInfo(currentPeer.Config.PeerEndpoint)
-				if found {
-					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-				}
-				currentPeer.Mutex.Unlock()
-				continue
-
-			}
 			// check if proxy is off for the peer
 			if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 
@@ -348,51 +311,10 @@ func (m *proxyPayload) processPayload() error {
 		if m.Peers[i].Endpoint == nil {
 			continue
 		}
-		if noProxypeer, found := noProxyPeerMap[m.Peers[i].Endpoint.IP.String()]; found {
-			noProxypeer.Mutex.Lock()
-			if m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
-				// cleanup proxy connections for the no proxy peer since proxy is switched on for the peer
-				noProxypeer.StopConn()
-				noProxypeer.Mutex.Unlock()
-				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
-				continue
-			}
-			// check if peer is not connected to proxy
-			devPeer, err := wg.GetPeer(m.InterfaceName, noProxypeer.Key.String())
-			if err == nil {
-				logger.Log(3, fmt.Sprintf("--------->[noProxy] comparing peer endpoint: onDevice: %s, Proxy: %s", devPeer.Endpoint.String(),
-					noProxypeer.Config.LocalConnAddr.String()))
-				if devPeer.Endpoint != nil && devPeer.Endpoint.String() != noProxypeer.Config.LocalConnAddr.String() {
-					logger.Log(1, "---------> endpoint is not set to proxy: ", noProxypeer.Key.String())
-					noProxypeer.StopConn()
-					noProxypeer.Mutex.Unlock()
-					delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
-					continue
-				}
-			}
-			// check if proxy listen port has changed for the peer
-			if (noProxypeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
-				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0) ||
-				(m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != noProxypeer.Config.ProxyListenPort &&
-					m.PeerMap[m.Peers[i].PublicKey.String()].ProxyListenPort != 0) {
-				// listen port has been changed, reset conn
-				logger.Log(1, "-------->[noProxy] peer proxy listen port has been changed", noProxypeer.Key.String())
-				noProxypeer.StopConn()
-				noProxypeer.Mutex.Unlock()
-				delete(noProxyPeerMap, noProxypeer.Config.PeerEndpoint.IP.String())
-				continue
-			}
-			// update network map
-			noProxypeer.ServerMap[m.Server] = struct{}{}
-			noProxyPeerMap[noProxypeer.Key.String()] = noProxypeer
-			m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-			noProxypeer.Mutex.Unlock()
-		}
 
 	}
 
 	gCfg.UpdateProxyPeers(&peerConnMap)
-	gCfg.UpdateNoProxyPeers(&noProxyPeerMap)
 	logger.Log(1, "--> processed peer update for proxy")
 	return nil
 }
@@ -405,10 +327,11 @@ func (m *proxyPayload) peerUpdate() error {
 		return err
 	}
 	for _, peerI := range m.Peers {
-		if peerI.Remove {
+
+		peerConf := m.PeerMap[peerI.PublicKey.String()]
+		if peerI.Remove || !peerConf.Proxy {
 			continue
 		}
-		peerConf := m.PeerMap[peerI.PublicKey.String()]
 		if peerI.Endpoint == nil && !peerConf.IsExtClient {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())
 			continue
@@ -425,51 +348,6 @@ func (m *proxyPayload) peerUpdate() error {
 			relayedTo = peerConf.RelayedTo
 
 		}
-		if peerConf.IsExtClient {
-			if _, found := config.GetCfg().GetExtClientWaitCfg(peerI.PublicKey.String()); found {
-				continue
-			}
-			logger.Log(1, "extclient watch thread starting for: ", peerI.PublicKey.String())
-			go func(server string, peer wgtypes.PeerConfig, isRelayed bool, relayTo *net.UDPAddr,
-				peerConf nm_models.PeerConf) {
-				addExtClient := false
-				commChan := make(chan *net.UDPAddr, 5)
-				ctx, cancel := context.WithCancel(context.Background())
-				extPeer := models.RemotePeer{
-					PeerKey:     peer.PublicKey.String(),
-					CancelFunc:  cancel,
-					CommChan:    commChan,
-					IsExtClient: true,
-				}
-				config.GetCfg().SaveExtclientWaitCfg(&extPeer)
-				defer func() {
-					if addExtClient {
-						logger.Log(1, "Got endpoint for Extclient adding peer...", peer.Endpoint.String())
-						peerpkg.AddNew(server, peer, peerConf, isRelayed, relayedTo)
-					}
-					logger.Log(1, "Exiting extclient watch Thread for: ", peer.PublicKey.String())
-				}()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case endpoint := <-commChan:
-						if endpoint != nil {
-							addExtClient = true
-							peer.Endpoint = endpoint
-							peerI.Endpoint = endpoint
-							peerConf.PublicListenPort = int32(endpoint.Port)
-							config.GetCfg().DeleteExtWaitCfg(peer.PublicKey.String())
-							return
-						}
-					}
-
-				}
-
-			}(m.Server, peerI, isRelayed, relayedTo, peerConf)
-			continue
-		}
-
 		peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
 
 	}
