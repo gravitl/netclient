@@ -109,14 +109,6 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.LastRecordedLatency = uint64(latency)
 				metric.TrafficRecieved = int64(n)
 				metrics.UpdateMetricByPeer(metricMsg.Reciever.String(), &metric, false)
-				// if metricMsg.ListenPort != 0 &&
-				// 	config.GetCfg().HostInfo.PubPort != int(metricMsg.ListenPort) {
-				// 	// update public listen port
-				// 	logger.Log(0, fmt.Sprintf("-----> Updating My Public Listen Port From: %d --> %d",
-				// 		config.GetCfg().HostInfo.PubPort, metricMsg.ListenPort))
-				// 	config.GetCfg().HostInfo.PubPort = int(metricMsg.ListenPort)
-				// }
-
 			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
 				logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source.String())
