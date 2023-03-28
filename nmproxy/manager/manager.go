@@ -12,6 +12,7 @@ import (
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netclient/nmproxy/wg"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 )
@@ -152,20 +153,20 @@ func (m *proxyPayload) setRelayedPeers() {
 	for relayedNodePubKey, relayedNodeConf := range m.RelayedPeerConf {
 		for _, peer := range relayedNodeConf.Peers {
 			if peer.Endpoint != nil {
-				//peer.Endpoint.Port = models.NmProxyPort
 				rPeer := models.RemotePeer{
-					PeerKey:  peer.PublicKey.String(),
-					Endpoint: peer.Endpoint,
+					PeerKey:         peer.PublicKey.String(),
+					Endpoint:        peer.Endpoint,
+					ProxyListenPort: int32(m.PeerMap[peer.PublicKey.String()].ProxyPublicListenPort),
 				}
 				c.SaveRelayedPeer(relayedNodePubKey, &rPeer)
 
 			}
 
 		}
-		//relayedNodeConf.RelayedPeerEndpoint.Port = models.NmProxyPort
 		relayedNode := models.RemotePeer{
-			PeerKey:  relayedNodePubKey,
-			Endpoint: relayedNodeConf.RelayedPeerEndpoint,
+			PeerKey:         relayedNodePubKey,
+			Endpoint:        relayedNodeConf.RelayedPeerEndpoint,
+			ProxyListenPort: m.PeerMap[relayedNodePubKey].PublicListenPort,
 		}
 		c.SaveRelayedPeer(relayedNodePubKey, &relayedNode)
 
@@ -223,15 +224,15 @@ func (m *proxyPayload) processPayload() error {
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
 			// check if proxy is off for the peer
-			if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
+			if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
 
 				// cleanup proxy connections for the peer
 				currentPeer.StopConn()
 				delete(peerConnMap, currentPeer.Key.String())
-				//m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+				wireguard.UpdatePeer(&m.Peers[i])
 				currentPeer.Mutex.Unlock()
+				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 				continue
-
 			}
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
@@ -329,10 +330,7 @@ func (m *proxyPayload) peerUpdate() error {
 	for _, peerI := range m.Peers {
 
 		peerConf := m.PeerMap[peerI.PublicKey.String()]
-		if peerI.Remove || !peerConf.Proxy {
-			continue
-		}
-		if peerI.Endpoint == nil && !peerConf.IsExtClient {
+		if peerI.Endpoint == nil {
 			logger.Log(1, "Endpoint nil for peer: ", peerI.PublicKey.String())
 			continue
 		}
@@ -347,6 +345,9 @@ func (m *proxyPayload) peerUpdate() error {
 			isRelayed = peerConf.IsRelayed
 			relayedTo = peerConf.RelayedTo
 
+		}
+		if !isRelayed && (peerI.Remove || !peerConf.Proxy) {
+			continue
 		}
 		peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
 

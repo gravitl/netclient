@@ -34,7 +34,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		PeerConf:        peer,
 		ListenPort:      int(peerConf.PublicListenPort),
 		ProxyListenPort: peerConf.ProxyListenPort,
-		ProxyStatus:     peerConf.Proxy,
+		ProxyStatus:     peerConf.Proxy || isRelayed,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)

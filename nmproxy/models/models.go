@@ -50,11 +50,12 @@ type Conn struct {
 
 // RemotePeer - struct remote peer data
 type RemotePeer struct {
-	PeerKey    string
-	Endpoint   *net.UDPAddr
-	LocalConn  net.Conn
-	CancelFunc context.CancelFunc
-	CommChan   chan *net.UDPAddr
+	PeerKey         string
+	Endpoint        *net.UDPAddr
+	LocalConn       net.Conn
+	ProxyListenPort int32
+	CancelFunc      context.CancelFunc
+	CommChan        chan *net.UDPAddr
 }
 
 // HostInfo - struct for host information
