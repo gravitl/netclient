@@ -49,7 +49,7 @@ func SetupRouter() *gin.Engine {
 	router.POST("/leave/:net", leave)
 	router.GET("/servers", servers)
 	router.POST("/uninstall", uninstall)
-	router.POST("/pull/:net", pull)
+	router.GET("/pull/:net", pull)
 	router.POST("nodepeers", nodePeers)
 	return router
 }
@@ -146,10 +146,12 @@ func leave(c *gin.Context) {
 }
 
 func servers(c *gin.Context) {
-	servers := []string{}
+	var servers struct {
+		Name []string
+	}
 	for name := range config.Servers {
 		name := name
-		servers = append(servers, name)
+		servers.Name = append(servers.Name, name)
 	}
 	c.JSON(http.StatusOK, servers)
 }
