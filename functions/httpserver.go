@@ -171,13 +171,14 @@ func uninstall(c *gin.Context) {
 
 func pull(c *gin.Context) {
 	net := c.Params.ByName("net")
-	node, err := Pull(net, true)
+	err := Pull()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 	}
+	node := config.GetNode(net)
 	server := config.GetServer(node.Server)
 	network := Network{
-		Node:   *node,
+		Node:   node,
 		Server: *server,
 	}
 	c.JSON(http.StatusOK, network)
