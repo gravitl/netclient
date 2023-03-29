@@ -1,16 +1,12 @@
 package config
 
 import (
-	"sync"
-
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
-
-var extPeerMapMutex = sync.Mutex{}
 
 // wgIfaceConf - interface config
 type wgIfaceConf struct {

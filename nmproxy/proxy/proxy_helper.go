@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/c-robinson/iplib"
-	"github.com/google/uuid"
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -124,58 +123,6 @@ func (p *Proxy) pullLatestConfig() error {
 	}
 	return nil
 
-}
-
-// Proxy.startMetricsThread - runs metrics loop for the peer
-func (p *Proxy) startMetricsThread(wg *sync.WaitGroup) {
-	ticker := time.NewTicker(metrics.MetricCollectionInterval)
-	proxyConn, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d",
-		p.Config.PeerEndpoint.IP.String(), p.Config.ProxyListenPort))
-	if err != nil {
-		logger.Log(0, "failed to resolve proxy udp addr: ", err.Error())
-		return
-	}
-
-	defer ticker.Stop()
-	defer wg.Done()
-	for {
-		select {
-		case <-p.Ctx.Done():
-			return
-		case <-ticker.C:
-			peerConnCfg := models.Conn{}
-			if p.Config.ProxyStatus {
-				peerConnCfg, _ = config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
-			}
-			for server := range peerConnCfg.ServerMap {
-				peerIDsAndAddrs, found := config.GetCfg().GetPeersIDsAndAddrs(server, peerConnCfg.Config.PeerPublicKey.String())
-				if !found {
-					continue
-				}
-				metric := metrics.GetMetric(server, p.Config.PeerPublicKey.String())
-				metric.NodeConnectionStatus = make(map[string]bool)
-				metric.LastRecordedLatency = 999
-				connectionStatus := PeerConnectionStatus(p.Config.PeerPublicKey.String())
-				for peerID := range peerIDsAndAddrs {
-					metric.NodeConnectionStatus[peerID] = connectionStatus
-				}
-				metrics.UpdateMetric(server, p.Config.PeerPublicKey.String(), &metric)
-			}
-
-			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), p.Config.PeerPublicKey)
-			if err == nil {
-				logger.Log(3, "-----------> Sending metric packet to: ", proxyConn.String())
-
-				_, err = server.NmProxyServer.Server.WriteToUDP(pkt, proxyConn)
-				if err != nil {
-					logger.Log(1, "Failed to send to metric pkt: ", err.Error())
-				}
-
-			} else {
-				logger.Log(0, "failed to create metric pkt: ", err.Error())
-			}
-		}
-	}
 }
 
 // Proxy.ProxyPeer proxies data from Wireguard to the remote peer and vice-versa
