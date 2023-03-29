@@ -65,7 +65,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	}
 	config.GetCfg().SetIface(wgIface)
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.HostPeerIDs)
-	noProxy(payload) // starts or stops the metrics collection based on host proxy setting
+	startMetricsThread(payload) // starts or stops the metrics collection based on host proxy setting
 	fwUpdate(payload)
 	switch m.Action {
 	case nm_models.ProxyUpdate:
@@ -114,18 +114,11 @@ func fwUpdate(payload *nm_models.HostPeerUpdate) {
 
 }
 
-func noProxy(peerUpdate *nm_models.HostPeerUpdate) {
-	if peerUpdate.ProxyUpdate.Action != nm_models.NoProxy && config.GetCfg().GetMetricsCollectionStatus() {
-		// stop the metrics thread since proxy is switched on for the host
-		logger.Log(0, "Stopping Metrics Thread...")
-		config.GetCfg().StopMetricsCollectionThread()
-	} else if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy && !config.GetCfg().GetMetricsCollectionStatus() {
+func startMetricsThread(peerUpdate *nm_models.HostPeerUpdate) {
+	if !config.GetCfg().GetMetricsCollectionStatus() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go peerpkg.StartMetricsCollectionForHostPeers(ctx)
 		config.GetCfg().SetMetricsThreadCtx(cancel)
-	}
-	if peerUpdate.ProxyUpdate.Action == nm_models.NoProxy {
-		cleanUpInterface()
 	}
 }
 
@@ -153,20 +146,19 @@ func (m *proxyPayload) setRelayedPeers() {
 	for relayedNodePubKey, relayedNodeConf := range m.RelayedPeerConf {
 		for _, peer := range relayedNodeConf.Peers {
 			if peer.Endpoint != nil {
+				peer.Endpoint.Port = m.PeerMap[peer.PublicKey.String()].ProxyListenPort
 				rPeer := models.RemotePeer{
-					PeerKey:         peer.PublicKey.String(),
-					Endpoint:        peer.Endpoint,
-					ProxyListenPort: int32(m.PeerMap[peer.PublicKey.String()].ProxyPublicListenPort),
+					PeerKey:  peer.PublicKey.String(),
+					Endpoint: peer.Endpoint,
 				}
 				c.SaveRelayedPeer(relayedNodePubKey, &rPeer)
-
 			}
 
 		}
+		relayedNodeConf.RelayedPeerEndpoint.Port = m.PeerMap[relayedNodePubKey].ProxyListenPort
 		relayedNode := models.RemotePeer{
-			PeerKey:         relayedNodePubKey,
-			Endpoint:        relayedNodeConf.RelayedPeerEndpoint,
-			ProxyListenPort: m.PeerMap[relayedNodePubKey].PublicListenPort,
+			PeerKey:  relayedNodePubKey,
+			Endpoint: relayedNodeConf.RelayedPeerEndpoint,
 		}
 		c.SaveRelayedPeer(relayedNodePubKey, &relayedNode)
 

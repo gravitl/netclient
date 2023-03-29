@@ -184,8 +184,6 @@ func (p *Proxy) ProxyPeer() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.toRemote(wg)
-	wg.Add(1)
-	go p.startMetricsThread(wg)
 	wg.Wait()
 
 }

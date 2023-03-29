@@ -194,8 +194,7 @@ func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, src
 	// check for routing map and relay to right proxy
 	if remotePeer, ok := config.GetCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
 		logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
-			source.IP.String(), source.Port, srcPeerKeyHash, fmt.Sprintf("%s:%d", remotePeer.Endpoint.IP.String(), remotePeer.ProxyListenPort), dstPeerKeyHash))
-		remotePeer.Endpoint.Port = int(remotePeer.ProxyListenPort)
+			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash))
 		_, err := p.Server.WriteToUDP(buffer[:n], remotePeer.Endpoint)
 		if err != nil {
 			logger.Log(1, "Failed to relay to remote: ", err.Error())
