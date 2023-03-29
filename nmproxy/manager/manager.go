@@ -68,7 +68,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	startMetricsThread(payload) // starts or stops the metrics collection based on host proxy setting
 	fwUpdate(payload)
 	switch m.Action {
-	case nm_models.ProxyUpdate:
+	case nm_models.ProxyUpdate, nm_models.NoProxy:
 		m.peerUpdate()
 	case nm_models.ProxyDeleteAllPeers:
 		cleanUpInterface()
@@ -170,6 +170,7 @@ func cleanUpInterface() {
 	peerConnMap := config.GetCfg().GetAllProxyPeers()
 	for _, peerI := range peerConnMap {
 		config.GetCfg().RemovePeer(peerI.Key.String())
+		wireguard.UpdatePeer(&peerI.Config.PeerConf)
 	}
 
 }
@@ -215,9 +216,17 @@ func (m *proxyPayload) processPayload() error {
 
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
-			// check if proxy is off for the peer
-			if !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
-
+			// check if proxy is not required for the peer anymore
+			if (m.Action == nm_models.NoProxy) && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
+				// cleanup proxy connections for the peer
+				currentPeer.StopConn()
+				delete(peerConnMap, currentPeer.Key.String())
+				wireguard.UpdatePeer(&m.Peers[i])
+				currentPeer.Mutex.Unlock()
+				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+				continue
+			}
+			if !m.IsRelayed && (m.Action == nm_models.ProxyUpdate) && !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
 				// cleanup proxy connections for the peer
 				currentPeer.StopConn()
 				delete(peerConnMap, currentPeer.Key.String())
@@ -241,7 +250,7 @@ func (m *proxyPayload) processPayload() error {
 			}
 
 			//check if peer is being relayed
-			if !config.GetCfg().IsGlobalRelay() && currentPeer.IsRelayed != m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
+			if !m.IsRelayed && !config.GetCfg().IsGlobalRelay() && currentPeer.IsRelayed != m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
 				logger.Log(1, "---------> peer relay status has been changed: ", currentPeer.Key.String())
 				currentPeer.StopConn()
 				currentPeer.Mutex.Unlock()
@@ -250,7 +259,7 @@ func (m *proxyPayload) processPayload() error {
 			}
 
 			// check if relay endpoint has been changed
-			if !config.GetCfg().IsGlobalRelay() && currentPeer.RelayedEndpoint != nil &&
+			if !m.IsRelayed && !config.GetCfg().IsGlobalRelay() && currentPeer.RelayedEndpoint != nil &&
 				m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo != nil &&
 				currentPeer.RelayedEndpoint.String() != m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo.String() {
 				logger.Log(1, "---------> peer relay endpoint has been changed: ", currentPeer.Key.String())
@@ -301,9 +310,6 @@ func (m *proxyPayload) processPayload() error {
 			continue
 
 		}
-		if m.Peers[i].Endpoint == nil {
-			continue
-		}
 
 	}
 
@@ -338,10 +344,20 @@ func (m *proxyPayload) peerUpdate() error {
 			relayedTo = peerConf.RelayedTo
 
 		}
-		if !isRelayed && (peerI.Remove || !peerConf.Proxy) {
+		if peerI.Remove {
+			// peer has been deleted so skip
 			continue
 		}
-		peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
+		var shouldUseProxy bool
+		if isRelayed {
+			shouldUseProxy = true
+		}
+		if peerConf.Proxy && m.Action == nm_models.ProxyUpdate {
+			shouldUseProxy = true
+		}
+		if shouldUseProxy {
+			peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
+		}
 
 	}
 	return nil

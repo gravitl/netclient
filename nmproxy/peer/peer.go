@@ -84,10 +84,9 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		Endpoint:  peerEndpoint,
 		LocalConn: p.LocalConn,
 	}
-	if peerConf.Proxy {
-		logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
-		config.GetCfg().SavePeer(&connConf)
-	}
+
+	logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
+	config.GetCfg().SavePeer(&connConf)
 	config.GetCfg().SavePeerByHash(&rPeer)
 	return nil
 }
