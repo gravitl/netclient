@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -23,7 +24,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 	if _, err = wgtypes.ParseKey(currentHostPubKey); err != nil {
 		return err
 	}
-	c, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", reqAddr, proxyPort), reqTimeout)
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(reqAddr, strconv.Itoa(proxyPort)), reqTimeout)
 	if err != nil {
 		return err
 	}
