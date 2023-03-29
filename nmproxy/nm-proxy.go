@@ -45,6 +45,5 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPee
 	}
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	go manager.Start(ctx, mgmChan)
-	fmt.Println("-------------> $$$$$ SHOULD USE PROXY: ", config.GetCfg().ShouldUseProxy())
 	server.NmProxyServer.Listen(ctx)
 }
