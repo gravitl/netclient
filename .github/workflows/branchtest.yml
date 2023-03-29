@@ -1,7 +1,6 @@
 name: Deploy and Test Branch
 
 on:
-  workflow_dispatch:
   pull_request:
       types: [opened, synchronize, reopened]
       branches: [develop]
@@ -31,9 +30,9 @@ jobs:
       - name: check if branch exists
         id: checkbranch
         run: |
-          if git show-ref ${{ github.ref_name}}; then
+          if git show-ref ${{ github.head_ref}}; then
             echo branch exists
-            echo "netmakerbranch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "netmakerbranch=${{ github.head_ref }}" >> $GITHUB_OUTPUT
           else
             echo branch does not exist
             echo "netmakerbranch=develop" >> $GITHUB_OUTPUT
@@ -43,7 +42,7 @@ jobs:
     needs: getbranch
     uses: gravitl/devops/.github/workflows/terraform.yml@master
     with:
-      netclientbranch: ${{ github.ref_name }}
+      netclientbranch: ${{ github.head_ref }}
       netnetmakerbranch: ${{ needs.getbranch.outputs.netmakerbranch }}
     secrets: inherit
 
