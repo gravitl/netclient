@@ -74,13 +74,12 @@ func register(c *gin.Context) {
 }
 
 func getNetwork(c *gin.Context) {
-	server := config.Server{}
 	network := c.Params.ByName("net")
 	nodes := config.GetNodes()
 	for _, node := range nodes {
 		node := node
 		if node.Network == network {
-			server = *config.GetServer(node.Server)
+			server := *config.GetServer(node.Server)
 			c.JSON(http.StatusOK, Network{node, server})
 			return
 		}
