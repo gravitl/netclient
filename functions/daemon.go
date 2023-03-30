@@ -16,7 +16,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
-	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -66,14 +65,14 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
+	//stopProxy := startProxy(&wg)
 	for {
 		select {
 		case <-quit:
 			logger.Log(0, "shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
+				//stopProxy,
 			}, &wg)
 			logger.Log(0, "shutdown complete")
 			return
@@ -81,13 +80,13 @@ func Daemon() {
 			logger.Log(0, "received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
+				//stopProxy,
 			}, &wg)
 			logger.Log(0, "restarting daemon")
 			cancel = startGoRoutines(&wg)
-			if !proxy_cfg.GetCfg().ProxyStatus {
-				stopProxy = startProxy(&wg)
-			}
+			//if !proxy_cfg.GetCfg().ProxyStatus {
+			//stopProxy = startProxy(&wg)
+			//}
 		}
 	}
 }
