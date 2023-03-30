@@ -24,14 +24,12 @@ func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	return &mI
 }
 
-var dumpSignalChan = make(chan struct{}, 2)
-
 func dumpProxyConnsInfo(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-dumpSignalChan:
+		case <-config.DumpSignalChan:
 			config.GetCfg().Dump()
 		}
 	}
@@ -376,6 +374,6 @@ func (m *proxyPayload) peerUpdate() error {
 	}
 	/* after processing peer update proxy connections
 	are dumped to a file under netclient data path */
-	dumpSignalChan <- struct{}{}
+	config.DumpSignalChan <- struct{}{}
 	return nil
 }
