@@ -43,7 +43,7 @@ jobs:
     uses: gravitl/devops/.github/workflows/terraform.yml@master
     with:
       netclientbranch: ${{ github.head_ref }}
-      netnetmakerbranch: ${{ needs.getbranch.outputs.netmakerbranch }}
+      netmakerbranch: ${{ needs.getbranch.outputs.netmakerbranch }}
     secrets: inherit
 
 
