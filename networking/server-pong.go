@@ -137,7 +137,7 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
 			// check if conn is active on proxy and update
 			if conn, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
-				if conn.Config.PeerConf.Endpoint.IP.String() != wgEndpoint.IP.String() {
+				if !conn.Config.PeerConf.Endpoint.IP.Equal(wgEndpoint.IP) {
 					conn.Config.PeerConf.Endpoint = wgEndpoint
 					proxy_config.GetCfg().UpdatePeer(&conn)
 					conn.ResetConn()
