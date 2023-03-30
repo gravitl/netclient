@@ -42,7 +42,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 	if err != nil {
 		return err
 	}
-	if err = c.SetReadDeadline(time.Now().Add(time.Second * 5)); err != nil {
+	if err = c.SetReadDeadline(time.Now().Add(reqTimeout)); err != nil {
 		return err
 	}
 	buf := make([]byte, 1024)

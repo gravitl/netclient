@@ -6,7 +6,7 @@ import (
 
 // reqTimeout - five seconds for client request to happen
 const (
-	reqTimeout               = time.Second * 5
+	reqTimeout               = time.Second * 1
 	latencyVarianceThreshold = 3
 )
 
