@@ -15,8 +15,9 @@ import (
 
 var (
 	// contains all the config related to proxy
-	config         = &Config{}
-	natAutoSwitch  bool
+	config        = &Config{}
+	natAutoSwitch bool
+	// DumpSignalChan - channel to signal dump proxy conns info
 	DumpSignalChan = make(chan struct{}, 5)
 )
 
