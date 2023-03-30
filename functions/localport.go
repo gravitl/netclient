@@ -2,6 +2,7 @@ package functions
 
 import (
 	"net"
+	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/stun"
@@ -37,7 +38,8 @@ func getInterfaces() (*[]models.Iface, error) {
 		iface := iface
 		if iface.Flags&net.FlagUp == 0 || // interface down
 			iface.Flags&net.FlagLoopback != 0 || // loopback interface
-			iface.Name == ncutils.GetInterfaceName() { // avoid netmaker
+			iface.Name == ncutils.GetInterfaceName() ||
+			strings.Contains(iface.Name, "docker") { // avoid netmaker
 			continue
 		}
 		addrs, err := iface.Addrs()

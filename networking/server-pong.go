@@ -12,6 +12,7 @@ import (
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
+	proxy_config "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -134,16 +135,23 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 			peerPort := currPeer.Endpoint.Port
 			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(value.Endpoint, uint16(peerPort)))
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
-			if config.Netclient().ProxyEnabled {
-				return nil
+			// check if conn is active on proxy and update
+			if conn, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
+				if !conn.Config.PeerConf.Endpoint.IP.Equal(wgEndpoint.IP) {
+					conn.Config.PeerConf.Endpoint = wgEndpoint
+					proxy_config.GetCfg().UpdatePeer(&conn)
+					conn.ResetConn()
+				}
+			} else {
+				return wireguard.UpdatePeer(&wgtypes.PeerConfig{
+					PublicKey:                   currPeer.PublicKey,
+					Endpoint:                    wgEndpoint,
+					AllowedIPs:                  currPeer.AllowedIPs,
+					PersistentKeepaliveInterval: currPeer.PersistentKeepaliveInterval,
+					ReplaceAllowedIPs:           true,
+				})
 			}
-			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
-				PublicKey:                   currPeer.PublicKey,
-				Endpoint:                    wgEndpoint,
-				AllowedIPs:                  currPeer.AllowedIPs,
-				PersistentKeepaliveInterval: currPeer.PersistentKeepaliveInterval,
-				ReplaceAllowedIPs:           true,
-			})
+
 		}
 	}
 	return fmt.Errorf("no peer found")

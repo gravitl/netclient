@@ -26,9 +26,8 @@ func SetPeers() error {
 		}
 	}
 	GetInterface().Config.Peers = peers
-	if config.Netclient().ProxyEnabled && len(peers) > 0 {
-		peers = peer.SetPeersEndpointToProxy(peers)
-	}
+	peers = peer.SetPeersEndpointToProxy(peers)
+
 	config := wgtypes.Config{
 		ReplacePeers: false,
 		Peers:        peers,

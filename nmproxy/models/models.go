@@ -37,7 +37,6 @@ type Proxy struct {
 type Conn struct {
 	// Key is a public key of a remote peer
 	Key             wgtypes.Key
-	IsExtClient     bool
 	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
 	Config          Proxy
@@ -51,12 +50,11 @@ type Conn struct {
 
 // RemotePeer - struct remote peer data
 type RemotePeer struct {
-	PeerKey     string
-	Endpoint    *net.UDPAddr
-	IsExtClient bool
-	LocalConn   net.Conn
-	CancelFunc  context.CancelFunc
-	CommChan    chan *net.UDPAddr
+	PeerKey    string
+	Endpoint   *net.UDPAddr
+	LocalConn  net.Conn
+	CancelFunc context.CancelFunc
+	CommChan   chan *net.UDPAddr
 }
 
 // HostInfo - struct for host information

@@ -1,9 +1,6 @@
 package config
 
 import (
-	"net"
-	"sync"
-
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -11,19 +8,14 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-var extPeerMapMutex = sync.Mutex{}
-
 // wgIfaceConf - interface config
 type wgIfaceConf struct {
-	iface            *wg.WGIface
-	ifaceKeyHash     string
-	proxyPeerMap     models.PeerConnMap
-	peerHashMap      map[string]*models.RemotePeer
-	extSrcIpMap      map[string]*models.RemotePeer
-	extClientWaitMap map[string]*models.RemotePeer
-	relayPeerMap     map[string]map[string]*models.RemotePeer
-	noProxyPeerMap   models.PeerConnMap
-	allPeersConf     map[string]nm_models.HostPeerMap
+	iface        *wg.WGIface
+	ifaceKeyHash string
+	proxyPeerMap models.PeerConnMap
+	peerHashMap  map[string]*models.RemotePeer
+	relayPeerMap map[string]map[string]*models.RemotePeer
+	allPeersConf map[string]nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -199,56 +191,6 @@ func (c *Config) DeletePeerHash(peerKey string) {
 	delete(c.ifaceConfig.peerHashMap, models.ConvPeerKeyToHash(peerKey))
 }
 
-// Config.GetExtClientInfo - fetches ext. client from the config by it's endpoint
-func (c *Config) GetExtClientInfo(udpAddr *net.UDPAddr) (models.RemotePeer, bool) {
-
-	if udpAddr == nil {
-		return models.RemotePeer{}, false
-	}
-	if peerInfo, found := c.ifaceConfig.extSrcIpMap[udpAddr.String()]; found {
-		return *peerInfo, found
-	}
-	return models.RemotePeer{}, false
-
-}
-
-// Config.SaveExtClientInfo - saves the ext. client info to config
-func (c *Config) SaveExtClientInfo(peerInfo *models.RemotePeer) {
-	c.ifaceConfig.extSrcIpMap[peerInfo.Endpoint.String()] = peerInfo
-}
-
-// Config.DeleteExtClientInfo - deletes the ext. client info from the config
-func (c *Config) DeleteExtClientInfo(udpAddr *net.UDPAddr) {
-	delete(c.ifaceConfig.extSrcIpMap, udpAddr.String())
-}
-
-// Config.GetExtClientWaitCfg - fetches the ext. info from wait config
-func (c *Config) GetExtClientWaitCfg(peerKey string) (models.RemotePeer, bool) {
-
-	if peerInfo, found := c.ifaceConfig.extClientWaitMap[peerKey]; found {
-		return *peerInfo, found
-	}
-	return models.RemotePeer{}, false
-}
-
-// Config.SaveExtclientWaitCfg - saves extclient wait cfg
-func (c *Config) SaveExtclientWaitCfg(extPeer *models.RemotePeer) {
-	extPeerMapMutex.Lock()
-	defer extPeerMapMutex.Unlock()
-	c.ifaceConfig.extClientWaitMap[extPeer.PeerKey] = extPeer
-}
-
-// Config.DeleteExtWaitCfg - deletes ext. wait cfg
-func (c *Config) DeleteExtWaitCfg(peerKey string) {
-	if extPeerCfg, ok := c.ifaceConfig.extClientWaitMap[peerKey]; ok {
-		extPeerMapMutex.Lock()
-		defer extPeerMapMutex.Unlock()
-		extPeerCfg.CancelFunc()
-		close(extPeerCfg.CommChan)
-		delete(c.ifaceConfig.extClientWaitMap, peerKey)
-	}
-}
-
 // Config.SaveRelayedPeer - saves relayed peer to config
 func (c *Config) SaveRelayedPeer(relayedNodePubKey string, peer *models.RemotePeer) {
 	if _, ok := c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)]; !ok {
@@ -314,40 +256,6 @@ func (c *Config) GetInterfaceListenPort() (port int) {
 // Config.UpdateWgIface - updates iface config in memory
 func (c *Config) UpdateWgIface(wgIface *wg.WGIface) {
 	c.ifaceConfig.iface = wgIface
-}
-
-// Config.GetNoProxyPeers - fetches peers not using proxy
-func (c *Config) GetNoProxyPeers() models.PeerConnMap {
-	return c.ifaceConfig.noProxyPeerMap
-}
-
-// Config.GetNoProxyPeer - fetches no proxy peer
-func (c *Config) GetNoProxyPeer(peerIp net.IP) (models.Conn, bool) {
-	if connConf, found := c.ifaceConfig.noProxyPeerMap[peerIp.String()]; found {
-		return *connConf, found
-	}
-	return models.Conn{}, false
-
-}
-
-// Config.UpdateNoProxyPeers - updates no proxy peers in the config
-func (c *Config) UpdateNoProxyPeers(peers *models.PeerConnMap) {
-	c.ifaceConfig.noProxyPeerMap = *peers
-}
-
-// Config.SaveNoProxyPeer - adds non proxy peer to config
-func (c *Config) SaveNoProxyPeer(peer *models.Conn) {
-	c.ifaceConfig.noProxyPeerMap[peer.Config.PeerEndpoint.IP.String()] = peer
-}
-
-// Config.DeleteNoProxyPeer - deletes no proxy peers from config
-func (c *Config) DeleteNoProxyPeer(peerIP string) {
-	if peerConf, found := c.ifaceConfig.noProxyPeerMap[peerIP]; found {
-		peerConf.Mutex.Lock()
-		peerConf.StopConn()
-		peerConf.Mutex.Unlock()
-		delete(c.ifaceConfig.noProxyPeerMap, peerIP)
-	}
 }
 
 // Config.GetAllPeersIDsAndAddrs - get all peers
