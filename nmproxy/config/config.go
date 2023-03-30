@@ -234,6 +234,7 @@ func (c *Config) StopFw() {
 	c.fireWallClose()
 }
 
+// Config.Dump - dumps the proxy peer connections information
 func (c *Config) Dump() {
 	peersConn := c.GetAllProxyPeers()
 	proxyConns := []proxyPeerConn{}
