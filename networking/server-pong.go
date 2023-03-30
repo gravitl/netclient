@@ -137,9 +137,11 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
 			// check if conn is active on proxy and update
 			if conn, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
-				conn.Config.PeerConf.Endpoint = wgEndpoint
-				proxy_config.GetCfg().UpdatePeer(&conn)
-				conn.ResetConn()
+				if conn.Config.PeerConf.Endpoint.IP.String() != wgEndpoint.IP.String() {
+					conn.Config.PeerConf.Endpoint = wgEndpoint
+					proxy_config.GetCfg().UpdatePeer(&conn)
+					conn.ResetConn()
+				}
 			} else {
 				return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 					PublicKey:                   currPeer.PublicKey,
