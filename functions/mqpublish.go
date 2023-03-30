@@ -53,7 +53,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					continue
 				}
 			}
-			checkin()
+			if len(config.GetServers()) > 0 {
+				checkin()
+			}
+
 		}
 	}
 }
@@ -298,8 +301,8 @@ func UpdateHostSettings() error {
 			publishMsg = true
 		}
 	}
-	if proxyCfg.GetCfg().ShouldUseProxy() && !config.Netclient().ProxyEnabled &&
-		!proxyCfg.NatAutoSwitchDone() {
+	if !config.Netclient().ProxyEnabledSet && proxyCfg.GetCfg().ShouldUseProxy() &&
+		!config.Netclient().ProxyEnabled && !proxyCfg.NatAutoSwitchDone() {
 		logger.Log(0, "Host is behind NAT, enabling proxy...")
 		proxyCfg.SetNatAutoSwitch()
 		config.Netclient().ProxyEnabled = true

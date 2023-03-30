@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/networking"
@@ -170,14 +168,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
-	handleEndpointDetection(&peerUpdate)
-	if config.Netclient().ProxyEnabled {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
-	} else {
-		peerUpdate.ProxyUpdate.Action = models.NoProxy
-	}
-	peerUpdate.ProxyUpdate.Server = serverName
+	go handleEndpointDetection(&peerUpdate)
+	time.Sleep(time.Second * 2) // sleep required to avoid race condition
 	ProxyManagerChan <- &peerUpdate
 }
 
@@ -280,6 +272,8 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
+					peerIP.IsMulticast() ||
+					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
 					peerUpdate.Peers[idx].Endpoint.IP.Equal(peerIP) ||
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
@@ -291,10 +285,6 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerInfo.ProxyListenPort,
 				); err != nil { // happens v often
 					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
-				}
-				newEndpoint, ok := cache.EndpointCache.Load(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))))
-				if ok {
-					peerUpdate.Peers[idx].Endpoint.IP = net.ParseIP(newEndpoint.(cache.EndpointCacheValue).Endpoint.String())
 				}
 			}
 		}

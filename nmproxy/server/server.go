@@ -46,11 +46,6 @@ func (p *ProxyServer) Close() {
 		peerI.StopConn()
 		peerI.Mutex.Unlock()
 	}
-	for _, peerI := range config.GetCfg().GetNoProxyPeers() {
-		peerI.Mutex.Lock()
-		peerI.StopConn()
-		peerI.Mutex.Unlock()
-	}
 	// close metrics thread
 	if config.GetCfg().GetMetricsCollectionStatus() {
 		config.GetCfg().StopMetricsCollectionThread()
@@ -79,24 +74,17 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 			logger.Log(3, "failed to read from server: ", err.Error())
 			return
 		}
-		if !handleNoProxyPeer(buffer[:], n, source) {
-			proxyTransportMsg := true
-			var srcPeerKeyHash, dstPeerKeyHash string
-			n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
-			if err != nil {
-				logger.Log(2, "proxy transport message not found: ", err.Error())
-				proxyTransportMsg = false
-			}
-			if proxyTransportMsg {
-				p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
-				continue
-			} else {
-				// unknown peer to proxy -> check if extclient and handle it
-				if handleExtClients(buffer[:], n, source) {
-					continue
-				}
 
-			}
+		proxyTransportMsg := true
+		var srcPeerKeyHash, dstPeerKeyHash string
+		n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
+		if err != nil {
+			logger.Log(2, "proxy transport message not found: ", err.Error())
+			proxyTransportMsg = false
+		}
+		if proxyTransportMsg {
+			p.proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
+			continue
 		}
 
 		p.handleMsgs(buffer, n, source)
@@ -121,14 +109,6 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 				metric.LastRecordedLatency = uint64(latency)
 				metric.TrafficRecieved = int64(n)
 				metrics.UpdateMetricByPeer(metricMsg.Reciever.String(), &metric, false)
-				if metricMsg.ListenPort != 0 &&
-					config.GetCfg().HostInfo.PubPort != int(metricMsg.ListenPort) {
-					// update public listen port
-					logger.Log(0, fmt.Sprintf("-----> Updating My Public Listen Port From: %d --> %d",
-						config.GetCfg().HostInfo.PubPort, metricMsg.ListenPort))
-					config.GetCfg().HostInfo.PubPort = int(metricMsg.ListenPort)
-				}
-
 			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
 				logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source.String())
@@ -207,93 +187,12 @@ func (p *ProxyServer) handleMsgs(buffer []byte, n int, source *net.UDPAddr) {
 
 			}
 		}
-	// consume handshake message for ext clients
-	case packet.MessageInitiationType:
-		priv, pub := config.GetCfg().GetDeviceKeys()
-		peerKey, err := packet.ConsumeHandshakeInitiationMsg(false, buffer[:n],
-			packet.NoisePublicKey(pub), packet.NoisePrivateKey(priv))
-		if err != nil {
-			logger.Log(4, "---------> @@@ failed to decode HS: ", err.Error())
-		} else {
-
-			logger.Log(1, "--------> Got HandShake from peer: ", peerKey, source.String())
-			if peerInfo, ok := config.GetCfg().GetExtClientWaitCfg(peerKey); ok {
-				peerInfo.CommChan <- source
-			} else {
-				// check if endpoint needs to be updated for the extclient
-				if peerInfoHash, found := config.GetCfg().GetPeerInfoByHash(models.ConvPeerKeyToHash(peerKey)); found {
-					if peerInfoHash.Endpoint.String() != source.String() {
-						// update ext client endpoint
-						if extPeer, found := config.GetCfg().GetExtClientInfo(peerInfoHash.Endpoint); found {
-							logger.Log(1, "----> ExtClient  endpoint has changed: ", peerKey, extPeer.Endpoint.String(), " to: ", source.String())
-							// Extclient Endpoint has changed so reset connection
-							if peerConn, ok := config.GetCfg().GetPeer(peerKey); ok {
-								peerConn.Config.PeerEndpoint = source
-								peerConn.Config.PeerConf.Endpoint = source
-								config.GetCfg().UpdatePeer(&peerConn)
-								config.GetCfg().ResetPeer(peerKey)
-
-							}
-
-						}
-
-					}
-				}
-			}
-
-		}
 	}
-}
-
-func handleExtClients(buffer []byte, n int, source *net.UDPAddr) bool {
-	isExtClient := false
-	if peerInfo, ok := config.GetCfg().GetExtClientInfo(source); ok {
-		logger.Log(3, "------------->  ext client pkt from: ", source.String())
-		_, err := peerInfo.LocalConn.Write(buffer[:n])
-		if err != nil {
-			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
-			//continue
-		}
-		go func(n int, peerKey string) {
-
-			metric := nm_models.ProxyMetric{
-				TrafficRecieved: int64(n),
-			}
-			metrics.UpdateMetricByPeer(peerKey, &metric, true)
-
-		}(n, peerInfo.PeerKey)
-		isExtClient = true
-	}
-	return isExtClient
-}
-
-func handleNoProxyPeer(buffer []byte, n int, source *net.UDPAddr) bool {
-	fromNoProxyPeer := false
-	if peerInfo, found := config.GetCfg().GetNoProxyPeer(source.IP); found {
-		logger.Log(3, fmt.Sprintf("PROXING No Proxy Peer TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ SourceIP: [%s] ]]\n",
-			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
-			fmt.Sprintf("%s:%d", source.IP.String(), source.Port), source.IP.String()))
-		_, err := peerInfo.LocalConn.Write(buffer[:n])
-		if err != nil {
-			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
-		}
-		go func(n int, peerKey string) {
-
-			metric := nm_models.ProxyMetric{
-				TrafficRecieved: int64(n),
-			}
-			metrics.UpdateMetricByPeer(peerKey, &metric, true)
-
-		}(n, peerInfo.Config.PeerPublicKey.String())
-		fromNoProxyPeer = true
-	}
-	return fromNoProxyPeer
 }
 
 func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, srcPeerKeyHash, dstPeerKeyHash string) {
 	// check for routing map and relay to right proxy
 	if remotePeer, ok := config.GetCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
-
 		logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ SourceIP: %s:%d ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
 			source.IP.String(), source.Port, srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash))
 		_, err := p.Server.WriteToUDP(buffer[:n], remotePeer.Endpoint)
@@ -301,7 +200,6 @@ func (p *ProxyServer) relayPacket(buffer []byte, source *net.UDPAddr, n int, src
 			logger.Log(1, "Failed to relay to remote: ", err.Error())
 		}
 		return
-
 	}
 }
 
@@ -352,7 +250,7 @@ func (p *ProxyServer) CreateProxyServer(port, bodySize int, addr string) (err er
 	p.setDefaults()
 	p.Server, err = net.ListenUDP("udp", &net.UDPAddr{
 		Port: p.Config.Port,
-		IP:   net.ParseIP(addr),
+		IP:   net.ParseIP("0.0.0.0"),
 	})
 	return
 }

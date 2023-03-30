@@ -34,7 +34,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		PeerConf:        peer,
 		ListenPort:      int(peerConf.PublicListenPort),
 		ProxyListenPort: peerConf.ProxyListenPort,
-		ProxyStatus:     peerConf.Proxy,
+		ProxyStatus:     peerConf.Proxy || isRelayed,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
@@ -69,7 +69,6 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	connConf := models.Conn{
 		Mutex:           &sync.RWMutex{},
 		Key:             peer.PublicKey,
-		IsExtClient:     peerConf.IsExtClient,
 		Config:          p.Config,
 		StopConn:        p.Close,
 		ResetConn:       p.Reset,
@@ -81,22 +80,14 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	}
 	connConf.ServerMap[server] = struct{}{}
 	rPeer := models.RemotePeer{
-		PeerKey:     peer.PublicKey.String(),
-		IsExtClient: peerConf.IsExtClient,
-		Endpoint:    peerEndpoint,
-		LocalConn:   p.LocalConn,
+		PeerKey:   peer.PublicKey.String(),
+		Endpoint:  peerEndpoint,
+		LocalConn: p.LocalConn,
 	}
-	if peerConf.Proxy || peerConf.IsExtClient {
-		logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
-		config.GetCfg().SavePeer(&connConf)
-	} else {
-		logger.Log(1, "-----> saving as no proxy peer: ", connConf.Key.String())
-		config.GetCfg().SaveNoProxyPeer(&connConf)
-	}
+
+	logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
+	config.GetCfg().SavePeer(&connConf)
 	config.GetCfg().SavePeerByHash(&rPeer)
-	if peerConf.IsExtClient {
-		config.GetCfg().SaveExtClientInfo(&rPeer)
-	}
 	return nil
 }
 
@@ -109,16 +100,6 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
-		} else {
-			if peers[i].Endpoint == nil {
-				continue
-			}
-			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
-			if found {
-				noProxyPeer.Mutex.RLock()
-				peers[i].Endpoint = noProxyPeer.Config.LocalConnAddr
-				noProxyPeer.Mutex.RUnlock()
-			}
 		}
 	}
 	return peers
