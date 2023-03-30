@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -24,12 +25,13 @@ func Install() error {
 		fmt.Println("  eg ./netclient install")
 		return errors.New("path error")
 	}
-	daemon.Stop()
+	_ = daemon.Stop()
+	time.Sleep(time.Second << 1)
 	if err := daemon.Install(); err != nil {
 		logger.Log(0, "error installing daemon", err.Error())
 		return err
 	}
 	config.Netclient().DaemonInstalled = true
-	config.WriteNetclientConfig()
+	_ = config.WriteNetclientConfig()
 	return daemon.Restart()
 }

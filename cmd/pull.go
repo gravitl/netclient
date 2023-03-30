@@ -11,17 +11,14 @@ import (
 
 // pullCmd represents the pull command
 var pullCmd = &cobra.Command{
-	Use:   "pull <network name>",
-	Args:  cobra.ExactArgs(1),
-	Short: "get the latest node configuration",
-	Long: `get the latest node configuration for the specified network
-For example:
-
-netclient pull my-network --> gets configuration for network my-network`,
+	Use:   "pull",
+	Args:  cobra.ExactArgs(0),
+	Short: "get the latest host configuration",
+	Long:  `get the latest host configuration and peers from all connected servers`,
 	Run: func(cmd *cobra.Command, args []string) {
-		_, err := functions.Pull(args[0], true)
+		err := functions.Pull()
 		if err != nil {
-			logger.Log(0, "failed to update node ", err.Error())
+			logger.Log(0, "failed to pull", err.Error())
 		}
 	},
 }

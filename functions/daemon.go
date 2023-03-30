@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
@@ -46,7 +47,7 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	server := config.GetServer(servers[0])
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunHost, server.StunPort, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunList, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -87,7 +88,6 @@ func Daemon() {
 			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&wg)
 			}
-
 		}
 	}
 }
@@ -113,6 +113,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		logger.Log(0, "error reading neclient config file", err.Error())
 	}
+	config.UpdateNetclient(*config.Netclient())
 	if err := config.ReadNodeConfig(); err != nil {
 		logger.Log(0, "error reading node map from disk", err.Error())
 	}
@@ -120,7 +121,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
 	logger.Log(3, "configuring netmaker wireguard interface")
-
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
@@ -141,6 +141,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
+	wg.Add(1)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -204,6 +206,11 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "failed to establish connection to broker: ", connecterr.Error())
 		return connecterr
 	}
+	if err := PublishHostUpdate(server.Name, models.Acknowledgement); err != nil {
+		logger.Log(0, "failed to send initial ACK to server", server.Name, err.Error())
+	} else {
+		logger.Log(2, "successfully requested ACK on server", server.Name)
+	}
 	return nil
 }
 
@@ -211,9 +218,7 @@ func setupMQTT(server *config.Server) error {
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
 func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
-	broker := server.Broker
-	port := server.MQPort
-	opts.AddBroker(fmt.Sprintf("wss://%s:%s", broker, port))
+	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
 	opts.SetClientID(server.MQID.String())
@@ -232,6 +237,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			}
 			setHostSubscription(client, server.Name)
 		}
+		logger.Log(1, "successfully connected to", server.Broker)
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -242,7 +248,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	ServerSet[server.Name] = mqclient
 	var connecterr error
 	if token := mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
-		logger.Log(0, "unable to connect to broker, retrying ...")
+		logger.Log(0, "unable to connect to broker,", server.Broker+",", "retrying...")
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
 		} else {

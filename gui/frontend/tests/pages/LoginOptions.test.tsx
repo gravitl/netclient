@@ -32,13 +32,10 @@ describe("LoginOptionsPage", () => {
     });
   });
 
-  it("provides login/join options", () => {
+  it("provides login options", () => {
     act(() => {
       expect(screen.getByTestId("login-by-token-btn")).toBeInTheDocument()
-      expect(screen.getByTestId("login-by-token-btn")).toHaveTextContent('By Token')
-
-      expect(screen.getByTestId("login-by-cred-btn")).toBeInTheDocument()
-      expect(screen.getByTestId("login-by-cred-btn")).toHaveTextContent('Username/Password/SSO')
+      expect(screen.getByTestId("login-by-token-btn")).toHaveTextContent('By Enrollment Key')
     });
   });
 

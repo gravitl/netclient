@@ -40,6 +40,12 @@ const (
 	DefaultListenPort = 51821
 	// DefaultMTU default MTU for wireguard
 	DefaultMTU = 1420
+	// SYMMETRIC_NAT - symmetric NAT string
+	SYMMETRIC_NAT = "symnat"
+	// ASYMMETRIC_NAT - asymmetric NAT string
+	ASYMMETRIC_NAT = "asymnat"
+	// DOUBLE_NAT - double nat NAT string
+	DOUBLE_NAT = "doublenat"
 )
 
 var (
@@ -53,9 +59,7 @@ var (
 type Config struct {
 	models.Host
 	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
-	MacAddress        net.HardwareAddr                `json:"macaddress" yaml:"macaddress"`
 	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	TrafficKeyPublic  []byte                          `json:"traffickeypublic" yaml:"trafficekeypublic"`
 	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
 	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
@@ -71,6 +75,30 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
+// UpdateHost - update host with data from server
+func UpdateHost(newHost *models.Host) {
+	netclient.Host.Name = newHost.Name
+	netclient.Host.Verbosity = newHost.Verbosity
+	netclient.Host.MTU = newHost.MTU
+	if newHost.ListenPort > 0 {
+		netclient.Host.ListenPort = newHost.ListenPort
+	}
+	if newHost.ProxyListenPort > 0 {
+		netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	}
+	netclient.Host.IsDefault = newHost.IsDefault
+	netclient.Host.DefaultInterface = newHost.DefaultInterface
+	// only update proxy enabled if it hasn't been modified by another server
+	if !netclient.Host.ProxyEnabledSet {
+		netclient.Host.ProxyEnabled = newHost.ProxyEnabled
+		netclient.Host.ProxyEnabledSet = true
+	}
+	netclient.Host.IsStatic = newHost.IsStatic
+	if err := WriteNetclientConfig(); err != nil {
+		logger.Log(0, "error updating netclient config after update", err.Error())
+	}
+}
+
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
 	return &netclient
@@ -78,10 +106,12 @@ func Netclient() *Config {
 
 // GetHostPeerList - gets the combined list of peers for the host
 func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
-
+	hostPeerMap := netclient.HostPeers
 	peerMap := make(map[string]int)
-	for _, serverPeers := range netclient.HostPeers {
+	for _, serverPeers := range hostPeerMap {
+		serverPeers := serverPeers
 		for i, peerI := range serverPeers {
+			peerI := peerI
 			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
 				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
 			} else {
@@ -113,6 +143,22 @@ func DeleteServerHostPeerCfg(server string) {
 	delete(netclient.HostPeers, server)
 }
 
+// RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
+func RemoveServerHostPeerCfg(serverName string) {
+	if netclient.HostPeers == nil {
+		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		return
+	}
+	peers := netclient.HostPeers[serverName]
+	for i := range peers {
+		peer := peers[i]
+		peer.Remove = true
+		peers[i] = peer
+	}
+	netclient.HostPeers[serverName] = peers
+	_ = WriteNetclientConfig()
+}
+
 func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
 	uniqueIpList := []net.IPNet{}
 	ipMap := make(map[string]struct{})
@@ -135,8 +181,13 @@ func SetVersion(ver string) {
 }
 
 // setLogVerbosity sets the logger verbosity from config
-func setLogVerbosity() {
-	logger.Verbosity = netclient.Verbosity
+func setLogVerbosity(flags *viper.Viper) {
+	verbosity := flags.GetInt("verbosity")
+	if netclient.Verbosity > verbosity {
+		logger.Verbosity = netclient.Verbosity
+		return
+	}
+	logger.Verbosity = verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -151,6 +202,7 @@ func ReadNetclientConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
@@ -368,7 +420,7 @@ func InCharSet(name string) bool {
 func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
-	setLogVerbosity()
+	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
@@ -421,6 +473,13 @@ func CheckConfig() {
 			logger.FatalLog("failed to set macaddress", err.Error())
 		}
 		netclient.MacAddress = mac[0]
+		if runtime.GOOS == "darwin" && netclient.MacAddress.String() == "ac:de:48:00:11:22" {
+			if len(mac) > 1 {
+				netclient.MacAddress = mac[1]
+			} else {
+				netclient.MacAddress = ncutils.RandomMacAddress()
+			}
+		}
 		saveRequired = true
 	}
 	if (netclient.PrivateKey == wgtypes.Key{}) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -11,10 +12,12 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -59,7 +62,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
-		logger.Log(0, "network:", newNode.Network, " received delete request for %s", newNode.ID.String())
+		logger.Log(0, "network:", newNode.Network, "received delete request for", newNode.ID.String())
 		unsubscribeNode(client, &newNode)
 		if _, err = LeaveNetwork(newNode.Network, true); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
@@ -154,7 +157,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	_, err = wireguard.UpdateWgPeers(peerUpdate.Peers)
+	_, err = wireguard.UpdateWgPeers()
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
@@ -162,15 +165,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
-
 	wireguard.SetPeers()
-	if config.Netclient().ProxyEnabled {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
-	} else {
-		peerUpdate.ProxyUpdate.Action = models.NoProxy
-	}
-	peerUpdate.ProxyUpdate.Server = serverName
+	wireguard.GetInterface().GetPeerRoutes()
+	wireguard.GetInterface().ApplyAddrs(true)
+	go handleEndpointDetection(&peerUpdate)
+	time.Sleep(time.Second * 2) // sleep required to avoid race condition
 	ProxyManagerChan <- &peerUpdate
 }
 
@@ -194,7 +193,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
-	var resetInterface, restartDaemon bool
+	var resetInterface, restartDaemon, clearMsg bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
@@ -210,6 +209,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		logger.Log(1, "added node for network", hostUpdate.Node.Network, "on server", serverName)
+		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
@@ -223,7 +224,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		clearMsg = true
 	case models.RequestAck:
+		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
@@ -237,7 +240,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	if restartDaemon {
-		clearRetainedMsg(client, msg.Topic())
+		if clearMsg {
+			clearRetainedMsg(client, msg.Topic())
+		}
 		if err := daemon.Restart(); err != nil {
 			logger.Log(0, "failed to restart daemon: ", err.Error())
 		}
@@ -254,7 +259,36 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetPeers()
 	}
+}
 
+func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
+	hostPubKey := config.Netclient().PublicKey.String()
+	// select best interface for each peer and set it as endpoint
+	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
+	for idx := range peerUpdate.Peers {
+		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
+		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+			for i := range peerInfo.Interfaces {
+				peerIface := peerInfo.Interfaces[i]
+				peerIP := peerIface.Address.IP
+				if strings.Contains(peerIP.String(), "127.0.0.") ||
+					peerIP.IsMulticast() ||
+					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
+					peerUpdate.Peers[idx].Endpoint.IP.Equal(peerIP) ||
+					isAddressInPeers(peerIP, currentCidrs) {
+					continue
+				}
+				if err := networking.FindBestEndpoint(
+					peerIP.String(),
+					hostPubKey,
+					peerPubKey,
+					peerInfo.ProxyListenPort,
+				); err != nil { // happens v often
+					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
+				}
+			}
+		}
+	}
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
@@ -428,4 +462,29 @@ func applyAllDNS(dns []models.DNSUpdate) {
 		logger.Log(0, "error saving hosts file", err.Error())
 		return
 	}
+}
+
+func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
+	if len(peers) > 0 { // nil check
+		for i := range peers {
+			peer := peers[i]
+			cidrs = append(cidrs, peer.AllowedIPs...)
+		}
+	}
+	if cidrs == nil {
+		cidrs = []net.IPNet{}
+	}
+	return
+}
+
+func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
+	if len(cidrs) > 0 {
+		for i := range cidrs {
+			currCidr := cidrs[i]
+			if currCidr.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
 }

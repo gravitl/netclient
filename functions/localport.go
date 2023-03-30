@@ -2,7 +2,9 @@ package functions
 
 import (
 	"net"
+	"strings"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -29,29 +31,42 @@ func getInterfaces() (*[]models.Iface, error) {
 	if err != nil {
 		return nil, err
 	}
-	var data []models.Iface
+	var data = []models.Iface{}
 	var link models.Iface
 	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue // interface down
-		}
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue // loopback interface
+		iface := iface
+		if iface.Flags&net.FlagUp == 0 || // interface down
+			iface.Flags&net.FlagLoopback != 0 || // loopback interface
+			iface.Name == ncutils.GetInterfaceName() ||
+			strings.Contains(iface.Name, "docker") { // avoid netmaker
+			continue
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			return nil, err
 		}
 		for _, addr := range addrs {
-			link.Name = iface.Name
 			ip, cidr, err := net.ParseCIDR(addr.String())
 			if err != nil {
 				continue
 			}
+			if ip.IsLoopback() || // no need to send loopbacks
+				isPublicIP(ip) { // no need to send public IPs
+				continue
+			}
+			link.Name = iface.Name
 			link.Address = *cidr
 			link.Address.IP = ip
 			data = append(data, link)
 		}
 	}
 	return &data, nil
+}
+
+// isPublicIP indicates whether IP is public or not.
+func isPublicIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
+		return false
+	}
+	return true
 }

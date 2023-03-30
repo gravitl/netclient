@@ -15,6 +15,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
@@ -22,15 +23,15 @@ import (
 
 // ClientConfig - struct for dealing with client configuration
 type ClientConfig struct {
-	Server          models.ServerConfig `yaml:"server"`
-	Node            models.LegacyNode   `yaml:"node"`
-	NetworkSettings models.Network      `yaml:"networksettings"`
-	Network         string              `yaml:"network"`
-	Daemon          string              `yaml:"daemon"`
-	OperatingSystem string              `yaml:"operatingsystem"`
-	AccessKey       string              `yaml:"accesskey"`
-	PublicIPService string              `yaml:"publicipservice"`
-	SsoServer       string              `yaml:"sso"`
+	Server          OldNetmakerServerConfig `yaml:"server"`
+	Node            models.LegacyNode       `yaml:"node"`
+	NetworkSettings models.Network          `yaml:"networksettings"`
+	Network         string                  `yaml:"network"`
+	Daemon          string                  `yaml:"daemon"`
+	OperatingSystem string                  `yaml:"operatingsystem"`
+	AccessKey       string                  `yaml:"accesskey"`
+	PublicIPService string                  `yaml:"publicipservice"`
+	SsoServer       string                  `yaml:"sso"`
 }
 
 // ReadConfig - reads a config of a older version of client from disk for specified network
@@ -40,6 +41,10 @@ func ReadConfig(network string) (*ClientConfig, error) {
 		return nil, err
 	}
 	home := GetNetclientPath() + "config/"
+	if ncutils.IsWindows() {
+		//for some reason windows does not use the config dir although it exists
+		home = GetNetclientPath()
+	}
 	file := fmt.Sprintf(home + "netconfig-" + network)
 	log.Println("processing ", file)
 	f, err := os.Open(file)
@@ -60,7 +65,12 @@ func ReadConfig(network string) (*ClientConfig, error) {
 // GetSystemNetworks - get networks for older version (pre v0.18.0) of netclient
 func GetSystemNetworks() ([]string, error) {
 	var networks []string
-	files, err := filepath.Glob(GetNetclientPath() + "config/netconfig-*")
+	confPath := GetNetclientPath() + "config/netconfig-*"
+	if ncutils.IsWindows() {
+		//for some reason windows does not use the config dir although it exists
+		confPath = GetNetclientPath() + "netconfig-*"
+	}
+	files, err := filepath.Glob(confPath)
 	if err != nil {
 		return nil, err
 	}
@@ -113,41 +123,28 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 }
 
 // ConvertOldNode accepts a netmaker node struct and converts to the structs used by netclient
-func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (*Node, *Server, *Config) {
+func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
 	var node Node
 	host := Netclient()
-	//server := GetServer(netmakerNode.Server)
-	//if server == nil {
-	server := ConvertOldServerCfg(cfg)
-	//}
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
-	//n.Name = s.Name
+	node.HostID = host.ID
 	node.Network = netmakerNode.Network
-	//node.Password = netmakerNode.Password
-	server.AccessKey = netmakerNode.AccessKey
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
 	host.ProxyEnabled = netmakerNode.Proxy
-	//n.Interface = s.Interface
-	node.Server = server.Name
-	server.TrafficKey = netmakerNode.TrafficKeys.Server
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
-	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	host.ListenPort = int(netmakerNode.ListenPort)
 	host.MTU = int(netmakerNode.MTU)
 	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
-
-	// node settings
 	node.ID, _ = uuid.Parse(netmakerNode.ID)
 	node.Network = netmakerNode.Network
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
-	node.Server = server.Name
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	node.Address.IP = net.ParseIP(netmakerNode.Address)
@@ -162,7 +159,7 @@ func ConvertOldNode(netmakerNode *models.LegacyNode, cfg *models.ServerConfig) (
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
 	//node.Peers = nodeGet.Peers
 	//add items not provided by server
-	return &node, server, host
+	return &node, host
 }
 
 // ConvertOldServerCfg converts a netmaker ServerConfig to netclient server struct
@@ -177,7 +174,7 @@ func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.Is_EE = cfg.Is_EE
-	server.StunHost = cfg.StunHost
+	server.StunList = cfg.StunList
 	server.StunPort = cfg.StunPort
 	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)

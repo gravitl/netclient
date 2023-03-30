@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync"
 
+	nconf "github.com/gravitl/netclient/config"
 	proxy "github.com/gravitl/netclient/nmproxy/models"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -20,7 +20,6 @@ var (
 type Config struct {
 	HostInfo                proxy.HostInfo
 	ProxyStatus             bool
-	isBehindNAT             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
 	settings                map[string]proxy.Settings // host settings per server
@@ -37,14 +36,11 @@ func InitializeCfg() {
 		ProxyStatus: true,
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
-			iface:            nil,
-			proxyPeerMap:     make(proxy.PeerConnMap),
-			peerHashMap:      make(map[string]*proxy.RemotePeer),
-			extSrcIpMap:      make(map[string]*proxy.RemotePeer),
-			extClientWaitMap: make(map[string]*proxy.RemotePeer),
-			relayPeerMap:     make(map[string]map[string]*proxy.RemotePeer),
-			noProxyPeerMap:   make(proxy.PeerConnMap),
-			allPeersConf:     make(map[string]models.HostPeerMap),
+			iface:        nil,
+			proxyPeerMap: make(proxy.PeerConnMap),
+			peerHashMap:  make(map[string]*proxy.RemotePeer),
+			relayPeerMap: make(map[string]map[string]*proxy.RemotePeer),
+			allPeersConf: make(map[string]models.HostPeerMap),
 		},
 		settings: make(map[string]proxy.Settings),
 	}
@@ -182,19 +178,7 @@ func (c *Config) GetRelayedStatus(server string) bool {
 	return c.GetSettings(server).IsRelayed
 }
 
-// Config.SetBehindNATStatus - sets NAT status for the device
-func (c *Config) SetNATStatus() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.HostInfo.PrivIp != nil && proxy.IsPublicIP(c.HostInfo.PrivIp) {
-		logger.Log(1, "Host is public facing!!!")
-	} else {
-		c.isBehindNAT = true
-	}
-
-}
-
-// NatAutoSwitchDone - check if nat automatically swithed on already for devices behind NAT
+// NatAutoSwitchDone - check if nat automatically switched on already for devices behind NAT
 func NatAutoSwitchDone() bool {
 	return natAutoSwitch
 }
@@ -204,9 +188,9 @@ func SetNatAutoSwitch() {
 	natAutoSwitch = true
 }
 
-// Config.IsBehindNAT - checks if proxy is running behind NAT
-func (c *Config) IsBehindNAT() bool {
-	return c.isBehindNAT
+// Config.ShouldUseProxy - checks if proxy is running behind NAT
+func (c *Config) ShouldUseProxy() bool {
+	return c.HostInfo.NatType == nconf.ASYMMETRIC_NAT || c.HostInfo.NatType == nconf.DOUBLE_NAT
 }
 
 // Config.GetServerConn - fetches the server connection

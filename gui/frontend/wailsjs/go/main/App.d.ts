@@ -37,3 +37,5 @@ export function GoWriteToClipboard(arg1:string):Promise<any>;
 export function GoGetNodePeers(arg1:config.Node):Promise<Peer[]>;
 
 export function GoUpdateNetclientConfig(arg1:config.NcConfig): Promise<any>;
+
+export function GoRegisterWithEnrollmentKey(arg1:string):Promise<any>;

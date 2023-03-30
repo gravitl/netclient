@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -14,10 +15,10 @@ func (nc *NCIface) Create() error {
 }
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
-func (nc *NCIface) ApplyAddrs() error {
+func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 
 	for _, address := range nc.Addresses {
-		if !address.AddRoute && address.IP != nil {
+		if !addOnlyRoutes && !address.AddRoute && address.IP != nil {
 			if address.IP.To4() != nil {
 
 				cmd := exec.Command("ifconfig", nc.Name, "inet", "alias", address.IP.String(), address.IP.String())
@@ -74,4 +75,16 @@ func (nc *NCIface) Close() {
 		}
 	}
 
+}
+
+// DeleteOldInterface - removes named interface
+func DeleteOldInterface(iface string) {
+	logger.Log(3, "deleting interface", iface)
+	ifconfig, err := exec.LookPath("ifconfig")
+	if err != nil {
+		logger.Log(0, "failed to locate ifconfig", err.Error())
+	}
+	if _, err := ncutils.RunCmd(ifconfig+" "+iface+" destroy", true); err != nil {
+		logger.Log(0, "error removing interface", iface, err.Error())
+	}
 }

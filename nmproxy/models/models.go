@@ -22,21 +22,21 @@ type PeerConnMap map[string]*Conn
 
 // Proxy - struct for proxy config
 type Proxy struct {
-	PeerPublicKey  wgtypes.Key
-	IsExtClient    bool
-	PeerConf       wgtypes.PeerConfig
-	PeerEndpoint   *net.UDPAddr
-	RemoteConnAddr *net.UDPAddr
-	LocalConnAddr  *net.UDPAddr
-	ListenPort     int
-	ProxyStatus    bool
+	PeerPublicKey   wgtypes.Key
+	IsExtClient     bool
+	PeerConf        wgtypes.PeerConfig
+	PeerEndpoint    *net.UDPAddr
+	RemoteConnAddr  *net.UDPAddr
+	LocalConnAddr   *net.UDPAddr
+	ListenPort      int
+	ProxyListenPort int
+	ProxyStatus     bool
 }
 
 // Conn is a peer Connection configuration
 type Conn struct {
 	// Key is a public key of a remote peer
 	Key             wgtypes.Key
-	IsExtClient     bool
 	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
 	Config          Proxy
@@ -50,12 +50,11 @@ type Conn struct {
 
 // RemotePeer - struct remote peer data
 type RemotePeer struct {
-	PeerKey     string
-	Endpoint    *net.UDPAddr
-	IsExtClient bool
-	LocalConn   net.Conn
-	CancelFunc  context.CancelFunc
-	CommChan    chan *net.UDPAddr
+	PeerKey    string
+	Endpoint   *net.UDPAddr
+	LocalConn  net.Conn
+	CancelFunc context.CancelFunc
+	CommChan   chan *net.UDPAddr
 }
 
 // HostInfo - struct for host information
@@ -65,19 +64,12 @@ type HostInfo struct {
 	PubPort      int
 	PrivPort     int
 	ProxyEnabled bool
+	NatType      string
 }
 
 // ConvPeerKeyToHash - converts peer key to a md5 hash
 func ConvPeerKeyToHash(peerKey string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
-}
-
-// IsPublicIP indicates whether IP is public or not.
-func IsPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return false
-	}
-	return true
 }
 
 // Settings - struct for host settings

@@ -51,30 +51,33 @@ func (nc *NCIface) Close() {
 }
 
 // NCIface.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
-func (nc *NCIface) ApplyAddrs() error {
+func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 	ifconfig, err := exec.LookPath("ifconfig")
 	if err != nil {
 		logger.Log(0, "failed to locate ifconfig", err.Error())
 		return fmt.Errorf("failed to locate ifconfig %w", err)
 	}
 	for _, address := range nc.Addresses {
-		if !address.AddRoute && address.IP.To4() != nil {
-			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
-				return fmt.Errorf("error adding address to interface %w", err)
-			}
-		} else {
-			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
-				return fmt.Errorf("error adding address to interface %w", err)
+		if !addOnlyRoutes && !address.AddRoute {
+			if address.IP.To4() != nil {
+				if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
+					logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
+				}
+			} else {
+				if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
+					logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
+				}
 			}
 		}
+
 		if address.AddRoute {
 			if address.IP.To4() != nil {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
-					return fmt.Errorf("error adding address to interface %w", err)
+					logger.Log(1, "error adding address to interface ", address.Network.String(), err.Error())
 				}
 			} else {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
-					return fmt.Errorf("error adding address to interface %w", err)
+					logger.Log(1, "error adding address to interface ", address.Network.String(), err.Error())
 				}
 			}
 
@@ -95,4 +98,16 @@ func (nc *NCIface) SetMTU() error {
 		return fmt.Errorf("error setting mtu %w", err)
 	}
 	return nil
+}
+
+// DeleteOldInterface - removes named interface
+func DeleteOldInterface(iface string) {
+	logger.Log(3, "deleting interface", iface)
+	ifconfig, err := exec.LookPath("ifconfig")
+	if err != nil {
+		logger.Log(0, "failed to locate ifconfig", err.Error())
+	}
+	if _, err := ncutils.RunCmd(ifconfig+" "+iface+" destroy", true); err != nil {
+		logger.Log(0, "error removing interface", iface, err.Error())
+	}
 }

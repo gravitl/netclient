@@ -16,22 +16,28 @@ func (nc *NCIface) Create() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	windowsGUID, err := windows.GenerateGUID()
+	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
 	if err != nil {
-		return err
+		logger.Log(3, "creating Windows tunnel")
+		windowsGUID, err := windows.GenerateGUID()
+		if err != nil {
+			return err
+		}
+		adapter, err = driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
+		if err != nil {
+			return err
+		}
+	} else {
+		logger.Log(0, "re-using existing adapter")
 	}
-	logger.Log(3, "creating Windows tunnel")
-	adapter, err := driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
-	if err != nil {
-		return err
-	}
+
 	logger.Log(3, "created Windows tunnel")
 	nc.Iface = adapter
 	return adapter.SetAdapterState(driver.AdapterStateUp)
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
-func (nc *NCIface) ApplyAddrs() error {
+func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 	adapter := nc.Iface
 	prefixAddrs := []netip.Prefix{}
 	egressRanges := []ifaceAddress{}
@@ -97,4 +103,12 @@ func (nc *NCIface) Close() {
 func (nc *NCIface) SetMTU() error {
 	// TODO figure out how to change MTU of adapter
 	return nil
+}
+
+// DeleteOldInterface - removes named interface
+func DeleteOldInterface(iface string) {
+	logger.Log(0, "deleting interface", iface)
+	if _, err := ncutils.RunCmd("wireguard.exe /uninstalltunnelservice "+iface, true); err != nil {
+		logger.Log(1, err.Error())
+	}
 }

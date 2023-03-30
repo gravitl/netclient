@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/gravitl/netmaker/releases">
-    <img src="https://img.shields.io/badge/Version-0.18.2-informational?style=flat-square" />
+    <img src="https://img.shields.io/badge/Version-0.18.5-informational?style=flat-square" />
   </a>
   <a href="https://hub.docker.com/r/gravitl/netclient/tags">
     <img src="https://img.shields.io/docker/pulls/gravitl/netclient?label=downloads" />
@@ -67,7 +67,7 @@ Available Commands:
 Flags:
       --config string   use specified config file
   -h, --help            help for netclient
-  -v, --verbosity int   set loggin verbosity 0-4
+  -v, --verbosity int   set logging verbosity 0-4
 
 Use "netclient [command] --help" for more information about a command.
 ```

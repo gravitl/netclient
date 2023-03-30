@@ -29,11 +29,12 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
-		PeerPublicKey: peer.PublicKey,
-		IsExtClient:   peerConf.IsExtClient,
-		PeerConf:      peer,
-		ListenPort:    int(peerConf.PublicListenPort),
-		ProxyStatus:   peerConf.Proxy,
+		PeerPublicKey:   peer.PublicKey,
+		IsExtClient:     peerConf.IsExtClient,
+		PeerConf:        peer,
+		ListenPort:      int(peerConf.PublicListenPort),
+		ProxyListenPort: peerConf.ProxyListenPort,
+		ProxyStatus:     peerConf.Proxy || isRelayed,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
@@ -68,7 +69,6 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	connConf := models.Conn{
 		Mutex:           &sync.RWMutex{},
 		Key:             peer.PublicKey,
-		IsExtClient:     peerConf.IsExtClient,
 		Config:          p.Config,
 		StopConn:        p.Close,
 		ResetConn:       p.Reset,
@@ -80,22 +80,14 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	}
 	connConf.ServerMap[server] = struct{}{}
 	rPeer := models.RemotePeer{
-		PeerKey:     peer.PublicKey.String(),
-		IsExtClient: peerConf.IsExtClient,
-		Endpoint:    peerEndpoint,
-		LocalConn:   p.LocalConn,
+		PeerKey:   peer.PublicKey.String(),
+		Endpoint:  peerEndpoint,
+		LocalConn: p.LocalConn,
 	}
-	if peerConf.Proxy || peerConf.IsExtClient {
-		logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
-		config.GetCfg().SavePeer(&connConf)
-	} else {
-		logger.Log(1, "-----> saving as no proxy peer: ", connConf.Key.String())
-		config.GetCfg().SaveNoProxyPeer(&connConf)
-	}
+
+	logger.Log(1, "-----> saving as proxy peer: ", connConf.Key.String())
+	config.GetCfg().SavePeer(&connConf)
 	config.GetCfg().SavePeerByHash(&rPeer)
-	if peerConf.IsExtClient {
-		config.GetCfg().SaveExtClientInfo(&rPeer)
-	}
 	return nil
 }
 
@@ -108,16 +100,6 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 			proxyPeer.Mutex.RLock()
 			peers[i].Endpoint = proxyPeer.Config.LocalConnAddr
 			proxyPeer.Mutex.RUnlock()
-		} else {
-			if peers[i].Endpoint == nil {
-				continue
-			}
-			noProxyPeer, found := config.GetCfg().GetNoProxyPeer(peers[i].Endpoint.IP)
-			if found {
-				noProxyPeer.Mutex.RLock()
-				peers[i].Endpoint = noProxyPeer.Config.LocalConnAddr
-				noProxyPeer.Mutex.RUnlock()
-			}
 		}
 	}
 	return peers
@@ -154,8 +136,17 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
 			connectionStatus := proxy.PeerConnectionStatus(peer.PublicKey.String())
-			for peerID := range peerIDMap {
+			var proxyListenPort int
+			for peerID, peerInfo := range peerIDMap {
+				proxyListenPort = peerInfo.ProxyListenPort
 				metric.NodeConnectionStatus[peerID] = connectionStatus
+			}
+			if peer.Endpoint == nil {
+				continue
+			}
+			proxyConn, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.Endpoint.IP.String(), proxyListenPort))
+			if err != nil {
+				continue
 			}
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
@@ -165,7 +156,7 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 			if err == nil {
 				conn := config.GetCfg().GetServerConn()
 				if conn != nil {
-					_, err = conn.WriteToUDP(pkt, peer.Endpoint)
+					_, err = conn.WriteToUDP(pkt, proxyConn)
 					if err != nil {
 						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
 					}
