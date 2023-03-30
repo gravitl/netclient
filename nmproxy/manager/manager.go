@@ -24,7 +24,7 @@ func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	return &mI
 }
 
-var dumpSignalChan = make(chan struct{}, 1)
+var dumpSignalChan = make(chan struct{}, 2)
 
 func dumpProxyConnsInfo(ctx context.Context) {
 	for {
