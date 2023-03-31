@@ -12,6 +12,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -271,6 +272,13 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
+				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+					continue
+				}
+				// check to skip bridge network
+				if ncutils.IsBridgeNetwork(peerIface) {
+					continue
+				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 )
 
 // WHITESPACE_PLACEHOLDER - used with RunCMD - if a path has whitespace, use this to avoid running path as 2 args in RunCMD
@@ -36,4 +37,9 @@ func RunCmdFormatted(command string, printerr bool) (string, error) {
 // GetEmbedded - if files required for MacOS, put here
 func GetEmbedded() error {
 	return nil
+}
+
+// IsBridgeNetwork - check if the interface is a bridge type
+func IsBridgeNetwork(iface models.Iface) bool {
+	return false
 }
