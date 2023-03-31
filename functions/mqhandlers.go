@@ -271,6 +271,9 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
+				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+					continue
+				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
