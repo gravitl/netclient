@@ -81,7 +81,10 @@ func (l *netLink) Close() error {
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
 func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
-	l := nc.getKernelLink()
+	l, err := netlink.LinkByName(nc.Name)
+	if err != nil {
+		return err
+	}
 	if !addOnlyRoutes {
 		currentAddrs, err := netlink.AddrList(l, 0)
 		if err != nil {
