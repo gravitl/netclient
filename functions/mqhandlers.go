@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -272,6 +273,10 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
 				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+					continue
+				}
+				// check to skip bridge network on docker
+				if runtime.GOOS == "linux" && networking.IsBridgeNetwork(peerIface) {
 					continue
 				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||

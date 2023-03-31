@@ -9,8 +9,24 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
+	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+func IsBridgeNetwork(iface models.Iface) bool {
+
+	l, err := netlink.LinkByName(iface.Name)
+	if err != nil {
+		return false
+	}
+	if _, ok := l.(*netlink.Bridge); ok {
+		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", iface))
+		return true
+	}
+	return false
+}
 
 // FindBestEndpoint - requests against a given addr and port
 func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort int) error {
