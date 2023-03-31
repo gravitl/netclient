@@ -15,6 +15,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// IsBridgeNetwork - check if the interface is a bridge type (**should only be used for linux**)
 func IsBridgeNetwork(iface models.Iface) bool {
 
 	l, err := netlink.LinkByName(iface.Name)
