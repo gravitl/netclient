@@ -6,13 +6,13 @@ import (
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -275,8 +275,8 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
 					continue
 				}
-				// check to skip bridge network on docker
-				if runtime.GOOS == "linux" && networking.IsBridgeNetwork(peerIface) {
+				// check to skip bridge network
+				if ncutils.IsBridgeNetwork(peerIface) {
 					continue
 				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
