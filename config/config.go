@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -72,6 +73,8 @@ func init() {
 
 // UpdateNetcllient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
+	logger.Verbosity = c.Verbosity
+	logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
 	netclient = c
 }
 
