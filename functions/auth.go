@@ -10,6 +10,7 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -74,6 +75,9 @@ func cleanUpByServer(server *config.Server) error {
 	config.RemoveServerHostPeerCfg(server.Name)
 	if err := wireguard.SetPeers(); err != nil {
 		logger.Log(0, "interface not up, failed to remove peers for %s \n", server.Name)
+	}
+	if err := routes.CleanUp(config.Netclient().DefaultInterface); err != nil {
+		return err
 	}
 	config.DeleteServerHostPeerCfg(server.Name)
 	if err := config.WriteNetclientConfig(); err != nil {

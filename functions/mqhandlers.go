@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -99,7 +100,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	wireguard.SetPeers()
 	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
@@ -168,6 +168,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
+	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(0, "error when setting peer routes after peer update", err.Error())
+	}
 	wireguard.GetInterface().ApplyAddrs(true)
 	go handleEndpointDetection(&peerUpdate)
 	time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -258,7 +261,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "could not configure netmaker interface", err.Error())
 			return
 		}
-		wireguard.SetPeers()
+
+		if err = wireguard.SetPeers(); err == nil {
+			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(0, "error when setting peer routes after host update", err.Error())
+			}
+		}
 	}
 }
 

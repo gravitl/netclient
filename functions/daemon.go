@@ -19,6 +19,7 @@ import (
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -65,6 +66,10 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
+	if err := initServerRoutes(); err != nil {
+		logger.FatalLog("failed to initializeRoutes", err.Error())
+	}
+
 	shouldUpdateNat := getNatInfo()
 	if shouldUpdateNat { // will be reported on check-in
 		if err := config.WriteNetclientConfig(); err == nil {
@@ -82,6 +87,9 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
+			if err := routes.CleanUp(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(0, "routes not completely cleaned up", err.Error())
+			}
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -131,7 +139,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
+	_ = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface)
 	wireguard.SetPeers()
+	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(0, "failed to set initial peer routes", err.Error())
+	}
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
 			ProxyUpdate: models.ProxyManagerPayload{
@@ -444,4 +456,24 @@ func getNatInfo() (natUpdated bool) {
 		}
 	}
 	return
+}
+
+func initServerRoutes() error {
+	ncConf, err := config.ReadNetclientConfig()
+	if err != nil {
+		return err
+	}
+	if err = config.ReadServerConf(); err != nil {
+		return err
+	}
+
+	for _, server := range config.Servers {
+		server := server
+		networking.StoreServerAddresses(&server)
+		if err = routes.SetNetmakerServerRoutes(ncConf.DefaultInterface, &server); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

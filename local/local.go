@@ -4,8 +4,6 @@ package local
 import (
 	"errors"
 	"net"
-	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 
@@ -91,21 +89,6 @@ func SetIPForwardingMac() error {
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 	}
 	return err
-}
-
-// IsKernelWGInstalled - checks if WireGuard is installed
-func IsKernelWGInstalled() bool {
-	out, err := ncutils.RunCmd("wg help", true)
-	if err != nil {
-		return false
-	}
-	return strings.Contains(out, "Available subcommand") && !IsUserSpaceWGInstalled()
-}
-
-// IsUserSpaceWGInstalled - checks if userspace WG is present
-func IsUserSpaceWGInstalled() bool {
-	_, err := exec.LookPath(os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION"))
-	return err == nil
 }
 
 // GetMacIface - gets mac interface
