@@ -29,15 +29,15 @@ jobs:
           git config user.email "info@netmaker.io"
       - name: create release branch
         run: |
-          git switch -c release_${{ github.event.inputs.version }}
-      - name: update tag
+          git switch release_${{ github.event.inputs.version }}
+      - name: update-tag
         run: |
           git tag -f ${{ github.event.inputs.version }}
           git push
   
   linux-headless:
     runs-on: ubuntu-latest
-    needs: release-branch
+    needs: update-tag
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -67,7 +67,7 @@ jobs:
         
   freebsd-headless:
     runs-on: ubuntu-latest
-    needs: release-branch
+    needs: update-tag
     steps:
       - name: build freebsd
         uses: appleboy/ssh-action@v0.1.7
@@ -109,7 +109,7 @@ jobs:
 
 
   docker:
-    needs: release-branch
+    needs: update-tag
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -135,14 +135,14 @@ jobs:
   
   packages:
     if: ${{ github.event.inputs.prerelease == 'false' }}
-    needs: release-branch
+    needs: update-tag
     uses: ./.github/workflows/packages.yml
     with:
       version: ${{ github.event.inputs.version }}
 
   pull-request:
     if: ${{ github.event.inputs.prerelease == 'false' }}
-    needs: release-branch
+    needs: update-tag
     uses: ./.github/workflows/pull-request.yml
     with:
       version: ${{ github.event.inputs.version }}
