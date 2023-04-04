@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 )
 
 // RunCmdFormatted - run a command formatted for freebsd
@@ -47,4 +48,9 @@ func RunCmd(command string, printerr bool) (string, error) {
 		logger.Log(0, strings.TrimSuffix(string(out), "\n"))
 	}
 	return string(out), err
+}
+
+// IsBridgeNetwork - check if the interface is a bridge type
+func IsBridgeNetwork(iface models.Iface) bool {
+	return false
 }

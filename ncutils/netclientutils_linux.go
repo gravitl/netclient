@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
+	"github.com/vishvananda/netlink"
 )
 
 // RunCmd - runs a local command
@@ -29,4 +31,18 @@ func RunCmdFormatted(command string, printerr bool) (string, error) {
 // GetEmbedded - if files required for linux, put here
 func GetEmbedded() error {
 	return nil
+}
+
+// IsBridgeNetwork - check if the interface is a bridge type
+func IsBridgeNetwork(iface models.Iface) bool {
+
+	l, err := netlink.LinkByName(iface.Name)
+	if err != nil {
+		return false
+	}
+	if _, ok := l.(*netlink.Bridge); ok {
+		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", iface))
+		return true
+	}
+	return false
 }
