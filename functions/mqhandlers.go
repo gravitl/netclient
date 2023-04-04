@@ -276,7 +276,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					continue
 				}
 				// check to skip bridge network
-				if ncutils.IsBridgeNetwork(peerIface) {
+				if ncutils.IsBridgeNetwork(peerIface.Name) {
 					continue
 				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||

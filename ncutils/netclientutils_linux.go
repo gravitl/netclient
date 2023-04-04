@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 	"github.com/vishvananda/netlink"
 )
 
@@ -34,14 +33,18 @@ func GetEmbedded() error {
 }
 
 // IsBridgeNetwork - check if the interface is a bridge type
-func IsBridgeNetwork(iface models.Iface) bool {
+func IsBridgeNetwork(ifaceName string) bool {
 
-	l, err := netlink.LinkByName(iface.Name)
+	l, err := netlink.LinkByName(ifaceName)
 	if err != nil {
 		return false
 	}
+	if strings.ToLower(l.Type()) == "bridge" {
+		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", ifaceName))
+		return true
+	}
 	if _, ok := l.(*netlink.Bridge); ok {
-		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", iface))
+		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", ifaceName))
 		return true
 	}
 	return false
