@@ -51,6 +51,6 @@ func RunCmd(command string, printerr bool) (string, error) {
 }
 
 // IsBridgeNetwork - check if the interface is a bridge type
-func IsBridgeNetwork(ifaceName string) bool {
+func IsBridgeNetwork(iface models.Iface) bool {
 	return false
 }
