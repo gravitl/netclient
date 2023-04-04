@@ -38,8 +38,10 @@ func getInterfaces() (*[]models.Iface, error) {
 		iface := iface
 		if iface.Flags&net.FlagUp == 0 || // interface down
 			iface.Flags&net.FlagLoopback != 0 || // loopback interface
-			iface.Name == ncutils.GetInterfaceName() ||
-			strings.Contains(iface.Name, "docker") { // avoid netmaker
+			iface.Flags&net.FlagPointToPoint != 0 || // avoid direct connections
+			iface.Name == ncutils.GetInterfaceName() || // avoid netmaker
+			ncutils.IsBridgeNetwork(iface.Name) || // avoid bridges
+			strings.Contains(iface.Name, "docker") {
 			continue
 		}
 		addrs, err := iface.Addrs()
