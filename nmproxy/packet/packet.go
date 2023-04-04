@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
@@ -96,7 +97,9 @@ func CreateMetricPacket(id uint32, sender, reciever wgtypes.Key) ([]byte, error)
 		Reciever:  reciever,
 		TimeStamp: time.Now().UnixMilli(),
 	}
-	logger.Log(1, fmt.Sprintf("----------> $$ CREATED PACKET: %+v\n", msg))
+	if config.Netclient().Debug {
+		logger.Log(1, fmt.Sprintf("----------> $$ CREATED PACKET: %+v\n", msg))
+	}
 	var buff [MessageMetricSize]byte
 	writer := bytes.NewBuffer(buff[:0])
 	err := binary.Write(writer, binary.LittleEndian, msg)
