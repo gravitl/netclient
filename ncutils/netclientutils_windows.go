@@ -9,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 )
 
 //go:embed windowsdaemon/winsw.exe
@@ -64,6 +63,6 @@ func GetEmbedded() error {
 }
 
 // IsBridgeNetwork - check if the interface is a bridge type
-func IsBridgeNetwork(iface models.Iface) bool {
+func IsBridgeNetwork(ifaceName string) bool {
 	return false
 }
