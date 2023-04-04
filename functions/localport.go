@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -51,7 +52,7 @@ func getInterfaces() (*[]models.Iface, error) {
 				continue
 			}
 			if ip.IsLoopback() || // no need to send loopbacks
-				isPublicIP(ip) { // no need to send public IPs
+				stun.IsPublicIP(ip) { // no need to send public IPs
 				continue
 			}
 			link.Name = iface.Name
@@ -61,12 +62,4 @@ func getInterfaces() (*[]models.Iface, error) {
 		}
 	}
 	return &data, nil
-}
-
-// isPublicIP indicates whether IP is public or not.
-func isPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return false
-	}
-	return true
 }
