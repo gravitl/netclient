@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 )
 
 // WHITESPACE_PLACEHOLDER - used with RunCMD - if a path has whitespace, use this to avoid running path as 2 args in RunCMD

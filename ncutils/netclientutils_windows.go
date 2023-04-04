@@ -9,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 )
 
 //go:embed windowsdaemon/winsw.exe

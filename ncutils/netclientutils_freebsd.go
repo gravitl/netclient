@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 )
 
 // RunCmdFormatted - run a command formatted for freebsd
