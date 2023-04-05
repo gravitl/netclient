@@ -61,3 +61,8 @@ func GetEmbedded() error {
 	}
 	return nil
 }
+
+// IsBridgeNetwork - check if the interface is a bridge type
+func IsBridgeNetwork(ifaceName string) bool {
+	return false
+}
