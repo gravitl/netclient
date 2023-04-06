@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -44,8 +45,9 @@ const (
 )
 
 var (
-	// Netclient contains the netclient config
-	netclient Config
+	gw4PeerDetected bool   // indicates if an IPv4 gwPeer (0.0.0.0/0) was found
+	gw6PeerDetected bool   // indicates if an IPv6 gwPeer (0.0.0.0/0) was found
+	netclient       Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
 )
@@ -123,9 +125,10 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
+	detectOrFilterGWPeers(peers[:])
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
-		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
 	}
 	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
@@ -606,4 +609,32 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 		logger.Log(0, "node unmarshal err", h.Name, err.Error())
 	}
 	return host, node
+}
+
+func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) {
+	if len(peers) > 0 {
+		for i := range peers {
+			peer := peers[i]
+			newAllowedIPs := []net.IPNet{}
+			for j := range peer.AllowedIPs {
+				ip := peer.AllowedIPs[j]
+				if ip.String() == "0.0.0.0/0" { // handle IPv4
+					if !gw4PeerDetected {
+						fmt.Printf("FOUND GW ADDRESS!!\n")
+						gw4PeerDetected = true
+						// newAllowedIPs = append(newAllowedIPs, ip)
+					}
+				} else if ip.String() == "::/0" { // handle IPv6
+					if !gw6PeerDetected {
+						gw6PeerDetected = true
+						// newAllowedIPs = append(newAllowedIPs, ip)
+					}
+				} else {
+					newAllowedIPs = append(newAllowedIPs, ip)
+				}
+			}
+			peer.AllowedIPs = newAllowedIPs
+			peers[i] = peer
+		}
+	}
 }
