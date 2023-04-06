@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -170,8 +171,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
 	go handleEndpointDetection(&peerUpdate)
-	time.Sleep(time.Second * 2) // sleep required to avoid race condition
-	ProxyManagerChan <- &peerUpdate
+	if proxyCfg.GetCfg().IsProxyRunning() {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate
+	}
+
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
