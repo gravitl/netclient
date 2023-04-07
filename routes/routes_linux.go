@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
@@ -139,6 +140,49 @@ func RemovePeerRoutes(defaultInterface string) error {
 	}
 	peerRouteMU.Unlock()
 	resetPeerRoutes()
+	return nil
+}
+
+// SetDefaultGateway - sets netmaker as the default gateway
+func SetDefaultGateway(gwAddress *net.IPNet) error {
+	if defaultGWRoute == nil {
+		return fmt.Errorf("old gateway not found, can not set default gateway")
+	}
+
+	if gwAddress == nil {
+		return nil
+	}
+
+	netmakerLink, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("SETTING GW %s %v \n", gwAddress.IP.String(), gwAddress)
+
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst:       nil,
+		Gw:        gwAddress.IP,
+		LinkIndex: netmakerLink.Attrs().Index,
+	}); err != nil {
+		fmt.Printf("SETTING GW ERROR %v \n", err)
+		return err
+	}
+	return nil
+}
+
+// RemoveDefaultGW - removes the default gateway
+func RemoveDefaultGW(gwAddress *net.IPNet) error {
+	if gwAddress == nil {
+		return nil
+	}
+
+	if err := netlink.RouteDel(&netlink.Route{
+		Dst: nil,
+		Gw:  gwAddress.IP,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 

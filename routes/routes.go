@@ -3,6 +3,8 @@ package routes
 import (
 	"net"
 	"sync"
+
+	"github.com/gravitl/netclient/config"
 )
 
 /*
@@ -20,11 +22,17 @@ var (
 )
 
 // CleanUp - calls for client to clean routes of peers and servers
-func CleanUp(defaultInterface string) error {
+func CleanUp(defaultInterface string, gwAddr *net.IPNet) error {
 	if err := RemoveServerRoutes(defaultInterface); err != nil {
 		return err
 	}
-	return RemovePeerRoutes(defaultInterface)
+	if err := RemovePeerRoutes(defaultInterface); err != nil {
+		return err
+	}
+	if config.GW4PeerDetected {
+		return RemoveDefaultGW(gwAddr)
+	}
+	return nil
 }
 
 func addServerRoute(route net.IPNet) {

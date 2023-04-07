@@ -164,6 +164,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
+	gwDetected := config.GW4PeerDetected
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
@@ -172,6 +173,17 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error when setting peer routes after peer update", err.Error())
 	}
 	wireguard.GetInterface().ApplyAddrs(true)
+	if !gwDetected && config.GW4PeerDetected {
+		if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
+			fmt.Printf("ERRROR SETTING GW %v \n", err)
+		}
+	} else if gwDetected && !config.GW4PeerDetected {
+		if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
+			fmt.Printf("ERRROR REMOVING GW %v \n", err)
+		}
+	} else {
+		fmt.Printf("SKIPPED GW OPTIONS \n")
+	}
 	go handleEndpointDetection(&peerUpdate)
 	time.Sleep(time.Second * 2) // sleep required to avoid race condition
 	ProxyManagerChan <- &peerUpdate

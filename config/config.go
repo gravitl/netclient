@@ -45,11 +45,17 @@ const (
 )
 
 var (
-	gw4PeerDetected bool   // indicates if an IPv4 gwPeer (0.0.0.0/0) was found
-	gw6PeerDetected bool   // indicates if an IPv6 gwPeer (0.0.0.0/0) was found
-	netclient       Config // netclient contains the netclient config
+	netclient Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
+	// GW4PeerDetected - indicates if an IPv4 gwPeer (0.0.0.0/0) was found
+	GW4PeerDetected bool
+	// GW4Addr - the peer's address for IPv4 gateways
+	GW4Addr net.IPNet
+	// GW6PeerDetected - indicates if an IPv6 gwPeer (0.0.0.0/0) was found, currently unused
+	GW6PeerDetected bool
+	// GW6Addr - the peer's address for IPv6 gateways
+	GW6Addr net.IPNet
 )
 
 // Config configuration for netclient and host as a whole
@@ -619,22 +625,36 @@ func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) {
 			for j := range peer.AllowedIPs {
 				ip := peer.AllowedIPs[j]
 				if ip.String() == "0.0.0.0/0" { // handle IPv4
-					if !gw4PeerDetected {
+					if !GW4PeerDetected && j > 0 {
 						fmt.Printf("FOUND GW ADDRESS!!\n")
-						gw4PeerDetected = true
-						// newAllowedIPs = append(newAllowedIPs, ip)
+						GW4PeerDetected = true
+						GW4Addr = peer.AllowedIPs[j-1]
+						newAllowedIPs = append(newAllowedIPs, ip)
+					} else if isPeersGateway(&ip, peer.AllowedIPs[:]) {
+						newAllowedIPs = append(newAllowedIPs, ip)
 					}
 				} else if ip.String() == "::/0" { // handle IPv6
-					if !gw6PeerDetected {
-						gw6PeerDetected = true
-						// newAllowedIPs = append(newAllowedIPs, ip)
+					if !GW6PeerDetected {
+						GW6PeerDetected = true
+						newAllowedIPs = append(newAllowedIPs, ip)
 					}
 				} else {
 					newAllowedIPs = append(newAllowedIPs, ip)
 				}
 			}
+			fmt.Printf("APPENDING IPS %v \n", newAllowedIPs)
 			peer.AllowedIPs = newAllowedIPs
 			peers[i] = peer
 		}
 	}
+}
+
+func isPeersGateway(ip *net.IPNet, allowedIPs []net.IPNet) bool {
+	for i := range allowedIPs {
+		aIP := allowedIPs[i]
+		if aIP.String() == ip.String() {
+			return true
+		}
+	}
+	return false
 }
