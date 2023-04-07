@@ -30,7 +30,6 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 	addrs := networking.GetServerAddrs(server.Name)
 	for i := range addrs {
 		addr := addrs[i]
-		fmt.Printf("SETTING NETWORK ROUTES: %s %s \n %v \n", addr.String(), defaultInterface, defaultLink)
 		if err = netlink.RouteAdd(&netlink.Route{
 			Dst:       &addr,
 			LinkIndex: defaultLink.Attrs().Index,
@@ -72,7 +71,6 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 			if peer.Endpoint.IP.To4() == nil && peer.Endpoint.IP.To16() != nil {
 				mask = 128
 			}
-			fmt.Printf("SETTING PEER ROUTE: %s %s \n %v \n", peer.Endpoint.IP.String(), defaultInterface, defaultLink)
 			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", peer.Endpoint.IP.String(), mask))
 			if err == nil && cidr != nil {
 				if err = netlink.RouteAdd(&netlink.Route{
@@ -80,7 +78,6 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 					LinkIndex: defaultLink.Attrs().Index,
 					Gw:        defaultGWRoute,
 				}); err != nil && !strings.Contains(err.Error(), "file exists") {
-					fmt.Printf("ERROR SETTING PEER ROUTE: %v \n", err)
 					return err
 				}
 				addPeerRoute(*cidr)
@@ -158,14 +155,11 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 		return err
 	}
 
-	fmt.Printf("SETTING GW %s %v \n", gwAddress.IP.String(), gwAddress)
-
 	if err := netlink.RouteAdd(&netlink.Route{
 		Dst:       nil,
 		Gw:        gwAddress.IP,
 		LinkIndex: netmakerLink.Attrs().Index,
 	}); err != nil {
-		fmt.Printf("SETTING GW ERROR %v \n", err)
 		return err
 	}
 	return nil
