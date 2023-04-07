@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"sync"
 
+	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/manager"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/server"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 // Start - setups the global cfg for proxy and starts the proxy server
-func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
+func Start(ctx context.Context, wg *sync.WaitGroup,
+	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, turnDomain, turnApiDomain string, turnPort, proxyPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -36,6 +39,21 @@ func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPee
 	defer config.Reset()
 	logger.Log(0, fmt.Sprintf("set nat info: %v", hostNatInfo))
 	config.GetCfg().SetHostInfo(*hostNatInfo)
+
+	// if behind  DOUBLE or ASYM Nat type, allocate turn address for the host
+	if hostNatInfo.NatType == models.NAT_Types.Asymmetric || hostNatInfo.NatType == models.NAT_Types.Double {
+		err := turn.RegisterHostWithTurn(turnApiDomain,
+			ncconfig.Netclient().ID.String(), ncconfig.Netclient().HostPass)
+		if err != nil {
+			logger.Log(0, "failed to register host with turn: ", turnApiDomain, err.Error())
+		} else {
+			config.GetCfg().TurnServer = turnDomain
+			go turn.StartClient(ctx, wg, turnDomain, turnPort)
+			// allocate address to host
+
+		}
+	}
+
 	// start the netclient proxy server
 	err := server.NmProxyServer.CreateProxyServer(proxyPort, 0, config.GetCfg().GetHostInfo().PrivIp.String())
 	if err != nil {

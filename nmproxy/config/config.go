@@ -7,6 +7,7 @@ import (
 
 	proxy "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/models"
+	"github.com/pion/turn"
 )
 
 var (
@@ -19,6 +20,9 @@ var (
 type Config struct {
 	HostInfo                proxy.HostInfo
 	ProxyStatus             bool
+	TurnRelayAddr           *net.PacketConn
+	TurnServer              string
+	TurnClient              *turn.Client
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
 	settings                map[string]proxy.Settings // host settings per server
