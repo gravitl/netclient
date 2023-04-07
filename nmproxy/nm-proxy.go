@@ -15,6 +15,10 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
+	if config.GetCfg().IsProxyRunning() {
+		logger.Log(1, "Proxy is running already...")
+		return
+	}
 	defer wg.Done()
 	if hostNatInfo == nil {
 		return
