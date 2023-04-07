@@ -62,6 +62,10 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 
 	if egressRoute != nil && len(egressRanges) > 0 {
 		for i := range egressRanges {
+			if egressRanges[i].Network.String() == "0.0.0.0/0" ||
+				egressRanges[i].Network.String() == "::/0" {
+				continue
+			}
 			maskSize, _ := egressRanges[i].Network.Mask.Size()
 			mask := net.IP(egressRanges[i].Network.Mask)
 			logger.Log(1, "appending egress range", fmt.Sprintf("%s/%d to nm interface", egressRanges[i].IP.String(), maskSize))
@@ -87,6 +91,10 @@ func (nc *NCIface) Close() {
 
 	// clean up egress range routes
 	for i := range nc.Addresses {
+		if nc.Addresses[i].Network.String() == "0.0.0.0/0" ||
+			nc.Addresses[i].Network.String() == "::/0" {
+			continue
+		}
 		if nc.Addresses[i].AddRoute {
 			maskSize, _ := nc.Addresses[i].Network.Mask.Size()
 			logger.Log(1, "removing egress range", fmt.Sprintf("%s/%d from nm interface", nc.Addresses[i].IP.String(), maskSize))

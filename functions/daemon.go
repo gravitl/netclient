@@ -87,7 +87,11 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
-			if err := routes.CleanUp(config.Netclient().DefaultInterface, nil); err != nil {
+			gwAddr := config.GW4Addr
+			if gwAddr.IP == nil {
+				gwAddr = config.GW6Addr
+			}
+			if err := routes.CleanUp(config.Netclient().DefaultInterface, &gwAddr); err != nil {
 				logger.Log(0, "routes not completely cleaned up", err.Error())
 			}
 			logger.Log(0, "shutdown complete")
@@ -479,6 +483,7 @@ func initServerRoutes() error {
 		if err = routes.SetNetmakerServerRoutes(ncConf.DefaultInterface, &server); err != nil {
 			return err
 		}
+		logger.Log(1, "added server", server.Name, "route for interface", ncConf.DefaultInterface)
 	}
 
 	return nil
