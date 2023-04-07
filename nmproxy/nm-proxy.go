@@ -15,26 +15,22 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, wg *sync.WaitGroup, mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
-
-	if config.GetCfg().IsProxyRunning() {
-		logger.Log(1, "Proxy is running already...")
+	defer wg.Done()
+	if hostNatInfo == nil {
+		return
+	}
+	if hostNatInfo.PrivIp == nil || hostNatInfo.PublicIp == nil {
+		logger.Log(0, "failed to create proxy, check if stun list is configured correctly on your server")
 		return
 	}
 	logger.Log(0, "Starting Proxy...")
-	defer wg.Done()
-
 	if proxyPort == 0 {
 		proxyPort = models.NmProxyPort
 	}
 	config.InitializeCfg()
 	defer config.Reset()
-	if hostNatInfo != nil {
-		logger.Log(0, fmt.Sprintf("set nat info: %v", hostNatInfo))
-		config.GetCfg().SetHostInfo(*hostNatInfo)
-	}
-	if config.GetCfg().HostInfo.PrivIp == nil || config.GetCfg().HostInfo.PublicIp == nil {
-		logger.FatalLog("failed to create proxy, check if stun list is configured correctly on your server")
-	}
+	logger.Log(0, fmt.Sprintf("set nat info: %v", hostNatInfo))
+	config.GetCfg().SetHostInfo(*hostNatInfo)
 	// start the netclient proxy server
 	err := server.NmProxyServer.CreateProxyServer(proxyPort, 0, config.GetCfg().GetHostInfo().PrivIp.String())
 	if err != nil {
