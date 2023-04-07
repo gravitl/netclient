@@ -99,6 +99,12 @@ func Daemon() {
 				stopProxy,
 			}, &wg)
 			logger.Log(0, "restarting daemon")
+			shouldUpdateNat := getNatInfo()
+			if shouldUpdateNat { // will be reported on check-in
+				if err := config.WriteNetclientConfig(); err == nil {
+					logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
+				}
+			}
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&wg)
