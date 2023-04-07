@@ -323,7 +323,8 @@ func UpdateHostSettings() error {
 	if err != nil {
 		logger.Log(0, "default gateway not found", err.Error())
 	} else {
-		if defaultInterface != config.Netclient().DefaultInterface {
+		if defaultInterface != config.Netclient().DefaultInterface &&
+			defaultInterface != ncutils.GetInterfaceName() {
 			publishMsg = true
 			config.Netclient().DefaultInterface = defaultInterface
 		}

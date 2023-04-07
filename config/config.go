@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -131,13 +130,13 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
-	detectOrFilterGWPeers(peers[:])
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
 		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
 	}
 	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
+	detectOrFilterGWPeers()
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
@@ -617,8 +616,10 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 	return host, node
 }
 
-func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) {
+func detectOrFilterGWPeers() {
+	peers := GetHostPeerList()
 	if len(peers) > 0 {
+		var foundGWAgain bool // handles peer updates to check if a gateway is still present
 		for i := range peers {
 			peer := peers[i]
 			newAllowedIPs := []net.IPNet{}
@@ -626,30 +627,33 @@ func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) {
 				ip := peer.AllowedIPs[j]
 				if ip.String() == "0.0.0.0/0" { // handle IPv4
 					if !GW4PeerDetected && j > 0 {
-						fmt.Printf("FOUND GW ADDRESS!!\n")
 						GW4PeerDetected = true
+						foundGWAgain = true
 						GW4Addr = peer.AllowedIPs[j-1]
 						newAllowedIPs = append(newAllowedIPs, ip)
-					} else if isPeersGateway(&ip, peer.AllowedIPs[:]) {
+					} else if peerHasIp(&ip, peer.AllowedIPs[:]) {
+						foundGWAgain = true
 						newAllowedIPs = append(newAllowedIPs, ip)
 					}
 				} else if ip.String() == "::/0" { // handle IPv6
-					if !GW6PeerDetected {
+					if !GW6PeerDetected && j > 0 {
 						GW6PeerDetected = true
+						foundGWAgain = true
+						GW6Addr = peer.AllowedIPs[j-1]
 						newAllowedIPs = append(newAllowedIPs, ip)
 					}
 				} else {
 					newAllowedIPs = append(newAllowedIPs, ip)
 				}
 			}
-			fmt.Printf("APPENDING IPS %v \n", newAllowedIPs)
+			GW4PeerDetected = foundGWAgain
 			peer.AllowedIPs = newAllowedIPs
 			peers[i] = peer
 		}
 	}
 }
 
-func isPeersGateway(ip *net.IPNet, allowedIPs []net.IPNet) bool {
+func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
 	for i := range allowedIPs {
 		aIP := allowedIPs[i]
 		if aIP.String() == ip.String() {

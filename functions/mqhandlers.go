@@ -165,7 +165,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	gwDetected := config.GW4PeerDetected
+	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	config.UpdateHostPeers(serverName, peerUpdate.Peers)
 	config.WriteNetclientConfig()
 	wireguard.SetPeers()
@@ -174,17 +174,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "error when setting peer routes after peer update", err.Error())
 	}
 	wireguard.GetInterface().ApplyAddrs(true)
-	if !gwDetected && config.GW4PeerDetected {
-		if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
-			fmt.Printf("ERRROR SETTING GW %v \n", err)
-		}
-	} else if gwDetected && !config.GW4PeerDetected {
-		if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
-			fmt.Printf("ERRROR REMOVING GW %v \n", err)
-		}
-	} else {
-		fmt.Printf("SKIPPED GW OPTIONS \n")
-	}
+	handlePeerInetGateways(gwDetected)
+
 	go handleEndpointDetection(&peerUpdate)
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -519,4 +510,24 @@ func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
 		}
 	}
 	return false
+}
+
+func handlePeerInetGateways(gwDetected bool) {
+	if !gwDetected && config.GW4PeerDetected { // ipv4 gateways take priority
+		if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
+			logger.Log(0, "failed to set default gateway to peer", config.GW4Addr.String())
+		}
+	} else if gwDetected && !config.GW4PeerDetected {
+		if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
+			logger.Log(0, "failed to remove default gateway to peer", config.GW4Addr.String())
+		}
+	} else if !gwDetected && config.GW6PeerDetected {
+		if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
+			logger.Log(0, "failed to set default gateway to peer", config.GW6Addr.String())
+		}
+	} else if gwDetected && !config.GW6PeerDetected {
+		if err := routes.RemoveDefaultGW(&config.GW6Addr); err != nil {
+			logger.Log(0, "failed to remove default gateway to peer", config.GW6Addr.String())
+		}
+	}
 }
