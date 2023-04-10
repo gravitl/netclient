@@ -80,7 +80,6 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 			if peer.Endpoint.IP.To4() == nil && peer.Endpoint.IP.To16() != nil {
 				mask = 128
 			}
-			fmt.Printf("SETTING PEER ROUTE: %s %s \n", peer.Endpoint.IP.String(), defaultInterface)
 			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", peer.Endpoint.IP.String(), mask))
 			if err == nil && cidr != nil {
 				if cidr.IP != nil {
@@ -179,40 +178,25 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 	if defaultGWRoute == nil {
 		return fmt.Errorf("old gateway not found, can not set default gateway")
 	}
-
 	if gwAddress == nil {
 		return nil
 	}
-
-	fmt.Printf("SETTING GW %s %v \n", gwAddress.IP.String(), gwAddress)
-
-	cmd := exec.Command("route", "delete", "default", defaultGWRoute.String())
+	cmd := exec.Command("route", "change", "default", gwAddress.IP.String())
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log(0, fmt.Sprintf("failed to delete default gateway with command %s - %v", cmd.String(), out))
+		logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
 		return err
 	}
-	cmd = exec.Command("route", "add", "default", gwAddress.IP.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), out))
-		return err
-	}
-
 	return nil
 }
 
 // RemoveDefaultGW - removes the default gateway
 func RemoveDefaultGW(gwAddress *net.IPNet) error {
-	if gwAddress == nil || defaultGWRoute == nil {
+	if defaultGWRoute == nil {
 		return nil
 	}
-	cmd := exec.Command("route", "delete", "default", gwAddress.IP.String())
+	cmd := exec.Command("route", "change", "default", defaultGWRoute.String())
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log(0, fmt.Sprintf("failed to delete default gateway with command %s - %v", cmd.String(), out))
-		return err
-	}
-	cmd = exec.Command("route", "add", "default", defaultGWRoute.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), out))
+		logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
 		return err
 	}
 	return nil
