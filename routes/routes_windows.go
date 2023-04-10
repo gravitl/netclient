@@ -3,13 +3,11 @@ package routes
 import (
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/vishvananda/netlink"
 )
 
 // SetNetmakerServerRoutes - sets necessary routes to servers through default gateway & peer endpoints
@@ -18,7 +16,7 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 		return fmt.Errorf("invalid params provided when setting server routes")
 	}
 
-	defaultLink, err := netlink.LinkByName(defaultInterface)
+	_, err := net.InterfaceByName(defaultInterface)
 	if err != nil {
 		return err
 	}
@@ -30,15 +28,15 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 	addrs := networking.GetServerAddrs(server.Name)
 	for i := range addrs {
 		addr := addrs[i]
-		if err = netlink.RouteAdd(&netlink.Route{
-			Dst:       &addr,
-			LinkIndex: defaultLink.Attrs().Index,
-			Gw:        defaultGWRoute,
-		}); err != nil && !strings.Contains(err.Error(), "file exists") {
+		mask := net.IP(addr.Mask)
+		cmd := fmt.Sprintf("route -p add %s MASK %v %s", addr.IP.String(),
+			mask,
+			defaultGWRoute.String())
+		_, err := ncutils.RunCmd(cmd, false)
+		if err != nil {
 			return err
 		}
 		addServerRoute(addr)
-		logger.Log(0, "added server route for interface", defaultInterface)
 	}
 
 	return nil
@@ -54,7 +52,7 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 		return err
 	}
 
-	defaultLink, err := netlink.LinkByName(defaultInterface)
+	_, err := net.InterfaceByName(defaultInterface)
 	if err != nil {
 		return err
 	}
@@ -73,15 +71,15 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 			}
 			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", peer.Endpoint.IP.String(), mask))
 			if err == nil && cidr != nil {
-				if err = netlink.RouteAdd(&netlink.Route{
-					Dst:       cidr,
-					LinkIndex: defaultLink.Attrs().Index,
-					Gw:        defaultGWRoute,
-				}); err != nil && !strings.Contains(err.Error(), "file exists") {
+				mask := net.IP(cidr.Mask)
+				cmd := fmt.Sprintf("route -p add %s MASK %v %s", cidr.IP.String(),
+					mask,
+					defaultGWRoute.String())
+				_, err := ncutils.RunCmd(cmd, false)
+				if err != nil {
 					return err
 				}
 				addPeerRoute(*cidr)
-				logger.Log(0, "added peer route for interface", defaultInterface)
 			}
 		}
 	}
@@ -94,17 +92,16 @@ func RemoveServerRoutes(defaultInterface string) error {
 		return fmt.Errorf("no default interface provided")
 	}
 
-	defaultLink, err := netlink.LinkByName(defaultInterface)
+	_, err := net.InterfaceByName(defaultInterface)
 	if err != nil {
 		return err
 	}
 	serverRouteMU.Lock()
 	for i := range currentServerRoutes {
 		currServerRoute := currentServerRoutes[i]
-		if err = netlink.RouteDel(&netlink.Route{
-			Dst:       &currServerRoute,
-			LinkIndex: defaultLink.Attrs().Index,
-		}); err != nil {
+		cmd := fmt.Sprintf("route delete %s", currServerRoute.IP.String())
+		_, err := ncutils.RunCmd(cmd, false)
+		if err != nil {
 			serverRouteMU.Unlock()
 			return err
 		}
@@ -120,17 +117,16 @@ func RemovePeerRoutes(defaultInterface string) error {
 		return fmt.Errorf("no default interface provided")
 	}
 
-	defaultLink, err := netlink.LinkByName(defaultInterface)
+	_, err := net.InterfaceByName(defaultInterface)
 	if err != nil {
 		return err
 	}
 	peerRouteMU.Lock()
 	for i := range currentPeerRoutes {
 		currPeerRoute := currentPeerRoutes[i]
-		if err = netlink.RouteDel(&netlink.Route{
-			Dst:       &currPeerRoute,
-			LinkIndex: defaultLink.Attrs().Index,
-		}); err != nil {
+		cmd := fmt.Sprintf("route delete %s", currPeerRoute.IP.String())
+		_, err := ncutils.RunCmd(cmd, false)
+		if err != nil {
 			peerRouteMU.Unlock()
 			return err
 		}
@@ -150,18 +146,18 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 		return nil
 	}
 
-	netmakerLink, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	cmd := fmt.Sprintf("route add 0.0.0.0 mask 0.0.0.0 %s metric 2", gwAddress.IP.String())
+	_, err := ncutils.RunCmd(cmd, false)
 	if err != nil {
 		return err
 	}
 
-	if err := netlink.RouteAdd(&netlink.Route{
-		Dst:       nil,
-		Gw:        gwAddress.IP,
-		LinkIndex: netmakerLink.Attrs().Index,
-	}); err != nil {
+	cmd = fmt.Sprintf("route delete 0.0.0.0 mask 0.0.0.0 %s", defaultGWRoute.String())
+	_, err = ncutils.RunCmd(cmd, false)
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -171,22 +167,30 @@ func RemoveDefaultGW(gwAddress *net.IPNet) error {
 		return nil
 	}
 
-	if err := netlink.RouteDel(&netlink.Route{
-		Dst: nil,
-		Gw:  gwAddress.IP,
-	}); err != nil {
+	cmd := fmt.Sprintf("route add 0.0.0.0 mask 0.0.0.0 %s metric 26", defaultGWRoute.String())
+	out, err := ncutils.RunCmd(cmd, false)
+	if err != nil {
+		logger.Log(0, "failed to add default gateway route", defaultGWRoute.String(), err.Error(), out)
 		return err
 	}
+
+	cmd = fmt.Sprintf("route delete 0.0.0.0 mask 0.0.0.0 %s", gwAddress.IP.String())
+	_, err = ncutils.RunCmd(cmd, false)
+	if err != nil {
+		logger.Log(0, "failed to remove netmaker default gateway when removing", gwAddress.IP.String())
+		return err
+	}
+
 	return nil
 }
 
 func setDefaultGatewayRoute() error {
 	if defaultGWRoute == nil {
-		routes, err := netlink.RouteGet(net.ParseIP("1.1.1.1"))
+		gw, err := getWindowsGateway()
 		if err != nil {
 			return err
 		}
-		defaultGWRoute = routes[0].Gw
+		defaultGWRoute = gw
 	}
 	return nil
 }
