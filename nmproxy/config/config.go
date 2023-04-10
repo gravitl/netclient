@@ -2,14 +2,10 @@ package config
 
 import (
 	"context"
-	"encoding/json"
 	"net"
-	"os"
 	"sync"
 
-	"github.com/gravitl/netclient/nmproxy/common"
 	proxy "github.com/gravitl/netclient/nmproxy/models"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -17,8 +13,6 @@ var (
 	// contains all the config related to proxy
 	config        = &Config{}
 	natAutoSwitch bool
-	// DumpSignalChan - channel to signal dump proxy conns info
-	DumpSignalChan = make(chan struct{}, 5)
 )
 
 // Config - struct for proxy config
@@ -33,11 +27,6 @@ type Config struct {
 	serverConn              *net.UDPConn
 	fireWallStatus          bool
 	fireWallClose           func()
-}
-type proxyPeerConn struct {
-	PeerPublicKey string `json:"peer_public_key"`
-	PeerEndpoint  string `json:"peer_endpoint"`
-	ProxyEndpoint string `json:"proxy_endpoint"`
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -231,28 +220,4 @@ func (c *Config) GetFwStatus() bool {
 // Config.StopFw - flushes all the firewall rules
 func (c *Config) StopFw() {
 	c.fireWallClose()
-}
-
-// Config.Dump - dumps the proxy peer connections information
-func (c *Config) Dump() {
-	peersConn := c.GetAllProxyPeers()
-	proxyConns := []proxyPeerConn{}
-	for peerPubKey, peerI := range peersConn {
-		peerConnI := proxyPeerConn{
-			PeerPublicKey: peerPubKey,
-		}
-
-		if peerI.Config.PeerConf.Endpoint != nil {
-			peerConnI.PeerEndpoint = peerI.Config.PeerConf.Endpoint.String()
-		}
-		if peerI.Config.LocalConnAddr != nil {
-			peerConnI.ProxyEndpoint = peerI.Config.LocalConnAddr.String()
-		}
-		proxyConns = append(proxyConns, peerConnI)
-	}
-	out, err := json.MarshalIndent(proxyConns, "", " ")
-	if err != nil {
-		logger.Log(0, "failed to marshal list output: ", err.Error())
-	}
-	os.WriteFile(common.GetDataPath()+"proxy.json", out, os.ModePerm)
 }
