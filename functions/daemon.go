@@ -19,6 +19,7 @@ import (
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -148,8 +149,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
 		server := server
-		if server.TurnApiDomain != "" {
-			go RegisterHostWithTurn(server.TurnApiDomain,
+		if server.TurnApiDomain != "" && server.TurnDomain != "" && server.TurnPort != 0 {
+			go turn.StartClient(ctx, wg, server.Name, server.TurnDomain,
+				server.TurnApiDomain, server.TurnPort)
+			go turn.RegisterHostWithTurn(server.TurnApiDomain,
 				config.Netclient().ID.String(), config.Netclient().HostPass)
 		}
 		wg.Add(1)

@@ -7,7 +7,6 @@ import (
 
 	proxy "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/models"
-	"github.com/pion/turn"
 )
 
 var (
@@ -20,9 +19,6 @@ var (
 type Config struct {
 	HostInfo                proxy.HostInfo
 	ProxyStatus             bool
-	TurnRelayAddr           *net.PacketConn
-	TurnServer              string
-	TurnClient              *turn.Client
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
 	settings                map[string]proxy.Settings // host settings per server
@@ -39,11 +35,13 @@ func InitializeCfg() {
 		ProxyStatus: true,
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
-			iface:        nil,
-			proxyPeerMap: make(proxy.PeerConnMap),
-			peerHashMap:  make(map[string]*proxy.RemotePeer),
-			relayPeerMap: make(map[string]map[string]*proxy.RemotePeer),
-			allPeersConf: make(map[string]models.HostPeerMap),
+			iface:           nil,
+			turnMap:         make(map[string]proxy.TurnCfg),
+			proxyPeerMap:    make(proxy.PeerConnMap),
+			peerHashMap:     make(map[string]*proxy.RemotePeer),
+			relayPeerMap:    make(map[string]map[string]*proxy.RemotePeer),
+			allPeersConf:    make(map[string]models.HostPeerMap),
+			peerSignalChMap: make(map[string](chan models.Signal)),
 		},
 		settings: make(map[string]proxy.Settings),
 	}

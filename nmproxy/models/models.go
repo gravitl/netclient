@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/pion/turn"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -79,4 +80,12 @@ type Settings struct {
 	IsEgressGateway  bool
 	IsRelayed        bool
 	RelayedTo        *net.UDPAddr
+}
+
+type TurnCfg struct {
+	Server    string
+	Domain    string
+	ApiDomain string
+	Port      int
+	Client    *turn.Client
 }

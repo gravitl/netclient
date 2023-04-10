@@ -13,6 +13,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
@@ -133,7 +134,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server, config.Netclient())
+	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return

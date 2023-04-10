@@ -10,12 +10,14 @@ import (
 
 // wgIfaceConf - interface config
 type wgIfaceConf struct {
-	iface        *wg.WGIface
-	ifaceKeyHash string
-	proxyPeerMap models.PeerConnMap
-	peerHashMap  map[string]*models.RemotePeer
-	relayPeerMap map[string]map[string]*models.RemotePeer
-	allPeersConf map[string]nm_models.HostPeerMap
+	iface           *wg.WGIface
+	ifaceKeyHash    string
+	proxyPeerMap    models.PeerConnMap
+	turnMap         map[string]models.TurnCfg
+	peerHashMap     map[string]*models.RemotePeer
+	relayPeerMap    map[string]map[string]*models.RemotePeer
+	allPeersConf    map[string]nm_models.HostPeerMap
+	peerSignalChMap map[string](chan nm_models.Signal)
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -275,4 +277,27 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 	}
 
 	return make(map[string]nm_models.IDandAddr), false
+}
+
+func (c *Config) SendSignalToPeerCh(signal nm_models.Signal) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if ch, ok := c.ifaceConfig.peerSignalChMap[signal.ToHostPubKey]; ok && ch != nil {
+		ch <- signal
+	}
+}
+
+// Config.SetTurnCfg - sets the turn config
+func (c *Config) SetTurnCfg(t models.TurnCfg) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.ifaceConfig.turnMap[t.Server] = t
+}
+
+// Config.GetTurnCfg - gets the turn config
+func (c *Config) GetTurnCfg(serverName string) (t models.TurnCfg, ok bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	t, ok = c.ifaceConfig.turnMap[serverName]
+	return
 }

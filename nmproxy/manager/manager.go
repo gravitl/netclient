@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -11,6 +12,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/router"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -355,10 +357,40 @@ func (m *proxyPayload) peerUpdate() error {
 		if peerConf.Proxy && m.Action == nm_models.ProxyUpdate {
 			shouldUseProxy = true
 		}
+		if !isRelayed && shouldUseTurn(m.Server, peerConf.NatType) {
+			go func() {
+				// allocate turn relay address to host for the peer and exchange information with peer
+				relayAddr, err := turn.AllocateAddr(m.Server)
+				if err != nil {
+					logger.Log(0, "failed to allocate addr on turn: ", err.Error())
+					return
+				}
+				// signal peer with the host relay addr
+				turn.SignalPeer(m.Server, nm_models.Signal{
+					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+					TurnRelayEndpoint: relayAddr,
+					ToHostPubKey:      peerI.PublicKey.String(),
+				})
+				// and wait until peer reports it relay endpoint
+				peerAnswerCh := make(chan nm_models.Signal, 1)
+				signal := <-peerAnswerCh
+				log.Printf("-------> Signal RECV: %+v", signal)
+
+			}()
+			continue
+		}
 		if shouldUseProxy {
 			peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
 		}
 
 	}
 	return nil
+}
+
+func shouldUseTurn(server string, natType string) bool {
+	// if behind  DOUBLE or ASYM Nat type, allocate turn address for the host
+	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
+		return true
+	}
+	return false
 }

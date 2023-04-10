@@ -12,10 +12,12 @@ import (
 	"sync"
 
 	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netclient/auth"
 	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
 	"github.com/pion/turn"
 )
@@ -26,7 +28,7 @@ func ConvHostPassToHash(hostPass string) string {
 }
 
 // StartClient - starts the turn client on the netclient
-func StartClient(ctx context.Context, wg *sync.WaitGroup, turnServer string, turnPort int) {
+func StartClient(ctx context.Context, wg *sync.WaitGroup, serverName, turnDomain, turnServer string, turnPort int) {
 	defer wg.Done()
 	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
@@ -48,34 +50,38 @@ func StartClient(ctx context.Context, wg *sync.WaitGroup, turnServer string, tur
 		Software:       "netmaker",
 		LoggerFactory:  logging.NewDefaultLoggerFactory(),
 	}
-	config.GetCfg().TurnClient, err = turn.NewClient(cfg)
+	client, err := turn.NewClient(cfg)
 	if err != nil {
 		logger.Log(0, "Failed to create TURN client: %s", err.Error())
 		return
 	}
-	// allocate addr
-	allocateAddr()
-	// proxy Turn Conn to interface
+	config.GetCfg().SetTurnCfg(models.TurnCfg{
+		Server:    serverName,
+		Domain:    turnDomain,
+		ApiDomain: turnServer,
+		Port:      turnPort,
+		Client:    client,
+	})
 	<-ctx.Done()
-	config.GetCfg().TurnClient.Close()
+	defer client.Close()
 }
 
 // RegisterHostWithTurn - registers the host with the given turn server
 func RegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
 
-	api := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
+	api := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
 		URL:    turnApiDomain,
 		Route:  "/api/v1/host/register",
 		Method: http.MethodPost,
 		//Authorization: fmt.Sprintf("Bearer %s", op.AuthToken),
-		Data: models.HostTurnRegister{
+		Data: nm_models.HostTurnRegister{
 			HostID:       hostID,
 			HostPassHash: ConvHostPassToHash(hostPass),
 		},
-		Response:      models.SuccessResponse{},
-		ErrorResponse: models.ErrorResponse{},
+		Response:      nm_models.SuccessResponse{},
+		ErrorResponse: nm_models.ErrorResponse{},
 	}
-	_, errData, err := api.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	_, errData, err := api.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(1, "error server status", strconv.Itoa(errData.Code), errData.Message)
@@ -88,19 +94,19 @@ func RegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
 // DeRegisterHostWithTurn - to be called when host need to be deregistered from a turn server
 func DeRegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
 
-	api := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
+	api := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
 		URL:    turnApiDomain,
 		Route:  "/api/v1/host/deregister",
 		Method: http.MethodPost,
 		//Authorization: fmt.Sprintf("Bearer %s", op.AuthToken),
-		Data: models.HostTurnRegister{
+		Data: nm_models.HostTurnRegister{
 			HostID:       hostID,
 			HostPassHash: ConvHostPassToHash(hostPass),
 		},
-		Response:      models.SuccessResponse{},
-		ErrorResponse: models.ErrorResponse{},
+		Response:      nm_models.SuccessResponse{},
+		ErrorResponse: nm_models.ErrorResponse{},
 	}
-	_, errData, err := api.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	_, errData, err := api.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(1, "error server status", strconv.Itoa(errData.Code), errData.Message)
@@ -110,14 +116,18 @@ func DeRegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
 	return nil
 }
 
-func allocateAddr() error {
+func AllocateAddr(serverName string) (*net.PacketConn, error) {
 	// Allocate a relay socket on the TURN server. On success, it
 	// will return a net.PacketConn which represents the remote
 	// socket.
-	relayConn, err := config.GetCfg().TurnClient.Allocate()
+	turnCfg, ok := config.GetCfg().GetTurnCfg(serverName)
+	if !ok {
+		return nil, errors.New("turn domain cfg not found")
+	}
+	relayConn, err := turnCfg.Client.Allocate()
 	if err != nil {
 		logger.Log(0, "Failed to allocate: ", err.Error())
-		return err
+		return nil, err
 	}
 	defer func() {
 		if closeErr := relayConn.Close(); closeErr != nil {
@@ -125,10 +135,10 @@ func allocateAddr() error {
 		}
 	}()
 	// Send BindingRequest to learn our external IP
-	mappedAddr, err := config.GetCfg().TurnClient.SendBindingRequest()
+	mappedAddr, err := turnCfg.Client.SendBindingRequest()
 	if err != nil {
 		logger.Log(0, "failed to send binding req: ", err.Error())
-		return err
+		return nil, err
 	}
 	// Punch a UDP hole for the relayConn by sending a data to the mappedAddr.
 	// This will trigger a TURN client to generate a permission request to the
@@ -137,11 +147,38 @@ func allocateAddr() error {
 	_, err = relayConn.WriteTo([]byte("Hello"), mappedAddr)
 	if err != nil {
 		logger.Log(0, "failed to send binding request: ", err.Error())
-		return err
+		return nil, err
 	}
 	// The relayConn's local address is actually the transport
 	// address assigned on the TURN server.
 	log.Printf("relayed-address=%s", relayConn.LocalAddr().String())
-	config.GetCfg().TurnRelayAddr = &relayConn
+	return &relayConn, nil
+}
+
+func SignalPeer(serverName string, signal nm_models.Signal) error {
+	server := ncconfig.GetServer(serverName)
+	host := ncconfig.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	endpoint := httpclient.JSONEndpoint[nm_models.NodeGet, nm_models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         "/api/nodes/",
+		Method:        http.MethodGet,
+		Authorization: "Bearer " + token,
+		Response:      nm_models.NodeGet{},
+		ErrorResponse: nm_models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(nm_models.NodeGet{}, nm_models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "error getting node", strconv.Itoa(errData.Code), errData.Message)
+		}
+		return err
+	}
 	return nil
 }
