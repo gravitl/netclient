@@ -17,7 +17,7 @@ jobs:
           go-version: 1.19
       - name: Build
         run: |
-          env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build .
+          env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags headless .
   netclient-freebsd:
     runs-on: ubuntu-latest
     steps:
@@ -29,9 +29,10 @@ jobs:
           key: ${{ secrets.TESTING_SSH_KEY }}
           script: |
             cd netclient
-            git switch ${{ github.head_ref }}
+            git switch develop
+            git restore .
             git pull
-            go build .
+            go build -tags headless .
   tests:
     runs-on: ubuntu-latest
     steps:
@@ -43,7 +44,7 @@ jobs:
           go-version: 1.19
       - name: Run Go tests
         run: |
-          go test  ./... -v
+          go test  -tags headless ./... -v
 
   test-gui:
     runs-on: ubuntu-latest
@@ -74,6 +75,8 @@ jobs:
           go-version: 1.19
       - name: Run static checks
         run: |
+          mkdir gui/frontend/dist
+          touch gui/frontend/dist/index.html
           go install honnef.co/go/tools/cmd/staticcheck@latest
           { ~/go/bin/staticcheck  ./... ; }
 
@@ -96,10 +99,10 @@ jobs:
           cd gui/frontend
           npm ci
           npm run build
-          cd ..
+          cd ../..
           go build -tags desktop,production -ldflags "-w -s"
 
-  darwin:
+  darwin-gui:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
@@ -112,10 +115,8 @@ jobs:
         with:
           go-version: 1.19
       - run: |
-          go build .
-          cd gui
           go install github.com/wailsapp/wails/v2/cmd/wails@latest 
-          ~/go/bin/wails build -skipbindings
+          ~/go/bin/wails build
 
   windows:
     runs-on: windows-latest
@@ -131,9 +132,8 @@ jobs:
           go-version: 1.19
       - name: build gui
         run: |
-          go build .
           cd gui/frontend
           npm ci
           npm run build
-          cd ..
+          cd ../..
           go build -tags desktop,production -ldflags "-w -s -H windowsgui"
