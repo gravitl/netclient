@@ -20,7 +20,7 @@ var assets embed.FS
 
 var appIcon = GetFileAsBytes("./appicon.png")
 
-var version = "v0.18.4"
+var version = "v0.18.6"
 
 func main() {
 	flags := viper.New()
