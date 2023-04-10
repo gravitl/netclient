@@ -110,6 +110,7 @@ func (p *Proxy) Reset() {
 		peer.LocalConn = p.LocalConn
 		config.GetCfg().SavePeerByHash(&peer)
 	}
+	config.DumpSignalChan <- struct{}{}
 
 }
 

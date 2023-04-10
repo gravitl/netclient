@@ -24,8 +24,20 @@ func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	return &mI
 }
 
+func dumpProxyConnsInfo(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-config.DumpSignalChan:
+			config.GetCfg().Dump()
+		}
+	}
+}
+
 // Start - starts the proxy manager loop and listens for events on the Channel provided
 func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
+	go dumpProxyConnsInfo(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -360,5 +372,8 @@ func (m *proxyPayload) peerUpdate() error {
 		}
 
 	}
+	/* after processing peer update proxy connections
+	are dumped to a file under netclient data path */
+	config.DumpSignalChan <- struct{}{}
 	return nil
 }
