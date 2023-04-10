@@ -3,6 +3,7 @@ package networking
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -24,8 +25,7 @@ func StoreServerAddresses(server *config.Server) {
 	for _, ip := range ips {
 		if ipv4 := ip.To4(); ipv4 != nil {
 			processIPv4(ipv4)
-		}
-		if ipv6 := ip.To16(); ipv6 != nil {
+		} else if ipv6 := ip.To16(); ipv6 != nil {
 			processIPv6(ipv6)
 		}
 	}
@@ -34,19 +34,39 @@ func StoreServerAddresses(server *config.Server) {
 	for _, ip := range ips {
 		if ipv4 := ip.To4(); ipv4 != nil {
 			processIPv4(ipv4)
-		}
-		if ipv6 := ip.To16(); ipv6 != nil {
+		} else if ipv6 := ip.To16(); ipv6 != nil {
 			processIPv6(ipv6)
 		}
 	}
 
-	ips, _ = net.LookupIP(server.Broker) // handle server broker
+	broker := server.Broker
+	brokerParts := strings.Split(broker, "//")
+	if len(brokerParts) > 1 {
+		broker = brokerParts[1]
+	}
+
+	ips, _ = net.LookupIP(broker) // handle server broker
 	for _, ip := range ips {
 		if ipv4 := ip.To4(); ipv4 != nil {
 			processIPv4(ipv4)
-		}
-		if ipv6 := ip.To16(); ipv6 != nil {
+		} else if ipv6 := ip.To16(); ipv6 != nil {
 			processIPv6(ipv6)
+		}
+	}
+
+	stunList := server.StunList
+	for i := range stunList {
+		stunServer := stunList[i]
+		ips, err := net.LookupIP(stunServer.Domain) // handle server broker
+		if err != nil {
+			continue
+		}
+		for _, ip := range ips {
+			if ipv4 := ip.To4(); ipv4 != nil {
+				processIPv4(ipv4)
+			} else if ipv6 := ip.To16(); ipv6 != nil {
+				processIPv6(ipv6)
+			}
 		}
 	}
 	cache.ServerAddrCache.Store(server.Name, addresses)

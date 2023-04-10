@@ -515,7 +515,7 @@ func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
 func handlePeerInetGateways(gwDetected bool) {
 	if !gwDetected && config.GW4PeerDetected { // ipv4 gateways take priority
 		if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
-			logger.Log(0, "failed to set default gateway to peer", config.GW4Addr.String())
+			logger.Log(0, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
 		}
 	} else if gwDetected && !config.GW4PeerDetected {
 		if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
