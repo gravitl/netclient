@@ -66,9 +66,6 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
-	if err := initServerRoutes(); err != nil {
-		logger.FatalLog("failed to initializeRoutes", err.Error())
-	}
 
 	shouldUpdateNat := getNatInfo()
 	if shouldUpdateNat { // will be reported on check-in
@@ -164,6 +161,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
 		server := server
+		networking.StoreServerAddresses(&server)
+		if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server); err != nil {
+			logger.Log(0, "failed to set server route:", server.Name, err.Error())
+		}
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
@@ -466,25 +467,4 @@ func getNatInfo() (natUpdated bool) {
 		}
 	}
 	return
-}
-
-func initServerRoutes() error {
-	ncConf, err := config.ReadNetclientConfig()
-	if err != nil {
-		return err
-	}
-	if err = config.ReadServerConf(); err != nil {
-		return err
-	}
-
-	for _, server := range config.Servers {
-		server := server
-		networking.StoreServerAddresses(&server)
-		if err = routes.SetNetmakerServerRoutes(ncConf.DefaultInterface, &server); err != nil {
-			return err
-		}
-		logger.Log(1, "added server", server.Name, "route for interface", ncConf.DefaultInterface)
-	}
-
-	return nil
 }
