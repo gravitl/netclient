@@ -34,7 +34,7 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 			defaultGWRoute.String())
 		_, err := ncutils.RunCmd(cmd, false)
 		if err != nil {
-			return err
+			continue
 		}
 		addServerRoute(addr)
 	}
@@ -48,9 +48,7 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 		return fmt.Errorf("no default interface provided")
 	}
 
-	if err := RemovePeerRoutes(defaultInterface); err != nil {
-		return err
-	}
+	_ = RemovePeerRoutes(defaultInterface) // best effort - ensure peer routes aren't already present
 
 	_, err := net.InterfaceByName(defaultInterface)
 	if err != nil {
@@ -193,4 +191,8 @@ func setDefaultGatewayRoute() error {
 		defaultGWRoute = gw
 	}
 	return nil
+}
+
+func getDefaultGwIP() (net.IP, error) {
+	return getWindowsGateway()
 }

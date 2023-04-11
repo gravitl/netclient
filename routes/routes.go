@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 )
 
 /*
@@ -21,16 +22,33 @@ var (
 	defaultGWRoute      net.IP          // indicates the ip which traffic should be routed
 )
 
+// HasGatewayChanged - informs called if the
+// gateway address has changed
+func HasGatewayChanged() bool {
+	if defaultGWRoute == nil {
+		return false
+	}
+	gw, err := getDefaultGwIP()
+	if err != nil {
+		return false
+	}
+
+	return !gw.Equal(defaultGWRoute)
+}
+
 // CleanUp - calls for client to clean routes of peers and servers
 func CleanUp(defaultInterface string, gwAddr *net.IPNet) error {
+	defer func() { defaultGWRoute = nil }()
+	if config.GW4PeerDetected || config.GW6PeerDetected {
+		if err := RemoveDefaultGW(gwAddr); err != nil {
+			logger.Log(0, "error occurred when removing default GW -", err.Error())
+		}
+	}
 	if err := RemoveServerRoutes(defaultInterface); err != nil {
-		return err
+		logger.Log(0, "error occurred when removing server routes -", err.Error())
 	}
 	if err := RemovePeerRoutes(defaultInterface); err != nil {
-		return err
-	}
-	if config.GW4PeerDetected {
-		return RemoveDefaultGW(gwAddr)
+		logger.Log(0, "error occurred when removing peer routes -", err.Error())
 	}
 	return nil
 }

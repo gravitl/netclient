@@ -59,9 +59,7 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 		return fmt.Errorf("no default interface provided")
 	}
 
-	if err := RemovePeerRoutes(defaultInterface); err != nil {
-		return err
-	}
+	_ = RemovePeerRoutes(defaultInterface) // best effort - ensure peer routes aren't already present
 
 	_, err := net.InterfaceByName(defaultInterface)
 	if err != nil {
@@ -98,7 +96,6 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 					}
 				}
 				addPeerRoute(*cidr)
-				logger.Log(0, "added peer route for interface", defaultInterface)
 			}
 		}
 	}

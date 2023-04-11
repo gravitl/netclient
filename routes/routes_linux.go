@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -24,7 +25,22 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 	}
 
 	if err = setDefaultGatewayRoute(); err != nil {
-		return err
+		if errors.Is(err, fmt.Errorf("no gateway found")) {
+			l, err := netlink.LinkByName(ncutils.GetInterfaceName())
+			if err == nil {
+				_ = netlink.RouteDel(&netlink.Route{
+					Dst:       nil,
+					LinkIndex: l.Attrs().Index,
+				})
+				if err = setDefaultGatewayRoute(); err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	addrs := networking.GetServerAddrs(server.Name)
@@ -35,7 +51,8 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 			LinkIndex: defaultLink.Attrs().Index,
 			Gw:        defaultGWRoute,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
-			return err
+			logger.Log(2, "failed to set route", addr.String(), "to gw", defaultGWRoute.String())
+			continue
 		}
 		addServerRoute(addr)
 		logger.Log(0, "added server route for interface", defaultInterface)
@@ -50,9 +67,7 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 		return fmt.Errorf("no default interface provided")
 	}
 
-	if err := RemovePeerRoutes(defaultInterface); err != nil {
-		return err
-	}
+	_ = RemovePeerRoutes(defaultInterface) // ensure old peer routes are cleaned
 
 	defaultLink, err := netlink.LinkByName(defaultInterface)
 	if err != nil {
@@ -77,11 +92,10 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 					Dst:       cidr,
 					LinkIndex: defaultLink.Attrs().Index,
 					Gw:        defaultGWRoute,
-				}); err != nil && !strings.Contains(err.Error(), "file exists") {
-					return err
+				}); err != nil {
+					continue
 				}
 				addPeerRoute(*cidr)
-				logger.Log(0, "added peer route for interface", defaultInterface)
 			}
 		}
 	}
@@ -105,8 +119,7 @@ func RemoveServerRoutes(defaultInterface string) error {
 			Dst:       &currServerRoute,
 			LinkIndex: defaultLink.Attrs().Index,
 		}); err != nil {
-			serverRouteMU.Unlock()
-			return err
+			continue
 		}
 	}
 	serverRouteMU.Unlock()
@@ -124,6 +137,7 @@ func RemovePeerRoutes(defaultInterface string) error {
 	if err != nil {
 		return err
 	}
+	shouldResetPeers := true
 	peerRouteMU.Lock()
 	for i := range currentPeerRoutes {
 		currPeerRoute := currentPeerRoutes[i]
@@ -131,12 +145,14 @@ func RemovePeerRoutes(defaultInterface string) error {
 			Dst:       &currPeerRoute,
 			LinkIndex: defaultLink.Attrs().Index,
 		}); err != nil {
-			peerRouteMU.Unlock()
-			return err
+			shouldResetPeers = false
+			continue
 		}
 	}
 	peerRouteMU.Unlock()
-	resetPeerRoutes()
+	if shouldResetPeers {
+		resetPeerRoutes()
+	}
 	return nil
 }
 
@@ -155,14 +171,11 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 		return err
 	}
 
-	if err := netlink.RouteAdd(&netlink.Route{
+	return netlink.RouteAdd(&netlink.Route{
 		Dst:       nil,
 		Gw:        gwAddress.IP,
 		LinkIndex: netmakerLink.Attrs().Index,
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 // RemoveDefaultGW - removes the default gateway
@@ -171,22 +184,36 @@ func RemoveDefaultGW(gwAddress *net.IPNet) error {
 		return nil
 	}
 
-	if err := netlink.RouteDel(&netlink.Route{
-		Dst: nil,
-		Gw:  gwAddress.IP,
-	}); err != nil {
+	src, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
 		return err
 	}
-	return nil
+
+	return netlink.RouteDel(&netlink.Route{
+		Dst:       nil,
+		Gw:        gwAddress.IP,
+		LinkIndex: src.Attrs().Index,
+	})
 }
 
 func setDefaultGatewayRoute() error {
 	if defaultGWRoute == nil {
-		routes, err := netlink.RouteGet(net.ParseIP("1.1.1.1"))
+		gw, err := getDefaultGwIP()
 		if err != nil {
 			return err
 		}
-		defaultGWRoute = routes[0].Gw
+		defaultGWRoute = gw
 	}
 	return nil
+}
+
+func getDefaultGwIP() (net.IP, error) {
+	routes, err := netlink.RouteGet(net.ParseIP("1.1.1.1"))
+	if err != nil {
+		return nil, err
+	}
+	if routes[0].Gw == nil {
+		return nil, fmt.Errorf("no gateway found")
+	}
+	return routes[0].Gw, nil
 }
