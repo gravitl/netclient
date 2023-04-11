@@ -279,6 +279,18 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 	return make(map[string]nm_models.IDandAddr), false
 }
 
+func (c *Config) DeletePeerAnswerCh(peerKey string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	delete(c.ifaceConfig.peerSignalChMap, peerKey)
+}
+
+func (c *Config) StorePeerAnswerCh(peerKey string, ch chan nm_models.Signal) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.ifaceConfig.peerSignalChMap[peerKey] = ch
+}
+
 func (c *Config) SendSignalToPeerCh(signal nm_models.Signal) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -291,13 +303,13 @@ func (c *Config) SendSignalToPeerCh(signal nm_models.Signal) {
 func (c *Config) SetTurnCfg(t models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ifaceConfig.turnMap[t.Server] = t
+	c.ifaceConfig.turnMap[t.PeerKey] = t
 }
 
 // Config.GetTurnCfg - gets the turn config
-func (c *Config) GetTurnCfg(serverName string) (t models.TurnCfg, ok bool) {
+func (c *Config) GetTurnCfg(peerKey string) (t models.TurnCfg, ok bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	t, ok = c.ifaceConfig.turnMap[serverName]
+	t, ok = c.ifaceConfig.turnMap[peerKey]
 	return
 }

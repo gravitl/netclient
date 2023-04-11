@@ -235,6 +235,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
+	case models.SignalHost:
+		logger.Log(0, fmt.Sprintf("-------->$$$$ RECEIVED SIGNAL: %+v", hostUpdate.Signal))
+		proxyCfg.GetCfg().SendSignalToPeerCh(hostUpdate.Signal)
 	default:
 		logger.Log(1, "unknown host action")
 		return

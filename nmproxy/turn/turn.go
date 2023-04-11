@@ -1,7 +1,6 @@
 package turn
 
 import (
-	"context"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"sync"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -28,18 +26,13 @@ func ConvHostPassToHash(hostPass string) string {
 }
 
 // StartClient - starts the turn client on the netclient
-func StartClient(ctx context.Context, wg *sync.WaitGroup, serverName, turnDomain, turnServer string, turnPort int) {
-	defer wg.Done()
+func StartClient(peerKey, turnDomain, turnServer string, turnPort int) (*turn.Client, error) {
 	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
-		log.Panicf("Failed to listen: %s", err)
+		logger.Log(0, "Failed to listen: %s", err.Error())
+		return nil, err
 	}
-	defer func() {
-		if closeErr := conn.Close(); closeErr != nil {
-			logger.Log(0, "Failed to close connection: %s", closeErr.Error())
-		}
-	}()
-	turnServerAddr := fmt.Sprintf("%s:%d", turnServer, turnPort)
+	turnServerAddr := fmt.Sprintf("%s:%d", turnDomain, turnPort)
 	cfg := &turn.ClientConfig{
 		STUNServerAddr: turnServerAddr,
 		TURNServerAddr: turnServerAddr,
@@ -53,17 +46,32 @@ func StartClient(ctx context.Context, wg *sync.WaitGroup, serverName, turnDomain
 	client, err := turn.NewClient(cfg)
 	if err != nil {
 		logger.Log(0, "Failed to create TURN client: %s", err.Error())
-		return
+		conn.Close()
+		return nil, err
 	}
+	err = client.Listen()
+	if err != nil {
+		logger.Log(0, "Failed to listen: %s", err.Error())
+		conn.Close()
+		client.Close()
+		return nil, err
+	}
+	closeFunc := func(peerKey string) {
+		if t, ok := config.GetCfg().GetTurnCfg(peerKey); ok {
+			t.Client.Close()
+			if err := t.Cfg.Conn.Close(); err != nil {
+				logger.Log(0, "failed to close listener: ", err.Error())
+			}
+		}
+	}
+
 	config.GetCfg().SetTurnCfg(models.TurnCfg{
-		Server:    serverName,
-		Domain:    turnDomain,
-		ApiDomain: turnServer,
-		Port:      turnPort,
-		Client:    client,
+		PeerKey: peerKey,
+		Cfg:     cfg,
+		Client:  client,
+		Close:   closeFunc,
 	})
-	<-ctx.Done()
-	defer client.Close()
+	return client, nil
 }
 
 // RegisterHostWithTurn - registers the host with the given turn server
@@ -116,26 +124,17 @@ func DeRegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
 	return nil
 }
 
-func AllocateAddr(serverName string) (*net.PacketConn, error) {
+func AllocateAddr(client *turn.Client) (net.PacketConn, error) {
 	// Allocate a relay socket on the TURN server. On success, it
 	// will return a net.PacketConn which represents the remote
 	// socket.
-	turnCfg, ok := config.GetCfg().GetTurnCfg(serverName)
-	if !ok {
-		return nil, errors.New("turn domain cfg not found")
-	}
-	relayConn, err := turnCfg.Client.Allocate()
+	relayConn, err := client.Allocate()
 	if err != nil {
 		logger.Log(0, "Failed to allocate: ", err.Error())
 		return nil, err
 	}
-	defer func() {
-		if closeErr := relayConn.Close(); closeErr != nil {
-			logger.Log(0, "Failed to close connection: ", closeErr.Error())
-		}
-	}()
 	// Send BindingRequest to learn our external IP
-	mappedAddr, err := turnCfg.Client.SendBindingRequest()
+	mappedAddr, err := client.SendBindingRequest()
 	if err != nil {
 		logger.Log(0, "failed to send binding req: ", err.Error())
 		return nil, err
@@ -152,7 +151,7 @@ func AllocateAddr(serverName string) (*net.PacketConn, error) {
 	// The relayConn's local address is actually the transport
 	// address assigned on the TURN server.
 	log.Printf("relayed-address=%s", relayConn.LocalAddr().String())
-	return &relayConn, nil
+	return relayConn, nil
 }
 
 func SignalPeer(serverName string, signal nm_models.Signal) error {
@@ -165,19 +164,21 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	endpoint := httpclient.JSONEndpoint[nm_models.NodeGet, nm_models.ErrorResponse]{
+	fmt.Println("TOKEN: ", token)
+	endpoint := httpclient.JSONEndpoint[nm_models.Signal, nm_models.ErrorResponse]{
 		URL:           "https://" + server.API,
-		Route:         "/api/nodes/",
-		Method:        http.MethodGet,
+		Route:         fmt.Sprintf("/api/v1/host/%s/signalpeer", ncconfig.Netclient().ID.String()),
+		Method:        http.MethodPost,
 		Authorization: "Bearer " + token,
-		Response:      nm_models.NodeGet{},
+		Data:          signal,
+		Response:      nm_models.Signal{},
 		ErrorResponse: nm_models.ErrorResponse{},
 	}
-	_, errData, err := endpoint.GetJSON(nm_models.NodeGet{}, nm_models.ErrorResponse{})
+	_, errData, err := endpoint.GetJSON(nm_models.Signal{}, nm_models.ErrorResponse{})
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "error getting node", strconv.Itoa(errData.Code), errData.Message)
-		}
+		//if errors.Is(err, httpclient.ErrStatus) {
+		logger.Log(0, "error signalling peer", strconv.Itoa(errData.Code), errData.Message)
+		//}
 		return err
 	}
 	return nil

@@ -150,10 +150,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(1, "started daemon for server ", server.Name)
 		server := server
 		if server.TurnApiDomain != "" && server.TurnDomain != "" && server.TurnPort != 0 {
-			go turn.StartClient(ctx, wg, server.Name, server.TurnDomain,
-				server.TurnApiDomain, server.TurnPort)
-			go turn.RegisterHostWithTurn(server.TurnApiDomain,
+
+			err := turn.RegisterHostWithTurn(server.TurnApiDomain,
 				config.Netclient().ID.String(), config.Netclient().HostPass)
+			if err != nil {
+				logger.Log(0, "failed to register host with turn server: ", server.TurnApiDomain, err.Error())
+			}
 		}
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)

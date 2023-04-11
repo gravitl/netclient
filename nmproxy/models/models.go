@@ -83,9 +83,8 @@ type Settings struct {
 }
 
 type TurnCfg struct {
-	Server    string
-	Domain    string
-	ApiDomain string
-	Port      int
-	Client    *turn.Client
+	PeerKey string
+	Cfg     *turn.ClientConfig
+	Client  *turn.Client
+	Close   func(peerKey string)
 }

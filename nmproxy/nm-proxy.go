@@ -44,6 +44,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 		logger.FatalLog("failed to create proxy: ", err.Error())
 	}
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
-	go manager.Start(ctx, mgmChan)
+	wg.Add(1)
+	go manager.Start(ctx, wg, mgmChan)
 	server.NmProxyServer.Listen(ctx)
 }

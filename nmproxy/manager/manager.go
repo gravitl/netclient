@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
+	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -17,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type proxyPayload nm_models.ProxyManagerPayload
@@ -26,7 +29,8 @@ func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	return &mI
 }
 
-func dumpProxyConnsInfo(ctx context.Context) {
+func dumpProxyConnsInfo(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -38,8 +42,10 @@ func dumpProxyConnsInfo(ctx context.Context) {
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
-	go dumpProxyConnsInfo(ctx)
+func Start(ctx context.Context, wg *sync.WaitGroup, managerChan chan *nm_models.HostPeerUpdate) {
+	defer wg.Done()
+	wg.Add(1)
+	go dumpProxyConnsInfo(ctx, wg)
 	for {
 		select {
 		case <-ctx.Done():
@@ -370,25 +376,36 @@ func (m *proxyPayload) peerUpdate() error {
 			shouldUseProxy = true
 		}
 		if !isRelayed && shouldUseTurn(m.Server, peerConf.NatType) {
-			go func() {
+			go func(serverName string, peer wgtypes.PeerConfig) {
+				server := ncconfig.GetServer(serverName)
+				turnClient, err := turn.StartClient(server.Name, server.TurnDomain,
+					server.TurnApiDomain, server.TurnPort)
+				if err != nil {
+					logger.Log(0, "failed to turn client for peer: ", peer.PublicKey.String(), err.Error())
+					return
+				}
 				// allocate turn relay address to host for the peer and exchange information with peer
-				relayAddr, err := turn.AllocateAddr(m.Server)
+				relayAddr, err := turn.AllocateAddr(turnClient)
 				if err != nil {
 					logger.Log(0, "failed to allocate addr on turn: ", err.Error())
 					return
 				}
-				// signal peer with the host relay addr
-				turn.SignalPeer(m.Server, nm_models.Signal{
-					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-					TurnRelayEndpoint: relayAddr,
-					ToHostPubKey:      peerI.PublicKey.String(),
-				})
-				// and wait until peer reports it relay endpoint
 				peerAnswerCh := make(chan nm_models.Signal, 1)
+				config.GetCfg().StorePeerAnswerCh(peer.PublicKey.String(), peerAnswerCh)
+				// signal peer with the host relay addr for the peer
+				err = turn.SignalPeer(serverName, nm_models.Signal{
+					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+					TurnRelayEndpoint: relayAddr.LocalAddr().String(),
+					ToHostPubKey:      peer.PublicKey.String(),
+				})
+				if err != nil {
+					logger.Log(0, "---> failed to signal peer: ", err.Error())
+				}
+				// and wait until peer reports it relay endpoint
 				signal := <-peerAnswerCh
-				log.Printf("-------> Signal RECV: %+v", signal)
+				log.Printf("------->HEREEEE Signal RECV: %+v", signal)
 
-			}()
+			}(m.Server, peerI)
 			continue
 		}
 		if shouldUseProxy {
@@ -404,6 +421,7 @@ func (m *proxyPayload) peerUpdate() error {
 
 func shouldUseTurn(server string, natType string) bool {
 	// if behind  DOUBLE or ASYM Nat type, allocate turn address for the host
+	return true
 	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
 		return true
 	}
