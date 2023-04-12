@@ -32,6 +32,7 @@ type Proxy struct {
 	ListenPort      int
 	ProxyListenPort int
 	ProxyStatus     bool
+	UsingTurn       bool
 }
 
 // Conn is a peer Connection configuration
@@ -86,5 +87,4 @@ type TurnCfg struct {
 	PeerKey string
 	Cfg     *turn.ClientConfig
 	Client  *turn.Client
-	Close   func(peerKey string)
 }

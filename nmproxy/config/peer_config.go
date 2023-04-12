@@ -148,6 +148,7 @@ func (c *Config) RemovePeer(peerPubKey string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())
+		GetCfg().DeleteTurnCfg(peerPubKey)
 
 	}
 
@@ -279,22 +280,43 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 	return make(map[string]nm_models.IDandAddr), false
 }
 
+// Config.DeletePeerAnswerCh - deletes peer answer channel
 func (c *Config) DeletePeerAnswerCh(peerKey string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	delete(c.ifaceConfig.peerSignalChMap, peerKey)
 }
 
+// Config.IsPeerSignalActive - check if watch is active peer signal channel
+func (c *Config) IsPeerSignalActive(peerKey string) bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	_, ok := c.ifaceConfig.peerSignalChMap[peerKey]
+	return ok
+}
+
+// Config.StorePeerAnswerCh - stores peer's signal channel in the config
 func (c *Config) StorePeerAnswerCh(peerKey string, ch chan nm_models.Signal) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.ifaceConfig.peerSignalChMap[peerKey] = ch
 }
 
+// Config.ClosePeerAnswerCh - deletes the peer signal channel from config
+func (c *Config) ClosePeerAnswerCh(peerKey string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if ch, ok := c.ifaceConfig.peerSignalChMap[peerKey]; ok {
+		close(ch)
+		delete(c.ifaceConfig.peerSignalChMap, peerKey)
+	}
+}
+
+// Config.SendSignalToPeerCh - sends signal to peer signal channel
 func (c *Config) SendSignalToPeerCh(signal nm_models.Signal) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if ch, ok := c.ifaceConfig.peerSignalChMap[signal.ToHostPubKey]; ok && ch != nil {
+	if ch, ok := c.ifaceConfig.peerSignalChMap[signal.FromHostPubKey]; ok && ch != nil {
 		ch <- signal
 	}
 }
@@ -312,4 +334,17 @@ func (c *Config) GetTurnCfg(peerKey string) (t models.TurnCfg, ok bool) {
 	defer c.mutex.Unlock()
 	t, ok = c.ifaceConfig.turnMap[peerKey]
 	return
+}
+
+// Config.DeleteTurnCfg - deletes the turn config
+func (c *Config) DeleteTurnCfg(peerKey string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if t, ok := c.ifaceConfig.turnMap[peerKey]; ok {
+		t.Client.Close()
+		if err := t.Cfg.Conn.Close(); err != nil {
+			logger.Log(0, "failed to close listener: ", err.Error())
+		}
+		delete(c.ifaceConfig.turnMap, peerKey)
+	}
 }

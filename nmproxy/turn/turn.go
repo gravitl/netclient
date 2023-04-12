@@ -56,20 +56,11 @@ func StartClient(peerKey, turnDomain, turnServer string, turnPort int) (*turn.Cl
 		client.Close()
 		return nil, err
 	}
-	closeFunc := func(peerKey string) {
-		if t, ok := config.GetCfg().GetTurnCfg(peerKey); ok {
-			t.Client.Close()
-			if err := t.Cfg.Conn.Close(); err != nil {
-				logger.Log(0, "failed to close listener: ", err.Error())
-			}
-		}
-	}
 
 	config.GetCfg().SetTurnCfg(models.TurnCfg{
 		PeerKey: peerKey,
 		Cfg:     cfg,
 		Client:  client,
-		Close:   closeFunc,
 	})
 	return client, nil
 }

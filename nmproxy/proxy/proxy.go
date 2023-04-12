@@ -19,6 +19,7 @@ type Proxy struct {
 	Config     models.Proxy
 	RemoteConn *net.UDPAddr
 	LocalConn  net.Conn
+	TurnConn   net.PacketConn
 }
 
 // Proxy.Start - starts proxying the peer
@@ -46,6 +47,7 @@ func (p *Proxy) Start() error {
 	}
 	p.Config.LocalConnAddr = localAddr
 	p.Config.RemoteConnAddr = p.RemoteConn
+	logger.Log(0, "PROXYING TO REMOTE: ", p.TurnConn.LocalAddr().String(), p.RemoteConn.String())
 	go p.ProxyPeer()
 	return nil
 }

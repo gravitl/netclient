@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"runtime"
 	"strings"
@@ -58,6 +59,14 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				}
 
 			}(n, p.Config)
+			if p.Config.UsingTurn {
+				_, err = p.TurnConn.WriteTo(buf[:n], p.RemoteConn)
+				if err != nil {
+					log.Println("failed to write to remote conn: ", err)
+					return
+				}
+				continue
+			}
 
 			var srcPeerKeyHash, dstPeerKeyHash string
 			if p.Config.ProxyStatus {
@@ -79,6 +88,28 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 		}
 	}
 
+}
+
+func (p *Proxy) toLocal(wg *sync.WaitGroup) {
+	defer wg.Done()
+	buf := make([]byte, 65000)
+	for {
+		select {
+		case <-p.Ctx.Done():
+			return
+		default:
+			n, _, err := p.TurnConn.ReadFrom(buf)
+			if err != nil {
+				logger.Log(0, "failed to read from remote conn: ", p.TurnConn.LocalAddr().String(), err.Error())
+				return
+			}
+			_, err = p.LocalConn.Write(buf[:n])
+			if err != nil {
+				log.Println("failed to write to local conn: ", err)
+				return
+			}
+		}
+	}
 }
 
 // Proxy.Reset - resets peer's conn
@@ -132,6 +163,10 @@ func (p *Proxy) ProxyPeer() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.toRemote(wg)
+	if p.Config.UsingTurn {
+		wg.Add(1)
+		go p.toLocal(wg)
+	}
 	wg.Wait()
 
 }

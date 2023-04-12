@@ -22,7 +22,7 @@ import (
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
 func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
-	isRelayed bool, relayTo *net.UDPAddr) error {
+	isRelayed bool, relayTo *net.UDPAddr, usingTurn bool, turnConn net.PacketConn) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
 		d := nm_models.DefaultPersistentKeepaliveInterval
@@ -35,6 +35,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		ListenPort:      int(peerConf.PublicListenPort),
 		ProxyListenPort: peerConf.ProxyListenPort,
 		ProxyStatus:     peerConf.Proxy || isRelayed,
+		UsingTurn:       usingTurn,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
@@ -46,7 +47,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 
 	}
 	peerEndpointIP := peer.Endpoint.IP
-	if isRelayed {
+	if isRelayed || usingTurn {
 		//go server.NmProxyServer.KeepAlive(peer.Endpoint.IP.String(), common.NmProxyPort)
 		if relayTo == nil {
 			return errors.New("relay endpoint is nil")
@@ -54,12 +55,13 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		peerEndpointIP = relayTo.IP
 		peerPort = relayTo.Port
 	}
+
 	peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerEndpointIP, peerPort))
 	if err != nil {
 		return err
 	}
 	p.Config.PeerEndpoint = peerEndpoint
-
+	p.TurnConn = turnConn
 	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())
 	err = p.Start()
 	if err != nil {
