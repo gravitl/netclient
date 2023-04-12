@@ -63,7 +63,6 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				_, err = p.TurnConn.WriteTo(buf[:n], p.RemoteConn)
 				if err != nil {
 					log.Println("failed to write to remote conn: ", err)
-					return
 				}
 				continue
 			}
@@ -101,12 +100,12 @@ func (p *Proxy) toLocal(wg *sync.WaitGroup) {
 			n, _, err := p.TurnConn.ReadFrom(buf)
 			if err != nil {
 				logger.Log(0, "failed to read from remote conn: ", p.TurnConn.LocalAddr().String(), err.Error())
-				return
+				continue
 			}
 			_, err = p.LocalConn.Write(buf[:n])
 			if err != nil {
 				log.Println("failed to write to local conn: ", err)
-				return
+				continue
 			}
 		}
 	}

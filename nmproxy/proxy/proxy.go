@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"runtime"
 
-	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
@@ -57,20 +55,8 @@ func (p *Proxy) Close() {
 	logger.Log(0, "------> Closing Proxy for ", p.Config.PeerPublicKey.String())
 	p.Cancel()
 	p.LocalConn.Close()
-	if runtime.GOOS == "darwin" { // on darwin need to add alias for additional address in lo0 range
-		host, _, err := net.SplitHostPort(p.LocalConn.LocalAddr().String())
-		if err != nil {
-			logger.Log(0, "Failed to split host: ", err.Error())
-			return
-		}
-
-		if host != "127.0.0.1" {
-			_, err = common.RunCmd(fmt.Sprintf("ifconfig lo0 -alias %s 255.255.255.255", host), true)
-			if err != nil {
-				logger.Log(0, "Failed to add alias: ", err.Error())
-			}
-		}
-
+	if p.Config.UsingTurn {
+		p.TurnConn.Close()
 	}
 }
 

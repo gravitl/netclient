@@ -56,7 +56,6 @@ func StartClient(peerKey, turnDomain, turnServer string, turnPort int) (*turn.Cl
 		client.Close()
 		return nil, err
 	}
-
 	config.GetCfg().SetTurnCfg(models.TurnCfg{
 		PeerKey: peerKey,
 		Cfg:     cfg,

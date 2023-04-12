@@ -342,9 +342,6 @@ func (c *Config) DeleteTurnCfg(peerKey string) {
 	defer c.mutex.Unlock()
 	if t, ok := c.ifaceConfig.turnMap[peerKey]; ok {
 		t.Client.Close()
-		if err := t.Cfg.Conn.Close(); err != nil {
-			logger.Log(0, "failed to close listener: ", err.Error())
-		}
 		delete(c.ifaceConfig.turnMap, peerKey)
 	}
 }
