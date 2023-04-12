@@ -17,7 +17,7 @@ require (
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/rhysd/go-github-selfupdate v1.2.3
-	github.com/spf13/cobra v1.6.1
+	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.3.1
@@ -57,7 +57,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf // indirect
-	github.com/inconshreveable/mousetrap v1.0.1 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/josharian/native v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
