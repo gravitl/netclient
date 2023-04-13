@@ -25,8 +25,8 @@ func ConvHostPassToHash(hostPass string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(hostPass)))
 }
 
-// StartClient - starts the turn client on the netclient
-func StartClient(peerKey, turnDomain, turnServer string, turnPort int) (*turn.Client, error) {
+// StartClient - starts the turn client on the netclient for the peer
+func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf, turnDomain, turnServer string, turnPort int) (net.PacketConn, error) {
 	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
@@ -56,12 +56,20 @@ func StartClient(peerKey, turnDomain, turnServer string, turnPort int) (*turn.Cl
 		client.Close()
 		return nil, err
 	}
-	config.GetCfg().SetTurnCfg(models.TurnCfg{
-		PeerKey: peerKey,
-		Cfg:     cfg,
-		Client:  client,
+	// allocate turn relay address to host for the peer and exchange information with peer
+	turnConn, err := AllocateAddr(client)
+	if err != nil {
+		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
+		return nil, err
+	}
+	config.GetCfg().SetTurnCfg(peerKey, models.TurnCfg{
+		Server:   serverName,
+		PeerConf: peerConf,
+		Cfg:      cfg,
+		Client:   client,
+		TurnConn: turnConn,
 	})
-	return client, nil
+	return turnConn, nil
 }
 
 // RegisterHostWithTurn - registers the host with the given turn server

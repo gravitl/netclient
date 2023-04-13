@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/turn"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -42,7 +43,7 @@ type Conn struct {
 	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
 	Config          Proxy
-	StopConn        func()
+	StopConn        func(bool)
 	ResetConn       func()
 	LocalConn       net.Conn
 	Mutex           *sync.RWMutex
@@ -84,7 +85,11 @@ type Settings struct {
 }
 
 type TurnCfg struct {
-	PeerKey string
-	Cfg     *turn.ClientConfig
-	Client  *turn.Client
+	Server       string
+	PeerConf     nm_models.PeerConf
+	PeerTurnAddr string
+	Cfg          *turn.ClientConfig
+	Client       *turn.Client
+	SignalCh     chan nm_models.Signal
+	TurnConn     net.PacketConn
 }

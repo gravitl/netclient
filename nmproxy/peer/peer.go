@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
@@ -22,7 +23,7 @@ import (
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
 func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
-	isRelayed bool, relayTo *net.UDPAddr, usingTurn bool, turnConn net.PacketConn) error {
+	isRelayed bool, relayTo *net.UDPAddr, usingTurn bool) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
 		d := nm_models.DefaultPersistentKeepaliveInterval
@@ -61,7 +62,11 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		return err
 	}
 	p.Config.PeerEndpoint = peerEndpoint
-	p.TurnConn = turnConn
+	if t, ok := config.GetCfg().GetTurnCfg(peer.PublicKey.String()); ok && usingTurn {
+		p.TurnConn = t.TurnConn
+	} else {
+		p.Config.UsingTurn = false
+	}
 	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())
 	err = p.Start()
 	if err != nil {

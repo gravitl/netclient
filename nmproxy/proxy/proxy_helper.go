@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/c-robinson/iplib"
+
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -114,7 +115,7 @@ func (p *Proxy) toLocal(wg *sync.WaitGroup) {
 // Proxy.Reset - resets peer's conn
 func (p *Proxy) Reset() {
 	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.PeerPublicKey.String())
-	p.Close()
+	p.Close(true)
 	if p.Config.PeerEndpoint == nil {
 		return
 	}

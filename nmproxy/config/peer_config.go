@@ -10,14 +10,13 @@ import (
 
 // wgIfaceConf - interface config
 type wgIfaceConf struct {
-	iface           *wg.WGIface
-	ifaceKeyHash    string
-	proxyPeerMap    models.PeerConnMap
-	turnMap         map[string]models.TurnCfg
-	peerHashMap     map[string]*models.RemotePeer
-	relayPeerMap    map[string]map[string]*models.RemotePeer
-	allPeersConf    map[string]nm_models.HostPeerMap
-	peerSignalChMap map[string](chan nm_models.Signal)
+	iface        *wg.WGIface
+	ifaceKeyHash string
+	proxyPeerMap models.PeerConnMap
+	turnMap      map[string]models.TurnCfg
+	peerHashMap  map[string]*models.RemotePeer
+	relayPeerMap map[string]map[string]*models.RemotePeer
+	allPeersConf map[string]nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -144,7 +143,7 @@ func (c *Config) RemovePeer(peerPubKey string) {
 
 		logger.Log(0, "----> Deleting Peer from proxy: ", peerConf.Key.String())
 		peerConf.Mutex.Lock()
-		peerConf.StopConn()
+		peerConf.StopConn(false)
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())
@@ -280,35 +279,13 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 	return make(map[string]nm_models.IDandAddr), false
 }
 
-// Config.DeletePeerAnswerCh - deletes peer answer channel
-func (c *Config) DeletePeerAnswerCh(peerKey string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	delete(c.ifaceConfig.peerSignalChMap, peerKey)
-}
-
-// Config.IsPeerSignalActive - check if watch is active peer signal channel
-func (c *Config) IsPeerSignalActive(peerKey string) bool {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	_, ok := c.ifaceConfig.peerSignalChMap[peerKey]
-	return ok
-}
-
 // Config.StorePeerAnswerCh - stores peer's signal channel in the config
 func (c *Config) StorePeerAnswerCh(peerKey string, ch chan nm_models.Signal) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ifaceConfig.peerSignalChMap[peerKey] = ch
-}
-
-// Config.ClosePeerAnswerCh - deletes the peer signal channel from config
-func (c *Config) ClosePeerAnswerCh(peerKey string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if ch, ok := c.ifaceConfig.peerSignalChMap[peerKey]; ok {
-		close(ch)
-		delete(c.ifaceConfig.peerSignalChMap, peerKey)
+	if t, ok := c.ifaceConfig.turnMap[peerKey]; ok {
+		t.SignalCh = ch
+		c.ifaceConfig.turnMap[peerKey] = t
 	}
 }
 
@@ -316,16 +293,25 @@ func (c *Config) ClosePeerAnswerCh(peerKey string) {
 func (c *Config) SendSignalToPeerCh(signal nm_models.Signal) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if ch, ok := c.ifaceConfig.peerSignalChMap[signal.FromHostPubKey]; ok && ch != nil {
-		ch <- signal
+	if t, ok := c.ifaceConfig.turnMap[signal.FromHostPubKey]; ok && t.SignalCh != nil {
+		t.SignalCh <- signal
 	}
 }
 
 // Config.SetTurnCfg - sets the turn config
-func (c *Config) SetTurnCfg(t models.TurnCfg) {
+func (c *Config) SetTurnCfg(peerKey string, t models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ifaceConfig.turnMap[t.PeerKey] = t
+	c.ifaceConfig.turnMap[peerKey] = t
+}
+
+func (c *Config) UpdatePeerTurnAddr(peerKey string, addr string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if t, ok := c.ifaceConfig.turnMap[peerKey]; ok {
+		t.PeerTurnAddr = addr
+		c.ifaceConfig.turnMap[peerKey] = t
+	}
 }
 
 // Config.GetTurnCfg - gets the turn config
