@@ -113,71 +113,71 @@ jobs:
           overwrite: true
           asset_name: netclient-freebsd-amd64
 
-  windows:
-    needs: release-branch
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: release_${{ github.event.inputs.version}}
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 19
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.19
-      - name: build gui
-        run: |
-          cd gui/frontend
-          npm ci
-          npm run build
-          cd ../..
-          go generate
-          go build -tags desktop,production -ldflags "-w -s -H windowsgui"
-      - name: upload windows to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: netclient.exe
-          tag: ${{ github.event.inputs.version }}
-          overwrite: true
-          asset_name: netclient-windows-amd64.exe
-
-  darwin:
-    needs: release-branch
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: release_${{ github.event.inputs.version}}
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 19
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.19
-      - run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@latest 
-          ~/go/bin/wails build -platform darwin/amd64 
-          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_amd64
-          ~/go/bin/wails build -platform darwin/arm64 
-          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_arm64
-      - name: upload darwin/amd to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: /tmp/netclient_darwin_amd64
-          tag: ${{ github.event.inputs.version }}
-          overwrite: true
-          asset_name: netclient-darwin-amd64
-      - name: upload darwin_arm64 to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: /tmp/netclient_darwin_arm64
-          tag: ${{ github.event.inputs.version }}
-          overwrite: true
-          asset_name: netclient-darwin_amd64
+#  windows:
+#    needs: release-branch
+#    runs-on: windows-latest
+#    steps:
+#      - uses: actions/checkout@v3
+#        with:
+#          ref: release_${{ github.event.inputs.version}}
+#      - uses: actions/setup-node@v3
+#        with:
+#          node-version: 19
+#      - uses: actions/setup-go@v3
+#        with:
+#          go-version: 1.19
+#      - name: build gui
+#        run: |
+#          cd gui/frontend
+#          npm ci
+#          npm run build
+#          cd ../..
+#          go generate
+#          go build -tags desktop,production -ldflags "-w -s -H windowsgui"
+#      - name: upload windows to release
+#        uses: svenstaro/upload-release-action@v2
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          file: netclient.exe
+#          tag: ${{ github.event.inputs.version }}
+#          overwrite: true
+#          asset_name: netclient-windows-amd64.exe
+#
+#  darwin:
+#    needs: release-branch
+#    runs-on: macos-latest
+#    steps:
+#      - uses: actions/checkout@v3
+#        with:
+#          ref: release_${{ github.event.inputs.version}}
+#      - uses: actions/setup-node@v3
+#        with:
+#          node-version: 19
+#      - uses: actions/setup-go@v3
+#        with:
+#          go-version: 1.19
+#      - run: |
+#          go install github.com/wailsapp/wails/v2/cmd/wails@latest 
+#          ~/go/bin/wails build -platform darwin/amd64 
+#          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_amd64
+#          ~/go/bin/wails build -platform darwin/arm64 
+#          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_arm64
+#      - name: upload darwin/amd to release
+#        uses: svenstaro/upload-release-action@v2
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          file: /tmp/netclient_darwin_amd64
+#          tag: ${{ github.event.inputs.version }}
+#          overwrite: true
+#          asset_name: netclient-darwin-amd64
+#      - name: upload darwin_arm64 to release
+#        uses: svenstaro/upload-release-action@v2
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          file: /tmp/netclient_darwin_arm64
+#          tag: ${{ github.event.inputs.version }}
+#          overwrite: true
+#          asset_name: netclient-darwin_amd64
 
   docker:
     needs: release-branch
@@ -210,6 +210,7 @@ jobs:
     uses: ./.github/workflows/packages.yml
     with:
       version: ${{ github.event.inputs.version }}
+    secrets: inherit
 
   pull-request:
     if: ${{ github.event.inputs.prerelease == 'false' }}
