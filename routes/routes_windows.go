@@ -144,7 +144,7 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 		return nil
 	}
 
-	cmd := fmt.Sprintf("route add 0.0.0.0 mask 0.0.0.0 %s metric 0", gwAddress.IP.String())
+	cmd := fmt.Sprintf("route add 0.0.0.0 mask 0.0.0.0 %s metric 2", gwAddress.IP.String())
 	_, err := ncutils.RunCmd(cmd, false)
 	if err != nil {
 		return err

@@ -51,7 +51,7 @@ var (
 	GW4PeerDetected bool
 	// GW4Addr - the peer's address for IPv4 gateways
 	GW4Addr net.IPNet
-	// GW6PeerDetected - indicates if an IPv6 gwPeer (0.0.0.0/0) was found, currently unused
+	// GW6PeerDetected - indicates if an IPv6 gwPeer (::/0) was found, currently unused
 	GW6PeerDetected bool
 	// GW6Addr - the peer's address for IPv6 gateways
 	GW6Addr net.IPNet
@@ -676,8 +676,7 @@ func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
 		return false
 	}
 	for i := range allowedIPs {
-		aIP := allowedIPs[i]
-		if aIP.String() == ip.String() {
+		if ip.Contains(allowedIPs[i].IP) {
 			return true
 		}
 	}
