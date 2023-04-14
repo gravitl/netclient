@@ -422,20 +422,17 @@ func UpdateKeys(client mqtt.Client) error {
 	var err error
 	logger.Log(0, "received message to update wireguard keys ")
 	host := config.Netclient()
-	pretty.Println("current keys", host.PrivateKey.String(), host.PublicKey.String())
 	host.PrivateKey, err = wgtypes.GeneratePrivateKey()
 	if err != nil {
 		logger.Log(0, "error generating privatekey ", err.Error())
 		return err
 	}
-	pretty.Println("new private key", host.PrivateKey.String())
 	file := config.GetNetclientPath() + "netmaker.conf"
 	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
 		logger.Log(0, "error updating wireguard key ", err.Error())
 		return err
 	}
 	host.PublicKey = host.PrivateKey.PublicKey()
-	pretty.Println("new public key", host.PublicKey.String())
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saving netclient config", err.Error())
 	}
