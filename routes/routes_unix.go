@@ -178,11 +178,12 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 	if gwAddress == nil {
 		return nil
 	}
-	cmd := exec.Command("route", "change", "default", gwAddress.IP.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
-		return err
-	}
+	fmt.Printf("I should set default GW: %s \n", gwAddress.String())
+	// cmd := exec.Command("route", "change", "default", gwAddress.IP.String())
+	// if out, err := cmd.CombinedOutput(); err != nil {
+	// 	logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
+	// 	return err
+	// }
 	return nil
 }
 
@@ -191,11 +192,12 @@ func RemoveDefaultGW(gwAddress *net.IPNet) error {
 	if defaultGWRoute == nil {
 		return nil
 	}
-	cmd := exec.Command("route", "change", "default", defaultGWRoute.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
-		return err
-	}
+	fmt.Printf("I should delete default GW: %s \n", gwAddress.String())
+	// cmd := exec.Command("route", "change", "default", defaultGWRoute.String())
+	// if out, err := cmd.CombinedOutput(); err != nil {
+	// 	logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
+	// 	return err
+	// }
 	return nil
 }
 
