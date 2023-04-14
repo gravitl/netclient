@@ -140,11 +140,11 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 		return fmt.Errorf("old gateway not found, can not set default gateway")
 	}
 
-	if gwAddress == nil {
+	if gwAddress == nil || gwAddress.IP == nil {
 		return nil
 	}
 
-	cmd := fmt.Sprintf("route add 0.0.0.0 mask 0.0.0.0 %s metric 2", gwAddress.IP.String())
+	cmd := fmt.Sprintf("route add 0.0.0.0 mask 0.0.0.0 %s metric 0", gwAddress.IP.String())
 	_, err := ncutils.RunCmd(cmd, false)
 	if err != nil {
 		return err
@@ -161,7 +161,7 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 
 // RemoveDefaultGW - removes the default gateway
 func RemoveDefaultGW(gwAddress *net.IPNet) error {
-	if gwAddress == nil {
+	if gwAddress == nil || gwAddress.IP == nil {
 		return nil
 	}
 
@@ -186,6 +186,9 @@ func setDefaultGatewayRoute() error {
 	if defaultGWRoute == nil {
 		gw, err := getWindowsGateway()
 		if err != nil {
+			return err
+		}
+		if err = ensureNotNodeAddr(gw); err != nil {
 			return err
 		}
 		defaultGWRoute = gw

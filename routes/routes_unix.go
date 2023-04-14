@@ -175,29 +175,33 @@ func SetDefaultGateway(gwAddress *net.IPNet) error {
 	if defaultGWRoute == nil {
 		return fmt.Errorf("old gateway not found, can not set default gateway")
 	}
-	if gwAddress == nil {
+	if gwAddress == nil || gwAddress.IP == nil {
 		return nil
 	}
-	fmt.Printf("I should set default GW: %s \n", gwAddress.String())
-	// cmd := exec.Command("route", "change", "default", gwAddress.IP.String())
-	// if out, err := cmd.CombinedOutput(); err != nil {
-	// 	logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
-	// 	return err
-	// }
+	cmd := exec.Command("route", "change", "default", gwAddress.IP.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
+		return err
+	}
 	return nil
 }
 
 // RemoveDefaultGW - removes the default gateway
 func RemoveDefaultGW(gwAddress *net.IPNet) error {
-	if defaultGWRoute == nil {
+	if defaultGWRoute == nil || (gwAddress == nil || gwAddress.IP == nil) {
 		return nil
 	}
-	fmt.Printf("I should delete default GW: %s \n", gwAddress.String())
-	// cmd := exec.Command("route", "change", "default", defaultGWRoute.String())
-	// if out, err := cmd.CombinedOutput(); err != nil {
-	// 	logger.Log(0, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
-	// 	return err
-	// }
+	// == best effort to reset on mac ==
+	cmd := exec.Command("route", "change", "default", defaultGWRoute.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Log(2, fmt.Sprintf("failed to change default gateway with command %s - %v", cmd.String(), string(out)))
+		return err
+	}
+	cmd = exec.Command("route", "add", "default", defaultGWRoute.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Log(2, fmt.Sprintf("failed to add default gateway with command %s - %v", cmd.String(), string(out)))
+		return err
+	}
 	return nil
 }
 
@@ -205,6 +209,9 @@ func setDefaultGatewayRoute() error {
 	if defaultGWRoute == nil {
 		ip, err := getDefaultGwIP()
 		if err != nil {
+			return err
+		}
+		if err = ensureNotNodeAddr(ip); err != nil {
 			return err
 		}
 		defaultGWRoute = ip
@@ -225,7 +232,7 @@ func getDefaultGwIP() (net.IP, error) {
 			continue
 		}
 		if gateway, ok := addresses[1].(*route.Inet4Addr); ok {
-			return gateway.IP[:], nil
+			return net.IP(gateway.IP[:]), nil
 		}
 	}
 	return nil, errors.New("defautl gw not found")

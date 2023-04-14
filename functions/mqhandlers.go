@@ -528,7 +528,6 @@ func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
 func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, originalGW *net.IPNet) { // isHostInetGateway indicates if host should worry about setting gateways
 	if gwDelta { // handle switching gateway IP to other GW peer
 		if config.GW4PeerDetected {
-			fmt.Printf("GWDELTA!!\n")
 			if err := routes.RemoveDefaultGW(originalGW); err != nil {
 				logger.Log(3, "failed to remove default gateway from peer", originalGW.String(), err.Error())
 			}
@@ -546,7 +545,6 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
 			}
 		} else if gwDetected && !config.GW4PeerDetected {
-			fmt.Printf("REMOVING AFTER PEER UPDATE? %v %v!!\n", gwDetected, config.GW4Addr)
 			if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
 				logger.Log(3, "failed to remove default gateway to peer", config.GW4Addr.String())
 			}

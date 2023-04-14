@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"net"
 	"sync"
 
@@ -39,16 +40,17 @@ func HasGatewayChanged() bool {
 // CleanUp - calls for client to clean routes of peers and servers
 func CleanUp(defaultInterface string, gwAddr *net.IPNet) error {
 	defer func() { defaultGWRoute = nil }()
-	if config.GW4PeerDetected || config.GW6PeerDetected {
-		if err := RemoveDefaultGW(gwAddr); err != nil {
-			logger.Log(0, "error occurred when removing default GW -", err.Error())
-		}
-	}
+
 	if err := RemoveServerRoutes(defaultInterface); err != nil {
 		logger.Log(0, "error occurred when removing server routes -", err.Error())
 	}
 	if err := RemovePeerRoutes(defaultInterface); err != nil {
 		logger.Log(0, "error occurred when removing peer routes -", err.Error())
+	}
+	if config.GW4PeerDetected || config.GW6PeerDetected {
+		if err := RemoveDefaultGW(gwAddr); err != nil {
+			logger.Log(0, "error occurred when removing default GW -", err.Error())
+		}
 	}
 	return nil
 }
@@ -75,4 +77,31 @@ func resetPeerRoutes() {
 	peerRouteMU.Lock()
 	defer peerRouteMU.Unlock()
 	currentPeerRoutes = []net.IPNet{}
+}
+
+func ensureNotNodeAddr(gatewayIP net.IP) error {
+	currentPeers := config.GetHostPeerList()
+	for i := range currentPeers {
+		peer := currentPeers[i]
+		for j := range peer.AllowedIPs {
+			if peer.AllowedIPs[j].String() != "0.0.0.0/0" &&
+				peer.AllowedIPs[j].String() != "::/0" &&
+				(peer.AllowedIPs[j].Contains(gatewayIP) ||
+					peer.AllowedIPs[j].IP.Equal(gatewayIP)) {
+				return fmt.Errorf("allowed ip found as gw")
+			}
+		}
+	}
+	servers := config.GetServers()
+	for _, s := range servers {
+		sNodes := config.GetNodesByServer(s)
+		for i := range sNodes {
+			node := sNodes[i]
+			if node.Address.IP.Equal(gatewayIP) ||
+				node.Address6.IP.Equal(gatewayIP) {
+				return fmt.Errorf("assigned address found as gw")
+			}
+		}
+	}
+	return nil
 }
