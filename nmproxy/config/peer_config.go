@@ -279,25 +279,6 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 	return make(map[string]nm_models.IDandAddr), false
 }
 
-// Config.StorePeerAnswerCh - stores peer's signal channel in the config
-func (c *Config) StorePeerAnswerCh(peerKey string, ch chan nm_models.Signal) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if t, ok := c.ifaceConfig.turnMap[peerKey]; ok {
-		t.SignalCh = ch
-		c.ifaceConfig.turnMap[peerKey] = t
-	}
-}
-
-// Config.SendSignalToPeerCh - sends signal to peer signal channel
-func (c *Config) SendSignalToPeerCh(signal nm_models.Signal) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if t, ok := c.ifaceConfig.turnMap[signal.FromHostPubKey]; ok && t.SignalCh != nil {
-		t.SignalCh <- signal
-	}
-}
-
 // Config.SetTurnCfg - sets the turn config
 func (c *Config) SetTurnCfg(peerKey string, t models.TurnCfg) {
 	c.mutex.Lock()

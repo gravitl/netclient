@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
-	"time"
 
 	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -392,83 +390,24 @@ func (m *proxyPayload) peerUpdate() error {
 					logger.Log(0, "failed to turn client for peer: ", peer.PublicKey.String(), err.Error())
 					return
 				}
-				peerAnswerCh := make(chan nm_models.Signal, 3)
 				defer func() {
 					if err != nil {
 						logger.Log(0, "Deleting TurnCfg for Peer: ", peer.PublicKey.String())
 						config.GetCfg().DeleteTurnCfg(peer.PublicKey.String())
 						return
 					}
-					// start a thread watching for future signals
-					go turn.WatchPeerSignals(peer.PublicKey.String(), peerAnswerCh)
 				}()
-
-				config.GetCfg().StorePeerAnswerCh(peer.PublicKey.String(), peerAnswerCh)
-				ticker := time.NewTicker(time.Second * 5)
-				retry := 0
-				gotSignal := false
-				var peerSignal nm_models.Signal
-				// and wait until peer reports it relay endpoint
-				for {
-					select {
-					case <-ticker.C:
-						logger.Log(0, "Negotiating with peer:", peer.PublicKey.String(), fmt.Sprint(retry))
-						if retry > 5 {
-							logger.Log(0, "Peer is not available currently so exiting...", peer.PublicKey.String())
-							return
-						}
-						retry++
-						// signal peer with the host relay addr for the peer
-						err = turn.SignalPeer(serverName, nm_models.Signal{
-							FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-							TurnRelayEndpoint: turnConn.LocalAddr().String(),
-							ToHostPubKey:      peer.PublicKey.String(),
-						})
-						if err != nil {
-							logger.Log(0, "---> failed to signal peer: ", err.Error())
-							continue
-						}
-					case signal, ok := <-peerAnswerCh:
-						if !ok {
-							err = errors.New("channel is closed")
-							return
-						}
-						if !signal.Reply {
-							// signal peer with the host relay addr for the peer
-							err = turn.SignalPeer(serverName, nm_models.Signal{
-								FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-								TurnRelayEndpoint: turnConn.LocalAddr().String(),
-								ToHostPubKey:      peer.PublicKey.String(),
-								Reply:             true,
-							})
-							if err != nil {
-								logger.Log(0, "---> failed to signal peer: ", err.Error())
-								continue
-							}
-						}
-
-						gotSignal = true
-						peerSignal = signal
-						ticker.Stop()
-						log.Printf("------->HEREEEE Signal RECV: %+v", signal)
-					}
-					if gotSignal {
-						break
-					}
-
-				}
-				config.GetCfg().UpdatePeerTurnAddr(peer.PublicKey.String(), peerSignal.TurnRelayEndpoint)
-
-				if peerSignal.TurnRelayEndpoint == "" {
-					logger.Log(0, fmt.Sprintf("peer's (%s) turn relay endpoint is missing", peer.PublicKey.String()))
-					return
-				}
-				peerTurnEndpoint, err := net.ResolveUDPAddr("udp", peerSignal.TurnRelayEndpoint)
+				// signal peer with the host relay addr for the peer
+				err = turn.SignalPeer(serverName, nm_models.Signal{
+					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+					TurnRelayEndpoint: turnConn.LocalAddr().String(),
+					ToHostPubKey:      peer.PublicKey.String(),
+				})
 				if err != nil {
-					logger.Log(0, "failed to resolve udp addr: ", err.Error())
-					return
+					logger.Log(0, "---> failed to signal peer: ", err.Error())
+
 				}
-				peerpkg.AddNew(serverName, peer, peerConf, false, peerTurnEndpoint, true)
+
 			}(m.Server, peerI, peerConf)
 			continue
 		}

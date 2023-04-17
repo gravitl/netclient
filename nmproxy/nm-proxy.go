@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/manager"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/server"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -46,5 +47,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	wg.Add(1)
 	go manager.Start(ctx, wg, mgmChan)
+	wg.Add(1)
+	go turn.WatchPeerSignals(ctx, wg)
 	server.NmProxyServer.Listen(ctx)
 }

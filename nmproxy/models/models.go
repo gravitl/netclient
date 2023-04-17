@@ -90,6 +90,5 @@ type TurnCfg struct {
 	PeerTurnAddr string
 	Cfg          *turn.ClientConfig
 	Client       *turn.Client
-	SignalCh     chan nm_models.Signal
 	TurnConn     net.PacketConn
 }

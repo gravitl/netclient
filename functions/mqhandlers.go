@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -237,7 +238,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	case models.SignalHost:
 		logger.Log(0, fmt.Sprintf("-------->$$$$ RECEIVED SIGNAL: %+v", hostUpdate.Signal))
-		proxyCfg.GetCfg().SendSignalToPeerCh(hostUpdate.Signal)
+		turn.PeerSignalCh <- hostUpdate.Signal
 	default:
 		logger.Log(1, "unknown host action")
 		return
