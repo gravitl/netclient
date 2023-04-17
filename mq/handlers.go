@@ -1,4 +1,4 @@
-package functions
+package mq
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
@@ -393,23 +394,23 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	}
 	switch dns.Action {
 	case models.DNSInsert:
-		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
+		hosts.AddHost(dns.Address, dns.Name, EtcHostsComment)
 	case models.DNSDeleteByName:
-		hosts.RemoveHost(dns.Name, etcHostsComment)
+		hosts.RemoveHost(dns.Name, EtcHostsComment)
 	case models.DNSDeleteByIP:
-		hosts.RemoveAddress(dns.Address, etcHostsComment)
+		hosts.RemoveAddress(dns.Address, EtcHostsComment)
 	case models.DNSReplaceName:
-		ok, ip, _ := hosts.HostAddressLookup(dns.Name, etcHostsComment)
+		ok, ip, _ := hosts.HostAddressLookup(dns.Name, EtcHostsComment)
 		if !ok {
 			logger.Log(2, "failed to find dns address for host", dns.Name)
 			return
 		}
 		dns.Address = ip
-		hosts.RemoveHost(dns.Name, etcHostsComment)
-		hosts.AddHost(dns.Address, dns.NewName, etcHostsComment)
+		hosts.RemoveHost(dns.Name, EtcHostsComment)
+		hosts.AddHost(dns.Address, dns.NewName, EtcHostsComment)
 	case models.DNSReplaceIP:
-		hosts.RemoveAddress(dns.Address, etcHostsComment)
-		hosts.AddHost(dns.NewAddress, dns.Name, etcHostsComment)
+		hosts.RemoveAddress(dns.Address, EtcHostsComment)
+		hosts.AddHost(dns.NewAddress, dns.Name, EtcHostsComment)
 	}
 	if err := hosts.Save(); err != nil {
 		logger.Log(0, "error saving hosts file", err.Error())
@@ -467,7 +468,7 @@ func applyAllDNS(dns []models.DNSUpdate) {
 			logger.Log(0, "invalid dns actions", entry.Action.String())
 			continue
 		}
-		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
+		hosts.AddHost(entry.Address, entry.Name, EtcHostsComment)
 	}
 
 	if err := hosts.Save(); err != nil {

@@ -8,8 +8,10 @@ import (
 	"os"
 
 	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/mq"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -21,13 +23,13 @@ func Uninstall() ([]error, error) {
 	var err error
 	for _, v := range config.Servers {
 		v := v
-		if err = setupMQTTSingleton(&v, true); err != nil {
+		if err = mq.SetupMQTTSingleton(&v, true); err != nil {
 			logger.Log(0, "failed to connect to server on uninstall", v.Name)
 			allfaults = append(allfaults, err)
 			continue
 		}
-		defer ServerSet[v.Name].Disconnect(250)
-		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
+		defer mq.ServerSet[v.Name].Disconnect(250)
+		if err = mq.PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
 			logger.Log(0, "failed to notify server", v.Name, "of host removal")
 			allfaults = append(allfaults, err)
 		}
@@ -86,7 +88,7 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 
 func deleteNodeFromServer(node *config.Node) error {
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server, config.Netclient())
+	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/mq"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -18,7 +19,7 @@ func ChangeProxyStatus(status bool) error {
 		if serverCfg == nil {
 			continue
 		}
-		err := setupMQTTSingleton(serverCfg, true)
+		err := mq.SetupMQTTSingleton(serverCfg, true)
 		if err != nil {
 			logger.Log(0, "failed to set up mq conn for server ", server)
 		}
@@ -27,7 +28,7 @@ func ChangeProxyStatus(status bool) error {
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}
-	if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
+	if err := mq.PublishGlobalHostUpdate(models.UpdateHost); err != nil {
 		return err
 	}
 	if status {

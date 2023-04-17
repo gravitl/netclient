@@ -6,13 +6,12 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/mq"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/txeh"
 	"github.com/guumaster/hostctl/pkg/file"
 	"github.com/guumaster/hostctl/pkg/types"
 )
-
-const etcHostsComment = "netmaker"
 
 // removeHostDNS -remove dns entries from /etc/hosts using hostctl
 // this function should only be called from the migrate function
@@ -58,11 +57,11 @@ func deleteAllDNS() error {
 	lines := hosts.GetHostFileLines()
 	addressesToDelete := []string{}
 	for _, line := range *lines {
-		if line.Comment == etcHostsComment {
+		if line.Comment == mq.EtcHostsComment {
 			addressesToDelete = append(addressesToDelete, line.Address)
 		}
 	}
-	hosts.RemoveAddresses(addressesToDelete, etcHostsComment)
+	hosts.RemoveAddresses(addressesToDelete, mq.EtcHostsComment)
 	if err := hosts.Save(); err != nil {
 		return err
 	}
@@ -83,13 +82,13 @@ func deleteNetworkDNS(network string) error {
 	lines := hosts.GetHostFileLines()
 	addressesToRemove := []string{}
 	for _, line := range *lines {
-		if line.Comment == etcHostsComment {
+		if line.Comment == mq.EtcHostsComment {
 			if sliceContains(line.Hostnames, network) {
 				addressesToRemove = append(addressesToRemove, line.Address)
 			}
 		}
 	}
-	hosts.RemoveAddresses(addressesToRemove, etcHostsComment)
+	hosts.RemoveAddresses(addressesToRemove, mq.EtcHostsComment)
 	if err := hosts.Save(); err != nil {
 		return err
 	}

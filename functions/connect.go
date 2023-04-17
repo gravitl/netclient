@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/mq"
 )
 
 // Disconnect disconnects a node from the given network
@@ -24,10 +25,10 @@ func Disconnect(network string) error {
 		return fmt.Errorf("error writing node config %w", err)
 	}
 	server := config.GetServer(node.Server)
-	if err := setupMQTTSingleton(server, true); err != nil {
+	if err := mq.SetupMQTTSingleton(server, true); err != nil {
 		return err
 	}
-	if err := PublishNodeUpdate(&node); err != nil {
+	if err := mq.PublishNodeUpdate(&node); err != nil {
 		return err
 	}
 	if err := daemon.Restart(); err != nil {
@@ -55,10 +56,10 @@ func Connect(network string) error {
 		return fmt.Errorf("error writing node config %w", err)
 	}
 	server := config.GetServer(node.Server)
-	if err := setupMQTTSingleton(server, true); err != nil {
+	if err := mq.SetupMQTTSingleton(server, true); err != nil {
 		return err
 	}
-	if err := PublishNodeUpdate(&node); err != nil {
+	if err := mq.PublishNodeUpdate(&node); err != nil {
 		return err
 	}
 	if err := daemon.Restart(); err != nil {

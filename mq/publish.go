@@ -1,21 +1,18 @@
-package functions
+package mq
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -28,51 +25,7 @@ const (
 	ACK = 1
 	// DONE - done signal for MQ
 	DONE = 2
-	// CheckInInterval - interval in minutes for mq checkins
-	CheckInInterval = 1
 )
-
-// Checkin  -- go routine that checks for public or local ip changes, publishes changes
-//
-//	if there are no updates, simply "pings" the server as a checkin
-func Checkin(ctx context.Context, wg *sync.WaitGroup) {
-	logger.Log(2, "starting checkin goroutine")
-	defer wg.Done()
-	ticker := time.NewTicker(time.Minute * CheckInInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Log(0, "checkin routine closed")
-			return
-		case <-ticker.C:
-			for server, mqclient := range ServerSet {
-				mqclient := mqclient
-				if mqclient == nil || !mqclient.IsConnected() {
-					logger.Log(0, "MQ client is not connected, skipping checkin for server", server)
-					continue
-				}
-			}
-			if len(config.GetServers()) > 0 {
-				checkin()
-			}
-
-		}
-	}
-}
-
-func checkin() {
-
-	if err := UpdateHostSettings(); err != nil {
-		logger.Log(0, "failed to update host settings -", err.Error())
-		return
-	}
-
-	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
-		logger.Log(0, "failed to check-in", err.Error())
-	}
-
-}
 
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
@@ -130,10 +83,10 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	return nil
 }
 
-// publishMetrics - publishes the metrics of a given nodecfg
-func publishMetrics(node *config.Node) {
+// PublishMetrics - publishes the metrics of a given nodecfg
+func PublishMetrics(node *config.Node) {
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server, config.Netclient())
+	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
@@ -233,112 +186,6 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 		}
 	}
 	return nil
-}
-
-// UpdateHostSettings - checks local host settings, if different, mod config and publish
-func UpdateHostSettings() error {
-	_ = config.ReadNodeConfig()
-	_ = config.ReadServerConf()
-	logger.Log(3, "checkin with server(s)")
-	var (
-		publicIP   string
-		err        error
-		publishMsg bool
-	)
-	for _, node := range config.GetNodes() {
-		node := node
-		server := config.GetServer(node.Server)
-		if node.Connected && len(publicIP) == 0 { // only run this until IP is found
-			if !config.Netclient().IsStatic {
-				publicIP, err = ncutils.GetPublicIP(server.API)
-				if err != nil {
-					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-				}
-				if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
-					logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
-					config.Netclient().EndpointIP = net.ParseIP(publicIP)
-					publishMsg = true
-				}
-			}
-		}
-		if server.Is_EE && node.Connected {
-			logger.Log(0, "collecting metrics for network", node.Network)
-			publishMetrics(&node)
-		}
-	}
-
-	ifacename := ncutils.GetInterfaceName()
-	var proxylistenPort int
-	var proxypublicport int
-	if config.Netclient().ProxyEnabled {
-		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
-		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
-		if proxylistenPort == 0 {
-			proxylistenPort = models.NmProxyPort
-		}
-		if proxypublicport == 0 {
-			proxypublicport = models.NmProxyPort
-		}
-	}
-	localPort, err := GetLocalListenPort(ifacename)
-	if err != nil {
-		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
-	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
-		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
-		config.Netclient().ListenPort = localPort
-		publishMsg = true
-	}
-	if config.Netclient().ProxyEnabled {
-
-		if config.Netclient().ProxyListenPort != proxylistenPort {
-			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
-			config.Netclient().ProxyListenPort = proxylistenPort
-			publishMsg = true
-		}
-		if config.Netclient().PublicListenPort != proxypublicport {
-			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
-			config.Netclient().PublicListenPort = proxypublicport
-			publishMsg = true
-		}
-	}
-	if !config.Netclient().ProxyEnabledSet && proxyCfg.GetCfg().ShouldUseProxy() &&
-		!config.Netclient().ProxyEnabled && !proxyCfg.NatAutoSwitchDone() {
-		logger.Log(0, "Host is behind NAT, enabling proxy...")
-		proxyCfg.SetNatAutoSwitch()
-		config.Netclient().ProxyEnabled = true
-		publishMsg = true
-	}
-	ip, err := getInterfaces()
-	if err != nil {
-		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
-	} else {
-		if ip != nil {
-			if len(*ip) != len(config.Netclient().Interfaces) {
-				config.Netclient().Interfaces = *ip
-				publishMsg = true
-			}
-		}
-	}
-	defaultInterface, err := getDefaultInterface()
-	if err != nil {
-		logger.Log(0, "default gateway not found", err.Error())
-	} else {
-		if defaultInterface != config.Netclient().DefaultInterface {
-			publishMsg = true
-			config.Netclient().DefaultInterface = defaultInterface
-		}
-	}
-	if publishMsg {
-		if err := config.WriteNetclientConfig(); err != nil {
-			return err
-		}
-		logger.Log(0, "publishing global host update for port changes")
-		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
-			logger.Log(0, "could not publish local port change", err.Error())
-		}
-	}
-
-	return err
 }
 
 // publishes a message to server to update peers on this peer's behalf
