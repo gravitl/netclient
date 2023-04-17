@@ -45,6 +45,7 @@ func (p *ProxyServer) Close() {
 		peerI.Mutex.Lock()
 		peerI.StopConn(false)
 		peerI.Mutex.Unlock()
+		config.GetCfg().DeleteTurnCfg(peerI.Key.String())
 	}
 	// close metrics thread
 	if config.GetCfg().GetMetricsCollectionStatus() {
