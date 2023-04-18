@@ -5,9 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
-	"os/exec"
 	"runtime"
-	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -75,21 +73,6 @@ func SetIPForwardingWindows() error {
 	}
 	return nil
 
-}
-
-// IsKernelWGInstalled - checks if WireGuard is installed
-func IsKernelWGInstalled() bool {
-	out, err := ncutils.RunCmd("wg help", true)
-	if err != nil {
-		return false
-	}
-	return strings.Contains(out, "Available subcommand") && !IsUserSpaceWGInstalled()
-}
-
-// IsUserSpaceWGInstalled - checks if userspace WG is present
-func IsUserSpaceWGInstalled() bool {
-	_, err := exec.LookPath(os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION"))
-	return err == nil
 }
 
 // GetMacIface - gets mac interface

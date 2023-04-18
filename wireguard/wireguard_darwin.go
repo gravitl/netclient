@@ -36,7 +36,9 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 			}
 
 		}
-		if address.Network.IP != nil {
+		if address.Network.IP != nil &&
+			address.Network.String() != "0.0.0.0/0" &&
+			address.Network.String() != "::/0" {
 			if address.Network.IP.To4() != nil {
 				cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), "-interface", nc.Name)
 				if out, err := cmd.CombinedOutput(); err != nil {

@@ -56,7 +56,6 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			if len(config.GetServers()) > 0 {
 				checkin()
 			}
-
 		}
 	}
 }
@@ -71,7 +70,6 @@ func checkin() {
 	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
 		logger.Log(0, "failed to check-in", err.Error())
 	}
-
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -245,25 +243,28 @@ func UpdateHostSettings() error {
 		err        error
 		publishMsg bool
 	)
-	for _, node := range config.GetNodes() {
-		node := node
-		server := config.GetServer(node.Server)
-		if node.Connected && len(publicIP) == 0 { // only run this until IP is found
-			if !config.Netclient().IsStatic {
-				publicIP, err = ncutils.GetPublicIP(server.API)
-				if err != nil {
-					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-				}
-				if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
-					logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
-					config.Netclient().EndpointIP = net.ParseIP(publicIP)
-					publishMsg = true
-				}
+	for _, serverName := range config.GetServers() {
+		server := config.GetServer(serverName)
+		if !config.Netclient().IsStatic {
+			publicIP, err = ncutils.GetPublicIP(server.API)
+			if err != nil {
+				logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
+			}
+			if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
+				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
+				config.Netclient().EndpointIP = net.ParseIP(publicIP)
+				publishMsg = true
 			}
 		}
-		if server.Is_EE && node.Connected {
-			logger.Log(0, "collecting metrics for network", node.Network)
-			publishMetrics(&node)
+		if server.Is_EE {
+			serverNodes := config.GetNodesByServer(serverName)
+			for _, node := range serverNodes {
+				node := node
+				if node.Connected {
+					logger.Log(0, "collecting metrics for network", node.Network)
+					publishMetrics(&node)
+				}
+			}
 		}
 	}
 
@@ -323,18 +324,20 @@ func UpdateHostSettings() error {
 	if err != nil {
 		logger.Log(0, "default gateway not found", err.Error())
 	} else {
-		if defaultInterface != config.Netclient().DefaultInterface {
+		if defaultInterface != config.Netclient().DefaultInterface &&
+			defaultInterface != ncutils.GetInterfaceName() {
 			publishMsg = true
 			config.Netclient().DefaultInterface = defaultInterface
+			logger.Log(0, "default interface has changed to", defaultInterface)
 		}
 	}
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}
-		logger.Log(0, "publishing global host update for port changes")
+		logger.Log(0, "publishing global host update for endpoint changes")
 		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
-			logger.Log(0, "could not publish local port change", err.Error())
+			logger.Log(0, "could not publish endpoint change", err.Error())
 		}
 	}
 
