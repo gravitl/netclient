@@ -47,7 +47,8 @@ type cachedMessage struct {
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, config.Netclient().ProxyListenPort)
+	server := config.GetServer(config.GetServers()[0])
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, server.TurnDomain, server.TurnPort, config.Netclient().ProxyListenPort)
 	return cancel
 }
 

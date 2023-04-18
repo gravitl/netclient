@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/common"
-	proxy "github.com/gravitl/netclient/nmproxy/models"
+	proxy_models "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -23,11 +23,12 @@ var (
 
 // Config - struct for proxy config
 type Config struct {
-	HostInfo                proxy.HostInfo
+	HostInfo                proxy_models.HostInfo
 	ProxyStatus             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
-	settings                map[string]proxy.Settings // host settings per server
+	signalThreadStatus      bool
+	settings                map[string]proxy_models.Settings // host settings per server
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
 	serverConn              *net.UDPConn
@@ -47,13 +48,13 @@ func InitializeCfg() {
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:        nil,
-			turnMap:      make(map[string]proxy.TurnCfg),
-			proxyPeerMap: make(proxy.PeerConnMap),
-			peerHashMap:  make(map[string]*proxy.RemotePeer),
-			relayPeerMap: make(map[string]map[string]*proxy.RemotePeer),
+			turnMap:      make(map[string]proxy_models.TurnPeerCfg),
+			proxyPeerMap: make(proxy_models.PeerConnMap),
+			peerHashMap:  make(map[string]*proxy_models.RemotePeer),
+			relayPeerMap: make(map[string]map[string]*proxy_models.RemotePeer),
 			allPeersConf: make(map[string]models.HostPeerMap),
 		},
-		settings: make(map[string]proxy.Settings),
+		settings: make(map[string]proxy_models.Settings),
 	}
 }
 
@@ -63,7 +64,7 @@ func (c *Config) IsProxyRunning() bool {
 }
 
 // Config.SetHostInfo - sets host info
-func (c *Config) SetHostInfo(hostInfo proxy.HostInfo) {
+func (c *Config) SetHostInfo(hostInfo proxy_models.HostInfo) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.HostInfo = hostInfo
@@ -95,7 +96,7 @@ func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
 }
 
 // Config.GetHostInfo - gets the host info
-func (c *Config) GetHostInfo() proxy.HostInfo {
+func (c *Config) GetHostInfo() proxy_models.HostInfo {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.HostInfo
@@ -112,17 +113,17 @@ func GetCfg() *Config {
 }
 
 // Config.GetSettings - fetches host settings
-func (c *Config) GetSettings(server string) proxy.Settings {
+func (c *Config) GetSettings(server string) proxy_models.Settings {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	if settings, ok := c.settings[server]; ok {
 		return settings
 	}
-	return proxy.Settings{}
+	return proxy_models.Settings{}
 }
 
 // Config.UpdateSettings - updates network settings
-func (c *Config) UpdateSettings(server string, settings proxy.Settings) {
+func (c *Config) UpdateSettings(server string, settings proxy_models.Settings) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.settings[server] = settings
@@ -256,4 +257,18 @@ func (c *Config) Dump() {
 		logger.Log(0, "failed to marshal list output: ", err.Error())
 	}
 	os.WriteFile(common.GetDataPath()+"proxy.json", out, os.ModePerm)
+}
+
+// Config.IsSignalThreadActive - checks if signal thread is active
+func (c *Config) IsSignalThreadActive() bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.signalThreadStatus
+}
+
+// Config.SetSignalThreadStatus - sets the signal thread status
+func (c *Config) SetSignalThreadStatus(b bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.signalThreadStatus = true
 }

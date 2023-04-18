@@ -85,10 +85,13 @@ type Settings struct {
 }
 
 type TurnCfg struct {
+	Cfg      *turn.ClientConfig
+	Client   *turn.Client
+	TurnConn net.PacketConn
+}
+
+type TurnPeerCfg struct {
 	Server       string
 	PeerConf     nm_models.PeerConf
 	PeerTurnAddr string
-	Cfg          *turn.ClientConfig
-	Client       *turn.Client
-	TurnConn     net.PacketConn
 }

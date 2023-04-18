@@ -20,7 +20,7 @@ import (
 )
 
 // StartClient - starts the turn client on the netclient for the peer
-func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf, turnDomain string, turnPort int) (net.PacketConn, error) {
+func StartClient(turnDomain string, turnPort int) (net.PacketConn, error) {
 	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
@@ -56,9 +56,7 @@ func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf,
 		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
 		return nil, err
 	}
-	config.GetCfg().SetTurnCfg(peerKey, models.TurnCfg{
-		Server:   serverName,
-		PeerConf: peerConf,
+	config.GetCfg().SetTurnCfg(models.TurnCfg{
 		Cfg:      cfg,
 		Client:   client,
 		TurnConn: turnConn,
@@ -106,7 +104,6 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("TOKEN: ", token)
 	endpoint := httpclient.JSONEndpoint[nm_models.Signal, nm_models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/host/%s/signalpeer", ncconfig.Netclient().ID.String()),

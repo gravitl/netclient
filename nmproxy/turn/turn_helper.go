@@ -1,9 +1,7 @@
 package turn
 
 import (
-	"context"
 	"net"
-	"sync"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
@@ -16,15 +14,15 @@ import (
 
 var PeerSignalCh = make(chan nm_models.Signal, 100)
 
-func WatchPeerSignals(ctx context.Context, waitG *sync.WaitGroup) {
-	defer waitG.Done()
+func WatchPeerSignals() {
+
 	for {
 		select {
-		case <-ctx.Done():
-			return
+		// case <-ctx.Done():
+		// 	return
 		case signal := <-PeerSignalCh:
 			// recieved new signal from peer, check if turn endpoint is different
-			t, ok := config.GetCfg().GetTurnCfg(signal.FromHostPubKey)
+			t, ok := config.GetCfg().GetPeerTurnCfg(signal.FromHostPubKey)
 			if ok {
 				if signal.TurnRelayEndpoint != "" && t.PeerTurnAddr != signal.TurnRelayEndpoint {
 					config.GetCfg().UpdatePeerTurnAddr(signal.FromHostPubKey, signal.TurnRelayEndpoint)
@@ -38,18 +36,6 @@ func WatchPeerSignals(ctx context.Context, waitG *sync.WaitGroup) {
 						config.GetCfg().UpdatePeer(&conn)
 						conn.ResetConn()
 
-					} else {
-						// new connection
-						peer, err := wg.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
-						if err == nil {
-							peerpkg.AddNew(t.Server, wgtypes.PeerConfig{
-								PublicKey:                   peer.PublicKey,
-								PresharedKey:                &peer.PresharedKey,
-								Endpoint:                    peer.Endpoint,
-								PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
-								AllowedIPs:                  peer.AllowedIPs,
-							}, t.PeerConf, false, peerTurnEndpoint, true)
-						}
 					}
 
 				}
@@ -60,7 +46,7 @@ func WatchPeerSignals(ctx context.Context, waitG *sync.WaitGroup) {
 				}
 				err := SignalPeer(t.Server, nm_models.Signal{
 					FromHostPubKey:    signal.ToHostPubKey,
-					TurnRelayEndpoint: t.TurnConn.LocalAddr().String(),
+					TurnRelayEndpoint: config.GetCfg().GetTurnCfg().TurnConn.LocalAddr().String(),
 					ToHostPubKey:      signal.FromHostPubKey,
 					Reply:             true,
 				})
@@ -68,7 +54,32 @@ func WatchPeerSignals(ctx context.Context, waitG *sync.WaitGroup) {
 					logger.Log(0, "---> failed to signal peer: ", err.Error())
 					continue
 				}
+			} else {
+				// new connection
+				peerTurnEndpoint, err := net.ResolveUDPAddr("udp", signal.TurnRelayEndpoint)
+				if err != nil {
+					continue
+				}
+				peer, err := wg.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
+				if err == nil {
+					peerpkg.AddNew(t.Server, wgtypes.PeerConfig{
+						PublicKey:                   peer.PublicKey,
+						PresharedKey:                &peer.PresharedKey,
+						Endpoint:                    peer.Endpoint,
+						PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
+						AllowedIPs:                  peer.AllowedIPs,
+					}, t.PeerConf, false, peerTurnEndpoint, true)
+				}
 			}
 		}
 	}
+}
+
+func ShouldUseTurn(natType string) bool {
+	// if behind  DOUBLE or ASYM Nat type, allocate turn address for the host
+	return true
+	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
+		return true
+	}
+	return false
 }

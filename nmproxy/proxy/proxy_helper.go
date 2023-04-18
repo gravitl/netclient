@@ -60,16 +60,9 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				}
 
 			}(n, p.Config)
-			if p.Config.UsingTurn {
-				_, err = p.TurnConn.WriteTo(buf[:n], p.RemoteConn)
-				if err != nil {
-					log.Println("failed to write to remote conn: ", err)
-				}
-				continue
-			}
 
 			var srcPeerKeyHash, dstPeerKeyHash string
-			if p.Config.ProxyStatus {
+			if p.Config.ProxyStatus || p.Config.UsingTurn {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(buf, n,
 					config.GetCfg().GetDevicePubKey().String(), p.Config.PeerPublicKey.String())
 				if err != nil {
@@ -79,7 +72,13 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 
 			logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
 				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
-
+			if p.Config.UsingTurn {
+				_, err = p.TurnConn.WriteTo(buf[:n], p.RemoteConn)
+				if err != nil {
+					log.Println("failed to write to remote conn: ", err)
+				}
+				continue
+			}
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
 				logger.Log(1, "Failed to send to remote: ", err.Error())
@@ -88,28 +87,6 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 		}
 	}
 
-}
-
-func (p *Proxy) toLocal(wg *sync.WaitGroup) {
-	defer wg.Done()
-	buf := make([]byte, 65000)
-	for {
-		select {
-		case <-p.Ctx.Done():
-			return
-		default:
-			n, _, err := p.TurnConn.ReadFrom(buf)
-			if err != nil {
-				logger.Log(0, "failed to read from remote conn: ", p.TurnConn.LocalAddr().String(), err.Error())
-				continue
-			}
-			_, err = p.LocalConn.Write(buf[:n])
-			if err != nil {
-				log.Println("failed to write to local conn: ", err)
-				continue
-			}
-		}
-	}
 }
 
 // Proxy.Reset - resets peer's conn
@@ -163,10 +140,6 @@ func (p *Proxy) ProxyPeer() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.toRemote(wg)
-	if p.Config.UsingTurn {
-		wg.Add(1)
-		go p.toLocal(wg)
-	}
 	wg.Wait()
 
 }

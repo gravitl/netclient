@@ -62,10 +62,8 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		return err
 	}
 	p.Config.PeerEndpoint = peerEndpoint
-	if t, ok := config.GetCfg().GetTurnCfg(peer.PublicKey.String()); ok && usingTurn {
+	if t := config.GetCfg().GetTurnCfg(); t.TurnConn != nil {
 		p.TurnConn = t.TurnConn
-	} else {
-		p.Config.UsingTurn = false
 	}
 	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())
 	err = p.Start()

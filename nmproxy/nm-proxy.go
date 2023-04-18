@@ -16,7 +16,7 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, wg *sync.WaitGroup,
-	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
+	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, turnDomain string, turnPort, proxyPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -47,7 +47,14 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	wg.Add(1)
 	go manager.Start(ctx, wg, mgmChan)
-	wg.Add(1)
-	go turn.WatchPeerSignals(ctx, wg)
-	server.NmProxyServer.Listen(ctx)
+
+	var usingTurn bool
+	if turn.ShouldUseTurn(hostNatInfo.NatType) {
+		_, err = turn.StartClient(turnDomain, turnPort)
+		if err != nil {
+			logger.FatalLog("failed to start turn client: ", err.Error())
+		}
+		usingTurn = true
+	}
+	server.NmProxyServer.Listen(ctx, usingTurn)
 }

@@ -59,7 +59,8 @@ func (p *ProxyServer) Close() {
 }
 
 // Proxy.Listen - begins listening for packets
-func (p *ProxyServer) Listen(ctx context.Context) {
+func (p *ProxyServer) Listen(ctx context.Context, usingTurn bool) {
+	var err error
 
 	// Buffer with indicated body size
 	buffer := make([]byte, p.Config.BodySize)
@@ -70,10 +71,27 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 	for {
 
 		// Read Packet
-		n, source, err := p.Server.ReadFromUDP(buffer)
-		if err != nil {
-			logger.Log(3, "failed to read from server: ", err.Error())
-			return
+		var n int
+		var source *net.UDPAddr
+		var addr net.Addr
+		if usingTurn {
+			n, addr, err = config.GetCfg().GetTurnCfg().TurnConn.ReadFrom(buffer)
+			if err != nil {
+				logger.Log(0, "failed to read from remote conn: ",
+					config.GetCfg().GetTurnCfg().TurnConn.LocalAddr().String(), err.Error())
+				return
+			}
+			source, err = net.ResolveUDPAddr("udp", addr.String())
+			if err != nil {
+				logger.Log(0, "failed to resolve udp addr: ", err.Error())
+			}
+		} else {
+			n, source, err = p.Server.ReadFromUDP(buffer)
+			if err != nil {
+				logger.Log(3, "failed to read from server: ", err.Error())
+				return
+			}
+
 		}
 
 		proxyTransportMsg := true
