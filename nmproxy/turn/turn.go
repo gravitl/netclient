@@ -1,8 +1,6 @@
 package turn
 
 import (
-	"crypto/md5"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -15,18 +13,14 @@ import (
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
 	"github.com/pion/turn"
 )
 
-// ConvHostPassToHash - converts password to md5 hash
-func ConvHostPassToHash(hostPass string) string {
-	return fmt.Sprintf("%x", md5.Sum([]byte(hostPass)))
-}
-
 // StartClient - starts the turn client on the netclient for the peer
-func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf, turnDomain, turnServer string, turnPort int) (net.PacketConn, error) {
+func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf, turnDomain string, turnPort int) (net.PacketConn, error) {
 	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
@@ -38,8 +32,8 @@ func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf,
 		TURNServerAddr: turnServerAddr,
 		Conn:           conn,
 		Username:       ncconfig.Netclient().ID.String(),
-		Password:       ConvHostPassToHash(ncconfig.Netclient().HostPass),
-		Realm:          turnServer,
+		Password:       logic.ConvHostPassToHash(ncconfig.Netclient().HostPass),
+		Realm:          turnDomain,
 		Software:       "netmaker",
 		LoggerFactory:  logging.NewDefaultLoggerFactory(),
 	}
@@ -70,56 +64,6 @@ func StartClient(serverName string, peerKey string, peerConf nm_models.PeerConf,
 		TurnConn: turnConn,
 	})
 	return turnConn, nil
-}
-
-// RegisterHostWithTurn - registers the host with the given turn server
-func RegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
-
-	api := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
-		URL:    turnApiDomain,
-		Route:  "/api/v1/host/register",
-		Method: http.MethodPost,
-		//Authorization: fmt.Sprintf("Bearer %s", op.AuthToken),
-		Data: nm_models.HostTurnRegister{
-			HostID:       hostID,
-			HostPassHash: ConvHostPassToHash(hostPass),
-		},
-		Response:      nm_models.SuccessResponse{},
-		ErrorResponse: nm_models.ErrorResponse{},
-	}
-	_, errData, err := api.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(1, "error server status", strconv.Itoa(errData.Code), errData.Message)
-		}
-		return err
-	}
-	return nil
-}
-
-// DeRegisterHostWithTurn - to be called when host need to be deregistered from a turn server
-func DeRegisterHostWithTurn(turnApiDomain, hostID, hostPass string) error {
-
-	api := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
-		URL:    turnApiDomain,
-		Route:  "/api/v1/host/deregister",
-		Method: http.MethodPost,
-		//Authorization: fmt.Sprintf("Bearer %s", op.AuthToken),
-		Data: nm_models.HostTurnRegister{
-			HostID:       hostID,
-			HostPassHash: ConvHostPassToHash(hostPass),
-		},
-		Response:      nm_models.SuccessResponse{},
-		ErrorResponse: nm_models.ErrorResponse{},
-	}
-	_, errData, err := api.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(1, "error server status", strconv.Itoa(errData.Code), errData.Message)
-		}
-		return err
-	}
-	return nil
 }
 
 func AllocateAddr(client *turn.Client) (net.PacketConn, error) {

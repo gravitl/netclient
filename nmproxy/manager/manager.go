@@ -384,8 +384,7 @@ func (m *proxyPayload) peerUpdate() error {
 			go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf) {
 				var err error
 				server := ncconfig.GetServer(serverName)
-				turnConn, err := turn.StartClient(serverName, peer.PublicKey.String(), peerConf, server.TurnDomain,
-					server.TurnApiDomain, server.TurnPort)
+				turnConn, err := turn.StartClient(serverName, peer.PublicKey.String(), peerConf, server.TurnDomain, server.TurnPort)
 				if err != nil {
 					logger.Log(0, "failed to turn client for peer: ", peer.PublicKey.String(), err.Error())
 					return

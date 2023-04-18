@@ -19,7 +19,6 @@ import (
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
-	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -149,14 +148,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
 		server := server
-		if server.TurnApiDomain != "" && server.TurnDomain != "" && server.TurnPort != 0 {
-
-			err := turn.RegisterHostWithTurn(server.TurnApiDomain,
-				config.Netclient().ID.String(), config.Netclient().HostPass)
-			if err != nil {
-				logger.Log(0, "failed to register host with turn server: ", server.TurnApiDomain, err.Error())
-			}
-		}
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
@@ -231,6 +222,12 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "failed to send initial ACK to server", server.Name, err.Error())
 	} else {
 		logger.Log(2, "successfully requested ACK on server", server.Name)
+	}
+	// send register with turn signal to server
+	if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
+		logger.Log(0, "failed to publish host turn register signal to server:", server.Server)
+	} else {
+		logger.Log(0, "failed to publish host turn register signal to server:", server.Server)
 	}
 	return nil
 }

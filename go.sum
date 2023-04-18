@@ -202,6 +202,8 @@ github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWm
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gravitl/netmaker v0.18.5-0.20230413060009-1324b6443d73 h1:3IW446gh4PLLYRqKe1ZF3SoZLSbnyRkK90PSlqKdqDo=
 github.com/gravitl/netmaker v0.18.5-0.20230413060009-1324b6443d73/go.mod h1:V3Gri9W1huVZ7S/yzaa4fLhvDHIV05gWehagaw584xU=
+github.com/gravitl/netmaker v0.18.5-0.20230417113305-4f95e9f56296 h1:MU+klPsWRqCbEAM/mawZ2gEObLROcrZZylZP/WmoxG0=
+github.com/gravitl/netmaker v0.18.5-0.20230417113305-4f95e9f56296/go.mod h1:V3Gri9W1huVZ7S/yzaa4fLhvDHIV05gWehagaw584xU=
 github.com/gravitl/netmaker v0.18.6-0.20230406045034-f54ae9ae8f11 h1:wK15drTwC4dbyJa2WSUPYUFyN2ekYuuyuySQPc3r0XU=
 github.com/gravitl/netmaker v0.18.6-0.20230406045034-f54ae9ae8f11/go.mod h1:V3Gri9W1huVZ7S/yzaa4fLhvDHIV05gWehagaw584xU=
 github.com/gravitl/netmaker v0.18.6-0.20230406073053-5153c471d80e h1:XcAVme/jADB03CDWhJ18doxxh/FgwpOJAPT/3F45FLU=
