@@ -42,7 +42,7 @@ func Register(token string) error {
 	defaultInterface, err := getDefaultInterface()
 	if err != nil {
 		logger.Log(0, "default gateway not found", err.Error())
-	} else {
+	} else if defaultInterface != ncutils.GetInterfaceName() {
 		host.DefaultInterface = defaultInterface
 	}
 	shouldUpdateHost, err := doubleCheck(host, serverData.Server)

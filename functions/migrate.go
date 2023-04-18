@@ -88,7 +88,7 @@ func Migrate() {
 		defaultInterface, err := getDefaultInterface()
 		if err != nil {
 			logger.Log(0, "default gateway not found", err.Error())
-		} else {
+		} else if defaultInterface != ncutils.GetInterfaceName() {
 			newHost.DefaultInterface = defaultInterface
 		}
 		wireguard.DeleteOldInterface(oldIface)

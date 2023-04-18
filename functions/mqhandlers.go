@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -100,7 +101,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	wireguard.SetPeers()
 	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
@@ -165,11 +165,30 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	config.UpdateHostPeers(serverName, peerUpdate.Peers)
-	config.WriteNetclientConfig()
-	wireguard.SetPeers()
+	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
+	currentGW4 := config.GW4Addr
+	currentGW6 := config.GW6Addr
+	isInetGW := config.UpdateHostPeers(serverName, peerUpdate.Peers)
+	_ = config.WriteNetclientConfig()
+	_ = wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
-	wireguard.GetInterface().ApplyAddrs(true)
+	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(0, "error when setting peer routes after peer update", err.Error())
+	}
+	_ = wireguard.GetInterface().ApplyAddrs(true)
+	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
+		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
+	originalGW := currentGW4
+	if originalGW.IP != nil {
+		originalGW = currentGW6
+	}
+	handlePeerInetGateways(
+		gwDetected,
+		isInetGW,
+		gwDelta,
+		&originalGW,
+	)
+
 	go handleEndpointDetection(&peerUpdate)
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
@@ -262,7 +281,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "could not configure netmaker interface", err.Error())
 			return
 		}
-		wireguard.SetPeers()
+
+		if err = wireguard.SetPeers(); err == nil {
+			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(0, "error when setting peer routes after host update", err.Error())
+			}
+		}
 	}
 }
 
@@ -499,4 +523,39 @@ func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
 		}
 	}
 	return false
+}
+
+func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, originalGW *net.IPNet) { // isHostInetGateway indicates if host should worry about setting gateways
+	if gwDelta { // handle switching gateway IP to other GW peer
+		if config.GW4PeerDetected {
+			if err := routes.RemoveDefaultGW(originalGW); err != nil {
+				logger.Log(3, "failed to remove default gateway from peer", originalGW.String(), err.Error())
+			}
+			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
+				logger.Log(3, "failed to change default gateway to peer", config.GW4Addr.String(), err.Error())
+			}
+		} else if config.GW6PeerDetected {
+			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
+				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
+			}
+		}
+	} else {
+		if !gwDetected && config.GW4PeerDetected && !isHostInetGateway { // ipv4 gateways take priority
+			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
+				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
+			}
+		} else if gwDetected && !config.GW4PeerDetected {
+			if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
+				logger.Log(3, "failed to remove default gateway to peer", config.GW4Addr.String())
+			}
+		} else if !gwDetected && config.GW6PeerDetected && !isHostInetGateway {
+			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
+				logger.Log(3, "failed to set default gateway to peer", config.GW6Addr.String())
+			}
+		} else if gwDetected && !config.GW6PeerDetected {
+			if err := routes.RemoveDefaultGW(&config.GW6Addr); err != nil {
+				logger.Log(3, "failed to remove default gateway to peer", config.GW6Addr.String())
+			}
+		}
+	}
 }
