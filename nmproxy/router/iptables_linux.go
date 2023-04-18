@@ -248,19 +248,9 @@ func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr 
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
-	ruleSpecForward := []string{"-i", "netmaker", "-j", "ACCEPT"}
-	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpecForward...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpecForward, err.Error()))
-	}
 	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
 		{
 			rule:  ruleSpec,
-			chain: netmakerFilterChain,
-			table: defaultIpTable,
-		},
-		{
-			rule:  ruleSpecForward,
 			chain: netmakerFilterChain,
 			table: defaultIpTable,
 		},
