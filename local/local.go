@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -24,6 +25,9 @@ func SetIPForwarding() error {
 		err = SetIPForwardingMac()
 	default:
 		err = errors.New("this OS is not currently supported")
+	}
+	if err == nil {
+		return router.EnableForwardRule()
 	}
 	return err
 }

@@ -228,6 +228,10 @@ func (n *nftablesManager) CreateChains() error {
 	return nil
 }
 
+func (n *nftablesManager) ForwardRule() error {
+	return errors.New("not implmented")
+}
+
 // nftables.CleanRoutingRules cleans existing nftable resources that we created by the agent
 func (n *nftablesManager) CleanRoutingRules(server, ruleTableName string) {
 	ruleTable := n.FetchRuleTable(server, ruleTableName)

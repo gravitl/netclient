@@ -12,6 +12,9 @@ type unimplementedFirewall struct{}
 func (unimplementedFirewall) CreateChains() error {
 	return nil
 }
+func (unimplementedFirewall) ForwardRule() error {
+	return nil
+}
 func (unimplementedFirewall) InsertIngressRoutingRules(server string, r models.ExtClientInfo, egressRanges []string) error {
 	return nil
 }
