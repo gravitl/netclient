@@ -95,8 +95,8 @@ func (i *iptablesManager) ForwardRule() error {
 	defer i.mux.Unlock()
 	logger.Log(0, "adding forwarding rule")
 	iptablesClient := i.ipv4Client
-	createChain(iptablesClient, iptableFWDChain, "netmakerfilter")
-	ruleSpec := []string{"-i", "netmaker", "-j", "netmakerfilter"}
+	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
+	ruleSpec := []string{"-i", "netmaker", "-j", netmakerFilterChain}
 	ok, err := iptablesClient.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
 	if err != nil {
 		return err
