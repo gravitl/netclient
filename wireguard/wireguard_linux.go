@@ -120,7 +120,7 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 
 			}
 		}
-		if addr.AddRoute {
+		if addr.AddRoute && addr.Network.String() != "0.0.0.0/0" && addr.Network.String() != "::/0" {
 			logger.Log(3, "adding route", addr.IP.String(), "to netmaker interface")
 			if err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: l.Attrs().Index,

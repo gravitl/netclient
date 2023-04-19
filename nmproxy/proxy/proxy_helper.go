@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/c-robinson/iplib"
-
+	nc_config "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -69,9 +69,10 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 					logger.Log(1, "failed to process pkt before sending: ", err.Error())
 				}
 			}
-
-			logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
+			if nc_config.Netclient().Debug {
+				logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
+					p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
+			}
 			if p.Config.UsingTurn {
 				_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
 				if err != nil {

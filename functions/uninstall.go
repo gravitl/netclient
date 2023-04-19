@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -71,6 +72,9 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 		} else {
 			if err = wireguard.SetPeers(); err != nil {
 				faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
+			}
+			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				faults = append(faults, fmt.Errorf("issue setting peers routes after node removal - %v", err.Error()))
 			}
 		}
 	} else { // was called from CLI so restart daemon

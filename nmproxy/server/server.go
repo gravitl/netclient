@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	nc_config "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
@@ -104,7 +105,9 @@ func handleMsgs(buffer []byte, n int, source string) {
 		metricMsg, err := packet.ConsumeMetricPacket(buffer[:n])
 		// calc latency
 		if err == nil {
-			logger.Log(3, fmt.Sprintf("------->Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source))
+			if nc_config.Netclient().Debug {
+				logger.Log(3, fmt.Sprintf("------->Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source))
+			}
 			_, pubKey := config.GetCfg().GetDeviceKeys()
 			if metricMsg.Sender == pubKey {
 				metric := nm_models.ProxyMetric{}
@@ -114,7 +117,9 @@ func handleMsgs(buffer []byte, n int, source string) {
 				metrics.UpdateMetricByPeer(metricMsg.Reciever.String(), &metric, false)
 			} else if metricMsg.Reciever == pubKey {
 				// proxy it back to the sender
-				logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source)
+				if nc_config.Netclient().Debug {
+					logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source)
+				}
 				metricMsg.Reply = 1
 				buf, err := packet.EncodePacketMetricMsg(metricMsg)
 				if err == nil {
@@ -192,8 +197,10 @@ func handleMsgs(buffer []byte, n int, source string) {
 func relayPacket(buffer []byte, source string, n int, srcPeerKeyHash, dstPeerKeyHash string) {
 	// check for routing map and relay to right proxy
 	if remotePeer, ok := config.GetCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
-		logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ SourceIP: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
-			source, srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash))
+		if nc_config.Netclient().Debug {
+			logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ Source: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
+				source, srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash))
+		}
 		_, err := NmProxyServer.Server.WriteToUDP(buffer[:n], remotePeer.Endpoint)
 		if err != nil {
 			logger.Log(1, "Failed to relay to remote: ", err.Error())
@@ -212,10 +219,11 @@ func proxyIncomingPacket(buffer []byte, source string, n int, srcPeerKeyHash, ds
 	}
 
 	if peerInfo, ok := config.GetCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
-
-		logger.Log(3, fmt.Sprintf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], Source: [%s] ]]\n",
-			peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
-			source, srcPeerKeyHash, dstPeerKeyHash, source))
+		if nc_config.Netclient().Debug {
+			logger.Log(3, fmt.Sprintf("PROXING TO LOCAL!!!---> %s <<<< %s <<<<<<<< %s   [[ RECV PKT [SRCKEYHASH: %s], [DSTKEYHASH: %s], Source: [%s] ]]\n",
+				peerInfo.LocalConn.RemoteAddr(), peerInfo.LocalConn.LocalAddr(),
+				source, srcPeerKeyHash, dstPeerKeyHash, source))
+		}
 		_, err = peerInfo.LocalConn.Write(buffer[:n])
 		if err != nil {
 			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())

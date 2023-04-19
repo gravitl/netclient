@@ -42,7 +42,7 @@ func Register(token string) error {
 	defaultInterface, err := getDefaultInterface()
 	if err != nil {
 		logger.Log(0, "default gateway not found", err.Error())
-	} else {
+	} else if defaultInterface != ncutils.GetInterfaceName() {
 		host.DefaultInterface = defaultInterface
 	}
 	shouldUpdateHost, err := doubleCheck(host, serverData.Server)
@@ -67,16 +67,7 @@ func Register(token string) error {
 		}
 		return err
 	}
-	config.UpdateServerConfig(&registerResponse.ServerConf)
-	server := config.GetServer(registerResponse.ServerConf.Server)
-	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
-		logger.Log(0, "failed to save server", err.Error())
-	}
-	config.UpdateHost(&registerResponse.RequestedHost)
-	if err := daemon.Restart(); err != nil {
-		logger.Log(3, "daemon restart failed:", err.Error())
-	}
-	fmt.Printf("registered with server %s\n", serverData.Server)
+	handleRegisterResponse(&registerResponse)
 	return nil
 }
 
@@ -127,4 +118,17 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 		}
 	}
 	return
+}
+
+func handleRegisterResponse(registerResponse *models.RegisterResponse) {
+	config.UpdateServerConfig(&registerResponse.ServerConf)
+	server := config.GetServer(registerResponse.ServerConf.Server)
+	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
+		logger.Log(0, "failed to save server", err.Error())
+	}
+	config.UpdateHost(&registerResponse.RequestedHost)
+	if err := daemon.Restart(); err != nil {
+		logger.Log(3, "daemon restart failed:", err.Error())
+	}
+	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
 }

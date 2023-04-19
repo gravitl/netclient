@@ -27,7 +27,6 @@ func SetPeers() error {
 	}
 	GetInterface().Config.Peers = peers
 	peers = peer.SetPeersEndpointToProxy(peers)
-
 	config := wgtypes.Config{
 		ReplacePeers: false,
 		Peers:        peers,
