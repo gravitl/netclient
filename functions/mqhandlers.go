@@ -254,6 +254,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
+	case models.UpdateKeys:
+		clearRetainedMsg(client, msg.Topic()) // clear message
+		UpdateKeys()
 	default:
 		logger.Log(1, "unknown host action")
 		return

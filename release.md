@@ -1,4 +1,4 @@
-# Netclient v0.18.6
+# Netclient v0.18.7
 
 ## Whats New
 - no new features
