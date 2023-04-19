@@ -417,7 +417,7 @@ func unsubscribeHost(client mqtt.Client, server string) {
 }
 
 // UpdateKeys -- updates private key and returns new publickey
-func UpdateKeys(client mqtt.Client) error {
+func UpdateKeys() error {
 	var err error
 	logger.Log(0, "received message to update wireguard keys ")
 	host := config.Netclient()
