@@ -75,7 +75,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		logger.Log(0, newNode.ID.String(), "was removed from network", newNode.Network)
 		return
-	case models.NODE_UPDATE_KEY:
+	case models.UpdateKeys:
 		// == get the current key for node ==
 		oldPrivateKey := config.Netclient().PrivateKey
 		if err := UpdateKeys(&newNode, config.Netclient(), client); err != nil {
