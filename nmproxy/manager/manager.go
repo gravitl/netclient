@@ -383,11 +383,16 @@ func (m *proxyPayload) peerUpdate() error {
 		if !isRelayed && turn.ShouldUseTurn(peerConf.NatType) {
 			go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf) {
 				var err error
-				if config.GetCfg().GetTurnCfg().TurnConn != nil {
+				if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {
 					// signal peer with the host relay addr for the peer
+					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
+						Server:   serverName,
+						PeerConf: peerConf,
+					})
 					err = turn.SignalPeer(serverName, nm_models.Signal{
+						Server:            m.Server,
 						FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-						TurnRelayEndpoint: config.GetCfg().GetTurnCfg().TurnConn.LocalAddr().String(),
+						TurnRelayEndpoint: t.TurnConn.LocalAddr().String(),
 						ToHostPubKey:      peer.PublicKey.String(),
 					})
 					if err != nil {

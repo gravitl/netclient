@@ -47,8 +47,7 @@ type cachedMessage struct {
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg.Add(1)
-	server := config.GetServer(config.GetServers()[0])
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, server.TurnDomain, server.TurnPort, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -74,7 +73,6 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
-
 	for {
 		select {
 		case <-quit:
@@ -224,11 +222,11 @@ func setupMQTT(server *config.Server) error {
 	} else {
 		logger.Log(2, "successfully requested ACK on server", server.Name)
 	}
-	// send register with turn signal to server
+	// send register signal with turn to server
 	if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
-		logger.Log(0, "failed to publish host turn register signal to server:", server.Server)
+		logger.Log(0, "failed to publish host turn register signal to server:", server.Server, err.Error())
 	} else {
-		logger.Log(0, "failed to publish host turn register signal to server:", server.Server)
+		logger.Log(0, "published host turn register signal to server:", server.Server)
 	}
 	return nil
 }

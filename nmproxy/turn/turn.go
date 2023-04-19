@@ -1,17 +1,21 @@
 package turn
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/packet"
+	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	nm_models "github.com/gravitl/netmaker/models"
@@ -19,8 +23,21 @@ import (
 	"github.com/pion/turn"
 )
 
-// StartClient - starts the turn client on the netclient for the peer
-func StartClient(turnDomain string, turnPort int) (net.PacketConn, error) {
+func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfig) {
+	for _, turnCfgI := range turnCfgs {
+		turnConn, err := startClient(turnCfgI.Server, turnCfgI.Domain, turnCfgI.Port)
+		if err != nil {
+			logger.Log(0, "failed to start turn client: ", err.Error())
+			continue
+		}
+		wg.Add(1)
+		go addListener(ctx, wg, turnCfgI.Server, turnConn)
+
+	}
+}
+
+// startClient - starts the turn client and allocates itself address on the turn server provided
+func startClient(server, turnDomain string, turnPort int) (net.PacketConn, error) {
 	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
@@ -51,20 +68,21 @@ func StartClient(turnDomain string, turnPort int) (net.PacketConn, error) {
 		return nil, err
 	}
 	// allocate turn relay address to host for the peer and exchange information with peer
-	turnConn, err := AllocateAddr(client)
+	turnConn, err := allocateAddr(client)
 	if err != nil {
 		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
 		return nil, err
 	}
-	config.GetCfg().SetTurnCfg(models.TurnCfg{
+	config.GetCfg().SetTurnCfg(server, models.TurnCfg{
 		Cfg:      cfg,
 		Client:   client,
 		TurnConn: turnConn,
 	})
+
 	return turnConn, nil
 }
 
-func AllocateAddr(client *turn.Client) (net.PacketConn, error) {
+func allocateAddr(client *turn.Client) (net.PacketConn, error) {
 	// Allocate a relay socket on the TURN server. On success, it
 	// will return a net.PacketConn which represents the remote
 	// socket.
@@ -104,6 +122,7 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
+	logger.Log(0, fmt.Sprintf("-------> Sending Signal to Peer: %+v", signal))
 	endpoint := httpclient.JSONEndpoint[nm_models.Signal, nm_models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/host/%s/signalpeer", ncconfig.Netclient().ID.String()),
@@ -121,4 +140,26 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 		return err
 	}
 	return nil
+}
+func addListener(ctx context.Context, wg *sync.WaitGroup, serverName string, turnConn net.PacketConn) {
+	// Buffer with indicated body size
+	defer logger.Log(0, "Closing turn conn: ", serverName)
+	defer wg.Done()
+	buffer := make([]byte, packet.DefaultBodySize)
+	go func() {
+		<-ctx.Done()
+		turnConn.Close()
+	}()
+	logger.Log(0, "-----> Starting Turn Listener: ", turnConn.LocalAddr().String(), serverName)
+	for {
+
+		n, addr, err := turnConn.ReadFrom(buffer)
+		if err != nil {
+			logger.Log(0, "failed to read from remote conn: ",
+				turnConn.LocalAddr().String(), err.Error())
+			return
+		}
+		server.ProcessIncomingPacket(n, addr.String(), buffer)
+	}
+
 }

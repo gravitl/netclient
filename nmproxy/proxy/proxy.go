@@ -45,7 +45,6 @@ func (p *Proxy) Start() error {
 	}
 	p.Config.LocalConnAddr = localAddr
 	p.Config.RemoteConnAddr = p.RemoteConn
-	logger.Log(0, "PROXYING TO REMOTE: ", p.TurnConn.LocalAddr().String(), p.RemoteConn.String())
 	go p.ProxyPeer()
 	return nil
 }

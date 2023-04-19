@@ -49,6 +49,7 @@ func InitializeCfg() {
 		ifaceConfig: wgIfaceConf{
 			iface:        nil,
 			turnMap:      make(map[string]proxy_models.TurnPeerCfg),
+			hostTurnCfg:  make(map[string]proxy_models.TurnCfg),
 			proxyPeerMap: make(proxy_models.PeerConnMap),
 			peerHashMap:  make(map[string]*proxy_models.RemotePeer),
 			relayPeerMap: make(map[string]map[string]*proxy_models.RemotePeer),

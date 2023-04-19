@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/manager"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
@@ -16,7 +17,7 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, wg *sync.WaitGroup,
-	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, turnDomain string, turnPort, proxyPort int) {
+	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -47,14 +48,8 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	wg.Add(1)
 	go manager.Start(ctx, wg, mgmChan)
-
-	var usingTurn bool
 	if turn.ShouldUseTurn(hostNatInfo.NatType) {
-		_, err = turn.StartClient(turnDomain, turnPort)
-		if err != nil {
-			logger.FatalLog("failed to start turn client: ", err.Error())
-		}
-		usingTurn = true
+		turn.Init(ctx, wg, ncconfig.GetAllTurnConfigs())
 	}
-	server.NmProxyServer.Listen(ctx, usingTurn)
+	server.NmProxyServer.Listen(ctx)
 }
