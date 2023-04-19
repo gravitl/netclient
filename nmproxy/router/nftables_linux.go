@@ -228,8 +228,9 @@ func (n *nftablesManager) CreateChains() error {
 	return nil
 }
 
+// nftables.ForwardRule - forward netmaker traffic (not implemented)
 func (n *nftablesManager) ForwardRule() error {
-	return errors.New("not implmented")
+	return errors.New("not implemented")
 }
 
 // nftables.CleanRoutingRules cleans existing nftable resources that we created by the agent

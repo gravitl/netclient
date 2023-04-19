@@ -89,7 +89,7 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 	return nil
 }
 
-// InsertForwardingRule inserts forwarding rules
+// iptablesManager.ForwardRule inserts forwarding rules
 func (i *iptablesManager) ForwardRule() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
