@@ -30,6 +30,7 @@ type Proxy struct {
 	PeerEndpoint    *net.UDPAddr
 	RemoteConnAddr  *net.UDPAddr
 	LocalConnAddr   *net.UDPAddr
+	TurnConn        net.PacketConn
 	ListenPort      int
 	ProxyListenPort int
 	ProxyStatus     bool

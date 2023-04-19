@@ -17,7 +17,6 @@ type Proxy struct {
 	Config     models.Proxy
 	RemoteConn *net.UDPAddr
 	LocalConn  net.Conn
-	TurnConn   net.PacketConn
 }
 
 // Proxy.Start - starts proxying the peer
@@ -54,9 +53,6 @@ func (p *Proxy) Close(reset bool) {
 	logger.Log(0, "------> Closing Proxy for ", p.Config.PeerPublicKey.String())
 	p.Cancel()
 	p.LocalConn.Close()
-	if !reset && p.Config.UsingTurn {
-		p.TurnConn.Close()
-	}
 }
 
 // GetInterfaceListenAddr - gets interface listen addr

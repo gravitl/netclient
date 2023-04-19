@@ -259,17 +259,3 @@ func (c *Config) Dump() {
 	}
 	os.WriteFile(common.GetDataPath()+"proxy.json", out, os.ModePerm)
 }
-
-// Config.IsSignalThreadActive - checks if signal thread is active
-func (c *Config) IsSignalThreadActive() bool {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	return c.signalThreadStatus
-}
-
-// Config.SetSignalThreadStatus - sets the signal thread status
-func (c *Config) SetSignalThreadStatus(b bool) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.signalThreadStatus = true
-}

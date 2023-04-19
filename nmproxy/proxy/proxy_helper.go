@@ -73,7 +73,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
 				p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
 			if p.Config.UsingTurn {
-				_, err = p.TurnConn.WriteTo(buf[:n], p.RemoteConn)
+				_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
 				if err != nil {
 					log.Println("failed to write to remote conn: ", err)
 				}

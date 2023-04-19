@@ -63,7 +63,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	}
 	p.Config.PeerEndpoint = peerEndpoint
 	if t, ok := config.GetCfg().GetTurnCfg(server); ok && t.TurnConn != nil {
-		p.TurnConn = t.TurnConn
+		p.Config.TurnConn = t.TurnConn
 	} else {
 		p.Config.UsingTurn = false
 	}

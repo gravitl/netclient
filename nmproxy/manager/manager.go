@@ -82,10 +82,6 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 		return nil
 	}
 	config.GetCfg().SetIface(wgIface)
-	if !config.GetCfg().IsSignalThreadActive() {
-		go turn.WatchPeerSignals()
-		config.GetCfg().SetSignalThreadStatus(true)
-	}
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.HostPeerIDs)
 	startMetricsThread(payload) // starts or stops the metrics collection based on host proxy setting
 	fwUpdate(payload)

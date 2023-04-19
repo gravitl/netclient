@@ -48,6 +48,8 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
 	wg.Add(1)
 	go manager.Start(ctx, wg, mgmChan)
+	wg.Add(1)
+	go turn.WatchPeerSignals(ctx, wg)
 	if turn.ShouldUseTurn(hostNatInfo.NatType) {
 		turn.Init(ctx, wg, ncconfig.GetAllTurnConfigs())
 	}

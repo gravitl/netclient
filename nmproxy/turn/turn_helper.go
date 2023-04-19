@@ -1,13 +1,15 @@
 package turn
 
 import (
+	"context"
 	"net"
+	"sync"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
-	"github.com/gravitl/netclient/nmproxy/wg"
+	wireguard "github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -15,12 +17,12 @@ import (
 
 var PeerSignalCh = make(chan nm_models.Signal, 100)
 
-func WatchPeerSignals() {
-
+func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
-		// case <-ctx.Done():
-		// 	return
+		case <-ctx.Done():
+			return
 		case signal := <-PeerSignalCh:
 			// recieved new signal from peer, check if turn endpoint is different
 			peerTurnEndpoint, err := net.ResolveUDPAddr("udp", signal.TurnRelayEndpoint)
@@ -45,7 +47,7 @@ func WatchPeerSignals() {
 							PeerTurnAddr: signal.TurnRelayEndpoint,
 						})
 
-						peer, err := wg.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
+						peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
 						if err == nil {
 							peerpkg.AddNew(t.Server, wgtypes.PeerConfig{
 								PublicKey:                   peer.PublicKey,
