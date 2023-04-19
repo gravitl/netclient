@@ -27,23 +27,7 @@ func (p *Proxy) Start() error {
 	var err error
 	p.RemoteConn = p.Config.PeerEndpoint
 	logger.Log(0, fmt.Sprintf("----> Established Remote Conn with RPeer: %s, ----> RAddr: %s", p.Config.PeerPublicKey.String(), p.RemoteConn.String()))
-	addr, err := GetFreeIp(models.DefaultCIDR, config.GetCfg().GetInterfaceListenPort())
-	if err != nil {
-		logger.Log(1, "Failed to get freeIp: ", err.Error())
-		return err
-	}
-	wgListenAddr, err := GetInterfaceListenAddr(config.GetCfg().GetInterfaceListenPort())
-	if err != nil {
-		logger.Log(1, "failed to get wg listen addr: ", err.Error())
-		return err
-	}
-	if runtime.GOOS == "darwin" { // on darwin need listen on alias ip that was added to lo0
-		wgListenAddr.IP = net.ParseIP(addr)
-	}
-	p.LocalConn, err = net.DialUDP("udp", &net.UDPAddr{
-		IP:   net.ParseIP(addr),
-		Port: models.NmProxyPort,
-	}, wgListenAddr)
+	p.LocalConn, err = net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", config.GetCfg().GetInterfaceListenPort()))
 	if err != nil {
 		logger.Log(0, "failed dialing to local Wireguard port,Err: %v\n", err.Error())
 		return err
@@ -63,7 +47,6 @@ func (p *Proxy) Start() error {
 	p.Config.LocalConnAddr = localAddr
 	p.Config.RemoteConnAddr = p.RemoteConn
 	go p.ProxyPeer()
-
 	return nil
 }
 

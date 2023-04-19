@@ -14,8 +14,12 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
+	ncmodels "github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -29,9 +33,12 @@ const (
 	lastALLDNSUpdate = "ladu"
 )
 
-var messageCache = new(sync.Map)
-var ServerSet = make(map[string]mqtt.Client)
-var ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
+var (
+	messageCache     = new(sync.Map)
+	ServerSet        = make(map[string]mqtt.Client)
+	ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
+	hostNatInfo      *ncmodels.HostInfo
+)
 
 type cachedMessage struct {
 	Message  string
@@ -40,13 +47,8 @@ type cachedMessage struct {
 
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
-	servers := config.GetServers()
-	if len(servers) == 0 {
-		return cancel
-	}
-	server := config.GetServer(servers[0])
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, server.StunList, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -64,8 +66,16 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
+
+	shouldUpdateNat := getNatInfo()
+	if shouldUpdateNat { // will be reported on check-in
+		if err := config.WriteNetclientConfig(); err == nil {
+			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
+		}
+	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
+
 	for {
 		select {
 		case <-quit:
@@ -74,6 +84,7 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
+			cleanUpRoutes()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -83,6 +94,13 @@ func Daemon() {
 				stopProxy,
 			}, &wg)
 			logger.Log(0, "restarting daemon")
+			shouldUpdateNat := getNatInfo()
+			if shouldUpdateNat { // will be reported on check-in
+				if err := config.WriteNetclientConfig(); err == nil {
+					logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
+				}
+			}
+			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&wg)
@@ -123,7 +141,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
-	wireguard.SetPeers()
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
 			ProxyUpdate: models.ProxyManagerPayload{
@@ -133,13 +150,23 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
-		// see https://www.evanjones.ca/go-gotcha-loop-variables.html
 		server := server
+		networking.StoreServerAddresses(&server)
+		err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server)
+		if err != nil {
+			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+		}
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
+	wireguard.SetPeers()
+	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(2, "failed to set initial peer routes", err.Error())
+	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
+	wg.Add(1)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
 	return cancel
 }
 
@@ -169,7 +196,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetKeepAlive(time.Second * 10)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		logger.Log(0, "mqtt connect handler")
@@ -184,6 +211,19 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
+		if ok := resetServerRoutes(); ok {
+			logger.Log(0, "detected default gw change, reset routes")
+			if err := UpdateHostSettings(); err != nil {
+				logger.Log(0, "failed to update host settings -", err.Error())
+				return
+			}
+
+			handlePeerInetGateways(
+				!config.GW4PeerDetected && !config.GW6PeerDetected,
+				config.IsHostInetGateway(), false,
+				nil,
+			)
+		}
 	})
 	mqclient := mqtt.NewClient(opts)
 	ServerSet[server.Name] = mqclient
@@ -401,4 +441,65 @@ func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) erro
 func RemoveServer(node *config.Node) {
 	logger.Log(0, "removing server", node.Server, "from mq")
 	delete(ServerSet, node.Server)
+}
+
+func getNatInfo() (natUpdated bool) {
+	ncConf, err := config.ReadNetclientConfig()
+	if err != nil {
+		logger.Log(0, "errors reading netclient from disk", err.Error())
+		return
+	}
+	err = config.ReadServerConf()
+	if err != nil {
+		logger.Log(0, "errors reading server map from disk", err.Error())
+		return
+	}
+
+	for _, server := range config.Servers {
+		server := server
+		if hostNatInfo == nil {
+			portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
+			if portToStun == 0 || err != nil {
+				portToStun = config.Netclient().ListenPort
+			}
+
+			hostNatInfo = stun.GetHostNatInfo(
+				server.StunList,
+				config.Netclient().EndpointIP.String(),
+				portToStun,
+			)
+			if len(ncConf.Host.NatType) == 0 || ncConf.Host.NatType != hostNatInfo.NatType {
+				config.Netclient().Host.NatType = hostNatInfo.NatType
+				return true
+			}
+		}
+	}
+	return
+}
+
+func cleanUpRoutes() {
+	gwAddr := config.GW4Addr
+	if gwAddr.IP == nil {
+		gwAddr = config.GW6Addr
+	}
+	if err := routes.CleanUp(config.Netclient().DefaultInterface, &gwAddr); err != nil {
+		logger.Log(0, "routes not completely cleaned up", err.Error())
+	}
+}
+
+func resetServerRoutes() bool {
+	if routes.HasGatewayChanged() {
+		cleanUpRoutes()
+		for _, server := range config.Servers {
+			server := server
+			if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server); err != nil {
+				logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+			}
+			if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+			}
+		}
+		return true
+	}
+	return false
 }

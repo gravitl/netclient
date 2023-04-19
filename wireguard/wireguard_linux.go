@@ -81,7 +81,10 @@ func (l *netLink) Close() error {
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
 func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
-	l := nc.getKernelLink()
+	l, err := netlink.LinkByName(nc.Name)
+	if err != nil {
+		return err
+	}
 	if !addOnlyRoutes {
 		currentAddrs, err := netlink.AddrList(l, 0)
 		if err != nil {
@@ -113,18 +116,17 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 		if !addOnlyRoutes && !addr.AddRoute && addr.IP != nil {
 			logger.Log(3, "adding address", addr.IP.String(), "to netmaker interface")
 			if err := netlink.AddrAdd(l, &netlink.Addr{IPNet: &net.IPNet{IP: addr.IP, Mask: addr.Network.Mask}}); err != nil {
-				logger.Log(0, "error adding addr", err.Error())
-				return err
+				logger.Log(1, "error adding addr", err.Error())
+
 			}
 		}
-		if addr.AddRoute {
+		if addr.AddRoute && addr.Network.String() != "0.0.0.0/0" && addr.Network.String() != "::/0" {
 			logger.Log(3, "adding route", addr.IP.String(), "to netmaker interface")
 			if err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: l.Attrs().Index,
 				Dst:       &addr.Network,
 			}); err != nil {
-				logger.Log(0, "error adding route", err.Error())
-				return err
+				logger.Log(1, "error adding route", err.Error())
 			}
 		}
 

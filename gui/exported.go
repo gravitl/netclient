@@ -17,13 +17,8 @@ import (
 
 // App.GoJoinNetworkByToken joins a network with the given token
 func (app *App) GoJoinNetworkByToken(token string) (any, error) {
-	// setup flag
-	flags := viper.New()
-	flags.Set("token", token)
-	flags.Set("server", "")
-
-	config.InitConfig(flags)
-	err := functions.Join(flags)
+	config.InitConfig(viper.New())
+	err := functions.Register(token)
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
@@ -119,41 +114,6 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 	return serverNames, nil
 }
 
-// App.GoJoinNetworkBySso joins a network by SSO
-func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) {
-	flags := viper.New()
-	flags.Set("server", serverName)
-	flags.Set("network", networkName)
-
-	config.InitConfig(flags)
-	err := functions.Join(flags)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-// App.GoJoinNetworkByBasicAuth joins a network by basic auth
-func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
-	flags := viper.New()
-	flags.Set("server", serverName)
-	flags.Set("user", username)
-	flags.Set("network", networkName)
-	flags.Set("readPassFromStdIn", false)
-	flags.Set("pass", password)
-
-	config.InitConfig(flags)
-	err := functions.Join(flags)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	return nil, nil
-}
-
 // App.GoUninstall uninstalls netclient form the machine
 func (app *App) GoUninstall() (any, error) {
 	errs, err := functions.Uninstall()
@@ -196,14 +156,12 @@ func (app *App) GoWriteToClipboard(data string) (any, error) {
 
 // App.GoPullLatestNodeConfig pulls the latest node config from the server and returns the network config
 func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
-	node, err := functions.Pull(network, true)
+	err := functions.Pull()
 	if err != nil {
 		return Network{}, err
 	}
 
-	server := config.GetServer(node.Server)
-
-	return Network{Node: node, Server: server}, nil
+	return Network{}, nil
 }
 
 // App.GoGetNodePeers returns the peers for the given node

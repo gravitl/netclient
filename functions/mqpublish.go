@@ -47,58 +47,29 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		case <-ticker.C:
 			for server, mqclient := range ServerSet {
-				if !mqclient.IsConnected() {
+				mqclient := mqclient
+				if mqclient == nil || !mqclient.IsConnected() {
 					logger.Log(0, "MQ client is not connected, skipping checkin for server", server)
 					continue
 				}
 			}
-			for server, mqclient := range ServerSet {
-				if mqclient == nil {
-					logger.Log(0, "MQ client is not configured, skipping checkin for server", server)
-					continue
-				}
+			if len(config.GetServers()) > 0 {
+				checkin()
 			}
-			checkin()
 		}
 	}
 }
 
 func checkin() {
 
-	host := config.Netclient()
-	//should not be required
-	config.ReadNodeConfig()
-	config.ReadServerConf()
-	logger.Log(3, "checkin with server(s) for all networks")
-	for network, node := range config.GetNodes() {
-		server := config.GetServer(node.Server)
-		if node.Connected {
-			if !config.Netclient().IsStatic {
-				extIP, err := ncutils.GetPublicIP(server.API)
-				if err != nil {
-					logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-				}
-				if config.Netclient().EndpointIP.String() != extIP && extIP != "" {
-					logger.Log(1, "network:", network, "endpoint has changed from ", config.Netclient().EndpointIP.String(), " to ", extIP)
-					config.Netclient().EndpointIP = net.ParseIP(extIP)
-					if err := PublishNodeUpdate(&node); err != nil {
-						logger.Log(0, "network:", network, "could not publish endpoint change")
-					}
-				}
-			}
-		}
-		//check version
-		//if node.Version != ncutils.Version {
-		//node.Version = ncutils.Version
-		//config.Write(&nodeCfg, nodeCfg.Network)
-		//}
-		Hello(&node)
-		if server.Is_EE && node.Connected {
-			logger.Log(0, "collecting metrics for node", host.Name)
-			publishMetrics(&node)
-		}
+	if err := UpdateHostSettings(); err != nil {
+		logger.Log(0, "failed to update host settings -", err.Error())
+		return
 	}
-	_ = UpdateHostSettings()
+
+	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
+		logger.Log(0, "failed to check-in", err.Error())
+	}
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -111,7 +82,7 @@ func PublishNodeUpdate(node *config.Node) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(node.Server, fmt.Sprintf("update/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("update/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		return err
 	}
 
@@ -132,7 +103,7 @@ func PublishGlobalHostUpdate(hostAction models.HostMqAction) error {
 		return err
 	}
 	for _, server := range servers {
-		if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
+		if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
 			logger.Log(1, "failed to publish host update to: ", server, err.Error())
 			continue
 		}
@@ -151,45 +122,10 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(server, fmt.Sprintf("host/serverupdate/%s", hostCfg.ID.String()), data, 1); err != nil {
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
 		return err
 	}
 	return nil
-}
-
-// Hello -- ping the broker to let server know node it's alive and well
-func Hello(node *config.Node) {
-	var checkin models.NodeCheckin
-	checkin.Version = config.Version
-	checkin.Connected = node.Connected
-	ip, err := getInterfaces()
-	if err != nil {
-		logger.Log(0, "failed to retrieve local interfaces", err.Error())
-	} else {
-		// just in case getInterfaces() returned nil, nil
-		if ip != nil {
-			config.Netclient().Interfaces = *ip
-			if err := config.WriteNodeConfig(); err != nil {
-				logger.Log(0, "error saving node map", err.Error())
-			}
-		}
-	}
-	checkin.Ifaces = config.Netclient().Interfaces
-	data, err := json.Marshal(checkin)
-	if err != nil {
-		logger.Log(0, "unable to marshal checkin data", err.Error())
-		return
-	}
-	if err := publish(node.Server, fmt.Sprintf("ping/%s", node.ID), data, 0); err != nil {
-		logger.Log(0, fmt.Sprintf("Network: %s error publishing ping, %v", node.Network, err))
-		logger.Log(0, "running pull on "+node.Network+" to reconnect")
-		_, err := Pull(node.Network, true)
-		if err != nil {
-			logger.Log(0, "could not run pull on "+node.Network+", error: "+err.Error())
-		}
-	} else {
-		logger.Log(3, "checkin for", node.Network, "complete")
-	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
@@ -232,7 +168,7 @@ func publishMetrics(node *config.Node) {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
 	}
 
-	if err = publish(node.Server, fmt.Sprintf("metrics/%s", node.ID), data, 1); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 		logger.Log(0, "aggregating metrics locally until broker connection re-established")
 		val, ok := metricsCache.Load(node.ID)
@@ -299,8 +235,39 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 
 // UpdateHostSettings - checks local host settings, if different, mod config and publish
 func UpdateHostSettings() error {
-	var err error
-	publishMsg := false
+	_ = config.ReadNodeConfig()
+	_ = config.ReadServerConf()
+	logger.Log(3, "checkin with server(s)")
+	var (
+		publicIP   string
+		err        error
+		publishMsg bool
+	)
+	for _, serverName := range config.GetServers() {
+		server := config.GetServer(serverName)
+		if !config.Netclient().IsStatic {
+			publicIP, err = ncutils.GetPublicIP(server.API)
+			if err != nil {
+				logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
+			}
+			if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
+				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
+				config.Netclient().EndpointIP = net.ParseIP(publicIP)
+				publishMsg = true
+			}
+		}
+		if server.Is_EE {
+			serverNodes := config.GetNodesByServer(serverName)
+			for _, node := range serverNodes {
+				node := node
+				if node.Connected {
+					logger.Log(0, "collecting metrics for network", node.Network)
+					publishMetrics(&node)
+				}
+			}
+		}
+	}
+
 	ifacename := ncutils.GetInterfaceName()
 	var proxylistenPort int
 	var proxypublicport int
@@ -335,20 +302,42 @@ func UpdateHostSettings() error {
 			publishMsg = true
 		}
 	}
-	if proxyCfg.GetCfg().ShouldUseProxy() && !config.Netclient().ProxyEnabled &&
-		!proxyCfg.NatAutoSwitchDone() {
+	if !config.Netclient().ProxyEnabledSet && proxyCfg.GetCfg().ShouldUseProxy() &&
+		!config.Netclient().ProxyEnabled && !proxyCfg.NatAutoSwitchDone() {
 		logger.Log(0, "Host is behind NAT, enabling proxy...")
 		proxyCfg.SetNatAutoSwitch()
 		config.Netclient().ProxyEnabled = true
 		publishMsg = true
 	}
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
+	} else {
+		if ip != nil {
+			if len(*ip) != len(config.Netclient().Interfaces) {
+				config.Netclient().Interfaces = *ip
+				publishMsg = true
+			}
+		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		if defaultInterface != config.Netclient().DefaultInterface &&
+			defaultInterface != ncutils.GetInterfaceName() {
+			publishMsg = true
+			config.Netclient().DefaultInterface = defaultInterface
+			logger.Log(0, "default interface has changed to", defaultInterface)
+		}
+	}
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}
-		logger.Log(0, "publishing global host update for port changes")
+		logger.Log(0, "publishing global host update for endpoint changes")
 		if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
-			logger.Log(0, "could not publish local port change", err.Error())
+			logger.Log(0, "could not publish endpoint change", err.Error())
 		}
 	}
 
@@ -357,7 +346,7 @@ func UpdateHostSettings() error {
 
 // publishes a message to server to update peers on this peer's behalf
 func publishSignal(node *config.Node, signal byte) error {
-	if err := publish(node.Server, fmt.Sprintf("signal/%s", node.ID), []byte{signal}, 1); err != nil {
+	if err := publish(node.Server, fmt.Sprintf("signal/%s/%s", node.Server, node.ID), []byte{signal}, 1); err != nil {
 		return err
 	}
 	return nil

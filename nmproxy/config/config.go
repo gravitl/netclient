@@ -2,11 +2,14 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"net"
+	"os"
 	"sync"
 
-	nconf "github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/nmproxy/common"
 	proxy "github.com/gravitl/netclient/nmproxy/models"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -14,6 +17,8 @@ var (
 	// contains all the config related to proxy
 	config        = &Config{}
 	natAutoSwitch bool
+	// DumpSignalChan - channel to signal dump proxy conns info
+	DumpSignalChan = make(chan struct{}, 5)
 )
 
 // Config - struct for proxy config
@@ -29,6 +34,11 @@ type Config struct {
 	fireWallStatus          bool
 	fireWallClose           func()
 }
+type proxyPeerConn struct {
+	PeerPublicKey string `json:"peer_public_key"`
+	PeerEndpoint  string `json:"peer_endpoint"`
+	ProxyEndpoint string `json:"proxy_endpoint"`
+}
 
 // InitializeCfg - intializes all the variables and sets defaults
 func InitializeCfg() {
@@ -36,14 +46,11 @@ func InitializeCfg() {
 		ProxyStatus: true,
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
-			iface:            nil,
-			proxyPeerMap:     make(proxy.PeerConnMap),
-			peerHashMap:      make(map[string]*proxy.RemotePeer),
-			extSrcIpMap:      make(map[string]*proxy.RemotePeer),
-			extClientWaitMap: make(map[string]*proxy.RemotePeer),
-			relayPeerMap:     make(map[string]map[string]*proxy.RemotePeer),
-			noProxyPeerMap:   make(proxy.PeerConnMap),
-			allPeersConf:     make(map[string]models.HostPeerMap),
+			iface:        nil,
+			proxyPeerMap: make(proxy.PeerConnMap),
+			peerHashMap:  make(map[string]*proxy.RemotePeer),
+			relayPeerMap: make(map[string]map[string]*proxy.RemotePeer),
+			allPeersConf: make(map[string]models.HostPeerMap),
 		},
 		settings: make(map[string]proxy.Settings),
 	}
@@ -193,7 +200,7 @@ func SetNatAutoSwitch() {
 
 // Config.ShouldUseProxy - checks if proxy is running behind NAT
 func (c *Config) ShouldUseProxy() bool {
-	return c.HostInfo.NatType == nconf.ASYMMETRIC_NAT || c.HostInfo.NatType == nconf.DOUBLE_NAT
+	return c.HostInfo.NatType == models.NAT_Types.Asymmetric || c.HostInfo.NatType == models.NAT_Types.Double
 }
 
 // Config.GetServerConn - fetches the server connection
@@ -224,4 +231,28 @@ func (c *Config) GetFwStatus() bool {
 // Config.StopFw - flushes all the firewall rules
 func (c *Config) StopFw() {
 	c.fireWallClose()
+}
+
+// Config.Dump - dumps the proxy peer connections information
+func (c *Config) Dump() {
+	peersConn := c.GetAllProxyPeers()
+	proxyConns := []proxyPeerConn{}
+	for peerPubKey, peerI := range peersConn {
+		peerConnI := proxyPeerConn{
+			PeerPublicKey: peerPubKey,
+		}
+
+		if peerI.Config.PeerConf.Endpoint != nil {
+			peerConnI.PeerEndpoint = peerI.Config.PeerConf.Endpoint.String()
+		}
+		if peerI.Config.LocalConnAddr != nil {
+			peerConnI.ProxyEndpoint = peerI.Config.LocalConnAddr.String()
+		}
+		proxyConns = append(proxyConns, peerConnI)
+	}
+	out, err := json.MarshalIndent(proxyConns, "", " ")
+	if err != nil {
+		logger.Log(0, "failed to marshal list output: ", err.Error())
+	}
+	os.WriteFile(common.GetDataPath()+"proxy.json", out, os.ModePerm)
 }

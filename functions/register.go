@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/devilcove/httpclient"
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -38,7 +42,7 @@ func Register(token string) error {
 	defaultInterface, err := getDefaultInterface()
 	if err != nil {
 		logger.Log(0, "default gateway not found", err.Error())
-	} else {
+	} else if defaultInterface != ncutils.GetInterfaceName() {
 		host.DefaultInterface = defaultInterface
 	}
 	shouldUpdateHost, err := doubleCheck(host, serverData.Server)
@@ -63,6 +67,60 @@ func Register(token string) error {
 		}
 		return err
 	}
+	handleRegisterResponse(&registerResponse)
+	return nil
+}
+
+func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err error) {
+
+	if len(config.GetServers()) == 0 { // should indicate a first join
+		// do a double check of name and uuid
+		logger.Log(1, "performing first join")
+		var shouldUpdateHost bool
+		if len(host.Name) == 0 {
+			if name, err := os.Hostname(); err == nil {
+				host.Name = name
+			} else {
+				hostName := ncutils.MakeRandomString(12)
+				logger.Log(0, "host name not found, continuing with", hostName)
+				host.Name = hostName
+			}
+			shouldUpdateHost = true
+		}
+		if host.ID == uuid.Nil {
+			if host.ID, err = uuid.NewUUID(); err != nil {
+				return false, err
+			}
+			shouldUpdateHost = true
+		}
+		if len(host.HostPass) == 0 {
+			host.HostPass = ncutils.MakeRandomString(32)
+			shouldUpdateHost = true
+		}
+		if host.EndpointIP == nil {
+			ip, err := ncutils.GetPublicIP(apiServer)
+			if err != nil {
+				return false, err
+			}
+			host.EndpointIP = net.ParseIP(ip)
+			if err != nil {
+				return false, fmt.Errorf("error setting public ip %w", err)
+			}
+			if host.EndpointIP == nil {
+				return false, fmt.Errorf("error setting public endpoint for host - %v", err)
+			}
+			shouldUpdateHost = true
+		}
+		if shouldUpdateHost {
+			config.UpdateNetclient(*host)
+			config.WriteNetclientConfig()
+			return true, nil
+		}
+	}
+	return
+}
+
+func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	config.UpdateServerConfig(&registerResponse.ServerConf)
 	server := config.GetServer(registerResponse.ServerConf.Server)
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
@@ -72,6 +130,5 @@ func Register(token string) error {
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
-	fmt.Printf("registered with server %s\n", serverData.Server)
-	return nil
+	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
 }

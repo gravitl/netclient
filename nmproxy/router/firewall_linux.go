@@ -45,13 +45,18 @@ func newFirewall() (firewallController, error) {
 func isIptablesSupported() bool {
 	_, err4 := exec.LookPath("iptables")
 	_, err6 := exec.LookPath("ip6tables")
-	return err4 == nil && err6 == nil
+	_, errip4nft := exec.LookPath("iptables-nft")
+	_, errip6nft := exec.LookPath("ip6tables-nft")
+	return (err4 == nil && err6 == nil) || (errip4nft == nil && errip6nft == nil)
 }
 
 func getInterfaceName(dst net.IPNet) (string, error) {
 	h, err := netlink.NewHandle(0)
 	if err != nil {
 		return "", err
+	}
+	if dst.String() == "0.0.0.0/0" || dst.String() == "::/0" {
+		dst.IP = net.ParseIP("1.1.1.1")
 	}
 	routes, err := h.RouteGet(dst.IP)
 	if err != nil {

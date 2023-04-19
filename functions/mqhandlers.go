@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -11,10 +12,15 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -95,7 +101,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	wireguard.SetPeers()
 	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
 
 		logger.Log(0, "error updating wireguard config "+err.Error())
@@ -154,25 +159,42 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	_, err = wireguard.UpdateWgPeers(peerUpdate.Peers)
+	_, err = wireguard.UpdateWgPeers()
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
 		return
 	}
 
-	config.UpdateHostPeers(serverName, peerUpdate.Peers)
-	config.WriteNetclientConfig()
-	wireguard.SetPeers()
+	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
+	currentGW4 := config.GW4Addr
+	currentGW6 := config.GW6Addr
+	isInetGW := config.UpdateHostPeers(serverName, peerUpdate.Peers)
+	_ = config.WriteNetclientConfig()
+	_ = wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
-	wireguard.GetInterface().ApplyAddrs(true)
-	if config.Netclient().ProxyEnabled {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		peerUpdate.ProxyUpdate.Action = models.ProxyUpdate
-	} else {
-		peerUpdate.ProxyUpdate.Action = models.NoProxy
+	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(0, "error when setting peer routes after peer update", err.Error())
 	}
-	peerUpdate.ProxyUpdate.Server = serverName
-	ProxyManagerChan <- &peerUpdate
+	_ = wireguard.GetInterface().ApplyAddrs(true)
+	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
+		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
+	originalGW := currentGW4
+	if originalGW.IP != nil {
+		originalGW = currentGW6
+	}
+	handlePeerInetGateways(
+		gwDetected,
+		isInetGW,
+		gwDelta,
+		&originalGW,
+	)
+
+	go handleEndpointDetection(&peerUpdate)
+	if proxyCfg.GetCfg().IsProxyRunning() {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate
+	}
+
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -259,9 +281,50 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			logger.Log(0, "could not configure netmaker interface", err.Error())
 			return
 		}
-		wireguard.SetPeers()
-	}
 
+		if err = wireguard.SetPeers(); err == nil {
+			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(0, "error when setting peer routes after host update", err.Error())
+			}
+		}
+	}
+}
+
+func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
+	hostPubKey := config.Netclient().PublicKey.String()
+	// select best interface for each peer and set it as endpoint
+	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
+	for idx := range peerUpdate.Peers {
+		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
+		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+			for i := range peerInfo.Interfaces {
+				peerIface := peerInfo.Interfaces[i]
+				peerIP := peerIface.Address.IP
+				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+					continue
+				}
+				// check to skip bridge network
+				if ncutils.IsBridgeNetwork(peerIface.Name) {
+					continue
+				}
+				if strings.Contains(peerIP.String(), "127.0.0.") ||
+					peerIP.IsMulticast() ||
+					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
+					peerUpdate.Peers[idx].Endpoint.IP.Equal(peerIP) ||
+					isAddressInPeers(peerIP, currentCidrs) {
+					continue
+				}
+				if err := networking.FindBestEndpoint(
+					peerIP.String(),
+					hostPubKey,
+					peerPubKey,
+					peerInfo.ProxyListenPort,
+				); err != nil { // happens v often
+					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
+				}
+			}
+		}
+	}
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
@@ -434,5 +497,65 @@ func applyAllDNS(dns []models.DNSUpdate) {
 	if err := hosts.Save(); err != nil {
 		logger.Log(0, "error saving hosts file", err.Error())
 		return
+	}
+}
+
+func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
+	if len(peers) > 0 { // nil check
+		for i := range peers {
+			peer := peers[i]
+			cidrs = append(cidrs, peer.AllowedIPs...)
+		}
+	}
+	if cidrs == nil {
+		cidrs = []net.IPNet{}
+	}
+	return
+}
+
+func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
+	if len(cidrs) > 0 {
+		for i := range cidrs {
+			currCidr := cidrs[i]
+			if currCidr.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, originalGW *net.IPNet) { // isHostInetGateway indicates if host should worry about setting gateways
+	if gwDelta { // handle switching gateway IP to other GW peer
+		if config.GW4PeerDetected {
+			if err := routes.RemoveDefaultGW(originalGW); err != nil {
+				logger.Log(3, "failed to remove default gateway from peer", originalGW.String(), err.Error())
+			}
+			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
+				logger.Log(3, "failed to change default gateway to peer", config.GW4Addr.String(), err.Error())
+			}
+		} else if config.GW6PeerDetected {
+			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
+				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
+			}
+		}
+	} else {
+		if !gwDetected && config.GW4PeerDetected && !isHostInetGateway { // ipv4 gateways take priority
+			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
+				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
+			}
+		} else if gwDetected && !config.GW4PeerDetected {
+			if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
+				logger.Log(3, "failed to remove default gateway to peer", config.GW4Addr.String())
+			}
+		} else if !gwDetected && config.GW6PeerDetected && !isHostInetGateway {
+			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
+				logger.Log(3, "failed to set default gateway to peer", config.GW6Addr.String())
+			}
+		} else if gwDetected && !config.GW6PeerDetected {
+			if err := routes.RemoveDefaultGW(&config.GW6Addr); err != nil {
+				logger.Log(3, "failed to remove default gateway to peer", config.GW6Addr.String())
+			}
+		}
 	}
 }

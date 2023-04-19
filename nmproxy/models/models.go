@@ -37,7 +37,6 @@ type Proxy struct {
 type Conn struct {
 	// Key is a public key of a remote peer
 	Key             wgtypes.Key
-	IsExtClient     bool
 	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
 	Config          Proxy
@@ -51,12 +50,11 @@ type Conn struct {
 
 // RemotePeer - struct remote peer data
 type RemotePeer struct {
-	PeerKey     string
-	Endpoint    *net.UDPAddr
-	IsExtClient bool
-	LocalConn   net.Conn
-	CancelFunc  context.CancelFunc
-	CommChan    chan *net.UDPAddr
+	PeerKey    string
+	Endpoint   *net.UDPAddr
+	LocalConn  net.Conn
+	CancelFunc context.CancelFunc
+	CommChan   chan *net.UDPAddr
 }
 
 // HostInfo - struct for host information
@@ -72,14 +70,6 @@ type HostInfo struct {
 // ConvPeerKeyToHash - converts peer key to a md5 hash
 func ConvPeerKeyToHash(peerKey string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
-}
-
-// IsPublicIP indicates whether IP is public or not.
-func IsPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return false
-	}
-	return true
 }
 
 // Settings - struct for host settings
