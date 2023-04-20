@@ -25,23 +25,26 @@ import (
 
 func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfig) {
 	for _, turnCfgI := range turnCfgs {
-		turnConn, err := startClient(turnCfgI.Server, turnCfgI.Domain, turnCfgI.Port)
+		err := startClient(turnCfgI.Server, turnCfgI.Domain, turnCfgI.Port)
 		if err != nil {
 			logger.Log(0, "failed to start turn client: ", err.Error())
 			continue
 		}
+		resetCh := make(chan struct{}, 1)
 		wg.Add(1)
-		go addListener(ctx, wg, turnCfgI.Server, turnConn)
+		go startTurnListener(ctx, wg, turnCfgI.Server, resetCh)
+		wg.Add(1)
+		go addPeerListener(ctx, wg, turnCfgI.Server, resetCh)
 
 	}
 }
 
 // startClient - starts the turn client and allocates itself address on the turn server provided
-func startClient(server, turnDomain string, turnPort int) (net.PacketConn, error) {
-	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
+func startClient(server, turnDomain string, turnPort int) error {
+	conn, err := net.ListenPacket("udp", "0.0.0.0:0")
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
-		return nil, err
+		return err
 	}
 	turnServerAddr := fmt.Sprintf("%s:%d", turnDomain, turnPort)
 	cfg := &turn.ClientConfig{
@@ -58,28 +61,15 @@ func startClient(server, turnDomain string, turnPort int) (net.PacketConn, error
 	if err != nil {
 		logger.Log(0, "Failed to create TURN client: %s", err.Error())
 		conn.Close()
-		return nil, err
+		return err
 	}
-	err = client.Listen()
-	if err != nil {
-		logger.Log(0, "Failed to listen: %s", err.Error())
-		conn.Close()
-		client.Close()
-		return nil, err
-	}
-	// allocate turn relay address to host for the peer and exchange information with peer
-	turnConn, err := allocateAddr(client)
-	if err != nil {
-		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
-		return nil, err
-	}
+
 	config.GetCfg().SetTurnCfg(server, models.TurnCfg{
-		Cfg:      cfg,
-		Client:   client,
-		TurnConn: turnConn,
+		Cfg:    cfg,
+		Client: client,
 	})
 
-	return turnConn, nil
+	return nil
 }
 
 func allocateAddr(client *turn.Client) (net.PacketConn, error) {
@@ -141,25 +131,111 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	}
 	return nil
 }
-func addListener(ctx context.Context, wg *sync.WaitGroup, serverName string, turnConn net.PacketConn) {
-	// Buffer with indicated body size
-	defer logger.Log(0, "Closing turn conn: ", serverName)
+
+func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) (reset bool) {
 	defer wg.Done()
-	buffer := make([]byte, packet.DefaultBodySize)
+	t, ok := config.GetCfg().GetTurnCfg(serverName)
+	if !ok {
+		return
+	}
+
+	buf := make([]byte, 65535)
 	go func() {
 		<-ctx.Done()
-		turnConn.Close()
+		if t.Cfg.Conn != nil {
+			t.Cfg.Conn.Close()
+		}
 	}()
-	logger.Log(0, "-----> Starting Turn Listener: ", turnConn.LocalAddr().String(), serverName)
 	for {
 
+		n, from, err := t.Cfg.Conn.ReadFrom(buf)
+		if err != nil {
+			logger.Log(0, "exiting read loop: %s", err.Error())
+			return
+		}
+		_, err = t.Client.HandleInbound(buf[:n], from)
+		if err != nil {
+			// reallocate and signal all the turn peers
+			logger.Log(0, "------> ##### Should Reallocate Here: exiting read loop: %s", err.Error())
+			resetCh <- struct{}{}
+		}
+
+	}
+
+}
+
+func listen(serverName string, turnConn net.PacketConn) {
+	logger.Log(0, "-----> Starting Turn Listener: ", turnConn.LocalAddr().String(), serverName)
+	buffer := make([]byte, packet.DefaultBodySize)
+	for {
 		n, addr, err := turnConn.ReadFrom(buffer)
 		if err != nil {
-			logger.Log(0, "failed to read from remote conn: ",
-				turnConn.LocalAddr().String(), err.Error())
+			logger.Log(0, "failed to read from remote conn: ", err.Error())
 			return
 		}
 		server.ProcessIncomingPacket(n, addr.String(), buffer)
+
+	}
+}
+func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
+	// Buffer with indicated body size
+	defer wg.Done()
+	defer logger.Log(0, "Closing turn conn: ", serverName)
+	t, ok := config.GetCfg().GetTurnCfg(serverName)
+	if !ok {
+		return
+	}
+	turnConn, err := allocateAddr(t.Client)
+	if err != nil {
+		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
+		return
+	}
+	t.TurnConn = turnConn
+	config.GetCfg().SetTurnCfg(serverName, t)
+	go func() {
+		<-ctx.Done()
+		t, ok := config.GetCfg().GetTurnCfg(serverName)
+		if ok {
+			t.TurnConn.Close()
+		}
+	}()
+	go listen(serverName, turnConn)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-resetCh:
+			t, ok := config.GetCfg().GetTurnCfg(serverName)
+			if !ok {
+				return
+			}
+			t.TurnConn.Close()
+			// reallocate addr and signal all the peers
+			logger.Log(0, "ReIntializing Turn Endpoint on server:", serverName)
+			if t.Client != nil {
+				turnConn, err := allocateAddr(t.Client)
+				if err != nil {
+					logger.Log(0, "failed to allocate addr on turn: ", err.Error())
+					return
+				}
+				t.TurnConn = turnConn
+				config.GetCfg().SetTurnCfg(serverName, t)
+				turnPeersMap := config.GetCfg().GetAllTurnPeersCfg()
+				for peerKey := range turnPeersMap {
+					err := SignalPeer(serverName, nm_models.Signal{
+						Server:            serverName,
+						FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+						TurnRelayEndpoint: turnConn.LocalAddr().String(),
+						ToHostPubKey:      peerKey,
+					})
+					if err != nil {
+						logger.Log(0, "---> failed to signal peer: ", err.Error())
+						continue
+					}
+				}
+			}
+			go listen(serverName, t.TurnConn)
+		}
 	}
 
 }

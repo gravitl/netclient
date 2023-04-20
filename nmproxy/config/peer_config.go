@@ -326,6 +326,13 @@ func (c *Config) SetPeerTurnCfg(peerKey string, t models.TurnPeerCfg) {
 	c.ifaceConfig.turnMap[peerKey] = t
 }
 
+// Config.GetAllTurnPeersCfg - fetches all peers using turn
+func (c *Config) GetAllTurnPeersCfg() map[string]models.TurnPeerCfg {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.ifaceConfig.turnMap
+}
+
 // Config.DeleteTurnCfg - deletes the turn config
 func (c *Config) DeleteTurnCfg(peerKey string) {
 	c.mutex.Lock()

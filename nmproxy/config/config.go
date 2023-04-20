@@ -27,7 +27,6 @@ type Config struct {
 	ProxyStatus             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
-	signalThreadStatus      bool
 	settings                map[string]proxy_models.Settings // host settings per server
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
