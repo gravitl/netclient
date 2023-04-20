@@ -75,9 +75,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		logger.Log(0, newNode.ID.String(), "was removed from network", newNode.Network)
 		return
-	case models.UpdateKeys:
-		clearRetainedMsg(client, msg.Topic())
-		UpdateKeys()
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
 	case models.NODE_NOOP:
