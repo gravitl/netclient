@@ -46,6 +46,12 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 	addrs := networking.GetServerAddrs(server.Name)
 	for i := range addrs {
 		addr := addrs[i]
+		if addr.IP == nil {
+			continue
+		}
+		if addr.IP.IsPrivate() {
+			continue
+		}
 		if err = netlink.RouteAdd(&netlink.Route{
 			Dst:       &addr,
 			LinkIndex: defaultLink.Attrs().Index,
@@ -81,6 +87,12 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 	currentPeers := config.GetHostPeerList()
 	for i := range currentPeers {
 		peer := currentPeers[i]
+		if peer.Endpoint == nil {
+			continue
+		}
+		if peer.Endpoint.IP.IsPrivate() {
+			continue
+		}
 		if !peer.Remove && peer.Endpoint != nil {
 			mask := 32
 			if peer.Endpoint.IP.To4() == nil && peer.Endpoint.IP.To16() != nil {
