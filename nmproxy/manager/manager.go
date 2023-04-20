@@ -376,7 +376,7 @@ func (m *proxyPayload) peerUpdate() error {
 		if peerConf.Proxy && m.Action == nm_models.ProxyUpdate {
 			shouldUseProxy = true
 		}
-		if !isRelayed && turn.ShouldUseTurn(peerConf.NatType) {
+		if !isRelayed && turn.ShouldUseTurn(config.GetCfg().HostInfo.NatType) && turn.ShouldUseTurn(peerConf.NatType) {
 			go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf) {
 				var err error
 				if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {

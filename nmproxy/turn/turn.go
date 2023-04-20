@@ -225,7 +225,7 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 		case <-resetCh:
 			t, ok := config.GetCfg().GetTurnCfg(serverName)
 			if !ok {
-				return
+				continue
 			}
 			t.TurnConn.Close()
 			// reallocate addr and signal all the peers
