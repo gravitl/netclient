@@ -75,6 +75,15 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		logger.Log(0, newNode.ID.String(), "was removed from network", newNode.Network)
 		return
+	case models.UpdateKeys:
+		// == get the current key for node ==
+		oldPrivateKey := config.Netclient().PrivateKey
+		if err := UpdateKeys(&newNode, config.Netclient(), client); err != nil {
+			logger.Log(0, "err updating wireguard keys, reusing last key\n", err.Error())
+			config.Netclient().PrivateKey = oldPrivateKey
+		}
+		config.Netclient().PublicKey = config.Netclient().PrivateKey.PublicKey()
+		ifaceDelta = true
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
 	case models.NODE_NOOP:
