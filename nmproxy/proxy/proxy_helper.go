@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"runtime"
 	"strings"
@@ -76,7 +75,11 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			if p.Config.UsingTurn {
 				_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
 				if err != nil {
-					log.Println("failed to write to remote conn: ", err)
+					logger.Log(0, "failed to write to remote conn: ", err.Error())
+					if strings.Contains(err.Error(), "fail to refresh permissions") {
+						// reset turn client and signal peers
+
+					}
 				}
 				continue
 			}
@@ -128,11 +131,11 @@ func (p *Proxy) pullLatestConfig() error {
 	peer, found := config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
 	if found {
 		p.Config.PeerEndpoint = peer.Config.PeerEndpoint
+		p.Config.TurnConn = peer.Config.TurnConn
 	} else {
 		return errors.New("peer not found")
 	}
 	return nil
-
 }
 
 // Proxy.ProxyPeer proxies data from Wireguard to the remote peer and vice-versa

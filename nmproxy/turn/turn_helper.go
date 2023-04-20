@@ -29,19 +29,22 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			if err != nil {
 				continue
 			}
-			t, ok := config.GetCfg().GetPeerTurnCfg(signal.FromHostPubKey)
+			t, ok := config.GetCfg().GetPeerTurnCfg(signal.Server, signal.FromHostPubKey)
 			if ok {
-				if signal.TurnRelayEndpoint != "" && t.PeerTurnAddr != signal.TurnRelayEndpoint {
+				if signal.TurnRelayEndpoint != "" {
 					// reset
-					if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
-						config.GetCfg().UpdatePeerTurnAddr(signal.FromHostPubKey, signal.TurnRelayEndpoint)
-						conn.Config.PeerEndpoint = peerTurnEndpoint
-						config.GetCfg().UpdatePeer(&conn)
-						conn.ResetConn()
+					if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok && conn.Config.UsingTurn {
+						if conn.Config.PeerEndpoint.String() != peerTurnEndpoint.String() ||
+							t.PeerTurnAddr != signal.TurnRelayEndpoint {
+							config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
+							conn.Config.PeerEndpoint = peerTurnEndpoint
+							config.GetCfg().UpdatePeer(&conn)
+							conn.ResetConn()
+						}
 
 					} else {
 						// new connection
-						config.GetCfg().SetPeerTurnCfg(signal.FromHostPubKey, models.TurnPeerCfg{
+						config.GetCfg().SetPeerTurnCfg(signal.Server, signal.FromHostPubKey, models.TurnPeerCfg{
 							Server:       signal.Server,
 							PeerConf:     t.PeerConf,
 							PeerTurnAddr: signal.TurnRelayEndpoint,

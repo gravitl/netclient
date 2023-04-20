@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -21,6 +22,7 @@ import (
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
 	"github.com/pion/turn"
+	"gortc.io/stun"
 )
 
 func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfig) {
@@ -140,12 +142,6 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 	}
 
 	buf := make([]byte, 65535)
-	go func() {
-		<-ctx.Done()
-		if t.Cfg.Conn != nil {
-			t.Cfg.Conn.Close()
-		}
-	}()
 	for {
 
 		n, from, err := t.Cfg.Conn.ReadFrom(buf)
@@ -153,11 +149,33 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			logger.Log(0, "exiting read loop: %s", err.Error())
 			return
 		}
-		_, err = t.Client.HandleInbound(buf[:n], from)
+		handled, err := t.Client.HandleInbound(buf[:n], from)
 		if err != nil {
-			// reallocate and signal all the turn peers
-			logger.Log(0, "------> ##### Should Reallocate Here: exiting read loop: %s", err.Error())
-			resetCh <- struct{}{}
+			logger.Log(0, "------>read loop: %s", err.Error())
+			continue
+
+		}
+		if handled && stun.IsMessage(buf[:n]) {
+			raw := make([]byte, len(buf[:n]))
+			copy(raw, buf[:n])
+			msg := &stun.Message{Raw: raw}
+			if err := msg.Decode(); err != nil {
+				continue
+			}
+			if msg.Type.Class == stun.ClassErrorResponse && msg.Type.Method == stun.MethodRefresh {
+				log.Println("#######################################\n")
+				log.Println(" IS Stun Msg: ", stun.IsMessage(buf[:n]))
+				log.Println(" HANDLED: ", handled)
+				log.Println("----> MSG: ", msg.Type.String())
+				log.Println("-----> RAW: ", base64.StdEncoding.EncodeToString(msg.Raw))
+				for _, attrI := range msg.Attributes {
+					log.Println("-----> Attr: ", attrI.String())
+				}
+				log.Println("#######################################\n")
+				logger.Log(0, "Sending reset signal!!!!!")
+				resetCh <- struct{}{}
+			}
+
 		}
 
 	}
@@ -220,7 +238,7 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 				}
 				t.TurnConn = turnConn
 				config.GetCfg().SetTurnCfg(serverName, t)
-				turnPeersMap := config.GetCfg().GetAllTurnPeersCfg()
+				turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
 				for peerKey := range turnPeersMap {
 					err := SignalPeer(serverName, nm_models.Signal{
 						Server:            serverName,
@@ -231,6 +249,12 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 					if err != nil {
 						logger.Log(0, "---> failed to signal peer: ", err.Error())
 						continue
+					}
+					if conn, ok := config.GetCfg().GetPeer(peerKey); ok {
+						logger.Log(0, "------> Resetting Peer Conn: ", peerKey)
+						conn.Config.TurnConn = turnConn
+						config.GetCfg().UpdatePeer(&conn)
+						conn.ResetConn()
 					}
 				}
 			}

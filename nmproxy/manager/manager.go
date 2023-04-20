@@ -381,7 +381,7 @@ func (m *proxyPayload) peerUpdate() error {
 				var err error
 				if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {
 					// signal peer with the host relay addr for the peer
-					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
+					config.GetCfg().SetPeerTurnCfg(m.Server, peer.PublicKey.String(), models.TurnPeerCfg{
 						Server:   serverName,
 						PeerConf: peerConf,
 					})

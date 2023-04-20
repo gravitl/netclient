@@ -35,9 +35,10 @@ type Config struct {
 	fireWallClose           func()
 }
 type proxyPeerConn struct {
-	PeerPublicKey string `json:"peer_public_key"`
-	PeerEndpoint  string `json:"peer_endpoint"`
-	ProxyEndpoint string `json:"proxy_endpoint"`
+	PeerPublicKey       string `json:"peer_public_key"`
+	PeerEndpoint        string `json:"peer_endpoint"`
+	ProxyEndpoint       string `json:"proxy_endpoint"`
+	ProxyRemoteEndpoint string `json:"proxy_remote_endpoint"`
 }
 
 // InitializeCfg - intializes all the variables and sets defaults
@@ -47,7 +48,7 @@ func InitializeCfg() {
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:        nil,
-			turnMap:      make(map[string]proxy_models.TurnPeerCfg),
+			turnPeerMap:  make(map[string]map[string]proxy_models.TurnPeerCfg),
 			hostTurnCfg:  make(map[string]proxy_models.TurnCfg),
 			proxyPeerMap: make(proxy_models.PeerConnMap),
 			peerHashMap:  make(map[string]*proxy_models.RemotePeer),
@@ -249,6 +250,9 @@ func (c *Config) Dump() {
 		}
 		if peerI.Config.LocalConnAddr != nil {
 			peerConnI.ProxyEndpoint = peerI.Config.LocalConnAddr.String()
+		}
+		if peerI.Config.RemoteConnAddr != nil {
+			peerConnI.ProxyRemoteEndpoint = peerI.Config.RemoteConnAddr.String()
 		}
 		proxyConns = append(proxyConns, peerConnI)
 	}
