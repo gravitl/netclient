@@ -42,7 +42,7 @@ func SetIPForwardingUnix() error {
 		return err
 	}
 	// ipv6
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forward", []byte("1"), os.ModePerm); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), os.ModePerm); err != nil {
 
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
