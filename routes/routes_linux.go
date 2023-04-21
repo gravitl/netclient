@@ -87,7 +87,7 @@ func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
 	currentPeers := config.GetHostPeerList()
 	for i := range currentPeers {
 		peer := currentPeers[i]
-		if peer.Endpoint == nil {
+		if peer.Endpoint.IP == nil {
 			continue
 		}
 		if peer.Endpoint.IP.IsPrivate() {
