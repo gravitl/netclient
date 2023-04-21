@@ -15,8 +15,10 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-var PeerSignalCh = make(chan nm_models.Signal, 100)
+// PeerSignalCh - channel to recieve peer signals
+var PeerSignalCh = make(chan nm_models.Signal, 50)
 
+// WatchPeerSignals - processes the peer signals for any turn updates from peers
 func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {

@@ -24,6 +24,7 @@ import (
 	"gortc.io/stun"
 )
 
+// Init - start's the turn client for all the present turn configs
 func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfig) {
 	for _, turnCfgI := range turnCfgs {
 		err := startClient(turnCfgI.Server, turnCfgI.Domain, turnCfgI.Port)
@@ -36,7 +37,6 @@ func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfi
 		go startTurnListener(ctx, wg, turnCfgI.Server, resetCh)
 		wg.Add(1)
 		go addPeerListener(ctx, wg, turnCfgI.Server, resetCh)
-
 	}
 }
 
@@ -103,6 +103,7 @@ func allocateAddr(client *turn.Client) (net.PacketConn, error) {
 	return relayConn, nil
 }
 
+// SignalPeer - signals the peer with host's turn relay endpoint
 func SignalPeer(serverName string, signal nm_models.Signal) error {
 	server := ncconfig.GetServer(serverName)
 	host := ncconfig.Netclient()
@@ -133,6 +134,7 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	return nil
 }
 
+// startTurnListener - start's turn client listener
 func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) (reset bool) {
 	defer wg.Done()
 	t, ok := config.GetCfg().GetTurnCfg(serverName)
@@ -171,9 +173,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 				}
 			}
 		}
-
 	}
-
 }
 
 func listen(serverName string, turnConn net.PacketConn) {
@@ -186,9 +186,9 @@ func listen(serverName string, turnConn net.PacketConn) {
 			return
 		}
 		server.ProcessIncomingPacket(n, addr.String(), buffer)
-
 	}
 }
+
 func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
 	// Buffer with indicated body size
 	defer wg.Done()
@@ -257,5 +257,4 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 
 		}
 	}
-
 }
