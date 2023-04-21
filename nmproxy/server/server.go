@@ -80,13 +80,14 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 
 }
 
+// ProcessIncomingPacket - process the incoming packet to the proxy
 func ProcessIncomingPacket(n int, source string, buffer []byte) {
 	proxyTransportMsg := true
 	var err error
 	var srcPeerKeyHash, dstPeerKeyHash string
 	n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
 	if err != nil {
-		logger.Log(2, "proxy transport message not found: ", err.Error())
+		logger.Log(4, "proxy transport message not found: ", err.Error())
 		proxyTransportMsg = false
 	}
 	if proxyTransportMsg {

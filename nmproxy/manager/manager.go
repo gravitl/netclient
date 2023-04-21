@@ -236,6 +236,7 @@ func (m *proxyPayload) processPayload() error {
 			currentPeer.Mutex.Lock()
 			// check if proxy is not required for the peer anymore
 			if currentPeer.Config.UsingTurn {
+				currentPeer.Mutex.Unlock()
 				continue
 			}
 			if (m.Action == nm_models.NoProxy) && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {

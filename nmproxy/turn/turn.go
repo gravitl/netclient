@@ -2,7 +2,6 @@ package turn
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -43,7 +42,7 @@ func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfi
 
 // startClient - starts the turn client and allocates itself address on the turn server provided
 func startClient(server, turnDomain string, turnPort int) error {
-	conn, err := net.ListenPacket("udp", "0.0.0.0:0")
+	conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:0", config.GetCfg().HostInfo.PrivIp.String()))
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
 		return err
@@ -140,7 +139,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 	if !ok {
 		return
 	}
-
+	var sent bool
 	buf := make([]byte, 65535)
 	for {
 
@@ -163,19 +162,14 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 				continue
 			}
 			if msg.Type.Class == stun.ClassErrorResponse && msg.Type.Method == stun.MethodRefresh {
-				log.Println("#######################################\n")
-				log.Println(" IS Stun Msg: ", stun.IsMessage(buf[:n]))
-				log.Println(" HANDLED: ", handled)
-				log.Println("----> MSG: ", msg.Type.String())
-				log.Println("-----> RAW: ", base64.StdEncoding.EncodeToString(msg.Raw))
-				for _, attrI := range msg.Attributes {
-					log.Println("-----> Attr: ", attrI.String())
+				logger.Log(0, "turn refresh permission error encountered, send reset singal to turn client")
+				if !sent {
+					resetCh <- struct{}{}
+					sent = true
+				} else {
+					sent = false
 				}
-				log.Println("#######################################\n")
-				logger.Log(0, "Sending reset signal!!!!!")
-				resetCh <- struct{}{}
 			}
-
 		}
 
 	}
@@ -230,35 +224,37 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 			t.TurnConn.Close()
 			// reallocate addr and signal all the peers
 			logger.Log(0, "ReIntializing Turn Endpoint on server:", serverName)
-			if t.Client != nil {
-				turnConn, err := allocateAddr(t.Client)
+			if t.Client == nil {
+				continue
+			}
+			turnConn, err := allocateAddr(t.Client)
+			if err != nil {
+				logger.Log(0, "failed to allocate addr on turn: ", err.Error())
+				return
+			}
+			t.TurnConn = turnConn
+			config.GetCfg().SetTurnCfg(serverName, t)
+			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+			for peerKey := range turnPeersMap {
+				err := SignalPeer(serverName, nm_models.Signal{
+					Server:            serverName,
+					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+					TurnRelayEndpoint: turnConn.LocalAddr().String(),
+					ToHostPubKey:      peerKey,
+				})
 				if err != nil {
-					logger.Log(0, "failed to allocate addr on turn: ", err.Error())
-					return
+					logger.Log(0, "---> failed to signal peer: ", err.Error())
+					continue
 				}
-				t.TurnConn = turnConn
-				config.GetCfg().SetTurnCfg(serverName, t)
-				turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
-				for peerKey := range turnPeersMap {
-					err := SignalPeer(serverName, nm_models.Signal{
-						Server:            serverName,
-						FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-						TurnRelayEndpoint: turnConn.LocalAddr().String(),
-						ToHostPubKey:      peerKey,
-					})
-					if err != nil {
-						logger.Log(0, "---> failed to signal peer: ", err.Error())
-						continue
-					}
-					if conn, ok := config.GetCfg().GetPeer(peerKey); ok {
-						logger.Log(0, "------> Resetting Peer Conn: ", peerKey)
-						conn.Config.TurnConn = turnConn
-						config.GetCfg().UpdatePeer(&conn)
-						conn.ResetConn()
-					}
+				if conn, ok := config.GetCfg().GetPeer(peerKey); ok {
+					logger.Log(0, "------> Resetting Peer Conn: ", peerKey)
+					conn.Config.TurnConn = turnConn
+					config.GetCfg().UpdatePeer(&conn)
+					config.GetCfg().ResetPeer(peerKey)
 				}
 			}
 			go listen(serverName, t.TurnConn)
+
 		}
 	}
 

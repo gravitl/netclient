@@ -89,6 +89,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func ShouldUseTurn(natType string) bool {
+	return true
 	// if behind  DOUBLE or ASYM Nat type, allocate turn address for the host
 	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
 		return true
