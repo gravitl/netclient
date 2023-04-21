@@ -15,6 +15,10 @@ import (
 
 // SetNetmakerServerRoutes - sets necessary routes to servers through default gateway & peer endpoints
 func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) error {
+	if !(config.GW4PeerDetected || config.GW6PeerDetected) {
+		// no internet gateway --- skip
+		return nil
+	}
 	if len(defaultInterface) == 0 || server == nil {
 		return fmt.Errorf("invalid params provided when setting server routes")
 	}
@@ -63,6 +67,10 @@ func SetNetmakerServerRoutes(defaultInterface string, server *config.Server) err
 
 // SetNetmakerPeerEndpointRoutes - set peer endpoint routes through original default interface
 func SetNetmakerPeerEndpointRoutes(defaultInterface string) error {
+	if !(config.GW4PeerDetected || config.GW6PeerDetected) {
+		// no internet gateway --- skip
+		return nil
+	}
 	if len(defaultInterface) == 0 {
 		return fmt.Errorf("no default interface provided")
 	}
