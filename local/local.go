@@ -36,14 +36,13 @@ func SetIPForwarding() error {
 
 // SetIPForwardingUnix - sets the ipforwarding for linux
 func SetIPForwardingUnix() error {
-	x := []byte{0x01}
 	// ipv4
-	if err := os.WriteFile("/proc/sys/net/ipv4/ip_foward", x, os.ModePerm); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), os.ModePerm); err != nil {
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
 	}
 	// ipv6
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/foward", x, os.ModePerm); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), os.ModePerm); err != nil {
 
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
