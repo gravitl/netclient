@@ -22,6 +22,6 @@ builds:
     binary: '{{ .ProjectName }}'
 archives:
   - format: binary
-    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}'
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}-{{ . }}{{ end }}'
 release:
   prerelease: false

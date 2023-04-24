@@ -55,6 +55,9 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if dst.String() == "0.0.0.0/0" || dst.String() == "::/0" {
+		dst.IP = net.ParseIP("1.1.1.1")
+	}
 	routes, err := h.RouteGet(dst.IP)
 	if err != nil {
 		return "", err

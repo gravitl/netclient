@@ -12,6 +12,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -19,6 +20,7 @@ import (
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -65,6 +67,7 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
+
 	shouldUpdateNat := getNatInfo()
 	if shouldUpdateNat { // will be reported on check-in
 		if err := config.WriteNetclientConfig(); err == nil {
@@ -82,6 +85,7 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
+			cleanUpRoutes()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -97,6 +101,7 @@ func Daemon() {
 					logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 				}
 			}
+			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&wg)
@@ -137,7 +142,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	nc.Configure()
-	wireguard.SetPeers()
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
 			ProxyUpdate: models.ProxyManagerPayload{
@@ -148,8 +152,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	for _, server := range config.Servers {
 		logger.Log(1, "started daemon for server ", server.Name)
 		server := server
+		networking.StoreServerAddresses(&server)
+		err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server)
+		if err != nil {
+			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+		}
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
+	}
+	wireguard.SetPeers()
+	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(2, "failed to set initial peer routes", err.Error())
 	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
@@ -184,7 +197,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetKeepAlive(time.Second * 10)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		logger.Log(0, "mqtt connect handler")
@@ -199,6 +212,19 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
+		if ok := resetServerRoutes(); ok {
+			logger.Log(0, "detected default gw change, reset routes")
+			if err := UpdateHostSettings(); err != nil {
+				logger.Log(0, "failed to update host settings -", err.Error())
+				return
+			}
+
+			handlePeerInetGateways(
+				!config.GW4PeerDetected && !config.GW6PeerDetected,
+				config.IsHostInetGateway(), false,
+				nil,
+			)
+		}
 	})
 	mqclient := mqtt.NewClient(opts)
 	ServerSet[server.Name] = mqclient
@@ -391,24 +417,26 @@ func unsubscribeHost(client mqtt.Client, server string) {
 }
 
 // UpdateKeys -- updates private key and returns new publickey
-func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) error {
+func UpdateKeys() error {
 	var err error
-	logger.Log(0, "received message to update wireguard keys for network ", node.Network)
+	logger.Log(0, "received message to update wireguard keys ")
+	host := config.Netclient()
 	host.PrivateKey, err = wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Log(0, "network:", node.Network, "error generating privatekey ", err.Error())
+		logger.Log(0, "error generating privatekey ", err.Error())
 		return err
 	}
 	file := config.GetNetclientPath() + "netmaker.conf"
 	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
-		logger.Log(0, "network:", node.Network, "error updating wireguard key ", err.Error())
+		logger.Log(0, "error updating wireguard key ", err.Error())
 		return err
 	}
 	host.PublicKey = host.PrivateKey.PublicKey()
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saving netclient config", err.Error())
 	}
-	PublishNodeUpdate(node)
+	PublishGlobalHostUpdate(models.UpdateHost)
+	daemon.Restart()
 	return nil
 }
 
@@ -450,4 +478,31 @@ func getNatInfo() (natUpdated bool) {
 		}
 	}
 	return
+}
+
+func cleanUpRoutes() {
+	gwAddr := config.GW4Addr
+	if gwAddr.IP == nil {
+		gwAddr = config.GW6Addr
+	}
+	if err := routes.CleanUp(config.Netclient().DefaultInterface, &gwAddr); err != nil {
+		logger.Log(0, "routes not completely cleaned up", err.Error())
+	}
+}
+
+func resetServerRoutes() bool {
+	if routes.HasGatewayChanged() {
+		cleanUpRoutes()
+		for _, server := range config.Servers {
+			server := server
+			if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server); err != nil {
+				logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+			}
+			if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+			}
+		}
+		return true
+	}
+	return false
 }

@@ -5,11 +5,10 @@ import (
 	"errors"
 	"net"
 	"os"
-	"os/exec"
 	"runtime"
-	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netmaker/logger"
 )
 
@@ -24,8 +23,13 @@ func SetIPForwarding() error {
 		err = SetIPForwardingFreeBSD()
 	case "darwin":
 		err = SetIPForwardingMac()
+	case "windows":
+		err = SetIPForwardingWindows()
 	default:
 		err = errors.New("this OS is not currently supported")
+	}
+	if err == nil {
+		return router.EnableForwardRule()
 	}
 	return err
 }
@@ -33,53 +37,24 @@ func SetIPForwarding() error {
 // SetIPForwardingUnix - sets the ipforwarding for linux
 func SetIPForwardingUnix() error {
 	// ipv4
-	out, err := ncutils.RunCmd("sysctl net.ipv4.ip_forward", true)
-	if err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), os.ModePerm); err != nil {
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
-	} else {
-		s := strings.Fields(string(out))
-		if s[2] != "1" {
-			_, err = ncutils.RunCmd("sysctl -w net.ipv4.ip_forward=1", true)
-			if err != nil {
-				logger.Log(0, "WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
-				return err
-			}
-		}
 	}
 	// ipv6
-	out, err = ncutils.RunCmd("sysctl net.ipv6.conf.all.forwarding", true)
-	if err != nil {
-		logger.Log(0, "WARNING: Error encountered setting ipv6 forwarding. This can break functionality.")
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), os.ModePerm); err != nil {
+
+		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		return err
-	} else {
-		s := strings.Fields(string(out))
-		if s[2] != "1" {
-			_, err = ncutils.RunCmd("sysctl -w  net.ipv6.conf.all.forwarding=1", true)
-			if err != nil {
-				logger.Log(0, "WARNING: Error encountered setting ipv6 forwarding. You may want to investigate this.")
-				return err
-			}
-		}
 	}
 	return nil
 }
 
 // SetIPForwardingFreeBSD - sets the ipforwarding for freebsd
 func SetIPForwardingFreeBSD() error {
-	out, err := ncutils.RunCmd("sysctl net.inet.ip.forwarding", true)
-	if err != nil {
-		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
+	if _, err := ncutils.RunCmd("sysctl -w net.inet.ip.forwarding=1", true); err != nil {
+		logger.Log(0, "WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
 		return err
-	} else {
-		s := strings.Fields(string(out))
-		if s[1] != "1" {
-			_, err = ncutils.RunCmd("sysctl -w net.inet.ip.forwarding=1", true)
-			if err != nil {
-				logger.Log(0, "WARNING: Error encountered setting ip forwarding. You may want to investigate this.")
-				return err
-			}
-		}
 	}
 	return nil
 }
@@ -93,19 +68,14 @@ func SetIPForwardingMac() error {
 	return err
 }
 
-// IsKernelWGInstalled - checks if WireGuard is installed
-func IsKernelWGInstalled() bool {
-	out, err := ncutils.RunCmd("wg help", true)
-	if err != nil {
-		return false
+// SetIPForwardingWindows - sets ip forwarding for windows
+func SetIPForwardingWindows() error {
+	if _, err := ncutils.RunCmd("Set-NetIPInterface -Forwarding Enabled", true); err != nil {
+		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
+		return err
 	}
-	return strings.Contains(out, "Available subcommand") && !IsUserSpaceWGInstalled()
-}
+	return nil
 
-// IsUserSpaceWGInstalled - checks if userspace WG is present
-func IsUserSpaceWGInstalled() bool {
-	_, err := exec.LookPath(os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION"))
-	return err == nil
 }
 
 // GetMacIface - gets mac interface

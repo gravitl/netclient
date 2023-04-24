@@ -34,6 +34,8 @@ const (
 type firewallController interface {
 	// CreateChains  creates a firewall chains and jump rules
 	CreateChains() error
+	// ForwardRule inserts forwarding rules
+	ForwardRule() error
 	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
 	InsertIngressRoutingRules(server string, r models.ExtClientInfo, egressRanges []string) error
 	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
@@ -72,4 +74,16 @@ func Init() (func(), error) {
 		return fwCrtl.FlushAll, err
 	}
 	return fwCrtl.FlushAll, nil
+}
+
+// EnableForwardRule - enable firewall to forward netmaker traffic
+func EnableForwardRule() error {
+	controller, err := newFirewall()
+	if err != nil {
+		return err
+	}
+	if controller.ForwardRule(); err != nil {
+		return err
+	}
+	return nil
 }
