@@ -173,10 +173,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers()
 	wireguard.GetInterface().GetPeerRoutes()
-	// UNCOMMENT
-	// if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-	// 	logger.Log(0, "error when setting peer routes after peer update", err.Error())
-	// }
+	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(0, "error when setting peer routes after peer update", err.Error())
+	}
 	_ = wireguard.GetInterface().ApplyAddrs(true)
 	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
 		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
@@ -288,10 +287,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 
 		if err = wireguard.SetPeers(); err == nil {
-			// UNCOMMENT
-			// if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-			// 	logger.Log(0, "error when setting peer routes after host update", err.Error())
-			// }
+			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				logger.Log(0, "error when setting peer routes after host update", err.Error())
+			}
 		}
 	}
 }

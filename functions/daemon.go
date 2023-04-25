@@ -83,8 +83,7 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
-			// UNCOMMENT
-			//cleanUpRoutes()
+			cleanUpRoutes()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -100,8 +99,7 @@ func Daemon() {
 					logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 				}
 			}
-			// UNCOMMENT
-			//cleanUpRoutes()
+			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
 				stopProxy = startProxy(&wg)
@@ -153,19 +151,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(1, "started daemon for server ", server.Name)
 		server := server
 		networking.StoreServerAddresses(&server)
-		// UNCOMMENT
-		// err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server)
-		// if err != nil {
-		// 	logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-		// }
+		err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server)
+		if err != nil {
+			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+		}
 		wg.Add(1)
 		go messageQueue(ctx, wg, &server)
 	}
 	wireguard.SetPeers()
-	// UNCOMMENT
-	// if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-	// 	logger.Log(2, "failed to set initial peer routes", err.Error())
-	// }
+	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(2, "failed to set initial peer routes", err.Error())
+	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
@@ -214,20 +210,19 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
-		// UNCOMMENT
-		// if ok := resetServerRoutes(); ok {
-		// 	logger.Log(0, "detected default gw change, reset routes")
-		// 	if err := UpdateHostSettings(); err != nil {
-		// 		logger.Log(0, "failed to update host settings -", err.Error())
-		// 		return
-		// 	}
+		if ok := resetServerRoutes(); ok {
+			logger.Log(0, "detected default gw change, reset routes")
+			if err := UpdateHostSettings(); err != nil {
+				logger.Log(0, "failed to update host settings -", err.Error())
+				return
+			}
 
-		// 	handlePeerInetGateways(
-		// 		!config.GW4PeerDetected && !config.GW6PeerDetected,
-		// 		config.IsHostInetGateway(), false,
-		// 		nil,
-		// 	)
-		// }
+			handlePeerInetGateways(
+				!config.GW4PeerDetected && !config.GW6PeerDetected,
+				config.IsHostInetGateway(), false,
+				nil,
+			)
+		}
 	})
 	mqclient := mqtt.NewClient(opts)
 	ServerSet[server.Name] = mqclient
