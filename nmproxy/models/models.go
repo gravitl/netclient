@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	nm_models "github.com/gravitl/netmaker/models"
-	"github.com/pion/turn"
+	"github.com/pion/turn/v2"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 

@@ -2,12 +2,14 @@ package turn
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -20,7 +22,7 @@ import (
 	"github.com/gravitl/netmaker/logic"
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
-	"github.com/pion/turn"
+	turn "github.com/pion/turn/v2"
 	"gortc.io/stun"
 )
 
@@ -37,12 +39,14 @@ func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfi
 		go startTurnListener(ctx, wg, turnCfgI.Server, resetCh)
 		wg.Add(1)
 		go addPeerListener(ctx, wg, turnCfgI.Server, resetCh)
+		wg.Add(1)
+		go createOrRefreshPermissions(ctx, wg, turnCfgI.Server)
 	}
 }
 
 // startClient - starts the turn client and allocates itself address on the turn server provided
 func startClient(server, turnDomain string, turnPort int) error {
-	conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:0", config.GetCfg().HostInfo.PrivIp.String()))
+	conn, err := net.ListenPacket("udp", "0.0.0.0:0")
 	if err != nil {
 		logger.Log(0, "Failed to listen: %s", err.Error())
 		return err
@@ -141,7 +145,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 	if !ok {
 		return
 	}
-	var sent bool
+	stunMgsMap := make(map[string]struct{})
 	buf := make([]byte, 65535)
 	for {
 
@@ -157,20 +161,28 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 
 		}
 		if handled && stun.IsMessage(buf[:n]) {
-			raw := make([]byte, len(buf[:n]))
-			copy(raw, buf[:n])
-			msg := &stun.Message{Raw: raw}
+			msg := &stun.Message{Raw: buf[:n]}
 			if err := msg.Decode(); err != nil {
 				continue
 			}
+			if msg.Type.Class == stun.ClassErrorResponse {
+				fmt.Println("##########################")
+				fmt.Printf("Msg : %+v\n", msg.Type)
+				fmt.Printf("ID : %s\n", base64.StdEncoding.EncodeToString(msg.TransactionID[:]))
+				fmt.Printf("RAW : %s\n", base64.StdEncoding.EncodeToString(msg.Raw))
+				fmt.Println("##########################")
+			}
+
 			if msg.Type.Class == stun.ClassErrorResponse && msg.Type.Method == stun.MethodRefresh {
+				txdID := base64.StdEncoding.EncodeToString(msg.TransactionID[:])
 				logger.Log(0, "turn refresh permission error encountered, send reset singal to turn client")
-				if !sent {
-					resetCh <- struct{}{}
-					sent = true
-				} else {
-					sent = false
+				if _, ok := stunMgsMap[txdID]; ok {
+					delete(stunMgsMap, base64.StdEncoding.EncodeToString(msg.TransactionID[:]))
+					continue
 				}
+				stunMgsMap[txdID] = struct{}{}
+				resetCh <- struct{}{}
+
 			}
 		}
 	}
@@ -190,7 +202,6 @@ func listen(serverName string, turnConn net.PacketConn) {
 }
 
 func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
-	// Buffer with indicated body size
 	defer wg.Done()
 	defer logger.Log(0, "Closing turn conn: ", serverName)
 	t, ok := config.GetCfg().GetTurnCfg(serverName)
@@ -257,4 +268,32 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 
 		}
 	}
+}
+
+func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverName string) {
+	defer wg.Done()
+	turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+	ticker := time.NewTicker(time.Minute * 5)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			t, ok := config.GetCfg().GetTurnCfg(serverName)
+			if !ok || t.Client == nil {
+				continue
+			}
+			for peerKey, cfg := range turnPeersMap {
+				peerTurnEndpoint, err := net.ResolveUDPAddr("udp", cfg.PeerTurnAddr)
+				if err != nil {
+					continue
+				}
+				err = t.Client.CreatePermission(peerTurnEndpoint)
+				if err != nil {
+					logger.Log(0, "failed to refresh permission for peer: ", peerKey, err.Error())
+				}
+			}
+		}
+	}
+
 }

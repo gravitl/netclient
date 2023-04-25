@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 
@@ -31,46 +32,49 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			if err != nil {
 				continue
 			}
+
 			t, ok := config.GetCfg().GetPeerTurnCfg(signal.Server, signal.FromHostPubKey)
 			if ok {
-				if signal.TurnRelayEndpoint != "" {
-					// reset
-					if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok && conn.Config.UsingTurn {
-						if conn.Config.PeerEndpoint.String() != peerTurnEndpoint.String() ||
-							t.PeerTurnAddr != signal.TurnRelayEndpoint {
-							config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
-							conn.Config.PeerEndpoint = peerTurnEndpoint
-							config.GetCfg().UpdatePeer(&conn)
-							conn.ResetConn()
-						}
+				if signal.TurnRelayEndpoint == "" {
+					continue
+				}
+				// reset
+				if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
+					if conn.Config.UsingTurn && t.PeerTurnAddr != signal.TurnRelayEndpoint {
+						logger.Log(0, fmt.Sprintf("-------> Turn Peer Addr Has Been Changed From %s to %s", t.PeerTurnAddr, signal.TurnRelayEndpoint))
+						config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
+						conn.Config.PeerEndpoint = peerTurnEndpoint
+						config.GetCfg().UpdatePeer(&conn)
+						config.GetCfg().ResetPeer(signal.FromHostPubKey)
+					}
 
-					} else {
-						// new connection
-						config.GetCfg().SetPeerTurnCfg(signal.Server, signal.FromHostPubKey, models.TurnPeerCfg{
-							Server:       signal.Server,
-							PeerConf:     t.PeerConf,
-							PeerTurnAddr: signal.TurnRelayEndpoint,
-						})
+				} else {
+					// new connection
+					config.GetCfg().SetPeerTurnCfg(signal.Server, signal.FromHostPubKey, models.TurnPeerCfg{
+						Server:       signal.Server,
+						PeerConf:     t.PeerConf,
+						PeerTurnAddr: signal.TurnRelayEndpoint,
+					})
 
-						peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
-						if err == nil {
-							peerpkg.AddNew(t.Server, wgtypes.PeerConfig{
-								PublicKey:                   peer.PublicKey,
-								PresharedKey:                &peer.PresharedKey,
-								Endpoint:                    peer.Endpoint,
-								PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
-								AllowedIPs:                  peer.AllowedIPs,
-							}, t.PeerConf, false, peerTurnEndpoint, true)
-						}
-
+					peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
+					if err == nil {
+						peerpkg.AddNew(t.Server, wgtypes.PeerConfig{
+							PublicKey:                   peer.PublicKey,
+							PresharedKey:                &peer.PresharedKey,
+							Endpoint:                    peer.Endpoint,
+							PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
+							AllowedIPs:                  peer.AllowedIPs,
+						}, t.PeerConf, false, peerTurnEndpoint, true)
 					}
 
 				}
-				// signal back to peer
-				// signal peer with the host relay addr for the peer
+
+				// if respone to the signal you sent,then don't signal back
 				if signal.Reply {
 					continue
 				}
+				// signal back to peer
+				// signal peer with the host relay addr for the peer
 				if hostTurnCfg, ok := config.GetCfg().GetTurnCfg(signal.Server); ok && hostTurnCfg.TurnConn != nil {
 					err := SignalPeer(signal.Server, nm_models.Signal{
 						Server:            signal.Server,

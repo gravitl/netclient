@@ -76,10 +76,6 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
 				if err != nil {
 					logger.Log(0, "failed to write to remote conn: ", err.Error())
-					if strings.Contains(err.Error(), "fail to refresh permissions") {
-						// reset turn client and signal peers
-
-					}
 				}
 				continue
 			}

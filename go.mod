@@ -18,7 +18,7 @@ require (
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/pion/logging v0.2.2
-	github.com/pion/turn v1.4.0
+	github.com/pion/turn/v2 v2.1.0
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
@@ -82,9 +82,9 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
+	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/stun v0.4.0 // indirect
-	github.com/pion/transport v0.8.9 // indirect
-	github.com/pion/transport/v2 v2.0.0 // indirect
+	github.com/pion/transport/v2 v2.2.0 // indirect
 	github.com/pkg/browser v0.0.0-20210706143420-7d21f8c997e2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/posthog/posthog-go v0.0.0-20211028072449-93c17c49e2b0 // indirect
