@@ -95,7 +95,7 @@ var (
 		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
-				Chain: &nftables.Chain{Name: "forward"},
+				Chain: &nftables.Chain{Name: iptableFWDChain},
 				Exprs: []expr.Any{
 					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
 					&expr.Cmp{
