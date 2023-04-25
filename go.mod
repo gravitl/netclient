@@ -11,14 +11,14 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.18.7-0.20230419181145-7652904e87fc
+	github.com/gravitl/netmaker v0.18.8-0.20230425071535-d0646392b354
 	github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc
 	github.com/guumaster/hostctl v1.1.3
 	github.com/hashicorp/go-version v1.6.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/pion/logging v0.2.2
-	github.com/pion/turn/v2 v2.1.0
+	github.com/pion/turn/v2 v2.1.1-0.20230418114227-f880e55089ad
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
@@ -69,7 +69,7 @@ require (
 	github.com/leaanthony/gosod v1.0.3 // indirect
 	github.com/leaanthony/slicer v1.5.0 // indirect
 	github.com/leodido/go-urn v1.2.2 // indirect
-	github.com/lib/pq v1.10.7 // indirect
+	github.com/lib/pq v1.10.8 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect

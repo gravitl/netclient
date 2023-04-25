@@ -22,7 +22,7 @@ import (
 	"github.com/gravitl/netmaker/logic"
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
-	turn "github.com/pion/turn/v2"
+	"github.com/pion/turn/v2"
 	"gortc.io/stun"
 )
 
@@ -51,7 +51,10 @@ func startClient(server, turnDomain string, turnPort int) error {
 		logger.Log(0, "Failed to listen: %s", err.Error())
 		return err
 	}
-	turnServerAddr := fmt.Sprintf("%s:%d", turnDomain, turnPort)
+	turnServerAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", turnDomain, turnPort))
+	if err != nil {
+		return err
+	}
 	cfg := &turn.ClientConfig{
 		STUNServerAddr: turnServerAddr,
 		TURNServerAddr: turnServerAddr,
@@ -164,13 +167,6 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			msg := &stun.Message{Raw: buf[:n]}
 			if err := msg.Decode(); err != nil {
 				continue
-			}
-			if msg.Type.Class == stun.ClassErrorResponse {
-				fmt.Println("##########################")
-				fmt.Printf("Msg : %+v\n", msg.Type)
-				fmt.Printf("ID : %s\n", base64.StdEncoding.EncodeToString(msg.TransactionID[:]))
-				fmt.Printf("RAW : %s\n", base64.StdEncoding.EncodeToString(msg.Raw))
-				fmt.Println("##########################")
 			}
 
 			if msg.Type.Class == stun.ClassErrorResponse && msg.Type.Method == stun.MethodRefresh {
