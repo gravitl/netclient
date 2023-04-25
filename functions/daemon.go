@@ -12,6 +12,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -421,24 +422,26 @@ func unsubscribeHost(client mqtt.Client, server string) {
 }
 
 // UpdateKeys -- updates private key and returns new publickey
-func UpdateKeys(node *config.Node, host *config.Config, client mqtt.Client) error {
+func UpdateKeys() error {
 	var err error
-	logger.Log(0, "received message to update wireguard keys for network ", node.Network)
+	logger.Log(0, "received message to update wireguard keys ")
+	host := config.Netclient()
 	host.PrivateKey, err = wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Log(0, "network:", node.Network, "error generating privatekey ", err.Error())
+		logger.Log(0, "error generating privatekey ", err.Error())
 		return err
 	}
 	file := config.GetNetclientPath() + "netmaker.conf"
 	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
-		logger.Log(0, "network:", node.Network, "error updating wireguard key ", err.Error())
+		logger.Log(0, "error updating wireguard key ", err.Error())
 		return err
 	}
 	host.PublicKey = host.PrivateKey.PublicKey()
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saving netclient config", err.Error())
 	}
-	PublishNodeUpdate(node)
+	PublishGlobalHostUpdate(models.UpdateHost)
+	daemon.Restart()
 	return nil
 }
 
