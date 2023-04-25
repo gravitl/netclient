@@ -548,16 +548,7 @@ func CheckConfig() {
 	// check for nftables present if on Linux
 	if netclient.FirewallInUse == "" {
 		saveRequired = true
-		if ncutils.IsLinux() {
-			if ncutils.IsNFTablesPresent() {
-				netclient.FirewallInUse = models.FIREWALL_NFTABLES
-			} else {
-				netclient.FirewallInUse = models.FIREWALL_IPTABLES
-			}
-		} else {
-			// defaults to iptables for now, may need another default for non-Linux OSes
-			netclient.FirewallInUse = models.FIREWALL_IPTABLES
-		}
+		SetFirewall()
 	}
 	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
 		if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
@@ -702,4 +693,33 @@ func IsHostInetGateway() bool {
 		}
 	}
 	return false
+}
+
+// setFirewall - determine and record firewall in use
+func SetFirewall() {
+	if ncutils.IsLinux() {
+		if ncutils.IsIPTablesPresent() {
+			netclient.FirewallInUse = models.FIREWALL_IPTABLES
+		} else if ncutils.IsNFTablesPresent() {
+			netclient.FirewallInUse = models.FIREWALL_NFTABLES
+		} else {
+			netclient.FirewallInUse = models.FIREWALL_NONE
+		}
+	} else {
+		netclient.FirewallInUse = models.FIREWALL_NONE
+	}
+}
+
+// FirewallHasChanged - checks if the firewall has changed
+func FirewallHasChanged() bool {
+	if netclient.FirewallInUse == models.FIREWALL_NONE && ncutils.IsLinux() {
+		return false
+	}
+	if netclient.FirewallInUse == models.FIREWALL_IPTABLES && ncutils.IsIPTablesPresent() {
+		return false
+	}
+	if netclient.FirewallInUse == models.FIREWALL_NFTABLES && ncutils.IsNFTablesPresent() {
+		return false
+	}
+	return true
 }

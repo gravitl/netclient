@@ -61,14 +61,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func checkin() {
-
+	// check/update host settings; publish if changed
 	if err := UpdateHostSettings(); err != nil {
-		logger.Log(0, "failed to update host settings -", err.Error())
+		logger.Log(0, "checkin", err.Error())
 		return
-	}
-
-	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
-		logger.Log(0, "failed to check-in", err.Error())
 	}
 }
 
@@ -330,6 +326,10 @@ func UpdateHostSettings() error {
 			config.Netclient().DefaultInterface = defaultInterface
 			logger.Log(0, "default interface has changed to", defaultInterface)
 		}
+	}
+	if config.FirewallHasChanged() {
+		config.SetFirewall()
+		publishMsg = true
 	}
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {

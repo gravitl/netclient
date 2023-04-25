@@ -1,15 +1,10 @@
-# Netclient v0.18.7
+# Netclient v0.18.8
 
 ## Whats New
-- internet gateways for egress
+- detect firewall changes
 - 
 ## What's Fixed
-- peer update improvements
-- sso/basic auth registration
-- auto updates
-- refresh of wireguard keys
-- forwarding rules to counteract docker setting default forward policy to deny
-- prevent routing changes to private addresses
+- limit creation of explicit server/peer routes
 
 ## known issues
 - Incorrect metrics against ext clients
