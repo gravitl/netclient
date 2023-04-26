@@ -323,6 +323,16 @@ func (c *Config) GetPeerTurnCfg(server, peerKey string) (t models.TurnPeerCfg, o
 	return
 }
 
+// Config.UpdatePeerTurnCfg - updates the peer turn cfg
+func (c *Config) UpdatePeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
+		peerMap[peerKey] = t
+		c.ifaceConfig.turnPeerMap[server] = peerMap
+	}
+}
+
 // Config.SetPeerTurnCfg - sets the peer turn cfg
 func (c *Config) SetPeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
 	c.mutex.Lock()

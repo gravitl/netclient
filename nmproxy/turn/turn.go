@@ -29,6 +29,9 @@ import (
 // Init - start's the turn client for all the present turn configs
 func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfig) {
 	for _, turnCfgI := range turnCfgs {
+		if turnCfgI.Server == "" || turnCfgI.Domain == "" || turnCfgI.Port == 0 {
+			continue
+		}
 		err := startClient(turnCfgI.Server, turnCfgI.Domain, turnCfgI.Port)
 		if err != nil {
 			logger.Log(0, "failed to start turn client: ", err.Error())
