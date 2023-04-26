@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -40,12 +41,6 @@ const (
 	DefaultListenPort = 51821
 	// DefaultMTU default MTU for wireguard
 	DefaultMTU = 1420
-	// SYMMETRIC_NAT - symmetric NAT string
-	SYMMETRIC_NAT = "symnat"
-	// ASYMMETRIC_NAT - asymmetric NAT string
-	ASYMMETRIC_NAT = "asymnat"
-	// DOUBLE_NAT - double nat NAT string
-	DOUBLE_NAT = "doublenat"
 )
 
 var (
@@ -72,6 +67,8 @@ func init() {
 
 // UpdateNetcllient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
+	logger.Verbosity = c.Verbosity
+	logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
 	netclient = c
 }
 

@@ -11,7 +11,7 @@ require (
 	github.com/gin-gonic/gin v1.9.0
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
-	github.com/gravitl/netmaker v0.18.5-0.20230329012407-20cf3b00bc65
+	github.com/gravitl/netmaker v0.18.6-0.20230404122311-9362c39a9a82
 	github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc
 	github.com/guumaster/hostctl v1.1.3
 	github.com/hashicorp/go-version v1.6.0
@@ -21,7 +21,7 @@ require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
 	github.com/vishvananda/netlink v1.1.0
-	github.com/wailsapp/wails/v2 v2.3.1
+	github.com/wailsapp/wails/v2 v2.2.0
 	golang.design/x/clipboard v0.7.0
 	golang.org/x/crypto v0.7.0
 	golang.org/x/net v0.8.0

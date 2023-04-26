@@ -12,7 +12,9 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -169,8 +171,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	wireguard.GetInterface().GetPeerRoutes()
 	wireguard.GetInterface().ApplyAddrs(true)
 	go handleEndpointDetection(&peerUpdate)
-	time.Sleep(time.Second * 2) // sleep required to avoid race condition
-	ProxyManagerChan <- &peerUpdate
+	if proxyCfg.GetCfg().IsProxyRunning() {
+		time.Sleep(time.Second * 2) // sleep required to avoid race condition
+		ProxyManagerChan <- &peerUpdate
+	}
+
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -271,6 +276,13 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
+				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+					continue
+				}
+				// check to skip bridge network
+				if ncutils.IsBridgeNetwork(peerIface.Name) {
+					continue
+				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
