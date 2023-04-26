@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
@@ -51,6 +52,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	wg.Add(1)
 	go turn.WatchPeerSignals(ctx, wg)
 	if turn.ShouldUseTurn(hostNatInfo.NatType) {
+		time.Sleep(time.Second * 2) // add a delay for clients to send turn register message to server
 		turn.Init(ctx, wg, ncconfig.GetAllTurnConfigs())
 	}
 	server.NmProxyServer.Listen(ctx)
