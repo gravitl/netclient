@@ -41,7 +41,7 @@ jobs:
           git push origin release_${{ github.event.inputs.version }}
           git push origin ${{ github.event.inputs.version }}
   
-  linux-headless:
+  linux:
     runs-on: ubuntu-latest
     needs: release-branch
     steps:
@@ -87,7 +87,7 @@ jobs:
             git switch release_${{ github.event.inputs.version }}
             git restore .
             git pull
-            go build -tags headless .
+            go build .
       - name: setup ssh
         run: |
           mkdir -p ~/.ssh/
@@ -131,9 +131,11 @@ jobs:
           cd gui/frontend
           npm ci
           npm run build
-          cd ../..
+          cd ..
           go generate
-          go build -tags desktop,production -ldflags "-w -s -H windowsgui"
+          go build -tags desktop,production -ldflags "-w -s -H windowsgui" -o netclient-gui.exe
+          cd ..
+          go build -o netclient.exe
       - name: upload windows to release
         uses: svenstaro/upload-release-action@v2
         with:
@@ -142,6 +144,14 @@ jobs:
           tag: ${{ github.event.inputs.version }}
           overwrite: true
           asset_name: netclient-windows-amd64.exe
+      - name: upload windows-gui to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gui/netclient-gui.exe
+          tag: ${{ github.event.inputs.version }}
+          overwrite: true
+          asset_name: netclient-gui-windows-amd64.exe
 
   darwin:
     needs: release-branch
@@ -157,11 +167,13 @@ jobs:
         with:
           go-version: 1.19
       - run: |
+          GOARCH=darwin_amd64 go build -o /tmp/netclient_darwin_amd64
+          GOARCH=darwin_arm64 go build -o /tmp/netclient_darwin_arm64
           go install github.com/wailsapp/wails/v2/cmd/wails@latest 
           ~/go/bin/wails build -platform darwin/amd64 
-          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_amd64
+          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient-gui_darwin_amd64
           ~/go/bin/wails build -platform darwin/arm64 
-          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient_darwin_arm64
+          cp build/bin/netclient-2-0.app/Contents/MacOS/netclient-2-0 /tmp/netclient-gui_darwin_arm64
       - name: upload darwin/amd to release
         uses: svenstaro/upload-release-action@v2
         with:
@@ -169,7 +181,7 @@ jobs:
           file: /tmp/netclient_darwin_amd64
           tag: ${{ github.event.inputs.version }}
           overwrite: true
-          asset_name: netclient-darwin-amd64
+          asset_name: netclient-darwin-amd64>
       - name: upload darwin_arm64 to release
         uses: svenstaro/upload-release-action@v2
         with:

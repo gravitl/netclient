@@ -1,7 +1,7 @@
 FROM gravitl/go-builder:latest as builder
 WORKDIR /app
 COPY . .
-RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -tags headless -ldflags="-w -s" -o netclient-app .
+RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-w -s" -o netclient-app .
 
 FROM alpine:3.16.2
 
