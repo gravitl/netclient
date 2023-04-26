@@ -129,7 +129,7 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	logger.Log(0, fmt.Sprintf("-------> Sending Signal to Peer: %+v", signal))
+	logger.Log(4, fmt.Sprintf("-------> Sending Signal to Peer: %+v", signal))
 	endpoint := httpclient.JSONEndpoint[nm_models.Signal, nm_models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/host/%s/signalpeer", ncconfig.Netclient().ID.String()),

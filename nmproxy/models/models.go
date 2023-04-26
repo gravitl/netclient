@@ -85,6 +85,7 @@ type Settings struct {
 	RelayedTo        *net.UDPAddr
 }
 
+// TurnCfg - struct to hold turn conn details
 type TurnCfg struct {
 	Mutex    *sync.RWMutex
 	Cfg      *turn.ClientConfig
@@ -93,6 +94,7 @@ type TurnCfg struct {
 	Status   bool
 }
 
+// TurnPeerCfg - struct for peer turn conn details
 type TurnPeerCfg struct {
 	Server       string
 	PeerConf     nm_models.PeerConf

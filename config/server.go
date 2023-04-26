@@ -42,6 +42,7 @@ type OldNetmakerServerConfig struct {
 	Is_EE       bool   `yaml:"isee"`
 }
 
+// TurnConfig - struct to hold turn server config
 type TurnConfig struct {
 	Server string
 	Domain string
