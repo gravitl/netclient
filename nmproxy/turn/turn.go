@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -139,9 +140,9 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	}
 	_, errData, err := endpoint.GetJSON(nm_models.Signal{}, nm_models.ErrorResponse{})
 	if err != nil {
-		//if errors.Is(err, httpclient.ErrStatus) {
-		logger.Log(0, "error signalling peer", strconv.Itoa(errData.Code), errData.Message)
-		//}
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "error signalling peer", strconv.Itoa(errData.Code), errData.Message)
+		}
 		return err
 	}
 	return nil
