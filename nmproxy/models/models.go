@@ -86,6 +86,7 @@ type Settings struct {
 }
 
 type TurnCfg struct {
+	Mutex    *sync.RWMutex
 	Cfg      *turn.ClientConfig
 	Client   *turn.Client
 	TurnConn net.PacketConn

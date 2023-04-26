@@ -41,7 +41,7 @@ func (p *ProxyServer) Close() {
 		peerI.Mutex.Lock()
 		peerI.StopConn(false)
 		peerI.Mutex.Unlock()
-		config.GetCfg().DeleteTurnCfg(peerI.Key.String())
+		config.GetCfg().DeletePeerTurnCfg(peerI.Key.String())
 	}
 	// close metrics thread
 	if config.GetCfg().GetMetricsCollectionStatus() {
@@ -49,6 +49,16 @@ func (p *ProxyServer) Close() {
 	}
 	if config.GetCfg().GetFwStatus() {
 		config.GetCfg().StopFw()
+	}
+
+	turnCfg := config.GetCfg().GetAllTurnCfg()
+	for _, tCfg := range turnCfg {
+		if tCfg.Client != nil {
+			tCfg.Client.Close()
+		}
+		if tCfg.TurnConn != nil {
+			tCfg.TurnConn.Close()
+		}
 	}
 	// close server connection
 	NmProxyServer.Server.Close()
@@ -64,7 +74,6 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 		p.Close()
 	}()
 	for {
-
 		// Read Packet
 		n, source, err := p.Server.ReadFromUDP(buffer)
 		if err != nil {
@@ -75,7 +84,6 @@ func (p *ProxyServer) Listen(ctx context.Context) {
 			continue
 		}
 		ProcessIncomingPacket(n, source.String(), buffer)
-
 	}
 
 }
@@ -87,14 +95,15 @@ func ProcessIncomingPacket(n int, source string, buffer []byte) {
 	var srcPeerKeyHash, dstPeerKeyHash string
 	n, srcPeerKeyHash, dstPeerKeyHash, err = packet.ExtractInfo(buffer, n)
 	if err != nil {
-		logger.Log(4, "proxy transport message not found: ", err.Error())
+		if nc_config.Netclient().Debug {
+			logger.Log(4, "proxy transport message not found: ", err.Error())
+		}
 		proxyTransportMsg = false
 	}
 	if proxyTransportMsg {
 		proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
-
 	handleMsgs(buffer, n, source)
 }
 

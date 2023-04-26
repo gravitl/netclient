@@ -63,7 +63,9 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	}
 	p.Config.PeerEndpoint = peerEndpoint
 	if t, ok := config.GetCfg().GetTurnCfg(server); ok && t.TurnConn != nil {
+		t.Mutex.RLock()
 		p.Config.TurnConn = t.TurnConn
+		t.Mutex.RUnlock()
 	} else {
 		p.Config.UsingTurn = false
 	}

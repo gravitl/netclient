@@ -244,7 +244,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
-			logger.Log(0, "failed to response with ACK to server", serverName)
+			logger.Log(0, "failed to response with ACK to server", serverName, err.Error())
 		}
 	case models.SignalHost:
 		turn.PeerSignalCh <- hostUpdate.Signal

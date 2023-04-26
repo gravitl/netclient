@@ -2,12 +2,12 @@ package turn
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,9 +38,7 @@ func Init(ctx context.Context, wg *sync.WaitGroup, turnCfgs []ncconfig.TurnConfi
 		wg.Add(1)
 		go startTurnListener(ctx, wg, turnCfgI.Server, resetCh)
 		wg.Add(1)
-		go addPeerListener(ctx, wg, turnCfgI.Server, resetCh)
-		wg.Add(1)
-		go createOrRefreshPermissions(ctx, wg, turnCfgI.Server)
+		go createOrRefreshPermissions(ctx, wg, turnCfgI.Server, resetCh)
 	}
 }
 
@@ -71,8 +69,13 @@ func startClient(server, turnDomain string, turnPort int) error {
 		conn.Close()
 		return err
 	}
+	err = client.Listen()
+	if err != nil {
+		return err
+	}
 
 	config.GetCfg().SetTurnCfg(server, models.TurnCfg{
+		Mutex:  &sync.RWMutex{},
 		Cfg:    cfg,
 		Client: client,
 	})
@@ -141,51 +144,9 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	return nil
 }
 
-// startTurnListener - start's turn client listener
-func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) (reset bool) {
-	defer wg.Done()
-	t, ok := config.GetCfg().GetTurnCfg(serverName)
-	if !ok {
-		return
-	}
-	stunMgsMap := make(map[string]struct{})
-	buf := make([]byte, 65535)
-	for {
-
-		n, from, err := t.Cfg.Conn.ReadFrom(buf)
-		if err != nil {
-			logger.Log(0, "exiting read loop: %s", err.Error())
-			return
-		}
-		handled, err := t.Client.HandleInbound(buf[:n], from)
-		if err != nil {
-			logger.Log(0, "------>read loop: %s", err.Error())
-			continue
-
-		}
-		if handled && stun.IsMessage(buf[:n]) {
-			msg := &stun.Message{Raw: buf[:n]}
-			if err := msg.Decode(); err != nil {
-				continue
-			}
-
-			if msg.Type.Class == stun.ClassErrorResponse && msg.Type.Method == stun.MethodRefresh {
-				txdID := base64.StdEncoding.EncodeToString(msg.TransactionID[:])
-				logger.Log(0, "turn refresh permission error encountered, send reset singal to turn client")
-				if _, ok := stunMgsMap[txdID]; ok {
-					delete(stunMgsMap, base64.StdEncoding.EncodeToString(msg.TransactionID[:]))
-					continue
-				}
-				stunMgsMap[txdID] = struct{}{}
-				resetCh <- struct{}{}
-
-			}
-		}
-	}
-}
-
-func listen(serverName string, turnConn net.PacketConn) {
+func listen(wg *sync.WaitGroup, serverName string, turnConn net.PacketConn) {
 	logger.Log(0, "-----> Starting Turn Listener: ", turnConn.LocalAddr().String(), serverName)
+	defer wg.Done()
 	buffer := make([]byte, packet.DefaultBodySize)
 	for {
 		n, addr, err := turnConn.ReadFrom(buffer)
@@ -197,13 +158,15 @@ func listen(serverName string, turnConn net.PacketConn) {
 	}
 }
 
-func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
+// startTurnListener - listens for incoming packets from peers
+func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
 	defer wg.Done()
 	defer logger.Log(0, "Closing turn conn: ", serverName)
 	t, ok := config.GetCfg().GetTurnCfg(serverName)
 	if !ok {
 		return
 	}
+	t.Mutex.Lock()
 	turnConn, err := allocateAddr(t.Client)
 	if err != nil {
 		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
@@ -211,14 +174,20 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 	}
 	t.TurnConn = turnConn
 	config.GetCfg().SetTurnCfg(serverName, t)
-	go func() {
+	t.Mutex.Unlock()
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
 		<-ctx.Done()
 		t, ok := config.GetCfg().GetTurnCfg(serverName)
-		if ok {
+		if ok && t.TurnConn != nil {
+			t.Mutex.Lock()
 			t.TurnConn.Close()
+			t.Mutex.Unlock()
 		}
-	}()
-	go listen(serverName, turnConn)
+	}(wg)
+	wg.Add(1)
+	go listen(wg, serverName, turnConn)
 	for {
 		select {
 		case <-ctx.Done():
@@ -228,19 +197,23 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 			if !ok {
 				continue
 			}
+			t.Mutex.Lock()
 			t.TurnConn.Close()
 			// reallocate addr and signal all the peers
 			logger.Log(0, "ReIntializing Turn Endpoint on server:", serverName)
 			if t.Client == nil {
+				t.Mutex.Unlock()
 				continue
 			}
 			turnConn, err := allocateAddr(t.Client)
 			if err != nil {
 				logger.Log(0, "failed to allocate addr on turn: ", err.Error())
-				return
+				t.Mutex.Unlock()
+				continue
 			}
 			t.TurnConn = turnConn
 			config.GetCfg().SetTurnCfg(serverName, t)
+			t.Mutex.Unlock()
 			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
 			for peerKey := range turnPeersMap {
 				err := SignalPeer(serverName, nm_models.Signal{
@@ -260,36 +233,55 @@ func addPeerListener(ctx context.Context, wg *sync.WaitGroup, serverName string,
 					config.GetCfg().ResetPeer(peerKey)
 				}
 			}
-			go listen(serverName, t.TurnConn)
+			wg.Add(1)
+			go listen(wg, serverName, t.TurnConn)
 
 		}
 	}
 }
 
-func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverName string) {
+// createOrRefreshPermissions - creates or refreshes's peer permission on turn server
+func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
 	defer wg.Done()
-	turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
-	ticker := time.NewTicker(time.Minute * 5)
+	ticker := time.NewTicker(time.Minute * 1)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			t, ok := config.GetCfg().GetTurnCfg(serverName)
-			if !ok || t.Client == nil {
+			if !ok || t.Client == nil || t.TurnConn == nil || t.Cfg.Conn == nil {
 				continue
 			}
-			for peerKey, cfg := range turnPeersMap {
+			t.Mutex.RLock()
+			addrs := []net.Addr{}
+			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+			for _, cfg := range turnPeersMap {
 				peerTurnEndpoint, err := net.ResolveUDPAddr("udp", cfg.PeerTurnAddr)
 				if err != nil {
 					continue
 				}
-				err = t.Client.CreatePermission(peerTurnEndpoint)
-				if err != nil {
-					logger.Log(0, "failed to refresh permission for peer: ", peerKey, err.Error())
+				addrs = append(addrs, peerTurnEndpoint)
+
+			}
+			if len(addrs) == 0 {
+				t.Mutex.RUnlock()
+				continue
+			}
+			err := t.Client.CreatePermission(addrs...)
+			if err != nil {
+				resfrshErrType := stun.NewType(stun.MethodRefresh, stun.ClassErrorResponse)
+				permissionErrType := stun.NewType(stun.MethodCreatePermission, stun.ClassErrorResponse)
+				logger.Log(0, "failed to refresh permission for peer: ", err.Error())
+				if strings.Contains(err.Error(), resfrshErrType.String()) ||
+					strings.Contains(err.Error(), permissionErrType.String()) ||
+					strings.Contains(err.Error(), "all retransmissions failed") {
+					logger.Log(0, "Resetting turn client....")
+					resetCh <- struct{}{}
 				}
 			}
+			t.Mutex.RUnlock()
 		}
 	}
-
 }

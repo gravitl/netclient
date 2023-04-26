@@ -22,6 +22,7 @@ var PeerSignalCh = make(chan nm_models.Signal, 50)
 // WatchPeerSignals - processes the peer signals for any turn updates from peers
 func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+	defer logger.Log(0, "Exiting Peer Signals Watcher...")
 	for {
 		select {
 		case <-ctx.Done():
@@ -76,6 +77,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 				// signal back to peer
 				// signal peer with the host relay addr for the peer
 				if hostTurnCfg, ok := config.GetCfg().GetTurnCfg(signal.Server); ok && hostTurnCfg.TurnConn != nil {
+					hostTurnCfg.Mutex.RLock()
 					err := SignalPeer(signal.Server, nm_models.Signal{
 						Server:            signal.Server,
 						FromHostPubKey:    signal.ToHostPubKey,
@@ -83,6 +85,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 						ToHostPubKey:      signal.FromHostPubKey,
 						Reply:             true,
 					})
+					hostTurnCfg.Mutex.RUnlock()
 					if err != nil {
 						logger.Log(0, "---> failed to signal peer: ", err.Error())
 						continue
@@ -94,6 +97,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
+// ShouldUseTurn - checks the nat type to check if peer needs to use turn for communication
 func ShouldUseTurn(natType string) bool {
 	return true
 	// if behind  DOUBLE or ASYM Nat type, allocate turn address for the host

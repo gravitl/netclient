@@ -44,9 +44,8 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			n, err := p.LocalConn.Read(buf)
 			if err != nil {
 				logger.Log(1, "error reading: ", err.Error())
-				continue
+				return
 			}
-
 			go func(n int, cfg models.Proxy) {
 				peerConnCfg := models.Conn{}
 				if p.Config.ProxyStatus {
