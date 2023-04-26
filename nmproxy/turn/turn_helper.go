@@ -99,7 +99,6 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 
 // ShouldUseTurn - checks the nat type to check if peer needs to use turn for communication
 func ShouldUseTurn(natType string) bool {
-	return true
 	// if behind  DOUBLE or ASYM Nat type, use turn to reach peer
 	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
 		return true
