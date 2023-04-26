@@ -82,6 +82,7 @@ func startClient(server, turnDomain string, turnPort int) error {
 		Mutex:  &sync.RWMutex{},
 		Cfg:    cfg,
 		Client: client,
+		Status: true,
 	})
 
 	return nil
@@ -174,9 +175,11 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 	turnConn, err := allocateAddr(t.Client)
 	if err != nil {
 		logger.Log(0, "failed to allocate addr on turn: ", err.Error())
-		return
+		t.Status = false
+	} else {
+		t.TurnConn = turnConn
+		t.Status = true
 	}
-	t.TurnConn = turnConn
 	config.GetCfg().SetTurnCfg(serverName, t)
 	t.Mutex.Unlock()
 	wg.Add(1)
@@ -190,8 +193,11 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			t.Mutex.Unlock()
 		}
 	}(wg)
-	wg.Add(1)
-	go listen(wg, serverName, turnConn)
+	if t.Status {
+		wg.Add(1)
+		go listen(wg, serverName, turnConn)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -212,10 +218,20 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			turnConn, err := allocateAddr(t.Client)
 			if err != nil {
 				logger.Log(0, "failed to allocate addr on turn: ", err.Error())
+				t.Status = false
+				config.GetCfg().SetTurnCfg(serverName, t)
+				go func() {
+					// need to retry to allocate addr again on turn server
+					time.Sleep(time.Second * 30)
+					if resetCh != nil {
+						resetCh <- struct{}{}
+					}
+				}()
 				t.Mutex.Unlock()
 				continue
 			}
 			t.TurnConn = turnConn
+			t.Status = true
 			config.GetCfg().SetTurnCfg(serverName, t)
 			t.Mutex.Unlock()
 			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
@@ -239,7 +255,6 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			}
 			wg.Add(1)
 			go listen(wg, serverName, t.TurnConn)
-
 		}
 	}
 }
@@ -255,7 +270,13 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 			return
 		case <-ticker.C:
 			t, ok := config.GetCfg().GetTurnCfg(serverName)
-			if !ok || t.Client == nil || t.TurnConn == nil || t.Cfg.Conn == nil {
+			if !ok {
+				return
+			}
+			if t.Client == nil || t.TurnConn == nil || t.Cfg.Conn == nil {
+				continue
+			}
+			if !t.Status {
 				continue
 			}
 			t.Mutex.RLock()

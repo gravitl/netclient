@@ -287,6 +287,13 @@ func (c *Config) SetTurnCfg(server string, t models.TurnCfg) {
 	c.ifaceConfig.hostTurnCfg[server] = t
 }
 
+// Config.DeleteTurnCfg - sets the turn config
+func (c *Config) DeleteTurnCfg(server string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	delete(c.ifaceConfig.hostTurnCfg, server)
+}
+
 func (c *Config) UpdatePeerTurnAddr(server, peerKey string, addr string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()

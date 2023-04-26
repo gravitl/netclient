@@ -90,6 +90,7 @@ type TurnCfg struct {
 	Cfg      *turn.ClientConfig
 	Client   *turn.Client
 	TurnConn net.PacketConn
+	Status   bool
 }
 
 type TurnPeerCfg struct {
