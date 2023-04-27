@@ -185,7 +185,7 @@ func pull(c *gin.Context) {
 
 func nodePeers(c *gin.Context) {
 	node := config.Node{}
-	if err := c.BindJSON(node); err != nil {
+	if err := c.BindJSON(&node); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
 		return
 	}

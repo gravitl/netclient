@@ -2,10 +2,7 @@ package main
 
 import (
 	"embed"
-	"fmt"
 
-	"github.com/gravitl/netclient/config"
-	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -23,13 +20,11 @@ var appIcon = GetFileAsBytes("./appicon.png")
 var version = "v0.18.8"
 
 func main() {
-	flags := viper.New()
-	config.InitConfig(flags)
-	config.SetVersion(version)
-	fmt.Printf("wails: netclient version set to: %s\n", version)
 
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
+	guiApp.GoGetNetclientConfig()
+	guiApp.GoGetKnownNetworks()
 
 	// Application menu
 	appMenu := GetAppMenu(guiApp)

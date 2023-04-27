@@ -3,9 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
+	"os"
 
-	"github.com/gravitl/netclient/functions"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -67,14 +66,6 @@ func (a *App) uninstallApp(callbackData *menu.CallbackData) {
 	if res != "Yes" {
 		return
 	}
-
-	errs, err := functions.Uninstall()
-	if err != nil {
-		var errString strings.Builder
-		for _, err := range errs {
-			errString.WriteString(err.Error() + ", ")
-		}
-
-		a.GoOpenDialogue(runtime.ErrorDialog, "An error occured whiles uninstalling.\n"+errString.String(), "Error unintstalling")
-	}
+	a.GoUninstall()
+	os.Exit(0)
 }

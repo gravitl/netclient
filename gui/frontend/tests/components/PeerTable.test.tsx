@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe } from "vitest";
 import PeersTable from "../../src/components/PeersTable";
-import { Peer } from "../../src/models/Peer";
+import { PeerConfig } from "../../src/models/Peer";
 
 import {
   byteArrayToString,
@@ -9,7 +9,7 @@ import {
   extractPeerPublicEndpoint,
 } from "../../src/utils/peers";
 
-const mockPeers: Peer[] = [
+const mockPeers: PeerConfig[] = [
   {
     AllowedIPs: [{ IP: "10.0.0.124", Mask: "//w+" }],
     Endpoint: {

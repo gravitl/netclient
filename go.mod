@@ -38,7 +38,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
-
 	github.com/bytedance/sonic v1.8.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/docker/distribution v2.8.1+incompatible // indirect
