@@ -44,7 +44,7 @@ export namespace config {
 	    traffickeyprivate: number[];
 	    // // Go type: net.UDPAddr
 	    // internetgateway: any;
-	    peers: {[key: string]: Peer[]};
+	    peers: {[key: string]: PeerConfig[]};
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -244,7 +244,7 @@ export namespace main {
 	    traffickeyprivate: number[];
 	    // // Go type: net.UDPAddr
 	    // internetgateway: any;
-	    peers: {[key: string]: Peer[]};
+	    peers: {[key: string]: PeerConfig[]};
 	    macaddressstr: string;
 	
 	    static createFrom(source: any = {}) {
