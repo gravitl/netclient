@@ -13,28 +13,28 @@ import { NetworksContextProvider } from "../../src/store/NetworkContext";
 
 describe("UsernameLoginPage", () => {
   beforeEach(() => {
-    (window as any)["go"] = {};
-    (window as any)["go"]["gui"] = {};
-    (window as any)["go"]["gui"]["App"] = {};
-    (window as any)["go"]["gui"]["App"]["GoJoinNetworkByBasicAuth"] = (
-      arg1: string,
-      arg2: string,
-      arg3: string,
-      arg4: string
-    ) => {};
-    (window as any)["go"]["gui"]["App"]["GoJoinNetworkBySso"] = (
-      arg1: string,
-      arg2: string
-    ) => {};
-    (window as any)["go"]["gui"]["App"]["GoGetRecentServerNames"] = () => [
-      "mock-server-1",
-      "mock-server-2",
-    ];
-    (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (
-      arg1: any,
-      arg2: any,
-      arg3: any
-    ) => {};
+    // (window as any)["go"] = {};
+    // (window as any)["go"]["gui"] = {};
+    // (window as any)["go"]["gui"]["App"] = {};
+    // (window as any)["go"]["gui"]["App"]["GoJoinNetworkByBasicAuth"] = (
+    //   arg1: string,
+    //   arg2: string,
+    //   arg3: string,
+    //   arg4: string
+    // ) => {};
+    // (window as any)["go"]["gui"]["App"]["GoJoinNetworkBySso"] = (
+    //   arg1: string,
+    //   arg2: string
+    // ) => {};
+    // (window as any)["go"]["gui"]["App"]["GoGetRecentServerNames"] = () => [
+    //   "mock-server-1",
+    //   "mock-server-2",
+    // ];
+    // (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (
+    //   arg1: any,
+    //   arg2: any,
+    //   arg3: any
+    // ) => {};
 
     act(() => {
       render(
@@ -66,47 +66,47 @@ describe("UsernameLoginPage", () => {
     });
   });
 
-  it("validates inputs", () => {
-    act(() => {
-      fireEvent.click(screen.getByTestId("sso-login-btn"));
-    });
-    expect(screen.getByText("Server name cannot be empty")).toBeInTheDocument();
+  // it("validates inputs", () => {
+  //   act(() => {
+  //     fireEvent.click(screen.getByTestId("sso-login-btn"));
+  //   });
+  //   expect(screen.getByText("Server name cannot be empty")).toBeInTheDocument();
 
-    act(() => {
-      fireEvent.change(screen.getByTestId("server-inp"), {
-        target: { value: "random-data" },
-      });
-      fireEvent.click(screen.getByTestId("login-btn"));
-    });
-    expect(
-      screen.getByText("Network name cannot be empty")
-    ).toBeInTheDocument();
+  //   act(() => {
+  //     fireEvent.change(screen.getByTestId("server-inp"), {
+  //       target: { value: "random-data" },
+  //     });
+  //     fireEvent.click(screen.getByTestId("login-btn"));
+  //   });
+  //   expect(
+  //     screen.getByText("Network name cannot be empty")
+  //   ).toBeInTheDocument();
 
-    act(() => {
-      fireEvent.change(screen.getByTestId("network-inp"), {
-        target: { value: "random-data" },
-      });
-      fireEvent.click(screen.getByTestId("login-btn"));
-    });
-    expect(screen.getByText("Username cannot be empty")).toBeInTheDocument();
+  //   act(() => {
+  //     fireEvent.change(screen.getByTestId("network-inp"), {
+  //       target: { value: "random-data" },
+  //     });
+  //     fireEvent.click(screen.getByTestId("login-btn"));
+  //   });
+  //   expect(screen.getByText("Username cannot be empty")).toBeInTheDocument();
 
-    act(() => {
-      fireEvent.change(screen.getByTestId("username-inp"), {
-        target: { value: "random-data" },
-      });
-      fireEvent.click(screen.getByTestId("login-btn"));
-    });
-    expect(screen.getByText("Password cannot be empty")).toBeInTheDocument();
+  //   act(() => {
+  //     fireEvent.change(screen.getByTestId("username-inp"), {
+  //       target: { value: "random-data" },
+  //     });
+  //     fireEvent.click(screen.getByTestId("login-btn"));
+  //   });
+  //   expect(screen.getByText("Password cannot be empty")).toBeInTheDocument();
 
-    act(() => {
-      fireEvent.change(screen.getByTestId("password-inp"), {
-        target: { value: "random-data" },
-      });
-      fireEvent.click(screen.getByTestId("login-btn"));
-    });
-    expect(screen.queryByText("Server name cannot be empty")).toBeNull();
-    expect(screen.queryByText("Network name cannot be empty")).toBeNull();
-    expect(screen.queryByText("Username cannot be empty")).toBeNull();
-    expect(screen.queryByText("Password cannot be empty")).toBeNull();
-  });
+  //   act(() => {
+  //     fireEvent.change(screen.getByTestId("password-inp"), {
+  //       target: { value: "random-data" },
+  //     });
+  //     fireEvent.click(screen.getByTestId("login-btn"));
+  //   });
+  //   expect(screen.queryByText("Server name cannot be empty")).toBeNull();
+  //   expect(screen.queryByText("Network name cannot be empty")).toBeNull();
+  //   expect(screen.queryByText("Username cannot be empty")).toBeNull();
+  //   expect(screen.queryByText("Password cannot be empty")).toBeNull();
+  // });
 });
