@@ -10,16 +10,6 @@ import { main } from "../../wailsjs/go/models";
 
 describe("NetworkDetailsPage", () => {
   beforeEach(() => {
-    (window as any)["go"] = {};
-    (window as any)["go"]["gui"] = {};
-    (window as any)["go"]["gui"]["App"] = {};
-    (window as any)["go"]["gui"]["App"]["GoGetKnownNetworks"] = () => [];
-    (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (
-      arg1: any,
-      arg2: any,
-      arg3: any
-    ) => {};
-
     act(() => {
       render(
         <NetworksContextProvider>

@@ -6,26 +6,8 @@ import { writeTextToClipboard } from "../src/utils/browser";
 import { getUserConfirmation, notifyUser } from "../src/utils/messaging";
 import { getNetworkDetailsPageUrl } from "../src/utils/networks";
 import { extractPeerPrivateEndpoints, extractPeerPublicEndpoint } from "../src/utils/peers";
+import { MOCK_CHOICE, setupMocks } from "./tests";
 
-function setupMocks() {
-  (window as any)["go"] = {};
-  (window as any)["go"]["gui"] = {};
-  (window as any)["go"]["gui"]["App"] = {};
-  (window as any)["go"]["gui"]["App"]["GoGetKnownNetworks"] = () => [];
-  (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (
-    arg1: any,
-    arg2: any,
-    arg3: any
-  ) => {
-    return new Promise((resolve, reject) => {
-      resolve(MOCK_CHOICE);
-    });
-  };
-  (window as any)["go"]["gui"]["App"]["GoWriteToClipboard"] = (text: string) =>
-    Promise.resolve(text);
-}
-
-const MOCK_CHOICE = "mock-choice";
 describe("networks utility functions", () => {
   beforeEach(() => {
     setupMocks();
