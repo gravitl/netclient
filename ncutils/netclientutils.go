@@ -235,6 +235,26 @@ func GetFreePort(rangestart int) (int, error) {
 	return rangestart, errors.New("no free ports")
 }
 
+// GetFreeTCPPort - gets free TCP port
+func GetFreeTCPPort(rangestart int) (int, error) {
+	addr := net.TCPAddr{}
+	if rangestart == 0 {
+		rangestart = NetclientDefaultPort
+	}
+	for x := rangestart; x <= 65535; x++ {
+		addr.Port = x
+		conn, err := net.ListenTCP("tcp", &addr)
+		if err != nil {
+			log.Println("Error listening: ", x, err)
+			continue
+		}
+		defer conn.Close()
+		log.Println("--- free port found: ", x, "---")
+		return x, nil
+	}
+	return rangestart, errors.New("no free ports")
+}
+
 // == OS PATH FUNCTIONS ==
 
 // GetHomeDirWindows - gets home directory in windows

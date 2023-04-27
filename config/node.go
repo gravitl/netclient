@@ -100,7 +100,12 @@ func WriteNodeConfig() error {
 	file := GetNetclientPath() + "nodes.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
-			os.MkdirAll(GetNetclientPath(), os.ModePerm)
+			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+				return err
+			}
+			if err := os.Chmod(GetNetclientPath(), 0x775); err != nil {
+				logger.Log(0, "error setting permissions on "+GetNetclientPath(), err.Error())
+			}
 		} else if err != nil {
 			return err
 		}
