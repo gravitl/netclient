@@ -546,7 +546,7 @@ func CheckConfig() {
 		saveRequired = true
 	}
 	// check for nftables present if on Linux
-	if netclient.FirewallInUse == "" {
+	if FirewallHasChanged() {
 		saveRequired = true
 		SetFirewall()
 	}
@@ -712,7 +712,7 @@ func SetFirewall() {
 
 // FirewallHasChanged - checks if the firewall has changed
 func FirewallHasChanged() bool {
-	if netclient.FirewallInUse == models.FIREWALL_NONE && ncutils.IsLinux() {
+	if netclient.FirewallInUse == models.FIREWALL_NONE && !ncutils.IsLinux() {
 		return false
 	}
 	if netclient.FirewallInUse == models.FIREWALL_IPTABLES && ncutils.IsIPTablesPresent() {

@@ -63,7 +63,11 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 func checkin() {
 	// check/update host settings; publish if changed
 	if err := UpdateHostSettings(); err != nil {
-		logger.Log(0, "checkin", err.Error())
+		logger.Log(0, "failed to update host settings", err.Error())
+		return
+	}
+	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
+		logger.Log(0, "error publishing checkin", err.Error())
 		return
 	}
 }
