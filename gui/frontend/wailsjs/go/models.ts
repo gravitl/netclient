@@ -1,4 +1,4 @@
-import { Peer } from "../../src/models/Peer";
+import { PeerConfig } from "../../src/models/Peer";
 
 export namespace config {
 	
