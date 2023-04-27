@@ -13,29 +13,6 @@ import { NetworksContextProvider } from "../../src/store/NetworkContext";
 
 describe("UsernameLoginPage", () => {
   beforeEach(() => {
-    // (window as any)["go"] = {};
-    // (window as any)["go"]["gui"] = {};
-    // (window as any)["go"]["gui"]["App"] = {};
-    // (window as any)["go"]["gui"]["App"]["GoJoinNetworkByBasicAuth"] = (
-    //   arg1: string,
-    //   arg2: string,
-    //   arg3: string,
-    //   arg4: string
-    // ) => {};
-    // (window as any)["go"]["gui"]["App"]["GoJoinNetworkBySso"] = (
-    //   arg1: string,
-    //   arg2: string
-    // ) => {};
-    // (window as any)["go"]["gui"]["App"]["GoGetRecentServerNames"] = () => [
-    //   "mock-server-1",
-    //   "mock-server-2",
-    // ];
-    // (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (
-    //   arg1: any,
-    //   arg2: any,
-    //   arg3: any
-    // ) => {};
-
     act(() => {
       render(
         <NetworksContextProvider>
