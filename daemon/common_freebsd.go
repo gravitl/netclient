@@ -23,7 +23,7 @@ func install() error {
 		if err := os.MkdirAll("/etc/netclient", 0775); err != nil {
 			return err
 		}
-		if err := os.Chmod(GetNetclientPath(), 0x775); err != nil {
+		if err := os.Chmod(config.GetNetclientPath(), 0775); err != nil {
 			logger.Log(0, "error updating permissions for /etc/netclient", err.Error())
 		}
 	} else if err != nil {
