@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"log"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -23,6 +24,9 @@ func main() {
 
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
+	if err := guiApp.GoGetStatus(); err != nil {
+		log.Fatal(err)
+	}
 	guiApp.GoGetNetclientConfig()
 	guiApp.GoGetKnownNetworks()
 

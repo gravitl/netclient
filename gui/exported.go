@@ -3,8 +3,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
@@ -17,6 +19,17 @@ import (
 const url = "http://localhost:8090"
 
 var headers []httpclient.Header
+
+// App.GoGetStatus returns the status of the netclient http server
+func (app *App) GoGetStatus() error {
+	// set timeout to low value
+	httpclient.Client.Timeout = 5 * time.Second
+	_, err := httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
+	if err != nil {
+		return errors.New("netclient http server is not running")
+	}
+	return nil
+}
 
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {

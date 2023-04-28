@@ -41,6 +41,7 @@ func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 // SetupRoute - sets routes for http server
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
+	router.GET("/status", status)
 	router.POST("/register", register)
 	router.GET("/network/:net", getNetwork)
 	router.GET("/allnetworks", getAllNetworks)
@@ -52,6 +53,10 @@ func SetupRouter() *gin.Engine {
 	router.GET("/pull/:net", pull)
 	router.POST("nodepeers", nodePeers)
 	return router
+}
+
+func status(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func register(c *gin.Context) {
