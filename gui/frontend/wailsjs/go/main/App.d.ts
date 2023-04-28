@@ -38,3 +38,5 @@ export function GoUninstall():Promise<any>;
 export function GoUpdateNetclientConfig(arg1:config.Config):Promise<any>;
 
 export function GoWriteToClipboard(arg1:string):Promise<any>;
+
+export function GoGetStatus():Promise<any>;

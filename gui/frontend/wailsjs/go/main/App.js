@@ -65,3 +65,7 @@ export function GoUpdateNetclientConfig(arg1) {
 export function GoWriteToClipboard(arg1) {
   return window['go']['main']['App']['GoWriteToClipboard'](arg1);
 }
+
+export function GoGetStatus() {
+  return window['go']['main']['App']['GoGetStatus']();
+}
