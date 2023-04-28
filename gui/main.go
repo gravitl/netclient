@@ -24,6 +24,7 @@ var version = "v0.18.8"
 var url = "http://127.0.0.1:8090"
 
 func main() {
+	logger.Log(3, "starting netclient-gui", version)
 	http, err := config.ReadGUIConfig()
 	if err != nil {
 		logger.FatalLog("error reading gui config", err.Error())
