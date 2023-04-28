@@ -21,7 +21,7 @@ var appIcon = GetFileAsBytes("./appicon.png")
 var version = "v0.18.8"
 
 func main() {
-
+	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
 	if err := guiApp.GoGetStatus(); err != nil {
