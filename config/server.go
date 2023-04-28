@@ -168,12 +168,16 @@ func GetAllTurnConfigs() (turnList []TurnConfig) {
 	turnMap := make(map[string]struct{})
 	for _, serverName := range GetServers() {
 		server := GetServer(serverName)
+		if !server.UseTurn {
+			continue
+		}
 		if _, ok := turnMap[server.TurnDomain]; !ok {
 			turnList = append(turnList, TurnConfig{
 				Server: serverName,
 				Domain: server.TurnDomain,
 				Port:   server.TurnPort,
 			})
+			turnMap[server.TurnDomain] = struct{}{}
 		}
 	}
 	return
