@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -22,14 +21,14 @@ type Network struct {
 
 func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-	port, err := ncutils.GetFreeTCPPort(8000)
+	port, err := ncutils.GetFreeTCPPort()
 	if err != nil {
 		logger.Log(0, "failed to get free port", err.Error())
 		logger.Log(0, "unable to start http server", "exiting")
 		logger.Log(0, "netclient-gui will not be available")
 		return
 	}
-	config.SetGUI("127.0.0.1", strconv.Itoa(port))
+	config.SetGUI("127.0.0.1", port)
 	config.WriteGUIConfig()
 
 	router := SetupRouter()
@@ -37,7 +36,7 @@ func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 		Addr:    config.GetGUI().Address + ":" + config.GetGUI().Port,
 		Handler: router,
 	}
-	logger.Log(3, "starting http server on port ", strconv.Itoa(port))
+	logger.Log(3, "starting http server on port ", port)
 	go func() {
 		if err := svr.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Log(0, "https server err", err.Error())

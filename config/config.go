@@ -215,7 +215,7 @@ func WriteNetclientConfig() error {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
 				logger.Log(0, "error creating netclient config directory", err.Error())
 			}
-			if err := os.Chmod(GetNetclientPath(), 0x775); err != nil {
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
 				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
 			}
 		} else if err != nil {
@@ -432,7 +432,7 @@ func InitConfig(viper *viper.Viper) {
 			if err := os.Mkdir(GetNetclientPath(), os.ModePerm); err != nil {
 				logger.Log(0, "failed to create dirs", err.Error())
 			}
-			if err := os.Chmod(GetNetclientPath(), 0x775); err != nil {
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
 				logger.Log(0, "failed to update permissions of netclient config dir", err.Error())
 			}
 		} else {
@@ -563,7 +563,7 @@ func CheckConfig() {
 		if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
 			logger.Log(0, "failed to create /etc/netclient", err.Error())
 		}
-		if err := os.Chmod(GetNetclientPath(), 0x775); err != nil {
+		if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
 			logger.Log(0, "failed to chmod /etc/netclient", err.Error())
 		}
 		if _, err := os.Create(GetNetclientPath() + "netmaker.conf"); err != nil {

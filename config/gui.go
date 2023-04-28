@@ -8,10 +8,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// GUILockeFile lockfile for controlling access to gui config file on disk
 const GUILockFile = "gui.lock"
 
+// Gui - in memory gui configuration
 var gui Gui
 
+// Gui - gui configuration
 type Gui struct {
 	Address string
 	Port    string

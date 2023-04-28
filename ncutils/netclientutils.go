@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -236,23 +237,18 @@ func GetFreePort(rangestart int) (int, error) {
 }
 
 // GetFreeTCPPort - gets free TCP port
-func GetFreeTCPPort(rangestart int) (int, error) {
-	addr := net.TCPAddr{}
-	if rangestart == 0 {
-		rangestart = NetclientDefaultPort
+func GetFreeTCPPort() (string, error) {
+	addr := net.TCPAddr{
+		IP: net.ParseIP("127.0.0.1"),
 	}
-	for x := rangestart; x <= 65535; x++ {
-		addr.Port = x
-		conn, err := net.ListenTCP("tcp", &addr)
-		if err != nil {
-			log.Println("Error listening: ", x, err)
-			continue
-		}
-		defer conn.Close()
-		log.Println("--- free port found: ", x, "---")
-		return x, nil
+	conn, err := net.ListenTCP("tcp", &addr)
+	if err != nil {
+		return "", err
 	}
-	return rangestart, errors.New("no free ports")
+	defer conn.Close()
+	x := strconv.Itoa(conn.Addr().(*net.TCPAddr).Port)
+	log.Println("--- free port found: ", x, "---")
+	return x, nil
 }
 
 // == OS PATH FUNCTIONS ==

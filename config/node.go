@@ -103,7 +103,7 @@ func WriteNodeConfig() error {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
 				return err
 			}
-			if err := os.Chmod(GetNetclientPath(), 0x775); err != nil {
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
 				logger.Log(0, "error setting permissions on "+GetNetclientPath(), err.Error())
 			}
 		} else if err != nil {
