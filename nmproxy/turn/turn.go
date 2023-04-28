@@ -262,7 +262,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 // createOrRefreshPermissions - creates or refreshes's peer permission on turn server
 func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
 	defer wg.Done()
-	ticker := time.NewTicker(time.Minute * 1)
+	ticker := time.NewTicker(time.Minute * 2)
 	defer ticker.Stop()
 	for {
 		select {
@@ -303,6 +303,7 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 					strings.Contains(err.Error(), permissionErrType.String()) ||
 					strings.Contains(err.Error(), "all retransmissions failed") {
 					logger.Log(0, "Resetting turn client....")
+
 					resetCh <- struct{}{}
 				}
 			}
