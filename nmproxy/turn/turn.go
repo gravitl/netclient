@@ -129,7 +129,7 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	logger.Log(4, fmt.Sprintf("-------> Sending Signal to Peer: %+v", signal))
+	logger.Log(4, fmt.Sprintf("Sending Signal to Peer: %+v", signal))
 	endpoint := httpclient.JSONEndpoint[nm_models.Signal, nm_models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/host/%s/signalpeer", ncconfig.Netclient().ID.String()),
@@ -150,7 +150,7 @@ func SignalPeer(serverName string, signal nm_models.Signal) error {
 }
 
 func listen(wg *sync.WaitGroup, serverName string, turnConn net.PacketConn) {
-	logger.Log(0, "-----> Starting Turn Listener: ", turnConn.LocalAddr().String(), serverName)
+	logger.Log(0, "Starting Turn Listener: ", turnConn.LocalAddr().String(), serverName)
 	defer wg.Done()
 	buffer := make([]byte, packet.DefaultBodySize)
 	for {
@@ -210,7 +210,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			t.Mutex.Lock()
 			t.TurnConn.Close()
 			// reallocate addr and signal all the peers
-			logger.Log(0, "ReIntializing Turn Endpoint on server:", serverName)
+			logger.Log(0, "## Reintializing Turn Endpoint on server:", serverName)
 			if t.Client == nil {
 				t.Mutex.Unlock()
 				continue
@@ -243,11 +243,11 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 					ToHostPubKey:      peerKey,
 				})
 				if err != nil {
-					logger.Log(0, "---> failed to signal peer: ", err.Error())
+					logger.Log(0, "failed to signal peer: ", err.Error())
 					continue
 				}
 				if conn, ok := config.GetCfg().GetPeer(peerKey); ok {
-					logger.Log(0, "------> Resetting Peer Conn: ", peerKey)
+					logger.Log(0, "Resetting Peer Conn: ", peerKey)
 					conn.Config.TurnConn = turnConn
 					config.GetCfg().UpdatePeer(&conn)
 					config.GetCfg().ResetPeer(peerKey)

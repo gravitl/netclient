@@ -254,6 +254,7 @@ func setupMQTT(server *config.Server) error {
 	} else {
 		logger.Log(0, "published host turn register signal to server:", server.Server)
 	}
+
 	return nil
 }
 

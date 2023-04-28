@@ -42,7 +42,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 				// reset
 				if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 					if conn.Config.UsingTurn && t.PeerTurnAddr != signal.TurnRelayEndpoint {
-						logger.Log(0, fmt.Sprintf("-------> Turn Peer Addr Has Been Changed From %s to %s", t.PeerTurnAddr, signal.TurnRelayEndpoint))
+						logger.Log(0, fmt.Sprintf("Turn Peer Addr Has Been Changed From %s to %s", t.PeerTurnAddr, signal.TurnRelayEndpoint))
 						config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
 						conn.Config.PeerEndpoint = peerTurnEndpoint
 						config.GetCfg().UpdatePeer(&conn)
@@ -87,7 +87,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 					})
 					hostTurnCfg.Mutex.RUnlock()
 					if err != nil {
-						logger.Log(0, "---> failed to signal peer: ", err.Error())
+						logger.Log(0, "failed to signal peer: ", err.Error())
 						continue
 					}
 				}

@@ -402,9 +402,9 @@ func (m *proxyPayload) peerUpdate() error {
 			shouldUseProxy = true
 		}
 		if !isRelayed && turn.ShouldUseTurn(config.GetCfg().HostInfo.NatType) && turn.ShouldUseTurn(peerConf.NatType) {
-			go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf) {
-				var err error
-				if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {
+			if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {
+				go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, t models.TurnCfg) {
+					var err error
 					// signal peer with the host relay addr for the peer
 					peerTurnCfg, ok := config.GetCfg().GetPeerTurnCfg(m.Server, peer.PublicKey.String())
 					if !ok {
@@ -426,10 +426,11 @@ func (m *proxyPayload) peerUpdate() error {
 						logger.Log(0, "---> failed to signal peer: ", err.Error())
 
 					}
-				}
 
-			}(m.Server, peerI, peerConf)
-			continue
+				}(m.Server, peerI, peerConf, t)
+				continue
+			}
+
 		}
 		if shouldUseProxy {
 			peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo, false)
