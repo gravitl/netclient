@@ -144,7 +144,7 @@ func (c *Config) RemovePeer(peerPubKey string) {
 
 		logger.Log(0, "----> Deleting Peer from proxy: ", peerConf.Key.String())
 		peerConf.Mutex.Lock()
-		peerConf.StopConn(false)
+		peerConf.StopConn()
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())

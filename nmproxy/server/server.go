@@ -39,7 +39,7 @@ func (p *ProxyServer) Close() {
 	// clean up proxy connections
 	for _, peerI := range config.GetCfg().GetAllProxyPeers() {
 		peerI.Mutex.Lock()
-		peerI.StopConn(false)
+		peerI.StopConn()
 		peerI.Mutex.Unlock()
 		config.GetCfg().DeletePeerTurnCfg(peerI.Key.String())
 	}

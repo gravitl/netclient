@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/nmproxy/common"
-	proxy_models "github.com/gravitl/netclient/nmproxy/models"
+	proxyModels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -23,11 +23,11 @@ var (
 
 // Config - struct for proxy config
 type Config struct {
-	HostInfo                proxy_models.HostInfo
+	HostInfo                proxyModels.HostInfo
 	ProxyStatus             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
-	settings                map[string]proxy_models.Settings // host settings per server
+	settings                map[string]proxyModels.Settings // host settings per server
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
 	serverConn              *net.UDPConn
@@ -48,14 +48,14 @@ func InitializeCfg() {
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:        nil,
-			turnPeerMap:  make(map[string]map[string]proxy_models.TurnPeerCfg),
-			hostTurnCfg:  make(map[string]proxy_models.TurnCfg),
-			proxyPeerMap: make(proxy_models.PeerConnMap),
-			peerHashMap:  make(map[string]*proxy_models.RemotePeer),
-			relayPeerMap: make(map[string]map[string]*proxy_models.RemotePeer),
+			turnPeerMap:  make(map[string]map[string]proxyModels.TurnPeerCfg),
+			hostTurnCfg:  make(map[string]proxyModels.TurnCfg),
+			proxyPeerMap: make(proxyModels.PeerConnMap),
+			peerHashMap:  make(map[string]*proxyModels.RemotePeer),
+			relayPeerMap: make(map[string]map[string]*proxyModels.RemotePeer),
 			allPeersConf: make(map[string]models.HostPeerMap),
 		},
-		settings: make(map[string]proxy_models.Settings),
+		settings: make(map[string]proxyModels.Settings),
 	}
 }
 
@@ -65,7 +65,7 @@ func (c *Config) IsProxyRunning() bool {
 }
 
 // Config.SetHostInfo - sets host info
-func (c *Config) SetHostInfo(hostInfo proxy_models.HostInfo) {
+func (c *Config) SetHostInfo(hostInfo proxyModels.HostInfo) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.HostInfo = hostInfo
@@ -97,7 +97,7 @@ func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
 }
 
 // Config.GetHostInfo - gets the host info
-func (c *Config) GetHostInfo() proxy_models.HostInfo {
+func (c *Config) GetHostInfo() proxyModels.HostInfo {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.HostInfo
@@ -114,17 +114,17 @@ func GetCfg() *Config {
 }
 
 // Config.GetSettings - fetches host settings
-func (c *Config) GetSettings(server string) proxy_models.Settings {
+func (c *Config) GetSettings(server string) proxyModels.Settings {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	if settings, ok := c.settings[server]; ok {
 		return settings
 	}
-	return proxy_models.Settings{}
+	return proxyModels.Settings{}
 }
 
 // Config.UpdateSettings - updates network settings
-func (c *Config) UpdateSettings(server string, settings proxy_models.Settings) {
+func (c *Config) UpdateSettings(server string, settings proxyModels.Settings) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.settings[server] = settings

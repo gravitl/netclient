@@ -44,7 +44,7 @@ type Conn struct {
 	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
 	Config          Proxy
-	StopConn        func(bool)
+	StopConn        func()
 	ResetConn       func()
 	LocalConn       net.Conn
 	Mutex           *sync.RWMutex

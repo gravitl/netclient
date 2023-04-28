@@ -91,7 +91,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 // Proxy.Reset - resets peer's conn
 func (p *Proxy) Reset() {
 	logger.Log(0, "Resetting proxy connection for peer: ", p.Config.PeerPublicKey.String())
-	p.Close(true)
+	p.Close()
 	if p.Config.PeerEndpoint == nil {
 		return
 	}

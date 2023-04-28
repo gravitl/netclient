@@ -49,7 +49,7 @@ func (p *Proxy) Start() error {
 }
 
 // Proxy.Close - removes peer conn from proxy and closes all the opened connections locally
-func (p *Proxy) Close(reset bool) {
+func (p *Proxy) Close() {
 	logger.Log(0, "------> Closing Proxy for ", p.Config.PeerPublicKey.String())
 	p.Cancel()
 	p.LocalConn.Close()
