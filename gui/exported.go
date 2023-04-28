@@ -21,14 +21,14 @@ const url = "http://localhost:8090"
 var headers []httpclient.Header
 
 // App.GoGetStatus returns the status of the netclient http server
-func (app *App) GoGetStatus() error {
+func (app *App) GoGetStatus() (any, error) {
 	// set timeout to low value
 	httpclient.Client.Timeout = 5 * time.Second
 	_, err := httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
 	if err != nil {
-		return errors.New("netclient http server is not running")
+		return nil, errors.New("netclient http server is not running")
 	}
-	return nil
+	return nil, nil
 }
 
 // App.GoGetKnownNetworks returns all known network configs (node, server)
