@@ -50,6 +50,7 @@ func Pull() error {
 	if internetGateway != nil && err != nil {
 		config.Netclient().InternetGateway = *internetGateway
 	}
+	_ = config.WriteServerConfig()
 	_ = config.WriteNetclientConfig()
 	logger.Log(3, "restarting daemon")
 	return daemon.Restart()
