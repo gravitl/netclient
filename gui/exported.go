@@ -14,8 +14,6 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const url = "http://localhost:8090"
-
 var headers []httpclient.Header
 
 // App.GoGetKnownNetworks returns all known network configs (node, server)

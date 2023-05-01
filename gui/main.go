@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -19,8 +21,15 @@ var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.18.8"
 
-func main() {
+var url = "http://127.0.0.1:8090"
 
+func main() {
+	logger.Log(3, "starting netclient-gui", version)
+	http, err := config.ReadGUIConfig()
+	if err != nil {
+		logger.FatalLog("error reading gui config", err.Error())
+	}
+	url = "http://" + http.Address + ":" + http.Port
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
 	guiApp.GoGetNetclientConfig()
@@ -58,7 +67,7 @@ func main() {
 	}
 
 	// Create application with options
-	err := wails.Run(appOptions)
+	err = wails.Run(appOptions)
 
 	if err != nil {
 		println("Error:", err.Error())

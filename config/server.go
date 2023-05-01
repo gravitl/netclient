@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"gopkg.in/yaml.v3"
 )
@@ -70,7 +71,12 @@ func WriteServerConfig() error {
 	file := GetNetclientPath() + "servers.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
-			os.MkdirAll(GetNetclientPath(), os.ModePerm)
+			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+				return err
+			}
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+				logger.Log(0, "Error setting permissions on "+GetNetclientPath(), err.Error())
+			}
 		} else if err != nil {
 			return err
 		}
