@@ -22,8 +22,15 @@ var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.18.8"
 
+var url = "http://127.0.0.1:8090"
+
 func main() {
 	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
+	http, err := config.ReadGUIConfig()
+	if err != nil {
+		logger.FatalLog("error reading gui config", err.Error())
+	}
+	url = "http://" + http.Address + ":" + http.Port
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
 	guiApp.GoGetNetclientConfig()
