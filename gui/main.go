@@ -4,6 +4,8 @@ import (
 	"embed"
 	"log"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -59,7 +61,7 @@ func main() {
 	}
 
 	// Create application with options
-	err := wails.Run(appOptions)
+	err = wails.Run(appOptions)
 
 	if err != nil {
 		println("Error:", err.Error())

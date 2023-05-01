@@ -20,7 +20,12 @@ func install() error {
 	}
 	_, err = os.Stat("/etc/netclient")
 	if os.IsNotExist(err) {
-		os.MkdirAll("/etc/netclient", 0744)
+		if err := os.MkdirAll("/etc/netclient", 0775); err != nil {
+			return err
+		}
+		if err := os.Chmod(config.GetNetclientPath(), 0775); err != nil {
+			logger.Log(0, "error updating permissions for /etc/netclient", err.Error())
+		}
 	} else if err != nil {
 		log.Println("couldnt find or create /etc/netclient")
 		return err
