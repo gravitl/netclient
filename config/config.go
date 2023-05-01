@@ -44,10 +44,17 @@ const (
 )
 
 var (
-	// Netclient contains the netclient config
-	netclient Config
+	netclient Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
+	// GW4PeerDetected - indicates if an IPv4 gwPeer (0.0.0.0/0) was found
+	GW4PeerDetected bool
+	// GW4Addr - the peer's address for IPv4 gateways
+	GW4Addr net.IPNet
+	// GW6PeerDetected - indicates if an IPv6 gwPeer (::/0) was found, currently unused
+	GW6PeerDetected bool
+	// GW6Addr - the peer's address for IPv6 gateways
+	GW6Addr net.IPNet
 )
 
 // Config configuration for netclient and host as a whole
@@ -122,13 +129,14 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) {
+func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 	hostPeerMap := netclient.HostPeers
 	if hostPeerMap == nil {
-		hostPeerMap = make(map[string][]wgtypes.PeerConfig)
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
 	}
 	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
+	return detectOrFilterGWPeers(server, peers)
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
@@ -546,18 +554,9 @@ func CheckConfig() {
 		saveRequired = true
 	}
 	// check for nftables present if on Linux
-	if netclient.FirewallInUse == "" {
+	if FirewallHasChanged() {
 		saveRequired = true
-		if ncutils.IsLinux() {
-			if ncutils.IsNFTablesPresent() {
-				netclient.FirewallInUse = models.FIREWALL_NFTABLES
-			} else {
-				netclient.FirewallInUse = models.FIREWALL_IPTABLES
-			}
-		} else {
-			// defaults to iptables for now, may need another default for non-Linux OSes
-			netclient.FirewallInUse = models.FIREWALL_IPTABLES
-		}
+		SetFirewall()
 	}
 	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
 		if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
@@ -617,4 +616,121 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 		logger.Log(0, "node unmarshal err", h.Name, err.Error())
 	}
 	return host, node
+}
+
+func detectOrFilterGWPeers(server string, peers []wgtypes.PeerConfig) bool {
+	isInetGW := IsHostInetGateway()
+	if len(peers) > 0 {
+		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
+			for i := range peers {
+				peer := peers[i]
+				if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) && peer.Remove { // Indicates a removal of current gw, set detected to false to recalc
+					GW4PeerDetected = false
+					break
+				} else if peerHasIp(&GW6Addr, peer.AllowedIPs[:]) { // TODO (IPv6)
+					GW6PeerDetected = false
+					break
+				}
+			}
+		}
+	}
+	clientPeers := GetHostPeerList()
+	var foundGW4Again, foundGW6Again bool
+	if len(clientPeers) > 0 {
+		for i := range clientPeers {
+			peer := clientPeers[i]
+			for j := range peer.AllowedIPs {
+				ip := peer.AllowedIPs[j]
+				if ip.String() == "0.0.0.0/0" { // handle IPv4
+					if isInetGW || peer.Remove { // skip allowed and removed peers IPs for internet gws
+						continue
+					}
+					if !GW4PeerDetected && j > 0 {
+						GW4PeerDetected = true
+						foundGW4Again = true
+						GW4Addr = peer.AllowedIPs[j-1]
+					} else if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) {
+						foundGW4Again = true
+					}
+				} else if ip.String() == "::/0" { // handle IPv6
+					if isInetGW || peer.Remove { // skip allowed IPs for internet gws
+						continue
+					}
+					if !GW6PeerDetected && j > 0 {
+						GW6PeerDetected = true
+						foundGW6Again = true
+						GW6Addr = peer.AllowedIPs[j-1]
+					} else if peerHasIp(&ip, peer.AllowedIPs[:]) {
+						foundGW6Again = true
+					}
+				}
+			}
+		}
+	}
+	GW4PeerDetected = foundGW4Again
+	GW6PeerDetected = foundGW6Again
+
+	return isInetGW
+}
+
+func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for i := range allowedIPs {
+		if ip.Contains(allowedIPs[i].IP) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsHostInetGateway - checks, based on netclient memory,
+// if current client is an internet gateway
+func IsHostInetGateway() bool {
+	servers := GetServers()
+	for i := range servers {
+		serverName := servers[i]
+		serverNodes := GetNodesByServer(serverName)
+		for j := range serverNodes {
+			serverNode := serverNodes[j]
+			if serverNode.IsEgressGateway {
+				for _, egressRange := range serverNode.EgressGatewayRanges {
+					if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// setFirewall - determine and record firewall in use
+func SetFirewall() {
+	if ncutils.IsLinux() {
+		if ncutils.IsIPTablesPresent() {
+			netclient.FirewallInUse = models.FIREWALL_IPTABLES
+		} else if ncutils.IsNFTablesPresent() {
+			netclient.FirewallInUse = models.FIREWALL_NFTABLES
+		} else {
+			netclient.FirewallInUse = models.FIREWALL_NONE
+		}
+	} else {
+		netclient.FirewallInUse = models.FIREWALL_NONE
+	}
+}
+
+// FirewallHasChanged - checks if the firewall has changed
+func FirewallHasChanged() bool {
+	if netclient.FirewallInUse == models.FIREWALL_NONE && !ncutils.IsLinux() {
+		return false
+	}
+	if netclient.FirewallInUse == models.FIREWALL_IPTABLES && ncutils.IsIPTablesPresent() {
+		return false
+	}
+	if netclient.FirewallInUse == models.FIREWALL_NFTABLES && ncutils.IsNFTablesPresent() {
+		return false
+	}
+	return true
 }

@@ -89,6 +89,27 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 	return nil
 }
 
+// iptablesManager.ForwardRule inserts forwarding rules
+func (i *iptablesManager) ForwardRule() error {
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	logger.Log(0, "adding forwarding rule")
+	iptablesClient := i.ipv4Client
+	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
+	ruleSpec := []string{"-i", "netmaker", "-j", netmakerFilterChain}
+	ok, err := iptablesClient.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
+			return err
+		}
+	}
+	return nil
+}
+
 // CleanRoutingRules cleans existing iptables resources that we created by the agent
 func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 	ruleTable := i.FetchRuleTable(server, ruleTableName)

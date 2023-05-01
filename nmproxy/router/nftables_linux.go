@@ -92,6 +92,26 @@ var (
 			table: defaultIpTable,
 			chain: netmakerFilterChain,
 		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableFWDChain},
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					&expr.Counter{},
+					&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain)),
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain},
+			table: defaultIpTable,
+			chain: netmakerFilterChain,
+		},
 	}
 	// nat table nm jump rules
 	nfNatJumpRules = []ruleInfo{
@@ -226,6 +246,28 @@ func (n *nftablesManager) CreateChains() error {
 	// add jump rules
 	n.addJumpRules()
 	return nil
+}
+
+// nftables.ForwardRule - forward netmaker traffic (not implemented)
+func (n *nftablesManager) ForwardRule() error {
+	if err := n.CreateChains(); err != nil {
+		return err
+	}
+	n.conn.AddRule(&nftables.Rule{
+		Table: filterTable,
+		Chain: &nftables.Chain{Name: iptableFWDChain},
+
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
+		},
+	})
+	return n.conn.Flush()
 }
 
 // nftables.CleanRoutingRules cleans existing nftable resources that we created by the agent

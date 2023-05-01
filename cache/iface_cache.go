@@ -14,3 +14,6 @@ type EndpointCacheValue struct {
 	Latency  time.Duration
 	Endpoint netip.Addr
 }
+
+// ServerAddrCache - server addresses mapped to server names
+var ServerAddrCache sync.Map // config.Server.Name -> []net.IP
