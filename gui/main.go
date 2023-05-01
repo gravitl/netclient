@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"log"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
@@ -21,15 +22,8 @@ var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.18.8"
 
-var url = "http://127.0.0.1:8090"
-
 func main() {
-	logger.Log(3, "starting netclient-gui", version)
-	http, err := config.ReadGUIConfig()
-	if err != nil {
-		logger.FatalLog("error reading gui config", err.Error())
-	}
-	url = "http://" + http.Address + ":" + http.Port
+	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
 	guiApp.GoGetNetclientConfig()
