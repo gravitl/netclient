@@ -41,7 +41,7 @@ jobs:
           git push origin release_${{ github.event.inputs.version }}
           git push origin ${{ github.event.inputs.version }}
   
-  linux-headless:
+  linux:
     runs-on: ubuntu-latest
     needs: release-branch
     steps:
@@ -87,7 +87,7 @@ jobs:
             git switch release_${{ github.event.inputs.version }}
             git restore .
             git pull
-            go build -tags headless .
+            go build .
       - name: setup ssh
         run: |
           mkdir -p ~/.ssh/

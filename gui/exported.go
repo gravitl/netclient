@@ -1,130 +1,157 @@
 // This file contains methods intended to be called in frontend
-package gui
+package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
+	"net/http"
+	"time"
 
+	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
-	"github.com/gravitl/netmaker/models"
-	"github.com/spf13/viper"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/clipboard"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// App.GoJoinNetworkByToken joins a network with the given token
-func (app *App) GoJoinNetworkByToken(token string) (any, error) {
-	config.InitConfig(viper.New())
-	err := functions.Register(token)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
+var headers []httpclient.Header
 
+// App.GoGetStatus returns the status of the netclient http server
+func (app *App) GoGetStatus() (any, error) {
+	// set timeout to low value
+	httpclient.Client.Timeout = 5 * time.Second
+	_, err := httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
+	if err != nil {
+		return nil, errors.New("netclient http server is not running")
+	}
 	return nil, nil
 }
 
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
-	configs := make([]Network, 0, 5)
-
-	// read fresh config from disk
-	config.InitConfig(viper.New())
-
-	nodesMap := config.GetNodes()
-	for _, node := range nodesMap {
-		node := node
-		server := config.GetServer(node.Server)
-		configs = append(configs, Network{&node, server})
+	networks := []Network{}
+	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/allnetworks", "", headers)
+	if err != nil {
+		return networks, err
 	}
-
-	return configs, nil
+	if response.StatusCode != http.StatusOK {
+		return networks, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&networks); err != nil {
+		return networks, err
+	}
+	return networks, nil
 }
 
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
-	// read fresh config from disk
-	config.InitConfig(viper.New())
-
-	nodesMap := config.GetNodes()
-	for _, node := range nodesMap {
-		node := node
-		if node.Network == networkName {
-			server := config.GetServer(node.Server)
-			return Network{&node, server}, nil
-		}
+	network := Network{}
+	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/networks/"+networkName, "", headers)
+	if err != nil {
+		return network, err
 	}
-
-	return Network{}, errors.New("unknown network")
+	if response.StatusCode != http.StatusOK {
+		return network, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&network); err != nil {
+		return network, err
+	}
+	return network, nil
 }
 
 // App.GoGetNetclientConfig retrieves the netclient config
 // (params the remain constant regardless the networks nc is connected to)
 func (app *App) GoGetNetclientConfig() (NcConfig, error) {
-	// read fresh config from disk
-	config.InitConfig(viper.New())
-
-	conf := *config.Netclient()
-	ncConf := NcConfig{
-		Config:        conf,
-		MacAddressStr: conf.MacAddress.String(),
+	config := NcConfig{}
+	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/netclient", "", headers)
+	if err != nil {
+		return config, err
 	}
-
-	return ncConf, nil
-}
-
-// App.GoParseAccessToken parses a valid access token and returns the deconstructed parts
-func (app *App) GoParseAccessToken(token string) (*models.AccessToken, error) {
-	return config.ParseAccessToken(token)
+	if response.StatusCode != http.StatusOK {
+		return config, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&config); err != nil {
+		return config, err
+	}
+	return config, nil
 }
 
 // App.goConnectToNetwork connects to the given network
 func (app *App) GoConnectToNetwork(networkName string) (any, error) {
-	return nil, functions.Connect(networkName)
+	connect := struct {
+		Connect bool
+	}{
+		Connect: true,
+	}
+	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	return nil, nil
 }
 
 // App.goDisconnectFromNetwork disconnects from the given network
 func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
-	return nil, functions.Disconnect(networkName)
+	connect := struct {
+		Connect bool
+	}{
+		Connect: false,
+	}
+	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	return nil, nil
 }
 
 // App.GoLeaveNetwork leaves a known network
 func (app *App) GoLeaveNetwork(networkName string) (any, error) {
-	errs, err := functions.LeaveNetwork(networkName, false)
-	if len(errs) == 0 && err == nil {
-		return nil, nil
+	response, err := httpclient.GetResponse("", http.MethodPost, url+"/leave/"+networkName, "", headers)
+	if err != nil {
+		return nil, err
 	}
-	errMsgsBuilder := strings.Builder{}
-	for _, errMsg := range errs {
-		errMsgsBuilder.WriteString(errMsg.Error() + " ")
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
-	return nil, fmt.Errorf("%w: "+errMsgsBuilder.String(), err)
+	return nil, nil
 }
 
 // App.GoGetRecentServerNames returns names of all known (joined) servers
 func (app *App) GoGetRecentServerNames() ([]string, error) {
-	serverNames := []string{}
-	for name := range config.Servers {
-		name := name
-		serverNames = append(serverNames, name)
+	var servers struct {
+		Name []string
 	}
-	return serverNames, nil
+	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/servers", "", headers)
+	if err != nil {
+		return []string{}, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return []string{}, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&servers); err != nil {
+		return []string{}, err
+	}
+	return servers.Name, nil
 }
 
 // App.GoUninstall uninstalls netclient form the machine
 func (app *App) GoUninstall() (any, error) {
-	errs, err := functions.Uninstall()
-	if len(errs) == 0 && err == nil {
-		return nil, nil
+	response, err := httpclient.GetResponse("", http.MethodPost, url+"/uninstall/", "", headers)
+	if err != nil {
+		return nil, err
 	}
-	errMsgsBuilder := strings.Builder{}
-	for _, errMsg := range errs {
-		errMsgsBuilder.WriteString(errMsg.Error() + " ")
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
-	return nil, fmt.Errorf("%w: "+errMsgsBuilder.String(), err)
+	return nil, nil
 }
 
 // App.GoOpenDialogue opens a dialogue box with title and message.
@@ -166,7 +193,18 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 
 // App.GoGetNodePeers returns the peers for the given node
 func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
-	return functions.GetNodePeers(node)
+	var peers []wgtypes.PeerConfig
+	response, err := httpclient.GetResponse(node, http.MethodPost, url+"/nodepeers", "", headers)
+	if err != nil {
+		return peers, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return peers, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&peers); err != nil {
+		return peers, err
+	}
+	return peers, nil
 }
 
 // App.GoUpdateNetclientConfig updates netclient/host configs
@@ -178,8 +216,17 @@ func (app *App) GoUpdateNetclientConfig(updatedConfig config.Config) (any, error
 }
 
 func (app *App) GoRegisterWithEnrollmentKey(key string) (any, error) {
-	// read fresh config from disk
-	config.InitConfig(viper.New())
-
-	return nil, functions.Register(key)
+	token := struct {
+		Token string
+	}{
+		Token: key,
+	}
+	response, err := httpclient.GetResponse(token, http.MethodPost, url+"/register/", "", headers)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	return nil, nil
 }

@@ -76,6 +76,11 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
+	//start httpserver on its own -- doesn't need to restart on reset
+	httpctx, httpCancel := context.WithCancel(context.Background())
+	httpWg := sync.WaitGroup{}
+	httpWg.Add(1)
+	go HttpServer(httpctx, &httpWg)
 	for {
 		select {
 		case <-quit:
@@ -84,7 +89,8 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
-			cleanUpRoutes()
+			httpCancel()
+			httpWg.Wait()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:

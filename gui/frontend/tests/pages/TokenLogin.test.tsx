@@ -9,13 +9,6 @@ import {
 
 describe("TokenLoginPage", () => {
   beforeEach(() => {
-    (window as any)["go"] = {};
-    (window as any)["go"]["gui"] = {};
-    (window as any)["go"]["gui"]["App"] = {};
-    (window as any)["go"]["gui"]["App"]["GoJoinNetworkByToken"] = (token: string) => {};
-    (window as any)["go"]["gui"]["App"]["GoParseAccessToken"] = (token: string) => {};
-    (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (arg1: any, arg2: any, arg3: any) => {};
-
     act(() => {
       render(
         <NetworksContextProvider>
