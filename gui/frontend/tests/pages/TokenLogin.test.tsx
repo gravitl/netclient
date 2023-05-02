@@ -36,7 +36,7 @@ describe("TokenLoginPage", () => {
   
   it("provides provides an input to enter token", () => {
     act(() => {
-      expect(screen.getByTestId("enrollment-key-inp")).toBeInTheDocument()
+      expect(screen.getByTestId("token-inp")).toBeInTheDocument()
     });
   });
 
@@ -44,13 +44,13 @@ describe("TokenLoginPage", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("connect-btn"))
     });
-    expect(screen.getByText('Enrollment key cannot be empty')).toBeInTheDocument()
+    expect(screen.getByText('Token cannot be empty')).toBeInTheDocument()
 
     act(() => {
-      fireEvent.change(screen.getByTestId("enrollment-key-inp"), { target: { value: 'random-token' } })
+      fireEvent.change(screen.getByTestId("token-inp"), { target: { value: 'random-token' } })
       fireEvent.click(screen.getByTestId("connect-btn"))
     });
-    expect(screen.queryByText('Enrollment key cannot be empty')).toBeNull()
+    expect(screen.queryByText('Token cannot be empty')).toBeNull()
   });
 
 });
