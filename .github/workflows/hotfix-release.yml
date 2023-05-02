@@ -70,7 +70,7 @@ jobs:
     needs: update-tag
     steps:
       - name: build freebsd
-        uses: appleboy/ssh-action@v0.1.7
+        uses: appleboy/ssh-action@v0.1.10
         with:
           host: freebsd.clustercat.com
           username: freebsd
