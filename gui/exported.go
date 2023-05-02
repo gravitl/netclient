@@ -142,6 +142,42 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 	return servers.Name, nil
 }
 
+// App.GoJoinNetworkBySso joins a network by SSO
+func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) {
+	fmt.Println("logging in with SSO...")
+
+	err := functions.RegisterWithSSO(&functions.RegisterSSO{
+		API:         serverName,
+		Network:     networkName,
+		UsingSSO:    true,
+		AllNetworks: false,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// App.GoJoinNetworkByBasicAuth joins a network by username/password
+func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
+	err := functions.RegisterWithSSO(&functions.RegisterSSO{
+		API:         serverName,
+		Network:     networkName,
+		UsingSSO:    false,
+		User:        username,
+		Pass:        password,
+		AllNetworks: false,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
 // App.GoUninstall uninstalls netclient form the machine
 func (app *App) GoUninstall() (any, error) {
 	response, err := httpclient.GetResponse("", http.MethodPost, url+"/uninstall/", "", headers)

@@ -40,3 +40,13 @@ export function GoUpdateNetclientConfig(arg1:config.Config):Promise<any>;
 export function GoWriteToClipboard(arg1:string):Promise<any>;
 
 export function GoGetStatus():Promise<any>;
+
+export function GoGetNodePeers(arg1:config.Node):Promise<Peer[]>;
+
+export function GoUpdateNetclientConfig(arg1:config.NcConfig): Promise<any>;
+
+export function GoRegisterWithEnrollmentKey(arg1:string):Promise<any>;
+
+export function GoJoinNetworkByBasicAuth(arg1: string, arg2: string, arg3: string, arg4: string): Promise<void>;
+
+export function GoJoinNetworkBySso(arg1: string, arg2: string): Promise<void>;
