@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: Build
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: Run Go tests
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 19
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: test gui
@@ -69,7 +69,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: Run static checks
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 19
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: build gui
@@ -108,7 +108,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 19
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - run: |
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 19
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: build gui
