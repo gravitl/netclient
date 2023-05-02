@@ -76,7 +76,6 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
-
 	for {
 		select {
 		case <-quit:
@@ -249,6 +248,15 @@ func setupMQTT(server *config.Server) error {
 	} else {
 		logger.Log(2, "successfully requested ACK on server", server.Name)
 	}
+	// send register signal with turn to server
+	if server.UseTurn {
+		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
+			logger.Log(0, "failed to publish host turn register signal to server:", server.Server, err.Error())
+		} else {
+			logger.Log(0, "published host turn register signal to server:", server.Server)
+		}
+	}
+
 	return nil
 }
 

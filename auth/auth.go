@@ -1,5 +1,5 @@
-// Package functions provides netclient logic
-package functions
+// Package auth provides netclient auth logic with server
+package auth
 
 import (
 	"encoding/json"

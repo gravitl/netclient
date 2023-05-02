@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -97,7 +98,7 @@ func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	if host == nil {
 		return nil, fmt.Errorf("no configured host found")
 	}
-	token, err := Authenticate(server, host)
+	token, err := auth.Authenticate(server, host)
 	if err != nil {
 		return nil, err
 	}

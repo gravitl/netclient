@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -243,8 +244,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
-			logger.Log(0, "failed to response with ACK to server", serverName)
+			logger.Log(0, "failed to response with ACK to server", serverName, err.Error())
 		}
+	case models.SignalHost:
+		turn.PeerSignalCh <- hostUpdate.Signal
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()

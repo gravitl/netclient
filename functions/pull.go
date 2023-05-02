@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
@@ -21,7 +22,7 @@ func Pull() error {
 	for i := range currentServers {
 		serverName := currentServers[i]
 		server := config.GetServer(serverName)
-		token, err := Authenticate(server, config.Netclient())
+		token, err := auth.Authenticate(server, config.Netclient())
 		if err != nil {
 			return err
 		}

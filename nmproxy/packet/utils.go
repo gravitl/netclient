@@ -72,6 +72,9 @@ const (
 
 	// UpdateListenPort - constant update listen port proxy action
 	UpdateListenPort ProxyActionType = 1
+
+	// constant for proxy server buffer size
+	DefaultBodySize = 65000 + MessageProxyTransportSize
 )
 
 func mixKey(dst, c *[blake2s.Size]byte, data []byte) {

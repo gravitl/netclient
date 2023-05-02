@@ -13,6 +13,8 @@ type wgIfaceConf struct {
 	iface        *wg.WGIface
 	ifaceKeyHash string
 	proxyPeerMap models.PeerConnMap
+	hostTurnCfg  map[string]models.TurnCfg
+	turnPeerMap  map[string]map[string]models.TurnPeerCfg
 	peerHashMap  map[string]*models.RemotePeer
 	relayPeerMap map[string]map[string]*models.RemotePeer
 	allPeersConf map[string]nm_models.HostPeerMap
@@ -146,6 +148,7 @@ func (c *Config) RemovePeer(peerPubKey string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())
+		GetCfg().DeletePeerTurnCfg(peerPubKey)
 
 	}
 
@@ -275,4 +278,88 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 	}
 
 	return make(map[string]nm_models.IDandAddr), false
+}
+
+// Config.SetTurnCfg - sets the turn config
+func (c *Config) SetTurnCfg(server string, t models.TurnCfg) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.ifaceConfig.hostTurnCfg[server] = t
+}
+
+// Config.DeleteTurnCfg - sets the turn config
+func (c *Config) DeleteTurnCfg(server string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	delete(c.ifaceConfig.hostTurnCfg, server)
+}
+
+func (c *Config) UpdatePeerTurnAddr(server, peerKey string, addr string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if peerTurnMap, ok := c.ifaceConfig.turnPeerMap[server]; ok {
+		if t, ok := peerTurnMap[peerKey]; ok {
+			t.PeerTurnAddr = addr
+			c.ifaceConfig.turnPeerMap[server][peerKey] = t
+		}
+	}
+}
+
+// Config.GetAllTurnCfg - fetches all turn cfg
+func (c *Config) GetAllTurnCfg() map[string]models.TurnCfg {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.ifaceConfig.hostTurnCfg
+}
+
+// Config.GetTurnCfg - gets the turn config
+func (c *Config) GetTurnCfg(server string) (t models.TurnCfg, ok bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	t, ok = c.ifaceConfig.hostTurnCfg[server]
+	return
+}
+
+// Config.GetPeerTurnCfg - gets the peer turn cfg
+func (c *Config) GetPeerTurnCfg(server, peerKey string) (t models.TurnPeerCfg, ok bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
+		t, ok = peerMap[peerKey]
+	}
+	return
+}
+
+// Config.UpdatePeerTurnCfg - updates the peer turn cfg
+func (c *Config) UpdatePeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
+		peerMap[peerKey] = t
+		c.ifaceConfig.turnPeerMap[server] = peerMap
+	}
+}
+
+// Config.SetPeerTurnCfg - sets the peer turn cfg
+func (c *Config) SetPeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if _, ok := c.ifaceConfig.turnPeerMap[server]; !ok {
+		c.ifaceConfig.turnPeerMap[server] = make(map[string]models.TurnPeerCfg)
+	}
+	c.ifaceConfig.turnPeerMap[server][peerKey] = t
+}
+
+// Config.GetAllTurnPeersCfg - fetches all peers using turn
+func (c *Config) GetAllTurnPeersCfg(server string) map[string]models.TurnPeerCfg {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.ifaceConfig.turnPeerMap[server]
+}
+
+// Config.DeleteTurnCfg - deletes the turn config
+func (c *Config) DeletePeerTurnCfg(peerKey string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	delete(c.ifaceConfig.turnPeerMap, peerKey)
 }

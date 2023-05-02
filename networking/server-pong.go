@@ -140,7 +140,7 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 				if !conn.Config.PeerConf.Endpoint.IP.Equal(wgEndpoint.IP) {
 					conn.Config.PeerConf.Endpoint = wgEndpoint
 					proxy_config.GetCfg().UpdatePeer(&conn)
-					conn.ResetConn()
+					proxy_config.GetCfg().ResetPeer(currPeer.PublicKey.String())
 				}
 			} else {
 				return wireguard.UpdatePeer(&wgtypes.PeerConfig{
