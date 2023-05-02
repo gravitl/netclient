@@ -474,19 +474,6 @@ func ServerAddrSliceContains(slice []models.ServerAddr, item models.ServerAddr) 
 	return false
 }
 
-// MakeRandomString - generates a random string of len n
-func MakeRandomString(n int) string {
-	const validChars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	result := make([]byte, n)
-	if _, err := rand.Reader.Read(result); err != nil {
-		return ""
-	}
-	for i, b := range result {
-		result[i] = validChars[b%byte(len(validChars))]
-	}
-	return string(result)
-}
-
 func GetIPNetFromString(ip string) (net.IPNet, error) {
 	var ipnet *net.IPNet
 	var err error

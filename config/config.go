@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -461,7 +462,7 @@ func CheckConfig() {
 	if netclient.ID == uuid.Nil {
 		logger.Log(0, "setting netclient hostid")
 		netclient.ID = uuid.New()
-		netclient.HostPass = ncutils.MakeRandomString(32)
+		netclient.HostPass = logic.RandomString(32)
 		saveRequired = true
 	}
 	if netclient.Name == "" {
