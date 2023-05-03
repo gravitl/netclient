@@ -17,7 +17,8 @@
 
 
 ## known issues
-- netclient-gui on windows will display an erroneous error dialog when joining a network
+- netclient-gui (windows) will display an erroneous error dialog when joining a network (can be ignored)
+- netclient-gui will continously display error dialog if netmaker server is offline
 - Incorrect metrics against ext clients
 - Host ListenPorts set to 0 after migration from 0.17.1 -> 0.18.6
 - Mac IPv6 addresses/route issues
