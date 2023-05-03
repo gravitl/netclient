@@ -1,32 +1,13 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { describe } from "vitest";
-import { Peer } from "../src/models/Peer";
+import { PeerConfig } from "../src/models/Peer";
 import { AppRoutes } from "../src/routes";
 import { writeTextToClipboard } from "../src/utils/browser";
 import { getUserConfirmation, notifyUser } from "../src/utils/messaging";
 import { getNetworkDetailsPageUrl } from "../src/utils/networks";
 import { extractPeerPrivateEndpoints, extractPeerPublicEndpoint } from "../src/utils/peers";
-import { main } from "../wailsjs/go/models";
+import { MOCK_CHOICE, setupMocks } from "./tests";
 
-function setupMocks() {
-  (window as any)["go"] = {};
-  (window as any)["go"]["gui"] = {};
-  (window as any)["go"]["gui"]["App"] = {};
-  (window as any)["go"]["gui"]["App"]["GoGetKnownNetworks"] = () => [];
-  (window as any)["go"]["gui"]["App"]["GoOpenDialogue"] = (
-    arg1: any,
-    arg2: any,
-    arg3: any
-  ) => {
-    return new Promise((resolve, reject) => {
-      resolve(MOCK_CHOICE);
-    });
-  };
-  (window as any)["go"]["gui"]["App"]["GoWriteToClipboard"] = (text: string) =>
-    Promise.resolve(text);
-}
-
-const MOCK_CHOICE = "mock-choice";
 describe("networks utility functions", () => {
   beforeEach(() => {
     setupMocks();
@@ -77,7 +58,7 @@ describe("peers utility functions", () => {
   });
 
   it("provides a function to get peer public endpoint", () => {
-    const mockPeer: Peer = {
+    const mockPeer: PeerConfig = {
       PublicKey: [56, 65, 75, 77],
       Endpoint: { IP: "51.0.0.1", Port: 38378, Zone: "" },
       AllowedIPs: [{ IP: "10.0.0.51", Mask: "w+" }],

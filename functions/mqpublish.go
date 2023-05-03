@@ -13,6 +13,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
@@ -61,14 +62,14 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func checkin() {
-
+	// check/update host settings; publish if changed
 	if err := UpdateHostSettings(); err != nil {
-		logger.Log(0, "failed to update host settings -", err.Error())
+		logger.Log(0, "failed to update host settings", err.Error())
 		return
 	}
-
 	if err := PublishGlobalHostUpdate(models.HostMqAction(models.CheckIn)); err != nil {
-		logger.Log(0, "failed to check-in", err.Error())
+		logger.Log(0, "error publishing checkin", err.Error())
+		return
 	}
 }
 
@@ -131,7 +132,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node) {
 	server := config.GetServer(node.Server)
-	token, err := Authenticate(server, config.Netclient())
+	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return
@@ -330,6 +331,10 @@ func UpdateHostSettings() error {
 			config.Netclient().DefaultInterface = defaultInterface
 			logger.Log(0, "default interface has changed to", defaultInterface)
 		}
+	}
+	if config.FirewallHasChanged() {
+		config.SetFirewall()
+		publishMsg = true
 	}
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {

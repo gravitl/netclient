@@ -76,7 +76,11 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
-
+	//start httpserver on its own -- doesn't need to restart on reset
+	httpctx, httpCancel := context.WithCancel(context.Background())
+	httpWg := sync.WaitGroup{}
+	httpWg.Add(1)
+	go HttpServer(httpctx, &httpWg)
 	for {
 		select {
 		case <-quit:
@@ -85,7 +89,8 @@ func Daemon() {
 				cancel,
 				stopProxy,
 			}, &wg)
-			cleanUpRoutes()
+			httpCancel()
+			httpWg.Wait()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -249,6 +254,15 @@ func setupMQTT(server *config.Server) error {
 	} else {
 		logger.Log(2, "successfully requested ACK on server", server.Name)
 	}
+	// send register signal with turn to server
+	if server.UseTurn {
+		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
+			logger.Log(0, "failed to publish host turn register signal to server:", server.Server, err.Error())
+		} else {
+			logger.Log(0, "published host turn register signal to server:", server.Server)
+		}
+	}
+
 	return nil
 }
 

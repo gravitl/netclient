@@ -11,8 +11,8 @@ import {
 } from "../store/NetworkContext";
 import {
   GoGetRecentServerNames,
-  GoJoinNetworkByBasicAuth,
-  GoJoinNetworkBySso,
+  // GoJoinNetworkByBasicAuth,
+  // GoJoinNetworkBySso,
 } from "../../wailsjs/go/main/App";
 import { notifyUser } from "../utils/messaging";
 import { AppRoutes } from "../routes";
@@ -75,64 +75,64 @@ export default function UsernameLogin() {
     ]
   );
 
-  const onSsoLoginClick = useCallback(async () => {
-    if (!checkIsFormValid("sso")) return;
+  // const onSsoLoginClick = useCallback(async () => {
+  //   if (!checkIsFormValid("sso")) return;
 
-    setIsConnecting(true);
-    try {
-      await GoJoinNetworkBySso(serverName, networkName);
+  //   setIsConnecting(true);
+  //   try {
+  //     await GoJoinNetworkBySso(serverName, networkName);
 
-      const data: NetworksContextDispatcherProps = {
-        action: "refresh-networks",
-      };
-      networksDispatch(data);
+  //     const data: NetworksContextDispatcherProps = {
+  //       action: "refresh-networks",
+  //     };
+  //     networksDispatch(data);
 
-      navigate(getNetworkDetailsPageUrl(networkName));
-    } catch (err) {
-      await notifyUser("Failed to login to network\n" + err as string);
-      console.error(err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [
-    navigate,
-    setIsConnecting,
-    networksDispatch,
-    checkIsFormValid,
-    serverName,
-    networkName,
-  ]);
+  //     navigate(getNetworkDetailsPageUrl(networkName));
+  //   } catch (err) {
+  //     await notifyUser("Failed to login to network\n" + err as string);
+  //     console.error(err);
+  //   } finally {
+  //     setIsConnecting(false);
+  //   }
+  // }, [
+  //   navigate,
+  //   setIsConnecting,
+  //   networksDispatch,
+  //   checkIsFormValid,
+  //   serverName,
+  //   networkName,
+  // ]);
 
-  const onLoginClick = useCallback(async () => {
-    if (!checkIsFormValid("basic-auth")) return;
+  // const onLoginClick = useCallback(async () => {
+  //   if (!checkIsFormValid("basic-auth")) return;
 
-    setIsConnecting(true);
-    try {
-      await GoJoinNetworkByBasicAuth(serverName, username, networkName, password);
+  //   setIsConnecting(true);
+  //   try {
+  //     await GoJoinNetworkByBasicAuth(serverName, username, networkName, password);
 
-      const data: NetworksContextDispatcherProps = {
-        action: "refresh-networks",
-      };
-      networksDispatch(data);
+  //     const data: NetworksContextDispatcherProps = {
+  //       action: "refresh-networks",
+  //     };
+  //     networksDispatch(data);
 
-      // navigate(getNetworkDetailsPageUrl(networkName));
-      navigate(AppRoutes.NETWORKS_ROUTE);
-    } catch (err) {
-      await notifyUser("Failed to login to network\n" + err as string);
-      console.error(err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [
-    navigate,
-    setIsConnecting,
-    checkIsFormValid,
-    networksDispatch,
-    serverName,
-    username,
-    networkName,
-    password,
-  ]);
+  //     // navigate(getNetworkDetailsPageUrl(networkName));
+  //     navigate(AppRoutes.NETWORKS_ROUTE);
+  //   } catch (err) {
+  //     await notifyUser("Failed to login to network\n" + err as string);
+  //     console.error(err);
+  //   } finally {
+  //     setIsConnecting(false);
+  //   }
+  // }, [
+  //   navigate,
+  //   setIsConnecting,
+  //   checkIsFormValid,
+  //   networksDispatch,
+  //   serverName,
+  //   username,
+  //   networkName,
+  //   password,
+  // ]);
 
   // on created
   useEffect(() => {
@@ -229,7 +229,7 @@ export default function UsernameLogin() {
         <LoadingButton
           loading={isConnecting}
           variant="contained"
-          onClick={onLoginClick}
+          // onClick={onLoginClick}
           data-testid="login-btn"
         >
           Login
@@ -240,7 +240,7 @@ export default function UsernameLogin() {
           loading={isConnecting}
           size="small"
           variant="outlined"
-          onClick={onSsoLoginClick}
+          // onClick={onSsoLoginClick}
           data-testid="sso-login-btn"
         >
           <AdminPanelSettingsIcon /> SSO Login

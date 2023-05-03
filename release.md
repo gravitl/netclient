@@ -1,16 +1,14 @@
 # Netclient v0.19.0
 
 ## Whats New
-- internet gateways for egress
-- 
-## What's Fixed
-- peer update improvements
-- sso/basic auth registration
-- auto updates
-- refresh of wireguard keys
-- forwarding rules to counteract docker setting default forward policy to deny
-- prevent routing changes to private addresses
+- Unprivilaged GUI app
 
+## What's Fixed
+- 
+- 
+- 
+- 
+- 
 ## known issues
 - Incorrect metrics against ext clients
 - Host ListenPorts set to 0 after migration from 0.17.1 -> 0.18.6
