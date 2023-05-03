@@ -1,4 +1,4 @@
-# Netclient v0.18.8
+# Netclient v0.19.0
 
 ## Whats New
 - internet gateways for egress
