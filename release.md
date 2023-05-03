@@ -17,6 +17,7 @@
 
 
 ## known issues
+- netclient-gui on windows will display an erroneous error dialog when joining a network
 - Incorrect metrics against ext clients
 - Host ListenPorts set to 0 after migration from 0.17.1 -> 0.18.6
 - Mac IPv6 addresses/route issues
