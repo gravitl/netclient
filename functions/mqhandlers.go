@@ -181,7 +181,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		&originalGW,
 	)
 
-	go handleEndpointDetection(&peerUpdate)
+	//go handleEndpointDetection(&peerUpdate)
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		ProxyManagerChan <- &peerUpdate
