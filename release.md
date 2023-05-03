@@ -1,10 +1,19 @@
-# Netclient v0.18.8
+# Netclient v0.19.0
 
 ## Whats New
-- detect firewall changes
-- 
+- Unprivilged GUI
+    netclient-gui runs without root/administrator permissions; requires netclient daemon 
+- TURN
+    nodes behind asymetrical/double NAT will use TURN to communicate
+- dependency updates
+
 ## What's Fixed
-- limit creation of explicit server/peer routes
+- unbiased random string
+- CI updates
+- creation of explicit server/peer routes for internet gateways
+- firewall detection
+- nftables forwarding
+
 
 ## known issues
 - Incorrect metrics against ext clients
