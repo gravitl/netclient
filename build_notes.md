@@ -16,4 +16,4 @@ sudo apt-get install npm build-essential libgtk-3-dev libwebkit2gtk-4.0 libx11-d
 
 ## Headless build
 Linux: sudo apt-get install build-essential
-- go build -tags headless
+- go build 

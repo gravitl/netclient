@@ -1,5 +1,5 @@
 // Peer is a mirror of go type wg.PeerConfig
-export interface Peer {
+export interface PeerConfig {
   PublicKey?: number[];
   Endpoint: { IP: string, Port: number, Zone: string, };
   Remove: boolean;

@@ -1,6 +1,7 @@
 # Netclient v0.19.0
 
 ## Whats New
+
 - Unprivilged GUI
     netclient-gui runs without root/administrator permissions; requires netclient daemon 
 - TURN

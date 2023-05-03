@@ -7,6 +7,8 @@ import (
 	"net"
 	"sync"
 
+	nm_models "github.com/gravitl/netmaker/models"
+	"github.com/pion/turn/v2"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -28,9 +30,11 @@ type Proxy struct {
 	PeerEndpoint    *net.UDPAddr
 	RemoteConnAddr  *net.UDPAddr
 	LocalConnAddr   *net.UDPAddr
+	TurnConn        net.PacketConn
 	ListenPort      int
 	ProxyListenPort int
 	ProxyStatus     bool
+	UsingTurn       bool
 }
 
 // Conn is a peer Connection configuration
@@ -79,4 +83,20 @@ type Settings struct {
 	IsEgressGateway  bool
 	IsRelayed        bool
 	RelayedTo        *net.UDPAddr
+}
+
+// TurnCfg - struct to hold turn conn details
+type TurnCfg struct {
+	Mutex    *sync.RWMutex
+	Cfg      *turn.ClientConfig
+	Client   *turn.Client
+	TurnConn net.PacketConn
+	Status   bool
+}
+
+// TurnPeerCfg - struct for peer turn conn details
+type TurnPeerCfg struct {
+	Server       string
+	PeerConf     nm_models.PeerConf
+	PeerTurnAddr string
 }

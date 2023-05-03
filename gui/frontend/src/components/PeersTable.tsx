@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import TablePaginationActions from "@mui/material/TablePagination/TablePaginationActions";
 import React, { useCallback } from "react";
-import { Peer } from "../models/Peer";
+import { PeerConfig } from "../models/Peer";
 import {
   extractPeerPublicEndpoint,
   byteArrayToString,
@@ -24,7 +24,7 @@ import { writeTextToClipboard } from "../utils/browser";
 import { notifyUser } from "../utils/messaging";
 
 interface PeersTableProps {
-  peers: Peer[];
+  peers: PeerConfig[];
   emptyMsg?: string;
 }
 

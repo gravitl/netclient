@@ -32,11 +32,6 @@ const mockNetworks: Partial<main.Network>[] = [
 
 describe("NetworksPage", () => {
   beforeEach(() => {
-    (window as any)["go"] = {};
-    (window as any)["go"]["gui"] = {};
-    (window as any)["go"]["gui"]["App"] = {};
-    (window as any)["go"]["gui"]["App"]["GoGetKnownNetworks"] = () => [];
-
     act(() => {
       render(
         <NetworksContextProvider>

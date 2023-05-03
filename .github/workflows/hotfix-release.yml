@@ -20,7 +20,7 @@ jobs:
         with:
           ref: develop
       - name: setup go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: setup git
@@ -47,7 +47,7 @@ jobs:
       - run: |
           git fetch --force --tags
       - name: Setup go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: 1.19
       - name: goreleaser (full release)
@@ -70,7 +70,7 @@ jobs:
     needs: update-tag
     steps:
       - name: build freebsd
-        uses: appleboy/ssh-action@v0.1.7
+        uses: appleboy/ssh-action@v0.1.10
         with:
           host: freebsd.clustercat.com
           username: freebsd

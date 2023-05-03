@@ -1,14 +1,11 @@
-//go:build !headless
-
 package main
 
 import (
 	"embed"
-	"fmt"
+	"log"
 
 	"github.com/gravitl/netclient/config"
-	app "github.com/gravitl/netclient/gui"
-	"github.com/spf13/viper"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -16,26 +13,31 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
-//go:embed all:gui/frontend/dist
+//go:embed all:frontend/dist
+//go:embed appicon.png
+
 var assets embed.FS
 
-var appIcon = app.GetFileAsBytes("./build/appicon.png")
+var appIcon = GetFileAsBytes("./appicon.png")
 
-func init() {
-	guiFunc = setupNetclientGui
-}
+var version = "v0.18.8"
 
-func setupNetclientGui() {
-	flags := viper.New()
-	config.InitConfig(flags)
-	config.SetVersion(version)
-	fmt.Printf("wails: netclient version set to: %s\n", version)
+var url = "http://127.0.0.1:8090"
 
+func main() {
+	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
+	http, err := config.ReadGUIConfig()
+	if err != nil {
+		logger.FatalLog("error reading gui config", err.Error())
+	}
+	url = "http://" + http.Address + ":" + http.Port
 	// Create an instance of the guiApp structure
-	guiApp := app.NewApp()
+	guiApp := NewApp()
+	guiApp.GoGetNetclientConfig()
+	guiApp.GoGetKnownNetworks()
 
 	// Application menu
-	appMenu := app.GetAppMenu(guiApp)
+	appMenu := GetAppMenu(guiApp)
 
 	// Application options
 	appOptions := &options.App{
@@ -66,7 +68,7 @@ func setupNetclientGui() {
 	}
 
 	// Create application with options
-	err := wails.Run(appOptions)
+	err = wails.Run(appOptions)
 
 	if err != nil {
 		println("Error:", err.Error())
