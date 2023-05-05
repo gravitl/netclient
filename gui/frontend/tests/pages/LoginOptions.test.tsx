@@ -9,10 +9,6 @@ import {
 
 describe("LoginOptionsPage", () => {
   beforeEach(() => {
-    (window as any)["go"] = {};
-    (window as any)["go"]["gui"] = {};
-    (window as any)["go"]["gui"]["App"] = {};
-
     act(() => {
       render(
         <NetworksContextProvider>

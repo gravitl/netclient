@@ -1,259 +1,389 @@
+import { PeerConfig } from "../../src/models/Peer";
+
 export namespace config {
-  export class NcConfig {
-    id: string;
-    verbosity: number;
-    firewallinuse: string;
-    version: string;
-    ipforwarding: boolean;
-    daemoninstalled: boolean;
-    hostpass: string;
-    name: string;
-    os: string;
-    interface: string;
-    debug: boolean;
-    listenport: number;
-    public_listen_port: number;
-    proxy_listen_port: number;
-    mtu: number;
-    publickey: number[];
-    macaddress: string;
-    traffickeypublic: number[];
-    internetgateway: any;
+	
+	export class Config {
+	    id: number[];
+	    verbosity: number;
+	    firewallinuse: string;
+	    version: string;
+	    ipforwarding: boolean;
+	    daemoninstalled: boolean;
+	    hostpass: string;
+	    name: string;
+	    os: string;
+	    interface: string;
+	    debug: boolean;
+	    listenport: number;
+	    public_listen_port: number;
+	    proxy_listen_port: number;
+	    mtu: number;
+	    publickey: number[];
+	    macaddress: number[];
+	    traffickeypublic: number[];
+	    // Go type: net.UDPAddr
+	    internetgateway: any;
+	    nodes: string[];
+	    isrelayed: boolean;
+	    relayed_by: string;
+	    isrelay: boolean;
+	    relay_hosts: string[];
+	    interfaces: models.Iface[];
+	    defaultinterface: string;
+	    endpointip: number[];
+	    proxy_enabled: boolean;
+	    proxy_enabled_updated: boolean;
+	    isdocker: boolean;
+	    isk8s: boolean;
+	    isstatic: boolean;
+	    isdefault: boolean;
+	    nat_type?: string;
+	    // Go type: netip.AddrPort
+	    turn_endpoint?: any;
+	    privatekey: number[];
+	    traffickeyprivate: number[];
+	    // // Go type: net.UDPAddr
+	    // internetgateway: any;
+	    peers: {[key: string]: PeerConfig[]};
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.verbosity = source["verbosity"];
+	        this.firewallinuse = source["firewallinuse"];
+	        this.version = source["version"];
+	        this.ipforwarding = source["ipforwarding"];
+	        this.daemoninstalled = source["daemoninstalled"];
+	        this.hostpass = source["hostpass"];
+	        this.name = source["name"];
+	        this.os = source["os"];
+	        this.interface = source["interface"];
+	        this.debug = source["debug"];
+	        this.listenport = source["listenport"];
+	        this.public_listen_port = source["public_listen_port"];
+	        this.proxy_listen_port = source["proxy_listen_port"];
+	        this.mtu = source["mtu"];
+	        this.publickey = source["publickey"];
+	        this.macaddress = source["macaddress"];
+	        this.traffickeypublic = source["traffickeypublic"];
+	        this.internetgateway = this.convertValues(source["internetgateway"], null);
+	        this.nodes = source["nodes"];
+	        this.isrelayed = source["isrelayed"];
+	        this.relayed_by = source["relayed_by"];
+	        this.isrelay = source["isrelay"];
+	        this.relay_hosts = source["relay_hosts"];
+	        this.interfaces = this.convertValues(source["interfaces"], models.Iface);
+	        this.defaultinterface = source["defaultinterface"];
+	        this.endpointip = source["endpointip"];
+	        this.proxy_enabled = source["proxy_enabled"];
+	        this.proxy_enabled_updated = source["proxy_enabled_updated"];
+	        this.isdocker = source["isdocker"];
+	        this.isk8s = source["isk8s"];
+	        this.isstatic = source["isstatic"];
+	        this.isdefault = source["isdefault"];
+	        this.nat_type = source["nat_type"];
+	        this.turn_endpoint = this.convertValues(source["turn_endpoint"], null);
+	        this.privatekey = source["privatekey"];
+	        this.traffickeyprivate = source["traffickeyprivate"];
+	        this.internetgateway = this.convertValues(source["internetgateway"], null);
+	        this.peers = source["peers"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Node {
+	    id: number[];
+	    hostid: number[];
+	    network: string;
+	    // Go type: net.IPNet
+	    networkrange: any;
+	    // Go type: net.IPNet
+	    networkrange6: any;
+	    // Go type: net.UDPAddr
+	    internetgateway?: any;
+	    server: string;
+	    connected: boolean;
+	    // Go type: net.IPNet
+	    address: any;
+	    // Go type: net.IPNet
+	    address6: any;
+	    action: string;
+	    // Go type: net.IPNet
+	    localaddress: any;
+	    isegressgateway: boolean;
+	    egressgatewayranges: string[];
+	    isingressgateway: boolean;
+	    dnson: boolean;
+	    persistentkeepalive: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Node(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostid = source["hostid"];
+	        this.network = source["network"];
+	        this.networkrange = this.convertValues(source["networkrange"], null);
+	        this.networkrange6 = this.convertValues(source["networkrange6"], null);
+	        this.internetgateway = this.convertValues(source["internetgateway"], null);
+	        this.server = source["server"];
+	        this.connected = source["connected"];
+	        this.address = this.convertValues(source["address"], null);
+	        this.address6 = this.convertValues(source["address6"], null);
+	        this.action = source["action"];
+	        this.localaddress = this.convertValues(source["localaddress"], null);
+	        this.isegressgateway = source["isegressgateway"];
+	        this.egressgatewayranges = source["egressgatewayranges"];
+	        this.isingressgateway = source["isingressgateway"];
+	        this.dnson = source["dnson"];
+	        this.persistentkeepalive = source["persistentkeepalive"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Server {
+	    name: string;
+	    mqid: number[];
+	    nodes: {[key: string]: boolean};
+	    accesskey: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Server(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.mqid = source["mqid"];
+	        this.nodes = source["nodes"];
+	        this.accesskey = source["accesskey"];
+	    }
+	}
 
-    nodes: string[];
-    isrelayed: boolean;
-    relayed_by: string;
-    isrelay: boolean;
-    relay_hosts: string[];
-    interfaces: any[];
-    defautlinterface: string;
-    endpointip: any;
-    proxy_enabled: boolean;
-    isdocker: boolean;
-    isk8s: boolean;
-    isstatic: boolean;
-    isdefault: boolean;
-		macaddressstr: string;
-    privatekey: string;
-    traffickeyprivate: string;
-
-    static createFrom(source: any = {}) {
-      return new NcConfig(source);
-    }
-
-    constructor(source: any = {}) {
-      if ("string" === typeof source) source = JSON.parse(source);
-      this.id = source["verbosity"];
-      this.verbosity = source["verbosity"];
-      this.firewallinuse = source["firewallinuse"];
-      this.version = source["version"];
-      this.ipforwarding = source["ipforwarding"];
-      this.daemoninstalled = source["daemoninstalled"];
-      this.hostpass = source["hostpass"];
-      this.name = source["name"];
-      this.os = source["os"];
-      this.debug = source["debug"];
-      this.listenport = source["listenport"];
-      this.mtu = source["mtu"];
-      this.publickey = source["publickey"];
-      this.macaddress = source["macaddress"];
-      this.traffickeypublic = source["traffickeypublic"];
-      this.internetgateway = this.convertValues(
-        source["internetgateway"],
-        null
-      );
-      this.interface = source["interface"];
-      this.public_listen_port = source["public_listen_port"];
-      this.proxy_listen_port = source["proxy_listen_port"];
-      this.nodes = source["nodes"];
-      this.isrelayed = source["isrelayed"];
-      this.relayed_by = source["relayed_by"];
-      this.isrelay = source["isrelay"];
-      this.relay_hosts = source["relay_hosts"];
-      this.interfaces = source["interfaces"];
-      this.defautlinterface = source["defautlinterface"];
-      this.endpointip = this.convertValues(source["endpointip"], null);
-      this.proxy_enabled = source["proxy_enabled"];
-      this.isdocker = source["isdocker"];
-      this.isk8s = source["isk8s"];
-      this.isstatic = source["isstatic"];
-      this.isdefault = source["isdefault"];
-      this.macaddressstr = source["macaddressstr"];
-      this.traffickeyprivate = source["traffickeyprivate"];
-      this.privatekey = source["privatekey"];
-    }
-
-    convertValues(a: any, classs: any, asMap: boolean = false): any {
-      if (!a) {
-        return a;
-      }
-      if (a.slice) {
-        return (a as any[]).map((elem) => this.convertValues(elem, classs));
-      } else if ("object" === typeof a) {
-        if (asMap) {
-          for (const key of Object.keys(a)) {
-            a[key] = new classs(a[key]);
-          }
-          return a;
-        }
-        return new classs(a);
-      }
-      return a;
-    }
-  }
-  export class Node {
-    id: string;
-    hostid: string;
-    network: string;
-    networkrange: any; // Go type: net.IPNet
-    networkrange6: any; // Go type: net.IPNet
-    internetgateway?: any; // Go type: net.UDPAddr
-    server: string;
-    connected: boolean;
-    address: any; // Go type: net.IPNet
-    address6: any; // Go type: net.IPNet
-    postup: string;
-    postdown: string;
-    action: string;
-    isegressgateway: boolean;
-    isingressgateway: boolean;
-    dnson: boolean;
-    persistentkeepalive: number;
-
-    static createFrom(source: any = {}) {
-      return new Node(source);
-    }
-
-    constructor(source: any = {}) {
-      if ("string" === typeof source) source = JSON.parse(source);
-      this.id = source["id"];
-      this.hostid = source["hostid"];
-      this.network = source["network"];
-      this.networkrange = this.convertValues(source["networkrange"], null);
-      this.networkrange6 = this.convertValues(source["networkrange6"], null);
-      this.internetgateway = this.convertValues(
-        source["internetgateway"],
-        null
-      );
-      this.server = source["server"];
-      this.connected = source["connected"];
-      this.address = this.convertValues(source["address"], null);
-      this.address6 = this.convertValues(source["address6"], null);
-      this.postup = source["postup"];
-      this.postdown = source["postdown"];
-      this.action = source["action"];
-      this.isegressgateway = source["isegressgateway"];
-      this.isingressgateway = source["isingressgateway"];
-      this.dnson = source["dnson"];
-      this.persistentkeepalive = source["persistentkeepalive"];
-    }
-
-    convertValues(a: any, classs: any, asMap: boolean = false): any {
-      if (!a) {
-        return a;
-      }
-      if (a.slice) {
-        return (a as any[]).map((elem) => this.convertValues(elem, classs));
-      } else if ("object" === typeof a) {
-        if (asMap) {
-          for (const key of Object.keys(a)) {
-            a[key] = new classs(a[key]);
-          }
-          return a;
-        }
-        return new classs(a);
-      }
-      return a;
-    }
-  }
-  export class Server {
-    name: string;
-    verson: string;
-    api: string;
-    corednsaddress: string;
-    broker: string;
-    mqport: string;
-    mqid: string;
-    password: string;
-    dnsmode: boolean;
-    isee: boolean;
-    nodes: { [key: string]: boolean };
-    traffickey: number[];
-    accesskey: string;
-
-    static createFrom(source: any = {}) {
-      return new Server(source);
-    }
-
-    constructor(source: any = {}) {
-      if ("string" === typeof source) source = JSON.parse(source);
-      this.name = source["name"];
-      this.verson = source["verson"];
-      this.api = source["api"];
-      this.corednsaddress = source["corednsaddress"];
-      this.broker = source["broker"];
-      this.mqport = source["mqport"];
-      this.mqid = source["mqid"];
-      this.password = source["password"];
-      this.dnsmode = source["dnsmode"];
-      this.isee = source["isee"];
-      this.nodes = source["nodes"];
-      this.traffickey = source["traffickey"];
-      this.accesskey = source["accesskey"];
-    }
-  }
 }
 
 export namespace main {
-  export class Network {
-    node?: config.Node;
-    server?: config.Server;
+	
+	export class NcConfig {
+	    id: number[];
+	    verbosity: number;
+	    firewallinuse: string;
+	    version: string;
+	    ipforwarding: boolean;
+	    daemoninstalled: boolean;
+	    hostpass: string;
+	    name: string;
+	    os: string;
+	    interface: string;
+	    debug: boolean;
+	    listenport: number;
+	    public_listen_port: number;
+	    proxy_listen_port: number;
+	    mtu: number;
+	    publickey: number[];
+	    macaddress: number[];
+	    traffickeypublic: number[];
+	    // Go type: net.UDPAddr
+	    internetgateway: any;
+	    nodes: string[];
+	    isrelayed: boolean;
+	    relayed_by: string;
+	    isrelay: boolean;
+	    relay_hosts: string[];
+	    interfaces: models.Iface[];
+	    defaultinterface: string;
+	    endpointip: number[];
+	    proxy_enabled: boolean;
+	    proxy_enabled_updated: boolean;
+	    isdocker: boolean;
+	    isk8s: boolean;
+	    isstatic: boolean;
+	    isdefault: boolean;
+	    nat_type?: string;
+	    // Go type: netip.AddrPort
+	    turn_endpoint?: any;
+	    privatekey: number[];
+	    traffickeyprivate: number[];
+	    // // Go type: net.UDPAddr
+	    // internetgateway: any;
+	    peers: {[key: string]: PeerConfig[]};
+	    macaddressstr: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NcConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.verbosity = source["verbosity"];
+	        this.firewallinuse = source["firewallinuse"];
+	        this.version = source["version"];
+	        this.ipforwarding = source["ipforwarding"];
+	        this.daemoninstalled = source["daemoninstalled"];
+	        this.hostpass = source["hostpass"];
+	        this.name = source["name"];
+	        this.os = source["os"];
+	        this.interface = source["interface"];
+	        this.debug = source["debug"];
+	        this.listenport = source["listenport"];
+	        this.public_listen_port = source["public_listen_port"];
+	        this.proxy_listen_port = source["proxy_listen_port"];
+	        this.mtu = source["mtu"];
+	        this.publickey = source["publickey"];
+	        this.macaddress = source["macaddress"];
+	        this.traffickeypublic = source["traffickeypublic"];
+	        this.internetgateway = this.convertValues(source["internetgateway"], null);
+	        this.nodes = source["nodes"];
+	        this.isrelayed = source["isrelayed"];
+	        this.relayed_by = source["relayed_by"];
+	        this.isrelay = source["isrelay"];
+	        this.relay_hosts = source["relay_hosts"];
+	        this.interfaces = this.convertValues(source["interfaces"], models.Iface);
+	        this.defaultinterface = source["defaultinterface"];
+	        this.endpointip = source["endpointip"];
+	        this.proxy_enabled = source["proxy_enabled"];
+	        this.proxy_enabled_updated = source["proxy_enabled_updated"];
+	        this.isdocker = source["isdocker"];
+	        this.isk8s = source["isk8s"];
+	        this.isstatic = source["isstatic"];
+	        this.isdefault = source["isdefault"];
+	        this.nat_type = source["nat_type"];
+	        this.turn_endpoint = this.convertValues(source["turn_endpoint"], null);
+	        this.privatekey = source["privatekey"];
+	        this.traffickeyprivate = source["traffickeyprivate"];
+	        this.internetgateway = this.convertValues(source["internetgateway"], null);
+	        this.peers = source["peers"];
+	        this.macaddressstr = source["macaddressstr"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Network {
+	    node?: config.Node;
+	    server?: config.Server;
+	
+	    static createFrom(source: any = {}) {
+	        return new Network(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.node = this.convertValues(source["node"], config.Node);
+	        this.server = this.convertValues(source["server"], config.Server);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
-    static createFrom(source: any = {}) {
-      return new Network(source);
-    }
-
-    constructor(source: any = {}) {
-      if ("string" === typeof source) source = JSON.parse(source);
-      this.node = this.convertValues(source["node"], config.Node);
-      this.server = this.convertValues(source["server"], config.Server);
-    }
-
-    convertValues(a: any, classs: any, asMap: boolean = false): any {
-      if (!a) {
-        return a;
-      }
-      if (a.slice) {
-        return (a as any[]).map((elem) => this.convertValues(elem, classs));
-      } else if ("object" === typeof a) {
-        if (asMap) {
-          for (const key of Object.keys(a)) {
-            a[key] = new classs(a[key]);
-          }
-          return a;
-        }
-        return new classs(a);
-      }
-      return a;
-    }
-  }
 }
 
 export namespace models {
-  export class AccessToken {
-    apiconnstring: string;
-    network: string;
-    key: string;
+	
+	export class AccessToken {
+	    apiconnstring: string;
+	    network: string;
+	    key: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccessToken(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.apiconnstring = source["apiconnstring"];
+	        this.network = source["network"];
+	        this.key = source["key"];
+	    }
+	}
 
-    static createFrom(source: any = {}) {
-      return new AccessToken(source);
-    }
+	export class Iface {
+		name: string;
+		// Go type: net.IPNet
+	    address: any;
+	    addressString: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Iface(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.address = source["address"];
+	        this.addressString = source["addressString"];
+	    }
+	}
 
-    constructor(source: any = {}) {
-      if ("string" === typeof source) source = JSON.parse(source);
-      this.apiconnstring = source["apiconnstring"];
-      this.network = source["network"];
-      this.key = source["key"];
-    }
-  }
 }
+

@@ -14,7 +14,7 @@ import {
   updateConnectionStatusAndRefreshNetworks,
 } from "../store/helpers";
 import { getUserConfirmation, notifyUser } from "../utils/messaging";
-import { Peer } from "../models/Peer";
+import { PeerConfig } from "../models/Peer";
 import { GoGetNodePeers } from "../../wailsjs/go/main/App";
 
 export default function NetworkDetailsPage() {
@@ -24,7 +24,7 @@ export default function NetworkDetailsPage() {
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [isLoadingPeers, setIsLoadingPeers] = useState(true);
   const [isLeavingNetwork, setIsLeavingNetwork] = useState(false);
-  const [networkPeers, setNetworkPeers] = useState<Peer[]>([]);
+  const [networkPeers, setNetworkPeers] = useState<PeerConfig[]>([]);
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
   const { networkName } = useParams();

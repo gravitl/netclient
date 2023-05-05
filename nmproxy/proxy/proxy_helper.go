@@ -44,9 +44,8 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			n, err := p.LocalConn.Read(buf)
 			if err != nil {
 				logger.Log(1, "error reading: ", err.Error())
-				continue
+				return
 			}
-
 			go func(n int, cfg models.Proxy) {
 				peerConnCfg := models.Conn{}
 				if p.Config.ProxyStatus {
@@ -61,7 +60,7 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 			}(n, p.Config)
 
 			var srcPeerKeyHash, dstPeerKeyHash string
-			if p.Config.ProxyStatus {
+			if p.Config.ProxyStatus || p.Config.UsingTurn {
 				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(buf, n,
 					config.GetCfg().GetDevicePubKey().String(), p.Config.PeerPublicKey.String())
 				if err != nil {
@@ -72,7 +71,13 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
 					p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
 			}
-
+			if p.Config.UsingTurn {
+				_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
+				if err != nil {
+					logger.Log(0, "failed to write to remote conn: ", err.Error())
+				}
+				continue
+			}
 			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
 			if err != nil {
 				logger.Log(1, "Failed to send to remote: ", err.Error())
@@ -121,11 +126,11 @@ func (p *Proxy) pullLatestConfig() error {
 	peer, found := config.GetCfg().GetPeer(p.Config.PeerPublicKey.String())
 	if found {
 		p.Config.PeerEndpoint = peer.Config.PeerEndpoint
+		p.Config.TurnConn = peer.Config.TurnConn
 	} else {
 		return errors.New("peer not found")
 	}
 	return nil
-
 }
 
 // Proxy.ProxyPeer proxies data from Wireguard to the remote peer and vice-versa

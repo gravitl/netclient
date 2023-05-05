@@ -5,16 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/router"
+	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type proxyPayload nm_models.ProxyManagerPayload
@@ -24,7 +27,8 @@ func getRecieverType(m *nm_models.ProxyManagerPayload) *proxyPayload {
 	return &mI
 }
 
-func dumpProxyConnsInfo(ctx context.Context) {
+func dumpProxyConnsInfo(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -36,8 +40,10 @@ func dumpProxyConnsInfo(ctx context.Context) {
 }
 
 // Start - starts the proxy manager loop and listens for events on the Channel provided
-func Start(ctx context.Context, managerChan chan *nm_models.HostPeerUpdate) {
-	go dumpProxyConnsInfo(ctx)
+func Start(ctx context.Context, wg *sync.WaitGroup, managerChan chan *nm_models.HostPeerUpdate) {
+	defer wg.Done()
+	wg.Add(1)
+	go dumpProxyConnsInfo(ctx, wg)
 	for {
 		select {
 		case <-ctx.Done():
@@ -228,25 +234,53 @@ func (m *proxyPayload) processPayload() error {
 
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
-			// check if proxy is not required for the peer anymore
-			if (m.Action == nm_models.NoProxy) && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
-				// cleanup proxy connections for the peer
-				currentPeer.StopConn()
-				delete(peerConnMap, currentPeer.Key.String())
-				wireguard.UpdatePeer(&m.Peers[i])
+			if currentPeer.Config.UsingTurn {
+				// check if using turn is no longer required
+				if !(turn.ShouldUseTurn(config.GetCfg().HostInfo.NatType) &&
+					turn.ShouldUseTurn(m.PeerMap[m.Peers[i].PublicKey.String()].NatType)) {
+					// cleanup proxy connections for the peer
+					currentPeer.StopConn()
+					delete(peerConnMap, currentPeer.Key.String())
+					config.GetCfg().DeletePeerTurnCfg(currentPeer.Key.String())
+					wireguard.UpdatePeer(&m.Peers[i])
+					currentPeer.Mutex.Unlock()
+					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+					continue
+				}
+				if m.IsRelayed || m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
+					// cleanup turn connections for the peer since it is being relayed already
+					currentPeer.StopConn()
+					delete(peerConnMap, currentPeer.Key.String())
+					config.GetCfg().DeletePeerTurnCfg(currentPeer.Key.String())
+					wireguard.UpdatePeer(&m.Peers[i])
+					currentPeer.Mutex.Unlock()
+					continue
+				}
 				currentPeer.Mutex.Unlock()
-				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 				continue
+			} else {
+				if (m.Action == nm_models.NoProxy) && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed &&
+					!currentPeer.Config.UsingTurn {
+					// cleanup proxy connections for the peer
+					currentPeer.StopConn()
+					delete(peerConnMap, currentPeer.Key.String())
+					wireguard.UpdatePeer(&m.Peers[i])
+					currentPeer.Mutex.Unlock()
+					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+					continue
+				}
+				// check if proxy is not required for the peer anymore
+				if !m.IsRelayed && (m.Action == nm_models.ProxyUpdate) && !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
+					// cleanup proxy connections for the peer
+					currentPeer.StopConn()
+					delete(peerConnMap, currentPeer.Key.String())
+					wireguard.UpdatePeer(&m.Peers[i])
+					currentPeer.Mutex.Unlock()
+					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
+					continue
+				}
 			}
-			if !m.IsRelayed && (m.Action == nm_models.ProxyUpdate) && !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
-				// cleanup proxy connections for the peer
-				currentPeer.StopConn()
-				delete(peerConnMap, currentPeer.Key.String())
-				wireguard.UpdatePeer(&m.Peers[i])
-				currentPeer.Mutex.Unlock()
-				m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-				continue
-			}
+
 			// check if peer is not connected to proxy
 			devPeer, err := wg.GetPeer(m.InterfaceName, currentPeer.Key.String())
 			if err == nil {
@@ -367,8 +401,39 @@ func (m *proxyPayload) peerUpdate() error {
 		if peerConf.Proxy && m.Action == nm_models.ProxyUpdate {
 			shouldUseProxy = true
 		}
+		if !isRelayed && turn.ShouldUseTurn(config.GetCfg().HostInfo.NatType) && turn.ShouldUseTurn(peerConf.NatType) {
+			if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {
+				go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, t models.TurnCfg) {
+					var err error
+					// signal peer with the host relay addr for the peer
+					peerTurnCfg, ok := config.GetCfg().GetPeerTurnCfg(m.Server, peer.PublicKey.String())
+					if !ok {
+						config.GetCfg().SetPeerTurnCfg(m.Server, peer.PublicKey.String(), models.TurnPeerCfg{
+							Server:   serverName,
+							PeerConf: peerConf,
+						})
+					} else {
+						peerTurnCfg.PeerConf = peerConf
+						config.GetCfg().UpdatePeerTurnCfg(m.Server, peer.PublicKey.String(), peerTurnCfg)
+					}
+					err = turn.SignalPeer(serverName, nm_models.Signal{
+						Server:            m.Server,
+						FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+						TurnRelayEndpoint: t.TurnConn.LocalAddr().String(),
+						ToHostPubKey:      peer.PublicKey.String(),
+					})
+					if err != nil {
+						logger.Log(0, "---> failed to signal peer: ", err.Error())
+
+					}
+
+				}(m.Server, peerI, peerConf, t)
+				continue
+			}
+
+		}
 		if shouldUseProxy {
-			peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo)
+			peerpkg.AddNew(m.Server, peerI, peerConf, isRelayed, relayedTo, false)
 		}
 
 	}

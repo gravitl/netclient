@@ -1,10 +1,10 @@
-import { Peer } from "../models/Peer";
+import { PeerConfig } from "../models/Peer";
 
-export function extractPeerPublicEndpoint(peer: Peer): string {
+export function extractPeerPublicEndpoint(peer: PeerConfig): string {
   return `${peer.Endpoint?.IP}:${peer?.Endpoint?.Port}`
 }
 
-export function extractPeerPrivateEndpoints(peer: Peer): string[] {
+export function extractPeerPrivateEndpoints(peer: PeerConfig): string[] {
   return peer.AllowedIPs.map(endpoint => `${endpoint.IP}`)
 }
 

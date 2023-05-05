@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"gopkg.in/yaml.v3"
 )
@@ -42,6 +43,13 @@ type OldNetmakerServerConfig struct {
 	Is_EE       bool   `yaml:"isee"`
 }
 
+// TurnConfig - struct to hold turn server config
+type TurnConfig struct {
+	Server string
+	Domain string
+	Port   int
+}
+
 // ReadServerConf reads the servers configuration file and populates the server map
 func ReadServerConf() error {
 	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
@@ -70,7 +78,12 @@ func WriteServerConfig() error {
 	file := GetNetclientPath() + "servers.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
-			os.MkdirAll(GetNetclientPath(), os.ModePerm)
+			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+				return err
+			}
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+				logger.Log(0, "Error setting permissions on "+GetNetclientPath(), err.Error())
+			}
 		} else if err != nil {
 			return err
 		}
@@ -154,4 +167,24 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.ServerConfig = *cfg
 
 	Servers[cfg.Server] = server
+}
+
+// GetAllTurnConfigs - fetches all turn configs from all servers
+func GetAllTurnConfigs() (turnList []TurnConfig) {
+	turnMap := make(map[string]struct{})
+	for _, serverName := range GetServers() {
+		server := GetServer(serverName)
+		if !server.UseTurn {
+			continue
+		}
+		if _, ok := turnMap[server.TurnDomain]; !ok {
+			turnList = append(turnList, TurnConfig{
+				Server: serverName,
+				Domain: server.TurnDomain,
+				Port:   server.TurnPort,
+			})
+			turnMap[server.TurnDomain] = struct{}{}
+		}
+	}
+	return
 }

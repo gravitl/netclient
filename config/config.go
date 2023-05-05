@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -220,7 +221,12 @@ func WriteNetclientConfig() error {
 	file := GetNetclientPath() + "netclient.yml"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
-			os.MkdirAll(GetNetclientPath(), os.ModePerm)
+			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+				logger.Log(0, "error creating netclient config directory", err.Error())
+			}
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
+			}
 		} else if err != nil {
 			return err
 		}
@@ -435,6 +441,9 @@ func InitConfig(viper *viper.Viper) {
 			if err := os.Mkdir(GetNetclientPath(), os.ModePerm); err != nil {
 				logger.Log(0, "failed to create dirs", err.Error())
 			}
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+				logger.Log(0, "failed to update permissions of netclient config dir", err.Error())
+			}
 		} else {
 			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
 		}
@@ -461,7 +470,7 @@ func CheckConfig() {
 	if netclient.ID == uuid.Nil {
 		logger.Log(0, "setting netclient hostid")
 		netclient.ID = uuid.New()
-		netclient.HostPass = ncutils.MakeRandomString(32)
+		netclient.HostPass = logic.RandomString(32)
 		saveRequired = true
 	}
 	if netclient.Name == "" {
@@ -546,22 +555,16 @@ func CheckConfig() {
 		saveRequired = true
 	}
 	// check for nftables present if on Linux
-	if netclient.FirewallInUse == "" {
+	if FirewallHasChanged() {
 		saveRequired = true
-		if ncutils.IsLinux() {
-			if ncutils.IsNFTablesPresent() {
-				netclient.FirewallInUse = models.FIREWALL_NFTABLES
-			} else {
-				netclient.FirewallInUse = models.FIREWALL_IPTABLES
-			}
-		} else {
-			// defaults to iptables for now, may need another default for non-Linux OSes
-			netclient.FirewallInUse = models.FIREWALL_IPTABLES
-		}
+		SetFirewall()
 	}
 	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
 		if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
 			logger.Log(0, "failed to create /etc/netclient", err.Error())
+		}
+		if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+			logger.Log(0, "failed to chmod /etc/netclient", err.Error())
 		}
 		if _, err := os.Create(GetNetclientPath() + "netmaker.conf"); err != nil {
 			logger.Log(0, "failed to create netmaker.conf: ", err.Error())
@@ -702,4 +705,33 @@ func IsHostInetGateway() bool {
 		}
 	}
 	return false
+}
+
+// setFirewall - determine and record firewall in use
+func SetFirewall() {
+	if ncutils.IsLinux() {
+		if ncutils.IsIPTablesPresent() {
+			netclient.FirewallInUse = models.FIREWALL_IPTABLES
+		} else if ncutils.IsNFTablesPresent() {
+			netclient.FirewallInUse = models.FIREWALL_NFTABLES
+		} else {
+			netclient.FirewallInUse = models.FIREWALL_NONE
+		}
+	} else {
+		netclient.FirewallInUse = models.FIREWALL_NONE
+	}
+}
+
+// FirewallHasChanged - checks if the firewall has changed
+func FirewallHasChanged() bool {
+	if netclient.FirewallInUse == models.FIREWALL_NONE && !ncutils.IsLinux() {
+		return false
+	}
+	if netclient.FirewallInUse == models.FIREWALL_IPTABLES && ncutils.IsIPTablesPresent() {
+		return false
+	}
+	if netclient.FirewallInUse == models.FIREWALL_NFTABLES && ncutils.IsNFTablesPresent() {
+		return false
+	}
+	return true
 }
