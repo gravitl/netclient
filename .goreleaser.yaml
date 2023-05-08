@@ -31,13 +31,10 @@ builds:
     targets:
       - linux_amd64
       - linux_arm64
-      - linux_arm_5
-      - linux_arm_6
-      - linux_arm_7
 
 archives:
   - format: binary
-    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}-{{ . }}{{ end }}'
+    name_template: '{{ .Binary }}-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}-{{ . }}{{ end }}'
 release:
-  prerelease: false
+  - prerelease: false
 
