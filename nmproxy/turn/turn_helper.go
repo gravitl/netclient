@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-ping/ping"
 	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
@@ -20,8 +19,14 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// PeerSignalCh - channel to recieve peer signals
-var PeerSignalCh = make(chan nm_models.Signal, 50)
+var (
+	// PeerSignalCh - channel to recieve peer signals
+	PeerSignalCh = make(chan nm_models.Signal, 50)
+	// PeerConnectionCheckInterval - time interval to check peer connection status
+	PeerConnectionCheckInterval = time.Minute
+	// LastHandShakeThreshold - threshold for considering inactive connection
+	LastHandShakeThreshold = time.Minute * 3
+)
 
 // WatchPeerSignals - processes the peer signals for any turn updates from peers
 func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
@@ -35,7 +40,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 		case signal := <-PeerSignalCh:
 			// process recieved new signal from peer
 			switch signal.Action {
-			case nm_models.ConnNegotitation:
+			case nm_models.ConnNegotiation:
 				err = handlePeerNegotiaton(signal)
 			case nm_models.DissolveConn:
 				err = handleDissolveConn(signal)
@@ -103,7 +108,7 @@ func handlePeerNegotiaton(signal nm_models.Signal) error {
 				TurnRelayEndpoint: hostTurnCfg.TurnConn.LocalAddr().String(),
 				ToHostPubKey:      signal.FromHostPubKey,
 				Reply:             true,
-				Action:            nm_models.ConnNegotitation,
+				Action:            nm_models.ConnNegotiation,
 			})
 			hostTurnCfg.Mutex.RUnlock()
 			if err != nil {
@@ -128,7 +133,7 @@ func handleDissolveConn(signal nm_models.Signal) error {
 	}
 	if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
-		config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
+		config.GetCfg().DeletePeerTurnCfg(signal.Server, signal.FromHostPubKey)
 		conn.Config.PeerEndpoint = peerEndpoint
 		config.GetCfg().UpdatePeer(&conn)
 		config.GetCfg().ResetPeer(signal.FromHostPubKey)
@@ -147,37 +152,45 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			logger.Log(0, "Checking CONNECTIONS....")
+			iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
+			if err != nil {
+				continue
+			}
 			serverPeers := ncconfig.Netclient().HostPeers
 			for server, peers := range serverPeers {
 				for _, peerI := range peers {
-					if len(peerI.AllowedIPs) > 0 && peerI.AllowedIPs[0].IP != nil {
-						if !IsPeerConnected(peerI.AllowedIPs[0].IP.String()) {
-							// signal peer to use turn
-							turnCfg, ok := config.GetCfg().GetTurnCfg(server)
-							if !ok || turnCfg.TurnConn == nil {
-								continue
-							}
-							if _, ok := config.GetCfg().GetPeerTurnCfg(server, peerI.PublicKey.String()); !ok {
-								config.GetCfg().SetPeerTurnCfg(server, peerI.PublicKey.String(), models.TurnPeerCfg{
-									Server:   server,
-									PeerConf: nm_models.PeerConf{},
-								})
-							}
-							turnCfg.Mutex.RLock()
-							// signal peer with the host relay addr for the peer
-							err := SignalPeer(server, nm_models.Signal{
-								Server:            server,
-								FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-								TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
-								ToHostPubKey:      peerI.PublicKey.String(),
-								Action:            nm_models.ConnNegotitation,
-							})
-							turnCfg.Mutex.RUnlock()
-							if err != nil {
-								logger.Log(0, "---> failed to signal peer: ", err.Error())
-							}
-						}
+					connected, err := IsPeerConnected(peerI.PublicKey.String())
+					if err != nil {
+						logger.Log(0, "failed to check if peer is connected: ", err.Error())
+						continue
+					}
+					if connected {
+						// peer is connected,so continue
+						continue
+					}
+					// signal peer to use turn
+					turnCfg, ok := config.GetCfg().GetTurnCfg(server)
+					if !ok || turnCfg.TurnConn == nil {
+						continue
+					}
+					if _, ok := config.GetCfg().GetPeerTurnCfg(server, peerI.PublicKey.String()); !ok {
+						config.GetCfg().SetPeerTurnCfg(server, peerI.PublicKey.String(), models.TurnPeerCfg{
+							Server:   server,
+							PeerConf: nm_models.PeerConf{},
+						})
+					}
+					turnCfg.Mutex.RLock()
+					// signal peer with the host relay addr for the peer
+					err = SignalPeer(server, nm_models.Signal{
+						Server:            server,
+						FromHostPubKey:    iface.Device.PublicKey.String(),
+						TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
+						ToHostPubKey:      peerI.PublicKey.String(),
+						Action:            nm_models.ConnNegotiation,
+					})
+					turnCfg.Mutex.RUnlock()
+					if err != nil {
+						logger.Log(0, "---> failed to signal peer: ", err.Error())
 					}
 				}
 			}
@@ -185,30 +198,14 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
-var checkDone bool
-
 // IsPeerConnected - get peer connection status by pinging
-func IsPeerConnected(address string) (connected bool) {
-	if !checkDone {
-		checkDone = true
-		return false
-	}
-	pinger, err := ping.NewPinger(address)
+func IsPeerConnected(peerKey string) (connected bool, err error) {
+	peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
-		logger.Log(0, "could not initiliaze ping peer address", address, err.Error())
-		connected = false
-	} else {
-		pinger.Timeout = time.Second * 3
-		err = pinger.Run()
-		if err != nil {
-			logger.Log(0, "failed to ping on peer address", address, err.Error())
-			return false
-		} else {
-			pingStats := pinger.Statistics()
-			if pingStats.PacketsRecv > 0 {
-				connected = true
-			}
-		}
+		return
+	}
+	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
+		connected = true
 	}
 	return
 }
@@ -224,15 +221,23 @@ func ShouldUseTurn(natType string) bool {
 
 // DissolvePeerConnections - notifies all peers to disconnect from using turn to reach me.
 func DissolvePeerConnections() {
+	logger.Log(0, "Dissolving TURN Peer Connections...")
+	iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
+	if err != nil {
+		return
+	}
 	for _, server := range ncconfig.GetServers() {
 		turnPeers := config.GetCfg().GetAllTurnPeersCfg(server)
 		for peerPubKey := range turnPeers {
-			go SignalPeer(server, nm_models.Signal{
-				FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+			err = SignalPeer(server, nm_models.Signal{
+				FromHostPubKey:    iface.Device.PublicKey.String(),
 				ToHostPubKey:      peerPubKey,
-				TurnRelayEndpoint: config.GetCfg().GetHostInfo().PublicIp.String(),
+				TurnRelayEndpoint: fmt.Sprintf("%s:%d", iface.Device.PublicKey.String(), iface.Device.ListenPort),
 				Action:            nm_models.DissolveConn,
 			})
+			if err != nil {
+				logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
+			}
 		}
 	}
 }
