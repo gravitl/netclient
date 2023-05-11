@@ -51,9 +51,10 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	go manager.Start(ctx, wg, mgmChan)
 	wg.Add(1)
 	go turn.WatchPeerSignals(ctx, wg)
-	if turn.ShouldUseTurn(hostNatInfo.NatType) {
-		time.Sleep(time.Second * 2) // add a delay for clients to send turn register message to server
-		turn.Init(ctx, wg, ncconfig.GetAllTurnConfigs())
-	}
+	time.Sleep(time.Second * 2) // add a delay for clients to send turn register message to server
+	turn.Init(ctx, wg, ncconfig.GetAllTurnConfigs())
+	defer turn.DissolvePeerConnections()
+	wg.Add(1)
+	go turn.WatchPeerConnections(ctx, wg)
 	server.NmProxyServer.Listen(ctx)
 }
