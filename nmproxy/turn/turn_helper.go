@@ -162,7 +162,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if peerI.Endpoint == nil {
 						continue
 					}
-					connected, err := IsPeerConnected(peerI.PublicKey.String())
+					connected, err := isPeerConnected(peerI.PublicKey.String())
 					if err != nil {
 						logger.Log(0, "failed to check if peer is connected: ", err.Error())
 						continue
@@ -201,8 +201,8 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
-// IsPeerConnected - get peer connection status by pinging
-func IsPeerConnected(peerKey string) (connected bool, err error) {
+// isPeerConnected - get peer connection status by checking last handshake time
+func isPeerConnected(peerKey string) (connected bool, err error) {
 	peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
 		return
@@ -222,7 +222,7 @@ func ShouldUseTurn(natType string) bool {
 	return false
 }
 
-// DissolvePeerConnections - notifies all peers to disconnect from using turn to reach me.
+// DissolvePeerConnections - notifies all peers to disconnect from using turn.
 func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")
 	iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
