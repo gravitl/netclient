@@ -421,6 +421,7 @@ func (m *proxyPayload) peerUpdate() error {
 						FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
 						TurnRelayEndpoint: t.TurnConn.LocalAddr().String(),
 						ToHostPubKey:      peer.PublicKey.String(),
+						Action:            nm_models.ConnNegotitation,
 					})
 					if err != nil {
 						logger.Log(0, "---> failed to signal peer: ", err.Error())

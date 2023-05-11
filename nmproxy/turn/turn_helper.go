@@ -103,6 +103,7 @@ func handlePeerNegotiaton(signal nm_models.Signal) error {
 				TurnRelayEndpoint: hostTurnCfg.TurnConn.LocalAddr().String(),
 				ToHostPubKey:      signal.FromHostPubKey,
 				Reply:             true,
+				Action:            nm_models.ConnNegotitation,
 			})
 			hostTurnCfg.Mutex.RUnlock()
 			if err != nil {
@@ -170,6 +171,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 								FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
 								TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
 								ToHostPubKey:      peerI.PublicKey.String(),
+								Action:            nm_models.ConnNegotitation,
 							})
 							turnCfg.Mutex.RUnlock()
 							if err != nil {
@@ -183,8 +185,14 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
+var checkDone bool
+
 // IsPeerConnected - get peer connection status by pinging
 func IsPeerConnected(address string) (connected bool) {
+	if !checkDone {
+		checkDone = true
+		return false
+	}
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
 		logger.Log(0, "could not initiliaze ping peer address", address, err.Error())

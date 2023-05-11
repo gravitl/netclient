@@ -241,6 +241,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
 					TurnRelayEndpoint: turnConn.LocalAddr().String(),
 					ToHostPubKey:      peerKey,
+					Action:            nm_models.ConnNegotitation,
 				})
 				if err != nil {
 					logger.Log(0, "failed to signal peer: ", err.Error())
