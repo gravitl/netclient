@@ -46,15 +46,21 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 	if err != nil {
 		logger.FatalLog("failed to create proxy: ", err.Error())
 	}
+	proxyWaitG := &sync.WaitGroup{}
 	config.GetCfg().SetServerConn(server.NmProxyServer.Server)
-	wg.Add(1)
-	go manager.Start(ctx, wg, mgmChan)
-	wg.Add(1)
-	go turn.WatchPeerSignals(ctx, wg)
-	time.Sleep(time.Second * 2) // add a delay for clients to send turn register message to server
-	turn.Init(ctx, wg, ncconfig.GetAllTurnConfigs())
-	defer turn.DissolvePeerConnections()
-	wg.Add(1)
-	go turn.WatchPeerConnections(ctx, wg)
-	server.NmProxyServer.Listen(ctx)
+	proxyWaitG.Add(1)
+	go manager.Start(ctx, proxyWaitG, mgmChan)
+	proxyWaitG.Add(1)
+	go turn.WatchPeerSignals(ctx, proxyWaitG)
+	turnCfgs := ncconfig.GetAllTurnConfigs()
+	if len(turnCfgs) > 0 {
+		time.Sleep(time.Second * 2) // add a delay for clients to send turn register message to server
+		turn.Init(ctx, proxyWaitG, turnCfgs)
+		defer turn.DissolvePeerConnections()
+		proxyWaitG.Add(1)
+		go turn.WatchPeerConnections(ctx, proxyWaitG)
+	}
+	proxyWaitG.Add(1)
+	go server.NmProxyServer.Listen(ctx, proxyWaitG)
+	proxyWaitG.Wait()
 }

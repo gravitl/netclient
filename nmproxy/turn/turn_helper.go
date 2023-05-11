@@ -159,6 +159,9 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			serverPeers := ncconfig.Netclient().HostPeers
 			for server, peers := range serverPeers {
 				for _, peerI := range peers {
+					if peerI.Endpoint == nil {
+						continue
+					}
 					connected, err := IsPeerConnected(peerI.PublicKey.String())
 					if err != nil {
 						logger.Log(0, "failed to check if peer is connected: ", err.Error())
