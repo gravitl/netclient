@@ -154,34 +154,32 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if !IsPeerConnected(peerI.AllowedIPs[0].IP.String()) {
 							// signal peer to use turn
 							turnCfg, ok := config.GetCfg().GetTurnCfg(server)
-							if !ok {
+							if !ok || turnCfg.TurnConn == nil {
 								continue
 							}
-							if turnCfg.TurnConn != nil {
-								if _, ok := config.GetCfg().GetPeerTurnCfg(server, peerI.PublicKey.String()); !ok {
-									config.GetCfg().SetPeerTurnCfg(server, peerI.PublicKey.String(), models.TurnPeerCfg{
-										Server:   server,
-										PeerConf: nm_models.PeerConf{},
-									})
-								}
-								// signal peer with the host relay addr for the peer
-								err := SignalPeer(server, nm_models.Signal{
-									Server:            server,
-									FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
-									TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
-									ToHostPubKey:      peerI.PublicKey.String(),
+							if _, ok := config.GetCfg().GetPeerTurnCfg(server, peerI.PublicKey.String()); !ok {
+								config.GetCfg().SetPeerTurnCfg(server, peerI.PublicKey.String(), models.TurnPeerCfg{
+									Server:   server,
+									PeerConf: nm_models.PeerConf{},
 								})
-								if err != nil {
-									logger.Log(0, "---> failed to signal peer: ", err.Error())
-								}
+							}
+							turnCfg.Mutex.RLock()
+							// signal peer with the host relay addr for the peer
+							err := SignalPeer(server, nm_models.Signal{
+								Server:            server,
+								FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+								TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
+								ToHostPubKey:      peerI.PublicKey.String(),
+							})
+							turnCfg.Mutex.RUnlock()
+							if err != nil {
+								logger.Log(0, "---> failed to signal peer: ", err.Error())
 							}
 						}
 					}
 				}
-
 			}
 		}
-
 	}
 }
 
