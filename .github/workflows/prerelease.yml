@@ -9,7 +9,7 @@ on:
 
 jobs:
   release:
-    uses: gravitl/devops/.github/workflows/netclientRelease.yml@master
+    uses: gravitl/devops/.github/workflows/netclientPrerelease.yml@master
     with:
       version: ${{ inputs.version }}
     secrets: inherit

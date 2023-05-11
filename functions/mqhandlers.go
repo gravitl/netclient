@@ -420,7 +420,7 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	case models.DNSDeleteByIP:
 		hosts.RemoveAddress(dns.Address, etcHostsComment)
 	case models.DNSReplaceName:
-		ok, ip, _ := hosts.HostAddressLookup(dns.Name, etcHostsComment)
+		ok, ip, _ := hosts.HostAddressLookup(dns.Name, txeh.IPFamilyV4, etcHostsComment)
 		if !ok {
 			logger.Log(2, "failed to find dns address for host", dns.Name)
 			return

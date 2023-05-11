@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/gravitl/netmaker v0.19.1-0.20230511045800-590f20c5d4f6
-	github.com/gravitl/txeh v0.0.0-20230210102514-3bcf9822a4cc
+	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.3
 	github.com/hashicorp/go-version v1.6.0
 	github.com/kr/pretty v0.3.1
@@ -28,8 +28,8 @@ require (
 	golang.design/x/clipboard v0.7.0
 	golang.org/x/crypto v0.8.0
 	golang.org/x/net v0.9.0
-	golang.org/x/sys v0.7.0
-	golang.org/x/term v0.7.0
+	golang.org/x/sys v0.8.0
+	golang.org/x/term v0.8.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
