@@ -41,7 +41,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			// process recieved new signal from peer
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
-				err = handlePeerNegotiaton(signal)
+				err = handlePeerNegotiation(signal)
 			case nm_models.DissolveConn:
 				err = handleDissolveConn(signal)
 			}
@@ -53,7 +53,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-func handlePeerNegotiaton(signal nm_models.Signal) error {
+func handlePeerNegotiation(signal nm_models.Signal) error {
 	peerTurnEndpoint, err := net.ResolveUDPAddr("udp", signal.TurnRelayEndpoint)
 	if err != nil {
 		return err
