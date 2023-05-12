@@ -207,6 +207,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 		case <-resetCh:
 			iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
 			if err != nil {
+				logger.Log(0, "failed to iface: ", err.Error())
 				continue
 			}
 			t, ok := config.GetCfg().GetTurnCfg(serverName)

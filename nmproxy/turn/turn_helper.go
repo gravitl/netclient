@@ -46,7 +46,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 				err = handleDissolveConn(signal)
 			}
 			if err != nil {
-				logger.Log(0, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
+				logger.Log(2, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
 			}
 
 		}
@@ -154,6 +154,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 		case <-t.C:
 			iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
 			if err != nil {
+				logger.Log(1, "failed to get iface: ", err.Error())
 				continue
 			}
 			serverPeers := ncconfig.Netclient().HostPeers
@@ -193,7 +194,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					})
 					turnCfg.Mutex.RUnlock()
 					if err != nil {
-						logger.Log(0, "---> failed to signal peer: ", err.Error())
+						logger.Log(2, "failed to signal peer: ", err.Error())
 					}
 				}
 			}
@@ -227,6 +228,7 @@ func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")
 	iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
 	if err != nil {
+		logger.Log(0, "failed to get iface: ", err.Error())
 		return
 	}
 	for _, server := range ncconfig.GetServers() {
