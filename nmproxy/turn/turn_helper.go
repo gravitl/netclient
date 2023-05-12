@@ -43,7 +43,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			case nm_models.ConnNegotiation:
 				err = handlePeerNegotiation(signal)
 			case nm_models.Disconnect:
-				err = handleDissolveConn(signal)
+				err = handleDisconnect(signal)
 			}
 			if err != nil {
 				logger.Log(2, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
@@ -121,7 +121,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 	return nil
 }
 
-func handleDissolveConn(signal nm_models.Signal) error {
+func handleDisconnect(signal nm_models.Signal) error {
 
 	if signal.TurnRelayEndpoint == "" {
 		return errors.New("peer endpoint is nil")
