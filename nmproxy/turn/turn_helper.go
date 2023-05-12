@@ -13,7 +13,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
-	wireguard "github.com/gravitl/netclient/nmproxy/wg"
+	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -81,7 +81,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 				PeerTurnAddr: signal.TurnRelayEndpoint,
 			})
 
-			peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
+			peer, err := wg.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
 			if err == nil {
 				peerpkg.AddNew(t.Server, wgtypes.PeerConfig{
 					PublicKey:                   peer.PublicKey,
@@ -94,7 +94,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 
 		}
 
-		// if respone to the signal you sent,then don't signal back
+		// if response to the signal you sent,then don't signal back
 		if signal.Reply {
 			return nil
 		}
@@ -152,7 +152,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
+			iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
 			if err != nil {
 				logger.Log(1, "failed to get iface: ", err.Error())
 				continue
@@ -204,7 +204,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 
 // isPeerConnected - get peer connection status by checking last handshake time
 func isPeerConnected(peerKey string) (connected bool, err error) {
-	peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
+	peer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
 		return
 	}
@@ -226,7 +226,7 @@ func ShouldUseTurn(natType string) bool {
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
 func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")
-	iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
+	iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
 	if err != nil {
 		logger.Log(0, "failed to get iface: ", err.Error())
 		return
