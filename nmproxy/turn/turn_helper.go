@@ -42,7 +42,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
 				err = handlePeerNegotiation(signal)
-			case nm_models.DissolveConn:
+			case nm_models.Disconnect:
 				err = handleDissolveConn(signal)
 			}
 			if err != nil {
@@ -238,7 +238,7 @@ func DissolvePeerConnections() {
 				FromHostPubKey:    iface.Device.PublicKey.String(),
 				ToHostPubKey:      peerPubKey,
 				TurnRelayEndpoint: fmt.Sprintf("%s:%d", iface.Device.PublicKey.String(), iface.Device.ListenPort),
-				Action:            nm_models.DissolveConn,
+				Action:            nm_models.Disconnect,
 			})
 			if err != nil {
 				logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
