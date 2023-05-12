@@ -180,8 +180,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-
-	go handleEndpointDetection(&peerUpdate)
+	if config.Netclient().Host.EndpointDetection {
+		logger.Log(1, "running endpoint detection")
+		handleEndpointDetection(&peerUpdate)
+	} else {
+		logger.Log(1, "endpoint detection disabled")
+	}
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		ProxyManagerChan <- &peerUpdate
@@ -420,7 +424,7 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	case models.DNSDeleteByIP:
 		hosts.RemoveAddress(dns.Address, etcHostsComment)
 	case models.DNSReplaceName:
-		ok, ip, _ := hosts.HostAddressLookup(dns.Name, txeh.IPFamilyV4, etcHostsComment)
+		ok, ip, _ := hosts.HostAddressLookup(dns.Name, etcHostsComment)
 		if !ok {
 			logger.Log(2, "failed to find dns address for host", dns.Name)
 			return
