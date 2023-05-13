@@ -68,8 +68,8 @@ func handleRequest(c net.Conn) {
 	if len(request.Hash) > 0 { // publickeyhash + time
 		pubKeyHash := request.Hash
 		currenHostPubKey := config.Netclient().PublicKey.String()
-		currentHostPubKeyHash := sha1.Sum([]byte(currenHostPubKey))
-		if pubKeyHash == string(currentHostPubKeyHash[:]) {
+		currentHostPubKeyHashString := fmt.Sprintf("%v", sha1.Sum([]byte(currenHostPubKey)))
+		if pubKeyHash == string(currentHostPubKeyHashString) {
 			sendError(c)
 			return
 		}
