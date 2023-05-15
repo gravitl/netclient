@@ -27,7 +27,7 @@ require (
 	github.com/wailsapp/wails/v2 v2.2.0
 	golang.design/x/clipboard v0.7.0
 	golang.org/x/crypto v0.8.0
-	golang.org/x/net v0.9.0
+	golang.org/x/net v0.10.0
 	golang.org/x/sys v0.8.0
 	golang.org/x/term v0.8.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
