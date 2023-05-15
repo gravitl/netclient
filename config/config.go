@@ -140,6 +140,42 @@ func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) (isHostInetGW bo
 	return detectOrFilterGWPeers(server, peers)
 }
 
+// UpdateHostPeersSingleton - updates host peer map in the netclient config
+func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHostInetGW bool) {
+	hostPeerMap := netclient.HostPeers
+	if hostPeerMap == nil {
+		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
+	}
+	peers := hostPeerMap[server]
+	peer := peerAction.Peer
+	if peerAction.Action == models.AddPeer || peerAction.Action == models.UpdatePeer {
+		found := false
+		if len(peers) == 0 {
+			hostPeerMap[server] = []wgtypes.PeerConfig{peer}
+		} else {
+			for i, peerI := range peers {
+				if peerI.PublicKey.String() == peer.PublicKey.String() {
+					peers[i] = peer
+					found = true
+				}
+			}
+		}
+		if !found {
+			// add new peer to list
+			peers = append(peers, peer)
+		}
+	} else if peerAction.Action == models.RemovePeer {
+		for i := len(peers) - 1; i > 0; i-- {
+			if peers[i].PublicKey.String() == peer.PublicKey.String() {
+				peers = append(peers[:i], peers[i+1:]...)
+				break
+			}
+		}
+	}
+	netclient.HostPeers = hostPeerMap
+	return detectOrFilterGWPeers(server, peers)
+}
+
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg(server string) {
 	if netclient.HostPeers == nil {
