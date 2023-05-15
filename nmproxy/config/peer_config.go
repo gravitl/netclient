@@ -148,7 +148,9 @@ func (c *Config) RemovePeer(peerPubKey string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())
-		GetCfg().DeletePeerTurnCfg(peerPubKey)
+		for server := range peerConf.ServerMap {
+			GetCfg().DeletePeerTurnCfg(server, peerPubKey)
+		}
 
 	}
 
@@ -358,7 +360,7 @@ func (c *Config) GetAllTurnPeersCfg(server string) map[string]models.TurnPeerCfg
 }
 
 // Config.DeleteTurnCfg - deletes the turn config
-func (c *Config) DeletePeerTurnCfg(peerKey string) {
+func (c *Config) DeletePeerTurnCfg(server, peerKey string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	delete(c.ifaceConfig.turnPeerMap, peerKey)
