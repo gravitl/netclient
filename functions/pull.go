@@ -16,7 +16,7 @@ import (
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull() error {
+func Pull(restartDaemon bool) error {
 
 	currentServers := config.GetServers()
 	for i := range currentServers {
@@ -53,6 +53,10 @@ func Pull() error {
 	}
 	_ = config.WriteServerConfig()
 	_ = config.WriteNetclientConfig()
-	logger.Log(3, "restarting daemon")
-	return daemon.Restart()
+
+	if restartDaemon {
+		logger.Log(3, "restarting daemon")
+		return daemon.Restart()
+	}
+	return nil
 }

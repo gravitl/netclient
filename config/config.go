@@ -150,14 +150,11 @@ func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHo
 	peer := peerAction.Peer
 	if peerAction.Action == models.AddPeer || peerAction.Action == models.UpdatePeer {
 		found := false
-		if len(peers) == 0 {
-			hostPeerMap[server] = []wgtypes.PeerConfig{peer}
-		} else {
-			for i, peerI := range peers {
-				if peerI.PublicKey.String() == peer.PublicKey.String() {
-					peers[i] = peer
-					found = true
-				}
+
+		for i, peerI := range peers {
+			if peerI.PublicKey.String() == peer.PublicKey.String() {
+				peers[i] = peer
+				found = true
 			}
 		}
 		if !found {
@@ -172,6 +169,7 @@ func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHo
 			}
 		}
 	}
+	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
 	return detectOrFilterGWPeers(server, peers)
 }

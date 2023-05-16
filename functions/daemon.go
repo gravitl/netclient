@@ -74,6 +74,7 @@ func Daemon() {
 			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 		}
 	}
+	Pull(false)
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
