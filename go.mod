@@ -12,7 +12,7 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.19.1-0.20230515041558-e43186dd954d
+	github.com/gravitl/netmaker v0.19.1-0.20230516181634-d16231dedaf7
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.6.0
@@ -24,10 +24,10 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/vishvananda/netlink v1.1.0
-	github.com/wailsapp/wails/v2 v2.2.0
+	github.com/wailsapp/wails/v2 v2.5.0
 	golang.design/x/clipboard v0.7.0
-	golang.org/x/crypto v0.8.0
-	golang.org/x/net v0.9.0
+	golang.org/x/crypto v0.9.0
+	golang.org/x/net v0.10.0
 	golang.org/x/sys v0.8.0
 	golang.org/x/term v0.8.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
@@ -70,7 +70,6 @@ require (
 	github.com/gorilla/handlers v1.5.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
