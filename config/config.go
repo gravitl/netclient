@@ -147,23 +147,26 @@ func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHo
 		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
 	}
 	peers := hostPeerMap[server]
-	peer := peerAction.Peer
+	incomingPeers := peerAction.Peers
 	if peerAction.Action == models.AddPeer || peerAction.Action == models.UpdatePeer {
 		found := false
-
-		for i, peerI := range peers {
-			if peerI.PublicKey.String() == peer.PublicKey.String() {
-				peers[i] = peer
-				found = true
+		for _, incomingPeerI := range incomingPeers {
+			for i, peerI := range peers {
+				if peerI.PublicKey.String() == incomingPeerI.PublicKey.String() {
+					peers[i] = incomingPeerI
+					found = true
+					break
+				}
+			}
+			if !found {
+				// add new peer to list
+				peers = append(peers, incomingPeerI)
 			}
 		}
-		if !found {
-			// add new peer to list
-			peers = append(peers, peer)
-		}
+
 	} else if peerAction.Action == models.RemovePeer {
 		for i := len(peers) - 1; i >= 0; i-- {
-			if peers[i].PublicKey.String() == peer.PublicKey.String() {
+			if peers[i].PublicKey.String() == incomingPeers[0].PublicKey.String() {
 				peers = append(peers[:i], peers[i+1:]...)
 				break
 			}
