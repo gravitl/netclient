@@ -162,7 +162,7 @@ func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHo
 			peers = append(peers, peer)
 		}
 	} else if peerAction.Action == models.RemovePeer {
-		for i := len(peers) - 1; i > 0; i-- {
+		for i := len(peers) - 1; i >= 0; i-- {
 			if peers[i].PublicKey.String() == peer.PublicKey.String() {
 				peers = append(peers[:i], peers[i+1:]...)
 				break

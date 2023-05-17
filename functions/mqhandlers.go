@@ -215,7 +215,7 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	logger.Log(0, fmt.Sprintf("#### Single Peer Update: %+v", peerUpdate))
-
+	defer clearRetainedMsg(client, msg.Topic())
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
@@ -295,7 +295,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			logger.Log(0, "failed to response with ACK to server", serverName)
 		}
-		restartDaemon = true
+		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
