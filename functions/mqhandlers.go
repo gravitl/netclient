@@ -182,6 +182,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	)
 	if config.Netclient().Host.EndpointDetection {
 		go handleEndpointDetection(&peerUpdate)
+	} else {
+		logger.Log(0, "endpoint detection disabled")
 	}
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
