@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	nc_config "github.com/gravitl/netclient/config"
@@ -41,7 +42,7 @@ func (p *ProxyServer) Close() {
 		peerI.Mutex.Lock()
 		peerI.StopConn()
 		peerI.Mutex.Unlock()
-		config.GetCfg().DeletePeerTurnCfg(peerI.Key.String())
+
 	}
 	// close metrics thread
 	if config.GetCfg().GetMetricsCollectionStatus() {
@@ -65,8 +66,8 @@ func (p *ProxyServer) Close() {
 }
 
 // Proxy.Listen - begins listening for packets
-func (p *ProxyServer) Listen(ctx context.Context) {
-
+func (p *ProxyServer) Listen(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 	// Buffer with indicated body size
 	buffer := make([]byte, p.Config.BodySize)
 	go func() {

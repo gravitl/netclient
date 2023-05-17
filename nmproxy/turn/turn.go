@@ -15,10 +15,12 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	ncconfig "github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/server"
+	wireguard "github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	nm_models "github.com/gravitl/netmaker/models"
@@ -203,6 +205,11 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 		case <-ctx.Done():
 			return
 		case <-resetCh:
+			iface, err := wireguard.GetWgIface(ncutils.GetInterfaceName())
+			if err != nil {
+				logger.Log(0, "failed to iface: ", err.Error())
+				continue
+			}
 			t, ok := config.GetCfg().GetTurnCfg(serverName)
 			if !ok {
 				continue
@@ -238,9 +245,10 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			for peerKey := range turnPeersMap {
 				err := SignalPeer(serverName, nm_models.Signal{
 					Server:            serverName,
-					FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
+					FromHostPubKey:    iface.Device.PublicKey.String(),
 					TurnRelayEndpoint: turnConn.LocalAddr().String(),
 					ToHostPubKey:      peerKey,
+					Action:            nm_models.ConnNegotiation,
 				})
 				if err != nil {
 					logger.Log(0, "failed to signal peer: ", err.Error())
@@ -283,6 +291,9 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 			addrs := []net.Addr{}
 			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
 			for _, cfg := range turnPeersMap {
+				if cfg.PeerTurnAddr == "" {
+					continue
+				}
 				peerTurnEndpoint, err := net.ResolveUDPAddr("udp", cfg.PeerTurnAddr)
 				if err != nil {
 					continue
@@ -298,7 +309,7 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 			if err != nil {
 				resfrshErrType := stun.NewType(stun.MethodRefresh, stun.ClassErrorResponse)
 				permissionErrType := stun.NewType(stun.MethodCreatePermission, stun.ClassErrorResponse)
-				logger.Log(0, "failed to refresh permission for peer: ", err.Error())
+				logger.Log(2, "failed to refresh permission for peers: ", err.Error())
 				if strings.Contains(err.Error(), resfrshErrType.String()) ||
 					strings.Contains(err.Error(), permissionErrType.String()) ||
 					strings.Contains(err.Error(), "all retransmissions failed") {
