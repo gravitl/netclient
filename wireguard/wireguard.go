@@ -4,7 +4,6 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"net"
-	"strconv"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -12,7 +11,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/peer"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/ini.v1"
 )
 
 // SetPeers - sets peers on netmaker WireGuard interface
@@ -34,38 +32,15 @@ func SetPeers() error {
 	return apply(&config)
 }
 
-// RemovePeers - removes all peers from a given node config
-func RemovePeers(node *config.Node) error {
-	currPeers, err := getPeers(node)
-	if err != nil || len(currPeers) == 0 {
-		return err
+// RemovePeers - removes the peers in the list given from the interface
+func RemovePeers(peers []wgtypes.PeerConfig) error {
+	for i := range peers {
+		peers[i].Remove = true
 	}
-	options := ini.LoadOptions{
-		AllowNonUniqueSections: true,
-		AllowShadows:           true,
+	config := wgtypes.Config{
+		Peers: peers,
 	}
-	wireguard := ini.Empty(options)
-	wireguard.DeleteSection(sectionInterface)
-	wireguard.Section(sectionInterface).Key("PrivateKey").SetValue(config.Netclient().PrivateKey.String())
-	wireguard.Section(sectionInterface).Key("ListenPort").SetValue(strconv.Itoa(config.Netclient().ListenPort))
-	addrString := node.Address.String()
-	if node.Address6.IP != nil {
-		if addrString != "" {
-			addrString += ","
-		}
-		addrString += node.Address6.String()
-	}
-	wireguard.Section(sectionInterface).Key("Address").SetValue(addrString)
-	//if node.DNSOn == "yes" {
-	//	wireguard.Section(section_interface).Key("DNS").SetValue(nameserver)
-	//}
-	if config.Netclient().MTU != 0 {
-		wireguard.Section(sectionInterface).Key("MTU").SetValue(strconv.FormatInt(int64(config.Netclient().MTU), 10))
-	}
-	if err := wireguard.SaveTo(config.GetNetclientPath() + "netmaker.conf"); err != nil {
-		return err
-	}
-	return nil
+	return apply(&config)
 }
 
 // == private ==
@@ -81,16 +56,6 @@ func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
 		return nil, err
 	}
 	return dev.Peers, nil
-}
-
-// RemovePeer replaces a wireguard peer
-// temporarily making public func to pass staticchecks
-// this function will be required in future when add/delete node on server is refactored
-func RemovePeer(peers []wgtypes.PeerConfig) error {
-	config := wgtypes.Config{
-		Peers: peers,
-	}
-	return apply(&config)
 }
 
 // UpdatePeer replaces a wireguard peer

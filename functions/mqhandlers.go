@@ -114,7 +114,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	return // returning here for testing purposes at current
+	return // returning here for testing purposes to avoid consuming old peer updates
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -222,7 +222,7 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	isInetGW := config.UpdateHostPeersSingleton(serverName, peerUpdate)
 	if peerUpdate.Action == models.RemovePeer {
 		// remove peers from interface
-		err = wireguard.RemovePeer(peerUpdate.Peers)
+		err = wireguard.RemovePeers(peerUpdate.Peers)
 		if err != nil {
 			logger.Log(0, "failed to remove peer: ", err.Error())
 		}
