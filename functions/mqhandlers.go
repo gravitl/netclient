@@ -230,7 +230,6 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_, err = wireguard.UpdateWgPeers()
 	if err != nil {
 		logger.Log(0, "error updating wireguard peers"+err.Error())
-		return
 	}
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers()
