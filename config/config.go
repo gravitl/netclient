@@ -180,22 +180,6 @@ func RemoveServerHostPeerCfg(serverName string) {
 	_ = WriteNetclientConfig()
 }
 
-func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
-	uniqueIpList := []net.IPNet{}
-	ipMap := make(map[string]struct{})
-	uniqueIpList = append(uniqueIpList, currIps...)
-	uniqueIpList = append(uniqueIpList, newIps...)
-	for i := len(uniqueIpList) - 1; i >= 0; i-- {
-		if _, ok := ipMap[uniqueIpList[i].String()]; ok {
-			// if ip already exists, remove duplicate one
-			uniqueIpList = append(uniqueIpList[:i], uniqueIpList[i+1:]...)
-		} else {
-			ipMap[uniqueIpList[i].String()] = struct{}{}
-		}
-	}
-	return uniqueIpList
-}
-
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver

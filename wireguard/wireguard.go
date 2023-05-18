@@ -45,19 +45,6 @@ func RemovePeers(peers []wgtypes.PeerConfig) error {
 
 // == private ==
 
-func getPeers(n *config.Node) ([]wgtypes.Peer, error) {
-	wg, err := wgctrl.New()
-	if err != nil {
-		return nil, err
-	}
-	defer wg.Close()
-	dev, err := wg.Device(ncutils.GetInterfaceName())
-	if err != nil {
-		return nil, err
-	}
-	return dev.Peers, nil
-}
-
 // UpdatePeer replaces a wireguard peer
 // temporarily making public func to pass staticchecks
 // this function will be required in future when update node on server is refactored
