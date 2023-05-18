@@ -74,6 +74,7 @@ func Daemon() {
 			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 		}
 	}
+	// good to sync up config on daemon start
 	Pull(false)
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
