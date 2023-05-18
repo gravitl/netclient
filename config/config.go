@@ -165,12 +165,15 @@ func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHo
 		}
 
 	} else if peerAction.Action == models.RemovePeer {
-		for i := len(peers) - 1; i >= 0; i-- {
-			if peers[i].PublicKey.String() == incomingPeers[0].PublicKey.String() {
-				peers = append(peers[:i], peers[i+1:]...)
-				break
+		for _, incomingPeerI := range incomingPeers {
+			for i := len(peers) - 1; i >= 0; i-- {
+				if peers[i].PublicKey.String() == incomingPeerI.PublicKey.String() {
+					peers = append(peers[:i], peers[i+1:]...)
+					break
+				}
 			}
 		}
+
 	}
 	hostPeerMap[server] = peers
 	netclient.HostPeers = hostPeerMap
