@@ -79,7 +79,6 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	if !config.GetCfg().IsIfaceNil() && wgIface.Device.ListenPort != config.GetCfg().GetInterfaceListenPort() {
 		// reset proxy
 		cleanUpInterface()
-		return nil
 	}
 	config.GetCfg().SetIface(wgIface)
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.HostPeerIDs)
@@ -235,23 +234,12 @@ func (m *proxyPayload) processPayload() error {
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
 			if currentPeer.Config.UsingTurn {
-				// check if using turn is no longer required
-				if !(turn.ShouldUseTurn(config.GetCfg().HostInfo.NatType) &&
-					turn.ShouldUseTurn(m.PeerMap[m.Peers[i].PublicKey.String()].NatType)) {
-					// cleanup proxy connections for the peer
-					currentPeer.StopConn()
-					delete(peerConnMap, currentPeer.Key.String())
-					config.GetCfg().DeletePeerTurnCfg(currentPeer.Key.String())
-					wireguard.UpdatePeer(&m.Peers[i])
-					currentPeer.Mutex.Unlock()
-					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-					continue
-				}
+
 				if m.IsRelayed || m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
 					// cleanup turn connections for the peer since it is being relayed already
 					currentPeer.StopConn()
 					delete(peerConnMap, currentPeer.Key.String())
-					config.GetCfg().DeletePeerTurnCfg(currentPeer.Key.String())
+					config.GetCfg().DeletePeerTurnCfg(m.Server, currentPeer.Key.String())
 					wireguard.UpdatePeer(&m.Peers[i])
 					currentPeer.Mutex.Unlock()
 					continue
@@ -421,6 +409,7 @@ func (m *proxyPayload) peerUpdate() error {
 						FromHostPubKey:    config.GetCfg().GetDevicePubKey().String(),
 						TurnRelayEndpoint: t.TurnConn.LocalAddr().String(),
 						ToHostPubKey:      peer.PublicKey.String(),
+						Action:            nm_models.ConnNegotiation,
 					})
 					if err != nil {
 						logger.Log(0, "---> failed to signal peer: ", err.Error())
