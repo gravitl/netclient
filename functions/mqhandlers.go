@@ -114,7 +114,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	return
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
