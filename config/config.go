@@ -136,6 +136,9 @@ func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHo
 		hostPeerMap = make(map[string]map[string]wgtypes.PeerConfig, 1)
 	}
 	peers := hostPeerMap[server]
+	if peers == nil {
+		peers = make(map[string]wgtypes.PeerConfig)
+	}
 	incomingPeers := peerAction.Peers
 	if peerAction.Action == models.AddPeer || peerAction.Action == models.UpdatePeer {
 		for _, incomingPeerI := range incomingPeers {
