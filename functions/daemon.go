@@ -20,6 +20,7 @@ import (
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/router"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -171,6 +172,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		logger.Log(2, "failed to set initial peer routes", err.Error())
 	}
+	// initialize netmaker firewall
+	var err error
+	config.FwCloseFunc, err = router.Init()
+	if err != nil {
+		logger.Log(0, "failed to intialize firewall: ", err.Error())
+	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
@@ -318,6 +325,11 @@ func setHostSubscription(client mqtt.Client, server string) {
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to host single peer updates  peer/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peer/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostSinglePeerUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subscribed to firewall updates  fw/host/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("fw/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(fireWallUpdate)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}

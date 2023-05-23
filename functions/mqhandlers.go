@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/turn"
+	"github.com/gravitl/netclient/router"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -251,6 +252,28 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		&originalGW,
 	)
 
+}
+
+func fireWallUpdate(client mqtt.Client, msg mqtt.Message) {
+	var fwUpdate models.FwAction
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	logger.Log(3, "received fw update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal([]byte(data), &fwUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling peer data")
+		return
+	}
+	logger.Log(0, fmt.Sprintf("#### Fw Update: %+v", fwUpdate))
+	handleFwUpdate(serverName, &fwUpdate)
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -619,4 +642,17 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 			}
 		}
 	}
+}
+
+func handleFwUpdate(server string, payload *models.FwAction) {
+	switch payload.Action {
+	case models.FwUpdate:
+		if payload.IsIngressGw {
+			router.SetIngressRoutes(server, payload.IngressInfo)
+		}
+		if payload.IsEgressGw {
+			router.SetEgressRoutes(server, payload.EgressInfo)
+		}
+	}
+
 }

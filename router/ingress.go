@@ -47,6 +47,20 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 	return nil
 }
 
+func DeleteIngressExtClientRoutes(server string, extPubKeys []string) {
+	for _, extPubKey := range extPubKeys {
+		fwCrtl.RemoveRoutingRules(server, ingressTable, extPubKey)
+	}
+}
+
+func DeleteIngressPeerRoutes(server, peerKey string) {
+	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
+	for extPeerKey := range ruleTable {
+		fwCrtl.DeleteRoutingRule(server, ingressTable, extPeerKey, peerKey)
+	}
+
+}
+
 // DeleteIngressRules - removes the rules of ingressGW
 func DeleteIngressRules(server string) {
 	fwCrtl.CleanRoutingRules(server, ingressTable)

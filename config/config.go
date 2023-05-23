@@ -56,6 +56,8 @@ var (
 	GW6PeerDetected bool
 	// GW6Addr - the peer's address for IPv6 gateways
 	GW6Addr net.IPNet
+	// FwCloseFunc - firewall manager shutdown func
+	FwCloseFunc func() = func() {}
 )
 
 // Config configuration for netclient and host as a whole
@@ -65,6 +67,15 @@ type Config struct {
 	TrafficKeyPrivate []byte                                   `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	InternetGateway   net.UDPAddr                              `json:"internetgateway" yaml:"internetgateway"`
 	HostPeers         map[string]map[string]wgtypes.PeerConfig `json:"peers_info" yaml:"peers_info"`
+}
+
+// Settings - struct for host settings
+type Settings struct {
+	IsRelay          bool
+	IsIngressGateway bool
+	IsEgressGateway  bool
+	IsRelayed        bool
+	RelayedTo        *net.UDPAddr
 }
 
 func init() {

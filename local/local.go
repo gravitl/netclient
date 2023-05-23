@@ -8,7 +8,7 @@ import (
 	"runtime"
 
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/router"
+	"github.com/gravitl/netclient/router"
 	"github.com/gravitl/netmaker/logger"
 )
 
