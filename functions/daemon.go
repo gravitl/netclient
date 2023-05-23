@@ -94,6 +94,7 @@ func Daemon() {
 			}, &wg)
 			httpCancel()
 			httpWg.Wait()
+			config.FwClose()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -174,7 +175,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	// initialize netmaker firewall
 	var err error
-	config.FwCloseFunc, err = router.Init()
+	config.FwClose, err = router.Init()
 	if err != nil {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
