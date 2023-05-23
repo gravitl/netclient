@@ -29,6 +29,6 @@ jobs:
           context: .
           platforms: linux/amd64, linux/arm64, linux/arm/v7
           push: true
-          tags: gravitl/${{ github.repository }}:${{ github.event.inputs.tag}}, gravitl/${{ github.repository }}:latest
+          tags: ${{ github.repository }}:${{ github.event.inputs.tag}}, ${{ github.repository }}:latest
           build-args: |
             version=${{ env.TAG }}
