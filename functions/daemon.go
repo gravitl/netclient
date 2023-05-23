@@ -75,6 +75,13 @@ func Daemon() {
 			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 		}
 	}
+
+	// initialize firewall manager
+	var err error
+	config.FwClose, err = router.Init()
+	if err != nil {
+		logger.Log(0, "failed to intialize firewall: ", err.Error())
+	}
 	// good to sync up config on daemon start
 	Pull(false)
 	cancel := startGoRoutines(&wg)
@@ -172,12 +179,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wireguard.SetPeers()
 	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		logger.Log(2, "failed to set initial peer routes", err.Error())
-	}
-	// initialize netmaker firewall
-	var err error
-	config.FwClose, err = router.Init()
-	if err != nil {
-		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
 	wg.Add(1)
 	go Checkin(ctx, wg)

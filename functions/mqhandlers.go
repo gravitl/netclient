@@ -649,9 +649,13 @@ func handleFwUpdate(server string, payload *models.FwAction) {
 	case models.FwUpdate:
 		if payload.IsIngressGw {
 			router.SetIngressRoutes(server, payload.IngressInfo)
+		} else {
+			router.DeleteIngressRules(server)
 		}
 		if payload.IsEgressGw {
 			router.SetEgressRoutes(server, payload.EgressInfo)
+		} else {
+			router.DeleteEgressGwRoutes(server)
 		}
 	}
 
