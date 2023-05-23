@@ -31,8 +31,6 @@ type Config struct {
 	metricsThreadDone       context.CancelFunc
 	metricsCollectionStatus bool
 	serverConn              *net.UDPConn
-	fireWallStatus          bool
-	fireWallClose           func()
 }
 type proxyPeerConn struct {
 	PeerPublicKey       string `json:"peer_public_key"`
@@ -214,26 +212,6 @@ func (c *Config) GetServerConn() *net.UDPConn {
 // Config.SetServerConn - sets server connection
 func (c *Config) SetServerConn(conn *net.UDPConn) {
 	c.serverConn = conn
-}
-
-// Config.SetFwStatus - sets the firewall status
-func (c *Config) SetFwStatus(s bool) {
-	c.fireWallStatus = s
-}
-
-// Config.SetFwCloseFunc - sets the firewall flush func
-func (c *Config) SetFwCloseFunc(fwFlush func()) {
-	c.fireWallClose = fwFlush
-}
-
-// Config.GetFwStatus - gets the firewall status
-func (c *Config) GetFwStatus() bool {
-	return c.fireWallStatus
-}
-
-// Config.StopFw - flushes all the firewall rules
-func (c *Config) StopFw() {
-	c.fireWallClose()
 }
 
 // Config.Dump - dumps the proxy peer connections information

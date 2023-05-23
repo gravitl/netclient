@@ -254,7 +254,7 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 }
 
-func fireWallUpdate(client mqtt.Client, msg mqtt.Message) {
+func firewallUpdate(client mqtt.Client, msg mqtt.Message) {
 	var fwUpdate models.FwAction
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)

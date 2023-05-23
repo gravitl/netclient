@@ -331,7 +331,7 @@ func setHostSubscription(client mqtt.Client, server string) {
 		return
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to firewall updates  fw/host/%s/%s", hostID.String(), server))
-	if token := client.Subscribe(fmt.Sprintf("fw/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(fireWallUpdate)); token.Wait() && token.Error() != nil {
+	if token := client.Subscribe(fmt.Sprintf("fw/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(firewallUpdate)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
