@@ -94,17 +94,18 @@ func (i *iptablesManager) ForwardRule() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	logger.Log(0, "adding forwarding rule")
-	iptablesClient := i.ipv4Client
-	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
 	ruleSpec := []string{"-i", "netmaker", "-j", netmakerFilterChain}
-	ok, err := iptablesClient.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		if err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err == nil && !ok {
+		if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-			return err
+		}
+	}
+	ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err == nil && !ok {
+		if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
 		}
 	}
 	return nil
@@ -298,28 +299,14 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-
-	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
-		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
-	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+	ruleSpec := []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	}
-	fwdJumpRule := ruleInfo{
-		rule:  ruleSpec,
-		chain: iptableFWDChain,
-		table: defaultIpTable,
-	}
-	ruleSpec = []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
-	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+	err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{
-		fwdJumpRule,
+		// fwdJumpRule,
 		{
 			rule:  ruleSpec,
 			chain: netmakerFilterChain,
@@ -525,20 +512,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", netmakerFilterChain}
-		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-
-		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			egressGwRoutes = append(egressGwRoutes, ruleInfo{
-				table: defaultIpTable,
-				chain: iptableFWDChain,
-				rule:  ruleSpec,
-			})
-		}
-
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
