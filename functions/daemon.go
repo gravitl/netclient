@@ -74,8 +74,6 @@ func Daemon() {
 			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 		}
 	}
-	// good to sync up config on daemon start
-	Pull(false)
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
@@ -251,6 +249,11 @@ func setupMQTT(server *config.Server) error {
 		logger.Log(0, "failed to establish connection to broker: ", connecterr.Error())
 		return connecterr
 	}
+	if err := PublishHostUpdate(server.Name, models.Acknowledgement); err != nil {
+		logger.Log(0, "failed to send initial ACK to server", server.Name, err.Error())
+	} else {
+		logger.Log(2, "successfully requested ACK on server", server.Name)
+	}
 	// send register signal with turn to server
 	if server.UseTurn {
 		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
@@ -316,11 +319,6 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to host single peer updates  peer/host/%s/%s", hostID.String(), server))
-	if token := client.Subscribe(fmt.Sprintf("peer/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostSinglePeerUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
-		return
-	}
 	logger.Log(3, fmt.Sprintf("subscribed to host updates  host/update/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
@@ -336,7 +334,6 @@ func setHostSubscription(client mqtt.Client, server string) {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
-
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config

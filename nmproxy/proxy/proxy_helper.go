@@ -12,7 +12,6 @@ import (
 
 	"github.com/c-robinson/iplib"
 	nc_config "github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/common"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -154,11 +153,7 @@ func (p *Proxy) updateEndpoint() error {
 	logger.Log(1, fmt.Sprintf("---> Updating Peer Endpoint:  %+v\n", p.Config.PeerConf))
 	peer := p.Config.PeerConf
 	peer.Endpoint = udpAddr
-	iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
-	if err != nil {
-		return err
-	}
-	iface.UpdatePeerEndpoint(peer)
+	config.GetCfg().GetIface().UpdatePeerEndpoint(peer)
 	return nil
 }
 

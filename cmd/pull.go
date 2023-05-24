@@ -16,7 +16,7 @@ var pullCmd = &cobra.Command{
 	Short: "get the latest host configuration",
 	Long:  `get the latest host configuration and peers from all connected servers`,
 	Run: func(cmd *cobra.Command, args []string) {
-		err := functions.Pull(true)
+		err := functions.Pull()
 		if err != nil {
 			logger.Log(0, "failed to pull", err.Error())
 		}
