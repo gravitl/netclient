@@ -1,12 +1,17 @@
 package router
 
 import (
+	"errors"
+
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 // SetEgressRoutes - sets the egress route for the gateway
 func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) error {
+	if fwCrtl == nil {
+		return errors.New("firewall is not initialized yet")
+	}
 	logger.Log(0, "----> setting egress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, egressTable)
 	for egressNodeID, ruleCfg := range ruleTable {
@@ -45,5 +50,8 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 
 // DeleteEgressGwRoutes - deletes egress routes for the gateway
 func DeleteEgressGwRoutes(server string) {
+	if fwCrtl == nil {
+		return
+	}
 	fwCrtl.CleanRoutingRules(server, egressTable)
 }
