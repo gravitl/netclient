@@ -211,7 +211,7 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	err = json.Unmarshal([]byte(data), &peerUpdate)
 	if err != nil {
-		logger.Log(0, "error unmarshalling peer data")
+		logger.Log(0, "error unmarshalling peer data", err.Error())
 		return
 	}
 	logger.Log(0, fmt.Sprintf("#### Single Peer Update: %+v", peerUpdate))
@@ -415,6 +415,15 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
+	// do not update fields that should not be changed by server
+	host.OS = hostCfg.OS
+	host.FirewallInUse = hostCfg.FirewallInUse
+	host.DaemonInstalled = hostCfg.DaemonInstalled
+	host.ID = hostCfg.ID
+	host.Version = hostCfg.Version
+	host.MacAddress = hostCfg.MacAddress
+	host.PublicKey = hostCfg.PublicKey
+	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
