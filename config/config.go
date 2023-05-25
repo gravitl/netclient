@@ -69,15 +69,6 @@ type Config struct {
 	HostPeers         map[string]map[string]wgtypes.PeerConfig `json:"peers_info" yaml:"peers_info"`
 }
 
-// Settings - struct for host settings
-type Settings struct {
-	IsRelay          bool
-	IsIngressGateway bool
-	IsEgressGateway  bool
-	IsRelayed        bool
-	RelayedTo        *net.UDPAddr
-}
-
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
