@@ -306,7 +306,6 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
 	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{
-		// fwdJumpRule,
 		{
 			rule:  ruleSpec,
 			chain: netmakerFilterChain,
