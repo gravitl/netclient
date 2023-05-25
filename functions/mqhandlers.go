@@ -418,18 +418,6 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	}
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
-
-	// do not update unchangable fields
-	host.DaemonInstalled = hostCfg.DaemonInstalled
-	host.OS = hostCfg.OS
-	host.IPForwarding = hostCfg.IPForwarding
-	host.MacAddress = hostCfg.MacAddress
-	host.Debug = hostCfg.Debug
-	host.PublicKey = hostCfg.PublicKey
-	host.InternetGateway = hostCfg.InternetGateway
-	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
-	host.Version = hostCfg.Version
-	host.FirewallInUse = hostCfg.FirewallInUse
 	hostCfg.Host = *host
 
 	config.UpdateNetclient(*hostCfg)
