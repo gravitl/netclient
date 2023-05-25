@@ -44,6 +44,8 @@ func Pull(restartDaemon bool) error {
 		_ = config.UpdateHostPeers(server.Server, pullResponse.Peers)
 		pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 		config.UpdateServerConfig(&pullResponse.ServerConfig)
+		// sync the firewall manager on pull
+		go handleFwUpdate(server.Server, &pullResponse.FwUpdate)
 		fmt.Printf("completed pull for server %s\n", serverName)
 	}
 

@@ -255,7 +255,7 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 }
 
 func firewallUpdate(client mqtt.Client, msg mqtt.Message) {
-	var fwUpdate models.FwAction
+	var fwUpdate models.FwUpdate
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -644,19 +644,17 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 	}
 }
 
-func handleFwUpdate(server string, payload *models.FwAction) {
-	switch payload.Action {
-	case models.FwUpdate:
-		if payload.IsIngressGw {
-			router.SetIngressRoutes(server, payload.IngressInfo)
-		} else {
-			router.DeleteIngressRules(server)
-		}
-		if payload.IsEgressGw {
-			router.SetEgressRoutes(server, payload.EgressInfo)
-		} else {
-			router.DeleteEgressGwRoutes(server)
-		}
+func handleFwUpdate(server string, payload *models.FwUpdate) {
+
+	if payload.IsIngressGw {
+		router.SetIngressRoutes(server, payload.IngressInfo)
+	} else {
+		router.DeleteIngressRules(server)
+	}
+	if payload.IsEgressGw {
+		router.SetEgressRoutes(server, payload.EgressInfo)
+	} else {
+		router.DeleteEgressGwRoutes(server)
 	}
 
 }
