@@ -133,12 +133,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	config.WgPublicListenPort = holePunchWgPort()
 	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
-	shouldUpdateNat := getNatInfo()
-	if shouldUpdateNat { // will be reported on check-in
-		if err := config.WriteNetclientConfig(); err == nil {
-			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
-		}
-	}
+	setNatInfo()
 	logger.Log(3, "configuring netmaker wireguard interface")
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
@@ -208,6 +203,7 @@ func setupMQTT(server *config.Server) error {
 			setSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
+		checkin()
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -467,7 +463,7 @@ func holePunchWgPort() (pubPort int) {
 	return
 }
 
-func getNatInfo() (natUpdated bool) {
+func setNatInfo() {
 	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
 	if err != nil {
 		logger.Log(0, "failed to get freeport for proxy: ", err.Error())
@@ -482,10 +478,6 @@ func getNatInfo() (natUpdated bool) {
 				config.Netclient().EndpointIP.String(),
 				portToStun,
 			)
-			if len(config.Netclient().Host.NatType) == 0 || config.Netclient().Host.NatType != hostNatInfo.NatType {
-				config.Netclient().Host.NatType = hostNatInfo.NatType
-				return true
-			}
 		}
 	}
 	return
