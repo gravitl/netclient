@@ -68,12 +68,6 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 
-	shouldUpdateNat := getNatInfo()
-	if shouldUpdateNat { // will be reported on check-in
-		if err := config.WriteNetclientConfig(); err == nil {
-			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
-		}
-	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
@@ -142,6 +136,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
+	}
+	config.WgPublicListenPort = holePunchWgPort()
+	shouldUpdateNat := getNatInfo()
+	if shouldUpdateNat { // will be reported on check-in
+		if err := config.WriteNetclientConfig(); err == nil {
+			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
+		}
 	}
 	logger.Log(3, "configuring netmaker wireguard interface")
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
@@ -460,32 +461,32 @@ func RemoveServer(node *config.Node) {
 	delete(ServerSet, node.Server)
 }
 
-func getNatInfo() (natUpdated bool) {
-	ncConf, err := config.ReadNetclientConfig()
-	if err != nil {
-		logger.Log(0, "errors reading netclient from disk", err.Error())
-		return
+func holePunchWgPort() (pubPort int) {
+	for _, server := range config.Servers {
+		portToStun := config.Netclient().ListenPort
+		_, pubPort = stun.HolePunch(server.StunList, portToStun)
+		if pubPort != 0 {
+			break
+		}
 	}
-	err = config.ReadServerConf()
-	if err != nil {
-		logger.Log(0, "errors reading server map from disk", err.Error())
-		return
-	}
+	return
+}
 
+func getNatInfo() (natUpdated bool) {
+	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
+	if err != nil {
+		logger.Log(0, "failed to get freeport for proxy: ", err.Error())
+		return
+	}
 	for _, server := range config.Servers {
 		server := server
 		if hostNatInfo == nil {
-			portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
-			if portToStun == 0 || err != nil {
-				portToStun = config.Netclient().ListenPort
-			}
-
 			hostNatInfo = stun.GetHostNatInfo(
 				server.StunList,
 				config.Netclient().EndpointIP.String(),
 				portToStun,
 			)
-			if len(ncConf.Host.NatType) == 0 || ncConf.Host.NatType != hostNatInfo.NatType {
+			if len(config.Netclient().Host.NatType) == 0 || config.Netclient().Host.NatType != hostNatInfo.NatType {
 				config.Netclient().Host.NatType = hostNatInfo.NatType
 				return true
 			}

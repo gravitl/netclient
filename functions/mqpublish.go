@@ -257,6 +257,10 @@ func UpdateHostSettings() error {
 				publishMsg = true
 			}
 		}
+		if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
+			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+			publishMsg = true
+		}
 		if server.Is_EE {
 			serverNodes := config.GetNodesByServer(serverName)
 			for _, node := range serverNodes {
@@ -302,13 +306,6 @@ func UpdateHostSettings() error {
 			config.Netclient().PublicListenPort = proxypublicport
 			publishMsg = true
 		}
-	}
-	if !config.Netclient().ProxyEnabledSet && proxyCfg.GetCfg().ShouldUseProxy() &&
-		!config.Netclient().ProxyEnabled && !proxyCfg.NatAutoSwitchDone() {
-		logger.Log(0, "Host is behind NAT, enabling proxy...")
-		proxyCfg.SetNatAutoSwitch()
-		config.Netclient().ProxyEnabled = true
-		publishMsg = true
 	}
 	ip, err := getInterfaces()
 	if err != nil {
