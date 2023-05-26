@@ -478,6 +478,7 @@ func getNatInfo() (natUpdated bool) {
 		logger.Log(0, "failed to get freeport for proxy: ", err.Error())
 		return
 	}
+	config.Netclient().ProxyListenPort = portToStun
 	for _, server := range config.Servers {
 		server := server
 		if hostNatInfo == nil {
