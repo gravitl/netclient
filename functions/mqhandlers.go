@@ -12,11 +12,11 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/turn"
-	"github.com/gravitl/netclient/router"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -647,14 +647,14 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 func handleFwUpdate(server string, payload *models.FwUpdate) {
 
 	if payload.IsIngressGw {
-		router.SetIngressRoutes(server, payload.IngressInfo)
+		firewall.SetIngressRoutes(server, payload.IngressInfo)
 	} else {
-		router.DeleteIngressRules(server)
+		firewall.DeleteIngressRules(server)
 	}
 	if payload.IsEgressGw {
-		router.SetEgressRoutes(server, payload.EgressInfo)
+		firewall.SetEgressRoutes(server, payload.EgressInfo)
 	} else {
-		router.DeleteEgressGwRoutes(server)
+		firewall.DeleteEgressGwRoutes(server)
 	}
 
 }

@@ -1,4 +1,4 @@
-package router
+package firewall
 
 import (
 	"github.com/gravitl/netmaker/logger"

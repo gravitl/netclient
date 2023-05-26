@@ -13,6 +13,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -20,7 +21,6 @@ import (
 	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
-	"github.com/gravitl/netclient/router"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -78,7 +78,7 @@ func Daemon() {
 
 	// initialize firewall manager
 	var err error
-	config.FwClose, err = router.Init()
+	config.FwClose, err = firewall.Init()
 	if err != nil {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
