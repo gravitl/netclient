@@ -94,12 +94,6 @@ func Daemon() {
 				stopProxy,
 			}, &wg)
 			logger.Log(0, "restarting daemon")
-			shouldUpdateNat := getNatInfo()
-			if shouldUpdateNat { // will be reported on check-in
-				if err := config.WriteNetclientConfig(); err == nil {
-					logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
-				}
-			}
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
@@ -138,6 +132,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
 	config.WgPublicListenPort = holePunchWgPort()
+	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
 	shouldUpdateNat := getNatInfo()
 	if shouldUpdateNat { // will be reported on check-in
 		if err := config.WriteNetclientConfig(); err == nil {
