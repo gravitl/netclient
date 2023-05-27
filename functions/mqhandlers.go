@@ -207,11 +207,12 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	logger.Log(3, "received peer update for host from: ", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
+		logger.Log(0, "error decrypting payload", err.Error())
 		return
 	}
 	err = json.Unmarshal([]byte(data), &peerUpdate)
 	if err != nil {
-		logger.Log(0, "error unmarshalling peer data")
+		logger.Log(0, "error unmarshalling peer data", err.Error())
 		return
 	}
 	logger.Log(0, fmt.Sprintf("#### Single Peer Update: %+v", peerUpdate))
@@ -418,6 +419,7 @@ func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
+
 	config.UpdateNetclient(*hostCfg)
 	config.WriteNetclientConfig()
 	return
