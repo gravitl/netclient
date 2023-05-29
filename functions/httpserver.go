@@ -12,6 +12,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/kr/pretty"
 )
 
 type Network struct {
@@ -63,6 +64,7 @@ func SetupRouter() *gin.Engine {
 	router.POST("/uninstall", uninstall)
 	router.GET("/pull/:net", pull)
 	router.POST("nodepeers", nodePeers)
+	router.POST("/join", join)
 	return router
 }
 
@@ -211,5 +213,61 @@ func nodePeers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, peers)
+}
 
+func join(c *gin.Context) {
+	log.Println("---------------join called")
+	var join struct {
+		API         string
+		User        string
+		Pass        string
+		Network     string
+		AllNetworks bool
+	}
+	if err := c.BindJSON(&join); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
+		return
+	}
+	pretty.Println(join)
+	regData := RegisterSSO{
+		API:         join.API,
+		User:        join.User,
+		Pass:        join.Pass,
+		Network:     join.Network,
+		AllNetworks: join.AllNetworks,
+		UsingSSO:    false,
+	}
+	if err := RegisterWithSSO(&regData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	c.JSON(http.StatusOK, nil)
+}
+
+func sso(c *gin.Context) {
+	var sso struct {
+		API         string
+		User        string
+		Pass        string
+		Network     string
+		AllNetworks bool
+	}
+	if err := c.BindJSON(&sso); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
+		return
+	}
+	pretty.Println(sso)
+	regData := RegisterSSO{
+		API:         sso.API,
+		User:        sso.User,
+		Pass:        sso.Pass,
+		Network:     sso.Network,
+		AllNetworks: sso.AllNetworks,
+		UsingSSO:    true,
+	}
+	if err := RegisterWithSSO(&regData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	c.JSON(http.StatusOK, nil)
 }
