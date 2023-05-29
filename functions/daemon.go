@@ -49,7 +49,7 @@ type cachedMessage struct {
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, hostNatInfo.PrivPort)
 	return cancel
 }
 
@@ -469,7 +469,6 @@ func setNatInfo() {
 		logger.Log(0, "failed to get freeport for proxy: ", err.Error())
 		return
 	}
-	config.Netclient().ProxyListenPort = portToStun
 	for _, server := range config.Servers {
 		server := server
 		if hostNatInfo == nil {
@@ -480,7 +479,6 @@ func setNatInfo() {
 			)
 		}
 	}
-	return
 }
 
 func cleanUpRoutes() {
