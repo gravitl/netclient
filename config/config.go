@@ -63,7 +63,6 @@ type Config struct {
 	models.Host
 	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	InternetGateway   net.UDPAddr                     `json:"internetgateway" yaml:"internetgateway"`
 	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
 }
 
@@ -558,17 +557,6 @@ func CheckConfig() {
 	if FirewallHasChanged() {
 		saveRequired = true
 		SetFirewall()
-	}
-	if !ncutils.FileExists(GetNetclientPath() + "netmaker.conf") {
-		if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
-			logger.Log(0, "failed to create /etc/netclient", err.Error())
-		}
-		if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-			logger.Log(0, "failed to chmod /etc/netclient", err.Error())
-		}
-		if _, err := os.Create(GetNetclientPath() + "netmaker.conf"); err != nil {
-			logger.Log(0, "failed to create netmaker.conf: ", err.Error())
-		}
 	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")
