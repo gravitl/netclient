@@ -69,3 +69,11 @@ export function GoWriteToClipboard(arg1) {
 export function GoGetStatus() {
   return window['go']['main']['App']['GoGetStatus']();
 }
+
+export function GoJoinNetworkBySso(arg1, arg2) {
+  return window['go']['main']['App']['GoJoinNetworkBySso'](arg1, arg2);
+}
+
+export function GoJoinNetworkByBasicAuth(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GoJoinNetworkByBasicAuth'](arg1, arg2, arg3, arg4);
+}

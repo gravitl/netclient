@@ -230,7 +230,7 @@ export default function UsernameLogin() {
         <LoadingButton
           loading={isConnecting}
           variant="contained"
-          // onClick={onLoginClick}
+          onClick={onLoginClick}
           data-testid="login-btn"
         >
           Login
@@ -241,7 +241,7 @@ export default function UsernameLogin() {
           loading={isConnecting}
           size="small"
           variant="outlined"
-          // onClick={onSsoLoginClick}
+          onClick={onSsoLoginClick}
           data-testid="sso-login-btn"
         >
           <AdminPanelSettingsIcon /> SSO Login
