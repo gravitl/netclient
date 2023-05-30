@@ -440,14 +440,9 @@ func UpdateKeys() error {
 		logger.Log(0, "error generating privatekey ", err.Error())
 		return err
 	}
-	file := config.GetNetclientPath() + "netmaker.conf"
-	if err := wireguard.UpdatePrivateKey(file, host.PrivateKey.String()); err != nil {
-		logger.Log(0, "error updating wireguard key ", err.Error())
-		return err
-	}
 	host.PublicKey = host.PrivateKey.PublicKey()
 	if err := config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error saving netclient config", err.Error())
+		logger.Log(0, "error saving netclient config:", err.Error())
 	}
 	PublishGlobalHostUpdate(models.UpdateHost)
 	daemon.Restart()

@@ -62,7 +62,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
-	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
@@ -91,15 +90,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := nc.Configure(); err != nil {
 		logger.Log(0, "could not configure netmaker interface", err.Error())
 		return
-	}
-
-	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
-
-		logger.Log(0, "error updating wireguard config "+err.Error())
-		return
-	}
-	if keepaliveChange {
-		wireguard.UpdateKeepAlive(int(newNode.PersistentKeepalive.Seconds()))
 	}
 	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
@@ -151,12 +141,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	_, err = wireguard.UpdateWgPeers()
-	if err != nil {
-		logger.Log(0, "error updating wireguard peers"+err.Error())
-		return
-	}
-
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
