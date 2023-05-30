@@ -272,11 +272,9 @@ func sso(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			if !strings.Contains(err.Error(), "normal") { // Error reading a message from the server
-				logger.Log(0, "read:", err.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
+			logger.Log(0, "read:", err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		if msgType == websocket.CloseMessage {
 			logger.Log(1, "received close message from server")
