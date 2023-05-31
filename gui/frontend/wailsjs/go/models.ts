@@ -9,6 +9,7 @@ export namespace config {
 	    version: string;
 	    ipforwarding: boolean;
 	    daemoninstalled: boolean;
+	    autoupdate: boolean;
 	    hostpass: string;
 	    name: string;
 	    os: string;
@@ -21,7 +22,7 @@ export namespace config {
 	    publickey: number[];
 	    macaddress: number[];
 	    traffickeypublic: number[];
-	    // Go type: net.UDPAddr
+	    // Go type: net
 	    internetgateway: any;
 	    nodes: string[];
 	    isrelayed: boolean;
@@ -38,12 +39,10 @@ export namespace config {
 	    isstatic: boolean;
 	    isdefault: boolean;
 	    nat_type?: string;
-	    // Go type: netip.AddrPort
+	    // Go type: netip
 	    turn_endpoint?: any;
 	    privatekey: number[];
 	    traffickeyprivate: number[];
-	    // // Go type: net.UDPAddr
-	    // internetgateway: any;
 	    peers: {[key: string]: PeerConfig[]};
 	
 	    static createFrom(source: any = {}) {
@@ -58,6 +57,7 @@ export namespace config {
 	        this.version = source["version"];
 	        this.ipforwarding = source["ipforwarding"];
 	        this.daemoninstalled = source["daemoninstalled"];
+	        this.autoupdate = source["autoupdate"];
 	        this.hostpass = source["hostpass"];
 	        this.name = source["name"];
 	        this.os = source["os"];
@@ -89,7 +89,6 @@ export namespace config {
 	        this.turn_endpoint = this.convertValues(source["turn_endpoint"], null);
 	        this.privatekey = source["privatekey"];
 	        this.traffickeyprivate = source["traffickeyprivate"];
-	        this.internetgateway = this.convertValues(source["internetgateway"], null);
 	        this.peers = source["peers"];
 	    }
 	
@@ -115,20 +114,20 @@ export namespace config {
 	    id: number[];
 	    hostid: number[];
 	    network: string;
-	    // Go type: net.IPNet
+	    // Go type: net
 	    networkrange: any;
-	    // Go type: net.IPNet
+	    // Go type: net
 	    networkrange6: any;
-	    // Go type: net.UDPAddr
+	    // Go type: net
 	    internetgateway?: any;
 	    server: string;
 	    connected: boolean;
-	    // Go type: net.IPNet
+	    // Go type: net
 	    address: any;
-	    // Go type: net.IPNet
+	    // Go type: net
 	    address6: any;
 	    action: string;
-	    // Go type: net.IPNet
+	    // Go type: net
 	    localaddress: any;
 	    isegressgateway: boolean;
 	    egressgatewayranges: string[];
@@ -209,6 +208,7 @@ export namespace main {
 	    version: string;
 	    ipforwarding: boolean;
 	    daemoninstalled: boolean;
+	    autoupdate: boolean;
 	    hostpass: string;
 	    name: string;
 	    os: string;
@@ -221,7 +221,7 @@ export namespace main {
 	    publickey: number[];
 	    macaddress: number[];
 	    traffickeypublic: number[];
-	    // Go type: net.UDPAddr
+	    // Go type: net
 	    internetgateway: any;
 	    nodes: string[];
 	    isrelayed: boolean;
@@ -238,12 +238,10 @@ export namespace main {
 	    isstatic: boolean;
 	    isdefault: boolean;
 	    nat_type?: string;
-	    // Go type: netip.AddrPort
+	    // Go type: netip
 	    turn_endpoint?: any;
 	    privatekey: number[];
 	    traffickeyprivate: number[];
-	    // // Go type: net.UDPAddr
-	    // internetgateway: any;
 	    peers: {[key: string]: PeerConfig[]};
 	    macaddressstr: string;
 	
@@ -259,6 +257,7 @@ export namespace main {
 	        this.version = source["version"];
 	        this.ipforwarding = source["ipforwarding"];
 	        this.daemoninstalled = source["daemoninstalled"];
+	        this.autoupdate = source["autoupdate"];
 	        this.hostpass = source["hostpass"];
 	        this.name = source["name"];
 	        this.os = source["os"];
@@ -290,7 +289,6 @@ export namespace main {
 	        this.turn_endpoint = this.convertValues(source["turn_endpoint"], null);
 	        this.privatekey = source["privatekey"];
 	        this.traffickeyprivate = source["traffickeyprivate"];
-	        this.internetgateway = this.convertValues(source["internetgateway"], null);
 	        this.peers = source["peers"];
 	        this.macaddressstr = source["macaddressstr"];
 	    }
@@ -345,27 +343,22 @@ export namespace main {
 		    return a;
 		}
 	}
-
-}
-
-export namespace models {
-	
-	export class AccessToken {
-	    apiconnstring: string;
-	    network: string;
-	    key: string;
+	export class SsoJoinResDto {
+	    authendpoint: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new AccessToken(source);
+	        return new SsoJoinResDto(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.apiconnstring = source["apiconnstring"];
-	        this.network = source["network"];
-	        this.key = source["key"];
+	        this.authendpoint = source["authendpoint"];
 	    }
 	}
+
+}
+
+export namespace models {
 
 	export class Iface {
 		name: string;
@@ -386,4 +379,3 @@ export namespace models {
 	}
 
 }
-
