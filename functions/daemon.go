@@ -49,7 +49,7 @@ type cachedMessage struct {
 func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo, config.Netclient().ProxyListenPort)
+	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo)
 	return cancel
 }
 
@@ -68,12 +68,6 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 
-	shouldUpdateNat := getNatInfo()
-	if shouldUpdateNat { // will be reported on check-in
-		if err := config.WriteNetclientConfig(); err == nil {
-			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
-		}
-	}
 	cancel := startGoRoutines(&wg)
 	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
@@ -100,12 +94,6 @@ func Daemon() {
 				stopProxy,
 			}, &wg)
 			logger.Log(0, "restarting daemon")
-			shouldUpdateNat := getNatInfo()
-			if shouldUpdateNat { // will be reported on check-in
-				if err := config.WriteNetclientConfig(); err == nil {
-					logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
-				}
-			}
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
@@ -143,6 +131,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
+	config.WgPublicListenPort = holePunchWgPort()
+	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
+	setNatInfo()
 	logger.Log(3, "configuring netmaker wireguard interface")
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
@@ -212,6 +203,7 @@ func setupMQTT(server *config.Server) error {
 			setSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
+		checkin()
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
@@ -455,38 +447,33 @@ func RemoveServer(node *config.Node) {
 	delete(ServerSet, node.Server)
 }
 
-func getNatInfo() (natUpdated bool) {
-	ncConf, err := config.ReadNetclientConfig()
-	if err != nil {
-		logger.Log(0, "errors reading netclient from disk", err.Error())
-		return
+func holePunchWgPort() (pubPort int) {
+	for _, server := range config.Servers {
+		portToStun := config.Netclient().ListenPort
+		_, pubPort = stun.HolePunch(server.StunList, portToStun)
+		if pubPort != 0 {
+			break
+		}
 	}
-	err = config.ReadServerConf()
-	if err != nil {
-		logger.Log(0, "errors reading server map from disk", err.Error())
-		return
-	}
+	return
+}
 
+func setNatInfo() {
+	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
+	if err != nil {
+		logger.Log(0, "failed to get freeport for proxy: ", err.Error())
+		return
+	}
 	for _, server := range config.Servers {
 		server := server
 		if hostNatInfo == nil {
-			portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
-			if portToStun == 0 || err != nil {
-				portToStun = config.Netclient().ListenPort
-			}
-
 			hostNatInfo = stun.GetHostNatInfo(
 				server.StunList,
 				config.Netclient().EndpointIP.String(),
 				portToStun,
 			)
-			if len(ncConf.Host.NatType) == 0 || ncConf.Host.NatType != hostNatInfo.NatType {
-				config.Netclient().Host.NatType = hostNatInfo.NatType
-				return true
-			}
 		}
 	}
-	return
 }
 
 func cleanUpRoutes() {

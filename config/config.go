@@ -56,6 +56,8 @@ var (
 	GW6PeerDetected bool
 	// GW6Addr - the peer's address for IPv6 gateways
 	GW6Addr net.IPNet
+	// WgPublicListenPort - host's wireguard public listen port
+	WgPublicListenPort int
 )
 
 // Config configuration for netclient and host as a whole
