@@ -55,42 +55,47 @@ func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP,
 			IP:   net.ParseIP(""),
 			Port: portToStun,
 		}
-		conn, err := net.DialUDP("udp", l, s)
+		publicIP, publicPort, err = doStunTransaction(l, s)
 		if err != nil {
-			logger.Log(0, "failed to dial: ", err.Error())
+			logger.Log(0, "stun transaction failed: ", stunServer.Domain, err.Error())
 			continue
 		}
-		defer conn.Close()
-		c, err := stun.NewClient(conn)
-		if err != nil {
-			logger.Log(1, "failed to create stun client: ", err.Error())
-			conn.Close()
-			continue
-		}
-		defer c.Close()
-		// Building binding request with random transaction id.
-		message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
-		// Sending request to STUN server, waiting for response message.
-		if err := c.Do(message, func(res stun.Event) {
-			if res.Error != nil {
-				logger.Log(1, "0:stun error: ", res.Error.Error())
-				return
-			}
-			// Decoding XOR-MAPPED-ADDRESS attribute from message.
-			var xorAddr stun.XORMappedAddress
-			if err := xorAddr.GetFrom(res.Message); err != nil {
-				logger.Log(1, "1:stun error: ", res.Error.Error())
-				return
-			}
-			publicIP = xorAddr.IP
-			publicPort = xorAddr.Port
-		}); err != nil {
-			logger.Log(1, "2:stun error: ", err.Error())
-			conn.Close()
-			continue
-		}
-		conn.Close()
 		break
+	}
+	return
+}
+
+func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort int, err error) {
+	conn, err := net.DialUDP("udp", lAddr, rAddr)
+	if err != nil {
+		logger.Log(0, "failed to dial: ", err.Error())
+		return
+	}
+	defer conn.Close()
+	c, err := stun.NewClient(conn)
+	if err != nil {
+		logger.Log(1, "failed to create stun client: ", err.Error())
+		return
+	}
+	defer c.Close()
+	// Building binding request with random transaction id.
+	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
+	// Sending request to STUN server, waiting for response message.
+	if err := c.Do(message, func(res stun.Event) {
+		if res.Error != nil {
+			logger.Log(1, "0:stun error: ", res.Error.Error())
+			return
+		}
+		// Decoding XOR-MAPPED-ADDRESS attribute from message.
+		var xorAddr stun.XORMappedAddress
+		if err := xorAddr.GetFrom(res.Message); err != nil {
+			logger.Log(1, "1:stun error: ", res.Error.Error())
+			return
+		}
+		publicIP = xorAddr.IP
+		publicPort = xorAddr.Port
+	}); err != nil {
+		logger.Log(1, "2:stun error: ", err.Error())
 	}
 	return
 }
