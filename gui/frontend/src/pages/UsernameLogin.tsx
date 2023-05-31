@@ -84,8 +84,7 @@ export default function UsernameLogin() {
       const { authendpoint: oauthLink } = (await GoJoinNetworkBySso(
         serverName,
         networkName
-      )) as any;
-      console.log("oauth link: ", oauthLink);
+      ));
 
       BrowserOpenURL(oauthLink);
       await notifyUser(

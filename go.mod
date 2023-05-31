@@ -33,7 +33,6 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
-	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v3 v3.0.1
 	gortc.io/stun v1.23.0
 )
@@ -129,5 +128,6 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
+	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
