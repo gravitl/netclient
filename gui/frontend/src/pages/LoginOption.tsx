@@ -24,7 +24,7 @@ function LoginOption() {
           to={AppRoutes.TOKEN_LOGIN_ROUTE}
           data-testid="login-by-token-btn"
         >
-          By Token/Enrollment Key
+          By Enrollment Key
         </Button>
       </Grid>
 

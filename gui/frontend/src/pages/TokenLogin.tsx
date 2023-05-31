@@ -26,7 +26,7 @@ function TokenLogin() {
   const [enrollmentKey, setEnrollmentKey] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [type, setType] = useState<"access-key" | "enrollment-key">(
-    "access-key"
+    "enrollment-key"
   );
   const navigate = useNavigate();
   const { networksDispatch } = useNetworksContext();
@@ -90,7 +90,7 @@ function TokenLogin() {
         <h1 className="page-title">Connect with Token</h1>
       </Grid>
 
-      <Grid item xs={12}>
+      {/* <Grid item xs={12}>
         <FormControl>
           <FormLabel>Token type</FormLabel>
           <RadioGroup
@@ -109,7 +109,7 @@ function TokenLogin() {
             />
           </RadioGroup>
         </FormControl>
-      </Grid>
+      </Grid> */}
 
       {type === "access-key" && (
         <Grid item xs={12}>
