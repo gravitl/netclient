@@ -143,38 +143,47 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 }
 
 // App.GoJoinNetworkBySso joins a network by SSO
-func (app *App) GoJoinNetworkBySso(serverName, networkName string) (any, error) {
-	fmt.Println("logging in with SSO...")
-
-	err := functions.RegisterWithSSO(&functions.RegisterSSO{
+func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDto, error) {
+	payload := &functions.RegisterSSO{
 		API:         serverName,
 		Network:     networkName,
 		UsingSSO:    true,
 		AllNetworks: false,
-	})
+	}
+	res := SsoJoinResDto{}
+
+	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/sso/", "", headers)
 	if err != nil {
-		fmt.Println(err)
-		return nil, err
+		return res, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return res, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
 
-	return nil, nil
+	if err := json.NewDecoder(response.Body).Decode(&res); err != nil {
+		return res, err
+	}
+	return res, nil
 }
 
 // App.GoJoinNetworkByBasicAuth joins a network by username/password
 func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
-	err := functions.RegisterWithSSO(&functions.RegisterSSO{
+	payload := &functions.RegisterSSO{
 		API:         serverName,
 		Network:     networkName,
 		UsingSSO:    false,
 		User:        username,
 		Pass:        password,
 		AllNetworks: false,
-	})
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
 	}
 
+	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/join/", "", headers)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
 	return nil, nil
 }
 
