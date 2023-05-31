@@ -1,4 +1,4 @@
-package router
+package firewall
 
 import (
 	"github.com/gravitl/netmaker/logger"
@@ -73,17 +73,9 @@ func Init() (func(), error) {
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err
 	}
-	return fwCrtl.FlushAll, nil
-}
-
-// EnableForwardRule - enable firewall to forward netmaker traffic
-func EnableForwardRule() error {
-	controller, err := newFirewall()
+	err = fwCrtl.ForwardRule()
 	if err != nil {
-		return err
+		return fwCrtl.FlushAll, err
 	}
-	if controller.ForwardRule(); err != nil {
-		return err
-	}
-	return nil
+	return fwCrtl.FlushAll, nil
 }

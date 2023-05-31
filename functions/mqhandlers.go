@@ -12,6 +12,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
@@ -251,6 +252,28 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		&originalGW,
 	)
 
+}
+
+func firewallUpdate(client mqtt.Client, msg mqtt.Message) {
+	var fwUpdate models.FwUpdate
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	logger.Log(3, "received fw update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal([]byte(data), &fwUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling peer data")
+		return
+	}
+	logger.Log(0, fmt.Sprintf("#### Fw Update: %+v", fwUpdate))
+	handleFwUpdate(serverName, &fwUpdate)
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -619,4 +642,19 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 			}
 		}
 	}
+}
+
+func handleFwUpdate(server string, payload *models.FwUpdate) {
+
+	if payload.IsIngressGw {
+		firewall.SetIngressRoutes(server, payload.IngressInfo)
+	} else {
+		firewall.DeleteIngressRules(server)
+	}
+	if payload.IsEgressGw {
+		firewall.SetEgressRoutes(server, payload.EgressInfo)
+	} else {
+		firewall.DeleteEgressGwRoutes(server)
+	}
+
 }

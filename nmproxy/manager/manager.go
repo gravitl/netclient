@@ -11,7 +11,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
-	"github.com/gravitl/netclient/nmproxy/router"
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netclient/wireguard"
@@ -83,7 +82,7 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 	config.GetCfg().SetIface(wgIface)
 	config.GetCfg().SetPeersIDsAndAddrs(m.Server, payload.HostPeerIDs)
 	startMetricsThread(payload) // starts or stops the metrics collection based on host proxy setting
-	fwUpdate(payload)
+
 	switch m.Action {
 	case nm_models.ProxyUpdate, nm_models.NoProxy:
 		m.peerUpdate()
@@ -92,43 +91,6 @@ func configureProxy(payload *nm_models.HostPeerUpdate) error {
 
 	}
 	return err
-}
-
-func fwUpdate(payload *nm_models.HostPeerUpdate) {
-	isIngressGw := len(payload.IngressInfo.ExtPeers) > 0
-	isEgressGw := len(payload.EgressInfo) > 0
-	if isIngressGw || isEgressGw {
-		if !config.GetCfg().GetFwStatus() {
-
-			fwClose, err := router.Init()
-			if err != nil {
-				logger.Log(0, "failed to intialize firewall: ", err.Error())
-				return
-			}
-			config.GetCfg().SetFwStatus(true)
-			config.GetCfg().SetFwCloseFunc(fwClose)
-
-		} else {
-			logger.Log(0, "firewall controller is intialized already")
-		}
-
-	}
-	config.GetCfg().SetIngressGwStatus(payload.Server, isIngressGw)
-	config.GetCfg().SetEgressGwStatus(payload.Server, isEgressGw)
-
-	if isIngressGw {
-		router.SetIngressRoutes(payload.Server, payload.IngressInfo)
-	}
-	if isEgressGw {
-		router.SetEgressRoutes(payload.Server, payload.EgressInfo)
-	}
-	if config.GetCfg().GetFwStatus() && !isIngressGw {
-		router.DeleteIngressRules(payload.Server)
-	}
-	if config.GetCfg().GetFwStatus() && !isEgressGw {
-		router.DeleteEgressGwRoutes(payload.Server)
-	}
-
 }
 
 func startMetricsThread(peerUpdate *nm_models.HostPeerUpdate) {

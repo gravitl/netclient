@@ -56,6 +56,8 @@ var (
 	GW6PeerDetected bool
 	// GW6Addr - the peer's address for IPv6 gateways
 	GW6Addr net.IPNet
+	// FwClose - firewall manager shutdown func
+	FwClose func() = func() {}
 )
 
 // Config configuration for netclient and host as a whole

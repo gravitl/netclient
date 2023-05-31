@@ -13,6 +13,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -74,6 +75,13 @@ func Daemon() {
 			logger.Log(1, "updated NAT type to", hostNatInfo.NatType)
 		}
 	}
+
+	// initialize firewall manager
+	var err error
+	config.FwClose, err = firewall.Init()
+	if err != nil {
+		logger.Log(0, "failed to intialize firewall: ", err.Error())
+	}
 	// good to sync up config on daemon start
 	Pull(false)
 	cancel := startGoRoutines(&wg)
@@ -93,6 +101,7 @@ func Daemon() {
 			}, &wg)
 			httpCancel()
 			httpWg.Wait()
+			config.FwClose()
 			logger.Log(0, "shutdown complete")
 			return
 		case <-reset:
@@ -318,6 +327,11 @@ func setHostSubscription(client mqtt.Client, server string) {
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to host single peer updates  peer/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peer/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostSinglePeerUpdate)); token.Wait() && token.Error() != nil {
+		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		return
+	}
+	logger.Log(3, fmt.Sprintf("subscribed to firewall updates  fw/host/%s/%s", hostID.String(), server))
+	if token := client.Subscribe(fmt.Sprintf("fw/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(firewallUpdate)); token.Wait() && token.Error() != nil {
 		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
 		return
 	}
