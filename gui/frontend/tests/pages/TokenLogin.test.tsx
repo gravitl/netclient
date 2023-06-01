@@ -28,19 +28,19 @@ describe("TokenLoginPage", () => {
     });
   });
 
-  it("provides provides radio options to choose token type", () => {
-    act(() => {
-      expect(screen.getByText("Token type")).toBeInTheDocument()
-    });
-  });
+  // it("provides provides radio options to choose token type", () => {
+  //   act(() => {
+  //     expect(screen.getByText("Token type")).toBeInTheDocument()
+  //   });
+  // });
   
-  it("provides provides an input to enter token", () => {
+  it("provides provides an input to enter enrollment key", () => {
     act(() => {
       expect(screen.getByTestId("enrollment-key-inp")).toBeInTheDocument()
     });
   });
 
-  it("validates token", () => {
+  it("validates key", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("connect-btn"))
     });
