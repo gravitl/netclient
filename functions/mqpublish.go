@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
+	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -240,18 +241,18 @@ func UpdateHostSettings() error {
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
 	var (
-		publicIP   string
-		err        error
-		publishMsg bool
+		publicNetIP net.IP
+		publicIP    string
+		err         error
+		publishMsg  bool
 	)
 	for _, serverName := range config.GetServers() {
 		server := config.GetServer(serverName)
 		if !config.Netclient().IsStatic {
-			publicIP, err = ncutils.GetPublicIP(server.API)
-			if err != nil {
-				logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-			}
-			if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
+			// TODO - not sure what should be set for port
+			publicNetIP = stun.GetPublicIP([]models.StunServer{}, config.Netclient().EndpointIP.String(), -)
+			// TODO - Need zero value of publicNetIP to determine if it is a valid / real returned value
+			if publicNetIP. && config.Netclient().EndpointIP.String() != publicIP.String() {
 				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
 				config.Netclient().EndpointIP = net.ParseIP(publicIP)
 				publishMsg = true

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
@@ -99,17 +99,12 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 			shouldUpdateHost = true
 		}
 		if host.EndpointIP == nil {
-			ip, err := ncutils.GetPublicIP(apiServer)
-			if err != nil {
-				return false, err
-			}
-			host.EndpointIP = net.ParseIP(ip)
-			if err != nil {
-				return false, fmt.Errorf("error setting public ip %w", err)
-			}
-			if host.EndpointIP == nil {
+			ip := stun.GetPublicIP([]models.StunServer{})
+			// TODO - need zero value of ip
+			if ip.IsValid() {
 				return false, fmt.Errorf("error setting public endpoint for host - %v", err)
 			}
+			host.EndpointIP = ip
 			shouldUpdateHost = true
 		}
 		if shouldUpdateHost {

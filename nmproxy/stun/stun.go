@@ -12,6 +12,25 @@ import (
 	"gortc.io/stun"
 )
 
+var defaultStunServers = []nmmodels.StunServer{
+	nmmodels.StunServer{
+		Domain: "stun1.netmaker.io",
+		Port:   3478,
+	},
+	nmmodels.StunServer{
+		Domain: "stun2.netmaker.io",
+		Port:   3478,
+	},
+	nmmodels.StunServer{
+		Domain: "stun1.l.google.com",
+		Port:   19302,
+	},
+	nmmodels.StunServer{
+		Domain: "stun2.l.google.com",
+		Port:   19302,
+	},
+}
+
 // IsPublicIP indicates whether IP is public or not.
 func IsPublicIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
@@ -98,6 +117,16 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		logger.Log(1, "2:stun error: ", err.Error())
 	}
 	return
+}
+
+// GetPublicIP - return public ip of machine
+func GetPublicIP(stunList []nmmodels.StunServer, endpoint string, port int) net.IP {
+	if stunList == nil || len(stunList) == 0 {
+		stunList = defaultStunServers
+	}
+	// TODO - not sure if we need endpoint / port here
+	info := GetHostNatInfo(stunList, endpoint, port, todo)
+	return info.PublicIp
 }
 
 // GetHostNatInfo - calls stun server for udp hole punch and fetches host info
