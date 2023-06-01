@@ -11,7 +11,10 @@ FROM alpine:3.18.0
 
 WORKDIR /root/
 
-RUN apk add --no-cache --update bash libmnl gcompat iptables openresolv iproute2
+RUN apk add --no-cache --update bash libmnl gcompat openresolv iproute2
+RUN apk add iptables ip6tables \
+    && mv -v /sbin/ip6tables /sbin/ip6tables-disabled \
+    && cp -v /sbin/ip6tables-nft /sbin/ip6tables
 COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh

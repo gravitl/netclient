@@ -142,6 +142,51 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 	return servers.Name, nil
 }
 
+// App.GoJoinNetworkBySso joins a network by SSO
+func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDto, error) {
+	payload := &functions.RegisterSSO{
+		API:         serverName,
+		Network:     networkName,
+		UsingSSO:    true,
+		AllNetworks: false,
+	}
+	res := SsoJoinResDto{}
+
+	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/sso/", "", headers)
+	if err != nil {
+		return res, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return res, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+
+	if err := json.NewDecoder(response.Body).Decode(&res); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+// App.GoJoinNetworkByBasicAuth joins a network by username/password
+func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
+	payload := &functions.RegisterSSO{
+		API:         serverName,
+		Network:     networkName,
+		UsingSSO:    false,
+		User:        username,
+		Pass:        password,
+		AllNetworks: false,
+	}
+
+	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/join/", "", headers)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
+	}
+	return nil, nil
+}
+
 // App.GoUninstall uninstalls netclient form the machine
 func (app *App) GoUninstall() (any, error) {
 	response, err := httpclient.GetResponse("", http.MethodPost, url+"/uninstall/", "", headers)

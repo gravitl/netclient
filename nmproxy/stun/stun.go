@@ -42,6 +42,64 @@ func DoesIPExistLocally(ip net.IP) bool {
 	return false
 }
 
+// HolePunch - performs udp hole punching on the given port
+func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP, publicPort int) {
+	for _, stunServer := range stunList {
+		stunServer := stunServer
+		s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
+		if err != nil {
+			logger.Log(1, "failed to resolve udp addr: ", err.Error())
+			continue
+		}
+		l := &net.UDPAddr{
+			IP:   net.ParseIP(""),
+			Port: portToStun,
+		}
+		publicIP, publicPort, err = doStunTransaction(l, s)
+		if err != nil {
+			logger.Log(0, "stun transaction failed: ", stunServer.Domain, err.Error())
+			continue
+		}
+		break
+	}
+	return
+}
+
+func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort int, err error) {
+	conn, err := net.DialUDP("udp", lAddr, rAddr)
+	if err != nil {
+		logger.Log(0, "failed to dial: ", err.Error())
+		return
+	}
+	defer conn.Close()
+	c, err := stun.NewClient(conn)
+	if err != nil {
+		logger.Log(1, "failed to create stun client: ", err.Error())
+		return
+	}
+	defer c.Close()
+	// Building binding request with random transaction id.
+	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
+	// Sending request to STUN server, waiting for response message.
+	if err := c.Do(message, func(res stun.Event) {
+		if res.Error != nil {
+			logger.Log(1, "0:stun error: ", res.Error.Error())
+			return
+		}
+		// Decoding XOR-MAPPED-ADDRESS attribute from message.
+		var xorAddr stun.XORMappedAddress
+		if err := xorAddr.GetFrom(res.Message); err != nil {
+			logger.Log(1, "1:stun error: ", res.Error.Error())
+			return
+		}
+		publicIP = xorAddr.IP
+		publicPort = xorAddr.Port
+	}); err != nil {
+		logger.Log(1, "2:stun error: ", err.Error())
+	}
+	return
+}
+
 // GetHostNatInfo - calls stun server for udp hole punch and fetches host info
 func GetHostNatInfo(stunList []nmmodels.StunServer, currentPublicIP string, stunPort int) (info *models.HostInfo) {
 
