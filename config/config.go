@@ -66,6 +66,7 @@ type Config struct {
 	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
+	DisableGUIServer  bool                            `json:"disableguiserver" yaml:"disableguiserver"`
 }
 
 func init() {
