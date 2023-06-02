@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -131,7 +132,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
-	config.WgPublicListenPort = holePunchWgPort()
+	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
 	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
 	setNatInfo()
 	logger.Log(3, "configuring netmaker wireguard interface")
@@ -447,13 +448,14 @@ func RemoveServer(node *config.Node) {
 	delete(ServerSet, node.Server)
 }
 
-func holePunchWgPort() (pubPort int) {
+func holePunchWgPort() (pubIP net.IP, pubPort int) {
 	for _, server := range config.Servers {
 		portToStun := config.Netclient().ListenPort
-		_, pubPort = stun.HolePunch(server.StunList, portToStun)
-		if pubPort != 0 {
-			break
+		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
+		if pubPort == 0 || pubIP == nil {
+			continue
 		}
+		break
 	}
 	return
 }
