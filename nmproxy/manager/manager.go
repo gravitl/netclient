@@ -101,49 +101,6 @@ func startMetricsThread(peerUpdate *nm_models.HostPeerUpdate) {
 	}
 }
 
-// settingsUpdate - updates the host settings in the config
-func (m *proxyPayload) settingsUpdate(server string) (reset bool) {
-	if !m.IsRelay && config.GetCfg().IsRelay(server) {
-		config.GetCfg().DeleteRelayedPeers()
-	}
-
-	config.GetCfg().SetRelayStatus(server, m.IsRelay)
-	config.GetCfg().SetIngressGwStatus(server, m.IsIngress)
-	if config.GetCfg().GetRelayedStatus(server) != m.IsRelayed {
-		reset = true
-	}
-	config.GetCfg().SetRelayedStatus(server, m.IsRelayed)
-	if m.IsRelay {
-		m.setRelayedPeers()
-	}
-	return
-}
-
-// ProxyManagerPayload.setRelayedPeers - processes the payload for the relayed peers
-func (m *proxyPayload) setRelayedPeers() {
-	c := config.GetCfg()
-	for relayedNodePubKey, relayedNodeConf := range m.RelayedPeerConf {
-		for _, peer := range relayedNodeConf.Peers {
-			if peer.Endpoint != nil {
-				peer.Endpoint.Port = m.PeerMap[peer.PublicKey.String()].ProxyListenPort
-				rPeer := models.RemotePeer{
-					PeerKey:  peer.PublicKey.String(),
-					Endpoint: peer.Endpoint,
-				}
-				c.SaveRelayedPeer(relayedNodePubKey, &rPeer)
-			}
-
-		}
-		relayedNodeConf.RelayedPeerEndpoint.Port = m.PeerMap[relayedNodePubKey].ProxyListenPort
-		relayedNode := models.RemotePeer{
-			PeerKey:  relayedNodePubKey,
-			Endpoint: relayedNodeConf.RelayedPeerEndpoint,
-		}
-		c.SaveRelayedPeer(relayedNodePubKey, &relayedNode)
-
-	}
-}
-
 func cleanUpInterface() {
 	logger.Log(1, "cleaning up proxy peer connections")
 	peerConnMap := config.GetCfg().GetAllProxyPeers()
@@ -163,12 +120,6 @@ func (m *proxyPayload) processPayload() error {
 		return errors.New("no peers to add")
 	}
 	gCfg := config.GetCfg()
-
-	reset := m.settingsUpdate(m.Server)
-	if reset {
-		cleanUpInterface()
-		return nil
-	}
 
 	peerConnMap := gCfg.GetAllProxyPeers()
 	// check device conf different from proxy
@@ -196,21 +147,9 @@ func (m *proxyPayload) processPayload() error {
 		if currentPeer, ok := peerConnMap[m.Peers[i].PublicKey.String()]; ok {
 			currentPeer.Mutex.Lock()
 			if currentPeer.Config.UsingTurn {
-
-				if m.IsRelayed || m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
-					// cleanup turn connections for the peer since it is being relayed already
-					currentPeer.StopConn()
-					delete(peerConnMap, currentPeer.Key.String())
-					config.GetCfg().DeletePeerTurnCfg(m.Server, currentPeer.Key.String())
-					wireguard.UpdatePeer(&m.Peers[i])
-					currentPeer.Mutex.Unlock()
-					continue
-				}
-				currentPeer.Mutex.Unlock()
 				continue
 			} else {
-				if (m.Action == nm_models.NoProxy) && !m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed &&
-					!currentPeer.Config.UsingTurn {
+				if (m.Action == nm_models.NoProxy) && !currentPeer.Config.UsingTurn {
 					// cleanup proxy connections for the peer
 					currentPeer.StopConn()
 					delete(peerConnMap, currentPeer.Key.String())
@@ -245,26 +184,6 @@ func (m *proxyPayload) processPayload() error {
 				}
 			}
 
-			//check if peer is being relayed
-			if !m.IsRelayed && !config.GetCfg().IsGlobalRelay() && currentPeer.IsRelayed != m.PeerMap[m.Peers[i].PublicKey.String()].IsRelayed {
-				logger.Log(1, "---------> peer relay status has been changed: ", currentPeer.Key.String())
-				currentPeer.StopConn()
-				currentPeer.Mutex.Unlock()
-				delete(peerConnMap, currentPeer.Key.String())
-				continue
-			}
-
-			// check if relay endpoint has been changed
-			if !m.IsRelayed && !config.GetCfg().IsGlobalRelay() && currentPeer.RelayedEndpoint != nil &&
-				m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo != nil &&
-				currentPeer.RelayedEndpoint.String() != m.PeerMap[m.Peers[i].PublicKey.String()].RelayedTo.String() {
-				logger.Log(1, "---------> peer relay endpoint has been changed: ", currentPeer.Key.String())
-				currentPeer.StopConn()
-				currentPeer.Mutex.Unlock()
-				delete(peerConnMap, currentPeer.Key.String())
-				continue
-			}
-
 			// check if proxy listen port has changed for the peer
 			if (currentPeer.Config.ListenPort != int(m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort) &&
 				m.PeerMap[m.Peers[i].PublicKey.String()].PublicListenPort != 0) ||
@@ -287,15 +206,6 @@ func (m *proxyPayload) processPayload() error {
 				delete(peerConnMap, currentPeer.Key.String())
 				continue
 
-			}
-			if !config.GetCfg().IsGlobalRelay() && !currentPeer.IsRelayed && m.Peers[i].Endpoint != nil && currentPeer.Config.RemoteConnAddr.IP.String() != m.Peers[i].Endpoint.IP.String() {
-				logger.Log(1, fmt.Sprintf("----> Peer RemoteConn has changed from %s to %s",
-					currentPeer.Config.RemoteConnAddr.String(), m.Peers[i].Endpoint.String()))
-				logger.Log(1, "----------> Resetting proxy for Peer: ", currentPeer.Key.String())
-				currentPeer.StopConn()
-				currentPeer.Mutex.Unlock()
-				delete(peerConnMap, currentPeer.Key.String())
-				continue
 			}
 			// delete the peer from the list
 			logger.Log(1, "-----------> No updates observed so deleting peer: ", m.Peers[i].PublicKey.String())

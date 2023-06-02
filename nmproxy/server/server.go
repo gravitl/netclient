@@ -143,88 +143,17 @@ func handleMsgs(buffer []byte, n int, source string) {
 					}
 				}
 
-			} else {
-				// metric packet needs to be relayed
-				if config.GetCfg().IsGlobalRelay() {
-					var srcPeerKeyHash, dstPeerKeyHash string
-					if metricMsg.Reply == 1 {
-						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
-						srcPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Reciever.String())
-					} else {
-						srcPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Sender.String())
-						dstPeerKeyHash = models.ConvPeerKeyToHash(metricMsg.Reciever.String())
-					}
-					buf, err := packet.EncodePacketMetricMsg(metricMsg)
-					if err == nil {
-						copy(buffer[:n], buf[:])
-					} else {
-						logger.Log(1, "--------> failed to encode metric relay message")
-					}
-					relayPacket(buffer, source, n, srcPeerKeyHash, dstPeerKeyHash)
-					return
-				}
 			}
 		} else {
 			logger.Log(1, "failed to decode metrics message: ", err.Error())
 		}
-	case packet.MessageProxyUpdateType:
-		msg, err := packet.ConsumeProxyUpdateMsg(buffer[:n])
-		if err == nil {
-			switch msg.Action {
-			case packet.UpdateListenPort:
-				if peer, found := config.GetCfg().GetPeer(msg.Sender.String()); found {
-					if config.GetCfg().IsGlobalRelay() && config.GetCfg().GetDevicePubKey() != msg.Reciever {
-						// update relay peer config
-						if peer, found := config.GetCfg().GetRelayedPeer(models.ConvPeerKeyToHash(msg.Sender.String()),
-							models.ConvPeerKeyToHash(msg.Reciever.String())); found {
-							if peer.Endpoint.Port != int(msg.ListenPort) {
-								config.GetCfg().UpdateListenPortForRelayedPeer(int(msg.ListenPort),
-									models.ConvPeerKeyToHash(msg.Sender.String()), models.ConvPeerKeyToHash(msg.Reciever.String()))
-							}
 
-						}
-
-					} else {
-						if peer.Config.PeerEndpoint.Port != int(msg.ListenPort) {
-							// update peer conn
-							peer.Config.PeerEndpoint.Port = int(msg.ListenPort)
-							config.GetCfg().UpdatePeer(&peer)
-							logger.Log(1, "--------> Resetting Proxy Conn For Peer ", msg.Sender.String())
-							config.GetCfg().ResetPeer(peer.Key.String())
-							return
-						}
-					}
-
-				}
-
-			}
-		}
-	}
-}
-
-func relayPacket(buffer []byte, source string, n int, srcPeerKeyHash, dstPeerKeyHash string) {
-	// check for routing map and relay to right proxy
-	if remotePeer, ok := config.GetCfg().GetRelayedPeer(srcPeerKeyHash, dstPeerKeyHash); ok {
-		if nc_config.Netclient().Debug {
-			logger.Log(3, fmt.Sprintf("--------> Relaying PKT [ Source: %s ], [ SourceKeyHash: %s ], [ DstIP: %s ], [ DstHashKey: %s ] \n",
-				source, srcPeerKeyHash, remotePeer.Endpoint.String(), dstPeerKeyHash))
-		}
-		_, err := NmProxyServer.Server.WriteToUDP(buffer[:n], remotePeer.Endpoint)
-		if err != nil {
-			logger.Log(1, "Failed to relay to remote: ", err.Error())
-		}
-		return
 	}
 }
 
 func proxyIncomingPacket(buffer []byte, source string, n int, srcPeerKeyHash, dstPeerKeyHash string) {
 	var err error
 	//logger.Log(0,"--------> RECV PKT , [SRCKEYHASH: %s], SourceIP: [%s] \n", srcPeerKeyHash, source.IP.String())
-
-	if config.GetCfg().GetDeviceKeyHash() != dstPeerKeyHash && config.GetCfg().IsGlobalRelay() {
-		relayPacket(buffer, source, n+packet.MessageProxyTransportSize, srcPeerKeyHash, dstPeerKeyHash)
-		return
-	}
 
 	if peerInfo, ok := config.GetCfg().GetPeerInfoByHash(srcPeerKeyHash); ok {
 		if nc_config.Netclient().Debug {
