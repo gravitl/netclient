@@ -452,7 +452,7 @@ func holePunchWgPort() (pubIP net.IP, pubPort int) {
 	for _, server := range config.Servers {
 		portToStun := config.Netclient().ListenPort
 		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
-		if pubPort == 0 || pubIP == nil {
+		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
 			continue
 		}
 		break
