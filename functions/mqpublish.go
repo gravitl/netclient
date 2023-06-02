@@ -248,7 +248,7 @@ func UpdateHostSettings() error {
 			if config.Netclient().EndpointIP == nil {
 				config.Netclient().EndpointIP = config.HostPublicIP
 			} else {
-				if config.HostPublicIP != nil && !config.Netclient().EndpointIP.Equal(config.HostPublicIP) {
+				if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() && !config.Netclient().EndpointIP.Equal(config.HostPublicIP) {
 					logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
 					config.Netclient().EndpointIP = config.HostPublicIP
 					publishMsg = true
