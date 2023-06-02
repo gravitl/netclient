@@ -158,16 +158,6 @@ func (m *proxyPayload) processPayload() error {
 					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
 					continue
 				}
-				// check if proxy is not required for the peer anymore
-				if !m.IsRelayed && (m.Action == nm_models.ProxyUpdate) && !m.PeerMap[m.Peers[i].PublicKey.String()].Proxy {
-					// cleanup proxy connections for the peer
-					currentPeer.StopConn()
-					delete(peerConnMap, currentPeer.Key.String())
-					wireguard.UpdatePeer(&m.Peers[i])
-					currentPeer.Mutex.Unlock()
-					m.Peers = append(m.Peers[:i], m.Peers[i+1:]...)
-					continue
-				}
 			}
 
 			// check if peer is not connected to proxy
