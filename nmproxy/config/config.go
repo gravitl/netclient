@@ -49,7 +49,6 @@ func InitializeCfg() {
 			hostTurnCfg:  make(map[string]proxyModels.TurnCfg),
 			proxyPeerMap: make(proxyModels.PeerConnMap),
 			peerHashMap:  make(map[string]*proxyModels.RemotePeer),
-			relayPeerMap: make(map[string]map[string]*proxyModels.RemotePeer),
 			allPeersConf: make(map[string]models.HostPeerMap),
 		},
 	}

@@ -16,7 +16,6 @@ type wgIfaceConf struct {
 	hostTurnCfg  map[string]models.TurnCfg
 	turnPeerMap  map[string]map[string]models.TurnPeerCfg
 	peerHashMap  map[string]*models.RemotePeer
-	relayPeerMap map[string]map[string]*models.RemotePeer
 	allPeersConf map[string]nm_models.HostPeerMap
 }
 
@@ -194,60 +193,6 @@ func (c *Config) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer, bool)
 // Config.DeletePeerHash - deletes peer by its pubkey hash from config
 func (c *Config) DeletePeerHash(peerKey string) {
 	delete(c.ifaceConfig.peerHashMap, models.ConvPeerKeyToHash(peerKey))
-}
-
-// Config.SaveRelayedPeer - saves relayed peer to config
-func (c *Config) SaveRelayedPeer(relayedNodePubKey string, peer *models.RemotePeer) {
-	if _, ok := c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)]; !ok {
-		c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)] = make(map[string]*models.RemotePeer)
-	}
-	c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)][models.ConvPeerKeyToHash(peer.PeerKey)] = peer
-}
-
-// Config.CheckIfRelayedNodeExists - checks if relayed node exists
-func (c *Config) CheckIfRelayedNodeExists(peerHash string) bool {
-	_, found := c.ifaceConfig.relayPeerMap[peerHash]
-	return found
-}
-
-// Config.GetRelayedPeer - fectches the relayed peer
-func (c *Config) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePeer, bool) {
-
-	if c.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
-			return *peer, found
-		}
-	} else if c.CheckIfRelayedNodeExists(dstPeerHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
-			return *peer, found
-		}
-	}
-	return models.RemotePeer{}, false
-}
-
-// Config.DeleteRelayedPeers - deletes relayed peer info
-func (c *Config) DeleteRelayedPeers() {
-	peersMap := c.GetAllProxyPeers()
-	for _, peer := range peersMap {
-		if peer.IsRelayed {
-			delete(c.ifaceConfig.relayPeerMap, models.ConvPeerKeyToHash(peer.Key.String()))
-		}
-	}
-}
-
-// Config.UpdateListenPortForRelayedPeer - updates listen port for the relayed peer
-func (c *Config) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
-	if c.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
-			peer.Endpoint.Port = port
-			c.SaveRelayedPeer(srcKeyHash, peer)
-		}
-	} else if c.CheckIfRelayedNodeExists(dstPeerHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
-			peer.Endpoint.Port = port
-			c.SaveRelayedPeer(dstPeerHash, peer)
-		}
-	}
 }
 
 // Config.GetInterfaceListenPort - fetches interface listen port from config
