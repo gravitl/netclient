@@ -63,15 +63,14 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key                     `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate []byte                          `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers         map[string][]wgtypes.PeerConfig `json:"peers" yaml:"peers"`
+	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	HostPeers         []wgtypes.PeerConfig `json:"peers_info" yaml:"peers_info"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
-	netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -112,74 +111,35 @@ func Netclient() *Config {
 
 // GetHostPeerList - gets the combined list of peers for the host
 func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
-	hostPeerMap := netclient.HostPeers
-	peerMap := make(map[string]int)
-	for _, serverPeers := range hostPeerMap {
-		serverPeers := serverPeers
-		for i, peerI := range serverPeers {
-			peerI := peerI
-			if ind, ok := peerMap[peerI.PublicKey.String()]; ok {
-				allPeers[ind].AllowedIPs = getUniqueAllowedIPList(allPeers[ind].AllowedIPs, peerI.AllowedIPs)
-			} else {
-				peerMap[peerI.PublicKey.String()] = i
-				allPeers = append(allPeers, peerI)
-			}
-
-		}
-	}
-	return
+	hostPeers := netclient.HostPeers
+	return hostPeers
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) (isHostInetGW bool) {
-	hostPeerMap := netclient.HostPeers
-	if hostPeerMap == nil {
-		hostPeerMap = make(map[string][]wgtypes.PeerConfig, 1)
-	}
-	hostPeerMap[server] = peers
-	netclient.HostPeers = hostPeerMap
+	netclient.HostPeers = peers
 	return detectOrFilterGWPeers(server, peers)
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
-func DeleteServerHostPeerCfg(server string) {
-	if netclient.HostPeers == nil {
-		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
-		return
-	}
-	delete(netclient.HostPeers, server)
+func DeleteServerHostPeerCfg() {
+	netclient.HostPeers = make([]wgtypes.PeerConfig, 0)
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
 func RemoveServerHostPeerCfg(serverName string) {
 	if netclient.HostPeers == nil {
-		netclient.HostPeers = make(map[string][]wgtypes.PeerConfig)
+		netclient.HostPeers = []wgtypes.PeerConfig{}
 		return
 	}
-	peers := netclient.HostPeers[serverName]
+	peers := netclient.HostPeers
 	for i := range peers {
 		peer := peers[i]
 		peer.Remove = true
 		peers[i] = peer
 	}
-	netclient.HostPeers[serverName] = peers
+	netclient.HostPeers = peers
 	_ = WriteNetclientConfig()
-}
-
-func getUniqueAllowedIPList(currIps, newIps []net.IPNet) []net.IPNet {
-	uniqueIpList := []net.IPNet{}
-	ipMap := make(map[string]struct{})
-	uniqueIpList = append(uniqueIpList, currIps...)
-	uniqueIpList = append(uniqueIpList, newIps...)
-	for i := len(uniqueIpList) - 1; i >= 0; i-- {
-		if _, ok := ipMap[uniqueIpList[i].String()]; ok {
-			// if ip already exists, remove duplicate one
-			uniqueIpList = append(uniqueIpList[:i], uniqueIpList[i+1:]...)
-		} else {
-			ipMap[uniqueIpList[i].String()] = struct{}{}
-		}
-	}
-	return uniqueIpList
 }
 
 // SetVersion - sets version for use by other packages
@@ -436,6 +396,7 @@ func InitConfig(viper *viper.Viper) {
 	ReadNodeConfig()
 	ReadServerConf()
 	CheckConfig()
+	SetServerCtx()
 	//check netclient dirs exist
 	if _, err := os.Stat(GetNetclientPath()); err != nil {
 		if os.IsNotExist(err) {
@@ -679,21 +640,19 @@ func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
 // IsHostInetGateway - checks, based on netclient memory,
 // if current client is an internet gateway
 func IsHostInetGateway() bool {
-	servers := GetServers()
-	for i := range servers {
-		serverName := servers[i]
-		serverNodes := GetNodesByServer(serverName)
-		for j := range serverNodes {
-			serverNode := serverNodes[j]
-			if serverNode.IsEgressGateway {
-				for _, egressRange := range serverNode.EgressGatewayRanges {
-					if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
-						return true
-					}
+
+	serverNodes := GetNodesByServer(CurrServer)
+	for j := range serverNodes {
+		serverNode := serverNodes[j]
+		if serverNode.IsEgressGateway {
+			for _, egressRange := range serverNode.EgressGatewayRanges {
+				if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
+					return true
 				}
 			}
 		}
 	}
+
 	return false
 }
 

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,11 +13,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var serverCtxFile = ".serverctx"
+var CurrServer string
+
 // Servers is map of servers indexed by server name
 var Servers map[string]Server
-
-// ServerNodes is a map of node names for a server
-var ServerNodes map[string]struct{}
 
 // ServerLockFile is a lockfile for controlling access to the server map file on disk
 const ServerLockfile = "netclient-servers.lck"
@@ -131,6 +132,35 @@ func GetServers() (servers []string) {
 	return
 }
 
+// GetCurrServerCtxFromFile - gets curr server context from file
+func GetCurrServerCtxFromFile() (string, error) {
+	d, err := ioutil.ReadFile(filepath.Join(GetNetclientPath(), serverCtxFile))
+	if err != nil {
+		return "", err
+	}
+	return string(d), nil
+}
+
+// SetCurrServerCtxInFile - sets the Curr context in the file
+func SetCurrServerCtxInFile(server string) error {
+	return ioutil.WriteFile(filepath.Join(GetNetclientPath(), serverCtxFile), []byte(server), os.ModePerm)
+}
+
+// SetServerCtx - sets netclient's server context
+func SetServerCtx() {
+	// set server context on startup
+	currServer, err := GetCurrServerCtxFromFile()
+	if err != nil || currServer == "" {
+		servers := GetServers()
+		if len(servers) > 0 {
+			CurrServer = servers[0]
+			SetCurrServerCtxInFile(CurrServer)
+		}
+	} else {
+		CurrServer = currServer
+	}
+}
+
 // DeleteServer deletes the specified server name from the server map
 func DeleteServer(k string) {
 	delete(Servers, k)
@@ -172,19 +202,21 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 // GetAllTurnConfigs - fetches all turn configs from all servers
 func GetAllTurnConfigs() (turnList []TurnConfig) {
 	turnMap := make(map[string]struct{})
-	for _, serverName := range GetServers() {
-		server := GetServer(serverName)
-		if !server.UseTurn {
-			continue
-		}
-		if _, ok := turnMap[server.TurnDomain]; !ok {
-			turnList = append(turnList, TurnConfig{
-				Server: serverName,
-				Domain: server.TurnDomain,
-				Port:   server.TurnPort,
-			})
-			turnMap[server.TurnDomain] = struct{}{}
-		}
+	if CurrServer == "" {
+		return
 	}
+	server := GetServer(CurrServer)
+	if server == nil || !server.UseTurn {
+		return
+	}
+	if _, ok := turnMap[server.TurnDomain]; !ok {
+		turnList = append(turnList, TurnConfig{
+			Server: CurrServer,
+			Domain: server.TurnDomain,
+			Port:   server.TurnPort,
+		})
+		turnMap[server.TurnDomain] = struct{}{}
+	}
+
 	return
 }
