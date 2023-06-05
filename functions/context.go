@@ -9,7 +9,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// SwitchServer - switch netclient server context
+// SwitchServer - switches netclient server context
 func SwitchServer(server string) error {
 	fmt.Println("setting context to " + server)
 	if config.GetServer(server) == nil {
@@ -29,6 +29,6 @@ func SwitchServer(server string) error {
 		return err
 	}
 	config.Netclient().HostPeers = []wgtypes.PeerConfig{}
-	config.WriteNetclientConfig()
+	_ = config.WriteNetclientConfig()
 	return daemon.Restart()
 }

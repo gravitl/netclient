@@ -71,6 +71,7 @@ type Config struct {
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
+
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration

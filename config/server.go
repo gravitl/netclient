@@ -14,6 +14,8 @@ import (
 )
 
 var serverCtxFile = ".serverctx"
+
+// CurrServer - holds the value of current server of client
 var CurrServer string
 
 // Servers is map of servers indexed by server name

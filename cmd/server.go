@@ -11,7 +11,7 @@ import (
 var switchServer = &cobra.Command{
 	Use:   "switch [ servername ]",
 	Short: "switch [ servername ]",
-	Long:  `sets  netclient to a server config`,
+	Long:  `switches netclient to a registered server`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		err := cobra.OnlyValidArgs(cmd, args)
