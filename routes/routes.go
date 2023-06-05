@@ -80,7 +80,7 @@ func resetPeerRoutes() {
 }
 
 func ensureNotNodeAddr(gatewayIP net.IP) error {
-	currentPeers := config.GetHostPeerList()
+	currentPeers := config.Netclient().HostPeers
 	for i := range currentPeers {
 		peer := currentPeers[i]
 		for j := range peer.AllowedIPs {

@@ -110,12 +110,6 @@ func Netclient() *Config {
 	return &netclient
 }
 
-// GetHostPeerList - gets the combined list of peers for the host
-func GetHostPeerList() []wgtypes.PeerConfig {
-	hostPeers := netclient.HostPeers
-	return hostPeers
-}
-
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 	netclient.HostPeers = peers
@@ -587,7 +581,7 @@ func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
 			}
 		}
 	}
-	clientPeers := GetHostPeerList()
+	clientPeers := netclient.HostPeers
 	var foundGW4Again, foundGW6Again bool
 	if len(clientPeers) > 0 {
 		for i := range clientPeers {
