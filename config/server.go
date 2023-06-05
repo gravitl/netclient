@@ -143,14 +143,14 @@ func GetCurrServerCtxFromFile() (string, error) {
 	return string(d), nil
 }
 
-// SetCurrServerCtxInFile - sets the Curr context in the file
+// SetCurrServerCtxInFile - sets the curr context in the file
 func SetCurrServerCtxInFile(server string) error {
 	return ioutil.WriteFile(filepath.Join(GetNetclientPath(), serverCtxFile), []byte(server), os.ModePerm)
 }
 
 // SetServerCtx - sets netclient's server context
 func SetServerCtx() {
-	// set server context on startup
+	// sets server context on startup
 	currServer, err := GetCurrServerCtxFromFile()
 	if err != nil || currServer == "" {
 		servers := GetServers()
