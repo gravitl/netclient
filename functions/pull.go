@@ -41,7 +41,7 @@ func Pull() error {
 		}
 		return err
 	}
-	_ = config.UpdateHostPeers(server.Server, pullResponse.Peers)
+	_ = config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	fmt.Printf("completed pull for server %s\n", serverName)

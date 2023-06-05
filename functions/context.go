@@ -11,7 +11,7 @@ import (
 
 // SwitchServer - switches netclient server context
 func SwitchServer(server string) error {
-	fmt.Println("setting server context to " + server)
+	fmt.Println("setting netclient server context to " + server)
 	if config.GetServer(server) == nil {
 		return errors.New("server config not found")
 	}

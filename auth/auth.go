@@ -72,7 +72,7 @@ func cleanUpByServer(server *config.Server) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return err
 	}
-	config.RemoveServerHostPeerCfg(server.Name)
+	config.RemoveServerHostPeerCfg()
 	if err := wireguard.SetPeers(); err != nil {
 		logger.Log(0, "interface not up, failed to remove peers for %s \n", server.Name)
 	}

@@ -111,15 +111,15 @@ func Netclient() *Config {
 }
 
 // GetHostPeerList - gets the combined list of peers for the host
-func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
+func GetHostPeerList() []wgtypes.PeerConfig {
 	hostPeers := netclient.HostPeers
 	return hostPeers
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) (isHostInetGW bool) {
+func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 	netclient.HostPeers = peers
-	return detectOrFilterGWPeers(server, peers)
+	return detectOrFilterGWPeers(peers)
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
@@ -128,7 +128,7 @@ func DeleteServerHostPeerCfg() {
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
-func RemoveServerHostPeerCfg(serverName string) {
+func RemoveServerHostPeerCfg() {
 	if netclient.HostPeers == nil {
 		netclient.HostPeers = []wgtypes.PeerConfig{}
 		return
@@ -571,7 +571,7 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 	return host, node
 }
 
-func detectOrFilterGWPeers(server string, peers []wgtypes.PeerConfig) bool {
+func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
 	isInetGW := IsHostInetGateway()
 	if len(peers) > 0 {
 		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
