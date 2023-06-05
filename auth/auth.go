@@ -79,7 +79,7 @@ func cleanUpByServer(server *config.Server) error {
 	if err := routes.CleanUp(config.Netclient().DefaultInterface, nil); err != nil {
 		return err
 	}
-	config.DeleteServerHostPeerCfg(server.Name)
+	config.DeleteServerHostPeerCfg()
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}

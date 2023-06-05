@@ -92,16 +92,15 @@ func ensureNotNodeAddr(gatewayIP net.IP) error {
 			}
 		}
 	}
-	servers := config.GetServers()
-	for _, s := range servers {
-		sNodes := config.GetNodesByServer(s)
-		for i := range sNodes {
-			node := sNodes[i]
-			if node.Address.IP.Equal(gatewayIP) ||
-				node.Address6.IP.Equal(gatewayIP) {
-				return fmt.Errorf("assigned address found as gw")
-			}
+
+	sNodes := config.GetNodesByServer(config.CurrServer)
+	for i := range sNodes {
+		node := sNodes[i]
+		if node.Address.IP.Equal(gatewayIP) ||
+			node.Address6.IP.Equal(gatewayIP) {
+			return fmt.Errorf("assigned address found as gw")
 		}
 	}
+
 	return nil
 }
