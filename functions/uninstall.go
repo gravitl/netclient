@@ -20,23 +20,19 @@ import (
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
-
-	server := config.GetServer(config.CurrServer)
-	if err = setupMQTTSingleton(server, true); err != nil {
-		logger.Log(0, "failed to connect to server on uninstall", server.Name)
-		allfaults = append(allfaults, err)
-		return allfaults, err
-	}
-	defer func() {
-		if Mqclient != nil {
-			Mqclient.Disconnect(250)
+	for _, v := range config.Servers {
+		v := v
+		if err = setupMQTTSingleton(&v, true); err != nil {
+			logger.Log(0, "failed to connect to server on uninstall", v.Name)
+			allfaults = append(allfaults, err)
+			continue
 		}
-	}()
-	if err = PublishHostUpdate(server.Name, models.DeleteHost); err != nil {
-		logger.Log(0, "failed to notify server", server.Name, "of host removal")
-		allfaults = append(allfaults, err)
+		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
+			logger.Log(0, "failed to notify server", v.Name, "of host removal")
+			allfaults = append(allfaults, err)
+		}
+		Mqclient.Disconnect(250)
 	}
-
 	if err := deleteAllDNS(); err != nil {
 		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
 	}
