@@ -100,8 +100,12 @@ func getNetwork(c *gin.Context) {
 	for _, node := range nodes {
 		node := node
 		if node.Network == network {
-			server := *config.GetServer(node.Server)
-			c.JSON(http.StatusOK, Network{node, server})
+			server := config.GetServer(node.Server)
+			if server == nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "server config not found"})
+				return
+			}
+			c.JSON(http.StatusOK, Network{node, *server})
 			return
 		}
 	}
@@ -114,6 +118,10 @@ func getAllNetworks(c *gin.Context) {
 	for _, node := range nodes {
 		node := node
 		server := config.GetServer(node.Server)
+		if server == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "server config not found"})
+			return
+		}
 		configs = append(configs, Network{node, *server})
 	}
 	c.JSON(http.StatusOK, configs)
@@ -197,6 +205,10 @@ func pull(c *gin.Context) {
 	}
 	node := config.GetNode(net)
 	server := config.GetServer(node.Server)
+	if server == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "server config not found"})
+		return
+	}
 	network := Network{
 		Node:   node,
 		Server: *server,

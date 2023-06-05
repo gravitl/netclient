@@ -309,7 +309,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
-	config.DeleteServerHostPeerCfg(server)
+	config.DeleteServerHostPeerCfg()
 	nodes := config.GetNodes()
 	for k, node := range nodes {
 		node := node
@@ -319,8 +319,6 @@ func deleteHostCfg(client mqtt.Client, server string) {
 		}
 	}
 	config.DeleteServer(server)
-	// delete mq client from ServerSet map
-	delete(ServerSet, server)
 }
 
 func updateHostConfig(host *models.Host) (resetInterface, restart bool) {

@@ -20,19 +20,23 @@ import (
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
-	for _, v := range config.Servers {
-		v := v
-		if err = setupMQTTSingleton(&v, true); err != nil {
-			logger.Log(0, "failed to connect to server on uninstall", v.Name)
-			allfaults = append(allfaults, err)
-			continue
-		}
-		defer ServerSet[v.Name].Disconnect(250)
-		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
-			logger.Log(0, "failed to notify server", v.Name, "of host removal")
-			allfaults = append(allfaults, err)
-		}
+
+	server := config.GetServer(config.CurrServer)
+	if err = setupMQTTSingleton(server, true); err != nil {
+		logger.Log(0, "failed to connect to server on uninstall", server.Name)
+		allfaults = append(allfaults, err)
+		return allfaults, err
 	}
+	defer func() {
+		if Mqclient != nil {
+			Mqclient.Disconnect(250)
+		}
+	}()
+	if err = PublishHostUpdate(server.Name, models.DeleteHost); err != nil {
+		logger.Log(0, "failed to notify server", server.Name, "of host removal")
+		allfaults = append(allfaults, err)
+	}
+
 	if err := deleteAllDNS(); err != nil {
 		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
 	}
@@ -90,6 +94,9 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 
 func deleteNodeFromServer(node *config.Node) error {
 	server := config.GetServer(node.Server)
+	if server == nil {
+		return errors.New("server config not found")
+	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
@@ -129,14 +136,15 @@ func deleteLocalNetwork(node *config.Node) error {
 	//remove node from nodes map
 	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)
-	//remove node from server node map
 	if server != nil {
+		//remove node from server node map
 		delete(server.Nodes, node.Network)
+		if len(server.Nodes) == 0 {
+			logger.Log(3, "removing server peers", server.Name)
+			config.DeleteServerHostPeerCfg()
+		}
 	}
-	if len(server.Nodes) == 0 {
-		logger.Log(3, "removing server peers", server.Name)
-		config.DeleteServerHostPeerCfg(node.Server)
-	}
+
 	config.WriteNetclientConfig()
 	config.WriteNodeConfig()
 	config.WriteServerConfig()

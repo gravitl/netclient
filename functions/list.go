@@ -94,6 +94,9 @@ func List(net string, long bool) {
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 
 	server := config.GetServer(node.Server)
+	if server == nil {
+		return []wgtypes.PeerConfig{}, errors.New("server config not found")
+	}
 	host := config.Netclient()
 	if host == nil {
 		return nil, fmt.Errorf("no configured host found")

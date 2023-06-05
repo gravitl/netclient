@@ -35,8 +35,8 @@ const (
 )
 
 var (
+	Mqclient         mqtt.Client
 	messageCache     = new(sync.Map)
-	ServerSet        = make(map[string]mqtt.Client)
 	ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
 	hostNatInfo      *ncmodels.HostInfo
 )
@@ -107,10 +107,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
-	for _, mqclient := range ServerSet {
-		if mqclient != nil {
-			mqclient.Disconnect(250)
-		}
+	if Mqclient != nil {
+		Mqclient.Disconnect(250)
 	}
 	wg.Wait()
 	logger.Log(0, "closing netmaker interface")
@@ -131,6 +129,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
 	}
+	config.SetServerCtx()
 	config.WgPublicListenPort = holePunchWgPort()
 	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
 	setNatInfo()
@@ -145,17 +144,19 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			},
 		}
 	}
-	for _, server := range config.Servers {
-		logger.Log(1, "started daemon for server ", server.Name)
-		server := server
-		networking.StoreServerAddresses(&server)
-		err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server)
-		if err != nil {
-			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-		}
-		wg.Add(1)
-		go messageQueue(ctx, wg, &server)
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return cancel
 	}
+	logger.Log(1, "started daemon for server ", server.Name)
+	networking.StoreServerAddresses(server)
+	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
+	if err != nil {
+		logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+	}
+	wg.Add(1)
+	go messageQueue(ctx, wg, server)
+
 	wireguard.SetPeers()
 	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		logger.Log(2, "failed to set initial peer routes", err.Error())
@@ -177,7 +178,11 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 		logger.Log(0, "unable to connect to broker", server.Broker, err.Error())
 		return
 	}
-	defer ServerSet[server.Name].Disconnect(250)
+	defer func() {
+		if Mqclient != nil {
+			Mqclient.Disconnect(250)
+		}
+	}()
 	<-ctx.Done()
 	logger.Log(0, "shutting down message queue for server", server.Name)
 }
@@ -223,12 +228,11 @@ func setupMQTT(server *config.Server) error {
 			)
 		}
 	})
-	mqclient := mqtt.NewClient(opts)
-	ServerSet[server.Name] = mqclient
+	Mqclient = mqtt.NewClient(opts)
 	var connecterr error
 	for count := 0; count < 3; count++ {
 		connecterr = nil
-		if token := mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+		if token := Mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
 			logger.Log(0, "unable to connect to broker, retrying ...")
 			if token.Error() == nil {
 				connecterr = errors.New("connect timeout")
@@ -288,10 +292,10 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		logger.Log(0, "detected broker connection lost for", server.Broker)
 	})
-	mqclient := mqtt.NewClient(opts)
-	ServerSet[server.Name] = mqclient
+	Mqclient = mqtt.NewClient(opts)
+
 	var connecterr error
-	if token := mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+	if token := Mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
 		logger.Log(0, "unable to connect to broker,", server.Broker+",", "retrying...")
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
@@ -436,15 +440,9 @@ func UpdateKeys() error {
 	if err := config.WriteNetclientConfig(); err != nil {
 		logger.Log(0, "error saving netclient config:", err.Error())
 	}
-	PublishGlobalHostUpdate(models.UpdateHost)
+	PublishHostUpdate(config.CurrServer, models.UpdateHost)
 	daemon.Restart()
 	return nil
-}
-
-// RemoveServer - removes a server from server conf given a specific node
-func RemoveServer(node *config.Node) {
-	logger.Log(0, "removing server", node.Server, "from mq")
-	delete(ServerSet, node.Server)
 }
 
 func holePunchWgPort() (pubPort int) {
@@ -489,14 +487,12 @@ func cleanUpRoutes() {
 func resetServerRoutes() bool {
 	if routes.HasGatewayChanged() {
 		cleanUpRoutes()
-		for _, server := range config.Servers {
-			server := server
-			if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, &server); err != nil {
-				logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-			}
-			if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-				logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-			}
+		server := config.GetServer(config.CurrServer)
+		if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server); err != nil {
+			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
+		}
+		if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
 		}
 		return true
 	}
