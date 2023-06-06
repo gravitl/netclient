@@ -20,7 +20,7 @@ jobs:
     needs: skip-check
     if: ${{ needs.skip-check.outputs.skip != 'true' }}
     outputs:
-      netmakerbranch: ${{ steps.checkbranch.outputs.netmakerbranch }}
+      netmakerbranch: ${{ steps.getbranch.outputs.netmakerbranch }}
     steps:
       - name: checkout
         uses: actions/checkout@v3
