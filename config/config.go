@@ -83,28 +83,33 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
-// UpdateHost - update host with data from server
-func UpdateHost(newHost *models.Host) {
-	netclient.Host.Name = newHost.Name
-	netclient.Host.Verbosity = newHost.Verbosity
-	netclient.Host.MTU = newHost.MTU
-	if newHost.ListenPort > 0 {
-		netclient.Host.ListenPort = newHost.ListenPort
+func UpdateHost(host *models.Host) (resetInterface, restart bool) {
+	hostCfg := Netclient()
+	if hostCfg == nil || host == nil {
+		return
 	}
-	if newHost.ProxyListenPort > 0 {
-		netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
+		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
+		restart = true
 	}
-	netclient.Host.IsDefault = newHost.IsDefault
-	netclient.Host.DefaultInterface = newHost.DefaultInterface
-	// only update proxy enabled if it hasn't been modified by another server
-	if !netclient.Host.ProxyEnabledSet {
-		netclient.Host.ProxyEnabled = newHost.ProxyEnabled
-		netclient.Host.ProxyEnabledSet = true
+	if host.MTU != 0 && hostCfg.MTU != host.MTU {
+		resetInterface = true
 	}
-	netclient.Host.IsStatic = newHost.IsStatic
-	if err := WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error updating netclient config after update", err.Error())
-	}
+	// do not update fields that should not be changed by server
+	host.OS = hostCfg.OS
+	host.FirewallInUse = hostCfg.FirewallInUse
+	host.DaemonInstalled = hostCfg.DaemonInstalled
+	host.ID = hostCfg.ID
+	host.Version = hostCfg.Version
+	host.MacAddress = hostCfg.MacAddress
+	host.PublicKey = hostCfg.PublicKey
+	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
+	// store password before updating
+	host.HostPass = hostCfg.HostPass
+	hostCfg.Host = *host
+	UpdateNetclient(*hostCfg)
+	WriteNetclientConfig()
+	return
 }
 
 // Netclient returns a pointer to the im memory version of the host configuration
