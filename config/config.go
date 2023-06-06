@@ -524,16 +524,19 @@ func CheckConfig() {
 	}
 	_ = ReadServerConf()
 	_ = ReadNodeConfig()
-	server := GetServer(CurrServer)
-	if server == nil {
-		fail = true
-		logger.Log(0, "configuration for", CurrServer, "is missing")
-	} else {
-		if server.MQID != netclient.ID {
+	if CurrServer != "" {
+		server := GetServer(CurrServer)
+		if server == nil {
 			fail = true
-			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+			logger.Log(0, "configuration for", CurrServer, "is missing")
+		} else {
+			if server.MQID != netclient.ID {
+				fail = true
+				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+			}
 		}
 	}
+
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
