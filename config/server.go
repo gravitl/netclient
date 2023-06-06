@@ -212,9 +212,6 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 // GetAllTurnConfigs - fetches all turn configs from all servers
 func GetAllTurnConfigs() (turnList []TurnConfig) {
 	turnMap := make(map[string]struct{})
-	if CurrServer == "" {
-		return
-	}
 	server := GetServer(CurrServer)
 	if server == nil || !server.UseTurn {
 		return
