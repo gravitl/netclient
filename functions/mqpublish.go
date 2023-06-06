@@ -249,7 +249,7 @@ func UpdateHostSettings() error {
 		publishMsg = true
 	}
 	if server.Is_EE {
-		serverNodes := config.GetNodesByServer(config.CurrServer)
+		serverNodes := config.GetNodes()
 		for _, node := range serverNodes {
 			node := node
 			if node.Connected {

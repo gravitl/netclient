@@ -69,7 +69,7 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 		if err := nc.Configure(); err != nil {
 			faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
 		} else {
-			if err = wireguard.SetPeers(); err != nil {
+			if err = wireguard.SetPeers(true); err != nil {
 				faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
 			}
 			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {

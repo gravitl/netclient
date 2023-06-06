@@ -123,20 +123,19 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(0, "error reading neclient config file", err.Error())
 	}
 	config.UpdateNetclient(*config.Netclient())
-	if err := config.ReadNodeConfig(); err != nil {
-		logger.Log(0, "error reading node map from disk", err.Error())
-	}
+
 	if err := config.ReadServerConf(); err != nil {
 		logger.Log(0, "errors reading server map from disk", err.Error())
+	}
+	if err := config.ReadNodeConfig(); err != nil {
+		logger.Log(0, "error reading node map from disk", err.Error())
 	}
 	config.SetServerCtx()
 	config.WgPublicListenPort = holePunchWgPort()
 	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
 	setNatInfo()
 	logger.Log(3, "configuring netmaker wireguard interface")
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	nc.Configure()
+
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
 			ProxyUpdate: models.ProxyManagerPayload{
@@ -149,6 +148,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	Pull(false)
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	nc.Configure()
 	networking.StoreServerAddresses(server)
 	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
@@ -156,8 +159,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
-
-	wireguard.SetPeers()
+	wireguard.SetPeers(true)
 	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		logger.Log(2, "failed to set initial peer routes", err.Error())
 	}

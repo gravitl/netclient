@@ -15,7 +15,7 @@ import (
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull() error {
+func Pull(restart bool) error {
 
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
@@ -44,10 +44,14 @@ func Pull() error {
 	_ = config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
+	config.SetNodes(pullResponse.Nodes)
 	fmt.Printf("completed pull for server %s\n", serverName)
-
 	_ = config.WriteServerConfig()
 	_ = config.WriteNetclientConfig()
-	logger.Log(3, "restarting daemon")
-	return daemon.Restart()
+	_ = config.WriteNodeConfig()
+	if restart {
+		logger.Log(3, "restarting daemon")
+		return daemon.Restart()
+	}
+	return nil
 }

@@ -93,7 +93,7 @@ func ensureNotNodeAddr(gatewayIP net.IP) error {
 		}
 	}
 
-	sNodes := config.GetNodesByServer(config.CurrServer)
+	sNodes := config.GetNodes()
 	for i := range sNodes {
 		node := sNodes[i]
 		if node.Address.IP.Equal(gatewayIP) ||

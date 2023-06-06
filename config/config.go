@@ -390,8 +390,8 @@ func InitConfig(viper *viper.Viper) {
 	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
-	CheckConfig()
 	SetServerCtx()
+	CheckConfig()
 	//check netclient dirs exist
 	if _, err := os.Stat(GetNetclientPath()); err != nil {
 		if os.IsNotExist(err) {
@@ -523,20 +523,15 @@ func CheckConfig() {
 		}
 	}
 	_ = ReadServerConf()
-	for _, server := range Servers {
+	_ = ReadNodeConfig()
+	server := GetServer(CurrServer)
+	if server == nil {
+		fail = true
+		logger.Log(0, "configuration for", CurrServer, "is missing")
+	} else {
 		if server.MQID != netclient.ID {
 			fail = true
 			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-		}
-	}
-	_ = ReadNodeConfig()
-	nodes := GetNodes()
-	for _, node := range nodes {
-		//make sure server config exists
-		server := GetServer(node.Server)
-		if server == nil {
-			fail = true
-			logger.Log(0, "configuration for", node.Server, "is missing")
 		}
 	}
 	if fail {
@@ -636,7 +631,7 @@ func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
 // if current client is an internet gateway
 func IsHostInetGateway() bool {
 
-	serverNodes := GetNodesByServer(CurrServer)
+	serverNodes := GetNodes()
 	for j := range serverNodes {
 		serverNode := serverNodes[j]
 		if serverNode.IsEgressGateway {

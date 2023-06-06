@@ -36,10 +36,9 @@ func List(net string, long bool) {
 	listOutput := []output{}
 	found := false
 	nodes := config.GetNodes()
-	for network := range nodes {
-		if network == net || net == "" {
+	for _, node := range nodes {
+		if node.Network == net || net == "" {
 			found = true
-			node := nodes[network]
 			output := output{
 				Network:   node.Network,
 				Connected: node.Connected,
