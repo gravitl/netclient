@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -96,20 +95,6 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 		}
 		if len(host.HostPass) == 0 {
 			host.HostPass = logic.RandomString(32)
-			shouldUpdateHost = true
-		}
-		if host.EndpointIP == nil {
-			ip, err := ncutils.GetPublicIP(apiServer)
-			if err != nil {
-				return false, err
-			}
-			host.EndpointIP = net.ParseIP(ip)
-			if err != nil {
-				return false, fmt.Errorf("error setting public ip %w", err)
-			}
-			if host.EndpointIP == nil {
-				return false, fmt.Errorf("error setting public endpoint for host - %v", err)
-			}
 			shouldUpdateHost = true
 		}
 		if shouldUpdateHost {
