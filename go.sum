@@ -192,8 +192,8 @@ github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB7
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/gravitl/netmaker v0.20.1-0.20230526030852-f1c32f4f7489 h1:G4JfariYGdEIL383Uxnq3kEksLZNQUNB8AGjwsVtxaI=
-github.com/gravitl/netmaker v0.20.1-0.20230526030852-f1c32f4f7489/go.mod h1:hO0BxCLbWdzjJQU1OH8NeQvHIfaqOajB/nOxPtksDQ8=
+github.com/gravitl/netmaker v0.20.1 h1:ti9qqKnVDD/P13yiNjirG6Vxcul4WU3NhqPk0nlgjRs=
+github.com/gravitl/netmaker v0.20.1/go.mod h1:hO0BxCLbWdzjJQU1OH8NeQvHIfaqOajB/nOxPtksDQ8=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f h1:XzsYovKdrDvj2z2HEHoeHU67+JIEFMHQKHU6oU+1fVE=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f/go.mod h1:Nqo/7iOJSVP1JRSUv+FkZ0FgBjK89gjU0D/V8nH4xy8=
 github.com/guumaster/hostctl v1.1.4 h1:4zb9wEurBlz/hQiXFz9feHHfunf7oj+9serAH8ohGuM=
