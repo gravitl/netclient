@@ -2,7 +2,6 @@
 package config
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -136,7 +135,7 @@ func GetServers() (servers []string) {
 
 // GetCurrServerCtxFromFile - gets current server context from file
 func GetCurrServerCtxFromFile() (string, error) {
-	d, err := ioutil.ReadFile(filepath.Join(GetNetclientPath(), serverCtxFile))
+	d, err := os.ReadFile(filepath.Join(GetNetclientPath(), serverCtxFile))
 	if err != nil {
 		return "", err
 	}
@@ -145,7 +144,7 @@ func GetCurrServerCtxFromFile() (string, error) {
 
 // SetCurrServerCtxInFile - sets the current server context in the file
 func SetCurrServerCtxInFile(server string) error {
-	return ioutil.WriteFile(filepath.Join(GetNetclientPath(), serverCtxFile), []byte(server), os.ModePerm)
+	return os.WriteFile(filepath.Join(GetNetclientPath(), serverCtxFile), []byte(server), os.ModePerm)
 }
 
 // SetServerCtx - sets netclient's server context
