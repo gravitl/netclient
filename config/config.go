@@ -118,7 +118,7 @@ func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg() {
-	netclient.HostPeers = make([]wgtypes.PeerConfig, 0)
+	netclient.HostPeers = []wgtypes.PeerConfig{}
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
