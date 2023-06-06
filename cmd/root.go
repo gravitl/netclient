@@ -6,11 +6,13 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/exp/slog"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -51,4 +53,31 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	config.InitConfig(flags)
+	setupLoging(flags)
+}
+
+func setupLoging(flags *viper.Viper) {
+	logLevel := &slog.LevelVar{}
+	replace := func(groups []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.SourceKey {
+			a.Value = slog.StringValue(filepath.Base(a.Value.String()))
+		}
+		return a
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
+	slog.SetDefault(logger)
+	verbosity := flags.GetInt("verbosity")
+	if verbosity > config.Netclient().Verbosity {
+		config.Netclient().Verbosity = verbosity
+	}
+	switch config.Netclient().Verbosity {
+	case 4:
+		logLevel.Set(slog.LevelDebug)
+	case 3:
+		logLevel.Set(slog.LevelInfo)
+	case 2:
+		logLevel.Set(slog.LevelWarn)
+	default:
+		logLevel.Set(slog.LevelError)
+	}
 }

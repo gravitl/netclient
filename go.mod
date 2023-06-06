@@ -28,6 +28,7 @@ require (
 	github.com/wailsapp/wails/v2 v2.5.1
 	golang.design/x/clipboard v0.7.0
 	golang.org/x/crypto v0.9.0
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/net v0.10.0
 	golang.org/x/sys v0.8.0
 	golang.org/x/term v0.8.0
@@ -119,7 +120,6 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/exp/shiny v0.0.0-20230130200758-8bd7c9d05862 // indirect
 	golang.org/x/image v0.6.0 // indirect
 	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
