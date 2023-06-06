@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -141,9 +140,5 @@ func deleteLocalNetwork(node *config.Node) error {
 	config.WriteNetclientConfig()
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
-	if len(config.GetNodes()) < 1 {
-		logger.Log(0, "removing wireguard config")
-		os.RemoveAll(config.GetNetclientPath() + "netmaker.conf")
-	}
 	return nil
 }
