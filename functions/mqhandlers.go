@@ -164,6 +164,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
+	// handle endpoint detection
+	if peerUpdate.Host.EndpointDetection != config.Netclient().Host.EndpointDetection {
+		logger.Log(1, "endpoint detection disabled by the server")
+		config.Netclient().Host.EndpointDetection = peerUpdate.Host.EndpointDetection
+		config.WriteServerConfig()
+	}
 	if config.Netclient().Host.EndpointDetection {
 		go handleEndpointDetection(&peerUpdate)
 	} else {
@@ -274,9 +280,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
+// handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 	hostPubKey := config.Netclient().PublicKey.String()
-	// select best interface for each peer and set it as endpoint
 	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
 	for idx := range peerUpdate.Peers {
 		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
