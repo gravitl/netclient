@@ -143,15 +143,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			},
 		}
 	}
+
+	Pull(false)
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	nc.Configure()
+	wireguard.SetPeers(true)
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
-	Pull(false)
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	nc.Configure()
 	networking.StoreServerAddresses(server)
 	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
@@ -159,7 +161,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
-	wireguard.SetPeers(true)
 	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		logger.Log(2, "failed to set initial peer routes", err.Error())
 	}
