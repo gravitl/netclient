@@ -150,15 +150,24 @@ func SetCurrServerCtxInFile(server string) error {
 // SetServerCtx - sets netclient's server context
 func SetServerCtx() {
 	// sets server context on startup
+	setDefault := false
 	currServer, err := GetCurrServerCtxFromFile()
 	if err != nil || currServer == "" {
+		setDefault = true
+	} else {
+		if GetServer(currServer) == nil {
+			setDefault = true
+		} else {
+			CurrServer = currServer
+		}
+
+	}
+	if setDefault {
 		servers := GetServers()
 		if len(servers) > 0 {
 			CurrServer = servers[0]
 			SetCurrServerCtxInFile(CurrServer)
 		}
-	} else {
-		CurrServer = currServer
 	}
 }
 
