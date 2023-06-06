@@ -1,53 +1,22 @@
 package server
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	nc_config "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
-	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/metrics"
 	nm_models "github.com/gravitl/netmaker/models"
 )
 
-var (
-	// NmProxyServer - proxy server for global access
-	NmProxyServer = &ProxyServer{}
-)
-
-// Config - struct for proxy server config
-type Config struct {
-	Port     int
-	BodySize int
-}
-
-// ProxyServer - struct for proxy server
-type ProxyServer struct {
-	Config Config
-	Server *net.UDPConn
-}
-
 // ProxyServer.Close - closes the proxy server
-func (p *ProxyServer) Close() {
+func ShutDown() {
 	logger.Log(0, "Shutting down Proxy.....")
-	// clean up proxy connections
-	for _, peerI := range config.GetCfg().GetAllProxyPeers() {
-		peerI.Mutex.Lock()
-		peerI.StopConn()
-		peerI.Mutex.Unlock()
-
-	}
-	// close metrics thread
-	if config.GetCfg().GetMetricsCollectionStatus() {
-		config.GetCfg().StopMetricsCollectionThread()
-	}
 
 	turnCfg := config.GetCfg().GetAllTurnCfg()
 	for _, tCfg := range turnCfg {
@@ -58,32 +27,6 @@ func (p *ProxyServer) Close() {
 			tCfg.TurnConn.Close()
 		}
 	}
-	// close server connection
-	NmProxyServer.Server.Close()
-}
-
-// Proxy.Listen - begins listening for packets
-func (p *ProxyServer) Listen(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-	// Buffer with indicated body size
-	buffer := make([]byte, p.Config.BodySize)
-	go func() {
-		<-ctx.Done()
-		p.Close()
-	}()
-	for {
-		// Read Packet
-		n, source, err := p.Server.ReadFromUDP(buffer)
-		if err != nil {
-			logger.Log(3, "failed to read from server: ", err.Error())
-			return
-		}
-		if source == nil {
-			continue
-		}
-		ProcessIncomingPacket(n, source.String(), buffer)
-	}
-
 }
 
 // ProcessIncomingPacket - process the incoming packet to the proxy
@@ -179,53 +122,4 @@ func proxyIncomingPacket(buffer []byte, source string, n int, srcPeerKeyHash, ds
 
 	}
 
-}
-
-// ProxyServer.CreateProxyServer - creats a proxy listener
-// port - port for proxy to listen on localhost
-// bodySize - leave 0 to use default
-// addr - the address for proxy to listen on
-func (p *ProxyServer) CreateProxyServer(port, bodySize int, addr string) (err error) {
-	if p == nil {
-		p = &ProxyServer{}
-	}
-	p.Config.Port = port
-	p.Config.BodySize = bodySize
-	p.setDefaults()
-	p.Server, err = net.ListenUDP("udp", &net.UDPAddr{
-		Port: p.Config.Port,
-		IP:   net.ParseIP("0.0.0.0"),
-	})
-	return
-}
-
-func (p *ProxyServer) KeepAlive(ip string, port int) {
-	for {
-		_, _ = p.Server.WriteToUDP([]byte("hello-proxy"), &net.UDPAddr{
-			IP:   net.ParseIP(ip),
-			Port: port,
-		})
-		//logger.Log(1,"Sending MSg: ", ip, port, err)
-		time.Sleep(time.Second * 5)
-	}
-}
-
-// Proxy.setDefaults - sets all defaults of proxy listener
-func (p *ProxyServer) setDefaults() {
-	p.setDefaultBodySize()
-	p.setDefaultPort()
-}
-
-// Proxy.setDefaultPort - sets default port of Proxy listener if 0
-func (p *ProxyServer) setDefaultPort() {
-	if p.Config.Port == 0 {
-		p.Config.Port = models.NmProxyPort
-	}
-}
-
-// Proxy.setDefaultBodySize - sets default body size of Proxy listener if 0
-func (p *ProxyServer) setDefaultBodySize() {
-	if p.Config.BodySize == 0 {
-		p.Config.BodySize = packet.DefaultBodySize
-	}
 }
