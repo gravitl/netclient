@@ -291,31 +291,26 @@ func Lock(lockfile string) error {
 				logger.Log(0, "file exists")
 			}
 			bytes, err := os.ReadFile(lockfile)
-			if err == nil {
+			if err != nil || len(bytes) == 0 {
+				_ = os.Remove(lockfile)
+			} else {
 				var owner int
-				if json.Unmarshal(bytes, &owner) == nil {
+				if err := json.Unmarshal(bytes, &owner); err != nil {
+					_ = os.Remove(lockfile)
+				} else {
 					if IsPidDead(owner) {
-						if err := os.Remove(lockfile); err != nil {
-							if debug {
-								logger.Log(0, "error removing lockfile", err.Error())
-							}
+						if err := os.Remove(lockfile); err != nil && debug {
+							logger.Log(0, "error removing lockfile", err.Error())
 						}
 					}
 				}
-			} else if debug {
-				logger.Log(0, "error reading lockfile", err.Error())
 			}
 		} else {
 			bytes, _ := json.Marshal(pid)
-			if err := os.WriteFile(lockfile, bytes, os.ModePerm); err == nil {
-				if debug {
-					logger.Log(0, "file locked")
-				}
-				return nil
+			if err := os.WriteFile(lockfile, bytes, os.ModePerm); err != nil && debug {
+				logger.Log(0, "unable to write to lockfile: ", err.Error())
 			} else {
-				if debug {
-					logger.Log(0, "unable to write: ", err.Error())
-				}
+				return nil
 			}
 		}
 		if debug {
@@ -341,12 +336,11 @@ func Unlock(lockfile string) error {
 	for {
 		bytes, err := os.ReadFile(lockfile)
 		if err != nil {
-
 			if errors.Is(err, os.ErrNotExist) {
 				return nil
 			}
 			if debug {
-				logger.Log(0, "error reading file")
+				logger.Log(0, "error reading file", err.Error())
 			}
 			return err
 		}
@@ -371,10 +365,8 @@ func Unlock(lockfile string) error {
 					logger.Log(0, "wrong pid")
 				}
 				if IsPidDead(pid) {
-					if err := os.Remove(lockfile); err != nil {
-						if debug {
-							logger.Log(0, "error removing lockfile", err.Error())
-						}
+					if err := os.Remove(lockfile); err != nil && debug {
+						logger.Log(0, "error removing lockfile", err.Error())
 					}
 				}
 			}
