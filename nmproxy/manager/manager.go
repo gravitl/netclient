@@ -135,15 +135,15 @@ func (m *proxyPayload) peerUpdate() error {
 				go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, t models.TurnCfg) {
 					var err error
 					// signal peer with the host relay addr for the peer
-					peerTurnCfg, ok := config.GetCfg().GetPeerTurnCfg(m.Server, peer.PublicKey.String())
+					peerTurnCfg, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String())
 					if !ok {
-						config.GetCfg().SetPeerTurnCfg(m.Server, peer.PublicKey.String(), models.TurnPeerCfg{
+						config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
 							Server:   serverName,
 							PeerConf: peerConf,
 						})
 					} else {
 						peerTurnCfg.PeerConf = peerConf
-						config.GetCfg().UpdatePeerTurnCfg(m.Server, peer.PublicKey.String(), peerTurnCfg)
+						config.GetCfg().UpdatePeerTurnCfg(peer.PublicKey.String(), peerTurnCfg)
 					}
 					err = turn.SignalPeer(serverName, nm_models.Signal{
 						Server:            m.Server,

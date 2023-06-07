@@ -241,7 +241,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			t.Status = true
 			config.GetCfg().SetTurnCfg(serverName, t)
 			t.Mutex.Unlock()
-			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg()
 			for peerKey := range turnPeersMap {
 				err := SignalPeer(serverName, nm_models.Signal{
 					Server:            serverName,
@@ -289,7 +289,7 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 			}
 			t.Mutex.RLock()
 			addrs := []net.Addr{}
-			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg()
 			for _, cfg := range turnPeersMap {
 				if cfg.PeerTurnAddr == "" {
 					continue
