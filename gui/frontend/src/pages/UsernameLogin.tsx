@@ -11,11 +11,12 @@ import {
 } from "../store/NetworkContext";
 import {
   GoGetRecentServerNames,
-  // GoJoinNetworkByBasicAuth,
-  // GoJoinNetworkBySso,
+  GoJoinNetworkByBasicAuth,
+  GoJoinNetworkBySso,
 } from "../../wailsjs/go/main/App";
 import { notifyUser } from "../utils/messaging";
 import { AppRoutes } from "../routes";
+import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 
 export default function UsernameLogin() {
   const [recentServerNames, setRecentServerNames] = useState<string[]>([]);
@@ -33,7 +34,7 @@ export default function UsernameLogin() {
 
   const loadRecentServers = useCallback(async () => {
     let serverNames = await GoGetRecentServerNames();
-    serverNames = serverNames.map(name => name = `api.${name}`)
+    serverNames = serverNames.map((name) => (name = `api.${name}`));
     setRecentServerNames(serverNames);
   }, [setRecentServerNames]);
 
@@ -75,64 +76,80 @@ export default function UsernameLogin() {
     ]
   );
 
-  // const onSsoLoginClick = useCallback(async () => {
-  //   if (!checkIsFormValid("sso")) return;
+  const onSsoLoginClick = useCallback(async () => {
+    if (!checkIsFormValid("sso")) return;
 
-  //   setIsConnecting(true);
-  //   try {
-  //     await GoJoinNetworkBySso(serverName, networkName);
+    setIsConnecting(true);
+    try {
+      const { authendpoint: oauthLink } = (await GoJoinNetworkBySso(
+        serverName,
+        networkName
+      ));
 
-  //     const data: NetworksContextDispatcherProps = {
-  //       action: "refresh-networks",
-  //     };
-  //     networksDispatch(data);
+      BrowserOpenURL(oauthLink);
+      await notifyUser(
+        `To complete joining network ${networkName}, open the below link in the browser and complete the steps.\nThe new network will enlist in a few moment after the join is complete\n\nLink: ${oauthLink}`,
+        "Complete joinby OAuth",
+        "info"
+      );
 
-  //     navigate(getNetworkDetailsPageUrl(networkName));
-  //   } catch (err) {
-  //     await notifyUser("Failed to login to network\n" + err as string);
-  //     console.error(err);
-  //   } finally {
-  //     setIsConnecting(false);
-  //   }
-  // }, [
-  //   navigate,
-  //   setIsConnecting,
-  //   networksDispatch,
-  //   checkIsFormValid,
-  //   serverName,
-  //   networkName,
-  // ]);
+      const data: NetworksContextDispatcherProps = {
+        action: "refresh-networks",
+      };
+      networksDispatch(data);
 
-  // const onLoginClick = useCallback(async () => {
-  //   if (!checkIsFormValid("basic-auth")) return;
+      // navigate(getNetworkDetailsPageUrl(networkName));
+      navigate(AppRoutes.NETWORKS_ROUTE);
+    } catch (err) {
+      await notifyUser(("Failed to login to network\n" + err) as string);
+      console.error(err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [
+    navigate,
+    setIsConnecting,
+    networksDispatch,
+    checkIsFormValid,
+    serverName,
+    networkName,
+  ]);
 
-  //   setIsConnecting(true);
-  //   try {
-  //     await GoJoinNetworkByBasicAuth(serverName, username, networkName, password);
+  const onLoginClick = useCallback(async () => {
+    if (!checkIsFormValid("basic-auth")) return;
 
-  //     const data: NetworksContextDispatcherProps = {
-  //       action: "refresh-networks",
-  //     };
-  //     networksDispatch(data);
+    setIsConnecting(true);
+    try {
+      await GoJoinNetworkByBasicAuth(
+        serverName,
+        username,
+        networkName,
+        password
+      );
 
-  //     // navigate(getNetworkDetailsPageUrl(networkName));
-  //     navigate(AppRoutes.NETWORKS_ROUTE);
-  //   } catch (err) {
-  //     await notifyUser("Failed to login to network\n" + err as string);
-  //     console.error(err);
-  //   } finally {
-  //     setIsConnecting(false);
-  //   }
-  // }, [
-  //   navigate,
-  //   setIsConnecting,
-  //   checkIsFormValid,
-  //   networksDispatch,
-  //   serverName,
-  //   username,
-  //   networkName,
-  //   password,
-  // ]);
+      const data: NetworksContextDispatcherProps = {
+        action: "refresh-networks",
+      };
+      networksDispatch(data);
+
+      // navigate(getNetworkDetailsPageUrl(networkName));
+      navigate(AppRoutes.NETWORKS_ROUTE);
+    } catch (err) {
+      await notifyUser(("Failed to login to network\n" + err) as string);
+      console.error(err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [
+    navigate,
+    setIsConnecting,
+    checkIsFormValid,
+    networksDispatch,
+    serverName,
+    username,
+    networkName,
+    password,
+  ]);
 
   // on created
   useEffect(() => {
@@ -170,7 +187,7 @@ export default function UsernameLogin() {
               helperText={
                 isServerNameFormValid ? "" : "Server name cannot be empty"
               }
-              inputProps={{ 'data-testid': 'server-inp' }}
+              inputProps={{ "data-testid": "server-inp" }}
             />
           )}
           style={{ width: "40vw" }}
@@ -188,7 +205,7 @@ export default function UsernameLogin() {
           helperText={
             isNetworkNameFormValid ? "" : "Network name cannot be empty"
           }
-          inputProps={{ 'data-testid': 'network-inp' }}
+          inputProps={{ "data-testid": "network-inp" }}
         />
       </Grid>
 
@@ -201,7 +218,7 @@ export default function UsernameLogin() {
           style={{ width: "40vw" }}
           error={!isUsernameFormValid}
           helperText={isUsernameFormValid ? "" : "Username cannot be empty"}
-          inputProps={{ 'data-testid': 'username-inp' }}
+          inputProps={{ "data-testid": "username-inp" }}
         />
       </Grid>
 
@@ -215,7 +232,7 @@ export default function UsernameLogin() {
           style={{ width: "40vw" }}
           error={!isPasswordFormValid}
           helperText={isPasswordFormValid ? "" : "Password cannot be empty"}
-          inputProps={{ 'data-testid': 'password-inp' }}
+          inputProps={{ "data-testid": "password-inp" }}
         />
       </Grid>
 
@@ -229,7 +246,7 @@ export default function UsernameLogin() {
         <LoadingButton
           loading={isConnecting}
           variant="contained"
-          // onClick={onLoginClick}
+          onClick={onLoginClick}
           data-testid="login-btn"
         >
           Login
@@ -240,7 +257,7 @@ export default function UsernameLogin() {
           loading={isConnecting}
           size="small"
           variant="outlined"
-          // onClick={onSsoLoginClick}
+          onClick={onSsoLoginClick}
           data-testid="sso-login-btn"
         >
           <AdminPanelSettingsIcon /> SSO Login

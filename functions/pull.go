@@ -10,7 +10,6 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -47,11 +46,6 @@ func Pull(restartDaemon bool) error {
 		// sync the firewall manager on pull
 		go handleFwUpdate(server.Server, &pullResponse.FwUpdate)
 		fmt.Printf("completed pull for server %s\n", serverName)
-	}
-
-	internetGateway, err := wireguard.UpdateWgPeers()
-	if internetGateway != nil && err != nil {
-		config.Netclient().InternetGateway = *internetGateway
 	}
 	_ = config.WriteServerConfig()
 	_ = config.WriteNetclientConfig()

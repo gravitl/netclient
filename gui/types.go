@@ -17,3 +17,8 @@ type NcConfig struct {
 	config.Config
 	MacAddressStr string `json:"macaddressstr"`
 }
+
+// SsoJoinResDto DTO for SSO join response
+type SsoJoinResDto struct {
+	Authendpoint string `json:"authendpoint"`
+}

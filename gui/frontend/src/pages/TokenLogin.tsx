@@ -90,13 +90,18 @@ function TokenLogin() {
         <h1 className="page-title">Connect with Token</h1>
       </Grid>
 
-      <Grid item xs={12}>
+      {/* <Grid item xs={12}>
         <FormControl>
           <FormLabel>Token type</FormLabel>
           <RadioGroup
             onChange={(ev, type) => setType(type as any)}
-            defaultValue="enrollment-key"
+            defaultValue="access-key"
           >
+            <FormControlLabel
+              label="Access Key"
+              value="access-key"
+              control={<Radio />}
+            />
             <FormControlLabel
               value="enrollment-key"
               control={<Radio />}
@@ -104,8 +109,26 @@ function TokenLogin() {
             />
           </RadioGroup>
         </FormControl>
-      </Grid>
+      </Grid> */}
 
+      {type === "access-key" && (
+        <Grid item xs={12}>
+          <TextField
+            key="token-inp"
+            label="Token"
+            placeholder="Enter network token"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            error={!isFormValid}
+            helperText={isFormValid ? "" : "Token cannot be empty"}
+            inputProps={{ "data-testid": "token-inp" }}
+          />
+          <br />
+          <Typography variant="caption">
+            *Token can be acquired from Netmaker server
+          </Typography>
+        </Grid>
+      )}
       {type === "enrollment-key" && (
         <Grid item xs={12}>
           <TextField

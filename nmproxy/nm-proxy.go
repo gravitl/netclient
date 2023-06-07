@@ -18,7 +18,7 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, waitg *sync.WaitGroup,
-	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
+	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo) {
 
 	defer waitg.Done()
 

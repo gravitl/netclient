@@ -62,7 +62,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
-	keepaliveChange := node.PersistentKeepalive != newNode.PersistentKeepalive
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
@@ -91,15 +90,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if err := nc.Configure(); err != nil {
 		logger.Log(0, "could not configure netmaker interface", err.Error())
 		return
-	}
-
-	if err := wireguard.UpdateWgInterface(&newNode, config.Netclient()); err != nil {
-
-		logger.Log(0, "error updating wireguard config "+err.Error())
-		return
-	}
-	if keepaliveChange {
-		wireguard.UpdateKeepAlive(int(newNode.PersistentKeepalive.Seconds()))
 	}
 	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
@@ -140,7 +130,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerVersion != config.Version {
 		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
-			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
+			if err := UseVersion(peerUpdate.ServerVersion, true); err != nil {
 				logger.Log(0, "error updating client to server's version", err.Error())
 			} else {
 				logger.Log(0, "updated client to server's version: ", peerUpdate.ServerVersion, " ,restart daemon to reflect changes")
@@ -152,12 +142,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	_, err = wireguard.UpdateWgPeers()
-	if err != nil {
-		logger.Log(0, "error updating wireguard peers"+err.Error())
-		return
-	}
-
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
@@ -222,10 +206,6 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err != nil {
 			logger.Log(0, "failed to remove peer: ", err.Error())
 		}
-	}
-	_, err = wireguard.UpdateWgPeers()
-	if err != nil {
-		logger.Log(0, "error updating wireguard peers"+err.Error())
 	}
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers()
@@ -321,7 +301,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		resetInterface = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		resetInterface, restartDaemon = config.UpdateHost(&hostUpdate.Host)
 		clearMsg = true
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
@@ -419,26 +399,6 @@ func deleteHostCfg(client mqtt.Client, server string) {
 	config.DeleteServer(server)
 	// delete mq client from ServerSet map
 	delete(ServerSet, server)
-}
-
-func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
-	hostCfg := config.Netclient()
-	if hostCfg == nil || host == nil {
-		return
-	}
-	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
-		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
-		restart = true
-	}
-	if host.MTU != 0 && hostCfg.MTU != host.MTU {
-		resetInterface = true
-	}
-	// store password before updating
-	host.HostPass = hostCfg.HostPass
-	hostCfg.Host = *host
-	config.UpdateNetclient(*hostCfg)
-	config.WriteNetclientConfig()
-	return
 }
 
 func parseNetworkFromTopic(topic string) string {

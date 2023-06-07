@@ -28,10 +28,13 @@ describe("LoginOptionsPage", () => {
     });
   });
 
-  it("provides login options", () => {
+  it("provides login/join options", () => {
     act(() => {
       expect(screen.getByTestId("login-by-token-btn")).toBeInTheDocument()
       expect(screen.getByTestId("login-by-token-btn")).toHaveTextContent('By Enrollment Key')
+
+      expect(screen.getByTestId("login-by-cred-btn")).toBeInTheDocument()
+      expect(screen.getByTestId("login-by-cred-btn")).toHaveTextContent('Username/Password/SSO')
     });
   });
 
