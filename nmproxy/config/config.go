@@ -42,7 +42,7 @@ func InitializeCfg() {
 		mutex:       &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:        nil,
-			turnPeerMap:  make(map[string]map[string]proxyModels.TurnPeerCfg),
+			turnPeerMap:  make(map[string]proxyModels.TurnPeerCfg),
 			hostTurnCfg:  make(map[string]proxyModels.TurnCfg),
 			proxyPeerMap: make(proxyModels.PeerConnMap),
 			peerHashMap:  make(map[string]*proxyModels.RemotePeer),
