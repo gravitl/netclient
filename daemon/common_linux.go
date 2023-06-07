@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"errors"
-	"log"
 	"os"
 
 	"github.com/gravitl/netclient/config"
@@ -113,13 +112,13 @@ WantedBy=multi-user.target
 // startSystemD - starts systemd service
 func startSystemD() error {
 	logger.Log(3, "calling systemctl start netclient")
-	_, err := ncutils.RunCmd("systemctl stop netclient.service", false)
+	_, err := ncutils.RunCmd("systemctl start netclient.service", false)
 	return err
 }
 
 // stopSystemD - tells system to stop systemd
 func stopSystemD() error {
-	log.Println("calling systemctl stop netclient")
+	logger.Log(3, "calling systemctl stop netclient")
 	_, err := ncutils.RunCmd("systemctl stop netclient.service", false)
 	return err
 }

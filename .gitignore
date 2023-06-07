@@ -18,3 +18,4 @@ gui/build/
 gui/**/dist/
 backup/*
 dist/*
+/.idea
