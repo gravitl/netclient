@@ -58,6 +58,8 @@ var (
 	GW6Addr net.IPNet
 	// WgPublicListenPort - host's wireguard public listen port
 	WgPublicListenPort int
+	// HostPublicIP - host's public endpoint
+	HostPublicIP net.IP
 )
 
 // Config configuration for netclient and host as a whole
@@ -210,6 +212,7 @@ func ReadNetclientConfig() (*Config, error) {
 		return nil, err
 	}
 	defer f.Close()
+	netclient = Config{}
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
