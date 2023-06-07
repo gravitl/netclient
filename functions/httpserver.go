@@ -3,15 +3,18 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 )
 
 type Network struct {
@@ -21,6 +24,9 @@ type Network struct {
 
 func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+	if config.Netclient().DisableGUIServer {
+		return
+	}
 	port, err := ncutils.GetFreeTCPPort()
 	if err != nil {
 		logger.Log(0, "failed to get free port", err.Error())
@@ -63,6 +69,8 @@ func SetupRouter() *gin.Engine {
 	router.POST("/uninstall", uninstall)
 	router.GET("/pull/:net", pull)
 	router.POST("nodepeers", nodePeers)
+	router.POST("/join", join)
+	router.POST("/sso", sso)
 	return router
 }
 
@@ -211,5 +219,94 @@ func nodePeers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, peers)
+}
 
+func join(c *gin.Context) {
+	joinReq := RegisterSSO{}
+	if err := c.BindJSON(&joinReq); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
+		return
+	}
+	if err := RegisterWithSSO(&joinReq); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	c.JSON(http.StatusOK, nil)
+}
+
+func sso(c *gin.Context) {
+	registerData := RegisterSSO{}
+	if err := c.BindJSON(&registerData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
+		return
+	}
+	socketUrl := fmt.Sprintf("wss://%s/api/v1/auth-register/host", registerData.API)
+	// Dial the netmaker server controller
+	conn, _, err := websocket.DefaultDialer.Dial(socketUrl, nil)
+	if err != nil {
+		logger.Log(0, fmt.Sprintf("error connecting to %s : %s", registerData.API, err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	host := hostForSSO()
+	request := models.RegisterMsg{
+		RegisterHost: host,
+		User:         registerData.User,
+		Password:     registerData.Pass,
+		Network:      registerData.Network,
+		JoinAll:      registerData.AllNetworks,
+	}
+	registerData.Pass = ""
+	defer conn.Close()
+	reqData, err := json.Marshal(&request)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, reqData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	for {
+		msgType, msg, err := conn.ReadMessage()
+		if err != nil {
+			if msgType < 0 {
+				logger.Log(1, "received close message from server")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			logger.Log(0, "read:", err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if msgType == websocket.CloseMessage {
+			logger.Log(1, "received close message from server")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "websocket closed"})
+			return
+		}
+		if strings.Contains(string(msg), "oauth/register") { // TODO: maybe send to channel for GUI in future?
+			c.JSON(http.StatusOK, gin.H{"authendpoint": string(msg)})
+			return
+		}
+	}
+}
+
+func hostForSSO() models.Host {
+	host := config.Netclient()
+	ip, err := getInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces", err.Error())
+	} else {
+		// just in case getInterfaces() returned nil, nil
+		if ip != nil {
+			host.Interfaces = *ip
+		}
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else if defaultInterface != ncutils.GetInterfaceName() {
+		host.DefaultInterface = defaultInterface
+	}
+	return host.Host
 }

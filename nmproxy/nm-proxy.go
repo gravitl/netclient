@@ -18,7 +18,7 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, wg *sync.WaitGroup,
-	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo, proxyPort int) {
+	mgmChan chan *models.HostPeerUpdate, hostNatInfo *ncmodels.HostInfo) {
 
 	if config.GetCfg().IsProxyRunning() {
 		logger.Log(1, "Proxy is running already...")
@@ -33,6 +33,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup,
 		return
 	}
 	logger.Log(0, "Starting Proxy...")
+	proxyPort := hostNatInfo.PrivPort
 	if proxyPort == 0 {
 		proxyPort = models.NmProxyPort
 	}

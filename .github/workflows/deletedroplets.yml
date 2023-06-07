@@ -16,6 +16,12 @@ jobs:
         with:
           run_id: ${{ github.event.workflow_run.id}}
           if_no_artifact_found: warn
+      - name: get PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "pull_request=$(gh api -H 'Accept: application/vnd.github+json' -H 'X-Github-Api-Version: 2022-11-28' \
+            /repos/${{ github.repository}}/actions/runs/${{ github.event.workflow_run.id }} | jq .pull_requests[0].number)" >> $GITHUB_ENV
       - name: discord success message
         uses: appleboy/discord-action@master
         with:
@@ -23,17 +29,8 @@ jobs:
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
           color: "#42f545"
           username: "GitHub Bot"
-          message: " ${{ github.event.workflow_run.name }} was successful"
+          message: " ${{ github.repository }}:${{ github.event.workflow_run.name }}:PR ${{ env.pull_request }} was successful: droplets from this workflow (tag ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt}}) will be deleted in 15 min"
           file: ./results/results.log
-      - name: discord server message
-        uses: appleboy/discord-action@master
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          color: "#42f545"
-          username: "GitHub Bot"
-          message: "droplets from this workflow (tag ${{ github.event.workflow_run.id }}-{{ $github.event.workflow_run.run_number }}) will be deleted in 15 min"
-          file: ./server/serverinfo.txt
       - name: delete droplets
         if: success() || failure()
         run: |
@@ -55,6 +52,12 @@ jobs:
         with:
           run_id: ${{ github.event.workflow_run.id}}
           if_no_artifact_found: warn
+      - name: get PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "pull_request=$(gh api -H 'Accept: application/vnd.github+json' -H 'X-Github-Api-Version: 2022-11-28' \
+            /repos/${{ github.repository}}/actions/runs/${{ github.event.workflow_run.id }} | jq .pull_requests[0].number)" >> $GITHUB_ENV
       - name: discord failure message
         uses: appleboy/discord-action@master
         with:
@@ -62,17 +65,8 @@ jobs:
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
           color: "#990000"
           username: "GitHub Bot"
-          message: " ${{ github.event.workflow_run.name }} failed"
+          message: " ${{ github.repository}}:${{ github.event.workflow_run.name }}:PR ${{ env.pull_request}} failed: droplets from this workflow (tag ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}) will be deleted in 5 hours"
           file: ./results/results.log
-      - name: discord server message
-        uses: appleboy/discord-action@master
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          color: "#990000"
-          username: "GitHub Bot"
-          message: "droplets from this workflow (tag ${{ github.event.workflow_run.id }}-{{ $github.event.workflow_run.run_number }}) will be deleted in 6 hours"
-          file: ./server/serverinfo.txt
       - name: discord error message
         uses: appleboy/discord-action@master
         with:
@@ -85,7 +79,7 @@ jobs:
       - name: delete droplets
         if: success() || failure()
         run: |
-          sleep 6h
+          sleep 5h
           curl -X GET \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
