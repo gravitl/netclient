@@ -123,6 +123,9 @@ func allocateAddr(client *turn.Client) (net.PacketConn, error) {
 // SignalPeer - signals the peer with host's turn relay endpoint
 func SignalPeer(serverName string, signal nm_models.Signal) error {
 	server := ncconfig.GetServer(serverName)
+	if server == nil {
+		return errors.New("server config not found")
+	}
 	host := ncconfig.Netclient()
 	if host == nil {
 		return fmt.Errorf("no configured host found")
