@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -220,7 +219,6 @@ func UpdateHostSettings() error {
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
 	var (
-		publicIP   string
 		err        error
 		publishMsg bool
 	)
@@ -230,14 +228,14 @@ func UpdateHostSettings() error {
 		return errors.New("server config is nil")
 	}
 	if !config.Netclient().IsStatic {
-		publicIP, err = ncutils.GetPublicIP(server.API)
-		if err != nil {
-			logger.Log(1, "error encountered checking public ip addresses: ", err.Error())
-		}
-		if len(publicIP) > 0 && config.Netclient().EndpointIP.String() != publicIP {
-			logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", publicIP)
-			config.Netclient().EndpointIP = net.ParseIP(publicIP)
-			publishMsg = true
+		if config.Netclient().EndpointIP == nil {
+			config.Netclient().EndpointIP = config.HostPublicIP
+		} else {
+			if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() && !config.Netclient().EndpointIP.Equal(config.HostPublicIP) {
+				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
+				config.Netclient().EndpointIP = config.HostPublicIP
+				publishMsg = true
+			}
 		}
 	}
 	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {

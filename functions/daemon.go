@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/mq"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -55,12 +57,13 @@ func startProxy(wg *sync.WaitGroup) context.CancelFunc {
 
 // Daemon runs netclient daemon
 func Daemon() {
-	logger.Log(0, "netclient daemon started -- version:", config.Version)
+	slog.Info("starting netclient daemon", "version", config.Version)
 	if err := ncutils.SavePID(); err != nil {
-		logger.FatalLog("unable to save PID on daemon startup")
+		slog.Error("unable to save PID on daemon startup", "error", err)
+		os.Exit(1)
 	}
 	if err := local.SetIPForwarding(); err != nil {
-		logger.Log(0, "unable to set IPForwarding", err.Error())
+		slog.Warn("unable to set IPForwarding", "error", err)
 	}
 	wg := sync.WaitGroup{}
 	quit := make(chan os.Signal, 1)
@@ -78,22 +81,22 @@ func Daemon() {
 	for {
 		select {
 		case <-quit:
-			logger.Log(0, "shutting down netclient daemon")
+			slog.Info("shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
 				stopProxy,
 			}, &wg)
 			httpCancel()
 			httpWg.Wait()
-			logger.Log(0, "shutdown complete")
+			slog.Info("shutdown complete")
 			return
 		case <-reset:
-			logger.Log(0, "received reset")
+			slog.Info("received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
 				stopProxy,
 			}, &wg)
-			logger.Log(0, "restarting daemon")
+			slog.Info("resetting daemon")
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 			if !proxy_cfg.GetCfg().ProxyStatus {
@@ -111,7 +114,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		Mqclient.Disconnect(250)
 	}
 	wg.Wait()
-	logger.Log(0, "closing netmaker interface")
+	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
 }
@@ -120,22 +123,17 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
-		logger.Log(0, "error reading neclient config file", err.Error())
+		slog.Error("error reading neclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
-
 	if err := config.ReadServerConf(); err != nil {
-		logger.Log(0, "errors reading server map from disk", err.Error())
-	}
-	if err := config.ReadNodeConfig(); err != nil {
-		logger.Log(0, "error reading node map from disk", err.Error())
+		slog.Warn("error reading server map from disk", "error", err)
 	}
 	config.SetServerCtx()
-	config.WgPublicListenPort = holePunchWgPort()
-	logger.Log(0, fmt.Sprint("wireguard public listen port: ", config.WgPublicListenPort))
+	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
+	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 	setNatInfo()
-	logger.Log(3, "configuring netmaker wireguard interface")
-
+	slog.Info("configuring netmaker wireguard interface")
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
 			ProxyUpdate: models.ProxyManagerPayload{
@@ -162,7 +160,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
 	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-		logger.Log(2, "failed to set initial peer routes", err.Error())
+		slog.Warn("failed to set initial peer routes", "error", err.Error())
 	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
@@ -175,10 +173,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 // the client should subscribe to ALL nodes that exist on server locally
 func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server) {
 	defer wg.Done()
-	logger.Log(0, "netclient message queue started for server:", server.Name)
+	slog.Info("netclient message queue started for server:", "server", server.Name)
 	err := setupMQTT(server)
 	if err != nil {
-		logger.Log(0, "unable to connect to broker", server.Broker, err.Error())
+		slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
 		return
 	}
 	defer func() {
@@ -187,7 +185,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 		}
 	}()
 	<-ctx.Done()
-	logger.Log(0, "shutting down message queue for server", server.Name)
+	slog.Info("shutting down message queue", "server", server.Name)
 }
 
 // setupMQTT creates a connection to broker
@@ -204,7 +202,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetKeepAlive(time.Second * 10)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		logger.Log(0, "mqtt connect handler")
+		slog.Info("mqtt connect handler")
 		nodes := config.GetNodes()
 		for _, node := range nodes {
 			node := node
@@ -216,11 +214,11 @@ func setupMQTT(server *config.Server) error {
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
-		logger.Log(0, "detected broker connection lost for", server.Broker)
+		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		if ok := resetServerRoutes(); ok {
-			logger.Log(0, "detected default gw change, reset routes")
+			slog.Info("detected default gateway change, reset server routes")
 			if err := UpdateHostSettings(); err != nil {
-				logger.Log(0, "failed to update host settings -", err.Error())
+				slog.Error("failed to update host settings", "error", err)
 				return
 			}
 
@@ -245,20 +243,20 @@ func setupMQTT(server *config.Server) error {
 		}
 	}
 	if connecterr != nil {
-		logger.Log(0, "failed to establish connection to broker: ", connecterr.Error())
+		slog.Error("unable to connect to broker", "server", server.Broker, "error", connecterr)
 		return connecterr
 	}
 	if err := PublishHostUpdate(server.Name, models.Acknowledgement); err != nil {
-		logger.Log(0, "failed to send initial ACK to server", server.Name, err.Error())
+		slog.Error("failed to send initial ACK to server", "server", server.Name, "error", err)
 	} else {
-		logger.Log(2, "successfully requested ACK on server", server.Name)
+		slog.Info("successfully requested ACK on server", "server", server.Name)
 	}
 	// send register signal with turn to server
 	if server.UseTurn {
 		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
-			logger.Log(0, "failed to publish host turn register signal to server:", server.Server, err.Error())
+			slog.Error("failed to publish host turn register signal to server", "server", server.Server, "error", err)
 		} else {
-			logger.Log(0, "published host turn register signal to server:", server.Server)
+			slog.Info("published host turn register signal to server", "server", server.Server)
 		}
 	}
 
@@ -280,7 +278,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		if !publishOnly {
-			logger.Log(0, "mqtt connect handler")
+			slog.Info("mqtt connect handler")
 			nodes := config.GetNodes()
 			for _, node := range nodes {
 				node := node
@@ -288,12 +286,12 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			}
 			setHostSubscription(client, server.Name)
 		}
-		logger.Log(1, "successfully connected to", server.Broker)
+		slog.Info("successfully connected to", "server", server.Broker)
 	})
 	opts.SetOrderMatters(true)
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
-		logger.Log(0, "detected broker connection lost for", server.Broker)
+		slog.Warn("detected broker connection lost for", "server", server.Broker)
 	})
 	Mqclient = mqtt.NewClient(opts)
 
@@ -313,24 +311,24 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 // should be called for each server host is registered on.
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
-	logger.Log(3, fmt.Sprintf("subscribed to host peer updates  peers/host/%s/%s", hostID.String(), server))
+	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to host updates  host/update/%s/%s", hostID.String(), server))
+	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subcribed to dns updates dns/update/%s/%s", hostID.String(), server))
+	slog.Info("subscribing to dns updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subcribed to all dns updates dns/all/%s/%s", hostID.String(), server))
+	slog.Info("subscribing to all dns updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
-		logger.Log(0, "MQ host sub: ", hostID.String(), token.Error().Error())
+		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
 }
@@ -340,13 +338,13 @@ func setHostSubscription(client mqtt.Client, server string) {
 func setSubscriptions(client mqtt.Client, node *config.Node) {
 	if token := client.Subscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
-			logger.Log(0, "network:", node.Network, "connection timeout")
+			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
-			logger.Log(0, "network:", node.Network, token.Error().Error())
+			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", token.Error)
 		}
 		return
 	}
-	logger.Log(3, fmt.Sprintf("subscribed to peer updates peers/%s/%s", node.Network, node.ID))
+	slog.Info("subscribed to updates for node", "node", node.ID, "network", node.Network)
 }
 
 // should only ever use node client configs
@@ -402,29 +400,29 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 	var ok = true
 	if token := client.Unsubscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", "connection timeout")
+			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
-			logger.Log(1, "network:", node.Network, "unable to unsubscribe from updates for node ", node.ID.String(), "\n", token.Error().Error())
+			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", token.Error)
 		}
 		ok = false
 	} // peer updates belong to host now
 
 	if ok {
-		logger.Log(1, "network:", node.Network, "successfully unsubscribed node ", node.ID.String())
+		slog.Info("unsubscribed from updates for node", "node", node.ID, "network", node.Network)
 	}
 }
 
 // unsubscribe client broker communications for host topics
 func unsubscribeHost(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
-	logger.Log(3, fmt.Sprintf("removing subscription for host peer updates peers/host/%s/%s", hostID.String(), server))
+	slog.Info("removing subscription for host peer updates", "host", hostID, "server", server)
 	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		logger.Log(0, "unable to unsubscribe from host peer updates: ", hostID.String(), token.Error().Error())
+		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
-	logger.Log(3, fmt.Sprintf("removing subscription for host updates  host/update/%s/%s", hostID.String(), server))
+	slog.Info("removing subscription for host updates", "host", hostID, "server", server)
 	if token := client.Unsubscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		logger.Log(0, "unable to unsubscribe from host updates: ", hostID.String(), token.Error().Error())
+		slog.Error("unable to unsubscribe from host updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
 }
@@ -432,29 +430,30 @@ func unsubscribeHost(client mqtt.Client, server string) {
 // UpdateKeys -- updates private key and returns new publickey
 func UpdateKeys() error {
 	var err error
-	logger.Log(0, "received message to update wireguard keys ")
+	slog.Info("received message to update wireguard keys")
 	host := config.Netclient()
 	host.PrivateKey, err = wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Log(0, "error generating privatekey ", err.Error())
+		slog.Error("error generating privatekey ", "error", err)
 		return err
 	}
 	host.PublicKey = host.PrivateKey.PublicKey()
 	if err := config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error saving netclient config:", err.Error())
+		slog.Error("error saving netclient config:", "error", err)
 	}
 	PublishHostUpdate(config.CurrServer, models.UpdateHost)
 	daemon.Restart()
 	return nil
 }
 
-func holePunchWgPort() (pubPort int) {
+func holePunchWgPort() (pubIP net.IP, pubPort int) {
 	for _, server := range config.Servers {
 		portToStun := config.Netclient().ListenPort
-		_, pubPort = stun.HolePunch(server.StunList, portToStun)
-		if pubPort != 0 {
-			break
+		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
+		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
+			continue
 		}
+		break
 	}
 	return
 }
@@ -462,7 +461,7 @@ func holePunchWgPort() (pubPort int) {
 func setNatInfo() {
 	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
 	if err != nil {
-		logger.Log(0, "failed to get freeport for proxy: ", err.Error())
+		slog.Error("failed to get freeport for proxy: ", "error", err)
 		return
 	}
 	for _, server := range config.Servers {
@@ -483,7 +482,7 @@ func cleanUpRoutes() {
 		gwAddr = config.GW6Addr
 	}
 	if err := routes.CleanUp(config.Netclient().DefaultInterface, &gwAddr); err != nil {
-		logger.Log(0, "routes not completely cleaned up", err.Error())
+		slog.Error("routes not completely cleaned up", "error", err)
 	}
 }
 

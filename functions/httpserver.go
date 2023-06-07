@@ -24,6 +24,9 @@ type Network struct {
 
 func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+	if config.Netclient().DisableGUIServer {
+		return
+	}
 	port, err := ncutils.GetFreeTCPPort()
 	if err != nil {
 		logger.Log(0, "failed to get free port", err.Error())

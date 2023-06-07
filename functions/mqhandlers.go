@@ -129,7 +129,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerVersion != config.Version {
 		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
-			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
+			if err := UseVersion(peerUpdate.ServerVersion, true); err != nil {
 				logger.Log(0, "error updating client to server's version", err.Error())
 			} else {
 				logger.Log(0, "updated client to server's version: ", peerUpdate.ServerVersion, " ,restart daemon to reflect changes")
@@ -223,7 +223,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		restartDaemon = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon = updateHostConfig(&hostUpdate.Host)
+		resetInterface, restartDaemon = config.UpdateHost(&hostUpdate.Host)
 		clearMsg = true
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
@@ -319,35 +319,6 @@ func deleteHostCfg(client mqtt.Client, server string) {
 		}
 	}
 	config.DeleteServer(server)
-}
-
-func updateHostConfig(host *models.Host) (resetInterface, restart bool) {
-	hostCfg := config.Netclient()
-	if hostCfg == nil || host == nil {
-		return
-	}
-	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
-		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
-		restart = true
-	}
-	if host.MTU != 0 && hostCfg.MTU != host.MTU {
-		resetInterface = true
-	}
-	// do not update fields that should not be changed by server
-	host.OS = hostCfg.OS
-	host.FirewallInUse = hostCfg.FirewallInUse
-	host.DaemonInstalled = hostCfg.DaemonInstalled
-	host.ID = hostCfg.ID
-	host.Version = hostCfg.Version
-	host.MacAddress = hostCfg.MacAddress
-	host.PublicKey = hostCfg.PublicKey
-	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
-	// store password before updating
-	host.HostPass = hostCfg.HostPass
-	hostCfg.Host = *host
-	config.UpdateNetclient(*hostCfg)
-	config.WriteNetclientConfig()
-	return
 }
 
 func parseNetworkFromTopic(topic string) string {

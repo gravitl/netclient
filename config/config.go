@@ -58,6 +58,8 @@ var (
 	GW6Addr net.IPNet
 	// WgPublicListenPort - host's wireguard public listen port
 	WgPublicListenPort int
+	// HostPublicIP - host's public endpoint
+	HostPublicIP net.IP
 )
 
 // Config configuration for netclient and host as a whole
@@ -66,6 +68,7 @@ type Config struct {
 	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
 }
 
 func init() {
@@ -81,28 +84,33 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
-// UpdateHost - update host with data from server
-func UpdateHost(newHost *models.Host) {
-	netclient.Host.Name = newHost.Name
-	netclient.Host.Verbosity = newHost.Verbosity
-	netclient.Host.MTU = newHost.MTU
-	if newHost.ListenPort > 0 {
-		netclient.Host.ListenPort = newHost.ListenPort
+func UpdateHost(host *models.Host) (resetInterface, restart bool) {
+	hostCfg := Netclient()
+	if hostCfg == nil || host == nil {
+		return
 	}
-	if newHost.ProxyListenPort > 0 {
-		netclient.Host.ProxyListenPort = newHost.ProxyListenPort
+	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
+		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
+		restart = true
 	}
-	netclient.Host.IsDefault = newHost.IsDefault
-	netclient.Host.DefaultInterface = newHost.DefaultInterface
-	// only update proxy enabled if it hasn't been modified by another server
-	if !netclient.Host.ProxyEnabledSet {
-		netclient.Host.ProxyEnabled = newHost.ProxyEnabled
-		netclient.Host.ProxyEnabledSet = true
+	if host.MTU != 0 && hostCfg.MTU != host.MTU {
+		resetInterface = true
 	}
-	netclient.Host.IsStatic = newHost.IsStatic
-	if err := WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error updating netclient config after update", err.Error())
-	}
+	// do not update fields that should not be changed by server
+	host.OS = hostCfg.OS
+	host.FirewallInUse = hostCfg.FirewallInUse
+	host.DaemonInstalled = hostCfg.DaemonInstalled
+	host.ID = hostCfg.ID
+	host.Version = hostCfg.Version
+	host.MacAddress = hostCfg.MacAddress
+	host.PublicKey = hostCfg.PublicKey
+	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
+	// store password before updating
+	host.HostPass = hostCfg.HostPass
+	hostCfg.Host = *host
+	UpdateNetclient(*hostCfg)
+	WriteNetclientConfig()
+	return
 }
 
 // Netclient returns a pointer to the im memory version of the host configuration
@@ -165,6 +173,7 @@ func ReadNetclientConfig() (*Config, error) {
 		return nil, err
 	}
 	defer f.Close()
+	netclient = Config{}
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
 	}
@@ -243,31 +252,26 @@ func Lock(lockfile string) error {
 				logger.Log(0, "file exists")
 			}
 			bytes, err := os.ReadFile(lockfile)
-			if err == nil {
+			if err != nil || len(bytes) == 0 {
+				_ = os.Remove(lockfile)
+			} else {
 				var owner int
-				if json.Unmarshal(bytes, &owner) == nil {
+				if err := json.Unmarshal(bytes, &owner); err != nil {
+					_ = os.Remove(lockfile)
+				} else {
 					if IsPidDead(owner) {
-						if err := os.Remove(lockfile); err != nil {
-							if debug {
-								logger.Log(0, "error removing lockfile", err.Error())
-							}
+						if err := os.Remove(lockfile); err != nil && debug {
+							logger.Log(0, "error removing lockfile", err.Error())
 						}
 					}
 				}
-			} else if debug {
-				logger.Log(0, "error reading lockfile", err.Error())
 			}
 		} else {
 			bytes, _ := json.Marshal(pid)
-			if err := os.WriteFile(lockfile, bytes, os.ModePerm); err == nil {
-				if debug {
-					logger.Log(0, "file locked")
-				}
-				return nil
+			if err := os.WriteFile(lockfile, bytes, os.ModePerm); err != nil && debug {
+				logger.Log(0, "unable to write to lockfile: ", err.Error())
 			} else {
-				if debug {
-					logger.Log(0, "unable to write: ", err.Error())
-				}
+				return nil
 			}
 		}
 		if debug {
@@ -293,12 +297,11 @@ func Unlock(lockfile string) error {
 	for {
 		bytes, err := os.ReadFile(lockfile)
 		if err != nil {
-
 			if errors.Is(err, os.ErrNotExist) {
 				return nil
 			}
 			if debug {
-				logger.Log(0, "error reading file")
+				logger.Log(0, "error reading file", err.Error())
 			}
 			return err
 		}
@@ -323,10 +326,8 @@ func Unlock(lockfile string) error {
 					logger.Log(0, "wrong pid")
 				}
 				if IsPidDead(pid) {
-					if err := os.Remove(lockfile); err != nil {
-						if debug {
-							logger.Log(0, "error removing lockfile", err.Error())
-						}
+					if err := os.Remove(lockfile); err != nil && debug {
+						logger.Log(0, "error removing lockfile", err.Error())
 					}
 				}
 			}
