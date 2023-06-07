@@ -1,10 +1,7 @@
 package server
 
 import (
-	"encoding/binary"
 	"fmt"
-	"net"
-	"time"
 
 	nc_config "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/nmproxy/config"
@@ -45,53 +42,7 @@ func ProcessIncomingPacket(n int, source string, buffer []byte) {
 		proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
-	handleMsgs(buffer, n, source)
-}
 
-func handleMsgs(buffer []byte, n int, source string) {
-
-	msgType := binary.LittleEndian.Uint32(buffer[:4])
-	switch packet.MessageType(msgType) {
-	case packet.MessageMetricsType:
-		metricMsg, err := packet.ConsumeMetricPacket(buffer[:n])
-		// calc latency
-		if err == nil {
-			if nc_config.Netclient().Debug {
-				logger.Log(3, fmt.Sprintf("------->Recieved Metric Pkt: %+v, FROM:%s\n", metricMsg, source))
-			}
-			_, pubKey := config.GetCfg().GetDeviceKeys()
-			if metricMsg.Sender == pubKey {
-				metric := nm_models.ProxyMetric{}
-				latency := time.Now().UnixMilli() - metricMsg.TimeStamp
-				metric.LastRecordedLatency = uint64(latency)
-				metric.TrafficRecieved = int64(n)
-				metrics.UpdateMetricByPeer(metricMsg.Reciever.String(), &metric, false)
-			} else if metricMsg.Reciever == pubKey {
-				// proxy it back to the sender
-				if nc_config.Netclient().Debug {
-					logger.Log(3, "------------> $$$ sending  back the metric pkt to the source: ", source)
-				}
-				metricMsg.Reply = 1
-				buf, err := packet.EncodePacketMetricMsg(metricMsg)
-				if err == nil {
-					copy(buffer[:n], buf[:])
-				} else {
-					logger.Log(1, "--------> failed to encode metric reply message")
-				}
-				sourceUdp, err := net.ResolveUDPAddr("udp", source)
-				if err == nil {
-					_, err = NmProxyServer.Server.WriteToUDP(buffer[:n], sourceUdp)
-					if err != nil {
-						logger.Log(0, "Failed to send metric packet to remote: ", err.Error())
-					}
-				}
-
-			}
-		} else {
-			logger.Log(1, "failed to decode metrics message: ", err.Error())
-		}
-
-	}
 }
 
 func proxyIncomingPacket(buffer []byte, source string, n int, srcPeerKeyHash, dstPeerKeyHash string) {
