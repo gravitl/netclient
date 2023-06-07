@@ -210,8 +210,8 @@ github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWm
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gravitl/netmaker v0.20.2-0.20230606172144-ec9aa45dbba3 h1:2/SCF6gRNm53LVxBHkNEv37ax1WxIks8OebAMHlI1WE=
 github.com/gravitl/netmaker v0.20.2-0.20230606172144-ec9aa45dbba3/go.mod h1:hO0BxCLbWdzjJQU1OH8NeQvHIfaqOajB/nOxPtksDQ8=
-github.com/gravitl/netmaker v0.20.2-0.20230607021621-78e26c46730a h1:+KDC9JAayGjn5xZtabMe3+LNcNUZdQCMpMmhHGj3lrI=
-github.com/gravitl/netmaker v0.20.2-0.20230607021621-78e26c46730a/go.mod h1:9LIN6LVtUZIZAl8RJHEX4gZvEYQ36BHksBbgPxn+pyw=
+github.com/gravitl/netmaker v0.20.2-0.20230607190105-1e65fa2f9ad5 h1:fdGc8TxzqRSx7tCnuWPOffWDPbrLtdxpTRwnHD4OzbI=
+github.com/gravitl/netmaker v0.20.2-0.20230607190105-1e65fa2f9ad5/go.mod h1:7ikBzRznRUag2KrQhw7etTJhOwNj3Op8wMvXCBVOI/M=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f h1:XzsYovKdrDvj2z2HEHoeHU67+JIEFMHQKHU6oU+1fVE=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f/go.mod h1:Nqo/7iOJSVP1JRSUv+FkZ0FgBjK89gjU0D/V8nH4xy8=
 github.com/guumaster/hostctl v1.1.4 h1:4zb9wEurBlz/hQiXFz9feHHfunf7oj+9serAH8ohGuM=
@@ -281,6 +281,8 @@ github.com/mattn/go-isatty v0.0.19/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/mattn/go-runewidth v0.0.13 h1:lTGmDsbAYt5DmK6OnoV7EuIF1wEIFAcxld6ypU4OSgU=
 github.com/mattn/go-sqlite3 v1.14.16 h1:yOQRA0RpS5PFz/oikGwBEqvAWhWg5ufRz4ETLjwpU1Y=
 github.com/mattn/go-sqlite3 v1.14.16/go.mod h1:2eHXhiwb8IkHr+BDWZGa96P6+rkvnG63S2DGjv9HUNg=
+github.com/mattn/go-sqlite3 v1.14.17 h1:mCRHCLDUBXgpKAqIKsaAaAsrAlbkeomtRFKXh2L6YIM=
+github.com/mattn/go-sqlite3 v1.14.17/go.mod h1:2eHXhiwb8IkHr+BDWZGa96P6+rkvnG63S2DGjv9HUNg=
 github.com/mdlayher/genetlink v1.2.0 h1:4yrIkRV5Wfk1WfpWTcoOlGmsWgQj3OtQN9ZsbrE+XtU=
 github.com/mdlayher/genetlink v1.2.0/go.mod h1:ra5LDov2KrUCZJiAtEvXXZBxGMInICMXIwshlJ+qRxQ=
 github.com/mdlayher/netlink v1.6.0/go.mod h1:0o3PlBmGst1xve7wQ7j/hwpNaFaH4qCRyWCdcZk8/vA=
