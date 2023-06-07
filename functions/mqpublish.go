@@ -303,13 +303,6 @@ func UpdateHostSettings() error {
 			publishMsg = true
 		}
 	}
-	if !config.Netclient().ProxyEnabledSet && proxyCfg.GetCfg().ShouldUseProxy() &&
-		!config.Netclient().ProxyEnabled && !proxyCfg.NatAutoSwitchDone() {
-		logger.Log(0, "Host is behind NAT, enabling proxy...")
-		proxyCfg.SetNatAutoSwitch()
-		config.Netclient().ProxyEnabled = true
-		publishMsg = true
-	}
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
