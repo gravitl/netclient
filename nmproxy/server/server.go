@@ -42,7 +42,6 @@ func ProcessIncomingPacket(n int, source string, buffer []byte) {
 		proxyIncomingPacket(buffer[:], source, n, srcPeerKeyHash, dstPeerKeyHash)
 		return
 	}
-
 }
 
 func proxyIncomingPacket(buffer []byte, source string, n int, srcPeerKeyHash, dstPeerKeyHash string) {
