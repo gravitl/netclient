@@ -14,12 +14,7 @@ var switchServer = &cobra.Command{
 	Long:  `switches netclient to a registered server`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := cobra.OnlyValidArgs(cmd, args)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		err = functions.SwitchServer(args[0])
+		err := functions.SwitchServer(args[0])
 		if err != nil {
 			fmt.Println(err.Error())
 		}

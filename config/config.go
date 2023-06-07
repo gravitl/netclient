@@ -65,7 +65,7 @@ type Config struct {
 	models.Host
 	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers         []wgtypes.PeerConfig `json:"peers_info" yaml:"peers_info"`
+	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
 }
 
 func init() {
