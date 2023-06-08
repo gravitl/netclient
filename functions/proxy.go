@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
@@ -12,22 +13,21 @@ import (
 // ChangeProxyStatus - updates proxy status on host and publishes global host update
 func ChangeProxyStatus(status bool) error {
 	logger.Log(1, fmt.Sprint("changing proxy status to ", status))
-	servers := config.GetServers()
-	for _, server := range servers {
-		serverCfg := config.GetServer(server)
-		if serverCfg == nil {
-			continue
-		}
-		err := setupMQTTSingleton(serverCfg, true)
-		if err != nil {
-			logger.Log(0, "failed to set up mq conn for server ", server)
-		}
+
+	serverCfg := config.GetServer(config.CurrServer)
+	if serverCfg == nil {
+		return errors.New("server config is nil")
 	}
+	err := setupMQTTSingleton(serverCfg, true)
+	if err != nil {
+		logger.Log(0, "failed to set up mq conn for server ", config.CurrServer)
+	}
+
 	config.Netclient().ProxyEnabled = status
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}
-	if err := PublishGlobalHostUpdate(models.UpdateHost); err != nil {
+	if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 		return err
 	}
 	if status {

@@ -161,6 +161,9 @@ func Migrate() {
 		serverValue := serversToWrite[i]
 		config.UpdateServerConfig(&serverValue)
 		newServerConfig := config.GetServer(serverValue.Server)
+		if newServerConfig == nil {
+			continue
+		}
 		config.UpdateServer(serverValue.Server, *newServerConfig)
 		if err := config.SaveServer(serverValue.Server, *newServerConfig); err != nil {
 			logger.Log(0, "failed to save server", err.Error())

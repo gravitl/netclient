@@ -144,9 +144,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
-	isInetGW := config.UpdateHostPeers(serverName, peerUpdate.Peers)
+	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
-	_ = wireguard.SetPeers()
+	_ = wireguard.SetPeers(false)
 	wireguard.GetInterface().GetPeerRoutes()
 	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		logger.Log(0, "error when setting peer routes after peer update", err.Error())
@@ -221,7 +221,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
-		resetInterface = true
+		restartDaemon = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon = config.UpdateHost(&hostUpdate.Host)
 		clearMsg = true
@@ -263,7 +263,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			return
 		}
 
-		if err = wireguard.SetPeers(); err == nil {
+		if err = wireguard.SetPeers(false); err == nil {
 			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 				logger.Log(0, "error when setting peer routes after host update", err.Error())
 			}
@@ -309,7 +309,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
-	config.DeleteServerHostPeerCfg(server)
+	config.DeleteServerHostPeerCfg()
 	nodes := config.GetNodes()
 	for k, node := range nodes {
 		node := node
@@ -319,8 +319,6 @@ func deleteHostCfg(client mqtt.Client, server string) {
 		}
 	}
 	config.DeleteServer(server)
-	// delete mq client from ServerSet map
-	delete(ServerSet, server)
 }
 
 func parseNetworkFromTopic(topic string) string {

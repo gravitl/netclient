@@ -36,10 +36,9 @@ func List(net string, long bool) {
 	listOutput := []output{}
 	found := false
 	nodes := config.GetNodes()
-	for network := range nodes {
-		if network == net || net == "" {
+	for _, node := range nodes {
+		if node.Network == net || net == "" {
 			found = true
-			node := nodes[network]
 			output := output{
 				Network:   node.Network,
 				Connected: node.Connected,
@@ -94,6 +93,9 @@ func List(net string, long bool) {
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 
 	server := config.GetServer(node.Server)
+	if server == nil {
+		return []wgtypes.PeerConfig{}, errors.New("server config not found")
+	}
 	host := config.Netclient()
 	if host == nil {
 		return nil, fmt.Errorf("no configured host found")

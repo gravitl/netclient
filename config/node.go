@@ -64,16 +64,14 @@ func GetNode(k string) Node {
 	return Node{}
 }
 
-// GetNodesByServer returns a copy of nodes that belong to a certain server
-func GetNodesByServer(serverName string) []Node {
-	nodes := []Node{}
-	for k := range Nodes {
-		currNode := Nodes[k]
-		if currNode.Server == serverName {
-			nodes = append(nodes, currNode)
+// SetNodes - sets server nodes in client config
+func SetNodes(nodes []models.Node) {
+	Nodes = make(NodeMap)
+	for _, node := range nodes {
+		Nodes[node.Network] = Node{
+			CommonNode: node.CommonNode,
 		}
 	}
-	return nodes
 }
 
 // UpdateNodeMap updates the in memory nodemap for the specified network
