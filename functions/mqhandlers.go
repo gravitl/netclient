@@ -2,7 +2,6 @@ package functions
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -18,9 +17,9 @@ import (
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -29,24 +28,23 @@ const MQTimeout = 30
 
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	logger.Log(0, "default message handler -- received message but not handling")
-	logger.Log(0, "topic: "+string(msg.Topic()))
+	slog.Info("default message handler -- received message but not handling", "topic", msg.Topic())
 }
 
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
-	logger.Log(0, "processing node update for network", network)
+	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
 	server := config.Servers[node.Server]
 	data, err := decryptMsg(server.Name, msg.Payload())
 	if err != nil {
-		logger.Log(0, "error decrypting message", err.Error())
+		slog.Error("error decrypting message", "error", err)
 		return
 	}
 	serverNode := models.Node{}
 	if err = json.Unmarshal([]byte(data), &serverNode); err != nil {
-		logger.Log(0, "error unmarshalling node update data"+err.Error())
+		slog.Error("error unmarshalling node update data", "error", err)
 		return
 	}
 	newNode := config.Node{}
@@ -55,25 +53,25 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	// see if cache hit, if so skip
 	var currentMessage = read(newNode.Network, lastNodeUpdate)
 	if currentMessage == string(data) {
-		logger.Log(3, "cache hit on node update ... skipping")
+		slog.Info("cache hit on node update ... skipping")
 		return
 	}
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
-	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
+	slog.Info("received node update", "node", newNode.ID, "network", newNode.Network)
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
-		logger.Log(0, "network:", newNode.Network, "received delete request for", newNode.ID.String())
+		slog.Info("received delete request for", "node", newNode.ID, "network", newNode.Network)
 		unsubscribeNode(client, &newNode)
 		if _, err = LeaveNetwork(newNode.Network, true); err != nil {
 			if !strings.Contains("rpc error", err.Error()) {
-				logger.Log(0, "failed to leave, please check that local files for network", newNode.Network, "were removed")
+				slog.Error("failed to leave network, please check that local files for network were removed", "network", newNode.Network, "error", err)
 				return
 			}
 		}
-		logger.Log(0, newNode.ID.String(), "was removed from network", newNode.Network)
+		slog.Info("node was deleted", "node", newNode.ID, "network", newNode.Network)
 		return
 	case models.NODE_FORCE_UPDATE:
 		ifaceDelta = true
@@ -84,20 +82,20 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	newNode.Action = models.NODE_NOOP
 	config.UpdateNodeMap(network, newNode)
 	if err := config.WriteNodeConfig(); err != nil {
-		logger.Log(0, newNode.Network, "error updating node configuration: ", err.Error())
+		slog.Warn("failed to write node config", "error", err)
 	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	if err := nc.Configure(); err != nil {
-		logger.Log(0, "could not configure netmaker interface", err.Error())
+		slog.Error("could not configure netmaker interface", "error", err)
 		return
 	}
 	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
-			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
+			slog.Warn("could not notify server to update peers after interface change", "network:", newNode.Network, "error", doneErr)
 		} else {
-			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
+			slog.Info("signalled finished interface update to server", "network", newNode.Network)
 		}
 	}
 }
@@ -107,37 +105,37 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
-		logger.Log(3, "skipping unwanted peer update, no nodes exist")
+		slog.Info("skipping unwanted peer update, no nodes exist")
 		return
 	}
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
-		logger.Log(0, "server ", serverName, " not found in config")
+		slog.Error("server not found in config", "server", serverName)
 		return
 	}
-	logger.Log(3, "received peer update for host from: ", serverName)
+	slog.Info("processing peer update for server", "server", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		return
 	}
 	err = json.Unmarshal([]byte(data), &peerUpdate)
 	if err != nil {
-		logger.Log(0, "error unmarshalling peer data")
+		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
 	if peerUpdate.ServerVersion != config.Version {
-		logger.Log(0, "server/client version mismatch server: ", peerUpdate.ServerVersion, " client: ", config.Version)
+		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
 			if err := UseVersion(peerUpdate.ServerVersion, true); err != nil {
-				logger.Log(0, "error updating client to server's version", err.Error())
+				slog.Error("error updating client to server's version", "error", err)
 			} else {
-				logger.Log(0, "updated client to server's version: ", peerUpdate.ServerVersion, " ,restart daemon to reflect changes")
+				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
 			}
 		}
 	}
 	if peerUpdate.ServerVersion != server.Version {
-		logger.Log(1, "updating server version")
+		slog.Info("updating server version", "server", serverName, "version", peerUpdate.ServerVersion)
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
@@ -149,7 +147,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = wireguard.SetPeers(false)
 	wireguard.GetInterface().GetPeerRoutes()
 	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-		logger.Log(0, "error when setting peer routes after peer update", err.Error())
+		slog.Warn("error when setting peer routes after peer update", "error", err)
 	}
 	_ = wireguard.GetInterface().ApplyAddrs(true)
 	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
@@ -180,19 +178,20 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
-		logger.Log(0, "server ", serverName, " not found in config")
+		slog.Error("server not found in config", "server", serverName)
 		return
 	}
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
+		slog.Error("error decrypting message", "error", err)
 		return
 	}
 	err = json.Unmarshal([]byte(data), &hostUpdate)
 	if err != nil {
-		logger.Log(0, "error unmarshalling host update data")
+		slog.Error("error unmarshalling host update data", "error", err)
 		return
 	}
-	logger.Log(3, fmt.Sprintf("---> received host update [ action: %v ] for host from %s ", hostUpdate.Action, serverName))
+	slog.Info("processing host update", "server", serverName, "action", hostUpdate.Action)
 	var resetInterface, restartDaemon, clearMsg bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
@@ -209,12 +208,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
-		logger.Log(1, "added node for network", hostUpdate.Node.Network, "on server", serverName)
+		slog.Info("added node to network", "network", hostUpdate.Node.Network, "server", serverName)
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
-			logger.Log(0, "failed to response with ACK to server", serverName)
+			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
-		restartDaemon = true
+		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
@@ -228,7 +227,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
-			logger.Log(0, "failed to response with ACK to server", serverName, err.Error())
+			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 	case models.SignalHost:
 		turn.PeerSignalCh <- hostUpdate.Signal
@@ -236,11 +235,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
 	default:
-		logger.Log(1, "unknown host action")
+		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
 	}
 	if err = config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "failed to write host config -", err.Error())
+		slog.Error("failed to write host config", "error", err)
 		return
 	}
 
@@ -249,7 +248,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			clearRetainedMsg(client, msg.Topic())
 		}
 		if err := daemon.Restart(); err != nil {
-			logger.Log(0, "failed to restart daemon: ", err.Error())
+			slog.Error("failed to restart daemon", "error", err)
 		}
 		return
 	}
@@ -259,13 +258,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 		nc.Create()
 		if err := nc.Configure(); err != nil {
-			logger.Log(0, "could not configure netmaker interface", err.Error())
+			slog.Error("could not configure netmaker interface", "error", err)
 			return
 		}
 
 		if err = wireguard.SetPeers(false); err == nil {
 			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-				logger.Log(0, "error when setting peer routes after host update", err.Error())
+				slog.Error("error when setting peer routes after host update", "error", err)
 			}
 		}
 	}
@@ -301,7 +300,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerPubKey,
 					peerInfo.ProxyListenPort,
 				); err != nil { // happens v often
-					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
+					slog.Error("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
 			}
 		}
@@ -334,7 +333,7 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	temp := os.TempDir()
 	lockfile := temp + "/netclient-lock"
 	if err := config.Lock(lockfile); err != nil {
-		logger.Log(0, "could not create lock file", err.Error())
+		slog.Error("could not create lock file", "error", err)
 		return
 	}
 	defer config.Unlock(lockfile)
@@ -342,7 +341,7 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
-		logger.Log(0, "server ", serverName, " not found in config")
+		slog.Error("server not found in config", "server", serverName)
 		return
 	}
 	data, err := decryptMsg(serverName, msg.Payload())
@@ -350,18 +349,18 @@ func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if err := json.Unmarshal([]byte(data), &dns); err != nil {
-		logger.Log(0, "error unmarshalling dns update")
+		slog.Error("error unmarshalling dns update", "error", err)
 	}
 	if config.Netclient().Debug {
 		log.Println("dnsUpdate received", dns)
 	}
 	var currentMessage = read("dns", lastDNSUpdate)
 	if currentMessage == string(data) {
-		logger.Log(3, "cache hit on dns update ... skipping")
+		slog.Info("cache hit on dns update ... skipping")
 		return
 	}
 	insert("dns", lastDNSUpdate, string(data))
-	logger.Log(3, "received dns update for", dns.Name)
+	slog.Info("received dns update", "name", dns.Name, "address", dns.Address, "action", dns.Action)
 	applyDNSUpdate(dns)
 }
 
@@ -371,7 +370,7 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	}
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
-		logger.Log(0, "failed to read hosts file", err.Error())
+		slog.Error("failed to read hosts file", "error", err)
 		return
 	}
 	switch dns.Action {
@@ -384,7 +383,7 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	case models.DNSReplaceName:
 		ok, ip, _ := hosts.HostAddressLookup(dns.Name, txeh.IPFamilyV4, etcHostsComment)
 		if !ok {
-			logger.Log(2, "failed to find dns address for host", dns.Name)
+			slog.Error("failed to find dns address for host", "host", dns.Name)
 			return
 		}
 		dns.Address = ip
@@ -395,7 +394,7 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 		hosts.AddHost(dns.NewAddress, dns.Name, etcHostsComment)
 	}
 	if err := hosts.Save(); err != nil {
-		logger.Log(0, "error saving hosts file", err.Error())
+		slog.Error("error saving hosts file", "error", err)
 		return
 	}
 }
@@ -405,7 +404,7 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 	temp := os.TempDir()
 	lockfile := temp + "/netclient-lock"
 	if err := config.Lock(lockfile); err != nil {
-		logger.Log(0, "could not create lock file", err.Error())
+		slog.Error("could not create lock file", "error", err)
 		return
 	}
 	defer config.Unlock(lockfile)
@@ -413,7 +412,7 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
-		logger.Log(0, "server ", serverName, " not found in config")
+		slog.Error("server not found in config", "server", serverName)
 		return
 	}
 	data, err := decryptMsg(serverName, msg.Payload())
@@ -421,15 +420,15 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if err := json.Unmarshal([]byte(data), &dns); err != nil {
-		logger.Log(0, "error unmarshalling dns update")
+		slog.Error("error unmarshalling dns update", "error", err)
 	}
 	if config.Netclient().Debug {
 		log.Println("all dns", dns)
 	}
 	var currentMessage = read("dnsall", lastALLDNSUpdate)
-	logger.Log(3, "received initial dns")
+	slog.Info("received initial dns", "dns", dns)
 	if currentMessage == string(data) {
-		logger.Log(3, "cache hit on all dns ... skipping")
+		slog.Info("cache hit on all dns ... skipping")
 		if config.Netclient().Debug {
 			log.Println("dns cache", currentMessage, string(data))
 		}
@@ -442,19 +441,19 @@ func dnsAll(client mqtt.Client, msg mqtt.Message) {
 func applyAllDNS(dns []models.DNSUpdate) {
 	hosts, err := txeh.NewHostsDefault()
 	if err != nil {
-		logger.Log(0, "failed to read hosts file", err.Error())
+		slog.Error("failed to read hosts file", "error", err)
 		return
 	}
 	for _, entry := range dns {
 		if entry.Action != models.DNSInsert {
-			logger.Log(0, "invalid dns actions", entry.Action.String())
+			slog.Info("invalid dns actions", "action", entry.Action)
 			continue
 		}
 		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
 	}
 
 	if err := hosts.Save(); err != nil {
-		logger.Log(0, "error saving hosts file", err.Error())
+		slog.Error("error saving hosts file", "error", err)
 		return
 	}
 }
@@ -488,32 +487,32 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 	if gwDelta { // handle switching gateway IP to other GW peer
 		if config.GW4PeerDetected {
 			if err := routes.RemoveDefaultGW(originalGW); err != nil {
-				logger.Log(3, "failed to remove default gateway from peer", originalGW.String(), err.Error())
+				slog.Error("failed to remove default gateway from peer", "gateway", originalGW, "error", err)
 			}
 			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
-				logger.Log(3, "failed to change default gateway to peer", config.GW4Addr.String(), err.Error())
+				slog.Error("failed to set default gateway to peer", "gateway", config.GW4Addr, "error", err)
 			}
 		} else if config.GW6PeerDetected {
 			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
-				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
+				slog.Error("failed to set default gateway to peer", "gateway", config.GW6Addr, "error", err)
 			}
 		}
 	} else {
 		if !gwDetected && config.GW4PeerDetected && !isHostInetGateway { // ipv4 gateways take priority
 			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
-				logger.Log(3, "failed to set default gateway to peer", config.GW4Addr.String(), err.Error())
+				slog.Error("failed to set default gateway to peer", "gateway", config.GW4Addr, "error", err)
 			}
 		} else if gwDetected && !config.GW4PeerDetected {
 			if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
-				logger.Log(3, "failed to remove default gateway to peer", config.GW4Addr.String())
+				slog.Error("failed to remove default gateway to peer", "gateway", config.GW4Addr, "error", err)
 			}
 		} else if !gwDetected && config.GW6PeerDetected && !isHostInetGateway {
 			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
-				logger.Log(3, "failed to set default gateway to peer", config.GW6Addr.String())
+				slog.Error("failed to set default gateway to peer", "gateway", config.GW6Addr, "error", err)
 			}
 		} else if gwDetected && !config.GW6PeerDetected {
 			if err := routes.RemoveDefaultGW(&config.GW6Addr); err != nil {
-				logger.Log(3, "failed to remove default gateway to peer", config.GW6Addr.String())
+				slog.Error("failed to remove default gateway to peer", "gateway", config.GW6Addr, "error", err)
 			}
 		}
 	}
