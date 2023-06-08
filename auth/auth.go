@@ -64,7 +64,7 @@ func cleanUpByServer(server *config.Server) error {
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		return err
 	}
-	serverNodes := config.GetNodesByServer(server.Name)
+	serverNodes := config.GetNodes()
 	for i := range serverNodes {
 		node := serverNodes[i]
 		config.DeleteNode(node.Network)
@@ -72,14 +72,14 @@ func cleanUpByServer(server *config.Server) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return err
 	}
-	config.RemoveServerHostPeerCfg(server.Name)
-	if err := wireguard.SetPeers(); err != nil {
+	config.RemoveServerHostPeerCfg()
+	if err := wireguard.SetPeers(true); err != nil {
 		logger.Log(0, "interface not up, failed to remove peers for %s \n", server.Name)
 	}
 	if err := routes.CleanUp(config.Netclient().DefaultInterface, nil); err != nil {
 		return err
 	}
-	config.DeleteServerHostPeerCfg(server.Name)
+	config.DeleteServerHostPeerCfg()
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}

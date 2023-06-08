@@ -67,17 +67,16 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key                              `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate []byte                                   `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	InternetGateway   net.UDPAddr                              `json:"internetgateway" yaml:"internetgateway"`
-	HostPeers         map[string]map[string]wgtypes.PeerConfig `json:"peers_info" yaml:"peers_info"`
-	DisableGUIServer  bool                                     `json:"disableguiserver" yaml:"disableguiserver"`
+	PrivateKey        wgtypes.Key                   `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate []byte                        `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	InternetGateway   net.UDPAddr                   `json:"internetgateway" yaml:"internetgateway"`
+	HostPeers         map[string]wgtypes.PeerConfig `json:"hostpeers" yaml:"hostpeers"`
+	DisableGUIServer  bool                          `json:"disableguiserver" yaml:"disableguiserver"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
-	netclient.HostPeers = make(map[string]map[string]wgtypes.PeerConfig)
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -121,74 +120,58 @@ func Netclient() *Config {
 	return &netclient
 }
 
-// GetHostPeerList - gets the combined list of peers for the host
-func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
-	hostPeerMap := netclient.HostPeers
-	for _, serverPeers := range hostPeerMap {
-		allPeers = append(allPeers, convPeerMaptoList(serverPeers)...)
-	}
-	return
-}
-
-// UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(server string, peers []wgtypes.PeerConfig) (isHostInetGW bool) {
-	hostPeerMap := netclient.HostPeers
-	if hostPeerMap == nil {
-		hostPeerMap = make(map[string]map[string]wgtypes.PeerConfig, 1)
-	}
-	hostPeerMap[server] = convPeersToMap(peers)
-	netclient.HostPeers = hostPeerMap
-	return detectOrFilterGWPeers(server, hostPeerMap[server])
-}
-
 // UpdateHostPeersSingleton - updates host peer map in the netclient config
 func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHostInetGW bool) {
-	hostPeerMap := netclient.HostPeers
-	if hostPeerMap == nil {
-		hostPeerMap = make(map[string]map[string]wgtypes.PeerConfig, 1)
-	}
-	peers := hostPeerMap[server]
-	if peers == nil {
-		peers = make(map[string]wgtypes.PeerConfig)
+	hostPeers := netclient.HostPeers
+	if hostPeers == nil {
+		hostPeers = make(map[string]wgtypes.PeerConfig)
 	}
 	incomingPeers := peerAction.Peers
 	if peerAction.Action == models.AddPeer || peerAction.Action == models.UpdatePeer {
 		for _, incomingPeerI := range incomingPeers {
-			peers[incomingPeerI.PublicKey.String()] = incomingPeerI
+			hostPeers[incomingPeerI.PublicKey.String()] = incomingPeerI
 		}
 
 	} else if peerAction.Action == models.RemovePeer {
 		for _, incomingPeerI := range incomingPeers {
-			delete(peers, incomingPeerI.PublicKey.String())
+			delete(hostPeers, incomingPeerI.PublicKey.String())
 		}
 	}
-	hostPeerMap[server] = peers
-	netclient.HostPeers = hostPeerMap
-	return detectOrFilterGWPeers(server, peers)
+	netclient.HostPeers = hostPeers
+	return detectOrFilterGWPeers(hostPeers)
+}
+
+// UpdateHostPeers - updates host peer map in the netclient config
+func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
+	netclient.HostPeers = convPeersToMap(peers)
+	return detectOrFilterGWPeers(netclient.HostPeers)
+}
+
+// GetHostPeerList - gets the combined list of peers for the host
+func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
+	hostPeerMap := netclient.HostPeers
+	allPeers = append(allPeers, convPeerMaptoList(hostPeerMap)...)
+	return
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
-func DeleteServerHostPeerCfg(server string) {
-	if netclient.HostPeers == nil {
-		netclient.HostPeers = make(map[string]map[string]wgtypes.PeerConfig)
-		return
-	}
-	delete(netclient.HostPeers, server)
+func DeleteServerHostPeerCfg() {
+	netclient.HostPeers = make(map[string]wgtypes.PeerConfig)
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
-func RemoveServerHostPeerCfg(serverName string) {
+func RemoveServerHostPeerCfg() {
 	if netclient.HostPeers == nil {
-		netclient.HostPeers = make(map[string]map[string]wgtypes.PeerConfig)
+		netclient.HostPeers = make(map[string]wgtypes.PeerConfig)
 		return
 	}
-	peers := netclient.HostPeers[serverName]
+	peers := netclient.HostPeers
 	for i := range peers {
 		peer := peers[i]
 		peer.Remove = true
 		peers[i] = peer
 	}
-	netclient.HostPeers[serverName] = peers
+	netclient.HostPeers = peers
 	_ = WriteNetclientConfig()
 }
 
@@ -438,6 +421,7 @@ func InitConfig(viper *viper.Viper) {
 	setLogVerbosity(viper)
 	ReadNodeConfig()
 	ReadServerConf()
+	SetServerCtx()
 	CheckConfig()
 	//check netclient dirs exist
 	if _, err := os.Stat(GetNetclientPath()); err != nil {
@@ -570,22 +554,20 @@ func CheckConfig() {
 		}
 	}
 	_ = ReadServerConf()
-	for _, server := range Servers {
-		if server.MQID != netclient.ID {
-			fail = true
-			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-		}
-	}
 	_ = ReadNodeConfig()
-	nodes := GetNodes()
-	for _, node := range nodes {
-		//make sure server config exists
-		server := GetServer(node.Server)
+	if CurrServer != "" {
+		server := GetServer(CurrServer)
 		if server == nil {
 			fail = true
-			logger.Log(0, "configuration for", node.Server, "is missing")
+			logger.Log(0, "configuration for", CurrServer, "is missing")
+		} else {
+			if server.MQID != netclient.ID {
+				fail = true
+				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+			}
 		}
 	}
+
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
@@ -612,7 +594,7 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 	return host, node
 }
 
-func detectOrFilterGWPeers(server string, peers map[string]wgtypes.PeerConfig) bool {
+func detectOrFilterGWPeers(peers map[string]wgtypes.PeerConfig) bool {
 	isInetGW := IsHostInetGateway()
 	if len(peers) > 0 {
 		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
@@ -627,7 +609,7 @@ func detectOrFilterGWPeers(server string, peers map[string]wgtypes.PeerConfig) b
 			}
 		}
 	}
-	clientPeers := GetHostPeerList()
+	clientPeers := netclient.HostPeers
 	var foundGW4Again, foundGW6Again bool
 	if len(clientPeers) > 0 {
 		for i := range clientPeers {
@@ -681,21 +663,19 @@ func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
 // IsHostInetGateway - checks, based on netclient memory,
 // if current client is an internet gateway
 func IsHostInetGateway() bool {
-	servers := GetServers()
-	for i := range servers {
-		serverName := servers[i]
-		serverNodes := GetNodesByServer(serverName)
-		for j := range serverNodes {
-			serverNode := serverNodes[j]
-			if serverNode.IsEgressGateway {
-				for _, egressRange := range serverNode.EgressGatewayRanges {
-					if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
-						return true
-					}
+
+	serverNodes := GetNodes()
+	for j := range serverNodes {
+		serverNode := serverNodes[j]
+		if serverNode.IsEgressGateway {
+			for _, egressRange := range serverNode.EgressGatewayRanges {
+				if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
+					return true
 				}
 			}
 		}
 	}
+
 	return false
 }
 
