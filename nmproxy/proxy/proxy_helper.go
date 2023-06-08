@@ -108,6 +108,7 @@ func (p *Proxy) ProxyPeer() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.toRemote(wg)
+	config.DumpSignalChan <- struct{}{}
 	wg.Wait()
 
 }

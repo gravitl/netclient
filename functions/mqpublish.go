@@ -15,7 +15,6 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
@@ -258,18 +257,6 @@ func UpdateHostSettings() error {
 	}
 
 	ifacename := ncutils.GetInterfaceName()
-	var proxylistenPort int
-	var proxypublicport int
-	if config.Netclient().ProxyEnabled {
-		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
-		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
-		if proxylistenPort == 0 {
-			proxylistenPort = models.NmProxyPort
-		}
-		if proxypublicport == 0 {
-			proxypublicport = models.NmProxyPort
-		}
-	}
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
@@ -277,19 +264,6 @@ func UpdateHostSettings() error {
 		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
 		config.Netclient().ListenPort = localPort
 		publishMsg = true
-	}
-	if config.Netclient().ProxyEnabled {
-
-		if config.Netclient().ProxyListenPort != proxylistenPort {
-			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
-			config.Netclient().ProxyListenPort = proxylistenPort
-			publishMsg = true
-		}
-		if config.Netclient().PublicListenPort != proxypublicport {
-			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
-			config.Netclient().PublicListenPort = proxypublicport
-			publishMsg = true
-		}
 	}
 	ip, err := getInterfaces()
 	if err != nil {

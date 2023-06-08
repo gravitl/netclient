@@ -18,7 +18,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
-	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
 	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
@@ -48,13 +47,6 @@ type cachedMessage struct {
 	LastSeen time.Time
 }
 
-func startProxy(wg *sync.WaitGroup) context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	wg.Add(1)
-	go nmproxy.Start(ctx, wg)
-	return cancel
-}
-
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
@@ -80,7 +72,6 @@ func Daemon() {
 	// good to sync up config on daemon start
 	Pull(false)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
 	httpctx, httpCancel := context.WithCancel(context.Background())
 	httpWg := sync.WaitGroup{}
@@ -92,7 +83,6 @@ func Daemon() {
 			slog.Info("shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
 			}, &wg)
 			httpCancel()
 			httpWg.Wait()
@@ -103,14 +93,10 @@ func Daemon() {
 			slog.Info("received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
 			}, &wg)
 			slog.Info("resetting daemon")
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
-			if !proxy_cfg.GetCfg().ProxyStatus {
-				stopProxy = startProxy(&wg)
-			}
 		}
 	}
 }
@@ -138,6 +124,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	go nmproxy.Start(ctx, wg)
 	config.SetServerCtx()
 	setNatInfo()
 	slog.Info("host nat info: ", hostNatInfo)

@@ -62,26 +62,6 @@ func (c *Config) setIfaceKeyHash() {
 	}
 }
 
-// Config.GetDeviceKeyHash - gets the interface pubkey hash
-func (c *Config) GetDeviceKeyHash() string {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	if !c.IsIfaceNil() {
-		return c.ifaceConfig.ifaceKeyHash
-	}
-	return ""
-}
-
-// Config.GetDeviceKeys - fetches interface private,pubkey
-func (c *Config) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtypes.Key) {
-	if !c.IsIfaceNil() {
-		iface := c.GetIfaceDevice()
-		privateKey = iface.PrivateKey
-		publicKey = iface.PublicKey
-	}
-	return
-}
-
 // Config.GetDevicePubKey - fetches device public key
 func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 	if !c.IsIfaceNil() {
@@ -94,13 +74,6 @@ func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 // Config.GetAllProxyPeers - fetches all peers in the network
 func (c *Config) GetAllProxyPeers() models.PeerConnMap {
 	return c.ifaceConfig.proxyPeerMap
-}
-
-// Config.UpdateProxyPeers - updates all peers in the network
-func (c *Config) UpdateProxyPeers(peers *models.PeerConnMap) {
-	if peers != nil {
-		c.ifaceConfig.proxyPeerMap = *peers
-	}
 }
 
 // Config.SavePeer - saves peer to the config
@@ -158,27 +131,6 @@ func (c *Config) RemovePeer(peerPubKey string) {
 
 }
 
-// Config.UpdatePeerNetwork - updates the peer network settings map
-func (c *Config) UpdatePeerNetwork(peerPubKey, network string, setting models.Settings) {
-	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
-		peerConf.Mutex.Lock()
-		peerConf.NetworkSettings[network] = setting
-		peerConf.Mutex.Unlock()
-	}
-}
-
-// Config.CheckIfPeerExists - checks if peer exists in the config
-func (c *Config) CheckIfPeerExists(peerPubKey string) bool {
-
-	_, found := c.ifaceConfig.proxyPeerMap[peerPubKey]
-	return found
-}
-
-// Config.GetNetworkPeerMap - fetches all peers in the network
-func (c *Config) GetNetworkPeerMap() models.PeerConnMap {
-	return c.ifaceConfig.proxyPeerMap
-}
-
 // Config.SavePeerByHash - saves peer by its publicKey hash to the config
 func (c *Config) SavePeerByHash(peerInfo *models.RemotePeer) {
 	c.ifaceConfig.peerHashMap[models.ConvPeerKeyToHash(peerInfo.PeerKey)] = peerInfo
@@ -204,11 +156,6 @@ func (c *Config) GetInterfaceListenPort() (port int) {
 		port = c.GetIfaceDevice().ListenPort
 	}
 	return
-}
-
-// Config.UpdateWgIface - updates iface config in memory
-func (c *Config) UpdateWgIface(wgIface *wg.WGIface) {
-	c.ifaceConfig.iface = wgIface
 }
 
 // Config.GetAllPeersIDsAndAddrs - get all peers
@@ -289,7 +236,7 @@ func (c *Config) DeletePeerTurnCfg(server, peerKey string) {
 	delete(c.ifaceConfig.turnPeerMap, peerKey)
 }
 
-func dumpProxyConnsInfo(ctx context.Context, wg *sync.WaitGroup) {
+func DumpProxyConnsInfo(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {

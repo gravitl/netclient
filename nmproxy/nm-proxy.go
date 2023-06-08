@@ -27,6 +27,8 @@ func Start(ctx context.Context, waitg *sync.WaitGroup) {
 	config.GetCfg().SetIface(wgIface)
 	proxyWaitG := &sync.WaitGroup{}
 	proxyWaitG.Add(1)
+	go config.DumpProxyConnsInfo(ctx, proxyWaitG)
+	proxyWaitG.Add(1)
 	go turn.WatchPeerSignals(ctx, proxyWaitG)
 	turnCfgs := ncconfig.GetAllTurnConfigs()
 	if len(turnCfgs) > 0 {
@@ -36,5 +38,5 @@ func Start(ctx context.Context, waitg *sync.WaitGroup) {
 		proxyWaitG.Add(1)
 		go turn.WatchPeerConnections(ctx, proxyWaitG)
 	}
-
+	proxyWaitG.Wait()
 }
