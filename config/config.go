@@ -58,10 +58,6 @@ var (
 	GW6Addr net.IPNet
 	// FwClose - firewall manager shutdown func
 	FwClose func() = func() {}
-	// WgPublicListenPort - host's wireguard public listen port
-	WgPublicListenPort int
-	// HostPublicIP - host's public endpoint
-	HostPublicIP net.IP
 )
 
 // Config configuration for netclient and host as a whole
@@ -121,7 +117,7 @@ func Netclient() *Config {
 }
 
 // UpdateHostPeersSingleton - updates host peer map in the netclient config
-func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHostInetGW bool) {
+func UpdateHostPeersSingleton(peerAction models.PeerAction) (isHostInetGW bool) {
 	hostPeers := netclient.HostPeers
 	if hostPeers == nil {
 		hostPeers = make(map[string]wgtypes.PeerConfig)
