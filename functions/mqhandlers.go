@@ -213,6 +213,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
+		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
