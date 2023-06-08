@@ -8,11 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
-	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -62,7 +59,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		return err
 	}
 	p.Config.PeerEndpoint = peerEndpoint
-	if t, ok := config.GetCfg().GetTurnCfg(server); ok && t.TurnConn != nil {
+	if t := config.GetCfg().GetTurnCfg(); t != nil && t.TurnConn != nil {
 		t.Mutex.RLock()
 		p.Config.TurnConn = t.TurnConn
 		t.Mutex.RUnlock()
@@ -141,39 +138,16 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 		return
 	}
 	for _, peer := range ifacePeers {
-		if peerIDMap, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
+		if _, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
 			metric := metrics.GetMetric(server, peer.PublicKey.String())
 			metric.NodeConnectionStatus = make(map[string]bool)
-			connectionStatus := proxy.PeerConnectionStatus(peer.PublicKey.String())
-			var proxyListenPort int
-			for peerID, peerInfo := range peerIDMap {
-				proxyListenPort = peerInfo.ProxyListenPort
-				metric.NodeConnectionStatus[peerID] = connectionStatus
-			}
 			if peer.Endpoint == nil {
-				continue
-			}
-			proxyConn, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.Endpoint.IP.String(), proxyListenPort))
-			if err != nil {
 				continue
 			}
 			metric.LastRecordedLatency = 999
 			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
 			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
 			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
-			pkt, err := packet.CreateMetricPacket(uuid.New().ID(), config.GetCfg().GetDevicePubKey(), peer.PublicKey)
-			if err == nil {
-				conn := config.GetCfg().GetServerConn()
-				if conn != nil {
-					_, err = conn.WriteToUDP(pkt, proxyConn)
-					if err != nil {
-						logger.Log(1, "Failed to send to metric pkt: ", err.Error())
-					}
-				}
-
-			}
 		}
-
 	}
-
 }

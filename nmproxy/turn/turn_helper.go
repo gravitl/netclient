@@ -58,7 +58,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	t, ok := config.GetCfg().GetPeerTurnCfg(signal.Server, signal.FromHostPubKey)
+	t, ok := config.GetCfg().GetPeerTurnCfg(signal.FromHostPubKey)
 	if ok {
 		if signal.TurnRelayEndpoint == "" {
 			return errors.New("peer turn endpoint is nil")
@@ -67,7 +67,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 		if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 			if conn.Config.UsingTurn && t.PeerTurnAddr != signal.TurnRelayEndpoint {
 				logger.Log(0, fmt.Sprintf("Turn Peer Addr Has Been Changed From %s to %s", t.PeerTurnAddr, signal.TurnRelayEndpoint))
-				config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
+				config.GetCfg().UpdatePeerTurnAddr(signal.FromHostPubKey, signal.TurnRelayEndpoint)
 				conn.Config.PeerEndpoint = peerTurnEndpoint
 				config.GetCfg().UpdatePeer(&conn)
 				config.GetCfg().ResetPeer(signal.FromHostPubKey)
@@ -75,7 +75,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 
 		} else {
 			// new connection
-			config.GetCfg().SetPeerTurnCfg(signal.Server, signal.FromHostPubKey, models.TurnPeerCfg{
+			config.GetCfg().SetPeerTurnCfg(signal.FromHostPubKey, models.TurnPeerCfg{
 				Server:       signal.Server,
 				PeerConf:     t.PeerConf,
 				PeerTurnAddr: signal.TurnRelayEndpoint,
@@ -100,7 +100,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 		}
 		// signal back to peer
 		// signal peer with the host relay addr for the peer
-		if hostTurnCfg, ok := config.GetCfg().GetTurnCfg(signal.Server); ok && hostTurnCfg.TurnConn != nil {
+		if hostTurnCfg := config.GetCfg().GetTurnCfg(); hostTurnCfg != nil && hostTurnCfg.TurnConn != nil {
 			hostTurnCfg.Mutex.RLock()
 			err := SignalPeer(signal.Server, nm_models.Signal{
 				Server:            signal.Server,
@@ -157,9 +157,8 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				logger.Log(1, "failed to get iface: ", err.Error())
 				continue
 			}
-			peers := ncconfig.Netclient().HostPeers
-			for _, peer := range peers {
-
+			hostPeers := ncconfig.Netclient().HostPeers
+			for _, peer := range hostPeers {
 				if peer.Endpoint == nil {
 					continue
 				}
@@ -173,13 +172,12 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					continue
 				}
 				// signal peer to use turn
-				turnCfg, ok := config.GetCfg().GetTurnCfg(ncconfig.CurrServer)
-				if !ok || turnCfg.TurnConn == nil {
+				turnCfg := config.GetCfg().GetTurnCfg()
+				if turnCfg == nil || turnCfg.TurnConn == nil {
 					continue
 				}
-				if _, ok := config.GetCfg().GetPeerTurnCfg(ncconfig.CurrServer, peer.PublicKey.String()); !ok {
-					config.GetCfg().SetPeerTurnCfg(ncconfig.CurrServer, peer.PublicKey.String(), models.TurnPeerCfg{
-						Server:   ncconfig.CurrServer,
+				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
+					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
 						PeerConf: nm_models.PeerConf{},
 					})
 				}
@@ -192,11 +190,10 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					ToHostPubKey:      peer.PublicKey.String(),
 					Action:            nm_models.ConnNegotiation,
 				})
-				turnCfg.Mutex.RUnlock()
 				if err != nil {
 					logger.Log(2, "failed to signal peer: ", err.Error())
 				}
-
+				turnCfg.Mutex.RUnlock()
 			}
 		}
 	}
@@ -232,7 +229,7 @@ func DissolvePeerConnections() {
 		return
 	}
 
-	turnPeers := config.GetCfg().GetAllTurnPeersCfg(ncconfig.CurrServer)
+	turnPeers := config.GetCfg().GetAllTurnPeersCfg()
 	for peerPubKey := range turnPeers {
 		err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
 			FromHostPubKey:    iface.Device.PublicKey.String(),

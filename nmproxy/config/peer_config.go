@@ -13,10 +13,9 @@ type wgIfaceConf struct {
 	iface        *wg.WGIface
 	ifaceKeyHash string
 	proxyPeerMap models.PeerConnMap
-	hostTurnCfg  map[string]models.TurnCfg
-	turnPeerMap  map[string]map[string]models.TurnPeerCfg
+	hostTurnCfg  *models.TurnCfg
+	turnPeerMap  map[string]models.TurnPeerCfg
 	peerHashMap  map[string]*models.RemotePeer
-	relayPeerMap map[string]map[string]*models.RemotePeer
 	allPeersConf map[string]nm_models.HostPeerMap
 }
 
@@ -196,60 +195,6 @@ func (c *Config) DeletePeerHash(peerKey string) {
 	delete(c.ifaceConfig.peerHashMap, models.ConvPeerKeyToHash(peerKey))
 }
 
-// Config.SaveRelayedPeer - saves relayed peer to config
-func (c *Config) SaveRelayedPeer(relayedNodePubKey string, peer *models.RemotePeer) {
-	if _, ok := c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)]; !ok {
-		c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)] = make(map[string]*models.RemotePeer)
-	}
-	c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)][models.ConvPeerKeyToHash(peer.PeerKey)] = peer
-}
-
-// Config.CheckIfRelayedNodeExists - checks if relayed node exists
-func (c *Config) CheckIfRelayedNodeExists(peerHash string) bool {
-	_, found := c.ifaceConfig.relayPeerMap[peerHash]
-	return found
-}
-
-// Config.GetRelayedPeer - fectches the relayed peer
-func (c *Config) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePeer, bool) {
-
-	if c.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
-			return *peer, found
-		}
-	} else if c.CheckIfRelayedNodeExists(dstPeerHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
-			return *peer, found
-		}
-	}
-	return models.RemotePeer{}, false
-}
-
-// Config.DeleteRelayedPeers - deletes relayed peer info
-func (c *Config) DeleteRelayedPeers() {
-	peersMap := c.GetAllProxyPeers()
-	for _, peer := range peersMap {
-		if peer.IsRelayed {
-			delete(c.ifaceConfig.relayPeerMap, models.ConvPeerKeyToHash(peer.Key.String()))
-		}
-	}
-}
-
-// Config.UpdateListenPortForRelayedPeer - updates listen port for the relayed peer
-func (c *Config) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
-	if c.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
-			peer.Endpoint.Port = port
-			c.SaveRelayedPeer(srcKeyHash, peer)
-		}
-	} else if c.CheckIfRelayedNodeExists(dstPeerHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
-			peer.Endpoint.Port = port
-			c.SaveRelayedPeer(dstPeerHash, peer)
-		}
-	}
-}
-
 // Config.GetInterfaceListenPort - fetches interface listen port from config
 func (c *Config) GetInterfaceListenPort() (port int) {
 	if !c.IsIfaceNil() {
@@ -283,80 +228,55 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 }
 
 // Config.SetTurnCfg - sets the turn config
-func (c *Config) SetTurnCfg(server string, t models.TurnCfg) {
+func (c *Config) SetTurnCfg(t *models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ifaceConfig.hostTurnCfg[server] = t
+	c.ifaceConfig.hostTurnCfg = t
 }
 
-// Config.DeleteTurnCfg - sets the turn config
-func (c *Config) DeleteTurnCfg(server string) {
+func (c *Config) UpdatePeerTurnAddr(peerKey string, addr string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	delete(c.ifaceConfig.hostTurnCfg, server)
-}
-
-func (c *Config) UpdatePeerTurnAddr(server, peerKey string, addr string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if peerTurnMap, ok := c.ifaceConfig.turnPeerMap[server]; ok {
-		if t, ok := peerTurnMap[peerKey]; ok {
-			t.PeerTurnAddr = addr
-			c.ifaceConfig.turnPeerMap[server][peerKey] = t
-		}
+	if t, ok := c.ifaceConfig.turnPeerMap[peerKey]; ok {
+		t.PeerTurnAddr = addr
+		c.ifaceConfig.turnPeerMap[peerKey] = t
 	}
 }
 
-// Config.GetAllTurnCfg - fetches all turn cfg
-func (c *Config) GetAllTurnCfg() map[string]models.TurnCfg {
+// Config.GetTurnCfg - gets the turn config
+func (c *Config) GetTurnCfg() (t *models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return c.ifaceConfig.hostTurnCfg
 }
 
-// Config.GetTurnCfg - gets the turn config
-func (c *Config) GetTurnCfg(server string) (t models.TurnCfg, ok bool) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	t, ok = c.ifaceConfig.hostTurnCfg[server]
-	return
-}
-
 // Config.GetPeerTurnCfg - gets the peer turn cfg
-func (c *Config) GetPeerTurnCfg(server, peerKey string) (t models.TurnPeerCfg, ok bool) {
+func (c *Config) GetPeerTurnCfg(peerKey string) (t models.TurnPeerCfg, ok bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
-		t, ok = peerMap[peerKey]
-	}
+	t, ok = c.ifaceConfig.turnPeerMap[peerKey]
 	return
 }
 
 // Config.UpdatePeerTurnCfg - updates the peer turn cfg
-func (c *Config) UpdatePeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+func (c *Config) UpdatePeerTurnCfg(peerKey string, t models.TurnPeerCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
-		peerMap[peerKey] = t
-		c.ifaceConfig.turnPeerMap[server] = peerMap
-	}
+	c.ifaceConfig.turnPeerMap[peerKey] = t
 }
 
 // Config.SetPeerTurnCfg - sets the peer turn cfg
-func (c *Config) SetPeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+func (c *Config) SetPeerTurnCfg(peerKey string, t models.TurnPeerCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if _, ok := c.ifaceConfig.turnPeerMap[server]; !ok {
-		c.ifaceConfig.turnPeerMap[server] = make(map[string]models.TurnPeerCfg)
-	}
-	c.ifaceConfig.turnPeerMap[server][peerKey] = t
+	c.ifaceConfig.turnPeerMap[peerKey] = t
 }
 
 // Config.GetAllTurnPeersCfg - fetches all peers using turn
-func (c *Config) GetAllTurnPeersCfg(server string) map[string]models.TurnPeerCfg {
+func (c *Config) GetAllTurnPeersCfg() map[string]models.TurnPeerCfg {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	return c.ifaceConfig.turnPeerMap[server]
+	return c.ifaceConfig.turnPeerMap
 }
 
 // Config.DeleteTurnCfg - deletes the turn config

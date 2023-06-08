@@ -15,7 +15,6 @@ import (
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -168,10 +167,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	)
 
 	go handleEndpointDetection(&peerUpdate)
-	if proxyCfg.GetCfg().IsProxyRunning() {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		ProxyManagerChan <- &peerUpdate
-	}
 
 }
 
