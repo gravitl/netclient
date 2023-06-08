@@ -199,7 +199,7 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
-	isInetGW := config.UpdateHostPeersSingleton(serverName, peerUpdate)
+	isInetGW := config.UpdateHostPeersSingleton(peerUpdate)
 	if peerUpdate.Action == models.RemovePeer {
 		// remove peers from interface
 		err = wireguard.RemovePeers(peerUpdate.Peers)

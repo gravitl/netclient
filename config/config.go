@@ -117,7 +117,7 @@ func Netclient() *Config {
 }
 
 // UpdateHostPeersSingleton - updates host peer map in the netclient config
-func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHostInetGW bool) {
+func UpdateHostPeersSingleton(peerAction models.PeerAction) (isHostInetGW bool) {
 	hostPeers := netclient.HostPeers
 	if hostPeers == nil {
 		hostPeers = make(map[string]wgtypes.PeerConfig)
