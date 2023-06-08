@@ -158,11 +158,11 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				continue
 			}
 			hostPeers := ncconfig.Netclient().HostPeers
-			for _, peerI := range hostPeers {
-				if peerI.Endpoint == nil {
+			for _, peer := range hostPeers {
+				if peer.Endpoint == nil {
 					continue
 				}
-				connected, err := isPeerConnected(peerI.PublicKey.String())
+				connected, err := isPeerConnected(peer.PublicKey.String())
 				if err != nil {
 					logger.Log(0, "failed to check if peer is connected: ", err.Error())
 					continue
@@ -176,8 +176,8 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				if turnCfg == nil || turnCfg.TurnConn == nil {
 					continue
 				}
-				if _, ok := config.GetCfg().GetPeerTurnCfg(peerI.PublicKey.String()); !ok {
-					config.GetCfg().SetPeerTurnCfg(peerI.PublicKey.String(), models.TurnPeerCfg{
+				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
+					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
 						PeerConf: nm_models.PeerConf{},
 					})
 				}
@@ -187,7 +187,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					Server:            ncconfig.CurrServer,
 					FromHostPubKey:    iface.Device.PublicKey.String(),
 					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
-					ToHostPubKey:      peerI.PublicKey.String(),
+					ToHostPubKey:      peer.PublicKey.String(),
 					Action:            nm_models.ConnNegotiation,
 				})
 				if err != nil {
