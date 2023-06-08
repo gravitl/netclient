@@ -13,7 +13,7 @@ type wgIfaceConf struct {
 	iface        *wg.WGIface
 	ifaceKeyHash string
 	proxyPeerMap models.PeerConnMap
-	hostTurnCfg  map[string]models.TurnCfg
+	hostTurnCfg  *models.TurnCfg
 	turnPeerMap  map[string]models.TurnPeerCfg
 	peerHashMap  map[string]*models.RemotePeer
 	allPeersConf map[string]nm_models.HostPeerMap
@@ -228,17 +228,10 @@ func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_mode
 }
 
 // Config.SetTurnCfg - sets the turn config
-func (c *Config) SetTurnCfg(server string, t models.TurnCfg) {
+func (c *Config) SetTurnCfg(t *models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ifaceConfig.hostTurnCfg[server] = t
-}
-
-// Config.DeleteTurnCfg - sets the turn config
-func (c *Config) DeleteTurnCfg(server string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	delete(c.ifaceConfig.hostTurnCfg, server)
+	c.ifaceConfig.hostTurnCfg = t
 }
 
 func (c *Config) UpdatePeerTurnAddr(peerKey string, addr string) {
@@ -250,19 +243,11 @@ func (c *Config) UpdatePeerTurnAddr(peerKey string, addr string) {
 	}
 }
 
-// Config.GetAllTurnCfg - fetches all turn cfg
-func (c *Config) GetAllTurnCfg() map[string]models.TurnCfg {
+// Config.GetTurnCfg - gets the turn config
+func (c *Config) GetTurnCfg() (t *models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return c.ifaceConfig.hostTurnCfg
-}
-
-// Config.GetTurnCfg - gets the turn config
-func (c *Config) GetTurnCfg(server string) (t models.TurnCfg, ok bool) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	t, ok = c.ifaceConfig.hostTurnCfg[server]
-	return
 }
 
 // Config.GetPeerTurnCfg - gets the peer turn cfg

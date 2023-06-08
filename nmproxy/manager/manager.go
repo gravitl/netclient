@@ -131,8 +131,8 @@ func (m *proxyPayload) peerUpdate() error {
 			shouldUseProxy = true
 		}
 		if !isRelayed && turn.ShouldUseTurn(config.GetCfg().HostInfo.NatType) && turn.ShouldUseTurn(peerConf.NatType) {
-			if t, ok := config.GetCfg().GetTurnCfg(m.Server); ok && t.TurnConn != nil {
-				go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, t models.TurnCfg) {
+			if t := config.GetCfg().GetTurnCfg(); t != nil {
+				go func(serverName string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, t *models.TurnCfg) {
 					var err error
 					// signal peer with the host relay addr for the peer
 					peerTurnCfg, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String())

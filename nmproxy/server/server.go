@@ -15,15 +15,17 @@ import (
 func ShutDown() {
 	logger.Log(0, "Shutting down Proxy.....")
 
-	turnCfg := config.GetCfg().GetAllTurnCfg()
-	for _, tCfg := range turnCfg {
-		if tCfg.Client != nil {
-			tCfg.Client.Close()
-		}
-		if tCfg.TurnConn != nil {
-			tCfg.TurnConn.Close()
-		}
+	turnCfg := config.GetCfg().GetTurnCfg()
+	if turnCfg == nil {
+		return
 	}
+	if turnCfg.Client != nil {
+		turnCfg.Client.Close()
+	}
+	if turnCfg.TurnConn != nil {
+		turnCfg.TurnConn.Close()
+	}
+
 }
 
 // ProcessIncomingPacket - process the incoming packet to the proxy
