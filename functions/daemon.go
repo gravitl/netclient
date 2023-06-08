@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -140,9 +139,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
-	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 	setNatInfo()
+	slog.Info("host nat info: ", hostNatInfo)
 	slog.Info("configuring netmaker wireguard interface")
 	if len(config.Servers) == 0 {
 		ProxyManagerChan <- &models.HostPeerUpdate{
@@ -462,24 +460,8 @@ func UpdateKeys() error {
 	return nil
 }
 
-func holePunchWgPort() (pubIP net.IP, pubPort int) {
-	for _, server := range config.Servers {
-		portToStun := config.Netclient().ListenPort
-		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
-		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
-			continue
-		}
-		break
-	}
-	return
-}
-
 func setNatInfo() {
-	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
-	if err != nil {
-		slog.Error("failed to get freeport for proxy: ", "error", err)
-		return
-	}
+	portToStun := config.Netclient().ListenPort
 	for _, server := range config.Servers {
 		server := server
 		if hostNatInfo == nil {
