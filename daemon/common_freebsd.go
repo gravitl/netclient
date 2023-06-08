@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
