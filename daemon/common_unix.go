@@ -26,7 +26,7 @@ func signalDaemon(s syscall.Signal) error {
 	if err != nil {
 		return fmt.Errorf("failed to find running process for pid %d -- %w", pid, err)
 	}
-	slog.Info("Sending signal", s, "to PID", p)
+	slog.Info("Sending", "signal", s, "to PID", p)
 	if err := p.Signal(s); err != nil {
 		return fmt.Errorf("%s failed -- %w", s, err)
 	}
