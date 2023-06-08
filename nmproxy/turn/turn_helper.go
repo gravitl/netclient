@@ -228,18 +228,17 @@ func DissolvePeerConnections() {
 		logger.Log(0, "failed to get iface: ", err.Error())
 		return
 	}
-	for _, server := range ncconfig.GetServers() {
-		turnPeers := config.GetCfg().GetAllTurnPeersCfg()
-		for peerPubKey := range turnPeers {
-			err = SignalPeer(server, nm_models.Signal{
-				FromHostPubKey:    iface.Device.PublicKey.String(),
-				ToHostPubKey:      peerPubKey,
-				TurnRelayEndpoint: fmt.Sprintf("%s:%d", iface.Device.PublicKey.String(), iface.Device.ListenPort),
-				Action:            nm_models.Disconnect,
-			})
-			if err != nil {
-				logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
-			}
+
+	turnPeers := config.GetCfg().GetAllTurnPeersCfg()
+	for peerPubKey := range turnPeers {
+		err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
+			FromHostPubKey:    iface.Device.PublicKey.String(),
+			ToHostPubKey:      peerPubKey,
+			TurnRelayEndpoint: fmt.Sprintf("%s:%d", iface.Device.PublicKey.String(), iface.Device.ListenPort),
+			Action:            nm_models.Disconnect,
+		})
+		if err != nil {
+			logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
 		}
 	}
 
