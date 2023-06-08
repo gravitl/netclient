@@ -1,6 +1,9 @@
 package config
 
 import (
+	"context"
+	"sync"
+
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
@@ -284,4 +287,16 @@ func (c *Config) DeletePeerTurnCfg(server, peerKey string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	delete(c.ifaceConfig.turnPeerMap, peerKey)
+}
+
+func dumpProxyConnsInfo(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-DumpSignalChan:
+			GetCfg().Dump()
+		}
+	}
 }
