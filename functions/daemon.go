@@ -124,7 +124,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
-	go nmproxy.Start(ctx, wg)
 	config.SetServerCtx()
 	setNatInfo()
 	slog.Info("host nat info: ", hostNatInfo)
@@ -147,6 +146,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	wg.Add(1)
+	go nmproxy.Start(ctx, wg)
 	networking.StoreServerAddresses(server)
 	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 
 // Start - setups the global cfg for proxy and starts the proxy server
 func Start(ctx context.Context, waitg *sync.WaitGroup) {
-
+	defer logger.Log(0, "Shutting Down Proxy...")
 	defer waitg.Done()
 	config.InitializeCfg()
 	defer config.Reset()
