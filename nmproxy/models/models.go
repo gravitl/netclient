@@ -48,8 +48,6 @@ type Conn struct {
 	ResetConn       func()
 	LocalConn       net.Conn
 	Mutex           *sync.RWMutex
-	NetworkSettings map[string]Settings
-	ServerMap       map[string]struct{}
 }
 
 // RemotePeer - struct remote peer data

@@ -81,10 +81,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		LocalConn:       p.LocalConn,
 		IsRelayed:       isRelayed,
 		RelayedEndpoint: relayTo,
-		NetworkSettings: make(map[string]models.Settings),
-		ServerMap:       make(map[string]struct{}),
 	}
-	connConf.ServerMap[server] = struct{}{}
 	rPeer := models.RemotePeer{
 		PeerKey:   peer.PublicKey.String(),
 		Endpoint:  peerEndpoint,
