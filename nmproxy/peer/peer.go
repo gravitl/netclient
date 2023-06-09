@@ -151,12 +151,3 @@ func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.Host
 		}
 	}
 }
-
-func ResetPeers() {
-	logger.Log(1, "cleaning up proxy peer connections")
-	peerConnMap := config.GetCfg().GetAllProxyPeers()
-	for _, peerI := range peerConnMap {
-		config.GetCfg().RemovePeer(peerI.Key.String())
-		config.GetCfg().GetIface().UpdatePeerEndpoint(peerI.Config.PeerConf)
-	}
-}

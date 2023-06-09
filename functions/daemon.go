@@ -36,10 +36,9 @@ const (
 )
 
 var (
-	Mqclient         mqtt.Client
-	messageCache     = new(sync.Map)
-	ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
-	hostNatInfo      *ncmodels.HostInfo
+	Mqclient     mqtt.Client
+	messageCache = new(sync.Map)
+	hostNatInfo  *ncmodels.HostInfo
 )
 
 type cachedMessage struct {
@@ -128,14 +127,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	setNatInfo()
 	slog.Info("host nat info: ", hostNatInfo)
 	slog.Info("configuring netmaker wireguard interface")
-	if len(config.Servers) == 0 {
-		ProxyManagerChan <- &models.HostPeerUpdate{
-			ProxyUpdate: models.ProxyManagerPayload{
-				Action: models.ProxyDeleteAllPeers,
-			},
-		}
-	}
-
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
