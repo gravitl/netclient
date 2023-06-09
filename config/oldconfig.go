@@ -133,7 +133,6 @@ func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
 	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
-	host.ProxyEnabled = netmakerNode.Proxy
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
 	host.ListenPort = int(netmakerNode.ListenPort)

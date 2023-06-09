@@ -152,7 +152,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
 	return cancel
 }
 

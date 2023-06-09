@@ -377,7 +377,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerIP.String(),
 					hostPubKey,
 					peerPubKey,
-					peerInfo.ProxyListenPort,
+					config.Netclient().ListenPort,
 				); err != nil { // happens v often
 					logger.Log(3, "failed to check for endpoint on peer", peerPubKey, err.Error())
 				}
