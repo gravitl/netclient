@@ -159,5 +159,4 @@ func ResetPeers() {
 		config.GetCfg().RemovePeer(peerI.Key.String())
 		config.GetCfg().GetIface().UpdatePeerEndpoint(peerI.Config.PeerConf)
 	}
-
 }
