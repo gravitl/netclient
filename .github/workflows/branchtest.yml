@@ -28,7 +28,7 @@ jobs:
           repository: gravitl/netmaker
           ref: develop
       - name: check if branch exists
-        id: checkbranch
+        id: getbranch
         run: |
           if git show-ref ${{ github.head_ref}}; then
             echo branch exists
