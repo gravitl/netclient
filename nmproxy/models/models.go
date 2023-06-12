@@ -24,32 +24,25 @@ type PeerConnMap map[string]*Conn
 
 // Proxy - struct for proxy config
 type Proxy struct {
-	PeerPublicKey   wgtypes.Key
-	IsExtClient     bool
-	PeerConf        wgtypes.PeerConfig
-	PeerEndpoint    *net.UDPAddr
-	RemoteConnAddr  *net.UDPAddr
-	LocalConnAddr   *net.UDPAddr
-	TurnConn        net.PacketConn
-	ListenPort      int
-	ProxyListenPort int
-	ProxyStatus     bool
-	UsingTurn       bool
+	PeerPublicKey  wgtypes.Key
+	PeerConf       wgtypes.PeerConfig
+	PeerEndpoint   *net.UDPAddr
+	RemoteConnAddr *net.UDPAddr
+	LocalConnAddr  *net.UDPAddr
+	TurnConn       net.PacketConn
+	UsingTurn      bool
 }
 
 // Conn is a peer Connection configuration
 type Conn struct {
 	// Key is a public key of a remote peer
 	Key             wgtypes.Key
-	IsRelayed       bool
 	RelayedEndpoint *net.UDPAddr
 	Config          Proxy
 	StopConn        func()
 	ResetConn       func()
 	LocalConn       net.Conn
 	Mutex           *sync.RWMutex
-	NetworkSettings map[string]Settings
-	ServerMap       map[string]struct{}
 }
 
 // RemotePeer - struct remote peer data

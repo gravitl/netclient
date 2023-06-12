@@ -19,8 +19,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
-	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
-	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -38,22 +36,13 @@ const (
 )
 
 var (
-	Mqclient         mqtt.Client
-	messageCache     = new(sync.Map)
-	ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
-	hostNatInfo      *ncmodels.HostInfo
+	Mqclient     mqtt.Client
+	messageCache = new(sync.Map)
 )
 
 type cachedMessage struct {
 	Message  string
 	LastSeen time.Time
-}
-
-func startProxy(wg *sync.WaitGroup) context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo)
-	return cancel
 }
 
 // Daemon runs netclient daemon
@@ -81,7 +70,6 @@ func Daemon() {
 	// good to sync up config on daemon start
 	Pull(false)
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
 	httpctx, httpCancel := context.WithCancel(context.Background())
 	httpWg := sync.WaitGroup{}
@@ -93,7 +81,6 @@ func Daemon() {
 			slog.Info("shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
 			}, &wg)
 			httpCancel()
 			httpWg.Wait()
@@ -104,14 +91,10 @@ func Daemon() {
 			slog.Info("received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
 			}, &wg)
 			slog.Info("resetting daemon")
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
-			if !proxy_cfg.GetCfg().ProxyStatus {
-				stopProxy = startProxy(&wg)
-			}
 		}
 	}
 }
@@ -141,17 +124,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
-	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
-	setNatInfo()
+	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort)
 	slog.Info("configuring netmaker wireguard interface")
-	if len(config.Servers) == 0 {
-		ProxyManagerChan <- &models.HostPeerUpdate{
-			ProxyUpdate: models.ProxyManagerPayload{
-				Action: models.ProxyDeleteAllPeers,
-			},
-		}
-	}
-
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
@@ -162,6 +136,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	wg.Add(1)
+	go nmproxy.Start(ctx, wg)
 	networking.StoreServerAddresses(server)
 	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
@@ -175,7 +151,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
 	return cancel
 }
 
@@ -472,24 +448,6 @@ func holePunchWgPort() (pubIP net.IP, pubPort int) {
 		break
 	}
 	return
-}
-
-func setNatInfo() {
-	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
-	if err != nil {
-		slog.Error("failed to get freeport for proxy: ", "error", err)
-		return
-	}
-	for _, server := range config.Servers {
-		server := server
-		if hostNatInfo == nil {
-			hostNatInfo = stun.GetHostNatInfo(
-				server.StunList,
-				config.Netclient().EndpointIP.String(),
-				portToStun,
-			)
-		}
-	}
 }
 
 func cleanUpRoutes() {

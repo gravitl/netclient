@@ -89,7 +89,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 					Endpoint:                    peer.Endpoint,
 					PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
 					AllowedIPs:                  peer.AllowedIPs,
-				}, t.PeerConf, false, peerTurnEndpoint, true)
+				}, t.PeerConf, peerTurnEndpoint, true)
 			}
 
 		}
@@ -133,7 +133,7 @@ func handleDisconnect(signal nm_models.Signal) error {
 	}
 	if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
-		config.GetCfg().DeletePeerTurnCfg(signal.Server, signal.FromHostPubKey)
+		config.GetCfg().DeletePeerTurnCfg(signal.FromHostPubKey)
 		conn.Config.PeerEndpoint = peerEndpoint
 		config.GetCfg().UpdatePeer(&conn)
 		config.GetCfg().ResetPeer(signal.FromHostPubKey)

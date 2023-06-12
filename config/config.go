@@ -91,8 +91,7 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
-		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
+	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
 		restart = true
 	}
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {
@@ -121,7 +120,7 @@ func Netclient() *Config {
 }
 
 // UpdateHostPeersSingleton - updates host peer map in the netclient config
-func UpdateHostPeersSingleton(server string, peerAction models.PeerAction) (isHostInetGW bool) {
+func UpdateHostPeersSingleton(peerAction models.PeerAction) (isHostInetGW bool) {
 	hostPeers := netclient.HostPeers
 	if hostPeers == nil {
 		hostPeers = make(map[string]wgtypes.PeerConfig)
@@ -506,16 +505,6 @@ func CheckConfig() {
 			logger.Log(0, "error getting free port", err.Error())
 		} else {
 			netclient.ListenPort = port
-			saveRequired = true
-		}
-	}
-	if netclient.ProxyListenPort == 0 {
-		logger.Log(0, "setting proxyListenPort")
-		port, err := ncutils.GetFreePort(models.NmProxyPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ProxyListenPort = port
 			saveRequired = true
 		}
 	}

@@ -21,8 +21,6 @@ var (
 
 // Config - struct for proxy config
 type Config struct {
-	HostInfo                proxyModels.HostInfo
-	ProxyStatus             bool
 	mutex                   *sync.RWMutex
 	ifaceConfig             wgIfaceConf
 	metricsThreadDone       context.CancelFunc
@@ -38,8 +36,7 @@ type proxyPeerConn struct {
 // InitializeCfg - intializes all the variables and sets defaults
 func InitializeCfg() {
 	config = &Config{
-		ProxyStatus: true,
-		mutex:       &sync.RWMutex{},
+		mutex: &sync.RWMutex{},
 		ifaceConfig: wgIfaceConf{
 			iface:        nil,
 			turnPeerMap:  make(map[string]proxyModels.TurnPeerCfg),
@@ -83,11 +80,6 @@ func Reset() {
 // GetCfg - fethes Config
 func GetCfg() *Config {
 	return config
-}
-
-// Config.ShouldUseProxy - checks if proxy is running behind NAT
-func (c *Config) ShouldUseProxy() bool {
-	return c.HostInfo.NatType == models.NAT_Types.Asymmetric || c.HostInfo.NatType == models.NAT_Types.Double
 }
 
 // Config.Dump - dumps the proxy peer connections information
