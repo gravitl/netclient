@@ -15,33 +15,24 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
-	isRelayed bool, relayTo *net.UDPAddr, usingTurn bool) error {
+func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, relayTo *net.UDPAddr, usingTurn bool) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
 		d := nm_models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{
-		PeerPublicKey:   peer.PublicKey,
-		IsExtClient:     peerConf.IsExtClient,
-		PeerConf:        peer,
-		ListenPort:      int(peerConf.PublicListenPort),
-		ProxyListenPort: peerConf.ProxyListenPort,
-		ProxyStatus:     peerConf.Proxy || isRelayed,
-		UsingTurn:       usingTurn,
+		PeerPublicKey: peer.PublicKey,
+		PeerConf:      peer,
+		UsingTurn:     usingTurn,
 	}
 	p := proxy.New(c)
 	peerPort := int(peerConf.PublicListenPort)
 	if peerPort == 0 {
 		peerPort = models.NmProxyPort
 	}
-	if peerConf.IsExtClient || !peerConf.Proxy {
-		peerPort = peer.Endpoint.Port
-
-	}
 	peerEndpointIP := peer.Endpoint.IP
-	if isRelayed || usingTurn {
+	if usingTurn {
 		//go server.NmProxyServer.KeepAlive(peer.Endpoint.IP.String(), common.NmProxyPort)
 		if relayTo == nil {
 			return errors.New("relay endpoint is nil")
@@ -75,7 +66,6 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 		StopConn:        p.Close,
 		ResetConn:       p.Reset,
 		LocalConn:       p.LocalConn,
-		IsRelayed:       isRelayed,
 		RelayedEndpoint: relayTo,
 	}
 	rPeer := models.RemotePeer{

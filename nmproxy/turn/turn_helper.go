@@ -89,7 +89,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 					Endpoint:                    peer.Endpoint,
 					PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
 					AllowedIPs:                  peer.AllowedIPs,
-				}, t.PeerConf, false, peerTurnEndpoint, true)
+				}, t.PeerConf, peerTurnEndpoint, true)
 			}
 
 		}
