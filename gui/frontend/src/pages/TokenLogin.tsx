@@ -136,7 +136,11 @@ function TokenLogin() {
             label="Enrollment Key"
             placeholder="Enter enrollment key"
             value={enrollmentKey}
-            onChange={(e) => setEnrollmentKey(e.target.value)}
+            onChange={(e) => {
+              setEnrollmentKey(e.target.value);
+              return true;
+            }}
+            onPaste={() => false}
             error={!isFormValid}
             helperText={isFormValid ? "" : "Enrollment key cannot be empty"}
             inputProps={{ "data-testid": "enrollment-key-inp" }}
@@ -145,6 +149,26 @@ function TokenLogin() {
           <Typography variant="caption">
             *Enrollment key can be acquired from Netmaker server
           </Typography>
+          <input type="text" placeholder="uncontrolled input" />
+          <input
+            type="text"
+            placeholder="controlled input"
+            value={enrollmentKey}
+            onChange={(ev) => {
+              setEnrollmentKey(ev.target.value);
+            }}
+          />
+          <input
+            type="text"
+            placeholder="controlled input with onpaste handler"
+            value={enrollmentKey}
+            onChange={(ev) => {
+              setEnrollmentKey(ev.target.value);
+              return true;
+            }}
+            onPaste={() => true}
+            onInput={() => true}
+          />
         </Grid>
       )}
 
