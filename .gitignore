@@ -13,9 +13,10 @@ netclient.exe
 netclient.yml
 launch.json
 **/vendor/
-gui/build/
 **/node_modules/
 gui/**/dist/
 backup/*
 dist/*
 /.idea
+gui/build/bin
+!gui/build/darwin/
