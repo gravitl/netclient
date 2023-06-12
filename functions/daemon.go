@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
-	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -38,7 +38,6 @@ const (
 var (
 	Mqclient     mqtt.Client
 	messageCache = new(sync.Map)
-	hostNatInfo  *ncmodels.HostInfo
 )
 
 type cachedMessage struct {
@@ -124,8 +123,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	config.SetServerCtx()
-	setNatInfo()
-	slog.Info("host nat info: ", hostNatInfo)
+	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
+	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort)
 	slog.Info("configuring netmaker wireguard interface")
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
@@ -439,18 +438,16 @@ func UpdateKeys() error {
 	return nil
 }
 
-func setNatInfo() {
-	portToStun := config.Netclient().ListenPort
+func holePunchWgPort() (pubIP net.IP, pubPort int) {
 	for _, server := range config.Servers {
-		server := server
-		if hostNatInfo == nil {
-			hostNatInfo = stun.GetHostNatInfo(
-				server.StunList,
-				config.Netclient().EndpointIP.String(),
-				portToStun,
-			)
+		portToStun := config.Netclient().ListenPort
+		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
+		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
+			continue
 		}
+		break
 	}
+	return
 }
 
 func cleanUpRoutes() {
