@@ -1,19 +1,15 @@
 package peer
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/proxy"
-	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/metrics"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -106,45 +102,4 @@ func SetPeersEndpointToProxy(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 		}
 	}
 	return peers
-}
-
-// StartMetricsCollectionForHostPeers - starts metrics collection when host proxy setting is off
-func StartMetricsCollectionForHostPeers(ctx context.Context) {
-	logger.Log(1, "Starting Metrics Thread...")
-	ticker := time.NewTicker(metrics.MetricCollectionInterval)
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Log(1, "Stopping metrics collection...")
-			return
-		case <-ticker.C:
-
-			peersServerMap := config.GetCfg().GetAllPeersIDsAndAddrs()
-			for server, peerMap := range peersServerMap {
-				go collectMetricsForServerPeers(server, peerMap)
-			}
-
-		}
-	}
-}
-
-func collectMetricsForServerPeers(server string, peerIDAndAddrMap nm_models.HostPeerMap) {
-
-	ifacePeers, err := wg.GetPeers(config.GetCfg().GetIface().Name)
-	if err != nil {
-		return
-	}
-	for _, peer := range ifacePeers {
-		if _, ok := peerIDAndAddrMap[peer.PublicKey.String()]; ok {
-			metric := metrics.GetMetric(server, peer.PublicKey.String())
-			metric.NodeConnectionStatus = make(map[string]bool)
-			if peer.Endpoint == nil {
-				continue
-			}
-			metric.LastRecordedLatency = 999
-			metric.TrafficRecieved = metric.TrafficRecieved + peer.ReceiveBytes
-			metric.TrafficSent = metric.TrafficSent + peer.TransmitBytes
-			metrics.UpdateMetric(server, peer.PublicKey.String(), &metric)
-		}
-	}
 }
