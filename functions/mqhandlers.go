@@ -21,6 +21,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -104,6 +105,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	slog.Debug("HostPeerUpdate3")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -173,9 +175,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 	}
 	if config.Netclient().Host.EndpointDetection {
+		slog.Debug("endpoint detection enabled")
 		go handleEndpointDetection(&peerUpdate)
 	} else {
-		logger.Log(0, "endpoint detection disabled")
+		slog.Debug("endpoint detection disabled")
 	}
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
