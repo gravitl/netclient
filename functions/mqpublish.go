@@ -227,22 +227,18 @@ func UpdateHostSettings() error {
 		return errors.New("server config is nil")
 	}
 	if !config.Netclient().IsStatic {
-		if config.Netclient().EndpointIP == nil && hostNatInfo != nil {
-			config.Netclient().EndpointIP = hostNatInfo.PublicIp
+		if config.Netclient().EndpointIP == nil {
+			config.Netclient().EndpointIP = config.HostPublicIP
 		} else {
-			if hostNatInfo != nil && !hostNatInfo.PublicIp.IsUnspecified() && !config.Netclient().EndpointIP.Equal(hostNatInfo.PublicIp) {
-				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", hostNatInfo.PublicIp.String())
-				config.Netclient().EndpointIP = hostNatInfo.PublicIp
+			if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() && !config.Netclient().EndpointIP.Equal(config.HostPublicIP) {
+				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
+				config.Netclient().EndpointIP = config.HostPublicIP
 				publishMsg = true
 			}
 		}
 	}
-	if hostNatInfo != nil && config.Netclient().WgPublicListenPort != hostNatInfo.PubPort {
-		config.Netclient().WgPublicListenPort = hostNatInfo.PubPort
-		publishMsg = true
-	}
-	if len(config.Netclient().Host.NatType) == 0 || config.Netclient().Host.NatType != hostNatInfo.NatType {
-		config.Netclient().Host.NatType = hostNatInfo.NatType
+	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
+		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		publishMsg = true
 	}
 	if server.Is_EE {
