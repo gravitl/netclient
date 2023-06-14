@@ -242,7 +242,7 @@ func DissolvePeerConnections() {
 		err := SignalPeer(ncconfig.CurrServer, nm_models.Signal{
 			FromHostPubKey:    ncconfig.Netclient().PublicKey.String(),
 			ToHostPubKey:      peerPubKey,
-			TurnRelayEndpoint: fmt.Sprintf("%s:%d", ncconfig.Netclient().PublicKey.String(), port),
+			TurnRelayEndpoint: fmt.Sprintf("%s:%d", ncconfig.Netclient().EndpointIP.String(), port),
 			Action:            nm_models.Disconnect,
 		})
 		if err != nil {
