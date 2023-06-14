@@ -229,18 +229,16 @@ func ShouldUseTurn(natType string) bool {
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
 func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")
-	iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
-	if err != nil {
-		logger.Log(0, "failed to get iface: ", err.Error())
-		return
+	port := ncconfig.Netclient().WgPublicListenPort
+	if port == 0 {
+		port = ncconfig.Netclient().ListenPort
 	}
-
 	turnPeers := config.GetCfg().GetAllTurnPeersCfg()
 	for peerPubKey := range turnPeers {
-		err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
-			FromHostPubKey:    iface.Device.PublicKey.String(),
+		err := SignalPeer(ncconfig.CurrServer, nm_models.Signal{
+			FromHostPubKey:    ncconfig.Netclient().PublicKey.String(),
 			ToHostPubKey:      peerPubKey,
-			TurnRelayEndpoint: fmt.Sprintf("%s:%d", iface.Device.PublicKey.String(), iface.Device.ListenPort),
+			TurnRelayEndpoint: fmt.Sprintf("%s:%d", ncconfig.Netclient().EndpointIP.String(), port),
 			Action:            nm_models.Disconnect,
 		})
 		if err != nil {
