@@ -3,6 +3,7 @@ package daemon
 import (
 	"errors"
 	"os"
+	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -28,10 +29,15 @@ func start() error {
 
 // stop - stops daemon
 func stop() error {
-	if _, err := os.Stat("/usr/bin/systemctl"); err == nil {
-		return stopSystemD()
+	host := config.Netclient()
+	if host.DaemonInstalled {
+		if _, err := os.Stat("/usr/bin/systemctl"); err == nil {
+			return stopSystemD()
+		}
+	} else {
+		return signalDaemon(syscall.SIGTERM)
 	}
-	return errors.New("systemd not installed .. daemon not stopped")
+	return nil
 }
 
 // cleanUp - cleans up neclient configs
@@ -46,6 +52,9 @@ func cleanUp() error {
 		if err := removeSystemDServices(); err != nil {
 			faults = faults + err.Error()
 		}
+	} else if err := stop(); err != nil {
+		logger.Log(0, "failed to stop netclient process", err.Error())
+		faults = "failed to stop netclient process: "
 	}
 	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 		logger.Log(1, "Removing netclient configs: ", err.Error())
