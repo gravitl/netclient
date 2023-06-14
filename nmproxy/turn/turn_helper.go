@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -131,14 +132,19 @@ func handleDisconnect(signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
+	if _, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
 		config.GetCfg().DeletePeerTurnCfg(signal.FromHostPubKey)
-		conn.Config.PeerEndpoint = peerEndpoint
-		config.GetCfg().UpdatePeer(&conn)
-		config.GetCfg().ResetPeer(signal.FromHostPubKey)
+		config.GetCfg().RemovePeer(signal.FromHostPubKey)
 	}
-	return nil
+	pubKey, err := wgtypes.ParseKey(signal.FromHostPubKey)
+	if err != nil {
+		return err
+	}
+	return wireguard.UpdatePeer(&wgtypes.PeerConfig{
+		PublicKey: pubKey,
+		Endpoint:  peerEndpoint,
+	})
 }
 
 // WatchPeerConnections - periodically watches peer connections.
