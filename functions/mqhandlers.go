@@ -168,12 +168,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-	// handle endpoint detection
-	if peerUpdate.Host.EndpointDetection != config.Netclient().Host.EndpointDetection {
-		logger.Log(1, "endpoint detection disabled by the server")
-		config.Netclient().Host.EndpointDetection = peerUpdate.Host.EndpointDetection
-		config.WriteServerConfig()
-	}
 	if config.Netclient().Host.EndpointDetection {
 		slog.Debug("endpoint detection enabled")
 		go handleEndpointDetection(&peerUpdate)
