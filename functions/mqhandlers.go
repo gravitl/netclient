@@ -102,6 +102,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	slog.Debug("HostPeerUpdate3")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -139,6 +140,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
+	// endpoint detection always comes from the server
+	config.Netclient().Host.EndpointDetection = peerUpdate.Host.EndpointDetection
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
@@ -162,8 +165,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-
-	go handleEndpointDetection(&peerUpdate)
+	if config.Netclient().Host.EndpointDetection {
+		slog.Debug("endpoint detection enabled")
+		go handleEndpointDetection(&peerUpdate)
+	} else {
+		slog.Debug("endpoint detection disabled")
+	}
 	if proxyCfg.GetCfg().IsProxyRunning() {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		ProxyManagerChan <- &peerUpdate
@@ -270,9 +277,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
+// handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 	hostPubKey := config.Netclient().PublicKey.String()
-	// select best interface for each peer and set it as endpoint
 	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
 	for idx := range peerUpdate.Peers {
 		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
