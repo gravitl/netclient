@@ -123,9 +123,7 @@ func (c *Config) RemovePeer(peerPubKey string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())
-
 		GetCfg().DeletePeerTurnCfg(peerPubKey)
-
 	}
 
 }

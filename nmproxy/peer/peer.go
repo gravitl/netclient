@@ -35,7 +35,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf,
 	if peerPort == 0 {
 		peerPort = models.NmProxyPort
 	}
-	peerEndpointIP := peer.Endpoint.IP
+	var peerEndpointIP net.IP
 	if usingTurn {
 		//go server.NmProxyServer.KeepAlive(peer.Endpoint.IP.String(), common.NmProxyPort)
 		if relayTo == nil {

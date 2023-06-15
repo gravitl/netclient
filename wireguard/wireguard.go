@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	proxy_config "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/peer"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -35,8 +36,10 @@ func SetPeers(replace bool) error {
 // RemovePeers - removes the peers in the list given from the interface
 func RemovePeers(peers []wgtypes.PeerConfig) error {
 	for i := range peers {
+		proxy_config.GetCfg().RemovePeer(peers[i].PublicKey.String())
 		peers[i].Remove = true
 	}
+
 	config := wgtypes.Config{
 		Peers: peers,
 	}

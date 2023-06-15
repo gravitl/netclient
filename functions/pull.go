@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -26,6 +27,7 @@ func Pull(restart bool) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("TOKEN: ", token)
 	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         "/api/v1/host",
@@ -41,7 +43,8 @@ func Pull(restart bool) error {
 		}
 		return err
 	}
-	_ = config.UpdateHostPeers(pullResponse.Peers)
+	rmPeers, _ := config.UpdateHostPeers(pullResponse.Peers)
+	wireguard.RemovePeers(rmPeers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)

@@ -145,7 +145,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
-	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
+	_, isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(false)
 	wireguard.GetInterface().GetPeerRoutes()
