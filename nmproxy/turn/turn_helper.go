@@ -246,5 +246,4 @@ func DissolvePeerConnections() {
 			logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
 		}
 	}
-
 }
