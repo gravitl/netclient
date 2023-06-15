@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
 	"golang.org/x/exp/slog"
@@ -168,6 +170,62 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		time.Sleep(time.Second * 2) // sleep required to avoid race condition
 		ProxyManagerChan <- &peerUpdate
 	}
+
+}
+
+// HostSinglePeerUpdate - mq handler for host single peer update peer/host/<HOSTID>/<SERVERNAME>
+func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	var peerUpdate models.PeerAction
+	var err error
+	if len(config.GetNodes()) == 0 {
+		logger.Log(3, "skipping unwanted peer update, no nodes exist")
+		return
+	}
+	serverName := parseServerFromTopic(msg.Topic())
+	server := config.GetServer(serverName)
+	if server == nil {
+		logger.Log(0, "server ", serverName, " not found in config")
+		return
+	}
+	logger.Log(3, "received peer update for host from: ", serverName)
+	data, err := decryptMsg(serverName, msg.Payload())
+	if err != nil {
+		logger.Log(0, "error decrypting payload", err.Error())
+		return
+	}
+	err = json.Unmarshal([]byte(data), &peerUpdate)
+	if err != nil {
+		logger.Log(0, "error unmarshalling peer data", err.Error())
+		return
+	}
+	logger.Log(0, fmt.Sprintf("#### Single Peer Update: %+v", peerUpdate))
+	for _, peer := range peerUpdate.Peers {
+		log.Println(peer.PublicKey, peer.Endpoint, peer.AllowedIPs)
+	}
+	defer clearRetainedMsg(client, msg.Topic())
+	_ = config.UpdateHostPeers(peerUpdate.Peers)
+	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
+	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
+	currentGW4 := config.GW4Addr
+	currentGW6 := config.GW6Addr
+	wireguard.SetPeers(false)
+	wireguard.GetInterface().GetPeerRoutes()
+	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		logger.Log(0, "error when setting peer routes after peer update", err.Error())
+	}
+	_ = wireguard.GetInterface().ApplyAddrs(true)
+	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
+		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
+	originalGW := currentGW4
+	if originalGW.IP != nil {
+		originalGW = currentGW6
+	}
+	handlePeerInetGateways(
+		gwDetected,
+		isInetGW,
+		gwDelta,
+		&originalGW,
+	)
 
 }
 

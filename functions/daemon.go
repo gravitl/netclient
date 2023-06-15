@@ -316,6 +316,11 @@ func setHostSubscription(client mqtt.Client, server string) {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
+	slog.Info("subscribing to peer updates for", "host", hostID, "server", server)
+	if token := client.Subscribe(fmt.Sprintf("peer/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostSinglePeerUpdate)); token.Wait() && token.Error() != nil {
+		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error)
+		return
+	}
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error)
