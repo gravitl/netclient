@@ -159,11 +159,6 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
-			if err != nil {
-				logger.Log(1, "failed to get iface: ", err.Error())
-				continue
-			}
 			hostPeers := ncconfig.Netclient().HostPeers
 			for _, peer := range hostPeers {
 				if peer.Endpoint == nil {
@@ -192,7 +187,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				// signal peer with the host relay addr for the peer
 				err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
 					Server:            ncconfig.CurrServer,
-					FromHostPubKey:    iface.Device.PublicKey.String(),
+					FromHostPubKey:    ncconfig.Netclient().PublicKey.String(),
 					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
 					ToHostPubKey:      peer.PublicKey.String(),
 					Action:            nm_models.ConnNegotiation,

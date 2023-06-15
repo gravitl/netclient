@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
@@ -60,9 +59,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
 	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
-	// check if interface needs to delta
-	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
-	//nodeCfg.Node = newNode
 	switch newNode.Action {
 	case models.NODE_DELETE:
 		logger.Log(0, "network:", newNode.Network, "received delete request for", newNode.ID.String())
@@ -75,10 +71,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		logger.Log(0, newNode.ID.String(), "was removed from network", newNode.Network)
 		return
-	case models.NODE_FORCE_UPDATE:
-		ifaceDelta = true
-	case models.NODE_NOOP:
-	default:
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
@@ -91,20 +83,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		logger.Log(0, "could not configure netmaker interface", err.Error())
 		return
 	}
-	time.Sleep(time.Second)
-	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
-		doneErr := publishSignal(&newNode, DONE)
-		if doneErr != nil {
-			logger.Log(0, "network:", newNode.Network, "could not notify server to update peers after interface change")
-		} else {
-			logger.Log(0, "network:", newNode.Network, "signalled finished interface update to server")
-		}
-	}
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	return // returning here for testing purposes to avoid consuming old peer updates
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
