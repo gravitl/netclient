@@ -136,8 +136,6 @@ func handleDisconnect(signal nm_models.Signal) error {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
 		config.GetCfg().DeletePeerTurnCfg(signal.FromHostPubKey)
 		config.GetCfg().RemovePeer(signal.FromHostPubKey)
-	} else {
-		return nil
 	}
 	pubKey, err := wgtypes.ParseKey(signal.FromHostPubKey)
 	if err != nil {
