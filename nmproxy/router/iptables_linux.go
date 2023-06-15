@@ -39,11 +39,6 @@ var (
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
 		{
-			rule:  []string{"-j", "DROP"},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
-		},
-		{
 			rule:  []string{"-j", "RETURN"},
 			table: defaultIpTable,
 			chain: netmakerFilterChain,
