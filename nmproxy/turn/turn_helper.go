@@ -145,8 +145,8 @@ func handleDisconnect(signal nm_models.Signal) error {
 	}
 	return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 		PublicKey:  pubKey,
-		UpdateOnly: true,
 		Endpoint:   peerEndpoint,
+		UpdateOnly: true,
 	})
 }
 
