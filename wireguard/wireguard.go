@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"net"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -17,6 +19,9 @@ import (
 func SetPeers(replace bool) error {
 
 	peers := config.Netclient().HostPeers
+	if len(peers) == 0 {
+		return errors.New("no peers to set")
+	}
 	for i := range peers {
 		peer := peers[i]
 		if checkForBetterEndpoint(&peer) {
@@ -69,6 +74,10 @@ func apply(c *wgtypes.Config) error {
 // returns if better endpoint has been calculated for this peer already
 // if so sets it and returns true
 func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
+	if &cache.EndpointCache == nil {
+		slog.Error("endpoint cache not initialized")
+		return false
+	}
 	if endpoint, ok := cache.EndpointCache.Load(fmt.Sprintf("%v", sha1.Sum([]byte(peer.PublicKey.String())))); ok {
 		peer.Endpoint.IP = net.ParseIP(endpoint.(cache.EndpointCacheValue).Endpoint.String())
 		return ok

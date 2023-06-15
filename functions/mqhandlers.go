@@ -204,6 +204,9 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	defer clearRetainedMsg(client, msg.Topic())
 	_ = config.UpdateHostPeers(peerUpdate.Peers)
+	go handleEndpointDetection(&models.HostPeerUpdate{
+		Peers: peerUpdate.Peers,
+	})
 	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
@@ -226,7 +229,6 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
