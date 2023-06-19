@@ -35,14 +35,22 @@ type iptablesManager struct {
 }
 
 var (
+	dropRuleFilter = ruleInfo{
+
+		rule:  []string{"-j", "DROP"},
+		table: defaultIpTable,
+		chain: netmakerFilterChain,
+	}
+
+	dropRuleNat = ruleInfo{
+
+		rule:  []string{"-j", "DROP"},
+		table: defaultNatTable,
+		chain: netmakerNatChain,
+	}
 
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
-		{
-			rule:  []string{"-j", "DROP"},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
-		},
 		{
 			rule:  []string{"-j", "RETURN"},
 			table: defaultIpTable,
@@ -78,7 +86,6 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 			shouldCreateChain = false
 		}
 	}
-
 	if shouldCreateChain {
 		err = iptables.NewChain(table, newChain)
 		if err != nil {
@@ -94,7 +101,13 @@ func (i *iptablesManager) ForwardRule() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	logger.Log(0, "adding forwarding rule")
+
 	iptablesClient := i.ipv4Client
+	// Set the policy To accept on forward chain
+	iptablesClient.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
+	// remove DROP rule if present
+	iptablesClient.DeleteIfExists(dropRuleFilter.table, dropRuleFilter.chain, dropRuleFilter.rule...)
+	iptablesClient.DeleteIfExists(dropRuleNat.table, dropRuleNat.chain, dropRuleNat.rule...)
 	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
 	ruleSpec := []string{"-i", "netmaker", "-j", netmakerFilterChain}
 	ok, err := iptablesClient.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
