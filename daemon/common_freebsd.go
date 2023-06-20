@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -129,6 +130,8 @@ func cleanUp() error {
 	var faults bool
 	if _, err := ncutils.RunCmd("service netclient stop", false); err != nil {
 		faults = true
+		// manually kill the daemon
+		signalDaemon(syscall.SIGTERM)
 	}
 	if err := removeFreebsdDaemon(); err != nil {
 		faults = true

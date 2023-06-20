@@ -60,6 +60,9 @@ func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP,
 			logger.Log(0, "stun transaction failed: ", stunServer.Domain, err.Error())
 			continue
 		}
+		if publicPort == 0 || publicIP == nil || publicIP.IsUnspecified() {
+			continue
+		}
 		break
 	}
 	return
@@ -81,7 +84,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 	// Building binding request with random transaction id.
 	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 	// Sending request to STUN server, waiting for response message.
-	if err := c.Do(message, func(res stun.Event) {
+	err = c.Do(message, func(res stun.Event) {
 		if res.Error != nil {
 			logger.Log(1, "0:stun error: ", res.Error.Error())
 			return
@@ -94,7 +97,8 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		}
 		publicIP = xorAddr.IP
 		publicPort = xorAddr.Port
-	}); err != nil {
+	})
+	if err != nil {
 		logger.Log(1, "2:stun error: ", err.Error())
 	}
 	return
