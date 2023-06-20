@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -53,6 +54,8 @@ func cleanUp() error {
 	var faults bool
 	if _, err := ncutils.RunCmd("launchctl unload /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
 		faults = true
+		// manually kill the daemon
+		signalDaemon(syscall.SIGTERM)
 	}
 	if ncutils.FileExists("/Library/LaunchDaemons/" + MacServiceName + ".plist") {
 		if err := os.Remove("/Library/LaunchDaemons/" + MacServiceName + ".plist"); err != nil {

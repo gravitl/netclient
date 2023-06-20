@@ -159,9 +159,10 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			hostPeers := ncconfig.Netclient().HostPeers
-			for _, peer := range hostPeers {
-				if peer.Endpoint == nil {
+			peers := ncconfig.Netclient().HostPeers
+			for _, peer := range peers {
+
+				if peer.Endpoint == nil || peer.Remove {
 					continue
 				}
 				connected, err := isPeerConnected(peer.PublicKey.String())
