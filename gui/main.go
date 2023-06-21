@@ -20,7 +20,7 @@ var assets embed.FS
 
 var appIcon = GetFileAsBytes("./appicon.png")
 
-var version = "v0.22.03"
+var version = "v0.22.3"
 
 var url = "http://127.0.0.1:8090"
 
