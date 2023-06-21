@@ -14,8 +14,6 @@ import (
 //go:embed windowsdaemon/winsw.exe
 var winswContent embed.FS
 
-const WIN_PATH = "C:\\Program Files (x86)\\Netclient\\"
-
 // RunCmd - runs a local command
 func RunCmd(command string, printerr bool) (string, error) {
 	args := strings.Fields(command)
