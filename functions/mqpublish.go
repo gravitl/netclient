@@ -14,10 +14,12 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 var metricsCache = new(sync.Map)
@@ -218,8 +220,9 @@ func UpdateHostSettings() error {
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
 	var (
-		err        error
-		publishMsg bool
+		err           error
+		publishMsg    bool
+		restartDaemon bool
 	)
 
 	server := config.GetServer(config.CurrServer)
@@ -263,6 +266,8 @@ func UpdateHostSettings() error {
 	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
 		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
 		config.Netclient().ListenPort = localPort
+		// if listen port changes, daemon should be restarted
+		restartDaemon = true
 		publishMsg = true
 	}
 	ip, err := getInterfaces()
@@ -298,6 +303,11 @@ func UpdateHostSettings() error {
 		logger.Log(0, "publishing global host update for endpoint changes")
 		if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 			logger.Log(0, "could not publish endpoint change", err.Error())
+		}
+	}
+	if restartDaemon {
+		if err := daemon.Restart(); err != nil {
+			slog.Error("failed to restart daemon", "error", err)
 		}
 	}
 

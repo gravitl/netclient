@@ -27,7 +27,6 @@ func Pull(restart bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("TOKEN: ", token)
 	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         "/api/v1/host",
