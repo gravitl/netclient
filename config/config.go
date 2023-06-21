@@ -62,6 +62,8 @@ var (
 	WgPublicListenPort int
 	// HostPublicIP - host's public endpoint
 	HostPublicIP net.IP
+	// NatType - host's nat type
+	NatType string
 )
 
 // Config configuration for netclient and host as a whole

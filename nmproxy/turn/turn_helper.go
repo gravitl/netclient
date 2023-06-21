@@ -214,15 +214,6 @@ func isPeerConnected(peerKey string) (connected bool, err error) {
 	return
 }
 
-// ShouldUseTurn - checks the nat type to check if peer needs to use turn for communication
-func ShouldUseTurn(natType string) bool {
-	// if behind  DOUBLE or ASYM Nat type, use turn to reach peer
-	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
-		return true
-	}
-	return false
-}
-
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
 func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")

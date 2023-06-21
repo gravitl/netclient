@@ -123,7 +123,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
+	config.HostPublicIP, config.WgPublicListenPort, config.NatType = holePunchWgPort()
 	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort)
 	slog.Info("configuring netmaker wireguard interface")
 	Pull(false)
@@ -438,10 +438,10 @@ func UpdateKeys() error {
 	return nil
 }
 
-func holePunchWgPort() (pubIP net.IP, pubPort int) {
+func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	for _, server := range config.Servers {
 		portToStun := config.Netclient().ListenPort
-		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
+		pubIP, pubPort, natType = stun.HolePunch(server.StunList, portToStun)
 		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
 			continue
 		}
