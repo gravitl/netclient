@@ -6,7 +6,7 @@ import (
 	"runtime"
 
 	"github.com/gravitl/netclient/config"
-	ncFunctions "github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -24,7 +24,7 @@ var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.18.8"
 
-var url = "http://" + ncFunctions.DEFAULT_HTTP_SERVER_ADDR + ":" + ncFunctions.DEFAULT_HTTP_SERVER_PORT
+var url = "http://" + functions.DEFAULT_HTTP_SERVER_ADDR + ":" + functions.DEFAULT_HTTP_SERVER_PORT
 
 func main() {
 	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
