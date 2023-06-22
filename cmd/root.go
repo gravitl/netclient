@@ -53,10 +53,10 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	config.InitConfig(flags)
-	setupLoging(flags)
+	setupLogging(flags)
 }
 
-func setupLoging(flags *viper.Viper) {
+func setupLogging(flags *viper.Viper) {
 	logLevel := &slog.LevelVar{}
 	replace := func(groups []string, a slog.Attr) slog.Attr {
 		if a.Key == slog.SourceKey {
