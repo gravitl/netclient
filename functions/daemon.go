@@ -122,7 +122,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 // startGoRoutines starts the daemon goroutines
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
-	if _, err := config.ReadNetclientConfig(); err != nil {
+	fileConfig, err := config.ReadNetclientConfig()
+	if err != nil {
 		slog.Error("error reading neclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
@@ -132,12 +133,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+
 	updateConfig := false
-	if config.WgPublicListenPort == 0 {
+	if fileConfig != nil && fileConfig.WgPublicListenPort == 0 {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		updateConfig = true
 	}
-	if !config.Netclient().IsStatic && config.Netclient().EndpointIP == nil {
+	if !config.Netclient().IsStatic && (fileConfig != nil && fileConfig.EndpointIP == nil) {
 		config.Netclient().EndpointIP = config.HostPublicIP
 		updateConfig = true
 	}
