@@ -136,7 +136,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if !config.Netclient().IsStatic {
 		config.Netclient().EndpointIP = config.HostPublicIP
 	}
-	config.WriteNetclientConfig()
+	if err := config.WriteNetclientConfig(); err != nil {
+		slog.Error("error writing endpoint/port netclient config file", "error", err)
+	}
 	setNatInfo()
 	slog.Info("configuring netmaker wireguard interface")
 	if len(config.Servers) == 0 {
