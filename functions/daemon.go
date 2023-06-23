@@ -132,12 +132,19 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
-	config.Netclient().WgPublicListenPort = config.WgPublicListenPort
-	if !config.Netclient().IsStatic {
-		config.Netclient().EndpointIP = config.HostPublicIP
+	updateConfig := false
+	if config.WgPublicListenPort == 0 {
+		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		updateConfig = true
 	}
-	if err := config.WriteNetclientConfig(); err != nil {
-		slog.Error("error writing endpoint/port netclient config file", "error", err)
+	if !config.Netclient().IsStatic && config.Netclient().EndpointIP == nil {
+		config.Netclient().EndpointIP = config.HostPublicIP
+		updateConfig = true
+	}
+	if updateConfig {
+		if err := config.WriteNetclientConfig(); err != nil {
+			slog.Error("error writing endpoint/port netclient config file", "error", err)
+		}
 	}
 	setNatInfo()
 	slog.Info("configuring netmaker wireguard interface")
