@@ -169,7 +169,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
 	networking.StoreServerAddresses(server)
-	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
+	err = routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
 		logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
 	}
