@@ -23,15 +23,15 @@ type Network struct {
 	Server config.Server
 }
 
-const DEFAULT_HTTP_SERVER_PORT = "18095"
-const DEFAULT_HTTP_SERVER_ADDR = "127.0.0.1"
+const DefaultHttpServerPort = "18095"
+const DefaultHttpServerAddr = "127.0.0.1"
 
 func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	if config.Netclient().DisableGUIServer {
 		return
 	}
-	port := DEFAULT_HTTP_SERVER_PORT
+	port := DefaultHttpServerPort
 	if runtime.GOOS != "windows" {
 		p, err := ncutils.GetFreeTCPPort()
 		if err != nil {
@@ -42,7 +42,7 @@ func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		port = p
 	}
-	config.SetGUI(DEFAULT_HTTP_SERVER_ADDR, port)
+	config.SetGUI(DefaultHttpServerAddr, port)
 	config.WriteGUIConfig()
 
 	router := SetupRouter()

@@ -24,7 +24,7 @@ var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.18.8"
 
-var url = "http://" + functions.DEFAULT_HTTP_SERVER_ADDR + ":" + functions.DEFAULT_HTTP_SERVER_PORT
+var url = "http://" + functions.DefaultHttpServerAddr + ":" + functions.DefaultHttpServerPort
 
 func main() {
 	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
