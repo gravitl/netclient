@@ -57,9 +57,10 @@ func initConfig() {
 	setupLoging(flags)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	if err := nc.Create(); err != nil {
-		slog.Error("failed to create interface, is wireguard installed", "error", err)
+		slog.Error("failed to create interface, is wireguard installed?", "error", err)
 		os.Exit(1)
 	}
+	nc.Close()
 }
 
 func setupLoging(flags *viper.Viper) {
