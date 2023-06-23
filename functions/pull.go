@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
@@ -54,7 +55,7 @@ func Pull(restart bool) error {
 	_ = config.WriteNetclientConfig()
 	_ = config.WriteNodeConfig()
 	if restart {
-		logger.Log(3, "restarting daemon")
+		slog.Info("Calling Daemon Restart!!")
 		return daemon.Restart()
 	}
 	return nil

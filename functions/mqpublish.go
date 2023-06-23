@@ -306,20 +306,13 @@ func UpdateHostSettings() error {
 		}
 	}
 	if restartDaemon {
+		slog.Info("Calling Daemon Restart!!")
 		if err := daemon.Restart(); err != nil {
 			slog.Error("failed to restart daemon", "error", err)
 		}
 	}
 
 	return err
-}
-
-// publishes a message to server to update peers on this peer's behalf
-func publishSignal(node *config.Node, signal byte) error {
-	if err := publish(node.Server, fmt.Sprintf("signal/%s/%s", node.Server, node.ID), []byte{signal}, 1); err != nil {
-		return err
-	}
-	return nil
 }
 
 // publishes a blank message to the topic to clear the unwanted retained message

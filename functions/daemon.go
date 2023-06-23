@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
+	proxy_config "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -120,6 +121,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	proxy_config.InitializeCfg()
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort, config.NatType = holePunchWgPort()
 	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort, "nat_type", config.NatType)
@@ -182,7 +184,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
+	opts.SetConnectRetryInterval(time.Second * 4)
 	opts.SetKeepAlive(time.Second * 10)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
@@ -252,8 +254,8 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetConnectRetryInterval(time.Second * 5)
+	opts.SetKeepAlive(time.Second * 30)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		if !publishOnly {
@@ -432,6 +434,7 @@ func UpdateKeys() error {
 		slog.Error("error saving netclient config:", "error", err)
 	}
 	PublishHostUpdate(config.CurrServer, models.UpdateHost)
+	slog.Info("Calling Daemon Restart!!")
 	daemon.Restart()
 	return nil
 }

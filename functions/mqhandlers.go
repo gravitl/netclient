@@ -309,6 +309,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
 		}
+		slog.Info("Calling Daemon Restart!!")
 		if err := daemon.Restart(); err != nil {
 			slog.Error("failed to restart daemon", "error", err)
 		}
@@ -362,7 +363,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerPubKey,
 					config.Netclient().ListenPort,
 				); err != nil { // happens v often
-					slog.Error("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
+					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
 			}
 		}

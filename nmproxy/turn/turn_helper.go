@@ -23,10 +23,10 @@ import (
 var (
 	// PeerSignalCh - channel to recieve peer signals
 	PeerSignalCh = make(chan nm_models.Signal, 50)
-	// PeerConnectionCheckInterval - time interval to check peer connection status
-	PeerConnectionCheckInterval = time.Minute
-	// LastHandShakeThreshold - threshold for considering inactive connection
-	LastHandShakeThreshold = time.Minute * 3
+	// peerConnectionCheckInterval - time interval to check peer connection status
+	peerConnectionCheckInterval = time.Second * 90
+	// lastHandShakeThreshold - threshold for considering inactive connection
+	lastHandShakeThreshold = time.Minute * 3
 )
 
 // WatchPeerSignals - processes the peer signals for any turn updates from peers
@@ -152,7 +152,7 @@ func handleDisconnect(signal nm_models.Signal) error {
 // if connection is bad, host will signal peers to use turn
 func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	t := time.NewTicker(time.Minute)
+	t := time.NewTicker(peerConnectionCheckInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -208,7 +208,7 @@ func isPeerConnected(peerKey string) (connected bool, err error) {
 	if err != nil {
 		return
 	}
-	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
+	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > lastHandShakeThreshold) {
 		connected = true
 	}
 	return

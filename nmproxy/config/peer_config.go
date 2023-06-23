@@ -73,17 +73,23 @@ func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 
 // Config.GetAllProxyPeers - fetches all peers in the network
 func (c *Config) GetAllProxyPeers() models.PeerConnMap {
-	return c.ifaceConfig.proxyPeerMap
+	c.mutex.RLock()
+	peers := c.ifaceConfig.proxyPeerMap
+	c.mutex.RUnlock()
+	return peers
 }
 
 // Config.SavePeer - saves peer to the config
 func (c *Config) SavePeer(connConf *models.Conn) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.ifaceConfig.proxyPeerMap[connConf.Key.String()] = connConf
 }
 
 // Config.GetPeer - fetches the peer by network and pubkey
 func (c *Config) GetPeer(peerPubKey string) (models.Conn, bool) {
-
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	if peerConn, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
 		return *peerConn, found
 	}
@@ -93,7 +99,8 @@ func (c *Config) GetPeer(peerPubKey string) (models.Conn, bool) {
 
 // Config.UpdatePeer - updates peer by network
 func (c *Config) UpdatePeer(updatedPeer *models.Conn) {
-
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if peerConf, found := c.ifaceConfig.proxyPeerMap[updatedPeer.Key.String()]; found {
 		peerConf.Mutex.Lock()
 		c.ifaceConfig.proxyPeerMap[updatedPeer.Key.String()] = updatedPeer
@@ -103,7 +110,8 @@ func (c *Config) UpdatePeer(updatedPeer *models.Conn) {
 
 // Config.ResetPeer - resets the peer connection to proxy
 func (c *Config) ResetPeer(peerKey string) {
-
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerKey]; found {
 		peerConf.Mutex.Lock()
 		peerConf.ResetConn()
@@ -114,7 +122,8 @@ func (c *Config) ResetPeer(peerKey string) {
 
 // Config.RemovePeer - removes the peer from the network peer config
 func (c *Config) RemovePeer(peerPubKey string) {
-
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
 
 		logger.Log(0, "----> Deleting Peer from proxy: ", peerConf.Key.String())
@@ -130,12 +139,15 @@ func (c *Config) RemovePeer(peerPubKey string) {
 
 // Config.SavePeerByHash - saves peer by its publicKey hash to the config
 func (c *Config) SavePeerByHash(peerInfo *models.RemotePeer) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.ifaceConfig.peerHashMap[models.ConvPeerKeyToHash(peerInfo.PeerKey)] = peerInfo
 }
 
 // Config.GetPeerInfoByHash - fetches the peerInfo by its pubKey hash
 func (c *Config) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer, bool) {
-
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	if peerInfo, found := c.ifaceConfig.peerHashMap[peerKeyHash]; found {
 		return *peerInfo, found
 	}
@@ -144,6 +156,8 @@ func (c *Config) GetPeerInfoByHash(peerKeyHash string) (models.RemotePeer, bool)
 
 // Config.DeletePeerHash - deletes peer by its pubkey hash from config
 func (c *Config) DeletePeerHash(peerKey string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	delete(c.ifaceConfig.peerHashMap, models.ConvPeerKeyToHash(peerKey))
 }
 
@@ -153,25 +167,6 @@ func (c *Config) GetInterfaceListenPort() (port int) {
 		port = c.GetIfaceDevice().ListenPort
 	}
 	return
-}
-
-// Config.GetAllPeersIDsAndAddrs - get all peers
-func (c *Config) GetAllPeersIDsAndAddrs() map[string]nm_models.HostPeerMap {
-	return c.ifaceConfig.allPeersConf
-}
-
-// Config.SetPeersIDsAndAddrs - sets the peers in the config
-func (c *Config) SetPeersIDsAndAddrs(server string, peers nm_models.HostPeerMap) {
-	c.ifaceConfig.allPeersConf[server] = peers
-}
-
-// Config.GetPeersIDsAndAddrs - get peer conf
-func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_models.IDandAddr, bool) {
-	if peersIDsAndAddrs, ok := c.ifaceConfig.allPeersConf[server]; ok {
-		return peersIDsAndAddrs[peerKey], ok
-	}
-
-	return make(map[string]nm_models.IDandAddr), false
 }
 
 // Config.SetTurnCfg - sets the turn config
