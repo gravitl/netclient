@@ -38,42 +38,12 @@ jobs:
             echo "netmakerbranch=develop" >> $GITHUB_OUTPUT
           fi
   
-  getserver:
-    runs-on: ubuntu-latest
-    needs: skip-check
-    if: ${{ needs.skip-check.outputs.skip != 'true' }}
-    outputs:
-      netmakerserver: ${{ steps.getserver.outputs.server }}
-    steps:
-      - name: getserver
-        id: getserver
-        run: |
-          server=""
-          for arg in "branch1" "branch2" "branch3" "branch4" "branch5"; do
-            echo checking $arg
-            result=$( ssh root@server.${arg}.clustercat.com '~/branchtesting/check.sh') 
-            echo $result
-            if [ "$result" == "pass" ]
-            then
-              server=$arg
-              break
-            fi
-          done
-          echo server is $server
-          if [ "$server" == "" ]
-          then
-            echo server not set
-            exit 1
-          fi
-          echo "netmakerserver=$server" >> $GITHUB_OUTPUT
-          
   terraform:
-    needs: [getbranch, getserver]
+    needs: getbranch
     uses: gravitl/devops/.github/workflows/terraform.yml@master
     with:
       netclientbranch: ${{ github.head_ref }}
       netmakerbranch: ${{ needs.getbranch.outputs.netmakerbranch }}
-      server: ${{ needs.getserver.outputs.netmakerserver }}
     secrets: inherit
 
 
