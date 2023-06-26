@@ -56,7 +56,7 @@ func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP,
 			IP:   net.ParseIP(""),
 			Port: portToStun,
 		}
-		slog.Info(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
+		slog.Debug(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
 		publicIP, publicPort, err = doStunTransaction(l, s)
 		if err != nil {
 			logger.Log(0, "stun transaction failed: ", stunServer.Domain, err.Error())
@@ -67,7 +67,7 @@ func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP,
 		}
 		break
 	}
-	slog.Info("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort))
+	slog.Debug("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort))
 	return
 }
 

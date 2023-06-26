@@ -122,10 +122,6 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 // startGoRoutines starts the daemon goroutines
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
-	fileConfig, err := config.ReadNetclientConfig()
-	if err != nil {
-		slog.Error("error reading neclient config file", "error", err)
-	}
 	config.UpdateNetclient(*config.Netclient())
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
@@ -135,11 +131,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
 	updateConfig := false
-	if fileConfig != nil && fileConfig.WgPublicListenPort == 0 {
+	if config.Netclient().WgPublicListenPort == 0 {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		updateConfig = true
 	}
-	if !config.Netclient().IsStatic && (fileConfig != nil && fileConfig.EndpointIP == nil) {
+	if config.Netclient() != nil && config.Netclient().EndpointIP == nil {
 		config.Netclient().EndpointIP = config.HostPublicIP
 		updateConfig = true
 	}
@@ -169,7 +165,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
 	networking.StoreServerAddresses(server)
-	err = routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
+	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
 		logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
 	}
