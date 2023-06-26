@@ -180,13 +180,13 @@ func setupMQTT(server *config.Server) error {
 	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
-	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second * 4)
 	opts.SetKeepAlive(time.Second * 10)
-	opts.SetWriteTimeout(time.Minute)
+	//opts.SetWriteTimeout(time.Minute)
+	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		slog.Info("mqtt connect handler")
 		nodes := config.GetNodes()
@@ -197,8 +197,8 @@ func setupMQTT(server *config.Server) error {
 		setHostSubscription(client, server.Name)
 		checkin()
 	})
-	opts.SetOrderMatters(true)
-	opts.SetResumeSubs(true)
+	opts.SetOrderMatters(false)
+	opts.SetResumeSubs(false)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		if ok := resetServerRoutes(); ok {
