@@ -135,7 +135,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		updateConfig = true
 	}
-	if config.Netclient() != nil && config.Netclient().EndpointIP == nil {
+	if config.Netclient().EndpointIP == nil {
 		config.Netclient().EndpointIP = config.HostPublicIP
 		updateConfig = true
 	}
