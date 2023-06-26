@@ -122,6 +122,9 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 // startGoRoutines starts the daemon goroutines
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
+	if _, err := config.ReadNetclientConfig(); err != nil {
+		slog.Error("error reading netclient config file", "error", err)
+	}
 	config.UpdateNetclient(*config.Netclient())
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
