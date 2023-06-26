@@ -313,22 +313,22 @@ func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("subscribing to dns updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("subscribing to all dns updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 }
