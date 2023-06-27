@@ -307,7 +307,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerPubKey,
 					peerInfo.ProxyListenPort,
 				); err != nil { // happens v often
-					slog.Error("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
+					slog.Warn("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
 			}
 		}
