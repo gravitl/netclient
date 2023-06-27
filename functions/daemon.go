@@ -123,7 +123,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
-		slog.Error("error reading neclient config file", "error", err)
+		slog.Error("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
 	if err := config.ReadServerConf(); err != nil {
@@ -132,6 +132,21 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+
+	updateConfig := false
+	if config.Netclient().WgPublicListenPort == 0 {
+		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		updateConfig = true
+	}
+	if config.Netclient().EndpointIP == nil {
+		config.Netclient().EndpointIP = config.HostPublicIP
+		updateConfig = true
+	}
+	if updateConfig {
+		if err := config.WriteNetclientConfig(); err != nil {
+			slog.Error("error writing endpoint/port netclient config file", "error", err)
+		}
+	}
 	setNatInfo()
 	slog.Info("configuring netmaker wireguard interface")
 	if len(config.Servers) == 0 {
@@ -447,14 +462,14 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort() (pubIP net.IP, pubPort int) {
-	for _, server := range config.Servers {
-		portToStun := config.Netclient().ListenPort
-		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
-		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
-			continue
-		}
-		break
+	stunServers := []models.StunServer{
+		{Domain: "stun1.netmaker.io", Port: 3478},
+		{Domain: "stun2.netmaker.io", Port: 3478},
+		{Domain: "stun1.l.google.com", Port: 19302},
+		{Domain: "stun2.l.google.com", Port: 19302},
 	}
+	portToStun := config.Netclient().ListenPort
+	pubIP, pubPort = stun.HolePunch(stunServers, portToStun)
 	return
 }
 
