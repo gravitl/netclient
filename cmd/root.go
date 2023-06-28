@@ -10,7 +10,6 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/slog"
@@ -55,12 +54,6 @@ func initConfig() {
 	flags.BindPFlags(rootCmd.Flags())
 	config.InitConfig(flags)
 	setupLoging(flags)
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	if err := nc.Create(); err != nil {
-		slog.Error("failed to create interface, is wireguard installed?", "error", err)
-		os.Exit(1)
-	}
-	nc.Close()
 }
 
 func setupLoging(flags *viper.Viper) {
