@@ -72,11 +72,11 @@ func Register(token string) error {
 }
 
 func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err error) {
+	var shouldUpdateHost bool
 
 	if len(config.CurrServer) == 0 { // should indicate a first join
 		// do a double check of name and uuid
 		logger.Log(1, "performing first join")
-		var shouldUpdateHost bool
 		if len(host.Name) == 0 {
 			if name, err := os.Hostname(); err == nil {
 				host.Name = name
@@ -97,11 +97,19 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 			host.HostPass = logic.RandomString(32)
 			shouldUpdateHost = true
 		}
-		if shouldUpdateHost {
-			config.UpdateNetclient(*host)
-			config.WriteNetclientConfig()
-			return true, nil
-		}
+	}
+
+	if host.EndpointIP == nil || host.WgPublicListenPort == 0 {
+		publicIp, publicPort := holePunchWgPort()
+		host.EndpointIP = publicIp
+		host.WgPublicListenPort = publicPort
+		shouldUpdateHost = true
+	}
+
+	if shouldUpdateHost {
+		config.UpdateNetclient(*host)
+		config.WriteNetclientConfig()
+		return true, nil
 	}
 	return
 }
