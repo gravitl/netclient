@@ -3,8 +3,10 @@ package main
 import (
 	"embed"
 	"log"
+	"runtime"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -22,15 +24,17 @@ var appIcon = GetFileAsBytes("./appicon.png")
 
 var version = "v0.20.3"
 
-var url = "http://127.0.0.1:8090"
+var url = "http://" + functions.DefaultHttpServerAddr + ":" + functions.DefaultHttpServerPort
 
 func main() {
 	log.Println("staring netclient gui version: ", version) // temp.. version should be displayed in about dialog
-	http, err := config.ReadGUIConfig()
-	if err != nil {
-		logger.FatalLog("error reading gui config", err.Error())
+	if runtime.GOOS != "windows" {
+		http, err := config.ReadGUIConfig()
+		if err != nil {
+			logger.FatalLog("error reading gui config", err.Error())
+		}
+		url = "http://" + http.Address + ":" + http.Port
 	}
-	url = "http://" + http.Address + ":" + http.Port
 	// Create an instance of the guiApp structure
 	guiApp := NewApp()
 	guiApp.GoGetNetclientConfig()
@@ -68,7 +72,7 @@ func main() {
 	}
 
 	// Create application with options
-	err = wails.Run(appOptions)
+	err := wails.Run(appOptions)
 
 	if err != nil {
 		println("Error:", err.Error())

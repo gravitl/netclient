@@ -125,6 +125,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
+	turn.ResetCh <- struct{}{}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
@@ -140,8 +141,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	// endpoint detection always comes from the server
-	config.Netclient().Host.EndpointDetection = peerUpdate.Host.EndpointDetection
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
@@ -165,7 +164,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-	if config.Netclient().Host.EndpointDetection {
+	if peerUpdate.EndpointDetection {
 		slog.Debug("endpoint detection enabled")
 		go handleEndpointDetection(&peerUpdate)
 	} else {
@@ -307,7 +306,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerPubKey,
 					peerInfo.ProxyListenPort,
 				); err != nil { // happens v often
-					slog.Error("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
+					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
 			}
 		}

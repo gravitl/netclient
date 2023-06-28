@@ -31,7 +31,7 @@ const (
 	// MacAppDataPath - mac path
 	MacAppDataPath = "/Applications/Netclient/"
 	// WindowsAppDataPath - windows path
-	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
+	WindowsAppDataPath = "C:\\Program Files\\Netclient\\"
 	// Timeout timelimit for obtaining/releasing lockfile
 	Timeout = time.Second * 5
 	// ConfigLockfile lockfile to control access to config file
