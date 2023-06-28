@@ -355,7 +355,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
-			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", token.Error)
+			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", token.Error())
 		}
 		return
 	}
@@ -417,7 +417,7 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 		if token.Error() == nil {
 			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
-			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", token.Error)
+			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", token.Error())
 		}
 		ok = false
 	} // peer updates belong to host now
@@ -432,7 +432,7 @@ func unsubscribeHost(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("removing subscription for host peer updates", "host", hostID, "server", server)
 	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("removing subscription for host updates", "host", hostID, "server", server)
