@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -22,19 +23,26 @@ type Network struct {
 	Server config.Server
 }
 
+const DefaultHttpServerPort = "18095"
+const DefaultHttpServerAddr = "127.0.0.1"
+
 func HttpServer(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	if config.Netclient().DisableGUIServer {
 		return
 	}
-	port, err := ncutils.GetFreeTCPPort()
-	if err != nil {
-		logger.Log(0, "failed to get free port", err.Error())
-		logger.Log(0, "unable to start http server", "exiting")
-		logger.Log(0, "netclient-gui will not be available")
-		return
+	port := DefaultHttpServerPort
+	if runtime.GOOS != "windows" {
+		p, err := ncutils.GetFreeTCPPort()
+		if err != nil {
+			logger.Log(0, "failed to get free port", err.Error())
+			logger.Log(0, "unable to start http server", "exiting")
+			logger.Log(0, "netclient-gui will not be available")
+			return
+		}
+		port = p
 	}
-	config.SetGUI("127.0.0.1", port)
+	config.SetGUI(DefaultHttpServerAddr, port)
 	config.WriteGUIConfig()
 
 	router := SetupRouter()
