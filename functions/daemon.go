@@ -226,7 +226,7 @@ func setupMQTT(server *config.Server) error {
 		setHostSubscription(client, server.Name)
 		checkin()
 	})
-	opts.SetOrderMatters(true)
+	opts.SetOrderMatters(false)
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
