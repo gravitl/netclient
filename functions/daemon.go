@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -129,11 +130,18 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	updateConfig := false
+	if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
+		log.Fatal("no free ports available for use by netclient")
+	} else if freeport != config.Netclient().ListenPort {
+		slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
+		config.Netclient().ListenPort = freeport
+		updateConfig = true
+	}
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
-	updateConfig := false
 	if config.Netclient().WgPublicListenPort == 0 {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		updateConfig = true
