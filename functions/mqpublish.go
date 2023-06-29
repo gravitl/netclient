@@ -263,16 +263,15 @@ func UpdateHostSettings() error {
 	ifacename := ncutils.GetInterfaceName()
 	var proxylistenPort int
 	var proxypublicport int
-	if config.Netclient().ProxyEnabled {
-		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
-		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
-		if proxylistenPort == 0 {
-			proxylistenPort = models.NmProxyPort
-		}
-		if proxypublicport == 0 {
-			proxypublicport = models.NmProxyPort
-		}
+	proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
+	proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
+	if proxylistenPort == 0 {
+		proxylistenPort = models.NmProxyPort
 	}
+	if proxypublicport == 0 {
+		proxypublicport = models.NmProxyPort
+	}
+
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
@@ -283,19 +282,18 @@ func UpdateHostSettings() error {
 		restartDaemon = true
 		publishMsg = true
 	}
-	if config.Netclient().ProxyEnabled {
 
-		if config.Netclient().ProxyListenPort != proxylistenPort {
-			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
-			config.Netclient().ProxyListenPort = proxylistenPort
-			publishMsg = true
-		}
-		if config.Netclient().PublicListenPort != proxypublicport {
-			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
-			config.Netclient().PublicListenPort = proxypublicport
-			publishMsg = true
-		}
+	if config.Netclient().ProxyListenPort != proxylistenPort {
+		logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
+		config.Netclient().ProxyListenPort = proxylistenPort
+		publishMsg = true
 	}
+	if config.Netclient().PublicListenPort != proxypublicport {
+		logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
+		config.Netclient().PublicListenPort = proxypublicport
+		publishMsg = true
+	}
+
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
