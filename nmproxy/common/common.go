@@ -15,7 +15,7 @@ const (
 	// MacAppDataPath - mac path
 	MacAppDataPath = "/Applications/Netclient/"
 	// WindowsAppDataPath - windows path
-	WindowsAppDataPath = "C:\\Program Files\\Netclient\\"
+	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
 )
 
 // RunCmd - runs a local command
