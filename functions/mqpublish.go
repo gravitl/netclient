@@ -14,11 +14,13 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 var metricsCache = new(sync.Map)
@@ -219,8 +221,9 @@ func UpdateHostSettings() error {
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
 	var (
-		err        error
-		publishMsg bool
+		err           error
+		publishMsg    bool
+		restartDaemon bool
 	)
 
 	server := config.GetServer(config.CurrServer)
@@ -260,44 +263,37 @@ func UpdateHostSettings() error {
 	ifacename := ncutils.GetInterfaceName()
 	var proxylistenPort int
 	var proxypublicport int
-	if config.Netclient().ProxyEnabled {
-		proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
-		proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
-		if proxylistenPort == 0 {
-			proxylistenPort = models.NmProxyPort
-		}
-		if proxypublicport == 0 {
-			proxypublicport = models.NmProxyPort
-		}
+	proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
+	proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
+	if proxylistenPort == 0 {
+		proxylistenPort = models.NmProxyPort
 	}
+	if proxypublicport == 0 {
+		proxypublicport = models.NmProxyPort
+	}
+
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
 	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
 		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
 		config.Netclient().ListenPort = localPort
+		// if listen port changes, daemon should be restarted
+		restartDaemon = true
 		publishMsg = true
 	}
-	if config.Netclient().ProxyEnabled {
 
-		if config.Netclient().ProxyListenPort != proxylistenPort {
-			logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
-			config.Netclient().ProxyListenPort = proxylistenPort
-			publishMsg = true
-		}
-		if config.Netclient().PublicListenPort != proxypublicport {
-			logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
-			config.Netclient().PublicListenPort = proxypublicport
-			publishMsg = true
-		}
-	}
-	if !config.Netclient().ProxyEnabledSet && proxyCfg.GetCfg().ShouldUseProxy() &&
-		!config.Netclient().ProxyEnabled && !proxyCfg.NatAutoSwitchDone() {
-		logger.Log(0, "Host is behind NAT, enabling proxy...")
-		proxyCfg.SetNatAutoSwitch()
-		config.Netclient().ProxyEnabled = true
+	if config.Netclient().ProxyListenPort != proxylistenPort {
+		logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
+		config.Netclient().ProxyListenPort = proxylistenPort
 		publishMsg = true
 	}
+	if config.Netclient().PublicListenPort != proxypublicport {
+		logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
+		config.Netclient().PublicListenPort = proxypublicport
+		publishMsg = true
+	}
+
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
@@ -331,6 +327,11 @@ func UpdateHostSettings() error {
 		logger.Log(0, "publishing global host update for endpoint changes")
 		if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 			logger.Log(0, "could not publish endpoint change", err.Error())
+		}
+	}
+	if restartDaemon {
+		if err := daemon.Restart(); err != nil {
+			slog.Error("failed to restart daemon", "error", err)
 		}
 	}
 
