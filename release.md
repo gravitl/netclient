@@ -1,16 +1,18 @@
 # Netclient v0.20.3
 
 ## Whats New
-
-
-
+- Moved to new licensing server for self-hosted
+- STUN removed from netmaker server to improve memory performance
+- Added DB caching to drastically reduce read/writes from disk
 
 ## What's Fixed
-- udp holepunching improvement
-- client version number displayed correctly in ui
-- docker netclient use as gateway 
-
-
+- Major memory leak resolved due to STUN
+- Issues with netclient ports on daemon restart
+- Windows GUI unable to find netclient backend
+- Major scalability fixes - Can now scale to hundreds of hosts with low resources
+- Resolved ACL panic
+- Reverted blocking creation of Ingress with NAT
+     
 ## known issues
 - netclient-gui (windows) will display an erroneous error dialog when joining a network (can be ignored)
 - netclient-gui will continously display error dialog if netmaker server is offline
