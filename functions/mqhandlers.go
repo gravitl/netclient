@@ -146,7 +146,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	currentGW6 := config.GW6Addr
 	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
-	_ = wireguard.SetPeers(false)
+	_ = wireguard.SetPeers(true)
 	wireguard.GetInterface().GetPeerRoutes()
 	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		slog.Warn("error when setting peer routes after peer update", "error", err)
@@ -268,7 +268,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			return
 		}
 
-		if err = wireguard.SetPeers(false); err == nil {
+		if err = wireguard.SetPeers(true); err == nil {
 			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 				slog.Error("error when setting peer routes after host update", "error", err)
 			}
