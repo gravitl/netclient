@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -57,6 +58,7 @@ func UpdatePeer(p *wgtypes.PeerConfig) error {
 }
 
 func apply(c *wgtypes.Config) error {
+	slog.Debug("applying wireguard config")
 	wg, err := wgctrl.New()
 	if err != nil {
 		return fmt.Errorf("wgctrl %w", err)

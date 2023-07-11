@@ -52,6 +52,7 @@ func (nc *NCIface) Close() {
 
 // NCIface.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
 func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
+	slog.Debug("adding addresses to netmaker interface")
 	ifconfig, err := exec.LookPath("ifconfig")
 	if err != nil {
 		logger.Log(0, "failed to locate ifconfig", err.Error())
@@ -90,6 +91,7 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 
 // NCIface.SetMTU - set MTU for netmaker interface
 func (nc *NCIface) SetMTU() error {
+	slog.Debug("setting mtu for netmaker interface")
 	ifconfig, err := exec.LookPath("ifconfig")
 	if err != nil {
 		logger.Log(0, "failed to locate ifconfig", err.Error())
