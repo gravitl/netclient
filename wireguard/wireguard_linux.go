@@ -83,22 +83,22 @@ func (l *netLink) Close() error {
 func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 	l, err := netlink.LinkByName(nc.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to locate link %w", err)
 	}
 	if !addOnlyRoutes {
 		currentAddrs, err := netlink.AddrList(l, 0)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to list addresses %w", err)
 		}
 		routes, err := netlink.RouteList(l, 0)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to list routes %w", err)
 		}
 
 		for i := range routes {
 			err = netlink.RouteDel(&routes[i])
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to delete route %w", err)
 			}
 		}
 
@@ -106,7 +106,7 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 			for i := range currentAddrs {
 				err = netlink.AddrDel(l, &currentAddrs[i])
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to delete address %w", err)
 				}
 			}
 		}

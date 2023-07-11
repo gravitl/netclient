@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"fmt"
 	"net"
 	"sync"
 
@@ -85,10 +86,10 @@ func (n *NCIface) Configure() error {
 	logger.Log(0, "adding addresses to netmaker interface")
 	n.GetPeerRoutes()
 	if err := n.ApplyAddrs(false); err != nil {
-		return err
+		return fmt.Errorf("Configure apply address %w", err)
 	}
 	if err := n.SetMTU(); err != nil {
-		return err
+		return fmt.Errorf("Configure set MTU %w", err)
 	}
 	return apply(&n.Config)
 }
