@@ -3,10 +3,12 @@ package stun
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/gravitl/netmaker/logger"
 	nmmodels "github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 	"gortc.io/stun"
 )
 
@@ -63,6 +65,7 @@ func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP,
 		}
 		break
 	}
+	slog.Debug("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort))
 	return
 }
 

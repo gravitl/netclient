@@ -270,6 +270,7 @@ func UpdateHostSettings() error {
 		restartDaemon = true
 		publishMsg = true
 	}
+
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
@@ -306,7 +307,6 @@ func UpdateHostSettings() error {
 		}
 	}
 	if restartDaemon {
-		slog.Info("Calling Daemon Restart!!")
 		if err := daemon.Restart(); err != nil {
 			slog.Error("failed to restart daemon", "error", err)
 		}

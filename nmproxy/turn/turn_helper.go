@@ -27,6 +27,8 @@ var (
 	peerConnectionCheckInterval = time.Second * 90
 	// lastHandShakeThreshold - threshold for considering inactive connection
 	lastHandShakeThreshold = time.Minute * 3
+	// ResetCh - channel to notify for reset timer for peer connection check
+	ResetCh = make(chan struct{}, 2)
 )
 
 // WatchPeerSignals - processes the peer signals for any turn updates from peers
@@ -158,6 +160,10 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-ResetCh:
+			if t != nil {
+				t.Reset(peerConnectionCheckInterval)
+			}
 		case <-t.C:
 			peers := ncconfig.Netclient().HostPeers
 			for _, peer := range peers {

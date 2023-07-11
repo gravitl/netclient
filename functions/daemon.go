@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -115,21 +116,49 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
-		slog.Error("error reading neclient config file", "error", err)
+		slog.Error("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
-	proxy_config.InitializeCfg()
 	config.SetServerCtx()
+	proxy_config.InitializeCfg()
 	config.HostPublicIP, config.WgPublicListenPort, config.NatType = holePunchWgPort()
 	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort, "nat_type", config.NatType)
+	updateConfig := false
+	if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
+		log.Fatal("no free ports available for use by netclient")
+	} else if freeport != config.Netclient().ListenPort {
+		slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
+		config.Netclient().ListenPort = freeport
+		updateConfig = true
+	}
+	if config.Netclient().WgPublicListenPort == 0 {
+		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		updateConfig = true
+	}
+	if config.Netclient().EndpointIP == nil {
+		config.Netclient().EndpointIP = config.HostPublicIP
+		updateConfig = true
+	}
+	if updateConfig {
+		if err := config.WriteNetclientConfig(); err != nil {
+			slog.Error("error writing endpoint/port netclient config file", "error", err)
+		}
+	}
 	slog.Info("configuring netmaker wireguard interface")
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	nc.Configure()
+	if err := nc.Create(); err != nil {
+		slog.Error("error creating netclient interface", "error", err)
+		os.Exit(1)
+	}
+	if err := nc.Configure(); err != nil {
+		slog.Error("error configuring netclient interface", "error", err)
+		nc.Close()
+		os.Exit(1)
+	}
 	wireguard.SetPeers(true)
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
@@ -198,7 +227,7 @@ func setupMQTT(server *config.Server) error {
 		checkin()
 	})
 	opts.SetOrderMatters(false)
-	opts.SetResumeSubs(false)
+	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		if ok := resetServerRoutes(); ok {
@@ -294,7 +323,7 @@ func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	logger.Log(3, fmt.Sprintf("subscribed to host single peer updates  peer/host/%s/%s", hostID.String(), server))
@@ -309,17 +338,17 @@ func setHostSubscription(client mqtt.Client, server string) {
 	}
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("subscribing to dns updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("subscribing to all dns updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 
@@ -332,7 +361,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
-			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", token.Error)
+			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", token.Error())
 		}
 		return
 	}
@@ -394,7 +423,7 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 		if token.Error() == nil {
 			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
-			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", token.Error)
+			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", token.Error())
 		}
 		ok = false
 	} // peer updates belong to host now
@@ -409,7 +438,7 @@ func unsubscribeHost(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("removing subscription for host peer updates", "host", hostID, "server", server)
 	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
-		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error)
+		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("removing subscription for host updates", "host", hostID, "server", server)
@@ -440,14 +469,14 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
-	for _, server := range config.Servers {
-		portToStun := config.Netclient().ListenPort
-		pubIP, pubPort, natType = stun.HolePunch(server.StunList, portToStun)
-		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
-			continue
-		}
-		break
+	stunServers := []models.StunServer{
+		{Domain: "stun1.netmaker.io", Port: 3478},
+		{Domain: "stun2.netmaker.io", Port: 3478},
+		{Domain: "stun1.l.google.com", Port: 19302},
+		{Domain: "stun2.l.google.com", Port: 19302},
 	}
+	portToStun := config.Netclient().ListenPort
+	pubIP, pubPort, natType = stun.HolePunch(stunServers, portToStun)
 	return
 }
 
