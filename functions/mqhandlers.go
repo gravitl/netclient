@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
@@ -59,10 +58,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
-	slog.Info("received node update", "node", newNode.ID, "network", newNode.Network)
-	// check if interface needs to delta
-	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
-	//nodeCfg.Node = newNode
+	logger.Log(0, "network:", newNode.Network, "received message to update node "+newNode.ID.String())
 	switch newNode.Action {
 	case models.NODE_DELETE:
 		slog.Info("received delete request for", "node", newNode.ID, "network", newNode.Network)
@@ -75,10 +71,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		slog.Info("node was deleted", "node", newNode.ID, "network", newNode.Network)
 		return
-	case models.NODE_FORCE_UPDATE:
-		ifaceDelta = true
-	case models.NODE_NOOP:
-	default:
 	}
 	// Save new config
 	newNode.Action = models.NODE_NOOP
@@ -91,20 +83,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("could not configure netmaker interface", "error", err)
 		return
 	}
-	time.Sleep(time.Second)
-	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
-		doneErr := publishSignal(&newNode, DONE)
-		if doneErr != nil {
-			slog.Warn("could not notify server to update peers after interface change", "network:", newNode.Network, "error", doneErr)
-		} else {
-			slog.Info("signalled finished interface update to server", "network", newNode.Network)
-		}
-	}
 }
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	return // returning here for testing purposes to avoid consuming old peer updates
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -142,12 +124,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	// endpoint detection always comes from the server
-	config.Netclient().Host.EndpointDetection = peerUpdate.Host.EndpointDetection
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
 	currentGW4 := config.GW4Addr
 	currentGW6 := config.GW6Addr
-	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
+	_, isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(false)
 	wireguard.GetInterface().GetPeerRoutes()
@@ -167,8 +147,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-
-	go handleEndpointDetection(&peerUpdate)
+	if config.GetServer(config.CurrServer).EndpointDetection {
+		go handleEndpointDetection(&peerUpdate)
+	}
 
 }
 
@@ -228,7 +209,6 @@ func HostSinglePeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-
 }
 
 func firewallUpdate(client mqtt.Client, msg mqtt.Message) {
@@ -329,6 +309,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
 		}
+		slog.Info("Calling Daemon Restart!!")
 		if err := daemon.Restart(); err != nil {
 			slog.Error("failed to restart daemon", "error", err)
 		}
@@ -382,7 +363,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerPubKey,
 					config.Netclient().ListenPort,
 				); err != nil { // happens v often
-					slog.Error("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
+					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
 			}
 		}

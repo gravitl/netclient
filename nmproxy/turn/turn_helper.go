@@ -23,10 +23,10 @@ import (
 var (
 	// PeerSignalCh - channel to recieve peer signals
 	PeerSignalCh = make(chan nm_models.Signal, 50)
-	// PeerConnectionCheckInterval - time interval to check peer connection status
-	PeerConnectionCheckInterval = time.Minute
-	// LastHandShakeThreshold - threshold for considering inactive connection
-	LastHandShakeThreshold = time.Minute * 3
+	// peerConnectionCheckInterval - time interval to check peer connection status
+	peerConnectionCheckInterval = time.Second * 90
+	// lastHandShakeThreshold - threshold for considering inactive connection
+	lastHandShakeThreshold = time.Minute * 3
 )
 
 // WatchPeerSignals - processes the peer signals for any turn updates from peers
@@ -134,7 +134,7 @@ func handleDisconnect(signal nm_models.Signal) error {
 	}
 	if _, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
-		config.GetCfg().DeletePeerTurnCfg(signal.Server, signal.FromHostPubKey)
+		config.GetCfg().DeletePeerTurnCfg(signal.FromHostPubKey)
 		config.GetCfg().RemovePeer(signal.FromHostPubKey)
 	}
 	pubKey, err := wgtypes.ParseKey(signal.FromHostPubKey)
@@ -152,18 +152,13 @@ func handleDisconnect(signal nm_models.Signal) error {
 // if connection is bad, host will signal peers to use turn
 func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	t := time.NewTicker(time.Minute)
+	t := time.NewTicker(peerConnectionCheckInterval)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
-			if err != nil {
-				logger.Log(1, "failed to get iface: ", err.Error())
-				continue
-			}
 			peers := ncconfig.Netclient().HostPeers
 			for _, peer := range peers {
 
@@ -193,7 +188,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				// signal peer with the host relay addr for the peer
 				err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
 					Server:            ncconfig.CurrServer,
-					FromHostPubKey:    iface.Device.PublicKey.String(),
+					FromHostPubKey:    ncconfig.Netclient().PublicKey.String(),
 					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
 					ToHostPubKey:      peer.PublicKey.String(),
 					Action:            nm_models.ConnNegotiation,
@@ -213,19 +208,10 @@ func isPeerConnected(peerKey string) (connected bool, err error) {
 	if err != nil {
 		return
 	}
-	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
+	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > lastHandShakeThreshold) {
 		connected = true
 	}
 	return
-}
-
-// ShouldUseTurn - checks the nat type to check if peer needs to use turn for communication
-func ShouldUseTurn(natType string) bool {
-	// if behind  DOUBLE or ASYM Nat type, use turn to reach peer
-	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
-		return true
-	}
-	return false
 }
 
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
@@ -235,7 +221,6 @@ func DissolvePeerConnections() {
 	if port == 0 {
 		port = ncconfig.Netclient().ListenPort
 	}
-
 	turnPeers := config.GetCfg().GetAllTurnPeersCfg()
 	for peerPubKey := range turnPeers {
 		err := SignalPeer(ncconfig.CurrServer, nm_models.Signal{
@@ -248,5 +233,4 @@ func DissolvePeerConnections() {
 			logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
 		}
 	}
-
 }

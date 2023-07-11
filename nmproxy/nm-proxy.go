@@ -17,7 +17,6 @@ import (
 func Start(ctx context.Context, waitg *sync.WaitGroup) {
 	defer logger.Log(0, "Shutting Down Proxy...")
 	defer waitg.Done()
-	config.InitializeCfg()
 	defer config.Reset()
 	wgIface, err := wg.GetWgIface(ncutils.GetInterfaceName())
 	if err != nil {

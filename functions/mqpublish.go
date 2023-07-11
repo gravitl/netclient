@@ -14,10 +14,12 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 var metricsCache = new(sync.Map)
@@ -218,8 +220,9 @@ func UpdateHostSettings() error {
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
 	var (
-		err        error
-		publishMsg bool
+		err           error
+		publishMsg    bool
+		restartDaemon bool
 	)
 
 	server := config.GetServer(config.CurrServer)
@@ -241,6 +244,10 @@ func UpdateHostSettings() error {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		publishMsg = true
 	}
+	if config.NatType != "" && config.Netclient().NatType != config.NatType {
+		config.Netclient().NatType = config.NatType
+		publishMsg = true
+	}
 	if server.Is_EE {
 		serverNodes := config.GetNodes()
 		for _, node := range serverNodes {
@@ -259,6 +266,8 @@ func UpdateHostSettings() error {
 	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
 		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
 		config.Netclient().ListenPort = localPort
+		// if listen port changes, daemon should be restarted
+		restartDaemon = true
 		publishMsg = true
 	}
 	ip, err := getInterfaces()
@@ -296,16 +305,14 @@ func UpdateHostSettings() error {
 			logger.Log(0, "could not publish endpoint change", err.Error())
 		}
 	}
+	if restartDaemon {
+		slog.Info("Calling Daemon Restart!!")
+		if err := daemon.Restart(); err != nil {
+			slog.Error("failed to restart daemon", "error", err)
+		}
+	}
 
 	return err
-}
-
-// publishes a message to server to update peers on this peer's behalf
-func publishSignal(node *config.Node, signal byte) error {
-	if err := publish(node.Server, fmt.Sprintf("signal/%s/%s", node.Server, node.ID), []byte{signal}, 1); err != nil {
-		return err
-	}
-	return nil
 }
 
 // publishes a blank message to the topic to clear the unwanted retained message

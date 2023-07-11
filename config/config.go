@@ -62,6 +62,8 @@ var (
 	WgPublicListenPort int
 	// HostPublicIP - host's public endpoint
 	HostPublicIP net.IP
+	// NatType - host's nat type
+	NatType string
 )
 
 // Config configuration for netclient and host as a whole
@@ -141,9 +143,15 @@ func UpdateHostPeersSingleton(peerAction models.PeerAction) (isHostInetGW bool) 
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
+func UpdateHostPeers(peers []wgtypes.PeerConfig) (rmPeers []wgtypes.PeerConfig, isHostInetGW bool) {
+	for i := len(peers) - 1; i >= 0; i-- {
+		if peers[i].Remove {
+			rmPeers = append(rmPeers, peers[i])
+			peers = append(peers[:i], peers[i+1:]...)
+		}
+	}
 	netclient.HostPeers = convPeersToMap(peers)
-	return detectOrFilterGWPeers(netclient.HostPeers)
+	return rmPeers, detectOrFilterGWPeers(netclient.HostPeers)
 }
 
 // GetHostPeerList - gets the combined list of peers for the host

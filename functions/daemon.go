@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
+	proxy_config "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -67,8 +68,6 @@ func Daemon() {
 	if err != nil {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
-	// good to sync up config on daemon start
-	Pull(false)
 	cancel := startGoRoutines(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
 	httpctx, httpCancel := context.WithCancel(context.Background())
@@ -122,9 +121,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	proxy_config.InitializeCfg()
 	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
-	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort)
+	config.HostPublicIP, config.WgPublicListenPort, config.NatType = holePunchWgPort()
+	slog.Info("Host info", "publicIP", config.HostPublicIP.String(), "port", config.WgPublicListenPort, "nat_type", config.NatType)
 	slog.Info("configuring netmaker wireguard interface")
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
@@ -180,13 +180,13 @@ func setupMQTT(server *config.Server) error {
 	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
-	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
+	opts.SetConnectRetryInterval(time.Second * 4)
 	opts.SetKeepAlive(time.Second * 10)
-	opts.SetWriteTimeout(time.Minute)
+	//opts.SetWriteTimeout(time.Minute)
+	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		slog.Info("mqtt connect handler")
 		nodes := config.GetNodes()
@@ -197,8 +197,8 @@ func setupMQTT(server *config.Server) error {
 		setHostSubscription(client, server.Name)
 		checkin()
 	})
-	opts.SetOrderMatters(true)
-	opts.SetResumeSubs(true)
+	opts.SetOrderMatters(false)
+	opts.SetResumeSubs(false)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		if ok := resetServerRoutes(); ok {
@@ -254,8 +254,8 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetConnectRetryInterval(time.Second * 5)
+	opts.SetKeepAlive(time.Second * 30)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		if !publishOnly {
@@ -434,14 +434,15 @@ func UpdateKeys() error {
 		slog.Error("error saving netclient config:", "error", err)
 	}
 	PublishHostUpdate(config.CurrServer, models.UpdateHost)
+	slog.Info("Calling Daemon Restart!!")
 	daemon.Restart()
 	return nil
 }
 
-func holePunchWgPort() (pubIP net.IP, pubPort int) {
+func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	for _, server := range config.Servers {
 		portToStun := config.Netclient().ListenPort
-		pubIP, pubPort = stun.HolePunch(server.StunList, portToStun)
+		pubIP, pubPort, natType = stun.HolePunch(server.StunList, portToStun)
 		if pubPort == 0 || pubIP == nil || pubIP.IsUnspecified() {
 			continue
 		}
