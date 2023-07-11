@@ -14,12 +14,12 @@ const kernelModule = "/boot/modules/if_wg.ko"
 
 // NCIface.Create - creates a linux WG interface based on a node's given config
 func (nc *NCIface) Create() error {
-	if _, err := os.Stat(kernelModule); err != nil {
-		logger.Log(3, "using userspace wireguard")
-		return nc.createUserSpaceWG()
+	if _, err := ncutils.RunCmd("kldstat | grep if_wg", false); err != nil {
+		slog.Info("loading kernel wireguard")
+		return create(nc)
 	}
-	logger.Log(3, "using kernel wireguard")
-	return create(nc)
+	slog.Info("using userspace wireguard")
+	return nc.createUserSpaceWG()
 }
 
 func create(nc *NCIface) error {
