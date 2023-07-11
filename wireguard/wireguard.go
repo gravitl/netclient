@@ -59,7 +59,7 @@ func UpdatePeer(p *wgtypes.PeerConfig) error {
 func apply(c *wgtypes.Config) error {
 	wg, err := wgctrl.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("wgctrl %w", err)
 	}
 	defer wg.Close()
 
