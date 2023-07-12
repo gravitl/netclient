@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -96,6 +97,7 @@ func (n *NCIface) Configure() error {
 
 // NCIface.GetPeerRoutes - fetches additional routes that are needed to be added to the interface
 func (nc *NCIface) GetPeerRoutes() {
+	slog.Debug("setting peer routes")
 	var routes []ifaceAddress
 	if len(nc.Addresses) == 0 {
 		return
