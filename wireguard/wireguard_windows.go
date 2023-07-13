@@ -62,7 +62,6 @@ func SetRoutes(addrs []ifaceAddress) {
 			addr.Network.String() == "::/0" {
 			continue
 		}
-		maskSize, _ := addr.Network.Mask.Size()
 		mask := net.IP(addr.Network.Mask)
 		logger.Log(3, "adding route", addr.IP.String(), addr.Network.String(), "to netmaker interface")
 		cmd := fmt.Sprintf("route -p add %s MASK %v %s", addr.IP.String(),
