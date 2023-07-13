@@ -125,6 +125,7 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
+// SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) {
 	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
 	if err != nil {

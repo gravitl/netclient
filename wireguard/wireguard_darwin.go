@@ -55,6 +55,7 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
+// SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
