@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -173,6 +174,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
+		debug.PrintStack()
 		nc.Close()
 		os.Exit(1)
 	}
