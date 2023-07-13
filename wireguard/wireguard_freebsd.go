@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 const kernelModule = "/boot/modules/if_wg.ko"

@@ -143,7 +143,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			Gw:        addr.IP,
 			Dst:       &addr.Network,
 		}); err != nil {
-			logger.Log(1, "error adding route", err.Error())
+			slog.Error("error adding route", "error", err.Error())
 		}
 
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
