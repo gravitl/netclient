@@ -110,6 +110,12 @@ func SetRoutes(addrs []ifaceAddress) {
 
 		}
 	}
+	cmd := fmt.Sprintf("ifconfig %s up", nc.Name)
+	slog.Info("bringing interface up", "cmd", cmd)
+	if _, err := ncutils.RunCmd(cmd, true); err != nil {
+		logger.Log(1, "error bringing interface up ", nc.Name, err.Error())
+	}
+	return nil
 }
 
 // NCIface.SetMTU - set MTU for netmaker interface
