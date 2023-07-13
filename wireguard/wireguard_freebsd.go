@@ -59,7 +59,6 @@ func (nc *NCIface) ApplyAddrs() error {
 		return fmt.Errorf("failed to locate ifconfig %w", err)
 	}
 	for _, address := range nc.Addresses {
-		if address.IP.To4() != nil {
 			if address.IP.To4() != nil {
 				cmd := ifconfig + " " + nc.Name + " inet " + address.IP.String() + "/" + address.Network.Mask.String() + " alias"
 				slog.Info("adding address", "cmd", cmd)
