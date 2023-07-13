@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -62,6 +63,7 @@ func apply(c *wgtypes.Config) error {
 		return err
 	}
 	defer wg.Close()
+	slog.Debug("DELETEME 2")
 
 	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
 }
