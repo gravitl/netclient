@@ -175,8 +175,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
 		debug.PrintStack()
-		nc.Close()
-		os.Exit(1)
+		if err.Error() == "ioctl: bad address" {
+			slog.Error("skipping bad error")
+		} else {
+			nc.Close()
+			os.Exit(1)
+		}
 	}
 	wireguard.SetPeers(true)
 	server := config.GetServer(config.CurrServer)
