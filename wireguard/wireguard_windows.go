@@ -65,13 +65,13 @@ func SetRoutes(addrs []ifaceAddress) {
 			continue
 		}
 		mask := net.IP(addr.Network.Mask)
-		slog.Info("adding route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
 		cmd := fmt.Sprintf("route -p add %s MASK %v %s", addr.IP.String(),
 			mask,
 			addr.IP.String())
 		_, err := ncutils.RunCmd(cmd, false)
 		if err != nil {
-			logger.Log(0, "failed to apply egress range", addr.IP.String())
+			slog.Error("failed to apply", "egress range", addr.IP.String())
 		}
 	}
 }

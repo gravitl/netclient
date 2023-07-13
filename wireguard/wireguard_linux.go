@@ -137,7 +137,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			addr.Network.String() == "::/0" {
 			continue
 		}
-		slog.Info("adding route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
 		if err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
 			Gw:        addr.IP,
