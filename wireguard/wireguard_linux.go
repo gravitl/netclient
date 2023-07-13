@@ -114,9 +114,9 @@ func (nc *NCIface) ApplyAddrs() error {
 
 	for _, addr := range nc.Addresses {
 		if addr.IP != nil && addr.Network.IP != nil {
-			logger.Log(3, "adding address", addr.IP.String(), addr.Network.String(), "to netmaker interface")
+			slog.Info("adding address", "address", addr.IP.String(), "network", addr.Network.String())
 			if err := netlink.AddrAdd(l, &netlink.Addr{IPNet: &net.IPNet{IP: addr.IP, Mask: addr.Network.Mask}}); err != nil {
-				logger.Log(1, "error adding addr", err.Error())
+				slog.Error("error adding addr", "error", err.Error())
 
 			}
 		}

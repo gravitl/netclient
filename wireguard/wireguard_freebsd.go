@@ -61,24 +61,23 @@ func (nc *NCIface) ApplyAddrs() error {
 	for _, address := range nc.Addresses {
 		if address.IP.To4() != nil {
 			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
-				logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
+				slog.Error("error adding address to interface", "address", address.IP.String(), "error", err.Error())
 			}
 		} else {
 			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
-				logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
+				slog.Error("error adding address to interface", "address", address.IP.String(), "error", err.Error())
 			}
 		}
 
 		if address.IP.To4() != nil {
 			if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s %s", address.Network.String(), address.IP.String()), true); err != nil {
-				logger.Log(1, "error adding address to interface ", address.Network.String(), err.Error())
+				slog.Error("error adding address to interface", "address", address.Network.String(), "error", err.Error())
 			}
 		} else {
 			if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s %s", address.Network.String(), address.IP.String()), true); err != nil {
-				logger.Log(1, "error adding address to interface ", address.Network.String(), err.Error())
+				slog.Error("error adding address to interface ", "address", address.Network.String(), "error", err.Error())
 			}
 		}
-
 	}
 	return nil
 }

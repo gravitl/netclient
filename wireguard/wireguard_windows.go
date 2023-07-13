@@ -29,10 +29,10 @@ func (nc *NCIface) Create() error {
 			return err
 		}
 	} else {
-		logger.Log(0, "re-using existing adapter")
+		slog.Info("re-using existing adapter")
 	}
 
-	logger.Log(3, "created Windows tunnel")
+	slog.Info("created Windows tunnel")
 	nc.Iface = adapter
 	return adapter.SetAdapterState(driver.AdapterStateUp)
 }
@@ -49,9 +49,8 @@ func (nc *NCIface) ApplyAddrs() error {
 		if err == nil {
 			prefixAddrs = append(prefixAddrs, addr)
 		} else {
-			logger.Log(0, fmt.Sprintf("failed to append ip to Netclient adapter %v", err))
+			slog.Error("failed to append ip to Netclient adapter", "error", err)
 		}
-
 	}
 
 	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
