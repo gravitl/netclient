@@ -116,12 +116,11 @@ func (nc *NCIface) GetPeerRoutes() {
 				if _, ok := routeMap[allowedIP.String()]; !ok {
 					routeMap[allowedIP.String()] = struct{}{}
 					routes = append(routes, ifaceAddress{
-						IP:       allowedIP.IP,
+						IP:       peer.AllowedIPs[0].IP,
 						Network:  allowedIP,
 						AddRoute: true,
 					})
 				}
-
 			}
 		}
 	}

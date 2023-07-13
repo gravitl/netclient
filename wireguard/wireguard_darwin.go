@@ -21,16 +21,16 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 		if !addOnlyRoutes && !address.AddRoute && address.IP != nil {
 			if address.IP.To4() != nil {
 
-				cmd := exec.Command("ifconfig", nc.Name, "inet", "alias", address.IP.String(), address.IP.String())
+				cmd := exec.Command("ifconfig", nc.Name, "inet", "add", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
+					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), string(out)))
 					continue
 				}
 			} else {
 
-				cmd := exec.Command("ifconfig", nc.Name, "inet6", "alias", address.IP.String(), address.IP.String())
+				cmd := exec.Command("ifconfig", nc.Name, "inet6", "add", address.IP.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), out))
+					logger.Log(0, fmt.Sprintf("adding address command \"%v\" failed with output %s and error: ", cmd.String(), string(out)))
 					continue
 				}
 			}
@@ -40,13 +40,13 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 			address.Network.String() != "0.0.0.0/0" &&
 			address.Network.String() != "::/0" {
 			if address.Network.IP.To4() != nil {
-				cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), "-interface", nc.Name)
+				cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), string(out)))
 					continue
 				}
 			} else {
-				cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), "-interface", nc.Name)
+				cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
 				if out, err := cmd.CombinedOutput(); err != nil {
 					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
 					continue
