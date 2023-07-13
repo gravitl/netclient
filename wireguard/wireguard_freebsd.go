@@ -60,13 +60,15 @@ func (nc *NCIface) ApplyAddrs() error {
 	}
 	for _, address := range nc.Addresses {
 			if address.IP.To4() != nil {
-				cmd := ifconfig + " " + nc.Name + " inet " + address.IP.String() + "/" + address.Network.Mask.String() + " alias"
+				address.Network.IP = address.IP
+				cmd := ifconfig + " " + nc.Name + " inet " + address.Network.String() + " alias"
 				slog.Info("adding address", "cmd", cmd)
 				if _, err := ncutils.RunCmd(cmd, true); err != nil {
 					logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
 				}
 			} else {
-				cmd := ifconfig + " " + nc.Name + " inet6 " + address.IP.String() + "/" + address.Network.Mask.String() + " alias"
+				address.Network.IP = address.IP
+				cmd := ifconfig + " " + nc.Name + " inet6 " + address.Network.String() + " alias"
 				slog.Info("adding address", "cmd", cmd)
 				if _, err := ncutils.RunCmd(cmd, true); err != nil {
 					logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
