@@ -93,11 +93,11 @@ func SetRoutes(addrs []ifaceAddress) {
 			addr.Network.String() != "::/0" {
 			if addr.IP.To4() != nil {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s %s", addr.Network.String(), addr.IP.String()), true); err != nil {
-					logger.Log(1, "error adding address to interface ", addr.Network.String(), err.Error())
+					slog.Error("error adding address to interface", addr.Network.String(), "error", err.Error())
 				}
 			} else {
 				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s %s", addr.Network.String(), addr.IP.String()), true); err != nil {
-					logger.Log(1, "error adding address to interface ", addr.Network.String(), err.Error())
+					slog.Error("error adding address to interface ", addr.Network.String(), "error", err.Error())
 				}
 			}
 

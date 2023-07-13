@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 // NCIface.Create - makes a new Wireguard interface for darwin users (userspace)
@@ -66,13 +67,13 @@ func SetRoutes(addrs []ifaceAddress) {
 		if addr.Network.IP.To4() != nil {
 			cmd := exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
-				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), string(out)))
+				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
 				continue
 			}
 		} else {
 			cmd := exec.Command("route", "add", "-net", "-inet6", addr.Network.String(), addr.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
-				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
 				continue
 			}
 		}
