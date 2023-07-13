@@ -37,49 +37,42 @@ func (nc *NCIface) Create() error {
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
-func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
+func (nc *NCIface) ApplyAddrs() error {
 	adapter := nc.Iface
 	prefixAddrs := []netip.Prefix{}
-	egressRanges := []ifaceAddress{}
-	var egressRoute *ifaceAddress
 	for i := range nc.Addresses {
-		if !nc.Addresses[i].AddRoute {
-			maskSize, _ := nc.Addresses[i].Network.Mask.Size()
-			logger.Log(1, "appending address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
-			addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))
-			if err == nil {
-				prefixAddrs = append(prefixAddrs, addr)
-			} else {
-				logger.Log(0, fmt.Sprintf("failed to append ip to Netclient adapter %v", err))
-			}
-			if egressRoute == nil {
-				egressRoute = &nc.Addresses[i]
-			}
-		} else {
-			egressRanges = append(egressRanges, nc.Addresses[i])
-		}
-	}
 
-	if egressRoute != nil && len(egressRanges) > 0 {
-		for i := range egressRanges {
-			if egressRanges[i].Network.String() == "0.0.0.0/0" ||
-				egressRanges[i].Network.String() == "::/0" {
-				continue
-			}
-			maskSize, _ := egressRanges[i].Network.Mask.Size()
-			mask := net.IP(egressRanges[i].Network.Mask)
-			logger.Log(1, "appending egress range", fmt.Sprintf("%s/%d to nm interface", egressRanges[i].IP.String(), maskSize))
-			cmd := fmt.Sprintf("route -p add %s MASK %v %s", egressRanges[i].IP.String(),
-				mask,
-				egressRoute.IP.String())
-			_, err := ncutils.RunCmd(cmd, false)
-			if err != nil {
-				logger.Log(0, "failed to apply egress range", egressRanges[i].IP.String())
-			}
+		maskSize, _ := nc.Addresses[i].Network.Mask.Size()
+		logger.Log(1, "appending address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
+		addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))
+		if err == nil {
+			prefixAddrs = append(prefixAddrs, addr)
+		} else {
+			logger.Log(0, fmt.Sprintf("failed to append ip to Netclient adapter %v", err))
 		}
+
 	}
 
 	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
+}
+
+func SetRoutes(addrs []ifaceAddress) {
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
+			addr.Network.String() == "::/0" {
+			continue
+		}
+		maskSize, _ := addr.Network.Mask.Size()
+		mask := net.IP(addr.Network.Mask)
+		logger.Log(3, "adding route", addr.IP.String(), addr.Network.String(), "to netmaker interface")
+		cmd := fmt.Sprintf("route -p add %s MASK %v %s", addr.IP.String(),
+			mask,
+			addr.IP.String())
+		_, err := ncutils.RunCmd(cmd, false)
+		if err != nil {
+			logger.Log(0, "failed to apply egress range", addr.IP.String())
+		}
+	}
 }
 
 // NCIface.Close - closes the managed WireGuard interface

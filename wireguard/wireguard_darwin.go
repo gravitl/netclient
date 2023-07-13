@@ -15,10 +15,10 @@ func (nc *NCIface) Create() error {
 }
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
-func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
+func (nc *NCIface) ApplyAddrs() error {
 
 	for _, address := range nc.Addresses {
-		if !addOnlyRoutes && !address.AddRoute && address.IP != nil {
+		if address.IP != nil {
 			if address.IP.To4() != nil {
 
 				cmd := exec.Command("ifconfig", nc.Name, "inet", "add", address.IP.String(), address.IP.String())
@@ -36,26 +36,47 @@ func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
 			}
 
 		}
-		if address.Network.IP != nil &&
-			address.Network.String() != "0.0.0.0/0" &&
-			address.Network.String() != "::/0" {
-			if address.Network.IP.To4() != nil {
-				cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
-				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), string(out)))
-					continue
-				}
-			} else {
-				cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
-				if out, err := cmd.CombinedOutput(); err != nil {
-					logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
-					continue
-				}
+		if address.Network.IP.To4() != nil {
+			cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), string(out)))
+				continue
+			}
+		} else {
+			cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+				continue
 			}
 		}
+
 	}
 
 	return nil
+}
+
+func SetRoutes(addrs []ifaceAddress) {
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
+			addr.Network.String() == "::/0" {
+			continue
+		}
+
+		if addr.Network.IP.To4() != nil {
+			cmd := exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), string(out)))
+				continue
+			}
+		} else {
+			cmd := exec.Command("route", "add", "-net", "-inet6", addr.Network.String(), addr.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				logger.Log(0, fmt.Sprintf("failed to add route with command %s - %v", cmd.String(), out))
+				continue
+			}
+		}
+
+	}
 }
 
 func (nc *NCIface) SetMTU() error {

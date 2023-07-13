@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/exp/slog"
 )
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
@@ -80,59 +81,71 @@ func (l *netLink) Close() error {
 }
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
-func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
+func (nc *NCIface) ApplyAddrs() error {
 	l, err := netlink.LinkByName(nc.Name)
 	if err != nil {
 		return err
 	}
-	if !addOnlyRoutes {
-		currentAddrs, err := netlink.AddrList(l, 0)
-		if err != nil {
-			return err
-		}
-		routes, err := netlink.RouteList(l, 0)
-		if err != nil {
-			return err
-		}
 
-		for i := range routes {
-			err = netlink.RouteDel(&routes[i])
+	currentAddrs, err := netlink.AddrList(l, 0)
+	if err != nil {
+		return err
+	}
+	routes, err := netlink.RouteList(l, 0)
+	if err != nil {
+		return err
+	}
+
+	for i := range routes {
+		err = netlink.RouteDel(&routes[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(currentAddrs) > 0 {
+		for i := range currentAddrs {
+			err = netlink.AddrDel(l, &currentAddrs[i])
 			if err != nil {
 				return err
-			}
-		}
-
-		if len(currentAddrs) > 0 {
-			for i := range currentAddrs {
-				err = netlink.AddrDel(l, &currentAddrs[i])
-				if err != nil {
-					return err
-				}
 			}
 		}
 	}
 
 	for _, addr := range nc.Addresses {
-		if !addOnlyRoutes && !addr.AddRoute && addr.IP != nil {
+		if addr.IP != nil && addr.Network.IP != nil {
 			logger.Log(3, "adding address", addr.IP.String(), addr.Network.String(), "to netmaker interface")
 			if err := netlink.AddrAdd(l, &netlink.Addr{IPNet: &net.IPNet{IP: addr.IP, Mask: addr.Network.Mask}}); err != nil {
 				logger.Log(1, "error adding addr", err.Error())
 
 			}
 		}
-		if addr.AddRoute && addr.Network.String() != "0.0.0.0/0" && addr.Network.String() != "::/0" {
-			logger.Log(3, "adding route", addr.IP.String(), addr.Network.String(), "to netmaker interface")
-			if err := netlink.RouteAdd(&netlink.Route{
-				LinkIndex: l.Attrs().Index,
-				Gw:        addr.IP,
-				Dst:       &addr.Network,
-			}); err != nil {
-				logger.Log(1, "error adding route", err.Error())
-			}
-		}
 
 	}
 	return nil
+}
+
+func SetRoutes(addrs []ifaceAddress) {
+	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		slog.Error("failed to get link to interface", "error", err)
+		return
+	}
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
+			addr.Network.String() == "::/0" {
+			continue
+		}
+		logger.Log(3, "adding route", addr.IP.String(), addr.Network.String(), "to netmaker interface")
+		if err := netlink.RouteAdd(&netlink.Route{
+			LinkIndex: l.Attrs().Index,
+			Gw:        addr.IP,
+			Dst:       &addr.Network,
+		}); err != nil {
+			logger.Log(1, "error adding route", err.Error())
+		}
+
+	}
 }
 
 // == private ==
