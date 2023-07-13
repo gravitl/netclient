@@ -44,7 +44,7 @@ func (nc *NCIface) ApplyAddrs() error {
 	for i := range nc.Addresses {
 
 		maskSize, _ := nc.Addresses[i].Network.Mask.Size()
-		logger.Log(1, "appending address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
+		slog.Info("appending address", "address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
 		addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))
 		if err == nil {
 			prefixAddrs = append(prefixAddrs, addr)
