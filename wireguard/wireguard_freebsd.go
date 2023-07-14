@@ -104,7 +104,6 @@ func SetRoutes(addrs []ifaceAddress) {
 	if _, err := ncutils.RunCmd(cmd, true); err != nil {
 		logger.Log(1, "error bringing interface up ", nc.Name, err.Error())
 	}
-	return nil
 }
 
 // NCIface.SetMTU - set MTU for netmaker interface
