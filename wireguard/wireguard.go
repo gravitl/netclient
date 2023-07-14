@@ -9,8 +9,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
-	"github.com/kr/pretty"
-	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -64,14 +62,8 @@ func apply(c *wgtypes.Config) error {
 		return err
 	}
 	defer wg.Close()
-	slog.Debug("DELETEME 2")
-	iface := ncutils.GetInterfaceName()
-	pretty.Println(c)
-	err = wg.ConfigureDevice(iface, *c)
-	slog.Debug("DELETEME 3", "err", err)
-	return err
 
-	//return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
+	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
 }
 
 // returns if better endpoint has been calculated for this peer already
