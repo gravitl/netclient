@@ -75,6 +75,11 @@ func (nc *NCIface) ApplyAddrs() error {
 			}
 		}
 	}
+	cmd := fmt.Sprintf("ifconfig %s up", ncutils.GetInterfaceName())
+	slog.Info("bringing interface up", "cmd", cmd)
+	if _, err := ncutils.RunCmd(cmd, true); err != nil {
+		slog.Error("error bringing interface up ", "error", err.Error())
+	}
 	return nil
 }
 
@@ -98,11 +103,6 @@ func SetRoutes(addrs []ifaceAddress) {
 			}
 
 		}
-	}
-	cmd := fmt.Sprintf("ifconfig %s up", ncutils.GetInterfaceName())
-	slog.Info("bringing interface up", "cmd", cmd)
-	if _, err := ncutils.RunCmd(cmd, true); err != nil {
-		logger.Log(1, "error bringing interface up ", ncutils.GetInterfaceName(), err.Error())
 	}
 }
 
