@@ -9,8 +9,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
-	"golang.org/x/exp/slog"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -88,13 +86,12 @@ func (n *NCIface) Configure() error {
 	logger.Log(0, "adding addresses to netmaker interface")
 	if err := n.ApplyAddrs(); err != nil {
 		return err
-  }
+	}
 	if err := n.SetMTU(); err != nil {
 		return fmt.Errorf("Configure set MTU %w", err)
 	}
 	return apply(&n.Config)
 }
-
 
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	addrs := []ifaceAddress{}
