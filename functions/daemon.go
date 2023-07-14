@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -174,7 +173,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
-		debug.PrintStack()
+		// needed to prevent exit when there are no peers
 		if err.Error() == "ioctl: bad address" {
 			slog.Error("skipping bad error")
 		} else {
