@@ -147,11 +147,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(false)
-	wireguard.GetInterface().GetPeerRoutes()
+	if len(peerUpdate.EgressRoutes) > 0 {
+		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+	}
 	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
 		slog.Warn("error when setting peer routes after peer update", "error", err)
 	}
-	_ = wireguard.GetInterface().ApplyAddrs(true)
 	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
 		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
 	originalGW := currentGW4
