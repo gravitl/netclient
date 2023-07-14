@@ -51,42 +51,57 @@ func (nc *NCIface) Close() {
 }
 
 // NCIface.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
-func (nc *NCIface) ApplyAddrs(addOnlyRoutes bool) error {
-	slog.Debug("adding addresses to netmaker interface")
+func (nc *NCIface) ApplyAddrs() error {
 	ifconfig, err := exec.LookPath("ifconfig")
 	if err != nil {
 		logger.Log(0, "failed to locate ifconfig", err.Error())
 		return fmt.Errorf("failed to locate ifconfig %w", err)
 	}
 	for _, address := range nc.Addresses {
-		if !addOnlyRoutes && !address.AddRoute {
-			if address.IP.To4() != nil {
-				if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
-					logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
-				}
-			} else {
-				if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
-					logger.Log(1, "error adding address to interface: ", address.IP.String(), err.Error())
-				}
+		if address.IP.To4() != nil {
+			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet "+address.IP.String()+" alias", true); err != nil {
+				slog.Error("error adding address to interface", "address", address.IP.String(), "error", err.Error())
+			}
+		} else {
+			if _, err := ncutils.RunCmd(ifconfig+" "+nc.Name+" inet6 "+address.IP.String()+" alias", true); err != nil {
+				slog.Error("error adding address to interface", "address", address.IP.String(), "error", err.Error())
 			}
 		}
 
-		if address.AddRoute &&
-			address.Network.String() != "0.0.0.0/0" &&
-			address.Network.String() != "::/0" {
-			if address.IP.To4() != nil {
-				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
-					logger.Log(1, "error adding address to interface ", address.Network.String(), err.Error())
+		if address.IP.To4() != nil {
+			if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s %s", address.Network.String(), address.IP.String()), true); err != nil {
+				slog.Error("error adding address to interface", "address", address.Network.String(), "error", err.Error())
+			}
+		} else {
+			if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s %s", address.Network.String(), address.IP.String()), true); err != nil {
+				slog.Error("error adding address to interface ", "address", address.Network.String(), "error", err.Error())
+			}
+		}
+	}
+	return nil
+}
+
+// SetRoutes - sets additional routes to the interface
+func SetRoutes(addrs []ifaceAddress) {
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
+			addr.Network.String() == "::/0" {
+			continue
+		}
+		if addr.Network.String() != "0.0.0.0/0" &&
+			addr.Network.String() != "::/0" {
+			if addr.IP.To4() != nil {
+				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet %s %s", addr.Network.String(), addr.IP.String()), true); err != nil {
+					slog.Error("error adding address to interface", "address", addr.Network.String(), "error", err.Error())
 				}
 			} else {
-				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s -interface %s", address.Network.String(), nc.Name), true); err != nil {
-					logger.Log(1, "error adding address to interface ", address.Network.String(), err.Error())
+				if _, err := ncutils.RunCmd(fmt.Sprintf("route add -net -inet6 %s %s", addr.Network.String(), addr.IP.String()), true); err != nil {
+					slog.Error("error adding address to interface ", "address", addr.Network.String(), "error", err.Error())
 				}
 			}
 
 		}
 	}
-	return nil
 }
 
 // NCIface.SetMTU - set MTU for netmaker interface
