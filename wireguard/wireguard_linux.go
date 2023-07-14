@@ -110,16 +110,6 @@ func (nc *NCIface) ApplyAddrs() error {
 				return fmt.Errorf("failed to delete route %w", err)
 			}
 		}
-
-		if len(currentAddrs) > 0 {
-			for i := range currentAddrs {
-				err = netlink.AddrDel(l, &currentAddrs[i])
-				if err != nil {
-					return fmt.Errorf("failed to delete address %w", err)
-				}
-			}
-		}
-
 	}
 
 	for _, addr := range nc.Addresses {
