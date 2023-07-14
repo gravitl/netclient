@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -45,7 +46,8 @@ const (
 )
 
 var (
-	netclient Config // netclient contains the netclient config
+	netclient         Config // netclient contains the netclient config
+	netclientCfgMutex = &sync.RWMutex{}
 	// Version - default version string
 	Version = "dev"
 	// GW4PeerDetected - indicates if an IPv4 gwPeer (0.0.0.0/0) was found
@@ -83,6 +85,8 @@ func init() {
 
 // UpdateNetcllient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	logger.Verbosity = c.Verbosity
 	logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
 	netclient = c
@@ -120,11 +124,15 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
+	netclientCfgMutex.RLock()
+	defer netclientCfgMutex.RUnlock()
 	return &netclient
 }
 
 // UpdateHostPeersSingleton - updates host peer map in the netclient config
 func UpdateHostPeersSingleton(peerAction models.PeerAction) (isHostInetGW bool) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	hostPeers := netclient.HostPeers
 	if hostPeers == nil {
 		hostPeers = make(map[string]wgtypes.PeerConfig)
@@ -146,6 +154,8 @@ func UpdateHostPeersSingleton(peerAction models.PeerAction) (isHostInetGW bool) 
 
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) (rmPeers []wgtypes.PeerConfig, isHostInetGW bool) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	for i := len(peers) - 1; i >= 0; i-- {
 		if peers[i].Remove {
 			rmPeers = append(rmPeers, peers[i])
@@ -158,6 +168,8 @@ func UpdateHostPeers(peers []wgtypes.PeerConfig) (rmPeers []wgtypes.PeerConfig, 
 
 // GetHostPeerList - gets the combined list of peers for the host
 func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
+	netclientCfgMutex.RLock()
+	defer netclientCfgMutex.RUnlock()
 	hostPeerMap := netclient.HostPeers
 	allPeers = append(allPeers, convPeerMaptoList(hostPeerMap)...)
 	return
@@ -165,11 +177,15 @@ func GetHostPeerList() (allPeers []wgtypes.PeerConfig) {
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg() {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	netclient.HostPeers = make(map[string]wgtypes.PeerConfig)
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
 func RemoveServerHostPeerCfg() {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	if netclient.HostPeers == nil {
 		netclient.HostPeers = make(map[string]wgtypes.PeerConfig)
 		return
