@@ -1,10 +1,12 @@
 package ncutils
 
 import (
+	"context"
 	"os/exec"
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/exp/slog"
 )
@@ -32,16 +34,14 @@ func GetEmbedded() error {
 // Runs Commands for FreeBSD
 func RunCmd(command string, printerr bool) (string, error) {
 	args := strings.Fields(command)
-	//ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	//defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	//go func() {
-	//<-ctx.Done()
-	//_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
-	//}()
-	cmd.Start()
-	cmd.Wait()
+	go func() {
+		<-ctx.Done()
+		_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
+	}()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
 		slog.Warn("error running command: ", "command", command, "output", strings.TrimSuffix(string(out), "\n"), "error", err.Error())
