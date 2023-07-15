@@ -40,7 +40,7 @@ func RunCmd(command string, printerr bool) (string, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	go func() {
 		<-ctx.Done()
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
 	}()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
