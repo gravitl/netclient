@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"fmt"
 	"net"
 	"sync"
 
@@ -87,7 +88,7 @@ func (n *NCIface) Configure() error {
 		return err
 	}
 	if err := n.SetMTU(); err != nil {
-		return err
+		return fmt.Errorf("Configure set MTU %w", err)
 	}
 	return apply(&n.Config)
 }
@@ -100,6 +101,7 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 				IP:      egressRoute.NodeAddr.IP,
 				Network: config.ToIPNet(egressRange),
 			})
+
 		}
 
 	}
