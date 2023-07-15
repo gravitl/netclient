@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 const ExecDir = "/sbin/"
@@ -90,6 +91,7 @@ run_rc_command "$1"
 	rcConfig := `netclient="YES"
 netclient_args="daemon"`
 
+	slog.Info("Installing netclient service files")
 	rcbytes := []byte(rcFile)
 	if err := os.WriteFile("/etc/rc.d/netclient", rcbytes, 0755); err != nil {
 		return err
@@ -98,6 +100,7 @@ netclient_args="daemon"`
 	if err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644); err != nil {
 		return err
 	}
+	slog.Info("starting deamon")
 	start()
 	return nil
 }
