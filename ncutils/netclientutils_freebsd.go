@@ -40,6 +40,8 @@ func RunCmd(command string, printerr bool) (string, error) {
 	//<-ctx.Done()
 	//_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
 	//}()
+	cmd.Start()
+	cmd.Wait()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
 		slog.Warn("error running command: ", "command", command, "output", strings.TrimSuffix(string(out), "\n"), "error", err.Error())
