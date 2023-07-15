@@ -8,7 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
@@ -45,8 +44,7 @@ func RunCmd(command string, printerr bool) (string, error) {
 	}()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
-		logger.Log(0, "error running command:", command)
-		logger.Log(0, strings.TrimSuffix(string(out), "\n"))
+		slog.Warn("error running command: ", "command", command, "output", strings.TrimSuffix(string(out), "\n"), "error", err.Error())
 	}
 	return string(out), err
 }
