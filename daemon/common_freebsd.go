@@ -115,7 +115,7 @@ func stop() error {
 
 // service- accepts args to service netclient and applies
 func service(command string) error {
-	if _, err := ncutils.RunCmdFormatted("service netclient "+command, true); err != nil {
+	if _, err := ncutils.RunCmd("service netclient "+command, true); err != nil {
 		return err
 	}
 	return nil
