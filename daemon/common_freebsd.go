@@ -91,21 +91,14 @@ run_rc_command "$1"
 netclient_args="daemon"`
 
 	rcbytes := []byte(rcFile)
-	if !ncutils.FileExists("/etc/rc.d/netclient") {
-		err := os.WriteFile("/etc/rc.d/netclient", rcbytes, 0744)
-		if err != nil {
-			return err
-		}
-		rcConfigbytes := []byte(rcConfig)
-		if !ncutils.FileExists("/etc/rc.conf.d/netclient") {
-			err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644)
-			if err != nil {
-				return err
-			}
-			start()
-			return nil
-		}
+	if err := os.WriteFile("/etc/rc.d/netclient", rcbytes, 0755); err != nil {
+		return err
 	}
+	rcConfigbytes := []byte(rcConfig)
+	if err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644); err != nil {
+		return err
+	}
+	start()
 	return nil
 }
 
