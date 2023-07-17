@@ -3,16 +3,15 @@ package ncutils
 import (
 	"context"
 	"os/exec"
-	"runtime/debug"
 	"strings"
+	"syscall"
 	"time"
 
-	"golang.org/x/exp/slog"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // RunCmdFormatted - run a command formatted for freebsd
 func RunCmdFormatted(command string, printerr bool) (string, error) {
-	debug.PrintStack()
 
 	args := strings.Fields(command)
 	cmd := exec.Command(args[0], args[1:]...)
@@ -20,7 +19,8 @@ func RunCmdFormatted(command string, printerr bool) (string, error) {
 	cmd.Wait()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
-		slog.Warn("error running command: ", "command", command, "output", strings.TrimSuffix(string(out), "\n"), "error", err.Error())
+		logger.Log(0, "error running command: ", command)
+		logger.Log(0, strings.TrimSuffix(string(out), "\n"))
 	}
 	return string(out), err
 }
@@ -35,19 +35,16 @@ func RunCmd(command string, printerr bool) (string, error) {
 	args := strings.Fields(command)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	//cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	//go func() {
-	//<-ctx.Done()
-	//_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
-	//}()
-	if err := cmd.Run(); err != nil {
-		slog.Warn("error running command with CmdRun: ", "command", command, "error", err)
-	}
-
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	go func() {
+		<-ctx.Done()
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}()
 	out, err := cmd.CombinedOutput()
 	if err != nil && printerr {
-		slog.Warn("error running command: ", "command", command, "output", strings.TrimSuffix(string(out), "\n"), "error", err.Error())
+		logger.Log(0, "error running command:", command)
+		logger.Log(0, strings.TrimSuffix(string(out), "\n"))
 	}
 	return string(out), err
 }
