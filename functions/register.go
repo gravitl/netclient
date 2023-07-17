@@ -20,7 +20,7 @@ import (
 )
 
 // Register - should be simple to register with a token
-func Register(token string) error {
+func Register(token string, isGui bool) error {
 	data, err := b64.StdEncoding.DecodeString(token)
 	if err != nil {
 		logger.FatalLog("could not read enrollment token")
@@ -67,7 +67,7 @@ func Register(token string) error {
 		}
 		return err
 	}
-	handleRegisterResponse(&registerResponse)
+	handleRegisterResponse(&registerResponse, isGui)
 	return nil
 }
 
@@ -114,7 +114,7 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 	return
 }
 
-func handleRegisterResponse(registerResponse *models.RegisterResponse) {
+func handleRegisterResponse(registerResponse *models.RegisterResponse, isGui bool) {
 	config.UpdateServerConfig(&registerResponse.ServerConf)
 	server := config.GetServer(registerResponse.ServerConf.Server)
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
@@ -122,8 +122,10 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	}
 	config.UpdateHost(&registerResponse.RequestedHost)
 	config.SetCurrServerCtxInFile(server.Server)
-	if err := daemon.Restart(); err != nil {
-		logger.Log(3, "daemon restart failed:", err.Error())
+	if !isGui {
+		if err := daemon.Restart(); err != nil {
+			logger.Log(3, "daemon restart failed:", err.Error())
+		}
 	}
 	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
 }

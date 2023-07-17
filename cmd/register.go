@@ -45,7 +45,7 @@ user: netclient register -s <server> -u <user_name> // attempt to join/register 
 				return
 			}
 		} else {
-			if err := functions.Register(token); err != nil {
+			if err := functions.Register(token, false); err != nil {
 				logger.Log(0, "registration failed", err.Error())
 			}
 		}
