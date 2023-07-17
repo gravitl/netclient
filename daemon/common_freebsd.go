@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/gravitl/netclient/config"
@@ -106,16 +107,38 @@ netclient_args="daemon"`
 }
 
 func start() error {
-	return service("start")
+	if status() {
+		return errors.New("service already running")
+	}
+	service("start")
+	if status() {
+		return nil
+	}
+	return errors.New("failed to start service")
 }
 
 func stop() error {
-	return service("stop")
+	if !status() {
+		return errors.New("service not running")
+	}
+	service("stop")
+	if status() {
+		return errors.New("failed to stop service")
+	}
+	return nil
+}
+
+func status() bool {
+	out, _ := ncutils.RunCmd("service netclient status", false)
+	if strings.Contains(out, "pid") {
+		return true
+	}
+	return false
 }
 
 // service- accepts args to service netclient and applies
 func service(command string) error {
-	if _, err := ncutils.RunCmd("service netclient "+command, true); err != nil {
+	if _, err := ncutils.RunCmdFormatted("service netclient "+command, false); err != nil {
 		return err
 	}
 	return nil
