@@ -86,7 +86,7 @@ func checkUserRegistration(cmd *cobra.Command) error {
 		regData.UsingSSO = false
 	}
 
-	return functions.RegisterWithSSO(&regData)
+	return functions.RegisterWithSSO(&regData, false)
 }
 
 func init() {

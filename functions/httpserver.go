@@ -257,7 +257,7 @@ func join(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
 		return
 	}
-	if err := RegisterWithSSO(&joinReq); err != nil {
+	if err := RegisterWithSSO(&joinReq, true); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
