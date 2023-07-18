@@ -15,9 +15,9 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
@@ -138,7 +138,7 @@ func publishMetrics(node *config.Node) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), node.Server, nodeGET.Node.Network, nodeGET.PeerIDs, false)
+	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 	}

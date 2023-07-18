@@ -7,8 +7,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/packet"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/metrics"
-	nm_models "github.com/gravitl/netmaker/models"
 )
 
 // ProxyServer.Close - closes the proxy server
@@ -61,17 +59,7 @@ func proxyIncomingPacket(buffer []byte, source string, n int, srcPeerKeyHash, ds
 			logger.Log(1, "Failed to proxy to Wg local interface: ", err.Error())
 			//continue
 		}
-
-		go func(n int, peerKey string) {
-
-			metric := nm_models.ProxyMetric{
-				TrafficRecieved: int64(n),
-			}
-			metrics.UpdateMetricByPeer(peerKey, &metric, true)
-
-		}(n, peerInfo.PeerKey)
 		return
-
 	}
 
 }

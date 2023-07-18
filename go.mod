@@ -5,14 +5,16 @@ go 1.19
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.6
+	github.com/cloverstd/tcping v0.1.1
 	github.com/coreos/go-iptables v0.6.0
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/gin-gonic/gin v1.9.1
+	github.com/go-ping/ping v1.1.0
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.20.4-0.20230713081558-035ff71dbc17
+	github.com/gravitl/netmaker v0.20.2-0.20230612165330-05f3856b47ad
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.6.0
