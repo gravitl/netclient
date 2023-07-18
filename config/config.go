@@ -69,7 +69,6 @@ type Config struct {
 	models.Host
 	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	InternetGateway   net.UDPAddr          `json:"internetgateway" yaml:"internetgateway"`
 	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
 	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
 }
