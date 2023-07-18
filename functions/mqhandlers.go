@@ -2,7 +2,6 @@ package functions
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
 	"golang.org/x/exp/slog"
@@ -173,29 +171,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	} else {
 		slog.Debug("endpoint detection disabled")
 	}
-
-}
-
-func firewallUpdate(client mqtt.Client, msg mqtt.Message) {
-	var fwUpdate models.FwUpdate
-	serverName := parseServerFromTopic(msg.Topic())
-	server := config.GetServer(serverName)
-	if server == nil {
-		logger.Log(0, "server ", serverName, " not found in config")
-		return
-	}
-	logger.Log(3, "received fw update for host from: ", serverName)
-	data, err := decryptMsg(serverName, msg.Payload())
-	if err != nil {
-		return
-	}
-	err = json.Unmarshal([]byte(data), &fwUpdate)
-	if err != nil {
-		logger.Log(0, "error unmarshalling peer data")
-		return
-	}
-	logger.Log(0, fmt.Sprintf("#### Fw Update: %+v", fwUpdate))
-	handleFwUpdate(serverName, &fwUpdate)
+	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>

@@ -28,7 +28,7 @@ func SwitchServer(server string) error {
 		fmt.Println("failed to set server context ", err)
 		return err
 	}
-	config.Netclient().HostPeers = make(map[string]wgtypes.PeerConfig)
+	config.Netclient().HostPeers = []wgtypes.PeerConfig{}
 	_ = config.WriteNetclientConfig()
 	return daemon.Restart()
 }

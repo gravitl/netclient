@@ -9,7 +9,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/common"
 	proxyModels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 )
 
 var (
@@ -42,7 +41,6 @@ func InitializeCfg() {
 			turnPeerMap:  make(map[string]proxyModels.TurnPeerCfg),
 			proxyPeerMap: make(proxyModels.PeerConnMap),
 			peerHashMap:  make(map[string]*proxyModels.RemotePeer),
-			allPeersConf: make(map[string]models.HostPeerMap),
 		},
 	}
 }

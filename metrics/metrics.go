@@ -35,7 +35,7 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		id := peerMap[currPeer.PublicKey.String()].ID
 		address := peerMap[currPeer.PublicKey.String()].Address
 		port := peerMap[currPeer.PublicKey.String()].ListenPort
-		isExtClient := peerMap[currPeer.PublicKey.String()].IsExtclient
+		isExtClient := peerMap[currPeer.PublicKey.String()].IsExtClient
 		if id == "" || address == "" {
 			logger.Log(0, "attempted to parse metrics for invalid peer from server", id, address)
 			continue

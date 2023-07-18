@@ -10,15 +10,14 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/proxy"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(server string, peer wgtypes.PeerConfig, peerConf nm_models.PeerConf, relayTo *net.UDPAddr, usingTurn bool) error {
+func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf, relayTo *net.UDPAddr, usingTurn bool) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
-		d := nm_models.DefaultPersistentKeepaliveInterval
+		d := models.DefaultPersistentKeepaliveInterval
 		peer.PersistentKeepaliveInterval = &d
 	}
 	c := models.Proxy{

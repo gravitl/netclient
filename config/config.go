@@ -108,7 +108,6 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
 	// don't update any public ports coming from server,overwrite the values
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
-	host.PublicListenPort = hostCfg.PublicListenPort
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
-	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/turn/v2"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -17,6 +17,8 @@ const (
 	NmProxyPort = 51722
 	// default CIDR for proxy peers
 	DefaultCIDR = "127.0.0.1/8"
+	// PersistentKeepaliveInterval - default keepalive for wg peer
+	DefaultPersistentKeepaliveInterval = time.Duration(time.Second * 20)
 )
 
 // PeerConnMap - type for peer conn config map
@@ -87,9 +89,21 @@ type TurnCfg struct {
 	Status   bool
 }
 
+// PeerConf - struct for peer config in the network
+type PeerConf struct {
+	Proxy            bool         `json:"proxy"`
+	PublicListenPort int32        `json:"public_listen_port"`
+	ProxyListenPort  int          `json:"proxy_listen_port"`
+	IsExtClient      bool         `json:"is_ext_client"`
+	Address          net.IP       `json:"address"`
+	IsRelayed        bool         `json:"is_relayed"`
+	RelayedTo        *net.UDPAddr `json:"relayed_to"`
+	NatType          string       `json:"nat_type"`
+}
+
 // TurnPeerCfg - struct for peer turn conn details
 type TurnPeerCfg struct {
 	Server       string
-	PeerConf     nm_models.PeerConf
+	PeerConf     PeerConf
 	PeerTurnAddr string
 }

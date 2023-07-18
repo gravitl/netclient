@@ -192,7 +192,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				}
 				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
 					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
-						PeerConf: nm_models.PeerConf{},
+						PeerConf: models.PeerConf{},
 					})
 				}
 				turnCfg.Mutex.RLock()

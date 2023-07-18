@@ -45,8 +45,6 @@ func Pull(restart bool) error {
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)
-	// sync the firewall manager on pull
-	go handleFwUpdate(server.Server, &pullResponse.FwUpdate)
 	fmt.Printf("completed pull for server %s\n", serverName)
 	_ = config.WriteServerConfig()
 	_ = config.WriteNetclientConfig()
