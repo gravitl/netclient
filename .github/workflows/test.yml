@@ -21,7 +21,7 @@ jobs:
   netclient-freebsd:
     runs-on: ubuntu-latest
     steps:
-      - name: build on freebsd
+      - name: build on freebsd13
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: freebsd.clustercat.com
@@ -29,9 +29,23 @@ jobs:
           key: ${{ secrets.TESTING_SSH_KEY }}
           script: |
             cd netclient
+            git fetch
             git switch ${{ github.head_ref }}
             git pull
             go build .
+      - name: build on freebsd14
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: freebsd14.clustercat.com
+          username: freebsd
+          key: ${{ secrets.TESTING_SSH_KEY }}
+          script: |
+            cd netclient
+            git fetch
+            git switch ${{ github.head_ref }}
+            git pull
+            go build .
+
   tests:
     runs-on: ubuntu-latest
     steps:
