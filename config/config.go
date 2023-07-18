@@ -44,6 +44,24 @@ const (
 	DefaultMTU = 1420
 )
 
+const (
+	UnKnown InitType = iota
+	Systemd
+	SysVInit
+	Runit
+	OpenRC
+	Dinit
+	Elogind
+)
+
+// Initype - the type of init system in use
+type InitType int
+
+// String - returns the string representation of the init type
+func (i InitType) String() string {
+	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc", "dinit", "elogind"}[i]
+}
+
 var (
 	netclient Config // netclient contains the netclient config
 	// Version - default version string
@@ -69,6 +87,7 @@ type Config struct {
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
 	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
+	InitType          InitType             `json:"inittype" yaml:"inittype"`
 }
 
 func init() {
