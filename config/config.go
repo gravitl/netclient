@@ -123,7 +123,7 @@ func Netclient() *Config {
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 	netclient.HostPeers = peers
-	return detectOrFilterGWPeers(netclient.HostPeers)
+	return detectOrFilterGWPeers(peers)
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
@@ -560,7 +560,8 @@ func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
 	isInetGW := IsHostInetGateway()
 	if len(peers) > 0 {
 		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
-			for _, peer := range peers {
+			for i := range peers {
+				peer := peers[i]
 				if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) && peer.Remove { // Indicates a removal of current gw, set detected to false to recalc
 					GW4PeerDetected = false
 					break
@@ -668,19 +669,4 @@ func FirewallHasChanged() bool {
 		return false
 	}
 	return true
-}
-
-func convPeersToMap(peers []wgtypes.PeerConfig) map[string]wgtypes.PeerConfig {
-	peerMap := make(map[string]wgtypes.PeerConfig)
-	for _, peerI := range peers {
-		peerMap[peerI.PublicKey.String()] = peerI
-	}
-	return peerMap
-}
-
-func convPeerMaptoList(peerMap map[string]wgtypes.PeerConfig) (peers []wgtypes.PeerConfig) {
-	for _, peerI := range peerMap {
-		peers = append(peers, peerI)
-	}
-	return
 }

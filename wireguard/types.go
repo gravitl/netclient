@@ -7,7 +7,6 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -44,9 +43,6 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 			})
 		}
 
-	}
-	if len(peers) > 0 {
-		peers = peer.SetPeersEndpointToProxy(peers)
 	}
 	iface := netmaker.Iface // store current iface cfg before it gets overwritten
 	netmaker = NCIface{
