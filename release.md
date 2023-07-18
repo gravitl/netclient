@@ -6,6 +6,7 @@
 ## What's Fixed
 - Fixes for FreeBSD
 - Mac installer installs WireGuard
+- Precise Interface routes to improve multi-network functionality
      
 ## known issues
 - Windows installer does not install WireGuard
