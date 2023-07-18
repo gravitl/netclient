@@ -51,27 +51,27 @@ var (
 
 	nfJumpRules []ruleInfo
 	// filter table netmaker jump rules
-	nfFilterJumpRules = []ruleInfo{
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: netmakerFilterChain},
-				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					&expr.Counter{},
-					&expr.Verdict{Kind: expr.VerdictDrop},
+	dropRule = ruleInfo{
+		nfRule: &nftables.Rule{
+			Table: filterTable,
+			Chain: &nftables.Chain{Name: netmakerFilterChain},
+			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", "DROP")),
+				&expr.Counter{},
+				&expr.Verdict{Kind: expr.VerdictDrop},
 			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
+			UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", "DROP")),
 		},
+		rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
+		table: defaultIpTable,
+		chain: netmakerFilterChain,
+	}
+	nfFilterJumpRules = []ruleInfo{
 		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
@@ -253,6 +253,7 @@ func (n *nftablesManager) ForwardRule() error {
 	if err := n.CreateChains(); err != nil {
 		return err
 	}
+	n.deleteRule(dropRule.table, dropRule.chain, genRuleKey(dropRule.rule...))
 	n.conn.AddRule(&nftables.Rule{
 		Table: filterTable,
 		Chain: &nftables.Chain{Name: iptableFWDChain},

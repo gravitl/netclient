@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	peerpkg "github.com/gravitl/netclient/nmproxy/peer"
 	"github.com/gravitl/netclient/nmproxy/wg"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -22,10 +23,12 @@ import (
 var (
 	// PeerSignalCh - channel to recieve peer signals
 	PeerSignalCh = make(chan nm_models.Signal, 50)
-	// PeerConnectionCheckInterval - time interval to check peer connection status
-	PeerConnectionCheckInterval = time.Minute
+	// peerConnectionCheckInterval - time interval to check peer connection status
+	peerConnectionCheckInterval = time.Second * 90
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
+
+	ResetCh = make(chan struct{}, 2)
 )
 
 // WatchPeerSignals - processes the peer signals for any turn updates from peers
@@ -131,35 +134,46 @@ func handleDisconnect(signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
+	if _, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
 		config.GetCfg().DeletePeerTurnCfg(signal.FromHostPubKey)
-		conn.Config.PeerEndpoint = peerEndpoint
-		config.GetCfg().UpdatePeer(&conn)
-		config.GetCfg().ResetPeer(signal.FromHostPubKey)
+		config.GetCfg().RemovePeer(signal.FromHostPubKey)
 	}
-	return nil
+	pubKey, err := wgtypes.ParseKey(signal.FromHostPubKey)
+	if err != nil {
+		return err
+	}
+	return wireguard.UpdatePeer(&wgtypes.PeerConfig{
+		PublicKey:  pubKey,
+		Endpoint:   peerEndpoint,
+		UpdateOnly: true,
+	})
 }
 
 // WatchPeerConnections - periodically watches peer connections.
 // if connection is bad, host will signal peers to use turn
 func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	t := time.NewTicker(time.Minute)
+	t := time.NewTicker(peerConnectionCheckInterval)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-ResetCh:
+			if t != nil {
+				t.Reset(peerConnectionCheckInterval)
+			}
 		case <-t.C:
 			iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
 			if err != nil {
 				logger.Log(1, "failed to get iface: ", err.Error())
 				continue
 			}
-			hostPeers := ncconfig.Netclient().HostPeers
-			for _, peer := range hostPeers {
-				if peer.Endpoint == nil {
+			peers := ncconfig.Netclient().HostPeers
+			for _, peer := range peers {
+
+				if peer.Endpoint == nil || peer.Remove {
 					continue
 				}
 				connected, err := isPeerConnected(peer.PublicKey.String())
@@ -223,18 +237,17 @@ func ShouldUseTurn(natType string) bool {
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
 func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")
-	iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
-	if err != nil {
-		logger.Log(0, "failed to get iface: ", err.Error())
-		return
+	port := ncconfig.Netclient().WgPublicListenPort
+	if port == 0 {
+		port = ncconfig.Netclient().ListenPort
 	}
 
 	turnPeers := config.GetCfg().GetAllTurnPeersCfg()
 	for peerPubKey := range turnPeers {
-		err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
-			FromHostPubKey:    iface.Device.PublicKey.String(),
+		err := SignalPeer(ncconfig.CurrServer, nm_models.Signal{
+			FromHostPubKey:    ncconfig.Netclient().PublicKey.String(),
 			ToHostPubKey:      peerPubKey,
-			TurnRelayEndpoint: fmt.Sprintf("%s:%d", iface.Device.PublicKey.String(), iface.Device.ListenPort),
+			TurnRelayEndpoint: fmt.Sprintf("%s:%d", ncconfig.Netclient().EndpointIP.String(), port),
 			Action:            nm_models.Disconnect,
 		})
 		if err != nil {

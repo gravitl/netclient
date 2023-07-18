@@ -16,6 +16,9 @@ jobs:
         with:
           run_id: ${{ github.event.workflow_run.id}}
           if_no_artifact_found: warn
+      - name: get server name
+        run: |
+          echo "SERVER=$(cat ./server/server) >> $GITHUB_ENV"
       - name: get PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -35,13 +38,21 @@ jobs:
         if: success() || failure()
         run: |
           sleep 15m
-          curl -X GET \
+          curl -X DELETE \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
             "https://api.digitalocean.com/v2/droplets?tag_name=$TAG"
         env:
           DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
           TAG: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+      - name: mark server as available
+        uses: appleboy/ssh-action@master
+        with:
+          host: server.${{ env.SERVER }}.clustercat.com
+          username: root
+          key: ${{ secrets.TESTING_SSH_KEY }}
+          script: |
+            rm /tmp/branchtest
 
   on-failure:
     runs-on: ubuntu-latest
@@ -52,6 +63,9 @@ jobs:
         with:
           run_id: ${{ github.event.workflow_run.id}}
           if_no_artifact_found: warn
+      - name: get server name
+        run: |
+          echo "SERVER=$(cat ./server/server) >> $GITHUB_ENV"
       - name: get PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,7 +79,7 @@ jobs:
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
           color: "#990000"
           username: "GitHub Bot"
-          message: " ${{ github.repository}}:${{ github.event.workflow_run.name }}:PR ${{ env.pull_request}} failed: droplets from this workflow (tag ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}) will be deleted in 5 hours"
+          message: " ${{ github.repository}}:${{ github.event.workflow_run.name }}:PR ${{ env.pull_request}} failed: droplets from this workflow (tag ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}) will be deleted in 3 hours"
           file: ./results/results.log
       - name: discord error message
         uses: appleboy/discord-action@master
@@ -79,11 +93,21 @@ jobs:
       - name: delete droplets
         if: success() || failure()
         run: |
-          sleep 5h
-          curl -X GET \
+          sleep 3h
+          curl -X DELETE \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
             "https://api.digitalocean.com/v2/droplets?tag_name=$TAG"
         env:
           DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
           TAG: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+      - name: mark server as available
+        if: success() || failure()
+        uses: appleboy/ssh-action@master
+        with:
+          host: server.${{ env.SERVER }}.clustercat.com
+          username: root
+          key: ${{ secrets.TESTING_SSH_KEY }}
+          script: |
+            rm /tmp/branchtest
+

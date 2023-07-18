@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netmaker/logger"
 	nmmodels "github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 	"gortc.io/stun"
 )
 
@@ -55,13 +56,18 @@ func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP,
 			IP:   net.ParseIP(""),
 			Port: portToStun,
 		}
+		slog.Debug(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
 		publicIP, publicPort, err = doStunTransaction(l, s)
 		if err != nil {
 			logger.Log(0, "stun transaction failed: ", stunServer.Domain, err.Error())
 			continue
 		}
+		if publicPort == 0 || publicIP == nil || publicIP.IsUnspecified() {
+			continue
+		}
 		break
 	}
+	slog.Debug("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort))
 	return
 }
 
@@ -81,7 +87,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 	// Building binding request with random transaction id.
 	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 	// Sending request to STUN server, waiting for response message.
-	if err := c.Do(message, func(res stun.Event) {
+	err = c.Do(message, func(res stun.Event) {
 		if res.Error != nil {
 			logger.Log(1, "0:stun error: ", res.Error.Error())
 			return
@@ -94,7 +100,8 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		}
 		publicIP = xorAddr.IP
 		publicPort = xorAddr.Port
-	}); err != nil {
+	})
+	if err != nil {
 		logger.Log(1, "2:stun error: ", err.Error())
 	}
 	return

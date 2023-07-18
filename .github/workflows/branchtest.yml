@@ -9,12 +9,13 @@ jobs:
   skip-check:
     runs-on: ubuntu-latest
     outputs:
-      skip: ${{ steps.check.outputs.skip }}
+      skip: ${{ steps.skip.outputs.skip }}
     steps:
       - id: skip
         uses: fkirc/skip-duplicate-actions@v5
         with:
           concurrent_skipping: 'always'
+
   getbranch:
     runs-on: ubuntu-latest
     needs: skip-check
@@ -28,7 +29,7 @@ jobs:
           repository: gravitl/netmaker
           ref: develop
       - name: check if branch exists
-        id: checkbranch
+        id: getbranch
         run: |
           if git show-ref ${{ github.head_ref}}; then
             echo branch exists
@@ -38,20 +39,11 @@ jobs:
             echo "netmakerbranch=develop" >> $GITHUB_OUTPUT
           fi
   
-  terraform:
-    needs: getbranch
-    uses: gravitl/devops/.github/workflows/terraform.yml@master
+  branchtest:
+    uses: gravitl/devops/.github/workflows/testdeploybranch.yml@master
+    needs: [getbranch, skip-check]
     with:
-      netclientbranch: ${{ github.head_ref }}
       netmakerbranch: ${{ needs.getbranch.outputs.netmakerbranch }}
-    secrets: inherit
-
-
-  testbranch:
-    needs: [getbranch, terraform]
-    uses: gravitl/devops/.github/workflows/branchtest.yml@master
-    with:
+      netclientbranch: ${{ github.head_ref }}
       tag: ${{ github.run_id }}-${{ github.run_attempt }}
-      network: netmaker
     secrets: inherit
-    
