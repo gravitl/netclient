@@ -266,6 +266,7 @@ func UpdateHostSettings() error {
 		restartDaemon = true
 		publishMsg = true
 	}
+
 	ip, err := getInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
