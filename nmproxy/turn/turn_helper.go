@@ -80,7 +80,6 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 			// new connection
 			config.GetCfg().SetPeerTurnCfg(signal.FromHostPubKey, models.TurnPeerCfg{
 				Server:       signal.Server,
-				PeerConf:     t.PeerConf,
 				PeerTurnAddr: signal.TurnRelayEndpoint,
 			})
 
@@ -92,7 +91,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 					Endpoint:                    peer.Endpoint,
 					PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
 					AllowedIPs:                  peer.AllowedIPs,
-				}, t.PeerConf, peerTurnEndpoint, true)
+				}, peerTurnEndpoint)
 			}
 
 		}
@@ -191,9 +190,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					continue
 				}
 				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
-					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{
-						PeerConf: models.PeerConf{},
-					})
+					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{})
 				}
 				turnCfg.Mutex.RLock()
 				// signal peer with the host relay addr for the peer

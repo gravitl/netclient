@@ -89,21 +89,8 @@ type TurnCfg struct {
 	Status   bool
 }
 
-// PeerConf - struct for peer config in the network
-type PeerConf struct {
-	Proxy            bool         `json:"proxy"`
-	PublicListenPort int32        `json:"public_listen_port"`
-	ProxyListenPort  int          `json:"proxy_listen_port"`
-	IsExtClient      bool         `json:"is_ext_client"`
-	Address          net.IP       `json:"address"`
-	IsRelayed        bool         `json:"is_relayed"`
-	RelayedTo        *net.UDPAddr `json:"relayed_to"`
-	NatType          string       `json:"nat_type"`
-}
-
 // TurnPeerCfg - struct for peer turn conn details
 type TurnPeerCfg struct {
 	Server       string
-	PeerConf     PeerConf
 	PeerTurnAddr string
 }

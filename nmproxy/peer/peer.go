@@ -2,7 +2,6 @@ package peer
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 
@@ -14,7 +13,7 @@ import (
 )
 
 // AddNew - adds new peer to proxy config and starts proxying the peer
-func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf, relayTo *net.UDPAddr, usingTurn bool) error {
+func AddNew(server string, peer wgtypes.PeerConfig, relayTo *net.UDPAddr) error {
 
 	if peer.PersistentKeepaliveInterval == nil {
 		d := models.DefaultPersistentKeepaliveInterval
@@ -23,37 +22,18 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf, re
 	c := models.Proxy{
 		PeerPublicKey: peer.PublicKey,
 		PeerConf:      peer,
-		UsingTurn:     usingTurn,
 	}
 	p := proxy.New(c)
-	peerPort := int(peerConf.PublicListenPort)
-	if peerPort == 0 {
-		peerPort = models.NmProxyPort
-	}
-	peerEndpointIP := peer.Endpoint.IP
-	if usingTurn {
-		//go server.NmProxyServer.KeepAlive(peer.Endpoint.IP.String(), common.NmProxyPort)
-		if relayTo == nil {
-			return errors.New("relay endpoint is nil")
-		}
-		peerEndpointIP = relayTo.IP
-		peerPort = relayTo.Port
-	}
-
-	peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerEndpointIP, peerPort))
-	if err != nil {
-		return err
-	}
-	p.Config.PeerEndpoint = peerEndpoint
+	p.Config.PeerEndpoint = relayTo
 	if t := config.GetCfg().GetTurnCfg(); t != nil && t.TurnConn != nil {
 		t.Mutex.RLock()
 		p.Config.TurnConn = t.TurnConn
 		t.Mutex.RUnlock()
 	} else {
-		p.Config.UsingTurn = false
+		return errors.New("turn conn is nil")
 	}
 	logger.Log(0, "Starting proxy for Peer: ", peer.PublicKey.String())
-	err = p.Start()
+	err := p.Start()
 	if err != nil {
 		return err
 	}
@@ -69,7 +49,7 @@ func AddNew(server string, peer wgtypes.PeerConfig, peerConf models.PeerConf, re
 	}
 	rPeer := models.RemotePeer{
 		PeerKey:   peer.PublicKey.String(),
-		Endpoint:  peerEndpoint,
+		Endpoint:  relayTo,
 		LocalConn: p.LocalConn,
 	}
 
