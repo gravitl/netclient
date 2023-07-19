@@ -32,7 +32,6 @@ type Proxy struct {
 	RemoteConnAddr *net.UDPAddr
 	LocalConnAddr  *net.UDPAddr
 	TurnConn       net.PacketConn
-	UsingTurn      bool
 }
 
 // Conn is a peer Connection configuration
@@ -56,28 +55,9 @@ type RemotePeer struct {
 	CommChan   chan *net.UDPAddr
 }
 
-// HostInfo - struct for host information
-type HostInfo struct {
-	PublicIp     net.IP
-	PrivIp       net.IP
-	PubPort      int
-	PrivPort     int
-	ProxyEnabled bool
-	NatType      string
-}
-
 // ConvPeerKeyToHash - converts peer key to a md5 hash
 func ConvPeerKeyToHash(peerKey string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(peerKey)))
-}
-
-// Settings - struct for host settings
-type Settings struct {
-	IsRelay          bool
-	IsIngressGateway bool
-	IsEgressGateway  bool
-	IsRelayed        bool
-	RelayedTo        *net.UDPAddr
 }
 
 // TurnCfg - struct to hold turn conn details

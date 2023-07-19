@@ -244,6 +244,10 @@ func UpdateHostSettings() error {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		publishMsg = true
 	}
+	if config.HostNatType != "" && config.Netclient().NatType != config.HostNatType {
+		config.Netclient().NatType = config.HostNatType
+		publishMsg = true
+	}
 	if server.Is_EE {
 		serverNodes := config.GetNodes()
 		for _, node := range serverNodes {

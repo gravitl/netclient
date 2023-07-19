@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -20,10 +19,8 @@ var (
 
 // Config - struct for proxy config
 type Config struct {
-	mutex                   *sync.RWMutex
-	ifaceConfig             wgIfaceConf
-	metricsThreadDone       context.CancelFunc
-	metricsCollectionStatus bool
+	mutex       *sync.RWMutex
+	ifaceConfig wgIfaceConf
 }
 type proxyPeerConn struct {
 	PeerPublicKey       string `json:"peer_public_key"`
@@ -43,31 +40,6 @@ func InitializeCfg() {
 			peerHashMap:  make(map[string]*proxyModels.RemotePeer),
 		},
 	}
-}
-
-// Config.StopMetricsCollectionThread - stops the metrics thread // only when host proxy is disabled
-func (c *Config) StopMetricsCollectionThread() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.metricsThreadDone != nil {
-		c.metricsThreadDone()
-		c.metricsCollectionStatus = false
-	}
-}
-
-// Config.GetMetricsCollectionStatus - fetchs metrics collection status when proxy is disabled for host
-func (c *Config) GetMetricsCollectionStatus() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	return c.metricsCollectionStatus
-}
-
-// Config.SetMetricsThreadCtx - sets the metrics thread ctx
-func (c *Config) SetMetricsThreadCtx(cancelFunc context.CancelFunc) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.metricsThreadDone = cancelFunc
-	c.metricsCollectionStatus = true
 }
 
 // Reset - resets Config // to be called only when proxy is shutting down

@@ -132,7 +132,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		updateConfig = true
 	}
 	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
+	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
 	if config.Netclient().WgPublicListenPort == 0 {
@@ -141,6 +141,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if config.Netclient().EndpointIP == nil {
 		config.Netclient().EndpointIP = config.HostPublicIP
+		updateConfig = true
+	}
+	if config.Netclient().NatType == "" {
+		config.Netclient().NatType = config.HostNatType
 		updateConfig = true
 	}
 	if updateConfig {
@@ -455,7 +459,7 @@ func UpdateKeys() error {
 	return nil
 }
 
-func holePunchWgPort() (pubIP net.IP, pubPort int) {
+func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	stunServers := []models.StunServer{
 		{Domain: "stun1.netmaker.io", Port: 3478},
 		{Domain: "stun2.netmaker.io", Port: 3478},
@@ -463,7 +467,7 @@ func holePunchWgPort() (pubIP net.IP, pubPort int) {
 		{Domain: "stun2.l.google.com", Port: 19302},
 	}
 	portToStun := config.Netclient().ListenPort
-	pubIP, pubPort = stun.HolePunch(stunServers, portToStun)
+	pubIP, pubPort, natType = stun.HolePunch(stunServers, portToStun)
 	return
 }
 

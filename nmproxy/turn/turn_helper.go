@@ -68,7 +68,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 		}
 		// reset
 		if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
-			if conn.Config.UsingTurn && t.PeerTurnAddr != signal.TurnRelayEndpoint {
+			if t.PeerTurnAddr != signal.TurnRelayEndpoint {
 				logger.Log(0, fmt.Sprintf("Turn Peer Addr Has Been Changed From %s to %s", t.PeerTurnAddr, signal.TurnRelayEndpoint))
 				config.GetCfg().UpdatePeerTurnAddr(signal.FromHostPubKey, signal.TurnRelayEndpoint)
 				conn.Config.PeerEndpoint = peerTurnEndpoint
@@ -220,15 +220,6 @@ func isPeerConnected(peerKey string) (connected bool, err error) {
 		connected = true
 	}
 	return
-}
-
-// ShouldUseTurn - checks the nat type to check if peer needs to use turn for communication
-func ShouldUseTurn(natType string) bool {
-	// if behind  DOUBLE or ASYM Nat type, use turn to reach peer
-	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
-		return true
-	}
-	return false
 }
 
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
