@@ -444,9 +444,9 @@ func CheckConfig() {
 	slog.Info("OS is", "os", netclient.OS)
 	if netclient.OS == "linux" {
 		initType := GetInitType()
-		slog.Info("init type is", "type", initType, "old type", netclient.InitType)
+		slog.Debug("init type is", "type", initType.String(), "old type", netclient.InitType.String())
 		if netclient.InitType != initType {
-			slog.Info("setting init type", "type", initType)
+			slog.Info("setting init type", "type", initType.String())
 			netclient.InitType = initType
 			saveRequired = true
 		}
@@ -724,15 +724,36 @@ func GetInitType() InitType {
 	}
 	slog.Debug("checking /sbin/init", "output ", out)
 	if strings.Contains(out, "systemd") {
+		// ubuntu, debian, fedora, suse, etc
 		return Systemd
 	}
 	if strings.Contains(out, "runit-init") {
+		// void linux
 		return Runit
 	}
 	if strings.Contains(out, "busybox") {
+		// alpine
 		return OpenRC
 	}
-	return SysVInit
+	out, err = ncutils.RunCmd("ls -l /bin/busybox", false)
+	if err != nil {
+		slog.Error("error checking /bin/busybox", "error", err)
+		return UnKnown
+	}
+	if strings.Contains(out, "busybox") {
+		// openwrt
+		return OpenRC
+	}
+	out, err = ncutils.RunCmd("ls -l /etc/init.d", false)
+	if err != nil {
+		slog.Error("error checking /etc/init.d", "error", err)
+		return UnKnown
+	}
+	if strings.Contains(out, "README") {
+		// MXLinux
+		return SysVInit
+	}
+	return UnKnown
 }
 
 func setupLoging(flags *viper.Viper) {
