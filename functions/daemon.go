@@ -167,8 +167,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	nc.Configure()
+	if err := nc.Create(); err != nil {
+		slog.Error("error creating netclient interface", "error", err)
+	}
+	if err := nc.Configure(); err != nil {
+		slog.Error("error configuring netclient interface", "error", err)
+	}
 	wireguard.SetPeers(true)
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
