@@ -33,17 +33,6 @@ func SetPeers(replace bool) error {
 	return apply(&config)
 }
 
-// RemovePeers - removes the peers in the list given from the interface
-func RemovePeers(peers []wgtypes.PeerConfig) error {
-	for i := range peers {
-		peers[i].Remove = true
-	}
-	config := wgtypes.Config{
-		Peers: peers,
-	}
-	return apply(&config)
-}
-
 // == private ==
 
 // UpdatePeer replaces a wireguard peer
