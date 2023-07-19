@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"os"
-	"path/filepath"
 	"runtime"
 
 	"github.com/gravitl/netclient/config"
@@ -55,7 +54,6 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	config.InitConfig(flags)
-	setupLoging(flags)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
 	if runtime.GOOS == "darwin" {
@@ -66,30 +64,4 @@ func initConfig() {
 		os.Exit(1)
 	}
 	nc.Close()
-}
-
-func setupLoging(flags *viper.Viper) {
-	logLevel := &slog.LevelVar{}
-	replace := func(groups []string, a slog.Attr) slog.Attr {
-		if a.Key == slog.SourceKey {
-			a.Value = slog.StringValue(filepath.Base(a.Value.String()))
-		}
-		return a
-	}
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
-	slog.SetDefault(logger)
-	verbosity := flags.GetInt("verbosity")
-	if verbosity > config.Netclient().Verbosity {
-		config.Netclient().Verbosity = verbosity
-	}
-	switch config.Netclient().Verbosity {
-	case 4:
-		logLevel.Set(slog.LevelDebug)
-	case 3:
-		logLevel.Set(slog.LevelInfo)
-	case 2:
-		logLevel.Set(slog.LevelWarn)
-	default:
-		logLevel.Set(slog.LevelError)
-	}
 }

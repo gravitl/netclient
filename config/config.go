@@ -21,6 +21,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -50,8 +51,6 @@ const (
 	SysVInit
 	Runit
 	OpenRC
-	Dinit
-	Elogind
 )
 
 // Initype - the type of init system in use
@@ -59,7 +58,7 @@ type InitType int
 
 // String - returns the string representation of the init type
 func (i InitType) String() string {
-	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc", "dinit", "elogind"}[i]
+	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc"}[i]
 }
 
 var (
@@ -411,6 +410,7 @@ func InitConfig(viper *viper.Viper) {
 	checkUID()
 	ReadNetclientConfig()
 	setLogVerbosity(viper)
+	setupLoging(viper)
 	ReadNodeConfig()
 	ReadServerConf()
 	SetServerCtx()
@@ -441,6 +441,17 @@ func CheckConfig() {
 		netclient.OS = runtime.GOOS
 		saveRequired = true
 	}
+	slog.Info("OS is", "os", netclient.OS)
+	if netclient.OS == "linux" {
+		initType := GetInitType()
+		slog.Info("init type is", "type", initType, "old type", netclient.InitType)
+		if netclient.InitType != initType {
+			slog.Info("setting init type", "type", initType)
+			netclient.InitType = initType
+			saveRequired = true
+		}
+	}
+
 	if netclient.Version != Version {
 		logger.Log(0, "setting version")
 		netclient.Version = Version
@@ -699,4 +710,53 @@ func FirewallHasChanged() bool {
 		return false
 	}
 	return true
+}
+
+func GetInitType() InitType {
+	slog.Debug("getting init type", "os", runtime.GOOS)
+	if runtime.GOOS != "linux" {
+		return UnKnown
+	}
+	out, err := ncutils.RunCmd("ls -l /sbin/init", false)
+	if err != nil {
+		slog.Error("error checking /sbin/init", "error", err)
+		return UnKnown
+	}
+	slog.Debug("checking /sbin/init", "output ", out)
+	if strings.Contains(out, "systemd") {
+		return Systemd
+	}
+	if strings.Contains(out, "runit-init") {
+		return Runit
+	}
+	if strings.Contains(out, "busybox") {
+		return OpenRC
+	}
+	return SysVInit
+}
+
+func setupLoging(flags *viper.Viper) {
+	logLevel := &slog.LevelVar{}
+	replace := func(groups []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.SourceKey {
+			a.Value = slog.StringValue(filepath.Base(a.Value.String()))
+		}
+		return a
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
+	slog.SetDefault(logger)
+	verbosity := flags.GetInt("verbosity")
+	if verbosity > Netclient().Verbosity {
+		Netclient().Verbosity = verbosity
+	}
+	switch Netclient().Verbosity {
+	case 4:
+		logLevel.Set(slog.LevelDebug)
+	case 3:
+		logLevel.Set(slog.LevelInfo)
+	case 2:
+		logLevel.Set(slog.LevelWarn)
+	default:
+		logLevel.Set(slog.LevelError)
+	}
 }
