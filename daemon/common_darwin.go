@@ -127,3 +127,8 @@ type MacTemplateData struct {
 	Label    string
 	Interval string
 }
+
+// GetInitType - returns the init type (not applicable for darwin)
+func GetInitType() config.InitType {
+	return config.UnKnown
+}

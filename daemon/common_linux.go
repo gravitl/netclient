@@ -3,11 +3,14 @@ package daemon
 import (
 	"errors"
 	"os"
+	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 const ExecDir = "/sbin/"
@@ -158,4 +161,48 @@ func removeSystemDServices() error {
 		return errors.New(faults)
 	}
 	return nil
+}
+
+func GetInitType() config.InitType {
+	slog.Debug("getting init type", "os", runtime.GOOS)
+	if runtime.GOOS != "linux" {
+		return config.UnKnown
+	}
+	out, err := ncutils.RunCmd("ls -l /sbin/init", false)
+	if err != nil {
+		slog.Error("error checking /sbin/init", "error", err)
+		return config.UnKnown
+	}
+	slog.Debug("checking /sbin/init", "output ", out)
+	if strings.Contains(out, "systemd") {
+		// ubuntu, debian, fedora, suse, etc
+		return config.Systemd
+	}
+	if strings.Contains(out, "runit-init") {
+		// void linux
+		return config.Runit
+	}
+	if strings.Contains(out, "busybox") {
+		// alpine
+		return config.OpenRC
+	}
+	out, err = ncutils.RunCmd("ls -l /bin/busybox", false)
+	if err != nil {
+		slog.Error("error checking /bin/busybox", "error", err)
+		return config.UnKnown
+	}
+	if strings.Contains(out, "busybox") {
+		// openwrt
+		return config.OpenRC
+	}
+	out, err = ncutils.RunCmd("ls -l /etc/init.d", false)
+	if err != nil {
+		slog.Error("error checking /etc/init.d", "error", err)
+		return config.UnKnown
+	}
+	if strings.Contains(out, "README") {
+		// MXLinux
+		return config.SysVInit
+	}
+	return config.UnKnown
 }

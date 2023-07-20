@@ -8,8 +8,8 @@ import (
 	"os/user"
 )
 
-// checkUID - Checks to make sure user has root privileges
-func checkUID() {
+// CheckUID - Checks to make sure user has root privileges
+func CheckUID() {
 	// start our application
 	user, err := user.Current()
 	if err != nil {

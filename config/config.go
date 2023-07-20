@@ -2,7 +2,6 @@
 package config
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net"
@@ -14,14 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
-	"github.com/spf13/viper"
-	"golang.org/x/crypto/nacl/box"
-	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -169,16 +163,6 @@ func RemoveServerHostPeerCfg() {
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
-}
-
-// setLogVerbosity sets the logger verbosity from config
-func setLogVerbosity(flags *viper.Viper) {
-	verbosity := flags.GetInt("verbosity")
-	if netclient.Verbosity > verbosity {
-		logger.Verbosity = netclient.Verbosity
-		return
-	}
-	logger.Verbosity = verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -405,177 +389,6 @@ func InCharSet(name string) bool {
 	return true
 }
 
-// InitConfig reads in config file and ENV variables if set.
-func InitConfig(viper *viper.Viper) {
-	checkUID()
-	ReadNetclientConfig()
-	setLogVerbosity(viper)
-	setupLoging(viper)
-	ReadNodeConfig()
-	ReadServerConf()
-	SetServerCtx()
-	CheckConfig()
-	//check netclient dirs exist
-	if _, err := os.Stat(GetNetclientPath()); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.Mkdir(GetNetclientPath(), os.ModePerm); err != nil {
-				logger.Log(0, "failed to create dirs", err.Error())
-			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "failed to update permissions of netclient config dir", err.Error())
-			}
-		} else {
-			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
-		}
-	}
-	//wireguard.WriteWgConfig(Netclient(), GetNodes())
-}
-
-// CheckConfig - verifies and updates configuration settings
-func CheckConfig() {
-	fail := false
-	saveRequired := false
-	netclient := Netclient()
-	if netclient.OS != runtime.GOOS {
-		logger.Log(0, "setting OS")
-		netclient.OS = runtime.GOOS
-		saveRequired = true
-	}
-	slog.Info("OS is", "os", netclient.OS)
-	if netclient.OS == "linux" {
-		initType := GetInitType()
-		slog.Debug("init type is", "type", initType.String(), "old type", netclient.InitType.String())
-		if netclient.InitType != initType {
-			slog.Info("setting init type", "type", initType.String())
-			netclient.InitType = initType
-			saveRequired = true
-		}
-	}
-
-	if netclient.Version != Version {
-		logger.Log(0, "setting version")
-		netclient.Version = Version
-		saveRequired = true
-	}
-	netclient.IPForwarding = true
-	if netclient.ID == uuid.Nil {
-		logger.Log(0, "setting netclient hostid")
-		netclient.ID = uuid.New()
-		netclient.HostPass = logic.RandomString(32)
-		saveRequired = true
-	}
-	if netclient.Name == "" {
-		logger.Log(0, "setting name")
-		netclient.Name, _ = os.Hostname()
-		//make sure hostname is suitable
-		netclient.Name = FormatName(netclient.Name)
-		saveRequired = true
-	}
-	if netclient.MacAddress == nil {
-		logger.Log(0, "setting macAddress")
-		mac, err := ncutils.GetMacAddr()
-		if err != nil {
-			logger.FatalLog("failed to set macaddress", err.Error())
-		}
-		netclient.MacAddress = mac[0]
-		if runtime.GOOS == "darwin" && netclient.MacAddress.String() == "ac:de:48:00:11:22" {
-			if len(mac) > 1 {
-				netclient.MacAddress = mac[1]
-			} else {
-				netclient.MacAddress = ncutils.RandomMacAddress()
-			}
-		}
-		saveRequired = true
-	}
-	if (netclient.PrivateKey == wgtypes.Key{}) {
-		logger.Log(0, "setting wireguard keys")
-		var err error
-		netclient.PrivateKey, err = wgtypes.GeneratePrivateKey()
-		if err != nil {
-			logger.FatalLog("failed to generate wg key", err.Error())
-		}
-		netclient.PublicKey = netclient.PrivateKey.PublicKey()
-		saveRequired = true
-	}
-	if netclient.Interface == "" {
-		logger.Log(0, "setting wireguard interface")
-		netclient.Interface = models.WIREGUARD_INTERFACE
-		saveRequired = true
-	}
-	if netclient.ListenPort == 0 {
-		logger.Log(0, "setting listenport")
-		port, err := ncutils.GetFreePort(DefaultListenPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ListenPort = port
-			saveRequired = true
-		}
-	}
-	if netclient.ProxyListenPort == 0 {
-		logger.Log(0, "setting proxyListenPort")
-		port, err := ncutils.GetFreePort(models.NmProxyPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ProxyListenPort = port
-			saveRequired = true
-		}
-	}
-	if netclient.MTU == 0 {
-		logger.Log(0, "setting MTU")
-		netclient.MTU = DefaultMTU
-	}
-
-	if len(netclient.TrafficKeyPrivate) == 0 {
-		logger.Log(0, "setting traffic keys")
-		pub, priv, err := box.GenerateKey(rand.Reader)
-		if err != nil {
-			logger.FatalLog("error generating traffic keys", err.Error())
-		}
-		bytes, err := ncutils.ConvertKeyToBytes(priv)
-		if err != nil {
-			logger.FatalLog("error generating traffic keys", err.Error())
-		}
-		netclient.TrafficKeyPrivate = bytes
-		bytes, err = ncutils.ConvertKeyToBytes(pub)
-		if err != nil {
-			logger.FatalLog("error generating traffic keys", err.Error())
-		}
-		netclient.TrafficKeyPublic = bytes
-		saveRequired = true
-	}
-	// check for nftables present if on Linux
-	if FirewallHasChanged() {
-		saveRequired = true
-		SetFirewall()
-	}
-	if saveRequired {
-		logger.Log(3, "saving netclient configuration")
-		if err := WriteNetclientConfig(); err != nil {
-			logger.FatalLog("could not save netclient config " + err.Error())
-		}
-	}
-	_ = ReadServerConf()
-	_ = ReadNodeConfig()
-	if CurrServer != "" {
-		server := GetServer(CurrServer)
-		if server == nil {
-			fail = true
-			logger.Log(0, "configuration for", CurrServer, "is missing")
-		} else {
-			if server.MQID != netclient.ID {
-				fail = true
-				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-			}
-		}
-	}
-
-	if fail {
-		logger.FatalLog("configuration is invalid, fix before proceeding")
-	}
-}
-
 // Convert converts netclient host/node struct to netmaker host/node structs
 func Convert(h *Config, n *Node) (models.Host, models.Node) {
 	var host models.Host
@@ -710,74 +523,4 @@ func FirewallHasChanged() bool {
 		return false
 	}
 	return true
-}
-
-func GetInitType() InitType {
-	slog.Debug("getting init type", "os", runtime.GOOS)
-	if runtime.GOOS != "linux" {
-		return UnKnown
-	}
-	out, err := ncutils.RunCmd("ls -l /sbin/init", false)
-	if err != nil {
-		slog.Error("error checking /sbin/init", "error", err)
-		return UnKnown
-	}
-	slog.Debug("checking /sbin/init", "output ", out)
-	if strings.Contains(out, "systemd") {
-		// ubuntu, debian, fedora, suse, etc
-		return Systemd
-	}
-	if strings.Contains(out, "runit-init") {
-		// void linux
-		return Runit
-	}
-	if strings.Contains(out, "busybox") {
-		// alpine
-		return OpenRC
-	}
-	out, err = ncutils.RunCmd("ls -l /bin/busybox", false)
-	if err != nil {
-		slog.Error("error checking /bin/busybox", "error", err)
-		return UnKnown
-	}
-	if strings.Contains(out, "busybox") {
-		// openwrt
-		return OpenRC
-	}
-	out, err = ncutils.RunCmd("ls -l /etc/init.d", false)
-	if err != nil {
-		slog.Error("error checking /etc/init.d", "error", err)
-		return UnKnown
-	}
-	if strings.Contains(out, "README") {
-		// MXLinux
-		return SysVInit
-	}
-	return UnKnown
-}
-
-func setupLoging(flags *viper.Viper) {
-	logLevel := &slog.LevelVar{}
-	replace := func(groups []string, a slog.Attr) slog.Attr {
-		if a.Key == slog.SourceKey {
-			a.Value = slog.StringValue(filepath.Base(a.Value.String()))
-		}
-		return a
-	}
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
-	slog.SetDefault(logger)
-	verbosity := flags.GetInt("verbosity")
-	if verbosity > Netclient().Verbosity {
-		Netclient().Verbosity = verbosity
-	}
-	switch Netclient().Verbosity {
-	case 4:
-		logLevel.Set(slog.LevelDebug)
-	case 3:
-		logLevel.Set(slog.LevelInfo)
-	case 2:
-		logLevel.Set(slog.LevelWarn)
-	default:
-		logLevel.Set(slog.LevelError)
-	}
 }
