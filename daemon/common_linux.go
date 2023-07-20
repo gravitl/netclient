@@ -40,6 +40,19 @@ func stop() error {
 	return nil
 }
 
+// restart - restarts daemon
+func hardRestart() error {
+	host := config.Netclient()
+	if host.DaemonInstalled {
+		if _, err := os.Stat("/usr/bin/systemctl"); err == nil {
+			return restartSystemD()
+		}
+	} else {
+		return errors.New("systemd not installed .. daemon not started")
+	}
+	return nil
+}
+
 // cleanUp - cleans up neclient configs
 func cleanUp() error {
 	var faults string
@@ -114,7 +127,6 @@ WantedBy=multi-user.target
 	}
 	_, _ = ncutils.RunCmd("systemctl enable netclient.service", true)
 	_, _ = ncutils.RunCmd("systemctl daemon-reload", true)
-	_, _ = ncutils.RunCmd("systemctl start netclient.service", true)
 	return nil
 }
 
@@ -129,6 +141,13 @@ func startSystemD() error {
 func stopSystemD() error {
 	logger.Log(3, "calling systemctl stop netclient")
 	_, err := ncutils.RunCmd("systemctl stop netclient.service", false)
+	return err
+}
+
+// restartSystemD - restarts systemd service
+func restartSystemD() error {
+	logger.Log(3, "calling systemctl restart netclient")
+	_, err := ncutils.RunCmd("systemctl restart netclient.service", false)
 	return err
 }
 
