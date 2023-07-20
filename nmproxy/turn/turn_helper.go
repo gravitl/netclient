@@ -212,7 +212,6 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 
 // isPeerConnected - get peer connection status by checking last handshake time
 func isPeerConnected(peerKey string) (connected bool, err error) {
-	return false, nil
 	peer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
 		return
