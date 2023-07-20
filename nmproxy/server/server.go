@@ -12,7 +12,13 @@ import (
 // ProxyServer.Close - closes the proxy server
 func ShutDown() {
 	logger.Log(0, "Shutting down Proxy.....")
+	// clean up proxy connections
+	for _, peerI := range config.GetCfg().GetAllProxyPeers() {
+		peerI.Mutex.Lock()
+		peerI.StopConn()
+		peerI.Mutex.Unlock()
 
+	}
 	turnCfg := config.GetCfg().GetTurnCfg()
 	if turnCfg == nil {
 		return
@@ -23,7 +29,6 @@ func ShutDown() {
 	if turnCfg.TurnConn != nil {
 		turnCfg.TurnConn.Close()
 	}
-
 }
 
 // ProcessIncomingPacket - process the incoming packet to the proxy

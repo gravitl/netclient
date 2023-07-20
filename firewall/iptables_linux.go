@@ -314,9 +314,22 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-	ruleSpec := []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
+	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
+		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
+	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+	if err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+	}
+	fwdJumpRule := ruleInfo{
+		rule:  ruleSpec,
+		chain: iptableFWDChain,
+		table: defaultIpTable,
+	}
+	ruleSpec = []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
+	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
+	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
 	if err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 	}
@@ -526,6 +539,19 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
+		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", netmakerFilterChain}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+
+		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			egressGwRoutes = append(egressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: iptableFWDChain,
+				rule:  ruleSpec,
+			})
+		}
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
