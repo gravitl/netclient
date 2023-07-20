@@ -118,6 +118,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("processing peer update for server", "server", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
+		slog.Error("error decrypting message", "error", err)
 		return
 	}
 	err = json.Unmarshal([]byte(data), &peerUpdate)
@@ -125,7 +126,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	turn.ResetCh <- struct{}{}
+	if server.UseTurn {
+		turn.ResetCh <- struct{}{}
+	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
