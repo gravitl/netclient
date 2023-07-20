@@ -68,8 +68,6 @@ func Daemon() {
 	if err != nil {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
-	// good to sync up config on daemon start
-	Pull(false)
 	cancel := startGoRoutines(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
 	httpctx, httpCancel := context.WithCancel(context.Background())
