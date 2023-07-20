@@ -263,6 +263,11 @@ func setupMQTT(server *config.Server) error {
 		slog.Error("unable to connect to broker", "server", server.Broker, "error", connecterr)
 		return connecterr
 	}
+	if err := PublishHostUpdate(server.Name, models.Acknowledgement); err != nil {
+		slog.Error("failed to send initial ACK to server", "server", server.Name, "error", err)
+	} else {
+		slog.Info("successfully requested ACK on server", "server", server.Name)
+	}
 	// send register signal with turn to server
 	if server.UseTurn {
 		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {

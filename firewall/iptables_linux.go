@@ -426,7 +426,7 @@ func (i *iptablesManager) RefreshEgressRangesOnIngressGw(server string, ingressU
 	currEgressRanges := currEgressRangesMap[server]
 	if len(ingressUpdate.EgressRanges) == 0 || len(ingressUpdate.EgressRanges) != len(currEgressRanges) {
 		// delete if any egress range exists for ext clients
-		logger.Log(0, "Deleting existing Engress ranges for ext clients")
+		logger.Log(0, "Deleting existing Egress ranges for ext clients")
 		for extKey, rulesCfg := range ruleTable {
 			iptablesClient := i.ipv4Client
 			if !rulesCfg.isIpv4 {
