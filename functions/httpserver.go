@@ -9,10 +9,12 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -97,12 +99,20 @@ func register(c *gin.Context) {
 		log.Println("bind error ", err)
 		return
 	}
-	if err := Register(token.Token); err != nil {
+	if err := Register(token.Token, true); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "invalid data " + err.Error()})
 		log.Println("join failed", err)
 		return
 	}
+
 	c.JSON(http.StatusOK, nil)
+
+	go func() {
+		time.Sleep(3 * time.Second)
+		if err := daemon.Restart(); err != nil {
+			logger.Log(3, "daemon restart failed:", err.Error())
+		}
+	}()
 }
 
 func getNetwork(c *gin.Context) {
@@ -247,7 +257,7 @@ func join(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
 		return
 	}
-	if err := RegisterWithSSO(&joinReq); err != nil {
+	if err := RegisterWithSSO(&joinReq, true); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}

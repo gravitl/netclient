@@ -24,7 +24,7 @@ type RegisterSSO struct {
 }
 
 // RegisterWithSSO - register with user credentials with a netmaker server
-func RegisterWithSSO(registerData *RegisterSSO) (err error) {
+func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
 	if registerData == nil || len(registerData.API) == 0 { // begin validation
 		return fmt.Errorf("no server data provided")
 	}
@@ -76,10 +76,10 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 	registerData.Pass = ""
 
 	defer conn.Close()
-	return handeServerSSORegisterConn(&request, registerData.API, conn)
+	return handeServerSSORegisterConn(&request, registerData.API, conn, isGui)
 }
 
-func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn) error {
+func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn, isGui bool) error {
 	reqData, err := json.Marshal(&reqMsg)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 				if err := json.Unmarshal(msg, &response); err != nil {
 					return
 				}
-				handleRegisterResponse(&response)
+				handleRegisterResponse(&response, isGui)
 			}
 		}
 	}()
