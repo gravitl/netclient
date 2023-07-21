@@ -10,19 +10,6 @@ import (
 
 // setupSystemDDaemon - sets system daemon for supported machines
 func setupSystemDDaemon() error {
-	binarypath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	//install binary
-	if ncutils.FileExists(ExecDir + "netclient") {
-		logger.Log(0, "updating netclient binary in", ExecDir)
-	}
-	err = ncutils.Copy(binarypath, ExecDir+"netclient")
-	if err != nil {
-		logger.Log(0, err.Error())
-		return err
-	}
 	systemservice := `[Unit]
 Description=Netclient Daemon
 Documentation=https://docs.netmaker.org https://k8s.netmaker.org
@@ -44,7 +31,7 @@ WantedBy=multi-user.target
 	servicebytes := []byte(systemservice)
 
 	if !ncutils.FileExists("/etc/systemd/system/netclient.service") {
-		err = os.WriteFile("/etc/systemd/system/netclient.service", servicebytes, 0644)
+		err := os.WriteFile("/etc/systemd/system/netclient.service", servicebytes, 0644)
 		if err != nil {
 			logger.Log(0, err.Error())
 			return err
@@ -52,7 +39,6 @@ WantedBy=multi-user.target
 	}
 	_, _ = ncutils.RunCmd("systemctl enable netclient.service", true)
 	_, _ = ncutils.RunCmd("systemctl daemon-reload", true)
-	_, _ = ncutils.RunCmd("systemctl start netclient.service", true)
 	return nil
 }
 

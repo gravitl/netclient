@@ -53,7 +53,7 @@ type InitType int
 
 // String - returns the string representation of the init type
 func (i InitType) String() string {
-	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc"}[i]
+	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc", "initd"}[i]
 }
 
 var (
