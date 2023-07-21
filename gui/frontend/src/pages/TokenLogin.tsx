@@ -57,6 +57,8 @@ function TokenLogin() {
       switch (type) {
         case "enrollment-key":
           await GoRegisterWithEnrollmentKey(enrollmentKey);
+          // wait a while for the server to register host to network. makes the UX better
+          await new Promise((resolve) => setTimeout(resolve, 3000));
           break;
       }
 
