@@ -45,6 +45,7 @@ const (
 	SysVInit
 	Runit
 	OpenRC
+	Initd
 )
 
 // Initype - the type of init system in use
