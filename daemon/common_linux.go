@@ -16,6 +16,19 @@ import (
 const ExecDir = "/sbin/"
 
 func install() error {
+	binarypath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if ncutils.FileExists(ExecDir + "netclient") {
+		slog.Info("updating netclient binary in", "path", ExecDir)
+	}
+	err = ncutils.Copy(binarypath, ExecDir+"netclient")
+	if err != nil {
+		slog.Error(err.Error())
+		return err
+	}
+
 	switch config.Netclient().InitType {
 	case config.Systemd:
 		return setupSystemDDaemon()
@@ -62,7 +75,22 @@ func cleanUp() error {
 			logger.Log(0, "failed to stop netclient service", err.Error())
 			faults = "failed to stop netclient service: "
 		}
-		if err := removeSystemDServices(); err != nil {
+		var err error
+		switch host.InitType {
+		case config.Systemd:
+			err = removeSystemDServices()
+		case config.SysVInit:
+			err = removeSysVinit()
+		case config.OpenRC:
+			err = removeOpenRC()
+		case config.Runit:
+			err = removerunit()
+		case config.Initd:
+			err = removeInitd()
+		default:
+			err = errors.New("unsupported init type")
+		}
+		if err != nil {
 			faults = faults + err.Error()
 		}
 	} else if err := stop(); err != nil {
@@ -70,12 +98,18 @@ func cleanUp() error {
 		faults = "failed to stop netclient process: "
 	}
 	if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
-		logger.Log(1, "Removing netclient configs: ", err.Error())
+		slog.Error("Removing netclient configs:", "error", err)
 		faults = faults + err.Error()
 	}
 	if err := os.Remove(ExecDir + "netclient"); err != nil {
-		logger.Log(1, "Removing netclient binary: ", err.Error())
+		slog.Error("Removing netclient binary:", "error", err)
 		faults = faults + err.Error()
+	}
+	if host.InitType != config.Systemd {
+		if err := os.Remove("/var/log/netclient.log"); err != nil {
+			slog.Error("Removing netclient log:", "error", err)
+			faults = faults + err.Error()
+		}
 	}
 	if faults != "" {
 		return errors.New(faults)
