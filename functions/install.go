@@ -8,7 +8,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 // Install - installs binary/daemon
@@ -28,7 +28,7 @@ func Install() error {
 	_ = daemon.Stop()
 	time.Sleep(time.Second << 1)
 	if err := daemon.Install(); err != nil {
-		logger.Log(0, "error installing daemon", err.Error())
+		slog.Error("daemon install error", "error", err)
 		return err
 	}
 	config.Netclient().DaemonInstalled = true
