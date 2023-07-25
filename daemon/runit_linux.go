@@ -24,6 +24,12 @@ func stoprunit() error {
 	return errors.New("runit not supported")
 }
 
+// restartrunit - restarts runit daemon
+func restartrunit() error {
+	slog.Info("runit not supported")
+	return errors.New("runit not supported")
+}
+
 // removerunit - removes runit daemon
 func removerunit() error {
 	slog.Info("runit not supported")

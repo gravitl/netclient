@@ -24,6 +24,12 @@ func stopSysVinit() error {
 	return errors.New("sysV not supported")
 }
 
+// restartSysVinit - restarts sysVinit daemon
+func restartSysVinit() error {
+	slog.Info("sysV not supported")
+	return errors.New("sysV not supported")
+}
+
 // removeSysVinit - removes sysVinit daemon
 func removeSysVinit() error {
 	slog.Info("sysV not supported")

@@ -94,14 +94,23 @@ func stop() error {
 // restart - restarts daemon
 func hardRestart() error {
 	host := config.Netclient()
-	if host.DaemonInstalled {
-		if _, err := os.Stat("/usr/bin/systemctl"); err == nil {
-			return restartSystemD()
-		}
-	} else {
+	if !host.DaemonInstalled {
 		return errors.New("systemd not installed .. daemon not started")
 	}
-	return nil
+	switch host.InitType {
+	case config.Systemd:
+		return restartSystemD()
+	case config.SysVInit:
+		return restartSysVinit()
+	case config.OpenRC:
+		return restartOpenRC()
+	case config.Runit:
+		return restartrunit()
+	case config.Initd:
+		return restartInitd()
+	default:
+		return errors.New("unsupported init type")
+	}
 }
 
 // cleanUp - cleans up neclient configs
@@ -190,50 +199,6 @@ func GetInitType() config.InitType {
 	if strings.Contains(out, "busybox") {
 		// openwrt
 		return config.Initd
-	}
-	out, err = ncutils.RunCmd("ls -l /etc/init.d", false)
-	if err != nil {
-		slog.Error("error checking /etc/init.d", "error", err)
-		return config.UnKnown
-	}
-	if strings.Contains(out, "README") {
-		// MXLinux
-		return config.SysVInit
-	}
-	return config.UnKnown
-}
-
-func GetInitType() config.InitType {
-	slog.Debug("getting init type", "os", runtime.GOOS)
-	if runtime.GOOS != "linux" {
-		return config.UnKnown
-	}
-	out, err := ncutils.RunCmd("ls -l /sbin/init", false)
-	if err != nil {
-		slog.Error("error checking /sbin/init", "error", err)
-		return config.UnKnown
-	}
-	slog.Debug("checking /sbin/init", "output ", out)
-	if strings.Contains(out, "systemd") {
-		// ubuntu, debian, fedora, suse, etc
-		return config.Systemd
-	}
-	if strings.Contains(out, "runit-init") {
-		// void linux
-		return config.Runit
-	}
-	if strings.Contains(out, "busybox") {
-		// alpine
-		return config.OpenRC
-	}
-	out, err = ncutils.RunCmd("ls -l /bin/busybox", false)
-	if err != nil {
-		slog.Error("error checking /bin/busybox", "error﻿", err)
-		return config.UnKnown
-	}
-	if strings.Contains(out, "busybox") {
-		// openwrt
-		return config.OpenRC
 	}
 	out, err = ncutils.RunCmd("ls -l /etc/init.d", false)
 	if err != nil {

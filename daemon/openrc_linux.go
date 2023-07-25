@@ -47,6 +47,12 @@ func stopOpenRC() error {
 	return err
 }
 
+func restartOpenRC() error {
+	slog.Info("restarting netclient service")
+	_, err := ncutils.RunCmd("/sbin/rc-service netclient restart", false)
+	return err
+}
+
 func removeOpenRC() error {
 	var faults string
 	if _, err := ncutils.RunCmd("/sbin/rc-update del netclient -a", false); err != nil {

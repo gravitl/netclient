@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 // setupSystemDDaemon - sets system daemon for supported machines
@@ -53,6 +54,13 @@ func startSystemD() error {
 func stopSystemD() error {
 	logger.Log(3, "calling systemctl stop netclient")
 	_, err := ncutils.RunCmd("systemctl stop netclient.service", false)
+	return err
+}
+
+// restartSystemD - tells system to restart systemd
+func restartSystemD() error {
+	slog.Info("restarting netclient service")
+	_, err := ncutils.RunCmd("systemctl restart netclient.service", false)
 	return err
 }
 

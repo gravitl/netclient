@@ -49,6 +49,13 @@ func stopInitd() error {
 	return err
 }
 
+// restartInitd - restarts initd daemon
+func restartInitd() error {
+	slog.Info("restarting netclient service")
+	_, err := ncutils.RunCmd("/etc/init.d/netclient restart", true)
+	return err
+}
+
 // removeInitd - removes initd daemon
 func removeInitd() error {
 	var faults string
