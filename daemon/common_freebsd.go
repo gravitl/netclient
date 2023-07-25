@@ -101,8 +101,6 @@ netclient_args="daemon"`
 	if err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644); err != nil {
 		return err
 	}
-	slog.Info("starting deamon")
-	start()
 	return nil
 }
 
@@ -134,6 +132,10 @@ func status() bool {
 		return true
 	}
 	return false
+}
+
+func hardRestart() error {
+	return service("restart")
 }
 
 // service- accepts args to service netclient and applies

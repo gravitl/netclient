@@ -30,8 +30,7 @@ func install() error {
 	if err := createMacService(MacServiceName); err != nil {
 		return err
 	}
-	_, err = ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true)
-	return err
+	return nil
 }
 
 func start() error {
@@ -44,6 +43,13 @@ func start() error {
 // stop - stop launch daemon
 func stop() error {
 	if _, err := ncutils.RunCmd("launchctl unload  /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func hardRestart() error {
+	if _, err := ncutils.RunCmd("launchctl kickstart -k /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
 		return err
 	}
 	return nil

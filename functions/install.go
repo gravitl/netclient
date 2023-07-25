@@ -33,5 +33,5 @@ func Install() error {
 	}
 	config.Netclient().DaemonInstalled = true
 	_ = config.WriteNetclientConfig()
-	return daemon.Restart()
+	return daemon.Start()
 }
