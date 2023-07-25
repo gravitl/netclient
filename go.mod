@@ -60,9 +60,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/google/go-github/v30 v30.1.0 // indirect
-	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
