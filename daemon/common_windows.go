@@ -76,6 +76,11 @@ func restart() error {
 	return nil
 }
 
+// hardRestart - restarts windows service  - no special handling on Windows
+func hardRestart() error {
+	return restart()
+}
+
 // cleanup - cleans up windows files
 func cleanUp() error {
 	_ = writeServiceConfig() // will auto check if file is present before writing

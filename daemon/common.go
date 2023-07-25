@@ -11,9 +11,14 @@ func Restart() error {
 	return restart()
 }
 
-// Start - starts system daemon
+// Start - starts system daemon using signals (unix) or init system (windows)
 func Start() error {
 	return start()
+}
+
+// HardRestart - restarts system daemon using init system
+func HardRestart() error {
+	return hardRestart()
 }
 
 // Stop - stops a system daemon
