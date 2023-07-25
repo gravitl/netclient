@@ -144,3 +144,8 @@ func runWinSWCMD(command string) error {
 	}
 	return err
 }
+
+// GetInitType - returns the init type (not applicable for windows)
+func GetInitType() config.InitType {
+	return config.UnKnown
+}
