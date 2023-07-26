@@ -31,6 +31,7 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 			egressMapMutex.Lock()
 			currEgressRangesMap[egressNodeID] = egressInfo.EgressGWCfg.Ranges
 			egressMapMutex.Unlock()
+			continue
 		}
 		egressMapMutex.RLock()
 		currEgressRanges := currEgressRangesMap[egressNodeID]
