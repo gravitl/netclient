@@ -55,6 +55,9 @@ func handleRequest(c net.Conn) {
 	buffer := make([]byte, 1024) // handle incoming data
 	numBytes, err := c.Read(buffer)
 	if err != nil {
+		if numBytes == 0 {
+			return
+		}
 		logger.Log(0, "error reading ping", err.Error())
 		return
 	}

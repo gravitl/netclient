@@ -35,17 +35,6 @@ func SetPeers(replace bool) error {
 
 // == private ==
 
-// RemovePeer replaces a wireguard peer
-// temporarily making public func to pass staticchecks
-// this function will be required in future when add/delete node on server is refactored
-func RemovePeer(n *config.Node, p *wgtypes.PeerConfig) error {
-	p.Remove = true
-	config := wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{*p},
-	}
-	return apply(&config)
-}
-
 // UpdatePeer replaces a wireguard peer
 // temporarily making public func to pass staticchecks
 // this function will be required in future when update node on server is refactored
