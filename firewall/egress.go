@@ -27,7 +27,22 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 		if _, ok := ruleTable[egressNodeID]; !ok {
 			// set up rules for the GW on first time creation
 			fwCrtl.InsertEgressRoutingRules(server, egressInfo)
+			egressMapMutex.Lock()
+			currEgressRangesMap[egressNodeID] = egressInfo.EgressGWCfg.Ranges
+			egressMapMutex.Unlock()
 		}
+		egressMapMutex.RLock()
+		currEgressRanges := currEgressRangesMap[egressNodeID]
+		egressMapMutex.RUnlock()
+		if len(currEgressRanges) != len(egressInfo.EgressGWCfg.Ranges) {
+			// refresh egress routes for any modification in the ranges
+			fwCrtl.RemoveRoutingRules(server, egressTable, egressNodeID)
+			fwCrtl.InsertEgressRoutingRules(server, egressInfo)
+			egressMapMutex.Lock()
+			currEgressRangesMap[egressNodeID] = egressInfo.EgressGWCfg.Ranges
+			egressMapMutex.Unlock()
+		}
+
 	}
 	return nil
 }
