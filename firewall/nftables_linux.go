@@ -323,7 +323,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			logger.Log(0, "Invalid egress CIDR: ", cidr.String(), " Err: ", err.Error())
 			continue
 		}
-		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", netmakerFilterChain}
+		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", "ACCEPT"}
 		if isIpv4 {
 			rule = &nftables.Rule{
 				Table:    filterTable,
@@ -592,120 +592,6 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:   ruleSpec,
 					})
 				}
-			}
-		}
-	}
-	for _, peer := range egressInfo.GwPeers {
-		if !peer.Allow {
-			continue
-		}
-		ruleTable[egressInfo.EgressID].rulesMap[peer.PeerKey] = make([]ruleInfo, 0)
-
-		for _, egressRange := range egressInfo.EgressGWCfg.Ranges {
-			ruleSpec := []string{"-s", peer.PeerAddr.String(), "-d", egressRange, "-j", "ACCEPT"}
-			egressIP, cidr, err := net.ParseCIDR(egressRange)
-			if err != nil {
-				logger.Log(0, "Invalid egress CIDR: ", cidr.String(), " Err: ", err.Error())
-				continue
-			}
-			if isIpv4 {
-				rule = &nftables.Rule{
-					Table:    filterTable,
-					Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
-					UserData: []byte(genRuleKey(ruleSpec...)),
-					Exprs: []expr.Any{
-						&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
-						&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
-						&expr.Payload{
-							DestRegister: 1,
-							Base:         expr.PayloadBaseNetworkHeader,
-							Offset:       ipv4SrcOffset,
-							Len:          ipv4Len,
-						},
-						&expr.Cmp{
-							Op:       expr.CmpOpEq,
-							Register: 1,
-							Data:     peer.PeerAddr.IP.To4(),
-						},
-						&expr.Payload{
-							DestRegister: 1,
-							Base:         expr.PayloadBaseNetworkHeader,
-							Offset:       ipv4DestOffset,
-							Len:          ipv4Len,
-						},
-						// for CIDR ranges
-						&expr.Bitwise{
-							DestRegister:   1,
-							SourceRegister: 1,
-							Len:            ipv4Len,
-							Mask:           cidr.Mask,
-							Xor:            zeroXor,
-						},
-						&expr.Cmp{
-							Register: 1,
-							Data:     egressIP.To4(),
-						},
-						&expr.Counter{},
-						&expr.Verdict{
-							Kind: expr.VerdictAccept,
-						},
-					},
-				}
-			} else {
-				rule = &nftables.Rule{
-					Table:    filterTable,
-					Chain:    &nftables.Chain{Name: netmakerFilterChain, Table: filterTable},
-					UserData: []byte(genRuleKey(ruleSpec...)),
-					Exprs: []expr.Any{
-						&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
-						&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV6}},
-						&expr.Payload{
-							DestRegister: 1,
-							Base:         expr.PayloadBaseNetworkHeader,
-							Offset:       ipv6SrcOffset,
-							Len:          ipv6Len,
-						},
-						&expr.Cmp{
-							Op:       expr.CmpOpEq,
-							Register: 1,
-							Data:     peer.PeerAddr.IP.To16(),
-						},
-						&expr.Payload{
-							DestRegister: 1,
-							Base:         expr.PayloadBaseNetworkHeader,
-							Offset:       ipv6DestOffset,
-							Len:          ipv6Len,
-						},
-						// for CIDR ranges
-						&expr.Bitwise{
-							DestRegister:   1,
-							SourceRegister: 1,
-							Len:            ipv6Len,
-							Mask:           cidr.Mask,
-							Xor:            zeroXor6,
-						},
-						&expr.Cmp{
-							Register: 1,
-							Data:     egressIP.To16(),
-						},
-						&expr.Counter{},
-						&expr.Verdict{
-							Kind: expr.VerdictAccept,
-						},
-					},
-				}
-			}
-			n.conn.InsertRule(rule)
-			if err := n.conn.Flush(); err != nil {
-				logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-			} else {
-				ruleTable[egressInfo.EgressID].rulesMap[peer.PeerKey] = append(ruleTable[egressInfo.EgressID].rulesMap[peer.PeerKey],
-					ruleInfo{
-						nfRule: rule,
-						table:  defaultIpTable,
-						chain:  netmakerFilterChain,
-						rule:   ruleSpec,
-					})
 			}
 		}
 	}

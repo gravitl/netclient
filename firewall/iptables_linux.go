@@ -540,7 +540,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", netmakerFilterChain}
+		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", "ACCEPT"}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 
 		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
@@ -588,25 +588,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				}
 			}
 
-		}
-
-	}
-	for _, peer := range egressInfo.GwPeers {
-		if !peer.Allow {
-			continue
-		}
-		ruleSpec := []string{"-s", peer.PeerAddr.String(), "-d", strings.Join(egressInfo.EgressGWCfg.Ranges, ","), "-j", "ACCEPT"}
-		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			ruleTable[egressInfo.EgressID].rulesMap[peer.PeerKey] = []ruleInfo{
-				{
-					table: defaultIpTable,
-					chain: netmakerFilterChain,
-					rule:  ruleSpec,
-				},
-			}
 		}
 
 	}
