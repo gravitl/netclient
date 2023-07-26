@@ -54,13 +54,3 @@ func (p *Proxy) Close() {
 	p.Cancel()
 	p.LocalConn.Close()
 }
-
-// GetInterfaceListenAddr - gets interface listen addr
-func GetInterfaceListenAddr(port int) (*net.UDPAddr, error) {
-	locallistenAddr := "127.0.0.1"
-	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", locallistenAddr, port))
-	if err != nil {
-		return udpAddr, err
-	}
-	return udpAddr, nil
-}

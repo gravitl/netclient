@@ -15,12 +15,11 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
-	proxy_cfg "github.com/gravitl/netclient/nmproxy/config"
-	ncmodels "github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -39,22 +38,13 @@ const (
 )
 
 var (
-	Mqclient         mqtt.Client
-	messageCache     = new(sync.Map)
-	ProxyManagerChan = make(chan *models.HostPeerUpdate, 50)
-	hostNatInfo      *ncmodels.HostInfo
+	Mqclient     mqtt.Client
+	messageCache = new(sync.Map)
 )
 
 type cachedMessage struct {
 	Message  string
 	LastSeen time.Time
-}
-
-func startProxy(wg *sync.WaitGroup) context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	wg.Add(1)
-	go nmproxy.Start(ctx, wg, ProxyManagerChan, hostNatInfo)
-	return cancel
 }
 
 // Daemon runs netclient daemon
@@ -73,8 +63,13 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 
+	// initialize firewall manager
+	var err error
+	config.FwClose, err = firewall.Init()
+	if err != nil {
+		logger.Log(0, "failed to intialize firewall: ", err.Error())
+	}
 	cancel := startGoRoutines(&wg)
-	stopProxy := startProxy(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
 	httpctx, httpCancel := context.WithCancel(context.Background())
 	httpWg := sync.WaitGroup{}
@@ -86,24 +81,20 @@ func Daemon() {
 			slog.Info("shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
 			}, &wg)
 			httpCancel()
 			httpWg.Wait()
+			config.FwClose()
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
 			slog.Info("received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-				stopProxy,
 			}, &wg)
 			slog.Info("resetting daemon")
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
-			if !proxy_cfg.GetCfg().ProxyStatus {
-				stopProxy = startProxy(&wg)
-			}
 		}
 	}
 }
@@ -140,7 +131,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		updateConfig = true
 	}
 	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort = holePunchWgPort()
+	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
 	if config.Netclient().WgPublicListenPort == 0 {
@@ -151,21 +142,16 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		config.Netclient().EndpointIP = config.HostPublicIP
 		updateConfig = true
 	}
+	if config.Netclient().NatType == "" {
+		config.Netclient().NatType = config.HostNatType
+		updateConfig = true
+	}
 	if updateConfig {
 		if err := config.WriteNetclientConfig(); err != nil {
 			slog.Error("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
-	setNatInfo()
 	slog.Info("configuring netmaker wireguard interface")
-	if len(config.Servers) == 0 {
-		ProxyManagerChan <- &models.HostPeerUpdate{
-			ProxyUpdate: models.ProxyManagerPayload{
-				Action: models.ProxyDeleteAllPeers,
-			},
-		}
-	}
-
 	Pull(false)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	if err := nc.Create(); err != nil {
@@ -180,6 +166,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	wg.Add(1)
+	go nmproxy.Start(ctx, wg)
 	networking.StoreServerAddresses(server)
 	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
@@ -193,7 +181,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ProxyListenPort)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
 	return cancel
 }
 
@@ -359,6 +347,7 @@ func setHostSubscription(client mqtt.Client, server string) {
 		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
+
 }
 
 // setSubcriptions sets MQ client subscriptions for a specific node config
@@ -474,7 +463,7 @@ func UpdateKeys() error {
 	return nil
 }
 
-func holePunchWgPort() (pubIP net.IP, pubPort int) {
+func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	stunServers := []models.StunServer{
 		{Domain: "stun1.netmaker.io", Port: 3478},
 		{Domain: "stun2.netmaker.io", Port: 3478},
@@ -482,26 +471,8 @@ func holePunchWgPort() (pubIP net.IP, pubPort int) {
 		{Domain: "stun2.l.google.com", Port: 19302},
 	}
 	portToStun := config.Netclient().ListenPort
-	pubIP, pubPort = stun.HolePunch(stunServers, portToStun)
+	pubIP, pubPort, natType = stun.HolePunch(stunServers, portToStun)
 	return
-}
-
-func setNatInfo() {
-	portToStun, err := ncutils.GetFreePort(config.Netclient().ProxyListenPort)
-	if err != nil {
-		slog.Error("failed to get freeport for proxy: ", "error", err)
-		return
-	}
-	for _, server := range config.Servers {
-		server := server
-		if hostNatInfo == nil {
-			hostNatInfo = stun.GetHostNatInfo(
-				server.StunList,
-				config.Netclient().EndpointIP.String(),
-				portToStun,
-			)
-		}
-	}
 }
 
 func cleanUpRoutes() {

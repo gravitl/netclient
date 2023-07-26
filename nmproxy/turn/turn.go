@@ -79,7 +79,7 @@ func startClient(server, turnDomain string, turnPort int) error {
 		return err
 	}
 
-	config.GetCfg().SetTurnCfg(server, models.TurnCfg{
+	config.GetCfg().SetTurnCfg(&models.TurnCfg{
 		Mutex:  &sync.RWMutex{},
 		Cfg:    cfg,
 		Client: client,
@@ -171,8 +171,8 @@ func listen(wg *sync.WaitGroup, serverName string, turnConn net.PacketConn) {
 func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName string, resetCh chan struct{}) {
 	defer wg.Done()
 	defer logger.Log(0, "Closing turn conn: ", serverName)
-	t, ok := config.GetCfg().GetTurnCfg(serverName)
-	if !ok {
+	t := config.GetCfg().GetTurnCfg()
+	if t == nil {
 		return
 	}
 	t.Mutex.Lock()
@@ -184,14 +184,14 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 		t.TurnConn = turnConn
 		t.Status = true
 	}
-	config.GetCfg().SetTurnCfg(serverName, t)
+	config.GetCfg().SetTurnCfg(t)
 	t.Mutex.Unlock()
 	wg.Add(1)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		<-ctx.Done()
-		t, ok := config.GetCfg().GetTurnCfg(serverName)
-		if ok && t.TurnConn != nil {
+		t := config.GetCfg().GetTurnCfg()
+		if t != nil && t.TurnConn != nil {
 			t.Mutex.Lock()
 			t.TurnConn.Close()
 			t.Mutex.Unlock()
@@ -212,8 +212,8 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 				logger.Log(0, "failed to iface: ", err.Error())
 				continue
 			}
-			t, ok := config.GetCfg().GetTurnCfg(serverName)
-			if !ok {
+			t := config.GetCfg().GetTurnCfg()
+			if t == nil || t.TurnConn == nil {
 				continue
 			}
 			t.Mutex.Lock()
@@ -228,7 +228,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			if err != nil {
 				logger.Log(0, "failed to allocate addr on turn: ", err.Error())
 				t.Status = false
-				config.GetCfg().SetTurnCfg(serverName, t)
+				config.GetCfg().SetTurnCfg(t)
 				go func() {
 					// need to retry to allocate addr again on turn server
 					time.Sleep(time.Second * 30)
@@ -241,9 +241,9 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 			}
 			t.TurnConn = turnConn
 			t.Status = true
-			config.GetCfg().SetTurnCfg(serverName, t)
+			config.GetCfg().SetTurnCfg(t)
 			t.Mutex.Unlock()
-			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg()
 			for peerKey := range turnPeersMap {
 				err := SignalPeer(serverName, nm_models.Signal{
 					Server:            serverName,
@@ -279,8 +279,8 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			t, ok := config.GetCfg().GetTurnCfg(serverName)
-			if !ok {
+			t := config.GetCfg().GetTurnCfg()
+			if t == nil {
 				return
 			}
 			if t.Client == nil || t.TurnConn == nil || t.Cfg.Conn == nil {
@@ -291,7 +291,7 @@ func createOrRefreshPermissions(ctx context.Context, wg *sync.WaitGroup, serverN
 			}
 			t.Mutex.RLock()
 			addrs := []net.Addr{}
-			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg(serverName)
+			turnPeersMap := config.GetCfg().GetAllTurnPeersCfg()
 			for _, cfg := range turnPeersMap {
 				if cfg.PeerTurnAddr == "" {
 					continue

@@ -1,10 +1,12 @@
 package config
 
 import (
+	"context"
+	"sync"
+
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	nm_models "github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -13,11 +15,9 @@ type wgIfaceConf struct {
 	iface        *wg.WGIface
 	ifaceKeyHash string
 	proxyPeerMap models.PeerConnMap
-	hostTurnCfg  map[string]models.TurnCfg
-	turnPeerMap  map[string]map[string]models.TurnPeerCfg
+	hostTurnCfg  *models.TurnCfg
+	turnPeerMap  map[string]models.TurnPeerCfg
 	peerHashMap  map[string]*models.RemotePeer
-	relayPeerMap map[string]map[string]*models.RemotePeer
-	allPeersConf map[string]nm_models.HostPeerMap
 }
 
 // Config.IsIfaceNil - checks if ifconfig is nil in the memory config
@@ -60,26 +60,6 @@ func (c *Config) setIfaceKeyHash() {
 	}
 }
 
-// Config.GetDeviceKeyHash - gets the interface pubkey hash
-func (c *Config) GetDeviceKeyHash() string {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	if !c.IsIfaceNil() {
-		return c.ifaceConfig.ifaceKeyHash
-	}
-	return ""
-}
-
-// Config.GetDeviceKeys - fetches interface private,pubkey
-func (c *Config) GetDeviceKeys() (privateKey wgtypes.Key, publicKey wgtypes.Key) {
-	if !c.IsIfaceNil() {
-		iface := c.GetIfaceDevice()
-		privateKey = iface.PrivateKey
-		publicKey = iface.PublicKey
-	}
-	return
-}
-
 // Config.GetDevicePubKey - fetches device public key
 func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 	if !c.IsIfaceNil() {
@@ -92,13 +72,6 @@ func (c *Config) GetDevicePubKey() (publicKey wgtypes.Key) {
 // Config.GetAllProxyPeers - fetches all peers in the network
 func (c *Config) GetAllProxyPeers() models.PeerConnMap {
 	return c.ifaceConfig.proxyPeerMap
-}
-
-// Config.UpdateProxyPeers - updates all peers in the network
-func (c *Config) UpdateProxyPeers(peers *models.PeerConnMap) {
-	if peers != nil {
-		c.ifaceConfig.proxyPeerMap = *peers
-	}
 }
 
 // Config.SavePeer - saves peer to the config
@@ -148,33 +121,11 @@ func (c *Config) RemovePeer(peerPubKey string) {
 		peerConf.Mutex.Unlock()
 		delete(c.ifaceConfig.proxyPeerMap, peerPubKey)
 		GetCfg().DeletePeerHash(peerConf.Key.String())
-		for server := range peerConf.ServerMap {
-			GetCfg().DeletePeerTurnCfg(server, peerPubKey)
-		}
+
+		GetCfg().DeletePeerTurnCfg(peerPubKey)
 
 	}
 
-}
-
-// Config.UpdatePeerNetwork - updates the peer network settings map
-func (c *Config) UpdatePeerNetwork(peerPubKey, network string, setting models.Settings) {
-	if peerConf, found := c.ifaceConfig.proxyPeerMap[peerPubKey]; found {
-		peerConf.Mutex.Lock()
-		peerConf.NetworkSettings[network] = setting
-		peerConf.Mutex.Unlock()
-	}
-}
-
-// Config.CheckIfPeerExists - checks if peer exists in the config
-func (c *Config) CheckIfPeerExists(peerPubKey string) bool {
-
-	_, found := c.ifaceConfig.proxyPeerMap[peerPubKey]
-	return found
-}
-
-// Config.GetNetworkPeerMap - fetches all peers in the network
-func (c *Config) GetNetworkPeerMap() models.PeerConnMap {
-	return c.ifaceConfig.proxyPeerMap
 }
 
 // Config.SavePeerByHash - saves peer by its publicKey hash to the config
@@ -196,60 +147,6 @@ func (c *Config) DeletePeerHash(peerKey string) {
 	delete(c.ifaceConfig.peerHashMap, models.ConvPeerKeyToHash(peerKey))
 }
 
-// Config.SaveRelayedPeer - saves relayed peer to config
-func (c *Config) SaveRelayedPeer(relayedNodePubKey string, peer *models.RemotePeer) {
-	if _, ok := c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)]; !ok {
-		c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)] = make(map[string]*models.RemotePeer)
-	}
-	c.ifaceConfig.relayPeerMap[models.ConvPeerKeyToHash(relayedNodePubKey)][models.ConvPeerKeyToHash(peer.PeerKey)] = peer
-}
-
-// Config.CheckIfRelayedNodeExists - checks if relayed node exists
-func (c *Config) CheckIfRelayedNodeExists(peerHash string) bool {
-	_, found := c.ifaceConfig.relayPeerMap[peerHash]
-	return found
-}
-
-// Config.GetRelayedPeer - fectches the relayed peer
-func (c *Config) GetRelayedPeer(srcKeyHash, dstPeerHash string) (models.RemotePeer, bool) {
-
-	if c.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
-			return *peer, found
-		}
-	} else if c.CheckIfRelayedNodeExists(dstPeerHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
-			return *peer, found
-		}
-	}
-	return models.RemotePeer{}, false
-}
-
-// Config.DeleteRelayedPeers - deletes relayed peer info
-func (c *Config) DeleteRelayedPeers() {
-	peersMap := c.GetAllProxyPeers()
-	for _, peer := range peersMap {
-		if peer.IsRelayed {
-			delete(c.ifaceConfig.relayPeerMap, models.ConvPeerKeyToHash(peer.Key.String()))
-		}
-	}
-}
-
-// Config.UpdateListenPortForRelayedPeer - updates listen port for the relayed peer
-func (c *Config) UpdateListenPortForRelayedPeer(port int, srcKeyHash, dstPeerHash string) {
-	if c.CheckIfRelayedNodeExists(srcKeyHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[srcKeyHash][dstPeerHash]; found {
-			peer.Endpoint.Port = port
-			c.SaveRelayedPeer(srcKeyHash, peer)
-		}
-	} else if c.CheckIfRelayedNodeExists(dstPeerHash) {
-		if peer, found := c.ifaceConfig.relayPeerMap[dstPeerHash][dstPeerHash]; found {
-			peer.Endpoint.Port = port
-			c.SaveRelayedPeer(dstPeerHash, peer)
-		}
-	}
-}
-
 // Config.GetInterfaceListenPort - fetches interface listen port from config
 func (c *Config) GetInterfaceListenPort() (port int) {
 	if !c.IsIfaceNil() {
@@ -258,110 +155,73 @@ func (c *Config) GetInterfaceListenPort() (port int) {
 	return
 }
 
-// Config.UpdateWgIface - updates iface config in memory
-func (c *Config) UpdateWgIface(wgIface *wg.WGIface) {
-	c.ifaceConfig.iface = wgIface
-}
-
-// Config.GetAllPeersIDsAndAddrs - get all peers
-func (c *Config) GetAllPeersIDsAndAddrs() map[string]nm_models.HostPeerMap {
-	return c.ifaceConfig.allPeersConf
-}
-
-// Config.SetPeersIDsAndAddrs - sets the peers in the config
-func (c *Config) SetPeersIDsAndAddrs(server string, peers nm_models.HostPeerMap) {
-	c.ifaceConfig.allPeersConf[server] = peers
-}
-
-// Config.GetPeersIDsAndAddrs - get peer conf
-func (c *Config) GetPeersIDsAndAddrs(server, peerKey string) (map[string]nm_models.IDandAddr, bool) {
-	if peersIDsAndAddrs, ok := c.ifaceConfig.allPeersConf[server]; ok {
-		return peersIDsAndAddrs[peerKey], ok
-	}
-
-	return make(map[string]nm_models.IDandAddr), false
-}
-
 // Config.SetTurnCfg - sets the turn config
-func (c *Config) SetTurnCfg(server string, t models.TurnCfg) {
+func (c *Config) SetTurnCfg(t *models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ifaceConfig.hostTurnCfg[server] = t
+	c.ifaceConfig.hostTurnCfg = t
 }
 
-// Config.DeleteTurnCfg - sets the turn config
-func (c *Config) DeleteTurnCfg(server string) {
+func (c *Config) UpdatePeerTurnAddr(peerKey string, addr string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	delete(c.ifaceConfig.hostTurnCfg, server)
-}
-
-func (c *Config) UpdatePeerTurnAddr(server, peerKey string, addr string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if peerTurnMap, ok := c.ifaceConfig.turnPeerMap[server]; ok {
-		if t, ok := peerTurnMap[peerKey]; ok {
-			t.PeerTurnAddr = addr
-			c.ifaceConfig.turnPeerMap[server][peerKey] = t
-		}
+	if t, ok := c.ifaceConfig.turnPeerMap[peerKey]; ok {
+		t.PeerTurnAddr = addr
+		c.ifaceConfig.turnPeerMap[peerKey] = t
 	}
 }
 
-// Config.GetAllTurnCfg - fetches all turn cfg
-func (c *Config) GetAllTurnCfg() map[string]models.TurnCfg {
+// Config.GetTurnCfg - gets the turn config
+func (c *Config) GetTurnCfg() (t *models.TurnCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return c.ifaceConfig.hostTurnCfg
 }
 
-// Config.GetTurnCfg - gets the turn config
-func (c *Config) GetTurnCfg(server string) (t models.TurnCfg, ok bool) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	t, ok = c.ifaceConfig.hostTurnCfg[server]
-	return
-}
-
 // Config.GetPeerTurnCfg - gets the peer turn cfg
-func (c *Config) GetPeerTurnCfg(server, peerKey string) (t models.TurnPeerCfg, ok bool) {
+func (c *Config) GetPeerTurnCfg(peerKey string) (t models.TurnPeerCfg, ok bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
-		t, ok = peerMap[peerKey]
-	}
+	t, ok = c.ifaceConfig.turnPeerMap[peerKey]
 	return
 }
 
 // Config.UpdatePeerTurnCfg - updates the peer turn cfg
-func (c *Config) UpdatePeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+func (c *Config) UpdatePeerTurnCfg(peerKey string, t models.TurnPeerCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if peerMap, found := c.ifaceConfig.turnPeerMap[server]; found {
-		peerMap[peerKey] = t
-		c.ifaceConfig.turnPeerMap[server] = peerMap
-	}
+	c.ifaceConfig.turnPeerMap[peerKey] = t
 }
 
 // Config.SetPeerTurnCfg - sets the peer turn cfg
-func (c *Config) SetPeerTurnCfg(server, peerKey string, t models.TurnPeerCfg) {
+func (c *Config) SetPeerTurnCfg(peerKey string, t models.TurnPeerCfg) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if _, ok := c.ifaceConfig.turnPeerMap[server]; !ok {
-		c.ifaceConfig.turnPeerMap[server] = make(map[string]models.TurnPeerCfg)
-	}
-	c.ifaceConfig.turnPeerMap[server][peerKey] = t
+	c.ifaceConfig.turnPeerMap[peerKey] = t
 }
 
 // Config.GetAllTurnPeersCfg - fetches all peers using turn
-func (c *Config) GetAllTurnPeersCfg(server string) map[string]models.TurnPeerCfg {
+func (c *Config) GetAllTurnPeersCfg() map[string]models.TurnPeerCfg {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	return c.ifaceConfig.turnPeerMap[server]
+	return c.ifaceConfig.turnPeerMap
 }
 
 // Config.DeleteTurnCfg - deletes the turn config
-func (c *Config) DeletePeerTurnCfg(server, peerKey string) {
+func (c *Config) DeletePeerTurnCfg(peerKey string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	delete(c.ifaceConfig.turnPeerMap, peerKey)
+}
+
+func DumpProxyConnsInfo(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-DumpSignalChan:
+			GetCfg().Dump()
+		}
+	}
 }

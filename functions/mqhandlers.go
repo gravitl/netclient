@@ -11,9 +11,9 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -176,11 +176,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	} else {
 		slog.Debug("endpoint detection disabled")
 	}
-	if proxyCfg.GetCfg().IsProxyRunning() {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		ProxyManagerChan <- &peerUpdate
-	}
-
+	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -310,7 +306,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerIP.String(),
 					hostPubKey,
 					peerPubKey,
-					peerInfo.ProxyListenPort,
+					config.Netclient().ListenPort,
 				); err != nil { // happens v often
 					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
@@ -528,4 +524,19 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 			}
 		}
 	}
+}
+
+func handleFwUpdate(server string, payload *models.FwUpdate) {
+
+	if payload.IsIngressGw {
+		firewall.SetIngressRoutes(server, payload.IngressInfo)
+	} else {
+		firewall.DeleteIngressRules(server)
+	}
+	if payload.IsEgressGw {
+		firewall.SetEgressRoutes(server, payload.EgressInfo)
+	} else {
+		firewall.DeleteEgressGwRoutes(server)
+	}
+
 }

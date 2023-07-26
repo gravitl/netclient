@@ -207,16 +207,6 @@ func checkConfig() {
 			saveRequired = true
 		}
 	}
-	if netclient.ProxyListenPort == 0 {
-		logger.Log(0, "setting proxyListenPort")
-		port, err := ncutils.GetFreePort(models.NmProxyPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ProxyListenPort = port
-			saveRequired = true
-		}
-	}
 	if netclient.MTU == 0 {
 		logger.Log(0, "setting MTU")
 		netclient.MTU = config.DefaultMTU

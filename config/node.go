@@ -193,7 +193,6 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 		netmakerNode.Address6 = node.Address6.IP.String()
 	}
 	netmakerNode.LocalListenPort = int32(host.ListenPort)
-	netmakerNode.ProxyListenPort = int32(host.ProxyListenPort)
 	netmakerNode.MTU = int32(host.MTU)
 	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive.Seconds())
 	netmakerNode.PublicKey = host.PublicKey.String()
@@ -202,7 +201,6 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
 	netmakerNode.IsStatic = FormatBool(host.IsStatic)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
-	netmakerNode.Proxy = host.ProxyEnabled
 
 	return &netmakerNode
 }

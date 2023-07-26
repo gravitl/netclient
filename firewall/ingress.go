@@ -1,12 +1,17 @@
-package router
+package firewall
 
 import (
+	"errors"
+
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 // SetIngressRoutes - feed ingress update to firewall controller to add/remove routing rules
 func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
+	if fwCrtl == nil {
+		return errors.New("firewall is not initialized yet")
+	}
 	logger.Log(1, "----> setting ingress routes")
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
 	for extPeerKey, ruleCfg := range ruleTable {
@@ -49,5 +54,8 @@ func SetIngressRoutes(server string, ingressUpdate models.IngressInfo) error {
 
 // DeleteIngressRules - removes the rules of ingressGW
 func DeleteIngressRules(server string) {
+	if fwCrtl == nil {
+		return
+	}
 	fwCrtl.CleanRoutingRules(server, ingressTable)
 }
