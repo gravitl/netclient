@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 // SetEgressRoutes - sets the egress route for the gateway
@@ -36,6 +37,7 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 		egressMapMutex.RUnlock()
 		if len(currEgressRanges) != len(egressInfo.EgressGWCfg.Ranges) {
 			// refresh egress routes for any modification in the ranges
+			slog.Info("refreshing egress routes", "nodeID", egressNodeID)
 			fwCrtl.RemoveRoutingRules(server, egressTable, egressNodeID)
 			fwCrtl.InsertEgressRoutingRules(server, egressInfo)
 			egressMapMutex.Lock()
