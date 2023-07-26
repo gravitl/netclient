@@ -3,7 +3,9 @@ package ncutils
 
 import (
 	"bytes"
+	"crypto/md5"
 	"crypto/rand"
+	"encoding/base32"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -513,4 +515,20 @@ func RandomMacAddress() net.HardwareAddr {
 		return net.HardwareAddr{}
 	}
 	return mac
+}
+
+// RandomString - returns a random string in a charset
+func RandomString(length int) string {
+	randombytes := make([]byte, length)
+	_, err := rand.Read(randombytes)
+	if err != nil {
+		logger.Log(0, "random string", err.Error())
+		return ""
+	}
+	return base32.StdEncoding.EncodeToString(randombytes)[:length]
+}
+
+// ConvHostPassToHash - converts password to md5 hash
+func ConvHostPassToHash(hostPass string) string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(hostPass)))
 }

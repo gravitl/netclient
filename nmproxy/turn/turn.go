@@ -22,7 +22,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/server"
 	wireguard "github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
@@ -64,7 +63,7 @@ func startClient(server, turnDomain string, turnPort int) error {
 		TURNServerAddr: turnServerAddr,
 		Conn:           conn,
 		Username:       ncconfig.Netclient().ID.String(),
-		Password:       logic.ConvHostPassToHash(ncconfig.Netclient().HostPass),
+		Password:       ncutils.ConvHostPassToHash(ncconfig.Netclient().HostPass),
 		Realm:          turnDomain,
 		Software:       "netmaker",
 		LoggerFactory:  logging.NewDefaultLoggerFactory(),
