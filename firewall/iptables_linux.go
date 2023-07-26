@@ -1,4 +1,4 @@
-package router
+package firewall
 
 import (
 	"errors"
@@ -110,14 +110,17 @@ func (i *iptablesManager) ForwardRule() error {
 	iptablesClient.DeleteIfExists(dropRuleNat.table, dropRuleNat.chain, dropRuleNat.rule...)
 	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
 	ruleSpec := []string{"-i", "netmaker", "-j", netmakerFilterChain}
-	ok, err := iptablesClient.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		if err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err == nil && !ok {
+		if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-			return err
+		}
+	}
+	ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err == nil && !ok {
+		if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
 		}
 	}
 	return nil
@@ -311,7 +314,6 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo model
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-
 	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
 		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -438,7 +440,7 @@ func (i *iptablesManager) RefreshEgressRangesOnIngressGw(server string, ingressU
 	currEgressRanges := currEgressRangesMap[server]
 	if len(ingressUpdate.EgressRanges) == 0 || len(ingressUpdate.EgressRanges) != len(currEgressRanges) {
 		// delete if any egress range exists for ext clients
-		logger.Log(0, "Deleting existing Engress ranges for ext clients")
+		logger.Log(0, "Deleting existing Egress ranges for ext clients")
 		for extKey, rulesCfg := range ruleTable {
 			iptablesClient := i.ipv4Client
 			if !rulesCfg.isIpv4 {
@@ -551,7 +553,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				rule:  ruleSpec,
 			})
 		}
-
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {

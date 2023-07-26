@@ -68,10 +68,14 @@ var (
 	GW6PeerDetected bool
 	// GW6Addr - the peer's address for IPv6 gateways
 	GW6Addr net.IPNet
+	// FwClose - firewall manager shutdown func
+	FwClose func() = func() {}
 	// WgPublicListenPort - host's wireguard public listen port
 	WgPublicListenPort int
 	// HostPublicIP - host's public endpoint
 	HostPublicIP net.IP
+	// HostNatType - host's NAT type
+	HostNatType string
 )
 
 // Config configuration for netclient and host as a whole
@@ -87,7 +91,6 @@ type Config struct {
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
-
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -102,8 +105,7 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
-		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
+	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
 		restart = true
 	}
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {
@@ -120,7 +122,6 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
 	// don't update any public ports coming from server,overwrite the values
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
-	host.PublicListenPort = hostCfg.PublicListenPort
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host

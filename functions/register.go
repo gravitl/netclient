@@ -15,7 +15,6 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -81,7 +80,7 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 			if name, err := os.Hostname(); err == nil {
 				host.Name = name
 			} else {
-				hostName := logic.RandomString(12)
+				hostName := ncutils.RandomString(12)
 				logger.Log(0, "host name not found, continuing with", hostName)
 				host.Name = hostName
 			}
@@ -94,15 +93,16 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 			shouldUpdateHost = true
 		}
 		if len(host.HostPass) == 0 {
-			host.HostPass = logic.RandomString(32)
+			host.HostPass = ncutils.RandomString(32)
 			shouldUpdateHost = true
 		}
 	}
 
-	if host.EndpointIP == nil || host.WgPublicListenPort == 0 {
-		publicIp, publicPort := holePunchWgPort()
+	if host.EndpointIP == nil || host.WgPublicListenPort == 0 || host.NatType == "" {
+		publicIp, publicPort, natType := holePunchWgPort()
 		host.EndpointIP = publicIp
 		host.WgPublicListenPort = publicPort
+		host.NatType = natType
 		shouldUpdateHost = true
 	}
 

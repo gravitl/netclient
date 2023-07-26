@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -157,7 +156,7 @@ func checkConfig() {
 	if netclient.ID == uuid.Nil {
 		logger.Log(0, "setting netclient hostid")
 		netclient.ID = uuid.New()
-		netclient.HostPass = logic.RandomString(32)
+		netclient.HostPass = ncutils.RandomString(32)
 		saveRequired = true
 	}
 	if netclient.Name == "" {
@@ -205,16 +204,6 @@ func checkConfig() {
 			logger.Log(0, "error getting free port", err.Error())
 		} else {
 			netclient.ListenPort = port
-			saveRequired = true
-		}
-	}
-	if netclient.ProxyListenPort == 0 {
-		logger.Log(0, "setting proxyListenPort")
-		port, err := ncutils.GetFreePort(models.NmProxyPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ProxyListenPort = port
 			saveRequired = true
 		}
 	}

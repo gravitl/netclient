@@ -5,21 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"runtime"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/c-robinson/iplib"
-	nc_config "github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/nmproxy/common"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
 	"github.com/gravitl/netclient/nmproxy/packet"
-	"github.com/gravitl/netclient/nmproxy/server"
 	"github.com/gravitl/netclient/nmproxy/wg"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/metrics"
 )
 
 // New - gets new proxy config
@@ -46,41 +40,17 @@ func (p *Proxy) toRemote(wg *sync.WaitGroup) {
 				logger.Log(1, "error reading: ", err.Error())
 				return
 			}
-			go func(n int, cfg models.Proxy) {
-				peerConnCfg := models.Conn{}
-				if p.Config.ProxyStatus {
-					peerConnCfg, _ = config.GetCfg().GetPeer(cfg.PeerPublicKey.String())
-				}
-				for server := range peerConnCfg.ServerMap {
-					metric := metrics.GetMetric(server, cfg.PeerPublicKey.String())
-					metric.TrafficSent += int64(n)
-					metrics.UpdateMetric(server, cfg.PeerPublicKey.String(), &metric)
-				}
 
-			}(n, p.Config)
-
-			var srcPeerKeyHash, dstPeerKeyHash string
-			if p.Config.ProxyStatus || p.Config.UsingTurn {
-				buf, n, srcPeerKeyHash, dstPeerKeyHash = packet.ProcessPacketBeforeSending(buf, n,
-					config.GetCfg().GetDevicePubKey().String(), p.Config.PeerPublicKey.String())
-				if err != nil {
-					logger.Log(1, "failed to process pkt before sending: ", err.Error())
-				}
-			}
-			if nc_config.Netclient().Debug {
-				logger.Log(3, fmt.Sprintf("PROXING TO REMOTE!!!---> %s >>>>> %s >>>>> %s [[ SrcPeerHash: %s, DstPeerHash: %s ]]\n",
-					p.LocalConn.LocalAddr().String(), server.NmProxyServer.Server.LocalAddr().String(), p.RemoteConn.String(), srcPeerKeyHash, dstPeerKeyHash))
-			}
-			if p.Config.UsingTurn {
-				_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
-				if err != nil {
-					logger.Log(0, "failed to write to remote conn: ", err.Error())
-				}
-				continue
-			}
-			_, err = server.NmProxyServer.Server.WriteToUDP(buf[:n], p.RemoteConn)
+			buf, n, _, _ := packet.ProcessPacketBeforeSending(buf, n,
+				config.GetCfg().GetDevicePubKey().String(), p.Config.PeerPublicKey.String())
 			if err != nil {
-				logger.Log(1, "Failed to send to remote: ", err.Error())
+				logger.Log(1, "failed to process pkt before sending: ", err.Error())
+			}
+
+			_, err = p.Config.TurnConn.WriteTo(buf[:n], p.RemoteConn)
+			if err != nil {
+				logger.Log(0, "failed to write to remote conn: ", err.Error())
+				return
 			}
 
 		}
@@ -139,6 +109,7 @@ func (p *Proxy) ProxyPeer() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go p.toRemote(wg)
+	config.DumpSignalChan <- struct{}{}
 	wg.Wait()
 
 }
@@ -153,56 +124,11 @@ func (p *Proxy) updateEndpoint() error {
 	logger.Log(1, fmt.Sprintf("---> Updating Peer Endpoint:  %+v\n", p.Config.PeerConf))
 	peer := p.Config.PeerConf
 	peer.Endpoint = udpAddr
-	config.GetCfg().GetIface().UpdatePeerEndpoint(peer)
-	return nil
-}
-
-// GetFreeIp - gets available free ip from the cidr provided
-func GetFreeIp(cidrAddr string, dstPort int) (string, error) {
-	//ensure AddressRange is valid
-	if dstPort == 0 {
-		return "", errors.New("dst port should be set")
+	iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
+	if err != nil {
+		return err
 	}
-	if _, _, err := net.ParseCIDR(cidrAddr); err != nil {
-		logger.Log(1, "UniqueAddress encountered  an error")
-		return "", err
-	}
-	net4 := iplib.Net4FromStr(cidrAddr)
-	newAddrs := net4.FirstAddress()
-	for {
-		if runtime.GOOS == "darwin" {
-			_, err := common.RunCmd(fmt.Sprintf("ifconfig lo0 alias %s 255.255.255.255", newAddrs.String()), true)
-			if err != nil {
-				logger.Log(1, "Failed to add alias: ", err.Error())
-			}
-		}
-
-		conn, err := net.DialUDP("udp", &net.UDPAddr{
-			IP:   net.ParseIP(newAddrs.String()),
-			Port: models.NmProxyPort,
-		}, &net.UDPAddr{
-			IP:   net.ParseIP("127.0.0.1"),
-			Port: dstPort,
-		})
-		if err != nil {
-			logger.Log(1, "----> GetFreeIP err: ", err.Error())
-			if strings.Contains(err.Error(), "can't assign requested address") ||
-				strings.Contains(err.Error(), "address already in use") || strings.Contains(err.Error(), "cannot assign requested address") {
-				var nErr error
-				newAddrs, nErr = net4.NextIP(newAddrs)
-				if nErr != nil {
-					return "", nErr
-				}
-			} else {
-				return "", err
-			}
-		}
-		if err == nil {
-			conn.Close()
-			return newAddrs.String(), nil
-		}
-
-	}
+	return iface.UpdatePeerEndpoint(peer)
 }
 
 // PeerConnectionStatus - get peer connection status from wireguard interface
