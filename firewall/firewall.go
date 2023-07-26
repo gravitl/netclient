@@ -36,16 +36,8 @@ type firewallController interface {
 	CreateChains() error
 	// ForwardRule inserts forwarding rules
 	ForwardRule() error
-	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
-	InsertIngressRoutingRules(server string, r models.ExtClientInfo, egressRanges []string) error
-	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
-	AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error
-	// RefreshEgressRangesOnIngressGw - deletes/adds rules for egress ranges for ext clients on the ingressGW
-	RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
-	// AddEgressRoutingRule - adds a egress routing rules for a peer
-	AddEgressRoutingRule(server string, egressInfo models.EgressInfo, peerInfo models.PeerRouteInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer
