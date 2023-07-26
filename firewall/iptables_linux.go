@@ -540,19 +540,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", "ACCEPT"}
-		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-
-		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			egressGwRoutes = append(egressGwRoutes, ruleInfo{
-				table: defaultIpTable,
-				chain: iptableFWDChain,
-				rule:  ruleSpec,
-			})
-		}
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
