@@ -25,7 +25,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/mq"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -34,6 +33,8 @@ const (
 	lastNodeUpdate   = "lnu"
 	lastDNSUpdate    = "ldu"
 	lastALLDNSUpdate = "ladu"
+	// MQ_TIMEOUT - timeout for MQ
+	MQ_TIMEOUT = 30
 )
 
 var (
@@ -352,7 +353,7 @@ func setHostSubscription(client mqtt.Client, server string) {
 // setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
-	if token := client.Subscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Subscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
@@ -414,7 +415,7 @@ func insert(network, which, cache string) {
 // for the node in nodeCfg
 func unsubscribeNode(client mqtt.Client, node *config.Node) {
 	var ok = true
-	if token := client.Unsubscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Unsubscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to unsubscribe from updates for node ", "node", node.ID, "error", "connection timeout")
 		} else {
@@ -432,12 +433,12 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 func unsubscribeHost(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("removing subscription for host peer updates", "host", hostID, "server", server)
-	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 	slog.Info("removing subscription for host updates", "host", hostID, "server", server)
-	if token := client.Unsubscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server)); token.WaitTimeout(mq.MQ_TIMEOUT*time.Second) && token.Error() != nil {
+	if token := client.Unsubscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		slog.Error("unable to unsubscribe from host updates", "host", hostID, "server", server, "error", token.Error)
 		return
 	}
