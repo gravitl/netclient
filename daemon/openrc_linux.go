@@ -12,11 +12,11 @@ import (
 func setupOpenRC() error {
 	service := `#!/sbin/openrc-run
 
-description= "netclient daemon"
-pidfile= "/var/run/netclient.pid"
-command= "/sbin/netclient"
-command_args= "daemon"
-command_background="false"
+description="netclient daemon"
+pidfile="/var/run/netclient.pid"
+command="/sbin/netclient"
+command_args="daemon"
+command_background="true"
 command_user="root"
 output_log="/var/log/netclient.log"
 error_log="/var/log/netclient.log"
