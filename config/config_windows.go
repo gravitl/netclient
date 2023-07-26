@@ -24,7 +24,8 @@ func getEmbedded() ([]byte, error) {
 	return data, nil
 }
 
-func checkUID() {
+// CheckUID - Checks to make sure user has root privileges
+func CheckUID() {
 	logger.Log(1, "checking for WireGuard driver...")
 
 	dllData, err := getEmbedded()

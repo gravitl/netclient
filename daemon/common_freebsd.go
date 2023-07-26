@@ -101,8 +101,6 @@ netclient_args="daemon"`
 	if err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644); err != nil {
 		return err
 	}
-	slog.Info("starting deamon")
-	start()
 	return nil
 }
 
@@ -134,6 +132,10 @@ func status() bool {
 		return true
 	}
 	return false
+}
+
+func hardRestart() error {
+	return service("restart")
 }
 
 // service- accepts args to service netclient and applies
@@ -194,4 +196,9 @@ func removeFreebsdDaemon() error {
 		return errors.New("error removing daemon")
 	}
 	return nil
+}
+
+// GetInitType - returns init type (not applicable for freebsd)
+func GetInitType() config.InitType {
+	return config.UnKnown
 }

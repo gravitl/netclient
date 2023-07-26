@@ -102,7 +102,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	slog.Debug("HostPeerUpdate3")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -132,11 +131,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
-			if err := UseVersion(peerUpdate.ServerVersion, true); err != nil {
+			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
+			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
+				daemon.HardRestart()
 			}
+			//daemon.Restart()
 		}
 	}
 	if peerUpdate.ServerVersion != server.Version {
