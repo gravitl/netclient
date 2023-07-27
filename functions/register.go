@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/devilcove/httpclient"
 	"github.com/google/uuid"
@@ -28,9 +27,6 @@ func Register(token string, isGui bool) error {
 	var serverData models.EnrollmentToken
 	if err = json.Unmarshal(data, &serverData); err != nil {
 		logger.FatalLog("could not read enrollment token")
-	}
-	if config.CurrServer != "" && config.CurrServer != strings.TrimSpace(serverData.Server[4:len(serverData.Server)]) {
-		fmt.Println("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
 	}
 	host := config.Netclient()
 	ip, err := getInterfaces()
@@ -69,6 +65,9 @@ func Register(token string, isGui bool) error {
 			logger.FatalLog("error registering with server", strconv.Itoa(errData.Code), errData.Message)
 		}
 		return err
+	}
+	if config.CurrServer != "" && config.CurrServer != registerResponse.ServerConf.Server {
+		fmt.Println("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
 	}
 	handleRegisterResponse(&registerResponse, isGui)
 	return nil
