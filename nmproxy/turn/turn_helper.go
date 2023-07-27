@@ -42,6 +42,10 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		case signal := <-PeerSignalCh:
 			// process recieved new signal from peer
+			// if signal is older than 10s ignore it,wait for a fresh signal from peer
+			if time.Now().Unix()-signal.TimeStamp > 10 {
+				continue
+			}
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
 				err = handlePeerNegotiation(signal)
@@ -200,6 +204,7 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
 					ToHostPubKey:      peer.PublicKey.String(),
 					Action:            nm_models.ConnNegotiation,
+					TimeStamp:         time.Now().Unix(),
 				})
 				if err != nil {
 					logger.Log(2, "failed to signal peer: ", err.Error())
