@@ -4,7 +4,6 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
@@ -30,9 +29,6 @@ user: netclient join -s <server> -u <user_name> // attempt to join/register via 
 				return
 			}
 		} else {
-			if config.CurrServer != "" {
-				logger.Log(0, "WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
-			}
 			if err := functions.Register(token, false); err != nil {
 				logger.Log(0, "registration failed", err.Error())
 			}
