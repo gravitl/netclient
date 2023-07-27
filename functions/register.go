@@ -66,6 +66,9 @@ func Register(token string, isGui bool) error {
 		}
 		return err
 	}
+	if config.CurrServer != "" && config.CurrServer != registerResponse.ServerConf.Server {
+		fmt.Println("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
+	}
 	handleRegisterResponse(&registerResponse, isGui)
 	return nil
 }
