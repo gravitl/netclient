@@ -43,7 +43,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 		case signal := <-PeerSignalCh:
 			// process recieved new signal from peer
 			// if signal is older than 10s ignore it,wait for a fresh signal from peer
-			if time.Now().Unix()-signal.TimeStamp > 10 {
+			if time.Now().Unix()-signal.TimeStamp > 5 {
 				continue
 			}
 			switch signal.Action {
