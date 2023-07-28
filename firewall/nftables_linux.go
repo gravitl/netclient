@@ -263,7 +263,7 @@ func (n *nftablesManager) ForwardRule() error {
 				Register: 1,
 				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 			},
-			&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
+			&expr.Verdict{Kind: expr.VerdictAccept},
 		},
 	})
 	return n.conn.Flush()
