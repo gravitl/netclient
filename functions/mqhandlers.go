@@ -528,11 +528,6 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 
 func handleFwUpdate(server string, payload *models.FwUpdate) {
 
-	if payload.IsIngressGw {
-		firewall.SetIngressRoutes(server, payload.IngressInfo)
-	} else {
-		firewall.DeleteIngressRules(server)
-	}
 	if payload.IsEgressGw {
 		firewall.SetEgressRoutes(server, payload.EgressInfo)
 	} else {

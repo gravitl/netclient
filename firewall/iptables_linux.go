@@ -109,9 +109,23 @@ func (i *iptablesManager) ForwardRule() error {
 	iptablesClient.DeleteIfExists(dropRuleFilter.table, dropRuleFilter.chain, dropRuleFilter.rule...)
 	iptablesClient.DeleteIfExists(dropRuleNat.table, dropRuleNat.chain, dropRuleNat.rule...)
 	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
-	ruleSpec := []string{"-i", "netmaker", "-j", netmakerFilterChain}
+	ruleSpec := []string{"-i", "netmaker", "-j", "ACCEPT"}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err == nil && !ok {
+		if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
+		}
+	}
+	ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err == nil && !ok {
+		if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
+		}
+	}
+	ruleSpec = []string{"-o", "netmaker", "-j", "ACCEPT"}
+	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+	ok, err = i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
 	if err == nil && !ok {
 		if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
@@ -269,258 +283,6 @@ func (i *iptablesManager) removeJumpRules() {
 
 }
 
-// iptablesManager.AddIngressRoutingRule - adds a ingress route for a peer
-func (i *iptablesManager) AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error {
-	ruleTable := i.FetchRuleTable(server, ingressTable)
-	defer i.SaveRules(server, ingressTable, ruleTable)
-	i.mux.Lock()
-	defer i.mux.Unlock()
-	iptablesClient := i.ipv4Client
-	if !isAddrIpv4(peerInfo.PeerAddr.String()) {
-		iptablesClient = i.ipv6Client
-	}
-
-	ruleSpec := []string{"-s", extPeerAddr, "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
-	err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	}
-	ruleTable[extPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
-		{
-			rule:  ruleSpec,
-			chain: netmakerFilterChain,
-			table: defaultIpTable,
-		},
-	}
-	return nil
-}
-
-// iptablesManager.InsertIngressRoutingRules inserts an iptables rules for an ext. client to the netmaker chain and if enabled, to the nat chain
-func (i *iptablesManager) InsertIngressRoutingRules(server string, extinfo models.ExtClientInfo, egressRanges []string) error {
-	ruleTable := i.FetchRuleTable(server, ingressTable)
-	defer i.SaveRules(server, ingressTable, ruleTable)
-	i.mux.Lock()
-	defer i.mux.Unlock()
-	currEgressRangesMap[server] = egressRanges
-	logger.Log(0, "Adding Ingress Rules For Ext. Client: ", extinfo.ExtPeerKey)
-	isIpv4 := true
-	iptablesClient := i.ipv4Client
-	if !isAddrIpv4(extinfo.ExtPeerAddr.String()) {
-		iptablesClient = i.ipv6Client
-		isIpv4 = false
-	}
-
-	ruleTable[extinfo.ExtPeerKey] = rulesCfg{
-		isIpv4:   isIpv4,
-		rulesMap: make(map[string][]ruleInfo),
-	}
-	ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "!", "-d",
-		extinfo.IngGwAddr.String(), "-j", netmakerFilterChain}
-	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	}
-	fwdJumpRule := ruleInfo{
-		rule:  ruleSpec,
-		chain: iptableFWDChain,
-		table: defaultIpTable,
-	}
-	ruleSpec = []string{"-s", extinfo.Network.String(), "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
-	logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-	err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	}
-	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = []ruleInfo{
-		fwdJumpRule,
-		{
-			rule:  ruleSpec,
-			chain: netmakerFilterChain,
-			table: defaultIpTable,
-		},
-	}
-	routes := ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
-	for _, peerInfo := range extinfo.Peers {
-		if !peerInfo.Allow || peerInfo.PeerKey == extinfo.ExtPeerKey {
-			continue
-		}
-		ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", peerInfo.PeerAddr.String(), "-j", "ACCEPT"}
-		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-			continue
-		}
-		ruleTable[extinfo.ExtPeerKey].rulesMap[peerInfo.PeerKey] = []ruleInfo{
-			{
-				rule:  ruleSpec,
-				chain: netmakerFilterChain,
-				table: defaultIpTable,
-			},
-		}
-
-	}
-	for _, egressRangeI := range egressRanges {
-		ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", egressRangeI, "-j", "ACCEPT"}
-		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-			continue
-		} else {
-			routes = append(routes, ruleInfo{
-				rule:          ruleSpec,
-				chain:         netmakerFilterChain,
-				table:         defaultIpTable,
-				egressExtRule: true,
-			})
-		}
-
-		ruleSpec = []string{"-s", egressRangeI, "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
-		logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-		err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-			continue
-		} else {
-			routes = append(routes, ruleInfo{
-				rule:          ruleSpec,
-				chain:         netmakerFilterChain,
-				table:         defaultIpTable,
-				egressExtRule: true,
-			})
-		}
-	}
-	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
-	if !extinfo.Masquerade {
-		return nil
-	}
-	routes = ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey]
-	ruleSpec = []string{"-s", extinfo.ExtPeerAddr.String(), "-o", ncutils.GetInterfaceName(), "-j", "MASQUERADE"}
-	logger.Log(2, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
-	err = iptablesClient.Insert(defaultNatTable, netmakerNatChain, 1, ruleSpec...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	} else {
-		routes = append(routes, ruleInfo{
-			rule:  ruleSpec,
-			table: defaultNatTable,
-			chain: netmakerNatChain,
-		})
-	}
-
-	ruleSpec = []string{"-d", extinfo.ExtPeerAddr.String(), "-o", ncutils.GetInterfaceName(), "-j", "MASQUERADE"}
-	logger.Log(2, fmt.Sprintf("----->[NAT] adding rule: %+v", ruleSpec))
-	err = iptablesClient.Insert(defaultNatTable, netmakerNatChain, 1, ruleSpec...)
-	if err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	} else {
-		routes = append(routes, ruleInfo{
-			rule:  ruleSpec,
-			table: defaultNatTable,
-			chain: netmakerNatChain,
-		})
-	}
-
-	ruleTable[extinfo.ExtPeerKey].rulesMap[extinfo.ExtPeerKey] = routes
-	return nil
-}
-
-// iptablesManager.RefreshEgressRangesOnIngressGw - deletes/adds rules for egress ranges for ext clients on the ingressGW
-func (i *iptablesManager) RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error {
-	ruleTable := i.FetchRuleTable(server, ingressTable)
-	defer i.SaveRules(server, ingressTable, ruleTable)
-	i.mux.Lock()
-	defer func() {
-		currEgressRangesMap[server] = ingressUpdate.EgressRanges
-		i.mux.Unlock()
-	}()
-	currEgressRanges := currEgressRangesMap[server]
-	if len(ingressUpdate.EgressRanges) == 0 || len(ingressUpdate.EgressRanges) != len(currEgressRanges) {
-		// delete if any egress range exists for ext clients
-		logger.Log(0, "Deleting existing Egress ranges for ext clients")
-		for extKey, rulesCfg := range ruleTable {
-			iptablesClient := i.ipv4Client
-			if !rulesCfg.isIpv4 {
-				iptablesClient = i.ipv6Client
-			}
-			if extRules, ok := rulesCfg.rulesMap[extKey]; ok {
-				updatedRules := []ruleInfo{}
-				for _, rule := range extRules {
-					if rule.egressExtRule {
-						err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
-						if err != nil {
-							return fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
-								rule.table, rule.rule, extKey, err)
-						}
-					} else {
-						updatedRules = append(updatedRules, rule)
-					}
-				}
-				rulesCfg.rulesMap[extKey] = updatedRules
-				ruleTable[extKey] = rulesCfg
-			}
-
-		}
-		if len(ingressUpdate.EgressRanges) == 0 {
-			return nil
-		}
-
-	} else {
-		// no changes oberserved in the egress ranges so return
-		return nil
-	}
-
-	// re-create rules for egress ranges routes for ext clients
-	logger.Log(0, "Refreshing Engress ranges for ext clients")
-	for extKey, extinfo := range ingressUpdate.ExtPeers {
-
-		iptablesClient := i.ipv4Client
-		if !isAddrIpv4(extinfo.ExtPeerAddr.String()) {
-			iptablesClient = i.ipv6Client
-		}
-		if _, ok := ruleTable[extKey]; !ok {
-			continue
-		}
-		routes := ruleTable[extKey].rulesMap[extKey]
-		for _, egressRangeI := range ingressUpdate.EgressRanges {
-			ruleSpec := []string{"-s", extinfo.ExtPeerAddr.String(), "-d", egressRangeI, "-j", "ACCEPT"}
-			logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-			err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-			if err != nil {
-				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-				continue
-			} else {
-				routes = append(routes, ruleInfo{
-					rule:          ruleSpec,
-					chain:         netmakerFilterChain,
-					table:         defaultIpTable,
-					egressExtRule: true,
-				})
-			}
-
-			ruleSpec = []string{"-s", egressRangeI, "-d", extinfo.ExtPeerAddr.String(), "-j", "ACCEPT"}
-			logger.Log(2, fmt.Sprintf("-----> adding rule: %+v", ruleSpec))
-			err = iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-			if err != nil {
-				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-				continue
-			} else {
-				routes = append(routes, ruleInfo{
-					rule:          ruleSpec,
-					chain:         netmakerFilterChain,
-					table:         defaultIpTable,
-					egressExtRule: true,
-				})
-			}
-		}
-		ruleTable[extKey].rulesMap[extKey] = routes
-	}
-	return nil
-}
-
 // iptablesManager.InsertEgressRoutingRules - inserts egress routes for the GW peers
 func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
 	ruleTable := i.FetchRuleTable(server, egressTable)
@@ -540,19 +302,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		ruleSpec := []string{"-i", ncutils.GetInterfaceName(), "-d", egressGwRange, "-j", netmakerFilterChain}
-		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-
-		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			egressGwRoutes = append(egressGwRoutes, ruleInfo{
-				table: defaultIpTable,
-				chain: iptableFWDChain,
-				rule:  ruleSpec,
-			})
-		}
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
@@ -588,25 +337,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				}
 			}
 
-		}
-
-	}
-	for _, peer := range egressInfo.GwPeers {
-		if !peer.Allow {
-			continue
-		}
-		ruleSpec := []string{"-s", peer.PeerAddr.String(), "-d", strings.Join(egressInfo.EgressGWCfg.Ranges, ","), "-j", "ACCEPT"}
-		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			ruleTable[egressInfo.EgressID].rulesMap[peer.PeerKey] = []ruleInfo{
-				{
-					table: defaultIpTable,
-					chain: netmakerFilterChain,
-					rule:  ruleSpec,
-				},
-			}
 		}
 
 	}
