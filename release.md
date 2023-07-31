@@ -1,10 +1,9 @@
 # Netclient v0.20.5
 
 ## Whats New
-- FreeBSD 13/14 specific binaries
-
-## What's Fixed
 - Support for additional init systems on linux (initd,openrc)
+## What's Fixed
+
 - Auto upgrade is fixed
 - Enhanced TURN functionality
 - Deprecated Proxy
