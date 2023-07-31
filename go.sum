@@ -186,8 +186,8 @@ github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5m
 github.com/googleapis/google-cloud-go-testing v0.0.0-20200911160855-bcd43fbb19e8/go.mod h1:dvDLG8qkwmyD9a/MJJN3XJcT3xFxOKAvTZGvuZmac9g=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/gravitl/netmaker v0.20.5-0.20230728035422-c9c647689ac1 h1:SdpCyYnQfWSph9sPvMYJU/xaZXj3vizuAw/w6feYJK0=
-github.com/gravitl/netmaker v0.20.5-0.20230728035422-c9c647689ac1/go.mod h1:HzJKcxKPn5c2LD+ZAgZ4Ar3A9rSPEFHprzQWMwcUaRc=
+github.com/gravitl/netmaker v0.20.5 h1:81wYnJu8yJyhqOsmLR61bLcXiqwKjQRDiIQjTA5pHS8=
+github.com/gravitl/netmaker v0.20.5/go.mod h1:QGdfW74dh/BWOl8nZCLDZ/7dgH6KIpv/myWJHvpj6TI=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f h1:XzsYovKdrDvj2z2HEHoeHU67+JIEFMHQKHU6oU+1fVE=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f/go.mod h1:Nqo/7iOJSVP1JRSUv+FkZ0FgBjK89gjU0D/V8nH4xy8=
 github.com/guumaster/hostctl v1.1.4 h1:4zb9wEurBlz/hQiXFz9feHHfunf7oj+9serAH8ohGuM=
