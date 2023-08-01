@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -14,12 +15,17 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 // Uninstall - uninstalls networks from client
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
+	if runtime.GOOS == "windows" {
+		slog.Error("please uninstall windows from the add/remove programs. https://docs.netmaker.io/netclient.html#uninstalling")
+		return nil, nil
+	}
 	for _, v := range config.Servers {
 		v := v
 		if err = setupMQTTSingleton(&v, true); err != nil {
