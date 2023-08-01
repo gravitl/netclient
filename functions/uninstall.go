@@ -23,8 +23,7 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 	if runtime.GOOS == "windows" {
-		slog.Error("please uninstall windows from the add/remove programs. https://docs.netmaker.io/netclient.html#uninstalling")
-		return nil, nil
+		slog.Error("Please uninstall windows from the add/remove programs. https://docs.netmaker.io/netclient.html#uninstalling")
 	}
 	for _, v := range config.Servers {
 		v := v
