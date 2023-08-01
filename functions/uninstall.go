@@ -41,6 +41,7 @@ func Uninstall() ([]error, error) {
 
 	if runtime.GOOS == "windows" {
 		allfaults = append(allfaults, errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22"))
+		return allfaults, err
 	}
 
 	if err = daemon.CleanUp(); err != nil {
