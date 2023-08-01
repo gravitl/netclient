@@ -15,16 +15,13 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"golang.org/x/exp/slog"
 )
 
 // Uninstall - uninstalls networks from client
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
-	if runtime.GOOS == "windows" {
-		slog.Error("Please uninstall windows using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling")
-	}
+
 	for _, v := range config.Servers {
 		v := v
 		if err = setupMQTTSingleton(&v, true); err != nil {
@@ -40,6 +37,10 @@ func Uninstall() ([]error, error) {
 	}
 	if err := deleteAllDNS(); err != nil {
 		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
+	}
+
+	if runtime.GOOS == "windows" {
+		allfaults = append(allfaults, errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22"))
 	}
 
 	if err = daemon.CleanUp(); err != nil {
