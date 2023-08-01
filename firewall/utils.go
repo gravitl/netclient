@@ -1,4 +1,4 @@
-package router
+package firewall
 
 import (
 	"net/netip"

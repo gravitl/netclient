@@ -1,7 +1,7 @@
 //go:build !linux
 // +build !linux
 
-package router
+package firewall
 
 import (
 	"github.com/gravitl/netmaker/models"

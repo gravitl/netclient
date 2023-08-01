@@ -50,9 +50,6 @@ func Migrate() {
 	if config.Netclient().ListenPort == 0 {
 		config.Netclient().ListenPort = 51821
 	}
-	if config.Netclient().ProxyListenPort == 0 {
-		config.Netclient().ProxyListenPort = 51722
-	}
 	for _, network := range networks {
 		logger.Log(0, "migrating", network)
 		cfg, err := config.ReadConfig(network)
@@ -96,11 +93,7 @@ func Migrate() {
 	if newHost.ListenPort == 0 {
 		newHost.ListenPort = config.Netclient().ListenPort
 	}
-	if newHost.ProxyListenPort == 0 {
-		newHost.ProxyListenPort = config.Netclient().ProxyListenPort
-	}
 	var serversToWrite = []models.ServerConfig{}
-	var hostToWrite *models.Host
 	for k := range servers {
 		server := k
 		logger.Log(0, "migrating for server", server)
@@ -138,11 +131,7 @@ func Migrate() {
 		}
 		serversToWrite = append(serversToWrite, migrateResponse.ServerConf)
 		newHost.ListenPort = migrateResponse.RequestedHost.ListenPort
-		newHost.ProxyListenPort = migrateResponse.RequestedHost.ProxyListenPort
-		if hostToWrite == nil || newHost.ListenPort != hostToWrite.ListenPort {
-			config.Netclient().ListenPort = newHost.ListenPort
-			config.Netclient().ProxyListenPort = newHost.ProxyListenPort
-		}
+
 	}
 
 	for i := range legacyNodes {
@@ -174,9 +163,6 @@ func Migrate() {
 
 	if config.Netclient().ListenPort == 0 {
 		config.Netclient().ListenPort = 51821
-	}
-	if config.Netclient().ProxyListenPort == 0 {
-		config.Netclient().ProxyListenPort = 51722
 	}
 
 	if err := config.WriteNetclientConfig(); err != nil {

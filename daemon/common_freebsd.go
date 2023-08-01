@@ -197,3 +197,8 @@ func removeFreebsdDaemon() error {
 	}
 	return nil
 }
+
+// GetInitType - returns init type (not applicable for freebsd)
+func GetInitType() config.InitType {
+	return config.UnKnown
+}
