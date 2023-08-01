@@ -2,7 +2,6 @@
 package config
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net"
@@ -14,13 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
-	"github.com/spf13/viper"
-	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -44,6 +39,23 @@ const (
 	DefaultMTU = 1420
 )
 
+const (
+	UnKnown InitType = iota
+	Systemd
+	SysVInit
+	Runit
+	OpenRC
+	Initd
+)
+
+// Initype - the type of init system in use
+type InitType int
+
+// String - returns the string representation of the init type
+func (i InitType) String() string {
+	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc", "initd"}[i]
+}
+
 var (
 	netclient Config // netclient contains the netclient config
 	// Version - default version string
@@ -56,10 +68,14 @@ var (
 	GW6PeerDetected bool
 	// GW6Addr - the peer's address for IPv6 gateways
 	GW6Addr net.IPNet
+	// FwClose - firewall manager shutdown func
+	FwClose func() = func() {}
 	// WgPublicListenPort - host's wireguard public listen port
 	WgPublicListenPort int
 	// HostPublicIP - host's public endpoint
 	HostPublicIP net.IP
+	// HostNatType - host's NAT type
+	HostNatType string
 )
 
 // Config configuration for netclient and host as a whole
@@ -69,12 +85,12 @@ type Config struct {
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
 	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
+	InitType          InitType             `json:"inittype" yaml:"inittype"`
 }
 
 func init() {
 	Servers = make(map[string]Server)
 	Nodes = make(map[string]Node)
-
 }
 
 // UpdateNetcllient updates the in memory version of the host configuration
@@ -89,8 +105,7 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 	if hostCfg == nil || host == nil {
 		return
 	}
-	if (host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort) ||
-		(host.ProxyListenPort != 0 && hostCfg.ProxyListenPort != host.ProxyListenPort) {
+	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
 		restart = true
 	}
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {
@@ -107,7 +122,6 @@ func UpdateHost(host *models.Host) (resetInterface, restart bool) {
 	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
 	// don't update any public ports coming from server,overwrite the values
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
-	host.PublicListenPort = hostCfg.PublicListenPort
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
@@ -151,16 +165,6 @@ func RemoveServerHostPeerCfg() {
 // SetVersion - sets version for use by other packages
 func SetVersion(ver string) {
 	Version = ver
-}
-
-// setLogVerbosity sets the logger verbosity from config
-func setLogVerbosity(flags *viper.Viper) {
-	verbosity := flags.GetInt("verbosity")
-	if netclient.Verbosity > verbosity {
-		logger.Verbosity = netclient.Verbosity
-		return
-	}
-	logger.Verbosity = verbosity
 }
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
@@ -385,165 +389,6 @@ func InCharSet(name string) bool {
 		}
 	}
 	return true
-}
-
-// InitConfig reads in config file and ENV variables if set.
-func InitConfig(viper *viper.Viper) {
-	checkUID()
-	ReadNetclientConfig()
-	setLogVerbosity(viper)
-	ReadNodeConfig()
-	ReadServerConf()
-	SetServerCtx()
-	CheckConfig()
-	//check netclient dirs exist
-	if _, err := os.Stat(GetNetclientPath()); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.Mkdir(GetNetclientPath(), os.ModePerm); err != nil {
-				logger.Log(0, "failed to create dirs", err.Error())
-			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "failed to update permissions of netclient config dir", err.Error())
-			}
-		} else {
-			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
-		}
-	}
-	//wireguard.WriteWgConfig(Netclient(), GetNodes())
-}
-
-// CheckConfig - verifies and updates configuration settings
-func CheckConfig() {
-	fail := false
-	saveRequired := false
-	netclient := Netclient()
-	if netclient.OS != runtime.GOOS {
-		logger.Log(0, "setting OS")
-		netclient.OS = runtime.GOOS
-		saveRequired = true
-	}
-	if netclient.Version != Version {
-		logger.Log(0, "setting version")
-		netclient.Version = Version
-		saveRequired = true
-	}
-	netclient.IPForwarding = true
-	if netclient.ID == uuid.Nil {
-		logger.Log(0, "setting netclient hostid")
-		netclient.ID = uuid.New()
-		netclient.HostPass = logic.RandomString(32)
-		saveRequired = true
-	}
-	if netclient.Name == "" {
-		logger.Log(0, "setting name")
-		netclient.Name, _ = os.Hostname()
-		//make sure hostname is suitable
-		netclient.Name = FormatName(netclient.Name)
-		saveRequired = true
-	}
-	if netclient.MacAddress == nil {
-		logger.Log(0, "setting macAddress")
-		mac, err := ncutils.GetMacAddr()
-		if err != nil {
-			logger.FatalLog("failed to set macaddress", err.Error())
-		}
-		netclient.MacAddress = mac[0]
-		if runtime.GOOS == "darwin" && netclient.MacAddress.String() == "ac:de:48:00:11:22" {
-			if len(mac) > 1 {
-				netclient.MacAddress = mac[1]
-			} else {
-				netclient.MacAddress = ncutils.RandomMacAddress()
-			}
-		}
-		saveRequired = true
-	}
-	if (netclient.PrivateKey == wgtypes.Key{}) {
-		logger.Log(0, "setting wireguard keys")
-		var err error
-		netclient.PrivateKey, err = wgtypes.GeneratePrivateKey()
-		if err != nil {
-			logger.FatalLog("failed to generate wg key", err.Error())
-		}
-		netclient.PublicKey = netclient.PrivateKey.PublicKey()
-		saveRequired = true
-	}
-	if netclient.Interface == "" {
-		logger.Log(0, "setting wireguard interface")
-		netclient.Interface = models.WIREGUARD_INTERFACE
-		saveRequired = true
-	}
-	if netclient.ListenPort == 0 {
-		logger.Log(0, "setting listenport")
-		port, err := ncutils.GetFreePort(DefaultListenPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ListenPort = port
-			saveRequired = true
-		}
-	}
-	if netclient.ProxyListenPort == 0 {
-		logger.Log(0, "setting proxyListenPort")
-		port, err := ncutils.GetFreePort(models.NmProxyPort)
-		if err != nil {
-			logger.Log(0, "error getting free port", err.Error())
-		} else {
-			netclient.ProxyListenPort = port
-			saveRequired = true
-		}
-	}
-	if netclient.MTU == 0 {
-		logger.Log(0, "setting MTU")
-		netclient.MTU = DefaultMTU
-	}
-
-	if len(netclient.TrafficKeyPrivate) == 0 {
-		logger.Log(0, "setting traffic keys")
-		pub, priv, err := box.GenerateKey(rand.Reader)
-		if err != nil {
-			logger.FatalLog("error generating traffic keys", err.Error())
-		}
-		bytes, err := ncutils.ConvertKeyToBytes(priv)
-		if err != nil {
-			logger.FatalLog("error generating traffic keys", err.Error())
-		}
-		netclient.TrafficKeyPrivate = bytes
-		bytes, err = ncutils.ConvertKeyToBytes(pub)
-		if err != nil {
-			logger.FatalLog("error generating traffic keys", err.Error())
-		}
-		netclient.TrafficKeyPublic = bytes
-		saveRequired = true
-	}
-	// check for nftables present if on Linux
-	if FirewallHasChanged() {
-		saveRequired = true
-		SetFirewall()
-	}
-	if saveRequired {
-		logger.Log(3, "saving netclient configuration")
-		if err := WriteNetclientConfig(); err != nil {
-			logger.FatalLog("could not save netclient config " + err.Error())
-		}
-	}
-	_ = ReadServerConf()
-	_ = ReadNodeConfig()
-	if CurrServer != "" {
-		server := GetServer(CurrServer)
-		if server == nil {
-			fail = true
-			logger.Log(0, "configuration for", CurrServer, "is missing")
-		} else {
-			if server.MQID != netclient.ID {
-				fail = true
-				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-			}
-		}
-	}
-
-	if fail {
-		logger.FatalLog("configuration is invalid, fix before proceeding")
-	}
 }
 
 // Convert converts netclient host/node struct to netmaker host/node structs

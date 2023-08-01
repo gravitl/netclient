@@ -76,6 +76,11 @@ func restart() error {
 	return nil
 }
 
+// hardRestart - restarts windows service  - no special handling on Windows
+func hardRestart() error {
+	return restart()
+}
+
 // cleanup - cleans up windows files
 func cleanUp() error {
 	_ = writeServiceConfig() // will auto check if file is present before writing
@@ -138,4 +143,9 @@ func runWinSWCMD(command string) error {
 		logger.Log(1, "successfully ran "+command+" of Windows Netclient daemon")
 	}
 	return err
+}
+
+// GetInitType - returns the init type (not applicable for windows)
+func GetInitType() config.InitType {
+	return config.UnKnown
 }

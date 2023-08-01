@@ -45,7 +45,7 @@ user: netclient register -s <server> -u <user_name> // attempt to join/register 
 				return
 			}
 		} else {
-			if err := functions.Register(token); err != nil {
+			if err := functions.Register(token, false); err != nil {
 				logger.Log(0, "registration failed", err.Error())
 			}
 		}
@@ -86,7 +86,7 @@ func checkUserRegistration(cmd *cobra.Command) error {
 		regData.UsingSSO = false
 	}
 
-	return functions.RegisterWithSSO(&regData)
+	return functions.RegisterWithSSO(&regData, false)
 }
 
 func init() {

@@ -4,11 +4,13 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 )
 
 const ExecDir = "/sbin/"
@@ -90,36 +92,55 @@ run_rc_command "$1"
 	rcConfig := `netclient="YES"
 netclient_args="daemon"`
 
+	slog.Info("Installing netclient service files")
 	rcbytes := []byte(rcFile)
-	if !ncutils.FileExists("/etc/rc.d/netclient") {
-		err := os.WriteFile("/etc/rc.d/netclient", rcbytes, 0744)
-		if err != nil {
-			return err
-		}
-		rcConfigbytes := []byte(rcConfig)
-		if !ncutils.FileExists("/etc/rc.conf.d/netclient") {
-			err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644)
-			if err != nil {
-				return err
-			}
-			start()
-			return nil
-		}
+	if err := os.WriteFile("/etc/rc.d/netclient", rcbytes, 0755); err != nil {
+		return err
+	}
+	rcConfigbytes := []byte(rcConfig)
+	if err := os.WriteFile("/etc/rc.conf.d/netclient", rcConfigbytes, 0644); err != nil {
+		return err
 	}
 	return nil
 }
 
 func start() error {
-	return service("start")
+	if status() {
+		return errors.New("service already running")
+	}
+	service("start")
+	if status() {
+		return nil
+	}
+	return errors.New("failed to start service")
 }
 
 func stop() error {
-	return service("stop")
+	if !status() {
+		return errors.New("service not running")
+	}
+	service("stop")
+	if status() {
+		return errors.New("failed to stop service")
+	}
+	return nil
+}
+
+func status() bool {
+	out, _ := ncutils.RunCmd("service netclient status", false)
+	if strings.Contains(out, "pid") {
+		return true
+	}
+	return false
+}
+
+func hardRestart() error {
+	return service("restart")
 }
 
 // service- accepts args to service netclient and applies
 func service(command string) error {
-	if _, err := ncutils.RunCmdFormatted("service netclient "+command, true); err != nil {
+	if _, err := ncutils.RunCmdFormatted("service netclient "+command, false); err != nil {
 		return err
 	}
 	return nil
@@ -175,4 +196,9 @@ func removeFreebsdDaemon() error {
 		return errors.New("error removing daemon")
 	}
 	return nil
+}
+
+// GetInitType - returns init type (not applicable for freebsd)
+func GetInitType() config.InitType {
+	return config.UnKnown
 }

@@ -42,6 +42,10 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		case signal := <-PeerSignalCh:
 			// process recieved new signal from peer
+			// if signal is older than 10s ignore it,wait for a fresh signal from peer
+			if time.Now().Unix()-signal.TimeStamp > 5 {
+				continue
+			}
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
 				err = handlePeerNegotiation(signal)
@@ -61,16 +65,16 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 	if err != nil {
 		return err
 	}
-	t, ok := config.GetCfg().GetPeerTurnCfg(signal.Server, signal.FromHostPubKey)
+	t, ok := config.GetCfg().GetPeerTurnCfg(signal.FromHostPubKey)
 	if ok {
 		if signal.TurnRelayEndpoint == "" {
 			return errors.New("peer turn endpoint is nil")
 		}
 		// reset
 		if conn, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
-			if conn.Config.UsingTurn && t.PeerTurnAddr != signal.TurnRelayEndpoint {
+			if t.PeerTurnAddr != signal.TurnRelayEndpoint {
 				logger.Log(0, fmt.Sprintf("Turn Peer Addr Has Been Changed From %s to %s", t.PeerTurnAddr, signal.TurnRelayEndpoint))
-				config.GetCfg().UpdatePeerTurnAddr(signal.Server, signal.FromHostPubKey, signal.TurnRelayEndpoint)
+				config.GetCfg().UpdatePeerTurnAddr(signal.FromHostPubKey, signal.TurnRelayEndpoint)
 				conn.Config.PeerEndpoint = peerTurnEndpoint
 				config.GetCfg().UpdatePeer(&conn)
 				config.GetCfg().ResetPeer(signal.FromHostPubKey)
@@ -78,9 +82,8 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 
 		} else {
 			// new connection
-			config.GetCfg().SetPeerTurnCfg(signal.Server, signal.FromHostPubKey, models.TurnPeerCfg{
+			config.GetCfg().SetPeerTurnCfg(signal.FromHostPubKey, models.TurnPeerCfg{
 				Server:       signal.Server,
-				PeerConf:     t.PeerConf,
 				PeerTurnAddr: signal.TurnRelayEndpoint,
 			})
 
@@ -92,7 +95,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 					Endpoint:                    peer.Endpoint,
 					PersistentKeepaliveInterval: &peer.PersistentKeepaliveInterval,
 					AllowedIPs:                  peer.AllowedIPs,
-				}, t.PeerConf, false, peerTurnEndpoint, true)
+				}, peerTurnEndpoint)
 			}
 
 		}
@@ -103,7 +106,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 		}
 		// signal back to peer
 		// signal peer with the host relay addr for the peer
-		if hostTurnCfg, ok := config.GetCfg().GetTurnCfg(signal.Server); ok && hostTurnCfg.TurnConn != nil {
+		if hostTurnCfg := config.GetCfg().GetTurnCfg(); hostTurnCfg != nil && hostTurnCfg.TurnConn != nil {
 			hostTurnCfg.Mutex.RLock()
 			err := SignalPeer(signal.Server, nm_models.Signal{
 				Server:            signal.Server,
@@ -136,7 +139,7 @@ func handleDisconnect(signal nm_models.Signal) error {
 	}
 	if _, ok := config.GetCfg().GetPeer(signal.FromHostPubKey); ok {
 		logger.Log(0, "Resetting Peer Conn to talk directly: ", peerEndpoint.String())
-		config.GetCfg().DeletePeerTurnCfg(signal.Server, signal.FromHostPubKey)
+		config.GetCfg().DeletePeerTurnCfg(signal.FromHostPubKey)
 		config.GetCfg().RemovePeer(signal.FromHostPubKey)
 	}
 	pubKey, err := wgtypes.ParseKey(signal.FromHostPubKey)
@@ -186,15 +189,12 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					continue
 				}
 				// signal peer to use turn
-				turnCfg, ok := config.GetCfg().GetTurnCfg(ncconfig.CurrServer)
-				if !ok || turnCfg.TurnConn == nil {
+				turnCfg := config.GetCfg().GetTurnCfg()
+				if turnCfg == nil || turnCfg.TurnConn == nil {
 					continue
 				}
-				if _, ok := config.GetCfg().GetPeerTurnCfg(ncconfig.CurrServer, peer.PublicKey.String()); !ok {
-					config.GetCfg().SetPeerTurnCfg(ncconfig.CurrServer, peer.PublicKey.String(), models.TurnPeerCfg{
-						Server:   ncconfig.CurrServer,
-						PeerConf: nm_models.PeerConf{},
-					})
+				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
+					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{})
 				}
 				turnCfg.Mutex.RLock()
 				// signal peer with the host relay addr for the peer
@@ -204,12 +204,12 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
 					ToHostPubKey:      peer.PublicKey.String(),
 					Action:            nm_models.ConnNegotiation,
+					TimeStamp:         time.Now().Unix(),
 				})
-				turnCfg.Mutex.RUnlock()
 				if err != nil {
 					logger.Log(2, "failed to signal peer: ", err.Error())
 				}
-
+				turnCfg.Mutex.RUnlock()
 			}
 		}
 	}
@@ -227,15 +227,6 @@ func isPeerConnected(peerKey string) (connected bool, err error) {
 	return
 }
 
-// ShouldUseTurn - checks the nat type to check if peer needs to use turn for communication
-func ShouldUseTurn(natType string) bool {
-	// if behind  DOUBLE or ASYM Nat type, use turn to reach peer
-	if natType == nm_models.NAT_Types.Asymmetric || natType == nm_models.NAT_Types.Double {
-		return true
-	}
-	return false
-}
-
 // DissolvePeerConnections - notifies all peers to disconnect from using turn.
 func DissolvePeerConnections() {
 	logger.Log(0, "Dissolving TURN Peer Connections...")
@@ -243,7 +234,8 @@ func DissolvePeerConnections() {
 	if port == 0 {
 		port = ncconfig.Netclient().ListenPort
 	}
-	turnPeers := config.GetCfg().GetAllTurnPeersCfg(ncconfig.CurrServer)
+
+	turnPeers := config.GetCfg().GetAllTurnPeersCfg()
 	for peerPubKey := range turnPeers {
 		err := SignalPeer(ncconfig.CurrServer, nm_models.Signal{
 			FromHostPubKey:    ncconfig.Netclient().PublicKey.String(),

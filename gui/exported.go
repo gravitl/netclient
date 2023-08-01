@@ -22,6 +22,10 @@ var headers []httpclient.Header
 func (app *App) GoGetStatus() (any, error) {
 	// set timeout to low value
 	httpclient.Client.Timeout = 5 * time.Second
+	defer func() {
+		httpclient.Client.Timeout = 30 * time.Second
+	}()
+
 	_, err := httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
 	if err != nil {
 		return nil, errors.New("netclient http server is not running")

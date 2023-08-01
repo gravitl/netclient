@@ -11,9 +11,9 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
@@ -102,7 +102,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	slog.Debug("HostPeerUpdate3")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -118,6 +117,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("processing peer update for server", "server", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
+		slog.Error("error decrypting message", "error", err)
 		return
 	}
 	err = json.Unmarshal([]byte(data), &peerUpdate)
@@ -125,15 +125,20 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	turn.ResetCh <- struct{}{}
+	if server.UseTurn {
+		turn.ResetCh <- struct{}{}
+	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
 		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
-			if err := UseVersion(peerUpdate.ServerVersion, true); err != nil {
+			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
+			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
+				daemon.HardRestart()
 			}
+			//daemon.Restart()
 		}
 	}
 	if peerUpdate.ServerVersion != server.Version {
@@ -171,11 +176,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	} else {
 		slog.Debug("endpoint detection disabled")
 	}
-	if proxyCfg.GetCfg().IsProxyRunning() {
-		time.Sleep(time.Second * 2) // sleep required to avoid race condition
-		ProxyManagerChan <- &peerUpdate
-	}
-
+	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -305,7 +306,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerIP.String(),
 					hostPubKey,
 					peerPubKey,
-					peerInfo.ProxyListenPort,
+					config.Netclient().ListenPort,
 				); err != nil { // happens v often
 					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
 				}
@@ -523,4 +524,14 @@ func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, origina
 			}
 		}
 	}
+}
+
+func handleFwUpdate(server string, payload *models.FwUpdate) {
+
+	if payload.IsEgressGw {
+		firewall.SetEgressRoutes(server, payload.EgressInfo)
+	} else {
+		firewall.DeleteEgressGwRoutes(server)
+	}
+
 }

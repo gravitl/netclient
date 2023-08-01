@@ -15,10 +15,9 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
-	proxyCfg "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/logic/metrics"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
@@ -139,7 +138,7 @@ func publishMetrics(node *config.Node) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(ncutils.GetInterfaceName(), node.Server, nodeGET.Node.Network, nodeGET.PeerIDs, config.Netclient().ProxyEnabled)
+	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 	}
@@ -245,8 +244,8 @@ func UpdateHostSettings() error {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		publishMsg = true
 	}
-	if len(config.Netclient().Host.NatType) == 0 || config.Netclient().Host.NatType != hostNatInfo.NatType {
-		config.Netclient().Host.NatType = hostNatInfo.NatType
+	if config.HostNatType != "" && config.Netclient().NatType != config.HostNatType {
+		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
 	}
 	if server.Is_EE {
@@ -261,17 +260,6 @@ func UpdateHostSettings() error {
 	}
 
 	ifacename := ncutils.GetInterfaceName()
-	var proxylistenPort int
-	var proxypublicport int
-	proxylistenPort = proxyCfg.GetCfg().HostInfo.PrivPort
-	proxypublicport = proxyCfg.GetCfg().HostInfo.PubPort
-	if proxylistenPort == 0 {
-		proxylistenPort = models.NmProxyPort
-	}
-	if proxypublicport == 0 {
-		proxypublicport = models.NmProxyPort
-	}
-
 	localPort, err := GetLocalListenPort(ifacename)
 	if err != nil {
 		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
@@ -280,17 +268,6 @@ func UpdateHostSettings() error {
 		config.Netclient().ListenPort = localPort
 		// if listen port changes, daemon should be restarted
 		restartDaemon = true
-		publishMsg = true
-	}
-
-	if config.Netclient().ProxyListenPort != proxylistenPort {
-		logger.Log(1, fmt.Sprint("proxy listen port has changed from ", config.Netclient().ProxyListenPort, " to ", proxylistenPort))
-		config.Netclient().ProxyListenPort = proxylistenPort
-		publishMsg = true
-	}
-	if config.Netclient().PublicListenPort != proxypublicport {
-		logger.Log(1, fmt.Sprint("public listen port has changed from ", config.Netclient().PublicListenPort, " to ", proxypublicport))
-		config.Netclient().PublicListenPort = proxypublicport
 		publishMsg = true
 	}
 

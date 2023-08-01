@@ -1,4 +1,4 @@
-package router
+package firewall
 
 import (
 	"github.com/gravitl/netmaker/logger"
@@ -6,8 +6,7 @@ import (
 )
 
 var (
-	fwCrtl              firewallController
-	currEgressRangesMap = make(map[string][]string)
+	fwCrtl firewallController
 )
 
 type rulesCfg struct {
@@ -16,11 +15,10 @@ type rulesCfg struct {
 }
 
 type ruleInfo struct {
-	rule          []string
-	nfRule        any
-	table         string
-	chain         string
-	egressExtRule bool
+	rule   []string
+	nfRule any
+	table  string
+	chain  string
 }
 type ruletable map[string]rulesCfg
 
@@ -36,16 +34,8 @@ type firewallController interface {
 	CreateChains() error
 	// ForwardRule inserts forwarding rules
 	ForwardRule() error
-	// InsertIngressRoutingRules inserts a routing firewall rules for ingressGW
-	InsertIngressRoutingRules(server string, r models.ExtClientInfo, egressRanges []string) error
-	// AddIngRoutingRule - adds a ingress routing rule for a remote client wrt it's peer
-	AddIngressRoutingRule(server, extPeerKey, extPeerAddr string, peerInfo models.PeerRouteInfo) error
-	// RefreshEgressRangesOnIngressGw - deletes/adds rules for egress ranges for ext clients on the ingressGW
-	RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
-	// AddEgressRoutingRule - adds a egress routing rules for a peer
-	AddEgressRoutingRule(server string, egressInfo models.EgressInfo, peerInfo models.PeerRouteInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer
@@ -73,17 +63,9 @@ func Init() (func(), error) {
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err
 	}
-	return fwCrtl.FlushAll, nil
-}
-
-// EnableForwardRule - enable firewall to forward netmaker traffic
-func EnableForwardRule() error {
-	controller, err := newFirewall()
+	err = fwCrtl.ForwardRule()
 	if err != nil {
-		return err
+		return fwCrtl.FlushAll, err
 	}
-	if controller.ForwardRule(); err != nil {
-		return err
-	}
-	return nil
+	return fwCrtl.FlushAll, nil
 }

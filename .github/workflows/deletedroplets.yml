@@ -18,7 +18,8 @@ jobs:
           if_no_artifact_found: warn
       - name: get server name
         run: |
-          echo "SERVER=$(cat ./server/server) >> $GITHUB_ENV"
+          echo "SERVER=$(cat ./server/server)" >> $GITHUB_ENV
+          echo ${{ env.SERVER }}}
       - name: get PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,7 +66,8 @@ jobs:
           if_no_artifact_found: warn
       - name: get server name
         run: |
-          echo "SERVER=$(cat ./server/server) >> $GITHUB_ENV"
+          echo "SERVER=$(cat ./server/server)" >> $GITHUB_ENV
+          echo ${{ env.SERVER }}}
       - name: get PR
         env:
           GH_TOKEN: ${{ github.token }}
