@@ -338,26 +338,6 @@ export default function SettingsPage() {
             <Grid item xs={4} md={3}>
               <TextField
                 disabled={!isEditing}
-                name="internetgateway"
-                label="Internet Gateway"
-                value={
-                  isEditing
-                    ? ncSettingsFormData?.internetgateway
-                    : `${String(ncSettings?.internetgateway.IP)}:${String(
-                        ncSettings?.internetgateway.Port
-                      )}` // how to get
-                }
-                onChange={(ev) =>
-                  setNcSettingsFormData({
-                    ...ncSettingsFormData!,
-                    internetgateway: ev.target.value,
-                  })
-                }
-              />
-            </Grid>
-            <Grid item xs={4} md={3}>
-              <TextField
-                disabled={!isEditing}
                 name="macaddress"
                 label="MAC Address"
                 value={
