@@ -39,12 +39,13 @@ func Uninstall() ([]error, error) {
 		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
 	}
 
-	if runtime.GOOS == "windows" {
-		allfaults = append(allfaults, errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22"))
-	}
-
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
+	}
+
+	if runtime.GOOS == "windows" {
+		err = errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22")
+		allfaults = append(allfaults, errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22"))
 	}
 	return allfaults, err
 }
