@@ -72,6 +72,8 @@ func (a *App) uninstallApp(callbackData *menu.CallbackData) {
 	if res != "Yes" {
 		return
 	}
-	a.GoUninstall()
+	if _, err := a.GoUninstall(); err != nil {
+		a.GoOpenDialogue(wailsRuntime.InfoDialog, "Uninstalling steps/errors.\n"+err.Error(), "Netclient uninstallation")
+	}
 	os.Exit(0)
 }
