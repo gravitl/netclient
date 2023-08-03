@@ -29,7 +29,7 @@ func Migrate() {
 		//nothing to migrate ... exiting"
 		return
 	}
-	logger.Log(0, "migration to v0.18 started")
+	logger.Log(0, "migration to v0.20 started")
 	networks, err := config.GetSystemNetworks()
 	if err != nil {
 		fmt.Println("error reading network data ", err.Error())
@@ -141,7 +141,8 @@ func Migrate() {
 
 	if delete {
 		logger.Log(3, "removing old config files")
-		if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
+		if err := os.Rename(config.GetNetclientPath()+"/config", config.GetNetclientPath()+"/config.old"); err != nil {
+			//if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
 			logger.Log(0, "failed to delete old configuration files ", err.Error())
 		}
 	}
