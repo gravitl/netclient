@@ -159,7 +159,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	var netmakerNode models.LegacyNode
 	netmakerNode.ID = node.ID.String()
 	netmakerNode.OS = host.OS
-	netmakerNode.HostID = server.MQID.String()
+	//netmakerNode.HostID = server.MQID.String()
 	netmakerNode.Name = host.Name
 	netmakerNode.Network = node.Network
 	netmakerNode.Password = host.HostPass

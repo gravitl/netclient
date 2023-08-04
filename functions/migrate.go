@@ -2,10 +2,8 @@ package functions
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/devilcove/httpclient"
@@ -13,13 +11,16 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/kr/pretty"
+	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // Migrate update data from older versions of netclient to new format
-// TODO fix it
 func Migrate() {
+	servers := make(map[string][]models.LegacyNode)
+	slog.Info("migration func")
 	delete := true
 	config_dir := config.GetNetclientPath()
 	if !ncutils.IsWindows() {
@@ -29,32 +30,31 @@ func Migrate() {
 		//nothing to migrate ... exiting"
 		return
 	}
-	logger.Log(0, "migration to v0.20 started")
+	//slog.Info("migration to " + config.Netclient().Version + " started")
 	networks, err := config.GetSystemNetworks()
 	if err != nil {
-		fmt.Println("error reading network data ", err.Error())
+		slog.Error("reading network data", "error", err)
 		return
 	}
 	if len(networks) == 0 { // nothing to migrate
+		slog.Warn("no networks, nothing to migrate")
 		return
 	}
-	logger.Log(0, "stopping daemon")
+	slog.Info("stopping daemon")
 	if err := daemon.Stop(); err != nil {
-		logger.Log(0, "failed to stop daemon", err.Error())
+		slog.Warn("stopping daemon failed", "error", err)
 	}
 
-	logger.Log(0, "networks to be migrated", strings.Join(networks, " "))
-	var legacyNodes = []models.LegacyNode{}
-	var servers = map[string]struct{}{}
-	var newHost models.Host
-	if config.Netclient().ListenPort == 0 {
-		config.Netclient().ListenPort = 51821
-	}
+	slog.Info("networks to be migrated " + strings.Join(networks, " "))
+
 	for _, network := range networks {
-		logger.Log(0, "migrating", network)
+		slog.Info("migrating " + network)
+		if err := removeHostDNS(network); err != nil {
+			slog.Error("remove host DNS", "error", err)
+		}
 		cfg, err := config.ReadConfig(network)
 		if err != nil {
-			logger.Log(0, "failed to read config for network", network, "skipping ...")
+			slog.Error("skipping network, could not read config", "network", network, "error", err)
 			continue
 		}
 		oldIface := cfg.Node.Interface
@@ -64,45 +64,24 @@ func Migrate() {
 		}
 		pass, err := os.ReadFile(secretPath)
 		if err != nil {
-			logger.Log(0, "could not read secrets file", err.Error())
+			slog.Error("read secrets file", "error", err)
 			continue
 		}
 		cfg.Node.Password = string(pass)
-		legacyNodes = append(legacyNodes, cfg.Node)
-		node, netclient := config.ConvertOldNode(&cfg.Node)
-		node.Server = strings.Replace(cfg.Server.Server, "broker.", "", 1)
-		servers[cfg.Server.API] = struct{}{}
-		newHost, _ = config.Convert(netclient, node)
-		newHost.PublicKey = netclient.PrivateKey.PublicKey()
-		ip, err := getInterfaces()
-		if err != nil {
-			logger.Log(0, "failed to retrieve local interfaces", err.Error())
-		} else {
-			if ip != nil {
-				newHost.Interfaces = *ip
-			}
-		}
-		defaultInterface, err := getDefaultInterface()
-		if err != nil {
-			logger.Log(0, "default gateway not found", err.Error())
-		} else if defaultInterface != ncutils.GetInterfaceName() {
-			newHost.DefaultInterface = defaultInterface
-		}
 		wireguard.DeleteOldInterface(oldIface)
+		nodes, _ := servers[cfg.Server.API]
+		servers[cfg.Server.API] = append(nodes, cfg.Node)
 	}
-	if newHost.ListenPort == 0 {
-		newHost.ListenPort = config.Netclient().ListenPort
-	}
-	var serversToWrite = []models.ServerConfig{}
-	for k := range servers {
-		server := k
-		logger.Log(0, "migrating for server", server)
+	pretty.Println(servers)
+	hostSet := false
+	for k, v := range servers {
+		//server := k
+		slog.Info("server migratation", "server", k)
 		migrationData := models.MigrationData{
-			LegacyNodes: legacyNodes,
-			NewHost:     newHost,
+			LegacyNodes: v,
 		}
-		api := httpclient.JSONEndpoint[models.RegisterResponse, models.ErrorResponse]{
-			URL:    "https://" + server,
+		api := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
+			URL:    "https://" + k,
 			Route:  "/api/v1/nodes/migrate",
 			Method: http.MethodPost,
 			Headers: []httpclient.Header{
@@ -112,63 +91,79 @@ func Migrate() {
 				},
 			},
 			Data:          migrationData,
-			Response:      models.RegisterResponse{},
+			Response:      models.HostPull{},
 			ErrorResponse: models.ErrorResponse{},
 		}
-		migrateResponse, errData, err := api.GetJSON(models.RegisterResponse{}, models.ErrorResponse{})
+		migrateResponse, errData, err := api.GetJSON(models.HostPull{}, models.ErrorResponse{})
 		if err != nil {
-			logger.Log(0, "err migrating data", err.Error())
+			slog.Error("migration response", "error", err)
 			if errors.Is(err, httpclient.ErrStatus) {
-				logger.Log(0, "error migrating server", server, strconv.Itoa(errData.Code), errData.Message)
+				slog.Error("status error", "code", errData.Code, "message", errData.Message)
 				delete = false
 				continue
 			}
 		}
-		if !IsVersionComptatible(migrateResponse.ServerConf.Version) {
-			logger.Log(0, "incompatible server version", migrateResponse.ServerConf.Version)
+		if !IsVersionComptatible(migrateResponse.ServerConfig.Version) {
+			slog.Error("incompatible server version", "server", migrateResponse.ServerConfig.Version, "client", config.Netclient().Version)
 			delete = false
 			continue
 		}
-		serversToWrite = append(serversToWrite, migrateResponse.ServerConf)
-		newHost.ListenPort = migrateResponse.RequestedHost.ListenPort
+		pretty.Println(migrateResponse)
 
-	}
+		if !hostSet {
+			slog.Info("setting host")
+			netclient := config.Netclient()
+			netclient.Host = migrateResponse.Host
+			netclient.PrivateKey = getWGPrivateKey(migrateResponse.Nodes[0].Network)
+			netclient.TrafficKeyPrivate = getOldTrafficKey(migrateResponse.Nodes[0].Network)
 
-	for i := range legacyNodes {
-		network := legacyNodes[i].Network
-		_ = removeHostDNS(network) // remove old DNS
+			if err := config.WriteNetclientConfig(); err != nil {
+				slog.Error("write config", "error", err)
+			}
+			hostSet = true
+		}
+		config.UpdateServerConfig(&migrateResponse.ServerConfig)
+		config.SetNodes(migrateResponse.Nodes)
+		if err := config.WriteServerConfig(); err != nil {
+			slog.Error("write server config", "error", err)
+		}
+		if err := config.WriteNodeConfig(); err != nil {
+			slog.Error("save node config", "error", err)
+		}
+		if err := PublishHostUpdate(k, models.UpdateHost); err != nil {
+			slog.Error("pub host update", "error", err)
+		}
 	}
 
 	if delete {
-		logger.Log(3, "removing old config files")
+		slog.Info("removing old config files")
 		if err := os.Rename(config.GetNetclientPath()+"/config", config.GetNetclientPath()+"/config.old"); err != nil {
 			//if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
-			logger.Log(0, "failed to delete old configuration files ", err.Error())
+			slog.Error("deleting config files", "error", err)
 		}
-	}
-
-	for i := range serversToWrite {
-		serverValue := serversToWrite[i]
-		config.UpdateServerConfig(&serverValue)
-		newServerConfig := config.GetServer(serverValue.Server)
-		if newServerConfig == nil {
-			continue
-		}
-		config.UpdateServer(serverValue.Server, *newServerConfig)
-		if err := config.SaveServer(serverValue.Server, *newServerConfig); err != nil {
-			logger.Log(0, "failed to save server", err.Error())
-		} else {
-			logger.Log(0, "saved server", serverValue.Server)
-		}
-	}
-
-	if config.Netclient().ListenPort == 0 {
-		config.Netclient().ListenPort = 51821
-	}
-
-	if err := config.WriteNetclientConfig(); err != nil {
-		logger.Log(0, "error saving netclient config during migrate", err.Error())
 	}
 
 	_ = daemon.Restart()
+}
+
+func getWGPrivateKey(network string) wgtypes.Key {
+	data, err := os.ReadFile(config.GetNetclientPath() + "config/wgkey-" + network)
+	if err != nil {
+		slog.Error("read wireguard key", "error", err)
+		return wgtypes.Key{}
+	}
+	key, err := wgtypes.ParseKey(string(data))
+	if err != nil {
+		slog.Error("parse key", "error", err)
+		return wgtypes.Key{}
+	}
+	return key
+}
+
+func getOldTrafficKey(network string) []byte {
+	data, err := os.ReadFile(config.GetNetclientPath() + "/config/traffic-" + network)
+	if err != nil {
+		slog.Error("read old traffic key", "error", err)
+	}
+	return data
 }
