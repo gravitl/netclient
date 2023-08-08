@@ -22,6 +22,10 @@ func Migrate() {
 	servers := make(map[string][]models.LegacyNode)
 	slog.Info("migration func")
 	delete := true
+	hostname, err := os.Hostname()
+	if err != nil {
+		slog.Warn("set hostname", "error", err)
+	}
 	config_dir := config.GetNetclientPath()
 	if !ncutils.IsWindows() {
 		config_dir += "config"
@@ -57,6 +61,7 @@ func Migrate() {
 			slog.Error("skipping network, could not read config", "network", network, "error", err)
 			continue
 		}
+		serverName := strings.Replace(cfg.Server.Server, "broker.", "", 1)
 		oldIface := cfg.Node.Interface
 		secretPath := config.GetNetclientPath() + "config/secret-" + network
 		if ncutils.IsWindows() {
@@ -68,9 +73,10 @@ func Migrate() {
 			continue
 		}
 		cfg.Node.Password = string(pass)
+		cfg.Node.Server = serverName
 		wireguard.DeleteOldInterface(oldIface)
-		nodes, _ := servers[cfg.Server.API]
-		servers[cfg.Server.API] = append(nodes, cfg.Node)
+		nodes, _ := servers[serverName]
+		servers[serverName] = append(nodes, cfg.Node)
 	}
 	pretty.Println(servers)
 	hostSet := false
@@ -78,10 +84,12 @@ func Migrate() {
 		//server := k
 		slog.Info("server migratation", "server", k)
 		migrationData := models.MigrationData{
+			HostName:    hostname,
+			Password:    v[0].Password,
 			LegacyNodes: v,
 		}
 		api := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
-			URL:    "https://" + k,
+			URL:    "https://api." + k,
 			Route:  "/api/v1/nodes/migrate",
 			Method: http.MethodPost,
 			Headers: []httpclient.Header{
@@ -116,22 +124,32 @@ func Migrate() {
 			netclient.Host = migrateResponse.Host
 			netclient.PrivateKey = getWGPrivateKey(migrateResponse.Nodes[0].Network)
 			netclient.TrafficKeyPrivate = getOldTrafficKey(migrateResponse.Nodes[0].Network)
+			netclient.HostPass = getOldPassword(migrateResponse.Nodes[0].Network)
 
 			if err := config.WriteNetclientConfig(); err != nil {
 				slog.Error("write config", "error", err)
 			}
 			hostSet = true
 		}
-		config.UpdateServerConfig(&migrateResponse.ServerConfig)
+		slog.Info("updating server config", "config", migrateResponse.ServerConfig)
+		config.SaveServer(k, config.Server{
+			ServerConfig: migrateResponse.ServerConfig,
+			Name:         k,
+			MQID:         migrateResponse.Host.ID,
+		})
+		slog.Info("updating node", "node", migrateResponse.Nodes)
 		config.SetNodes(migrateResponse.Nodes)
-		if err := config.WriteServerConfig(); err != nil {
-			slog.Error("write server config", "error", err)
-		}
 		if err := config.WriteNodeConfig(); err != nil {
 			slog.Error("save node config", "error", err)
 		}
+		slog.Info("publish host update", "server", k, "update", models.UpdateHost)
+		server := config.GetServer(k)
+		if err := setupMQTTSingleton(server, true); err != nil {
+			slog.Error("mqtt setup", "error", err)
+			continue
+		}
 		if err := PublishHostUpdate(k, models.UpdateHost); err != nil {
-			slog.Error("pub host update", "error", err)
+			slog.Error("pub host update", "server", k, "error", err)
 		}
 	}
 
@@ -166,4 +184,12 @@ func getOldTrafficKey(network string) []byte {
 		slog.Error("read old traffic key", "error", err)
 	}
 	return data
+}
+
+func getOldPassword(network string) string {
+	data, err := os.ReadFile(config.GetNetclientPath() + "/config/secret-" + network)
+	if err != nil {
+		slog.Error("read password", "error", err)
+	}
+	return string(data)
 }
