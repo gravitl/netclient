@@ -21,9 +21,9 @@ export function GoGetRecentServerNames():Promise<Array<string>>;
 
 export function GoGetStatus():Promise<any>;
 
-export function GoJoinNetworkByBasicAuth(arg1:string,arg2:string,arg3:string,arg4:string):Promise<any>;
+export function GoJoinNetworkByBasicAuth(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number):Promise<any>;
 
-export function GoJoinNetworkBySso(arg1:string,arg2:string):Promise<main.SsoJoinResDto>;
+export function GoJoinNetworkBySso(arg1:string,arg2:string,arg3:string,arg4:number):Promise<main.SsoJoinResDto>;
 
 export function GoLeaveNetwork(arg1:string):Promise<any>;
 
@@ -31,7 +31,7 @@ export function GoOpenDialogue(arg1:frontend.DialogType,arg2:string,arg3:string)
 
 export function GoPullLatestNodeConfig(arg1:string):Promise<main.Network>;
 
-export function GoRegisterWithEnrollmentKey(arg1:string):Promise<any>;
+export function GoRegisterWithEnrollmentKey(arg1:string,arg2:string,arg3:number):Promise<any>;
 
 export function GoUninstall():Promise<any>;
 

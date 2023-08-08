@@ -147,12 +147,14 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 }
 
 // App.GoJoinNetworkBySso joins a network by SSO
-func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDto, error) {
+func (app *App) GoJoinNetworkBySso(serverName, networkName, customEndpoint string, customPort int) (SsoJoinResDto, error) {
 	payload := &functions.SSORegisterData{
-		API:         serverName,
-		Network:     networkName,
-		UsingSSO:    true,
-		AllNetworks: false,
+		API:              serverName,
+		Network:          networkName,
+		UsingSSO:         true,
+		AllNetworks:      false,
+		CustomEndpointIp: customEndpoint,
+		CustomListenPort: customPort,
 	}
 	res := SsoJoinResDto{}
 
@@ -171,14 +173,16 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDt
 }
 
 // App.GoJoinNetworkByBasicAuth joins a network by username/password
-func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
+func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password, customEndpoint string, customListenPort int) (any, error) {
 	payload := &functions.SSORegisterData{
-		API:         serverName,
-		Network:     networkName,
-		UsingSSO:    false,
-		User:        username,
-		Pass:        password,
-		AllNetworks: false,
+		API:              serverName,
+		Network:          networkName,
+		UsingSSO:         false,
+		User:             username,
+		Pass:             password,
+		AllNetworks:      false,
+		CustomEndpointIp: customEndpoint,
+		CustomListenPort: customListenPort,
 	}
 
 	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/join/", "", headers)
@@ -264,11 +268,11 @@ func (app *App) GoUpdateNetclientConfig(updatedConfig config.Config) (any, error
 	panic("unimplemented function")
 }
 
-func (app *App) GoRegisterWithEnrollmentKey(key string) (any, error) {
-	token := struct {
-		Token string
-	}{
-		Token: key,
+func (app *App) GoRegisterWithEnrollmentKey(key string, customEndpoint string, customPort int) (any, error) {
+	token := functions.TokenRegisterData{
+		Token:            key,
+		CustomEndpointIp: customEndpoint,
+		CustomListenPort: customPort,
 	}
 	response, err := httpclient.GetResponse(token, http.MethodPost, url+"/register/", "", headers)
 	if err != nil {

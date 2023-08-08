@@ -28,6 +28,8 @@ function TokenLogin() {
   const [type, setType] = useState<"access-key" | "enrollment-key">(
     "enrollment-key"
   );
+  const [customEndpointIp, setCustomEndpointIp] = useState("");
+  const [customListenPort, setCustomListenPort] = useState(0);
   const navigate = useNavigate();
   const { networksDispatch } = useNetworksContext();
 
@@ -56,7 +58,7 @@ function TokenLogin() {
 
       switch (type) {
         case "enrollment-key":
-          await GoRegisterWithEnrollmentKey(enrollmentKey);
+          await GoRegisterWithEnrollmentKey(enrollmentKey, customEndpointIp, customListenPort);
           // wait a while for the server to register host to network. makes the UX better
           await new Promise((resolve) => setTimeout(resolve, 3000));
           break;
@@ -149,6 +151,32 @@ function TokenLogin() {
           </Typography>
         </Grid>
       )}
+
+      <Grid item xs={12}>
+        <TextField
+          key="custom-endpoint"
+          label="Custom Endpoint IP"
+          placeholder="Custom Endpoint IP (Optional)"
+          value={customEndpointIp}
+          onChange={(e) => setCustomEndpointIp(e.target.value)}
+          error={!isFormValid}
+          helperText={isFormValid ? "" : "Invalid IP address"}
+          inputProps={{ "data-testid": "custom-endpoint-inp" }}
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          type="number"
+          key="custom-port-inp"
+          label="Custom Listen Port (Optional)"
+          placeholder="Custom Listen Port"
+          value={customListenPort}
+          onChange={(e) => setCustomListenPort(parseInt(e.target.value, 10))}
+          error={!isFormValid}
+          helperText={isFormValid ? "" : "Invalid port number"}
+          inputProps={{ "data-testid": "custom-port-inp" }}
+        />
+      </Grid>
 
       <Grid item xs={12}>
         <LoadingButton

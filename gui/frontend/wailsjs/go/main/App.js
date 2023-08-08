@@ -34,12 +34,12 @@ export function GoGetStatus() {
   return window['go']['main']['App']['GoGetStatus']();
 }
 
-export function GoJoinNetworkByBasicAuth(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['GoJoinNetworkByBasicAuth'](arg1, arg2, arg3, arg4);
+export function GoJoinNetworkByBasicAuth(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['GoJoinNetworkByBasicAuth'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
-export function GoJoinNetworkBySso(arg1, arg2) {
-  return window['go']['main']['App']['GoJoinNetworkBySso'](arg1, arg2);
+export function GoJoinNetworkBySso(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GoJoinNetworkBySso'](arg1, arg2, arg3, arg4);
 }
 
 export function GoLeaveNetwork(arg1) {
@@ -54,8 +54,8 @@ export function GoPullLatestNodeConfig(arg1) {
   return window['go']['main']['App']['GoPullLatestNodeConfig'](arg1);
 }
 
-export function GoRegisterWithEnrollmentKey(arg1) {
-  return window['go']['main']['App']['GoRegisterWithEnrollmentKey'](arg1);
+export function GoRegisterWithEnrollmentKey(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GoRegisterWithEnrollmentKey'](arg1, arg2, arg3);
 }
 
 export function GoUninstall() {

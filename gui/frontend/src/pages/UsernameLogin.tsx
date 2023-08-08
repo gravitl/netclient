@@ -24,11 +24,15 @@ export default function UsernameLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [networkName, setNetworkName] = useState("");
+  const [customEndpointIp, setCustomEndpointIp] = useState("");
+  const [customListenPort, setCustomListenPort] = useState(0);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isServerNameFormValid, setIsServerNameFormValid] = useState(true);
   const [isUsernameFormValid, setIsUsernameFormValid] = useState(true);
   const [isNetworkNameFormValid, setIsNetworkNameFormValid] = useState(true);
   const [isPasswordFormValid, setIsPasswordFormValid] = useState(true);
+  const [isCustomEndpointValid, setIsCustomEndpointValid] = useState(true);
+  const [isCustomListenPortValid, setIsCustomListenPortValid] = useState(true);
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
 
@@ -81,10 +85,12 @@ export default function UsernameLogin() {
 
     setIsConnecting(true);
     try {
-      const { authendpoint: oauthLink } = (await GoJoinNetworkBySso(
+      const { authendpoint: oauthLink } = await GoJoinNetworkBySso(
         serverName,
-        networkName
-      ));
+        networkName,
+        customEndpointIp,
+        customListenPort,
+      );
 
       BrowserOpenURL(oauthLink);
       await notifyUser(
@@ -124,7 +130,9 @@ export default function UsernameLogin() {
         serverName,
         username,
         networkName,
-        password
+        password,
+        customEndpointIp,
+        customListenPort,
       );
 
       const data: NetworksContextDispatcherProps = {
@@ -240,6 +248,31 @@ export default function UsernameLogin() {
         <Typography variant="caption">
           *Details can be acquired from Netmaker server
         </Typography>
+      </Grid>
+
+      <Grid item xs={6}>
+        <TextField
+          label="Custom Endpoint IP"
+          placeholder="Custom Endpoint IP (Optional)"
+          value={customEndpointIp}
+          onChange={(e) => setCustomEndpointIp(e.target.value)}
+          error={!isCustomEndpointValid}
+          helperText={isCustomEndpointValid ? "" : "Invalid IP address"}
+          inputProps={{ "data-testid": "custom-endpoint-inp" }}
+        />
+      </Grid>
+      <Grid item xs={6}>
+        <TextField
+          type="number"
+          key="custom-port-inp"
+          label="Custom Listen Port (Optional)"
+          placeholder="Custom Listen Port"
+          value={customListenPort}
+          onChange={(e) => setCustomListenPort(parseInt(e.target.value, 10))}
+          error={!isCustomListenPortValid}
+          helperText={isCustomListenPortValid ? "" : "Invalid port number"}
+          inputProps={{ "data-testid": "custom-port-inp" }}
+        />
       </Grid>
 
       <Grid item xs={12}>
