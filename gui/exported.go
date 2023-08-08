@@ -148,7 +148,7 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 
 // App.GoJoinNetworkBySso joins a network by SSO
 func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDto, error) {
-	payload := &functions.RegisterSSO{
+	payload := &functions.SSORegisterData{
 		API:         serverName,
 		Network:     networkName,
 		UsingSSO:    true,
@@ -172,7 +172,7 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDt
 
 // App.GoJoinNetworkByBasicAuth joins a network by username/password
 func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, password string) (any, error) {
-	payload := &functions.RegisterSSO{
+	payload := &functions.SSORegisterData{
 		API:         serverName,
 		Network:     networkName,
 		UsingSSO:    false,

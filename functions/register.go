@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,10 +17,19 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
+// TokenRegisterData holds registration data for registrations by token
+type TokenRegisterData struct {
+	Token            string
+	CustomEndpointIp string
+	CustomListenPort int
+}
+
 // Register - should be simple to register with a token
-func Register(token string, isGui bool) error {
+func Register(regData TokenRegisterData, isGui bool) error {
+	token := regData.Token
 	data, err := b64.StdEncoding.DecodeString(token)
 	if err != nil {
 		logger.FatalLog("could not read enrollment token")
@@ -51,11 +61,30 @@ func Register(token string, isGui bool) error {
 	if shouldUpdateHost { // get most up to date values before submitting to server
 		host = config.Netclient()
 	}
+	reqBody := models.HostRegisterReqDto{}
+	// create a copy so original endpoint and port are unchanged at this point
+	hostConfCopy := *host
+	if regData.CustomEndpointIp != "" {
+		ip := net.ParseIP(regData.CustomEndpointIp)
+		if ip != nil {
+			slog.Info("registering with custom endpoint ip", "ip", ip.String())
+			hostConfCopy.EndpointIP = ip
+			reqBody.CustomParams = append(reqBody.CustomParams, models.HostRegisterCustomParamEndpointIp)
+		} else {
+			slog.Error("invalid custom endpoint ip", "ip", regData.CustomEndpointIp)
+		}
+	}
+	if regData.CustomListenPort != 0 {
+		slog.Info("registering with custom port", "port", regData.CustomListenPort)
+		hostConfCopy.ListenPort = regData.CustomListenPort
+		reqBody.CustomParams = append(reqBody.CustomParams, models.HostRegisterCustomParamListenPort)
+	}
+	reqBody.Host = hostConfCopy.Host
 	api := httpclient.JSONEndpoint[models.RegisterResponse, models.ErrorResponse]{
 		URL:           "https://" + serverData.Server,
 		Route:         "/api/v1/host/register/" + token,
 		Method:        http.MethodPost,
-		Data:          host,
+		Data:          reqBody,
 		Response:      models.RegisterResponse{},
 		ErrorResponse: models.ErrorResponse{},
 	}

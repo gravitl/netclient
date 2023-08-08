@@ -89,17 +89,14 @@ func status(c *gin.Context) {
 }
 
 func register(c *gin.Context) {
-	var token struct {
-		Token string
-	}
-	err := json.NewDecoder(c.Request.Body).Decode(&token)
+	regData := TokenRegisterData{}
+	err := json.NewDecoder(c.Request.Body).Decode(&regData)
 	if err != nil {
-		//if err := c.BindJSON(&token); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid data " + err.Error()})
 		log.Println("bind error ", err)
 		return
 	}
-	if err := Register(token.Token, true); err != nil {
+	if err := Register(regData, true); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "invalid data " + err.Error()})
 		log.Println("join failed", err)
 		return
@@ -252,7 +249,7 @@ func nodePeers(c *gin.Context) {
 }
 
 func join(c *gin.Context) {
-	joinReq := RegisterSSO{}
+	joinReq := SSORegisterData{}
 	if err := c.BindJSON(&joinReq); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
 		return
@@ -265,7 +262,7 @@ func join(c *gin.Context) {
 }
 
 func sso(c *gin.Context) {
-	registerData := RegisterSSO{}
+	registerData := SSORegisterData{}
 	if err := c.BindJSON(&registerData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse request" + err.Error()})
 		return
@@ -279,7 +276,7 @@ func sso(c *gin.Context) {
 		return
 	}
 	host := hostForSSO()
-	request := models.RegisterMsg{
+	request := models.HostRegisterNonTokenReqDto{
 		RegisterHost: host,
 		User:         registerData.User,
 		Password:     registerData.Pass,

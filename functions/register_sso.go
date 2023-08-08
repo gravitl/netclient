@@ -3,6 +3,7 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -11,20 +12,23 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
-// RegisterSSO - payload to register via SSO
-type RegisterSSO struct {
-	API         string
-	User        string
-	Pass        string
-	Network     string
-	UsingSSO    bool
-	AllNetworks bool
+// SSORegisterData - payload to register via SSO
+type SSORegisterData struct {
+	API              string
+	User             string
+	Pass             string
+	Network          string
+	UsingSSO         bool
+	AllNetworks      bool
+	CustomEndpointIp string
+	CustomListenPort int
 }
 
 // RegisterWithSSO - register with user credentials with a netmaker server
-func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
+func RegisterWithSSO(registerData *SSORegisterData, isGui bool) (err error) {
 	if registerData == nil || len(registerData.API) == 0 { // begin validation
 		return fmt.Errorf("no server data provided")
 	}
@@ -33,6 +37,8 @@ func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
 			return fmt.Errorf("no credentials provided")
 		}
 	} // end validation
+
+	request := models.HostRegisterNonTokenReqDto{}
 
 	host := config.Netclient()
 	ip, err := getInterfaces()
@@ -57,6 +63,23 @@ func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
 	if shouldUpdateHost { // get most up to date values before submitting to server
 		host = config.Netclient()
 	}
+	// create a copy so original endpoint and port are unchanged at this point
+	hostCopy := (*host).Host
+	if registerData.CustomEndpointIp != "" {
+		ip := net.ParseIP(registerData.CustomEndpointIp)
+		if ip != nil {
+			slog.Info("registering with custom endpoint ip", "ip", ip.String())
+			hostCopy.EndpointIP = ip
+			request.CustomParams = append(request.CustomParams, models.HostRegisterCustomParamEndpointIp)
+		} else {
+			slog.Error("invalid custom endpoint ip", "ip", registerData.CustomEndpointIp)
+		}
+	}
+	if registerData.CustomListenPort != 0 {
+		slog.Info("registering with custom port", "port", registerData.CustomListenPort)
+		hostCopy.ListenPort = registerData.CustomListenPort
+		request.CustomParams = append(request.CustomParams, models.HostRegisterCustomParamListenPort)
+	}
 
 	socketUrl := fmt.Sprintf("wss://%s/api/v1/auth-register/host", registerData.API)
 	// Dial the netmaker server controller
@@ -66,20 +89,19 @@ func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
 		return
 	}
 
-	request := models.RegisterMsg{
-		RegisterHost: host.Host,
-		User:         registerData.User,
-		Password:     registerData.Pass,
-		Network:      registerData.Network,
-		JoinAll:      registerData.AllNetworks,
-	}
+	request.RegisterHost = hostCopy
+	request.User = registerData.User
+	request.Password = registerData.Pass
+	request.Network = registerData.Network
+	request.JoinAll = registerData.AllNetworks
+
 	registerData.Pass = ""
 
 	defer conn.Close()
 	return handeServerSSORegisterConn(&request, registerData.API, conn, isGui)
 }
 
-func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn, isGui bool) error {
+func handeServerSSORegisterConn(reqMsg *models.HostRegisterNonTokenReqDto, apiURI string, conn *websocket.Conn, isGui bool) error {
 	reqData, err := json.Marshal(&reqMsg)
 	if err != nil {
 		return err
