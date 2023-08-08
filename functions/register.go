@@ -69,6 +69,7 @@ func Register(regData TokenRegisterData, isGui bool) error {
 		if ip != nil {
 			slog.Info("registering with custom endpoint ip", "ip", ip.String())
 			hostConfCopy.EndpointIP = ip
+			hostConfCopy.IsStatic = true
 			reqBody.CustomParams = append(reqBody.CustomParams, models.HostRegisterCustomParamEndpointIp)
 		} else {
 			slog.Error("invalid custom endpoint ip", "ip", regData.CustomEndpointIp)

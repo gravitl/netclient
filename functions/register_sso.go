@@ -70,6 +70,7 @@ func RegisterWithSSO(registerData *SSORegisterData, isGui bool) (err error) {
 		if ip != nil {
 			slog.Info("registering with custom endpoint ip", "ip", ip.String())
 			hostCopy.EndpointIP = ip
+			hostCopy.IsStatic = true
 			request.CustomParams = append(request.CustomParams, models.HostRegisterCustomParamEndpointIp)
 		} else {
 			slog.Error("invalid custom endpoint ip", "ip", registerData.CustomEndpointIp)

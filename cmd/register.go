@@ -42,7 +42,7 @@ server: netclient register -s <server> // join a specific server via SSO if Oaut
 net: netclient register -s <server> -n <net> // attempt to join specified network via auth
 all-networks: netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
 user: netclient register -s <server> -u <user_name> // attempt to join/register via basic auth
-custom port and ip: netclient register -t <token> -p <port> -e <ip> // attempt to join/register via token with custom port and ip`,
+custom port and ip: netclient register -t <token> -p <port> -e <ip> // attempt to join/register via token with custom port and ip (custom port and ip only works on first register)`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		endpointIp, err := cmd.Flags().GetString(registerFlags.EndpointIp)
