@@ -4,7 +4,11 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LoadingButton } from "@mui/lab";
-import { getNetworkDetailsPageUrl } from "../utils/networks";
+import {
+  getNetworkDetailsPageUrl,
+  isValidIp,
+  isValidPort,
+} from "../utils/networks";
 import {
   NetworksContextDispatcherProps,
   useNetworksContext,
@@ -48,6 +52,8 @@ export default function UsernameLogin() {
       setIsNetworkNameFormValid(true);
       setIsUsernameFormValid(true);
       setIsPasswordFormValid(true);
+      setIsCustomEndpointValid(true);
+      setIsCustomListenPortValid(true);
 
       if (serverName.length < 1) {
         setIsServerNameFormValid(false);
@@ -65,6 +71,14 @@ export default function UsernameLogin() {
         setIsPasswordFormValid(false);
         return false;
       }
+      if (customEndpointIp !== "" && !isValidIp(customEndpointIp)) {
+        setIsCustomEndpointValid(false);
+        return false;
+      }
+      if (customListenPort !== 0 && !isValidPort(customListenPort)) {
+        setIsCustomListenPortValid(false);
+        return false;
+      }
 
       return true;
     },
@@ -77,6 +91,8 @@ export default function UsernameLogin() {
       username,
       networkName,
       password,
+      customEndpointIp,
+      customListenPort,
     ]
   );
 
@@ -89,7 +105,7 @@ export default function UsernameLogin() {
         serverName,
         networkName,
         customEndpointIp,
-        customListenPort,
+        customListenPort
       );
 
       BrowserOpenURL(oauthLink);
@@ -132,7 +148,7 @@ export default function UsernameLogin() {
         networkName,
         password,
         customEndpointIp,
-        customListenPort,
+        customListenPort
       );
 
       const data: NetworksContextDispatcherProps = {
@@ -157,6 +173,8 @@ export default function UsernameLogin() {
     username,
     networkName,
     password,
+    customEndpointIp,
+    customListenPort,
   ]);
 
   // on created
@@ -250,29 +268,33 @@ export default function UsernameLogin() {
         </Typography>
       </Grid>
 
-      <Grid item xs={6}>
-        <TextField
-          label="Custom Endpoint IP"
-          placeholder="Custom Endpoint IP (Optional)"
-          value={customEndpointIp}
-          onChange={(e) => setCustomEndpointIp(e.target.value)}
-          error={!isCustomEndpointValid}
-          helperText={isCustomEndpointValid ? "" : "Invalid IP address"}
-          inputProps={{ "data-testid": "custom-endpoint-inp" }}
-        />
-      </Grid>
-      <Grid item xs={6}>
-        <TextField
-          type="number"
-          key="custom-port-inp"
-          label="Custom Listen Port (Optional)"
-          placeholder="Custom Listen Port"
-          value={customListenPort}
-          onChange={(e) => setCustomListenPort(parseInt(e.target.value, 10))}
-          error={!isCustomListenPortValid}
-          helperText={isCustomListenPortValid ? "" : "Invalid port number"}
-          inputProps={{ "data-testid": "custom-port-inp" }}
-        />
+      <Grid container direction="row" sx={{ marginTop: "2rem", marginLeft: '8rem', marginRight: '8rem' }}>
+        <Grid item xs={6}>
+          <TextField
+            label="Custom Endpoint IP"
+            placeholder="Custom Endpoint IP (Optional)"
+            value={customEndpointIp}
+            onChange={(e) => setCustomEndpointIp(e.target.value)}
+            error={!isCustomEndpointValid}
+            helperText={isCustomEndpointValid ? "" : "Invalid IP address"}
+            inputProps={{ "data-testid": "custom-endpoint-inp" }}
+            sx={{ width: '70%' }}
+          />
+        </Grid>
+        <Grid item xs={6}>
+          <TextField
+            type="number"
+            key="custom-port-inp"
+            label="Custom Listen Port (Optional)"
+            placeholder="Custom Listen Port"
+            value={customListenPort}
+            onChange={(e) => setCustomListenPort(parseInt(e.target.value, 10))}
+            error={!isCustomListenPortValid}
+            helperText={isCustomListenPortValid ? "" : "Invalid port number"}
+            inputProps={{ "data-testid": "custom-port-inp" }}
+            sx={{ width: '70%' }}
+          />
+        </Grid>
       </Grid>
 
       <Grid item xs={12}>

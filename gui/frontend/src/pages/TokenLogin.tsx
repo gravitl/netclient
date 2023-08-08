@@ -15,13 +15,19 @@ import {
   NetworksContextDispatcherProps,
   useNetworksContext,
 } from "../store/NetworkContext";
-import { getNetworkDetailsPageUrl } from "../utils/networks";
+import {
+  getNetworkDetailsPageUrl,
+  isValidIp,
+  isValidPort,
+} from "../utils/networks";
 import { LoadingButton } from "@mui/lab";
 import { notifyUser } from "../utils/messaging";
 import { AppRoutes } from "../routes";
 
 function TokenLogin() {
   const [isFormValid, setIsFormValid] = useState(true);
+  const [isCustomEndpointValid, setIsCustomEndpointValid] = useState(true);
+  const [isCustomListenPortValid, setIsCustomListenPortValid] = useState(true);
   const [token, setToken] = useState("");
   const [enrollmentKey, setEnrollmentKey] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -36,6 +42,8 @@ function TokenLogin() {
   const checkIsFormValid = useCallback(() => {
     // reset
     setIsFormValid(true);
+    setIsCustomEndpointValid(true);
+    setIsCustomListenPortValid(true);
 
     // perform validation
     if (
@@ -46,8 +54,25 @@ function TokenLogin() {
       return false;
     }
 
+    if (customEndpointIp.length > 0 && !isValidIp(customEndpointIp)) {
+      setIsCustomEndpointValid(false);
+      return false;
+    }
+
+    if (customListenPort > 0 && !isValidPort(customListenPort)) {
+      setIsCustomListenPortValid(false);
+      return false;
+    }
+
     return true;
-  }, [setIsFormValid, token, type, enrollmentKey]);
+  }, [
+    setIsFormValid,
+    token,
+    type,
+    enrollmentKey,
+    customEndpointIp,
+    customListenPort,
+  ]);
 
   const onConnectClick = useCallback(async () => {
     // validate
@@ -58,7 +83,11 @@ function TokenLogin() {
 
       switch (type) {
         case "enrollment-key":
-          await GoRegisterWithEnrollmentKey(enrollmentKey, customEndpointIp, customListenPort);
+          await GoRegisterWithEnrollmentKey(
+            enrollmentKey,
+            customEndpointIp,
+            customListenPort
+          );
           // wait a while for the server to register host to network. makes the UX better
           await new Promise((resolve) => setTimeout(resolve, 3000));
           break;
@@ -79,7 +108,14 @@ function TokenLogin() {
     } finally {
       setIsConnecting(false);
     }
-  }, [navigate, checkIsFormValid, setIsConnecting, networksDispatch]);
+  }, [
+    navigate,
+    checkIsFormValid,
+    setIsConnecting,
+    networksDispatch,
+    customEndpointIp,
+    customListenPort,
+  ]);
 
   return (
     <Grid
@@ -159,8 +195,8 @@ function TokenLogin() {
           placeholder="Custom Endpoint IP (Optional)"
           value={customEndpointIp}
           onChange={(e) => setCustomEndpointIp(e.target.value)}
-          error={!isFormValid}
-          helperText={isFormValid ? "" : "Invalid IP address"}
+          error={!isCustomEndpointValid}
+          helperText={isCustomEndpointValid ? "" : "Invalid IP address"}
           inputProps={{ "data-testid": "custom-endpoint-inp" }}
         />
       </Grid>
@@ -172,8 +208,8 @@ function TokenLogin() {
           placeholder="Custom Listen Port"
           value={customListenPort}
           onChange={(e) => setCustomListenPort(parseInt(e.target.value, 10))}
-          error={!isFormValid}
-          helperText={isFormValid ? "" : "Invalid port number"}
+          error={!isCustomListenPortValid}
+          helperText={isCustomListenPortValid ? "" : "Invalid port number"}
           inputProps={{ "data-testid": "custom-port-inp" }}
         />
       </Grid>
