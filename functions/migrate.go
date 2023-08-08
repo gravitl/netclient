@@ -12,7 +12,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
-	"github.com/kr/pretty"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -78,7 +77,6 @@ func Migrate() {
 		nodes, _ := servers[serverName]
 		servers[serverName] = append(nodes, cfg.Node)
 	}
-	pretty.Println(servers)
 	hostSet := false
 	for k, v := range servers {
 		//server := k
@@ -116,8 +114,6 @@ func Migrate() {
 			delete = false
 			continue
 		}
-		pretty.Println(migrateResponse)
-
 		if !hostSet {
 			slog.Info("setting host")
 			netclient := config.Netclient()
