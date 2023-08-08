@@ -40,6 +40,13 @@ describe("TokenLoginPage", () => {
     });
   });
 
+  it("provides provides inputs to enter custom endpoint and port", () => {
+    act(() => {
+      expect(screen.getByTestId("custom-endpoint-inp")).toBeInTheDocument()
+      expect(screen.getByTestId("custom-port-inp")).toBeInTheDocument()
+    });
+  });
+
   it("validates key", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("connect-btn"))
