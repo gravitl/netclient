@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -20,6 +21,7 @@ import (
 func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
+
 	for _, v := range config.Servers {
 		v := v
 		if err = setupMQTTSingleton(&v, true); err != nil {
@@ -39,6 +41,11 @@ func Uninstall() ([]error, error) {
 
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
+	}
+
+	if runtime.GOOS == "windows" {
+		err = errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22")
+		allfaults = append(allfaults, errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22"))
 	}
 	return allfaults, err
 }
