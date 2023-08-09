@@ -1,6 +1,6 @@
 package main
 
-const NETMAKER_DOCS_LINK = "https://docs.netmaker.org/"
+const NETMAKER_DOCS_LINK = "https://docs.netmaker.io/"
 
 // app events
 // events here should match those in gui/frontend/src/constants.ts
