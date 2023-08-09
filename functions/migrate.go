@@ -73,7 +73,7 @@ func Migrate() {
 		cfg.Node.Password = string(pass)
 		cfg.Node.Server = serverName
 		wireguard.DeleteOldInterface(oldIface)
-		nodes, _ := servers[serverName]
+		nodes := servers[serverName]
 		servers[serverName] = append(nodes, cfg.Node)
 	}
 	hostSet := false
