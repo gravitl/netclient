@@ -28,7 +28,7 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.5.1
 	golang.design/x/clipboard v0.7.0
-	golang.org/x/crypto v0.11.0
+	golang.org/x/crypto v0.12.0
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/net v0.12.0
 	golang.org/x/sys v0.11.0
@@ -113,7 +113,7 @@ require (
 	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/text v0.12.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
