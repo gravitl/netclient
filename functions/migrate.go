@@ -33,7 +33,6 @@ func Migrate() {
 		//nothing to migrate ... exiting"
 		return
 	}
-	//slog.Info("migration to " + config.Netclient().Version + " started")
 	networks, err := config.GetSystemNetworks()
 	if err != nil {
 		slog.Error("reading network data", "error", err)
@@ -80,7 +79,7 @@ func Migrate() {
 	hostSet := false
 	for k, v := range servers {
 		//server := k
-		slog.Info("server migratation", "server", k)
+		slog.Info("server migration", "server", k)
 		migrationData := models.MigrationData{
 			HostName:    hostname,
 			Password:    v[0].Password,
@@ -127,13 +126,13 @@ func Migrate() {
 			}
 			hostSet = true
 		}
-		slog.Info("updating server config", "config", migrateResponse.ServerConfig)
+		slog.Info("updating server config")
 		config.SaveServer(k, config.Server{
 			ServerConfig: migrateResponse.ServerConfig,
 			Name:         k,
 			MQID:         migrateResponse.Host.ID,
 		})
-		slog.Info("updating node", "node", migrateResponse.Nodes)
+		slog.Info("updating node")
 		config.SetNodes(migrateResponse.Nodes)
 		if err := config.WriteNodeConfig(); err != nil {
 			slog.Error("save node config", "error", err)
