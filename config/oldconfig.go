@@ -131,7 +131,6 @@ func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
 	node.Network = netmakerNode.Network
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)
@@ -142,7 +141,6 @@ func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
 	node.Network = netmakerNode.Network
 	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
 	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	node.InternetGateway = ToUDPAddr(netmakerNode.InternetGateway)
 	host.Interfaces = netmakerNode.Interfaces
 	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
 	node.Connected = ParseBool(netmakerNode.Connected)

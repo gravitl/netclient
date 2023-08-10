@@ -242,6 +242,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
+	case models.RequestPull:
+		Pull(true)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
