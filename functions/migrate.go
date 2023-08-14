@@ -104,12 +104,17 @@ func Migrate() {
 			slog.Error("migration response", "error", err)
 			if errors.Is(err, httpclient.ErrStatus) {
 				slog.Error("status error", "code", errData.Code, "message", errData.Message)
-				delete = false
-				continue
 			}
+			delete = false
+			continue
 		}
 		if !IsVersionComptatible(migrateResponse.ServerConfig.Version) {
 			slog.Error("incompatible server version", "server", migrateResponse.ServerConfig.Version, "client", config.Netclient().Version)
+			delete = false
+			continue
+		}
+		if len(migrateResponse.Nodes) == 0 {
+			slog.Error("no nodes returned")
 			delete = false
 			continue
 		}
