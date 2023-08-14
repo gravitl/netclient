@@ -25,7 +25,9 @@ func Install() error {
 		fmt.Println("  eg ./netclient install")
 		return errors.New("path error")
 	}
-	_ = daemon.Stop()
+	if err := daemon.Stop(); err != nil {
+		slog.Warn("stopping netclient daemon", "error", err)
+	}
 	time.Sleep(time.Second << 1)
 	if err := daemon.Install(); err != nil {
 		slog.Error("daemon install error", "error", err)
