@@ -59,8 +59,8 @@ func startClient(server, turnDomain string, turnPort int) error {
 		return err
 	}
 	cfg := &turn.ClientConfig{
-		STUNServerAddr: turnServerAddr,
-		TURNServerAddr: turnServerAddr,
+		STUNServerAddr: turnServerAddr.String(),
+		TURNServerAddr: turnServerAddr.String(),
 		Conn:           conn,
 		Username:       ncconfig.Netclient().ID.String(),
 		Password:       ncutils.ConvHostPassToHash(ncconfig.Netclient().HostPass),
