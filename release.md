@@ -3,7 +3,7 @@
 ## Whats New
 - Sync clients with server state from UI
 ## What's Fixed
-- Upgrade Process from v0.17.1 to latest version can be now done seamlessly, please refer docs
+- Upgrade Process from v0.17.1 to latest version can be now done seamlessly, please refer docs for more information
 ## known issues
 - Windows installer does not install WireGuard
 - netclient-gui will continously display error dialog if netmaker server is offline
