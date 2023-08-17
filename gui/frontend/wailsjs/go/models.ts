@@ -22,8 +22,6 @@ export namespace config {
 	    publickey: number[];
 	    macaddress: number[];
 	    traffickeypublic: number[];
-	    // Go type: net
-	    internetgateway: any;
 	    nodes: string[];
 	    isrelayed: boolean;
 	    relayed_by: string;
@@ -70,7 +68,6 @@ export namespace config {
 	        this.publickey = source["publickey"];
 	        this.macaddress = source["macaddress"];
 	        this.traffickeypublic = source["traffickeypublic"];
-	        this.internetgateway = this.convertValues(source["internetgateway"], null);
 	        this.nodes = source["nodes"];
 	        this.isrelayed = source["isrelayed"];
 	        this.relayed_by = source["relayed_by"];
@@ -118,8 +115,6 @@ export namespace config {
 	    networkrange: any;
 	    // Go type: net
 	    networkrange6: any;
-	    // Go type: net
-	    internetgateway?: any;
 	    server: string;
 	    connected: boolean;
 	    // Go type: net
@@ -146,7 +141,6 @@ export namespace config {
 	        this.network = source["network"];
 	        this.networkrange = this.convertValues(source["networkrange"], null);
 	        this.networkrange6 = this.convertValues(source["networkrange6"], null);
-	        this.internetgateway = this.convertValues(source["internetgateway"], null);
 	        this.server = source["server"];
 	        this.connected = source["connected"];
 	        this.address = this.convertValues(source["address"], null);
@@ -221,8 +215,6 @@ export namespace main {
 	    publickey: number[];
 	    macaddress: number[];
 	    traffickeypublic: number[];
-	    // Go type: net
-	    internetgateway: any;
 	    nodes: string[];
 	    isrelayed: boolean;
 	    relayed_by: string;
@@ -270,7 +262,6 @@ export namespace main {
 	        this.publickey = source["publickey"];
 	        this.macaddress = source["macaddress"];
 	        this.traffickeypublic = source["traffickeypublic"];
-	        this.internetgateway = this.convertValues(source["internetgateway"], null);
 	        this.nodes = source["nodes"];
 	        this.isrelayed = source["isrelayed"];
 	        this.relayed_by = source["relayed_by"];

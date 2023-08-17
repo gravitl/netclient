@@ -138,7 +138,6 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	//node.Password = netmakerNode.Password
 	node.NetworkRange = nodeGet.Node.NetworkRange
 	node.NetworkRange6 = nodeGet.Node.NetworkRange6
-	node.InternetGateway = nodeGet.Node.InternetGateway
 	//n.Interface = s.Interface
 	node.Server = netmakerNode.Server
 	node.Connected = nodeGet.Node.Connected
@@ -160,17 +159,13 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	var netmakerNode models.LegacyNode
 	netmakerNode.ID = node.ID.String()
 	netmakerNode.OS = host.OS
-	netmakerNode.HostID = server.MQID.String()
+	//netmakerNode.HostID = server.MQID.String()
 	netmakerNode.Name = host.Name
 	netmakerNode.Network = node.Network
 	netmakerNode.Password = host.HostPass
 	netmakerNode.AccessKey = server.AccessKey
 	netmakerNode.NetworkSettings.AddressRange = node.NetworkRange.String()
 	netmakerNode.NetworkSettings.AddressRange6 = node.NetworkRange6.String()
-	netmakerNode.InternetGateway = ""
-	if node.InternetGateway != nil {
-		netmakerNode.InternetGateway = node.InternetGateway.IP.String()
-	}
 	netmakerNode.Interface = ncutils.GetInterfaceName()
 	netmakerNode.Interfaces = host.Interfaces
 	netmakerNode.Server = node.Server

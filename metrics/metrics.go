@@ -3,11 +3,11 @@ package metrics
 import (
 	"time"
 
-	tcp_ping "github.com/cloverstd/tcping/ping"
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	tcp_ping "github.com/gravitl/tcping/ping"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 

@@ -51,7 +51,7 @@ func install() error {
 func start() error {
 	host := config.Netclient()
 	if !host.DaemonInstalled {
-		return errors.New("netclient daemon not installed")
+		slog.Warn("netclient daemon not installed")
 	}
 	switch host.InitType {
 	case config.Systemd:
@@ -73,7 +73,7 @@ func start() error {
 func stop() error {
 	host := config.Netclient()
 	if !host.DaemonInstalled {
-		return errors.New("netclient daemon not installed")
+		slog.Warn("netclient daemon not installed")
 	}
 	switch host.InitType {
 	case config.Systemd:
@@ -95,7 +95,7 @@ func stop() error {
 func hardRestart() error {
 	host := config.Netclient()
 	if !host.DaemonInstalled {
-		return errors.New("systemd not installed .. daemon not started")
+		slog.Warn("netclient daemon not installed")
 	}
 	switch host.InitType {
 	case config.Systemd:

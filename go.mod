@@ -5,8 +5,7 @@ go 1.19
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.6
-	github.com/cloverstd/tcping v0.1.1
-	github.com/coreos/go-iptables v0.6.0
+	github.com/coreos/go-iptables v0.7.0
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/gin-gonic/gin v1.9.1
@@ -14,25 +13,26 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/gravitl/netmaker v0.20.5
+	github.com/gravitl/netmaker v0.20.6
+	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.6.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/pion/logging v0.2.2
-	github.com/pion/turn/v2 v2.1.1-0.20230418114227-f880e55089ad
+	github.com/pion/turn/v2 v2.1.3
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
 	github.com/vishvananda/netlink v1.1.0
 	github.com/wailsapp/wails/v2 v2.5.1
 	golang.design/x/clipboard v0.7.0
-	golang.org/x/crypto v0.11.0
+	golang.org/x/crypto v0.12.0
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
-	golang.org/x/net v0.12.0
-	golang.org/x/sys v0.10.0
-	golang.org/x/term v0.10.0
+	golang.org/x/net v0.14.0
+	golang.org/x/sys v0.11.0
+	golang.org/x/term v0.11.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
@@ -57,7 +57,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.14.1 // indirect
+	github.com/go-playground/validator/v10 v10.15.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
@@ -87,9 +87,10 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
+	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/stun v0.4.0 // indirect
-	github.com/pion/transport/v2 v2.2.0 // indirect
+	github.com/pion/stun v0.6.1 // indirect
+	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pkg/browser v0.0.0-20210706143420-7d21f8c997e2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -113,7 +114,7 @@ require (
 	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/text v0.12.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
