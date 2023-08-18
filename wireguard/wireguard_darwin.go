@@ -105,11 +105,8 @@ func (nc *NCIface) Close() {
 // DeleteOldInterface - removes named interface
 func DeleteOldInterface(iface string) {
 	logger.Log(3, "deleting interface", iface)
-	ifconfig, err := exec.LookPath("ifconfig")
-	if err != nil {
-		logger.Log(0, "failed to locate ifconfig", err.Error())
-	}
-	if _, err := ncutils.RunCmd(ifconfig+" "+iface+" destroy", true); err != nil {
-		logger.Log(0, "error removing interface", iface, err.Error())
+	conf := "/Applications/Netclient/config/" + iface + ".conf"
+	if _, err := ncutils.RunCmd("wg-quick down "+conf, true); err != nil {
+		slog.Error("remove wireguard tunnel", "interface", iface, "error", err)
 	}
 }
