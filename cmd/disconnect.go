@@ -21,7 +21,7 @@ For example:
 netclient disconnect my-network-name`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
-			fmt.Println("\nPlease specify the network name as the first argument. For example: netclient disconnect my-network-name")
+			fmt.Println("\nPlease specify the network name as the argument. For example: netclient disconnect my-network-name")
 			nodes := config.GetNodes()
 			if len(nodes) > 0 {
 				fmt.Println("\nAvailable Networks:")
