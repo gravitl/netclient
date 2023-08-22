@@ -25,10 +25,7 @@ func Migrate() {
 	if err != nil {
 		slog.Warn("set hostname", "error", err)
 	}
-	config_dir := config.GetNetclientPath()
-	if !ncutils.IsWindows() {
-		config_dir += "config"
-	}
+	config_dir := config.GetNetclientPath() + "config/"
 	if _, err := os.Stat(config_dir); err != nil {
 		//nothing to migrate ... exiting"
 		return
@@ -154,10 +151,14 @@ func Migrate() {
 	}
 
 	if delete {
-		slog.Info("removing old config files")
-		if err := os.Rename(config.GetNetclientPath()+"/config", config.GetNetclientPath()+"/config.old"); err != nil {
-			//if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
-			slog.Error("deleting config files", "error", err)
+		if ncutils.IsWindows() {
+			moveWindowsFiles()
+		} else {
+			slog.Info("removing old config files")
+			if err := os.Rename(config.GetNetclientPath()+"/config", config.GetNetclientPath()+"/config.old"); err != nil {
+				//if err := os.RemoveAll(config.GetNetclientPath()); err != nil {
+				slog.Error("deleting config files", "error", err)
+			}
 		}
 	}
 
@@ -165,7 +166,11 @@ func Migrate() {
 }
 
 func getWGPrivateKey(network string) wgtypes.Key {
-	data, err := os.ReadFile(config.GetNetclientPath() + "config/wgkey-" + network)
+	keypath := config.GetNetclientPath() + "config/wgkey-" + network
+	if ncutils.IsWindows() {
+		keypath = config.GetNetclientPath() + "wgkey-" + network
+	}
+	data, err := os.ReadFile(keypath)
 	if err != nil {
 		slog.Error("read wireguard key", "error", err)
 		return wgtypes.Key{}
@@ -179,7 +184,11 @@ func getWGPrivateKey(network string) wgtypes.Key {
 }
 
 func getOldTrafficKey(network string) []byte {
-	data, err := os.ReadFile(config.GetNetclientPath() + "/config/traffic-" + network)
+	trafficpath := config.GetNetclientPath() + "config/traffic-" + network
+	if ncutils.IsWindows() {
+		trafficpath = config.GetNetclientPath() + "traffic-" + network
+	}
+	data, err := os.ReadFile(trafficpath)
 	if err != nil {
 		slog.Error("read old traffic key", "error", err)
 	}
@@ -187,9 +196,52 @@ func getOldTrafficKey(network string) []byte {
 }
 
 func getOldPassword(network string) string {
-	data, err := os.ReadFile(config.GetNetclientPath() + "/config/secret-" + network)
+	passpath := config.GetNetclientPath() + "config/secret-" + network
+	if ncutils.IsWindows() {
+		passpath = config.GetNetclientPath() + "secret-" + network
+	}
+	data, err := os.ReadFile(passpath)
 	if err != nil {
 		slog.Error("read password", "error", err)
 	}
 	return string(data)
+}
+
+func moveWindowsFiles() {
+	//move all v0.17.1 config files to config dir so that it is the same as other os's
+	path := config.GetNetclientPath()
+	configPath := path + "config.old"
+	if err := os.MkdirAll(configPath, 0755); err != nil {
+		slog.Error("mkdir", "error", err)
+		return
+	}
+	dir, err := os.ReadDir(path)
+	if err != nil {
+		slog.Error("read dir", "error", err)
+		return
+	}
+	for _, entry := range dir {
+		if strings.Contains(entry.Name(), "netconfig-") {
+			if err := os.Rename(path+entry.Name(), configPath+"\\"+entry.Name()); err != nil {
+				slog.Error("rename netconfig", "error", err)
+			}
+		}
+		if strings.Contains(entry.Name(), "secret-") {
+			if err := os.Rename(path+entry.Name(), configPath+"\\"+entry.Name()); err != nil {
+				slog.Error("rename secret", "error", err)
+			}
+		}
+		if strings.Contains(entry.Name(), "traffic-") {
+			if err := os.Rename(path+entry.Name(), configPath+"\\"+entry.Name()); err != nil {
+				slog.Error("rename traffic", "error", err)
+			}
+		}
+		if strings.Contains(entry.Name(), "wgkey-") {
+			if err := os.Rename(path+entry.Name(), configPath+"\\"+entry.Name()); err != nil {
+				slog.Error("rename wgkey", "error", err)
+			}
+		}
+	}
+	os.Remove(path + "config")
+	slog.Info("old config files backed up")
 }
