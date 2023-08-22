@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/devilcove/httpclient"
@@ -19,7 +20,7 @@ import (
 // Migrate update data from older versions of netclient to new format
 func Migrate() {
 	servers := make(map[string][]models.LegacyNode)
-	slog.Info("migration func")
+	slog.Debug("migration func")
 	delete := true
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -80,6 +81,7 @@ func Migrate() {
 		migrationData := models.MigrationData{
 			HostName:    hostname,
 			Password:    v[0].Password,
+			OS:          runtime.GOOS,
 			LegacyNodes: v,
 		}
 		api := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
