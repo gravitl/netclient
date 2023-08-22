@@ -1,4 +1,4 @@
-# Netclient v0.20.6
+# Netclient v0.21.0
 
 ## Whats New
 - Sync clients with server state from UI
