@@ -64,18 +64,15 @@ func LeaveServer(s string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("token ", token)
 	id := config.Netclient().ID.String()
 	endpoint := httpclient.Endpoint{
 		URL:           "https://" + server.API,
-		Route:         "/api/hosts/" + id,
+		Route:         "/api/hosts/" + id + "?force=true",
 		Method:        http.MethodDelete,
 		Authorization: "Bearer " + token,
 		Data:          "",
 	}
-	response, err := endpoint.GetResponse()
-	fmt.Println("calling ", endpoint.URL+endpoint.Route)
-	//_, errData, err := endpoint.GetJSON(models.ApiHost{}, models.ErrorResponse{})
+	_, err = endpoint.GetResponse()
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			fmt.Println("error leaving server", s)
@@ -83,6 +80,8 @@ func LeaveServer(s string) error {
 		fmt.Println(err)
 		return err
 	}
-	fmt.Println("response: ", response.Status)
+	config.DeleteServer(server.Name)
+	config.WriteServerConfig()
+	daemon.Restart()
 	return nil
 }
