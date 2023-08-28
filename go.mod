@@ -11,7 +11,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-ping/ping v1.1.0
 	github.com/google/nftables v0.1.0
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/gravitl/netmaker v0.20.6
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
