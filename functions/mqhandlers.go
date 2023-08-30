@@ -286,8 +286,13 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 	hostPubKey := config.Netclient().PublicKey.String()
 	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
 	for idx := range peerUpdate.Peers {
+
 		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
 		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+			if peerInfo.IsStatic {
+				// peer is a static host shouldn't disturb the configuration set by the user
+				continue
+			}
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP

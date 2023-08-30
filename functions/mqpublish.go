@@ -244,6 +244,7 @@ func UpdateHostSettings() error {
 		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 		publishMsg = true
 	}
+
 	if config.HostNatType != "" && config.Netclient().NatType != config.HostNatType {
 		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
