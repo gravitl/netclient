@@ -45,6 +45,7 @@ func Pull(restart bool) error {
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)
+	config.UpdateHost(&pullResponse.Host)
 	fmt.Printf("completed pull for server %s\n", serverName)
 	_ = config.WriteServerConfig()
 	_ = config.WriteNetclientConfig()
