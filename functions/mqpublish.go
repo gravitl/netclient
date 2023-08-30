@@ -239,11 +239,12 @@ func UpdateHostSettings() error {
 				publishMsg = true
 			}
 		}
+		if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
+			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+			publishMsg = true
+		}
 	}
-	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
-		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
-		publishMsg = true
-	}
+
 	if config.HostNatType != "" && config.Netclient().NatType != config.HostNatType {
 		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
