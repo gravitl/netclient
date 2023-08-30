@@ -7,27 +7,11 @@ import (
 	"sync"
 
 	"github.com/google/nftables"
-	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-)
-
-// constants needed to create nftable rules
-const (
-	ipv4Len        = 4
-	ipv4SrcOffset  = 12
-	ipv4DestOffset = 16
-	ipv6Len        = 16
-	ipv6SrcOffset  = 8
-	ipv6DestOffset = 24
-)
-
-var (
-	zeroXor  = binaryutil.NativeEndian.PutUint32(0)
-	zeroXor6 = append(binaryutil.NativeEndian.PutUint64(0), binaryutil.NativeEndian.PutUint64(0)...)
 )
 
 type nftablesManager struct {
