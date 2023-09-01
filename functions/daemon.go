@@ -118,7 +118,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup, closeIface 
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
-		slog.Error("error reading netclient config file", "error", err)
+		slog.Error("erro reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
 	if err := config.ReadServerConf(); err != nil {
