@@ -81,7 +81,7 @@ func Daemon() {
 			slog.Info("shutting down netclient daemon")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-			}, &wg, true)
+			}, &wg)
 			httpCancel()
 			httpWg.Wait()
 			config.FwClose()
@@ -91,7 +91,7 @@ func Daemon() {
 			slog.Info("received reset")
 			closeRoutines([]context.CancelFunc{
 				cancel,
-			}, &wg, false)
+			}, &wg)
 			slog.Info("resetting daemon")
 			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
@@ -99,7 +99,7 @@ func Daemon() {
 	}
 }
 
-func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup, closeIface bool) {
+func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
@@ -107,11 +107,9 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup, closeIface 
 		Mqclient.Disconnect(250)
 	}
 	wg.Wait()
-	if closeIface {
-		slog.Info("closing netmaker interface")
-		iface := wireguard.GetInterface()
-		iface.Close()
-	}
+	slog.Info("closing netmaker interface")
+	iface := wireguard.GetInterface()
+	iface.Close()
 }
 
 // startGoRoutines starts the daemon goroutines
@@ -155,13 +153,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	slog.Info("configuring netmaker wireguard interface")
 	Pull(false)
-	nc := wireguard.GetInterface()
-	//only create if iface does not exist
-	if nc.Name != ncutils.GetInterfaceName() {
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		if err := nc.Create(); err != nil {
-			slog.Error("error creating netclient interface", "error", err)
-		}
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	if err := nc.Create(); err != nil {
+		slog.Error("error creating netclient interface", "error", err)
 	}
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
