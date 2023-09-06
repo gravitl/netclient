@@ -62,7 +62,6 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
-
 	// initialize firewall manager
 	var err error
 	config.FwClose, err = firewall.Init()
@@ -122,6 +121,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	fmt.Println("--------->1 HOST PORT: ", config.Netclient().ListenPort)
 	updateConfig := false
 	if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
 		log.Fatal("no free ports available for use by netclient")
@@ -130,6 +130,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		config.Netclient().ListenPort = freeport
 		updateConfig = true
 	}
+	fmt.Println("--------->2 HOST PORT: ", config.Netclient().ListenPort)
 	config.SetServerCtx()
 	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
 	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)

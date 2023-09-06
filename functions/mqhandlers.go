@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -253,7 +254,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("failed to write host config", "error", err)
 		return
 	}
-
+	fmt.Printf("\n--------> HOST UPDATE, restartDaemon: %v,resetInterface: %v, HOstUpdate: %+v\n ", restartDaemon, resetInterface, hostUpdate)
 	if restartDaemon {
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())

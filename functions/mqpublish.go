@@ -262,6 +262,7 @@ func UpdateHostSettings() error {
 
 	ifacename := ncutils.GetInterfaceName()
 	localPort, err := GetLocalListenPort(ifacename)
+	fmt.Println("------> LOCAL PORT: ", localPort, "---> NET LISTEN PORT ", config.Netclient().ListenPort)
 	if err != nil {
 		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
 	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
