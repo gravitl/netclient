@@ -170,7 +170,7 @@ func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	server.MQID = netclient.ID
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.Is_EE = cfg.Is_EE
+	server.IsPro = cfg.IsPro
 	server.StunList = cfg.StunList
 	server.StunPort = cfg.StunPort
 	server.DNSMode = cfg.DNSMode

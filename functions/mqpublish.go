@@ -229,6 +229,7 @@ func UpdateHostSettings() error {
 	if server == nil {
 		return errors.New("server config is nil")
 	}
+	slog.Debug("checking if endpoint has changed", "current", config.Netclient().EndpointIP, "new", config.HostPublicIP)
 	if !config.Netclient().IsStatic {
 		if config.Netclient().EndpointIP == nil {
 			config.Netclient().EndpointIP = config.HostPublicIP
@@ -249,7 +250,7 @@ func UpdateHostSettings() error {
 		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
 	}
-	if server.Is_EE {
+	if server.IsPro {
 		serverNodes := config.GetNodes()
 		for _, node := range serverNodes {
 			node := node

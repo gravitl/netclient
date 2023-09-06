@@ -8,7 +8,6 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/peer"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -25,7 +24,7 @@ func SetPeers(replace bool) error {
 		}
 	}
 	GetInterface().Config.Peers = peers
-	peers = peer.SetPeersEndpointToProxy(peers)
+	//peers = peer.SetPeersEndpointToProxy(peers)
 	config := wgtypes.Config{
 		ReplacePeers: replace,
 		Peers:        peers,
@@ -68,7 +67,8 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
 		if ok {
 
-			peer.Endpoint.IP = net.ParseIP(cacheEndpoint.Endpoint.String())
+			peer.Endpoint = net.UDPAddrFromAddrPort(cacheEndpoint.Endpoint)
+			slog.Debug("setting peer endpoint from cache", "key", sha1.Sum([]byte(peer.PublicKey.String())), "cache endpoint", cacheEndpoint.Endpoint, "peer endpoint", peer.Endpoint)
 		}
 		return ok
 	}

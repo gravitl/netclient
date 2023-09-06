@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	proxy_config "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -61,10 +63,14 @@ func handleRequest(c net.Conn) {
 		logger.Log(0, "error reading ping", err.Error())
 		return
 	}
+	slog.Debug("server pong", "bytes receieved", numBytes)
 	recvTime := time.Now().UnixMilli() // get the time received message
 	var request bestIfaceMsg
 	if err = json.Unmarshal(buffer[:numBytes], &request); err != nil {
-		sendError(c)
+		if _, err := c.Write([]byte(err.Error())); err != nil {
+			slog.Error("server pong send error", "error", err)
+		}
+		//sendError(c)
 		return
 	}
 
@@ -73,11 +79,21 @@ func handleRequest(c net.Conn) {
 		currenHostPubKey := config.Netclient().PublicKey.String()
 		currentHostPubKeyHashString := fmt.Sprintf("%v", sha1.Sum([]byte(currenHostPubKey)))
 		if pubKeyHash == currentHostPubKeyHashString {
-			sendError(c)
+			//sendError(c)
+			if _, err := c.Write([]byte(err.Error())); err != nil {
+				slog.Error("server pong send error", "error", err)
+			}
 			return
 		}
 		sentTime := request.TimeStamp
-		addrInfo, err := netip.ParseAddrPort(c.RemoteAddr().String())
+		remoteAddr, err := netip.ParseAddrPort(c.RemoteAddr().String())
+		if err != nil {
+			if _, err := c.Write([]byte("endpoint detection parse remote address" + err.Error())); err != nil {
+				slog.Error("server pong send error", "error", err)
+			}
+
+		}
+		addrInfo := netip.AddrPortFrom(remoteAddr.Addr(), uint16(request.ListenPort))
 		if err == nil {
 			endpoint := addrInfo.Addr()
 			latency := time.Duration(recvTime - int64(sentTime))
@@ -96,15 +112,26 @@ func handleRequest(c net.Conn) {
 				if err = sendSuccess(c); err != nil {
 					logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
 				} else {
-					if err = storeNewPeerIface(pubKeyHash, endpoint, latency); err != nil {
+					slog.Debug("storing peer endpoint", "key", pubKeyHash, "endpoint", addrInfo)
+					if err = storeNewPeerIface(pubKeyHash, addrInfo, latency); err != nil {
 						logger.Log(0, "failed to store best endpoint for peer", err.Error())
 					}
 					return
 				}
+			} else {
+				if _, err := c.Write([]byte(endpoint.String())); err != nil {
+					slog.Error("server pong send error", "error", err)
+				}
+
 			}
+
 		}
 	}
-	sendError(c)
+	if _, err := c.Write([]byte("invalid request" + strconv.Itoa(len(request.Hash)))); err != nil {
+		slog.Error("server pong send error", "error", err)
+	}
+
+	//sendError(c)
 }
 
 func sendError(c net.Conn) {
@@ -114,7 +141,7 @@ func sendError(c net.Conn) {
 	}
 }
 
-func storeNewPeerIface(clientPubKeyHash string, endpoint netip.Addr, latency time.Duration) error {
+func storeNewPeerIface(clientPubKeyHash string, endpoint netip.AddrPort, latency time.Duration) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Latency:  latency,
 		Endpoint: endpoint,
@@ -124,6 +151,7 @@ func storeNewPeerIface(clientPubKeyHash string, endpoint netip.Addr, latency tim
 		return err
 	}
 	cache.EndpointCache.Store(clientPubKeyHash, newIfaceValue)
+	slog.Debug("storing peer endpoint to cache", "key", clientPubKeyHash, "endpoint", newIfaceValue.Endpoint)
 
 	return nil
 }
@@ -135,8 +163,7 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 		currPeer := currentServerPeers[i]
 		peerPubkeyHash := fmt.Sprintf("%v", sha1.Sum([]byte(currPeer.PublicKey.String())))
 		if peerPubkeyHash == publicKeyHash { // filter for current peer to overwrite endpoint
-			peerPort := currPeer.Endpoint.Port
-			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(value.Endpoint, uint16(peerPort)))
+			wgEndpoint := net.UDPAddrFromAddrPort(value.Endpoint)
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
 			// check if conn is active on proxy and update
 			if conn, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
