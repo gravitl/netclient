@@ -24,7 +24,6 @@ func SetPeers(replace bool) error {
 		}
 	}
 	GetInterface().Config.Peers = peers
-	//peers = peer.SetPeersEndpointToProxy(peers)
 	config := wgtypes.Config{
 		ReplacePeers: replace,
 		Peers:        peers,
@@ -66,9 +65,7 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
 		if ok {
-
 			peer.Endpoint = net.UDPAddrFromAddrPort(cacheEndpoint.Endpoint)
-			slog.Debug("setting peer endpoint from cache", "key", sha1.Sum([]byte(peer.PublicKey.String())), "cache endpoint", cacheEndpoint.Endpoint, "peer endpoint", peer.Endpoint)
 		}
 		return ok
 	}

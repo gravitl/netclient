@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
-	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -56,7 +55,6 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, port int) e
 	latency := time.Now().UnixMilli() - sentTime
 	response := string(buf[:numBytes])
 	if response == messages.Success { // found new best interface, save it
-		slog.Debug("storing peer endpoint", "key", sha1.Sum([]byte(peerPubKey)), "endpoint", netip.AddrPortFrom(peerAddr, uint16(port)))
 		if err = storeNewPeerIface(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))), netip.AddrPortFrom(peerAddr, uint16(port)), time.Duration(latency)); err != nil {
 			return err
 		}

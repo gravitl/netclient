@@ -63,7 +63,6 @@ func handleRequest(c net.Conn) {
 		logger.Log(0, "error reading ping", err.Error())
 		return
 	}
-	slog.Debug("server pong", "bytes receieved", numBytes)
 	recvTime := time.Now().UnixMilli() // get the time received message
 	var request bestIfaceMsg
 	if err = json.Unmarshal(buffer[:numBytes], &request); err != nil {
@@ -112,7 +111,6 @@ func handleRequest(c net.Conn) {
 				if err = sendSuccess(c); err != nil {
 					logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
 				} else {
-					slog.Debug("storing peer endpoint", "key", pubKeyHash, "endpoint", addrInfo)
 					if err = storeNewPeerIface(pubKeyHash, addrInfo, latency); err != nil {
 						logger.Log(0, "failed to store best endpoint for peer", err.Error())
 					}
@@ -151,7 +149,6 @@ func storeNewPeerIface(clientPubKeyHash string, endpoint netip.AddrPort, latency
 		return err
 	}
 	cache.EndpointCache.Store(clientPubKeyHash, newIfaceValue)
-	slog.Debug("storing peer endpoint to cache", "key", clientPubKeyHash, "endpoint", newIfaceValue.Endpoint)
 
 	return nil
 }
