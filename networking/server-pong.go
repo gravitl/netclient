@@ -66,10 +66,7 @@ func handleRequest(c net.Conn) {
 	recvTime := time.Now().UnixMilli() // get the time received message
 	var request bestIfaceMsg
 	if err = json.Unmarshal(buffer[:numBytes], &request); err != nil {
-		if _, err := c.Write([]byte(err.Error())); err != nil {
-			slog.Error("server pong send error", "error", err)
-		}
-		//sendError(c)
+		sendError(c, "json unmarhal error")
 		return
 	}
 
@@ -78,62 +75,51 @@ func handleRequest(c net.Conn) {
 		currenHostPubKey := config.Netclient().PublicKey.String()
 		currentHostPubKeyHashString := fmt.Sprintf("%v", sha1.Sum([]byte(currenHostPubKey)))
 		if pubKeyHash == currentHostPubKeyHashString {
-			//sendError(c)
-			if _, err := c.Write([]byte(err.Error())); err != nil {
-				slog.Error("server pong send error", "error", err)
-			}
+			sendError(c, "wrong hash")
 			return
 		}
 		sentTime := request.TimeStamp
 		remoteAddr, err := netip.ParseAddrPort(c.RemoteAddr().String())
 		if err != nil {
-			if _, err := c.Write([]byte("endpoint detection parse remote address" + err.Error())); err != nil {
-				slog.Error("server pong send error", "error", err)
-			}
-
+			sendError(c, "endpoint detection parse remote address"+err.Error())
 		}
 		addrInfo := netip.AddrPortFrom(remoteAddr.Addr(), uint16(request.ListenPort))
-		if err == nil {
-			endpoint := addrInfo.Addr()
-			latency := time.Duration(recvTime - int64(sentTime))
-			latencyTreshHold := latency + latencyVarianceThreshold
-			var foundNewIface bool
-			bestIface, ok := cache.EndpointCache.Load(pubKeyHash)
-			if ok { // check if iface already exists
-				if bestIface.(cache.EndpointCacheValue).Latency > latencyTreshHold &&
-					bestIface.(cache.EndpointCacheValue).Endpoint.String() != endpoint.String() { // replace it since new one is faster
-					foundNewIface = true
-				}
-			} else {
+		endpoint := addrInfo.Addr()
+		latency := time.Duration(recvTime - int64(sentTime))
+		latencyTreshHold := latency + latencyVarianceThreshold
+		var foundNewIface bool
+		bestIface, ok := cache.EndpointCache.Load(pubKeyHash)
+		if ok { // check if iface already exists
+			if bestIface.(cache.EndpointCacheValue).Latency > latencyTreshHold &&
+				bestIface.(cache.EndpointCacheValue).Endpoint.String() != endpoint.String() { // replace it since new one is faster
 				foundNewIface = true
 			}
-			if foundNewIface { // iface not detected/calculated for peer, so set it
-				if err = sendSuccess(c); err != nil {
-					logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
-				} else {
-					if err = storeNewPeerIface(pubKeyHash, addrInfo, latency); err != nil {
-						logger.Log(0, "failed to store best endpoint for peer", err.Error())
-					}
-					return
-				}
+		} else {
+			foundNewIface = true
+		}
+		if foundNewIface { // iface not detected/calculated for peer, so set it
+			if err = sendSuccess(c); err != nil {
+				logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
 			} else {
-				if _, err := c.Write([]byte(endpoint.String())); err != nil {
-					slog.Error("server pong send error", "error", err)
+				if err = storeNewPeerIface(pubKeyHash, addrInfo, latency); err != nil {
+					logger.Log(0, "failed to store best endpoint for peer", err.Error())
 				}
-
+				return
 			}
+		} else {
+			sendError(c, "no new endpoint")
 
 		}
-	}
-	if _, err := c.Write([]byte("invalid request" + strconv.Itoa(len(request.Hash)))); err != nil {
-		slog.Error("server pong send error", "error", err)
+		if _, err := c.Write([]byte("invalid request" + strconv.Itoa(len(request.Hash)))); err != nil {
+			slog.Error("server pong send error", "error", err)
+		}
 	}
 
-	//sendError(c)
+	sendError(c, "invalid request")
 }
 
-func sendError(c net.Conn) {
-	_, err := c.Write([]byte(messages.Wrong))
+func sendError(c net.Conn, message string) {
+	_, err := c.Write([]byte(message))
 	if err != nil {
 		logger.Log(0, "error writing response", err.Error())
 	}
