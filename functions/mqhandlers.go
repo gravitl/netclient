@@ -200,7 +200,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	slog.Info("processing host update", "server", serverName, "action", hostUpdate.Action)
-	var resetInterface, restartDaemon, clearMsg bool
+	var resetInterface, restartDaemon, sendHostUpdate, clearMsg bool
 	switch hostUpdate.Action {
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
@@ -230,7 +230,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		restartDaemon = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon = config.UpdateHost(&hostUpdate.Host)
+		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)
+		if sendHostUpdate {
+			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
+				slog.Error("could not publish host update", err.Error())
+			}
+		}
 		clearMsg = true
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
