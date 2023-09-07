@@ -195,6 +195,16 @@ func GetFreePort(rangestart int) (int, error) {
 	return rangestart, errors.New("no free ports")
 }
 
+// IsPortFree - checks if port is free
+func IsPortFree(port int) (free bool) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: port})
+	if err == nil {
+		free = true
+		conn.Close()
+	}
+	return
+}
+
 // GetFreeTCPPort - gets free TCP port
 func GetFreeTCPPort() (string, error) {
 	addr := net.TCPAddr{
