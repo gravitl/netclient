@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/gravitl/netmaker v0.20.7-0.20230906144149-2d0eb1df366c
-	github.com/gravitl/tcping v0.1.1
+	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.6.0
