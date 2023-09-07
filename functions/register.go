@@ -51,7 +51,7 @@ func Register(token string, isGui bool) error {
 	if shouldUpdateHost { // get most up to date values before submitting to server
 		host = config.Netclient()
 	}
-	fmt.Printf("-----> REQ HOST PORT: %+v", host.ListenPort)
+	fmt.Printf("------> REQ HOST PORT: %+v", host.ListenPort)
 	api := httpclient.JSONEndpoint[models.RegisterResponse, models.ErrorResponse]{
 		URL:           "https://" + serverData.Server,
 		Route:         "/api/v1/host/register/" + token,
@@ -70,7 +70,7 @@ func Register(token string, isGui bool) error {
 	if config.CurrServer != "" && config.CurrServer != registerResponse.ServerConf.Server {
 		fmt.Println("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
 	}
-	fmt.Printf("-=--------> REGISTER: %+v", registerResponse.RequestedHost)
+	fmt.Printf("----------> REGISTER: %+v", registerResponse.RequestedHost)
 	handleRegisterResponse(&registerResponse, isGui)
 	return nil
 }

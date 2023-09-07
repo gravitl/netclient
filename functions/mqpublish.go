@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -258,19 +257,6 @@ func UpdateHostSettings() error {
 				publishMetrics(&node)
 			}
 		}
-	}
-
-	ifacename := ncutils.GetInterfaceName()
-	localPort, err := GetLocalListenPort(ifacename)
-	fmt.Println("------> LOCAL PORT: ", localPort, "---> NET LISTEN PORT ", config.Netclient().ListenPort)
-	if err != nil {
-		logger.Log(1, "error encountered checking local listen port: ", ifacename, err.Error())
-	} else if config.Netclient().ListenPort != localPort && localPort != 0 {
-		logger.Log(1, "local port has changed from ", strconv.Itoa(config.Netclient().ListenPort), " to ", strconv.Itoa(localPort))
-		config.Netclient().ListenPort = localPort
-		// if listen port changes, daemon should be restarted
-		restartDaemon = true
-		publishMsg = true
 	}
 
 	ip, err := getInterfaces()
