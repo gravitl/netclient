@@ -202,6 +202,19 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("processing host update", "server", serverName, "action", hostUpdate.Action)
 	var resetInterface, restartDaemon, sendHostUpdate, clearMsg bool
 	switch hostUpdate.Action {
+	case models.Upgrade:
+		if !versionLessThan(config.Version, server.Version) {
+			break
+		}
+		slog.Info("upgrading client to server's version", "version", server.Version)
+		if err := UseVersion(server.Version, false); err != nil {
+			slog.Error("error upgrading client to server's version", "error", err)
+			break
+		}
+		slog.Info("upgraded client to server's version", "version", server.Version)
+		if err := daemon.HardRestart(); err != nil {
+			slog.Error("failed to hard restart daemon", "error", err)
+		}
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
