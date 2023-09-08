@@ -1,7 +1,7 @@
 # Netclient v0.21.0
 
 ## Whats New
--  Server management commands `netclient server switch,list,leave`
+-  Server Management Commands `netclient server switch,list,leave`
 ## What's Fixed
 - Egress NAT Rules
 - Static Host Functionality
