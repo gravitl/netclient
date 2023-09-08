@@ -5,8 +5,8 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"net"
+	"os"
 	"syscall"
 
 	"github.com/gravitl/netclient/config"
@@ -52,7 +52,11 @@ net: netclient register -s <server> -n <net> // attempt to join specified networ
 all-networks: netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
 user: netclient register -s <server> -u <user_name> // attempt to join/register via basic auth`,
 	Run: func(cmd *cobra.Command, args []string) {
-		setHostFields(cmd)
+		if len(config.GetServers()) == 0 {
+			setHostFields(cmd)
+		} else {
+			fmt.Println("ignoring passed extra arguments for host registration, since host is already registered use `netclient push command to update other fields`")
+		}
 		token, err := cmd.Flags().GetString(registerFlags.Token)
 		if err != nil || len(token) == 0 {
 			if regErr := checkUserRegistration(cmd); regErr != nil {
@@ -68,25 +72,22 @@ user: netclient register -s <server> -u <user_name> // attempt to join/register 
 }
 
 func setHostFields(cmd *cobra.Command) {
-	fmt.Println("Setting Host Fields")
-	if endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP); err == nil && endpointIP != "" {
-		fmt.Println("Setting Host EndPoint ", endpointIP)
-		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
-	}
+	fmt.Println("setting host fields")
 	if port, err := cmd.Flags().GetInt(registerFlags.Port); err == nil && port != 0 {
-		fmt.Println("Setting Host Port ", port)
 		// check if port is available
 		if !ncutils.IsPortFree(port) {
-			log.Fatal("port is not free")
+			fmt.Printf("port %d is not free\n", port)
+			os.Exit(1)
 		}
 		config.Netclient().ListenPort = port
 	}
+	if endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP); err == nil && endpointIP != "" {
+		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
+	}
 	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
-		fmt.Println("Setting Host MTU ", mtu)
 		config.Netclient().MTU = mtu
 	}
 	if hostName, err := cmd.Flags().GetString(registerFlags.Name); err == nil && hostName != "" {
-		fmt.Println("Setting Host Name ", hostName)
 		config.Netclient().Name = hostName
 	}
 
