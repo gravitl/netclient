@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/nmproxy/peer"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -23,8 +24,8 @@ func SetPeers(replace bool) error {
 			peers[i] = peer
 		}
 	}
-	peers = peer.SetPeersEndpointToProxy(peers)
 	GetInterface().Config.Peers = peers
+	peers = peer.SetPeersEndpointToProxy(peers)
 	config := wgtypes.Config{
 		ReplacePeers: replace,
 		Peers:        peers,
