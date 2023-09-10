@@ -4,9 +4,6 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
-	"fmt"
-
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
@@ -25,11 +22,7 @@ all-networks: netclient join -s <server> -A // attempt to register to all allowe
 user: netclient join -s <server> -u <user_name> // attempt to join/register via basic auth`,
 
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(config.GetServers()) == 0 {
-			setHostFields(cmd)
-		} else {
-			fmt.Println("ignoring passed extra arguments for host registration, since host is already registered use `netclient push command to set other fields`")
-		}
+		setHostFields(cmd)
 		token, err := cmd.Flags().GetString(registerFlags.Token)
 		if err != nil || len(token) == 0 {
 			if regErr := checkUserRegistration(cmd); regErr != nil {
