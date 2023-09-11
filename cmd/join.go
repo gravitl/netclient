@@ -47,6 +47,6 @@ func init() {
 	joinCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
 	joinCmd.Flags().StringP(registerFlags.MTU, "m", "", "sets MTU on host")
 	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
-	joinCmd.Flags().StringP(registerFlags.Name, "h", "", "sets host name")
+	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	rootCmd.AddCommand(joinCmd)
 }
