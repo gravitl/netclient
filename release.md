@@ -1,4 +1,4 @@
-# Netclient v0.21.0
+# Netclient v0.21.1
 
 ## Whats New
 -  Server Management Commands `netclient server switch,list,leave`
