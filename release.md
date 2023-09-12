@@ -1,9 +1,11 @@
-# Netclient v0.21.0
+# Netclient v0.21.1
 
 ## Whats New
-- Sync clients with server state from UI
+-  Server Management Commands `netclient server switch,list,leave`
 ## What's Fixed
-- Upgrade Process from v0.17.1 to latest version can be now done seamlessly, please refer docs for more information
+- Egress NAT Rules
+- Static Host Functionality
+- Fixed Random Port Issue
 ## known issues
 - Windows installer does not install WireGuard
 - netclient-gui will continously display error dialog if netmaker server is offline

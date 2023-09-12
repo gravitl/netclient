@@ -15,7 +15,7 @@ func CheckUID() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if user.Username != "root" {
+	if user.Uid != "0" {
 		log.Fatal("This program must be run with elevated privileges. Please re-run with sudo or as root.")
 	}
 }
