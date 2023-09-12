@@ -100,12 +100,18 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
-func UpdateHost(host *models.Host) (resetInterface, restart bool) {
+func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool) {
 	hostCfg := Netclient()
 	if hostCfg == nil || host == nil {
 		return
 	}
 	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
+		// check if new port is free, otherwise don't update
+		if !ncutils.IsPortFree(host.ListenPort) {
+			// send the host update to server with actual port on the interface
+			host.ListenPort = hostCfg.ListenPort
+			sendHostUpdate = true
+		}
 		restart = true
 	}
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {

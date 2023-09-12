@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 )
@@ -13,17 +14,30 @@ import (
 // connectCmd represents the connect command
 var connectCmd = &cobra.Command{
 	Use:   "connect",
-	Args:  cobra.ExactArgs(1),
 	Short: "connect to a netmaker network",
 	Long: `connect to specified network
 For example:
 
-netclient connect my-network`,
+netclient connect my-network-name`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := functions.Connect(args[0]); err != nil {
-			fmt.Println("\nconnect failed:", err)
+		if len(args) < 1 {
+			fmt.Println("\nPlease specify the network name as the argument. For example: netclient connect my-network-name")
+			nodes := config.GetNodes()
+			if len(nodes) > 0 {
+				fmt.Println("\nAvailable Networks:")
+				for _, node := range nodes {
+					fmt.Println(node.Network)
+				}
+			} else {
+				fmt.Println("\nNo Networks Available")
+			}
 		} else {
-			fmt.Println("\nnode is connected to", args[0])
+			fmt.Println("connect called", args)
+			if err := functions.Connect(args[0]); err != nil {
+				fmt.Println("\nconnect failed:", err)
+			} else {
+				fmt.Println("\nnode is connected to", args[0])
+			}
 		}
 	},
 }
