@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	nm_models "github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -78,6 +79,16 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 				conn.Config.PeerEndpoint = peerTurnEndpoint
 				config.GetCfg().UpdatePeer(&conn)
 				config.GetCfg().ResetPeer(signal.FromHostPubKey)
+			} else if !signal.Reply {
+				// reset conn
+				connected, err := isPeerConnected(signal.FromHostPubKey)
+				if err != nil {
+					slog.Info("failed to check if peer is connected: ", err.Error())
+				}
+				if !connected {
+					config.GetCfg().ResetPeer(signal.FromHostPubKey)
+				}
+
 			}
 
 		} else {
