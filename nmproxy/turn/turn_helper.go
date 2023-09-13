@@ -25,7 +25,7 @@ var (
 	// PeerSignalCh - channel to recieve peer signals
 	PeerSignalCh = make(chan nm_models.Signal, 50)
 	// peerConnectionCheckInterval - time interval to check peer connection status
-	peerConnectionCheckInterval = time.Second * 90
+	peerConnectionCheckInterval = time.Second * 20
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
 
