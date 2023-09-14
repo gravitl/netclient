@@ -130,7 +130,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
-		if versionLessThan(config.Version, peerUpdate.ServerVersion) && config.Netclient().Host.AutoUpdate {
+		vlt, err := versionLessThan(config.Version, peerUpdate.ServerVersion)
+		if err != nil {
+			slog.Error("error checking version less than", "error", err)
+			return
+		}
+		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
@@ -203,15 +208,27 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	var resetInterface, restartDaemon, sendHostUpdate, clearMsg bool
 	switch hostUpdate.Action {
 	case models.Upgrade:
-		if !versionLessThan(config.Version, server.Version) {
-			break
+		cv, sv := config.Version, server.Version
+		slog.Info("checking if need to upgrade client to server's version", "", config.Version, "version", server.Version)
+		vlt, err := versionLessThan(cv, sv)
+		if err == nil {
+			// if we have an assertive result, and it's that
+			// the client is up-to-date, nothing else to do
+			if !vlt {
+				slog.Info("no need to upgrade client, version is up-to-date")
+				break
+			}
+		} else {
+			// if we have a dubious result, assume that we need to upgrade client,
+			// this can occur when using custom client versions not following semver
+			slog.Warn("error checking version less than, but will proceed with upgrade", "error", err)
 		}
-		slog.Info("upgrading client to server's version", "version", server.Version)
-		if err := UseVersion(server.Version, false); err != nil {
+		slog.Info("upgrading client to server's version", "version", sv)
+		if err := UseVersion(sv, false); err != nil {
 			slog.Error("error upgrading client to server's version", "error", err)
 			break
 		}
-		slog.Info("upgraded client to server's version", "version", server.Version)
+		slog.Info("upgraded client to server's version, restarting", "version", sv)
 		if err := daemon.HardRestart(); err != nil {
 			slog.Error("failed to hard restart daemon", "error", err)
 		}
