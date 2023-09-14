@@ -2,11 +2,6 @@ module github.com/gravitl/netclient
 
 go 1.19
 
-// TODO remove and use a new netmaker version that has the upgrade event
-replace (
-	github.com/gravitl/netmaker => ../netmaker
-)
-
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.7
