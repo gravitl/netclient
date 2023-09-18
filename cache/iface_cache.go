@@ -12,7 +12,7 @@ var EndpointCache sync.Map
 // EndpointCacheValue - type for storage for best local address
 type EndpointCacheValue struct {
 	Latency  time.Duration
-	Endpoint netip.Addr
+	Endpoint netip.AddrPort
 }
 
 // ServerAddrCache - server addresses mapped to server names

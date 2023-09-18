@@ -319,9 +319,9 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerIP.String(),
 					hostPubKey,
 					peerPubKey,
-					config.Netclient().ListenPort,
+					peerInfo.ListenPort,
 				); err != nil { // happens v often
-					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
+					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "ip", peerIP, "port", peerInfo.ListenPort, "error", err)
 				}
 			}
 		}
