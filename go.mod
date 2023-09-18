@@ -21,7 +21,7 @@ require (
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/pion/logging v0.2.2
-	github.com/pion/turn/v2 v2.1.3
+	github.com/pion/turn/v2 v2.1.4
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
