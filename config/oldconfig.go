@@ -4,21 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/models"
+	"gopkg.in/yaml.v3"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"github.com/devilcove/httpclient"
-	"github.com/google/uuid"
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/yaml.v3"
 )
 
 // ClientConfig - struct for dealing with client configuration
@@ -120,43 +115,6 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 	tokenData := resp.Response.(map[string]interface{})
 	token := tokenData["AuthToken"]
 	return token.(string), nil
-}
-
-// ConvertOldNode accepts a netmaker node struct and converts to the structs used by netclient
-func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
-	var node Node
-	host := Netclient()
-	node.ID, _ = uuid.Parse(netmakerNode.ID)
-	node.HostID = host.ID
-	node.Network = netmakerNode.Network
-	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
-	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	host.Interfaces = netmakerNode.Interfaces
-	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
-	node.Connected = ParseBool(netmakerNode.Connected)
-	host.ListenPort = int(netmakerNode.ListenPort)
-	host.MTU = int(netmakerNode.MTU)
-	host.PublicKey, _ = wgtypes.ParseKey(netmakerNode.PublicKey)
-	node.ID, _ = uuid.Parse(netmakerNode.ID)
-	node.Network = netmakerNode.Network
-	node.NetworkRange = ToIPNet(netmakerNode.NetworkSettings.AddressRange)
-	node.NetworkRange6 = ToIPNet(netmakerNode.NetworkSettings.AddressRange6)
-	host.Interfaces = netmakerNode.Interfaces
-	host.EndpointIP = net.ParseIP(netmakerNode.Endpoint)
-	node.Connected = ParseBool(netmakerNode.Connected)
-	node.Address.IP = net.ParseIP(netmakerNode.Address)
-	node.Address.Mask = node.NetworkRange.Mask
-	node.Address6.IP = net.ParseIP(netmakerNode.Address6)
-	node.Address6.Mask = node.NetworkRange6.Mask
-	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
-	node.Action = netmakerNode.Action
-	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
-	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
-	host.IsStatic = ParseBool(netmakerNode.IsStatic)
-	node.DNSOn = ParseBool(netmakerNode.DNSOn)
-	//node.Peers = nodeGet.Peers
-	//add items not provided by server
-	return &node, host
 }
 
 // ConvertOldServerCfg converts a netmaker ServerConfig to netclient server struct

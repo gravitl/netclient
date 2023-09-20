@@ -33,7 +33,7 @@ func IfaceDelta(currentNode *config.Node, newNode *config.Node) bool {
 		//newNode.UDPHolePunch != currentNode.UDPHolePunch ||
 		//newNode.ListenPort != currentNode.ListenPort ||
 		//newNode.MTU != currentNode.MTU ||
-		newNode.PersistentKeepalive != currentNode.PersistentKeepalive ||
+		//newNode.PersistentKeepalive != currentNode.PersistentKeepalive ||
 		newNode.DNSOn != currentNode.DNSOn ||
 		newNode.Connected != currentNode.Connected {
 		return true
