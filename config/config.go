@@ -130,6 +130,7 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
+	host.PersistentKeepalive = hostCfg.PersistentKeepalive
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
