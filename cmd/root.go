@@ -108,8 +108,15 @@ func setupLogging(flags *viper.Viper) {
 		}
 		return a
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
-	slog.SetDefault(logger)
+
+	if ncutils.IsWindows() {
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
+		slog.SetDefault(logger)
+	} else {
+		logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
+		slog.SetDefault(logger)
+	}
+
 	verbosity := flags.GetInt("verbosity")
 	if verbosity > config.Netclient().Verbosity {
 		config.Netclient().Verbosity = verbosity
