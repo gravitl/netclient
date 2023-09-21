@@ -244,6 +244,11 @@ func setupMQTT(server *config.Server) error {
 				nil,
 			)
 		}
+
+		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
+		if !config.Netclient().IsStatic {
+			daemon.Restart()
+		}
 	})
 	Mqclient = mqtt.NewClient(opts)
 	var connecterr error
