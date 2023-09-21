@@ -109,6 +109,7 @@ func setupLogging(flags *viper.Viper) {
 		return a
 	}
 
+	// Detect if OS is windows to push slog on Stdout instead of Stderr
 	if ncutils.IsWindows() {
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true, ReplaceAttr: replace, Level: logLevel}))
 		slog.SetDefault(logger)
