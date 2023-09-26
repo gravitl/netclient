@@ -13,11 +13,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slices"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
+
+	"github.com/gravitl/netclient/ncutils"
 )
 
 const (
@@ -81,11 +83,11 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	PrivateKey        wgtypes.Key          `json:"privatekey"        yaml:"privatekey"`
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
-	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
-	InitType          InitType             `json:"inittype" yaml:"inittype"`
+	HostPeers         []wgtypes.PeerConfig `json:"host_peers"        yaml:"host_peers"`
+	DisableGUIServer  bool                 `json:"disableguiserver"  yaml:"disableguiserver"`
+	InitType          InitType             `json:"inittype"          yaml:"inittype"`
 }
 
 func init() {
@@ -148,6 +150,16 @@ func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 	return detectOrFilterGWPeers(peers)
 }
 
+// GetHostPeer finds a peer
+func GetHostPeer(ip net.IP) wgtypes.PeerConfig {
+	for _, peer := range netclient.HostPeers {
+		if slices.Equal(peer.Endpoint.IP, ip) {
+			return peer
+		}
+	}
+	return wgtypes.PeerConfig{}
+}
+
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg() {
 	netclient.HostPeers = []wgtypes.PeerConfig{}
@@ -204,7 +216,11 @@ func WriteNetclientConfig() error {
 				logger.Log(0, "error creating netclient config directory", err.Error())
 			}
 			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
+				logger.Log(
+					0,
+					"error setting permissions on netclient config directory",
+					err.Error(),
+				)
 			}
 		} else if err != nil {
 			return err
@@ -327,7 +343,6 @@ func Unlock(lockfile string) error {
 				if err := os.Remove(lockfile); err == nil {
 					if debug {
 						logger.Log(0, "removed lockfile")
-
 					}
 					return nil
 				} else {
@@ -366,7 +381,7 @@ func IsPidDead(pid int) bool {
 	if err != nil {
 		return true
 	}
-	//FindProcess always returns err = nil on linux
+	// FindProcess always returns err = nil on linux
 	err = process.Signal(syscall.Signal(0))
 	return errors.Is(err, os.ErrProcessDone)
 }
@@ -422,10 +437,12 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
 	isInetGW := IsHostInetGateway()
 	if len(peers) > 0 {
-		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
+		if GW4PeerDetected ||
+			GW6PeerDetected { // check if there is a change in GWs before proceeding
 			for i := range peers {
 				peer := peers[i]
-				if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) && peer.Remove { // Indicates a removal of current gw, set detected to false to recalc
+				if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) &&
+					peer.Remove { // Indicates a removal of current gw, set detected to false to recalc
 					GW4PeerDetected = false
 					break
 				} else if peerHasIp(&GW6Addr, peer.AllowedIPs[:]) { // TODO (IPv6)
@@ -443,7 +460,8 @@ func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
 			for j := range peer.AllowedIPs {
 				ip := peer.AllowedIPs[j]
 				if ip.String() == "0.0.0.0/0" { // handle IPv4
-					if isInetGW || peer.Remove { // skip allowed and removed peers IPs for internet gws
+					if isInetGW ||
+						peer.Remove { // skip allowed and removed peers IPs for internet gws
 						continue
 					}
 					if !GW4PeerDetected && j > 0 {
@@ -489,7 +507,6 @@ func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
 // IsHostInetGateway - checks, based on netclient memory,
 // if current client is an internet gateway
 func IsHostInetGateway() bool {
-
 	serverNodes := GetNodes()
 	for j := range serverNodes {
 		serverNode := serverNodes[j]
