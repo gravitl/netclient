@@ -28,6 +28,10 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := 0
 	peers := config.Netclient().HostPeers
+	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
+	if len(peers) == 0 {
+		peers = nil
+	}
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
 		if node.Address.IP != nil {

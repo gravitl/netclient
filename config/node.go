@@ -114,7 +114,7 @@ func WriteNodeConfig() error {
 		return err
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
 		return err
 	}
