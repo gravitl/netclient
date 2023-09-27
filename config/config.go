@@ -116,7 +116,8 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 		}
 		restart = true
 	}
-	if host.MTU != 0 && hostCfg.MTU != host.MTU {
+	if host.MTU != 0 && hostCfg.MTU != host.MTU ||
+		host.PersistentKeepalive != 0 && hostCfg.PersistentKeepalive != host.PersistentKeepalive {
 		resetInterface = true
 	}
 	// do not update fields that should not be changed by server
@@ -132,7 +133,6 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
-	host.PersistentKeepalive = hostCfg.PersistentKeepalive
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
@@ -150,14 +150,14 @@ func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
 	return detectOrFilterGWPeers(peers)
 }
 
-// GetHostPeer finds a peer
-func GetHostPeer(ip net.IP) wgtypes.PeerConfig {
+// GetHostPeer finds a peer and returns its wgtypes.PeerConfig
+func GetHostPeer(ip net.IP) (wgtypes.PeerConfig, error) {
 	for _, peer := range netclient.HostPeers {
 		if slices.Equal(peer.Endpoint.IP, ip) {
-			return peer
+			return peer, nil
 		}
 	}
-	return wgtypes.PeerConfig{}
+	return wgtypes.PeerConfig{}, errors.New("peer not found")
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
