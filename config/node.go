@@ -4,13 +4,17 @@ package config
 import (
 	"encoding/base64"
 	"encoding/json"
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
-	"gopkg.in/yaml.v3"
 	"net"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/yaml.v3"
+
+	"github.com/gravitl/netclient/ncutils"
 )
 
 // NodeMap is an in memory map of the all nodes indexed by network name
@@ -120,6 +124,45 @@ func WriteNodeConfig() error {
 		return err
 	}
 	return f.Sync()
+}
+
+// getNodePersistentKeepAlive tries to get the PKA of a node
+func GetNodePersistentKeepAlive(
+	node *Node,
+	getPeerConfig func(net.IP) (wgtypes.PeerConfig, error),
+) time.Duration {
+	// get peer configs
+	pcV4, errV4 := getPeerConfig(node.Address.IP)
+	pcV6, errV6 := getPeerConfig(node.Address6.IP)
+	// default on err
+	if errV4 != nil && errV6 != nil {
+		return Netclient().PersistentKeepalive
+	}
+	// other if err
+	if errV4 != nil {
+		return *pcV6.PersistentKeepaliveInterval
+	}
+	if errV6 != nil {
+		return *pcV4.PersistentKeepaliveInterval
+	}
+	// get PKAs
+	pkaV4 := *pcV4.PersistentKeepaliveInterval
+	pkaV6 := *pcV6.PersistentKeepaliveInterval
+	// other if zero
+	if pkaV4 != pkaV6 {
+		if pkaV4 != 0 {
+			return pkaV6
+		}
+		if pkaV6 != 0 {
+			return pkaV4
+		}
+	}
+	return pkaV4 // or pkaV6, they're the same
+}
+
+// getPKAFromHostPeer returns the PKA of a node by retrieving its peer config with config.GetHostPeer
+func GetNodePKA(node *Node) time.Duration {
+	return GetNodePersistentKeepAlive(node, GetHostPeer)
 }
 
 // ToIPNet parses a cidr string and returns a net.IPNet
