@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/devilcove/httpclient"
-	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/models"
-	"gopkg.in/yaml.v3"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netmaker/models"
+	"gopkg.in/yaml.v3"
+
+	"github.com/gravitl/netclient/ncutils"
 )
 
 // ClientConfig - struct for dealing with client configuration
@@ -37,7 +39,7 @@ func ReadConfig(network string) (*ClientConfig, error) {
 	}
 	home := GetNetclientPath() + "config/"
 	if ncutils.IsWindows() {
-		//for some reason windows does not use the config dir although it exists
+		// for some reason windows does not use the config dir although it exists
 		home = GetNetclientPath()
 	}
 	file := fmt.Sprintf(home + "netconfig-" + network)
@@ -62,7 +64,7 @@ func GetSystemNetworks() ([]string, error) {
 	var networks []string
 	confPath := GetNetclientPath() + "config/netconfig-*"
 	if ncutils.IsWindows() {
-		//for some reason windows does not use the config dir although it exists
+		// for some reason windows does not use the config dir although it exists
 		confPath = GetNetclientPath() + "netconfig-*"
 	}
 	files, err := filepath.Glob(confPath)
@@ -70,7 +72,7 @@ func GetSystemNetworks() ([]string, error) {
 		return nil, err
 	}
 	for _, file := range files {
-		//don't want files such as *.bak, *.swp
+		// don't want files such as *.bak, *.swp
 		if filepath.Ext(file) != "" {
 			continue
 		}
