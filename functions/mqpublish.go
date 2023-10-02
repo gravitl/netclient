@@ -289,7 +289,7 @@ func UpdateHostSettings() error {
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err
 		}
-		logger.Log(0, "publishing global host update for endpoint changes")
+		slog.Info("publishing host update for endpoint changes")
 		if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 			logger.Log(0, "could not publish endpoint change", err.Error())
 		}

@@ -259,7 +259,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("failed to write host config", "error", err)
 		return
 	}
-
 	if restartDaemon {
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
