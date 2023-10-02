@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/nmproxy/stun"
 )
 
 var (
@@ -54,7 +55,7 @@ func StoreServerAddresses(server *config.Server) {
 		}
 	}
 
-	stunList := server.StunList
+	stunList := stun.StunServers
 	for i := range stunList {
 		stunServer := stunList[i]
 		ips, err := net.LookupIP(stunServer.Domain) // handle server broker

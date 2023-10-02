@@ -248,7 +248,7 @@ func UpdateHostSettings() error {
 		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
 	}
-	if server.Is_EE {
+	if server.IsPro {
 		serverNodes := config.GetNodes()
 		for _, node := range serverNodes {
 			node := node

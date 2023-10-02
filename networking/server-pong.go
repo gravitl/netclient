@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	proxy_config "github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -64,7 +66,7 @@ func handleRequest(c net.Conn) {
 	recvTime := time.Now().UnixMilli() // get the time received message
 	var request bestIfaceMsg
 	if err = json.Unmarshal(buffer[:numBytes], &request); err != nil {
-		sendError(c)
+		sendError(c, "json unmarhal error")
 		return
 	}
 
@@ -73,48 +75,57 @@ func handleRequest(c net.Conn) {
 		currenHostPubKey := config.Netclient().PublicKey.String()
 		currentHostPubKeyHashString := fmt.Sprintf("%v", sha1.Sum([]byte(currenHostPubKey)))
 		if pubKeyHash == currentHostPubKeyHashString {
-			sendError(c)
+			sendError(c, "wrong hash")
 			return
 		}
 		sentTime := request.TimeStamp
-		addrInfo, err := netip.ParseAddrPort(c.RemoteAddr().String())
-		if err == nil {
-			endpoint := addrInfo.Addr()
-			latency := time.Duration(recvTime - int64(sentTime))
-			latencyTreshHold := latency + latencyVarianceThreshold
-			var foundNewIface bool
-			bestIface, ok := cache.EndpointCache.Load(pubKeyHash)
-			if ok { // check if iface already exists
-				if bestIface.(cache.EndpointCacheValue).Latency > latencyTreshHold &&
-					bestIface.(cache.EndpointCacheValue).Endpoint.String() != endpoint.String() { // replace it since new one is faster
-					foundNewIface = true
-				}
-			} else {
+		remoteAddr, err := netip.ParseAddrPort(c.RemoteAddr().String())
+		if err != nil {
+			sendError(c, "endpoint detection parse remote address"+err.Error())
+		}
+		addrInfo := netip.AddrPortFrom(remoteAddr.Addr(), uint16(request.ListenPort))
+		endpoint := addrInfo.Addr()
+		latency := time.Duration(recvTime - int64(sentTime))
+		latencyTreshHold := latency + latencyVarianceThreshold
+		var foundNewIface bool
+		bestIface, ok := cache.EndpointCache.Load(pubKeyHash)
+		if ok { // check if iface already exists
+			if bestIface.(cache.EndpointCacheValue).Latency > latencyTreshHold &&
+				bestIface.(cache.EndpointCacheValue).Endpoint.String() != endpoint.String() { // replace it since new one is faster
 				foundNewIface = true
 			}
-			if foundNewIface { // iface not detected/calculated for peer, so set it
-				if err = sendSuccess(c); err != nil {
-					logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
-				} else {
-					if err = storeNewPeerIface(pubKeyHash, endpoint, latency); err != nil {
-						logger.Log(0, "failed to store best endpoint for peer", err.Error())
-					}
-					return
+		} else {
+			foundNewIface = true
+		}
+		if foundNewIface { // iface not detected/calculated for peer, so set it
+			if err = sendSuccess(c); err != nil {
+				logger.Log(0, "failed to notify peer of new endpoint", pubKeyHash)
+			} else {
+				if err = storeNewPeerIface(pubKeyHash, addrInfo, latency); err != nil {
+					logger.Log(0, "failed to store best endpoint for peer", err.Error())
 				}
+				return
 			}
+		} else {
+			sendError(c, "no new endpoint")
+
+		}
+		if _, err := c.Write([]byte("invalid request" + strconv.Itoa(len(request.Hash)))); err != nil {
+			slog.Error("server pong send error", "error", err)
 		}
 	}
-	sendError(c)
+
+	sendError(c, "invalid request")
 }
 
-func sendError(c net.Conn) {
-	_, err := c.Write([]byte(messages.Wrong))
+func sendError(c net.Conn, message string) {
+	_, err := c.Write([]byte(message))
 	if err != nil {
 		logger.Log(0, "error writing response", err.Error())
 	}
 }
 
-func storeNewPeerIface(clientPubKeyHash string, endpoint netip.Addr, latency time.Duration) error {
+func storeNewPeerIface(clientPubKeyHash string, endpoint netip.AddrPort, latency time.Duration) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Latency:  latency,
 		Endpoint: endpoint,
@@ -135,8 +146,7 @@ func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error
 		currPeer := currentServerPeers[i]
 		peerPubkeyHash := fmt.Sprintf("%v", sha1.Sum([]byte(currPeer.PublicKey.String())))
 		if peerPubkeyHash == publicKeyHash { // filter for current peer to overwrite endpoint
-			peerPort := currPeer.Endpoint.Port
-			wgEndpoint := net.UDPAddrFromAddrPort(netip.AddrPortFrom(value.Endpoint, uint16(peerPort)))
+			wgEndpoint := net.UDPAddrFromAddrPort(value.Endpoint)
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
 			// check if conn is active on proxy and update
 			if conn, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {

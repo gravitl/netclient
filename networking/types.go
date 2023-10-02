@@ -21,6 +21,7 @@ var messages = struct {
 
 // the type to send between client + server for local address detection
 type bestIfaceMsg struct {
-	Hash      string `json:"hash"`
-	TimeStamp int64  `json:"time_stamp"`
+	Hash       string `json:"hash"`
+	TimeStamp  int64  `json:"time_stamp"`
+	ListenPort int    `json:"listenport"`
 }

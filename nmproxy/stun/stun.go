@@ -12,6 +12,21 @@ import (
 	"gortc.io/stun"
 )
 
+var (
+	StunServers = []StunServer{
+		{Domain: "stun1.netmaker.io", Port: 3478},
+		{Domain: "stun2.netmaker.io", Port: 3478},
+		{Domain: "stun1.l.google.com", Port: 19302},
+		{Domain: "stun2.l.google.com", Port: 19302},
+	}
+)
+
+// StunServer - struct to hold data required for using stun server
+type StunServer struct {
+	Domain string `json:"domain" yaml:"domain"`
+	Port   int    `json:"port" yaml:"port"`
+}
+
 // IsPublicIP indicates whether IP is public or not.
 func IsPublicIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
@@ -43,8 +58,8 @@ func DoesIPExistLocally(ip net.IP) bool {
 }
 
 // HolePunch - performs udp hole punching on the given port
-func HolePunch(stunList []nmmodels.StunServer, portToStun int) (publicIP net.IP, publicPort int, natType string) {
-	for _, stunServer := range stunList {
+func HolePunch(portToStun int) (publicIP net.IP, publicPort int, natType string) {
+	for _, stunServer := range StunServers {
 		stunServer := stunServer
 		s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
 		if err != nil {

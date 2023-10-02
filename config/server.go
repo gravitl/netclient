@@ -94,7 +94,7 @@ func WriteServerConfig() error {
 		return err
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 	server.MQID = netclient.ID
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.Is_EE = cfg.Is_EE
+	server.IsPro = cfg.Is_EE
 	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)
 	return &server

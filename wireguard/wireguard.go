@@ -26,6 +26,10 @@ func SetPeers(replace bool) error {
 	}
 	GetInterface().Config.Peers = peers
 	peers = peer.SetPeersEndpointToProxy(peers)
+	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
+	if len(peers) == 0 {
+		peers = nil
+	}
 	config := wgtypes.Config{
 		ReplacePeers: replace,
 		Peers:        peers,
@@ -67,8 +71,7 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
 		if ok {
-
-			peer.Endpoint.IP = net.ParseIP(cacheEndpoint.Endpoint.String())
+			peer.Endpoint = net.UDPAddrFromAddrPort(cacheEndpoint.Endpoint)
 		}
 		return ok
 	}

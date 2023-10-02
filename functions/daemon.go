@@ -463,14 +463,9 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
-	stunServers := []models.StunServer{
-		{Domain: "stun1.netmaker.io", Port: 3478},
-		{Domain: "stun2.netmaker.io", Port: 3478},
-		{Domain: "stun1.l.google.com", Port: 19302},
-		{Domain: "stun2.l.google.com", Port: 19302},
-	}
+
 	portToStun := config.Netclient().ListenPort
-	pubIP, pubPort, natType = stun.HolePunch(stunServers, portToStun)
+	pubIP, pubPort, natType = stun.HolePunch(portToStun)
 	return
 }
 
