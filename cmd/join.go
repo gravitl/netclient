@@ -22,6 +22,7 @@ all-networks: netclient join -s <server> -A // attempt to register to all allowe
 user: netclient join -s <server> -u <user_name> // attempt to join/register via basic auth`,
 
 	Run: func(cmd *cobra.Command, args []string) {
+		setHostFields(cmd)
 		token, err := cmd.Flags().GetString(registerFlags.Token)
 		if err != nil || len(token) == 0 {
 			if regErr := checkUserRegistration(cmd); regErr != nil {
@@ -42,5 +43,10 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.User, "u", "", "user name for attempting Basic Auth join/registration")
 	joinCmd.Flags().StringP(registerFlags.Network, "n", "", "network to attempt to join/register to")
 	joinCmd.Flags().BoolP(registerFlags.AllNetworks, "A", false, "attempts to join/register to all available networks to user")
+	joinCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
+	joinCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
+	joinCmd.Flags().StringP(registerFlags.MTU, "m", "", "sets MTU on host")
+	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
+	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	rootCmd.AddCommand(joinCmd)
 }

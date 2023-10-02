@@ -9,11 +9,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // FindBestEndpoint - requests against a given addr and port
-func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort int) error {
+func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, port int) error {
 	peerAddr, err := netip.ParseAddr(reqAddr) // begin validate
 	if err != nil {
 		return err
@@ -24,15 +25,16 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 	if _, err = wgtypes.ParseKey(currentHostPubKey); err != nil {
 		return err
 	}
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(reqAddr, strconv.Itoa(proxyPort)), reqTimeout)
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(reqAddr, strconv.Itoa(port)), reqTimeout)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 	sentTime := time.Now().UnixMilli()
 	msg := bestIfaceMsg{
-		Hash:      fmt.Sprintf("%v", sha1.Sum([]byte(currentHostPubKey))),
-		TimeStamp: sentTime,
+		Hash:       fmt.Sprintf("%v", sha1.Sum([]byte(currentHostPubKey))),
+		TimeStamp:  sentTime,
+		ListenPort: config.Netclient().ListenPort,
 	}
 	reqData, err := json.Marshal(&msg)
 	if err != nil {
@@ -53,7 +55,7 @@ func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, proxyPort i
 	latency := time.Now().UnixMilli() - sentTime
 	response := string(buf[:numBytes])
 	if response == messages.Success { // found new best interface, save it
-		if err = storeNewPeerIface(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))), peerAddr, time.Duration(latency)); err != nil {
+		if err = storeNewPeerIface(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))), netip.AddrPortFrom(peerAddr, uint16(port)), time.Duration(latency)); err != nil {
 			return err
 		}
 	}
