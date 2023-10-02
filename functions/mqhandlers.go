@@ -251,6 +251,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
+		setSubscriptions(client, &nodeCfg)
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -288,7 +289,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("failed to write host config", "error", err)
 		return
 	}
-
 	if restartDaemon {
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
@@ -349,9 +349,9 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					peerIP.String(),
 					hostPubKey,
 					peerPubKey,
-					config.Netclient().ListenPort,
+					peerInfo.ListenPort,
 				); err != nil { // happens v often
-					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "error", err)
+					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "ip", peerIP, "port", peerInfo.ListenPort, "error", err)
 				}
 			}
 		}
