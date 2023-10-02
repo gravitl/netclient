@@ -61,12 +61,12 @@ func downloadVersion(version string) error {
 
 // versionLessThan checks if v1 < v2 semantically
 // dev is the latest version
-func versionLessThan(v1, v2 string) bool {
+func versionLessThan(v1, v2 string) (bool, error) {
 	if v1 == "dev" {
-		return false
+		return false, nil
 	}
 	if v2 == "dev" {
-		return true
+		return true, nil
 	}
 	semVer1 := strings.TrimFunc(v1, func(r rune) bool {
 		return !unicode.IsNumber(r)
@@ -74,7 +74,15 @@ func versionLessThan(v1, v2 string) bool {
 	semVer2 := strings.TrimFunc(v2, func(r rune) bool {
 		return !unicode.IsNumber(r)
 	})
-	return semver.MustParse(semVer1).LT(semver.MustParse(semVer2))
+	sv1, err := semver.Parse(semVer1)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse semver1 (%s): %w", semVer1, err)
+	}
+	sv2, err := semver.Parse(semVer2)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse semver2 (%s): %w", semVer2, err)
+	}
+	return sv1.LT(sv2), nil
 }
 
 // UseVersion switches the current netclient version to the one specified if available in the github releases page
