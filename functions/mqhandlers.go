@@ -208,6 +208,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	var resetInterface, restartDaemon, sendHostUpdate, clearMsg bool
 	switch hostUpdate.Action {
 	case models.Upgrade:
+		clearRetainedMsg(client, msg.Topic())
 		cv, sv := config.Version, server.Version
 		slog.Info("checking if need to upgrade client to server's version", "", config.Version, "version", server.Version)
 		vlt, err := versionLessThan(cv, sv)
