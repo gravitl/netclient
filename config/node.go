@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -127,30 +126,29 @@ func WriteNodeConfig() error {
 // ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
 func ConvertNode(nodeGet *models.NodeGet) *Node {
 	netmakerNode := nodeGet.Node
-	//server := GetServer(netmakerNode.Server)
-	//if server == nil {
-	//server = ConvertServerCfg(nodeGet.ServerConfig)
-	//}
+	// server := GetServer(netmakerNode.Server)
+	// if server == nil {
+	// server = ConvertServerCfg(nodeGet.ServerConfig)
+	// }
 	var node Node
 	node.ID = nodeGet.Node.ID
-	//n.Name = s.Name
+	// n.Name = s.Name
 	node.Network = netmakerNode.Network
-	//node.Password = netmakerNode.Password
+	// node.Password = netmakerNode.Password
 	node.NetworkRange = nodeGet.Node.NetworkRange
 	node.NetworkRange6 = nodeGet.Node.NetworkRange6
-	//n.Interface = s.Interface
+	// n.Interface = s.Interface
 	node.Server = netmakerNode.Server
 	node.Connected = nodeGet.Node.Connected
-	//node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
+	// node.MacAddress, _ = net.ParseMAC(netmakerNode.MacAddress)
 	node.Address = nodeGet.Node.Address
 	node.Address6 = nodeGet.Node.Address6
-	node.PersistentKeepalive = time.Second * time.Duration(netmakerNode.PersistentKeepalive)
 	node.Action = netmakerNode.Action
 	node.IsEgressGateway = nodeGet.Node.IsEgressGateway
 	node.IsIngressGateway = nodeGet.Node.IsIngressGateway
 	node.DNSOn = nodeGet.Node.DNSOn
-	//node.Peers = nodeGet.Peers
-	//add items not provided by server
+	// node.Peers = nodeGet.Peers
+	// add items not provided by server
 	return &node
 }
 
@@ -159,7 +157,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	var netmakerNode models.LegacyNode
 	netmakerNode.ID = node.ID.String()
 	netmakerNode.OS = host.OS
-	//netmakerNode.HostID = server.MQID.String()
+	// netmakerNode.HostID = server.MQID.String()
 	netmakerNode.Name = host.Name
 	netmakerNode.Network = node.Network
 	netmakerNode.Password = host.HostPass
@@ -171,12 +169,12 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.Server = node.Server
 	netmakerNode.TrafficKeys.Mine = host.TrafficKeyPublic
 	netmakerNode.TrafficKeys.Server = server.TrafficKey
-	//only send ip
+	// only send ip
 	netmakerNode.Endpoint = host.EndpointIP.String()
 	netmakerNode.Connected = FormatBool(node.Connected)
 	netmakerNode.MacAddress = host.MacAddress.String()
 	netmakerNode.ListenPort = int32(host.ListenPort)
-	//only send ip
+	// only send ip
 	if node.Address.IP == nil {
 		netmakerNode.Address = ""
 	} else {
@@ -189,7 +187,6 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	}
 	netmakerNode.LocalListenPort = int32(host.ListenPort)
 	netmakerNode.MTU = int32(host.MTU)
-	netmakerNode.PersistentKeepalive = int32(node.PersistentKeepalive.Seconds())
 	netmakerNode.PublicKey = host.PublicKey.String()
 	netmakerNode.Action = node.Action
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
