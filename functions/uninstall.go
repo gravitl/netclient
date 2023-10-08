@@ -70,7 +70,7 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
 		nc := wireguard.GetInterface()
-		nc.Iface.Close()
+		nc.Close()
 		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 		nc.Create()
 		if err := nc.Configure(); err != nil {
