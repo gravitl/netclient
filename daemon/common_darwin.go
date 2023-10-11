@@ -49,7 +49,7 @@ func stop() error {
 }
 
 func hardRestart() error {
-	if _, err := ncutils.RunCmd("launchctl kickstart -k /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
+	if _, err := ncutils.RunCmd("launchctl kickstart -k system/"+MacServiceName+" /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
 		return err
 	}
 	return nil
