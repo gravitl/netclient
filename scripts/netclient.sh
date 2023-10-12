@@ -53,7 +53,6 @@ if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 echo "[netclient] Starting netclient daemon"
 
-/root/netclient daemon &
+/root/netclient install
 
-wait $!
-echo "[netclient] exiting"
+sleep infinity
