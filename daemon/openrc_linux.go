@@ -17,8 +17,8 @@ pidfile="/var/run/netclient.pid"
 command="/sbin/netclient"
 command_args="daemon"
 command_user="root"
+RC_SVCNAME="netclient"
 supervisor="supervise-daemon"
-command_args_foreground="--foreground"
 output_log="/var/log/netclient.log"
 error_log="/var/log/netclient.log"
 depend() {
@@ -43,6 +43,7 @@ reload() {
 
 func startOpenRC() error {
 	slog.Info("starting netclient service")
+	return nil
 	_, err := ncutils.RunCmd("/sbin/rc-service netclient start -N", false)
 	return err
 }
