@@ -52,7 +52,7 @@ func Pull(restart bool) error {
 	_ = config.WriteNodeConfig()
 	if restart {
 		logger.Log(3, "restarting daemon")
-		return daemon.HardRestart()
+		return daemon.Restart()
 	}
 	return nil
 }
