@@ -20,17 +20,15 @@ command="/sbin/netclient"
 command_args="daemon"
 command_user="root"
 supervisor="supervise-daemon"
+respawn_max=3
+respawn_period=10
 output_log="/var/log/netclient.log"
 error_log="/var/log/netclient.log"
 depend() {
 	need net
 	after firewall
 }
-reload() {
-	ebegin "Reloading netclient configuration"
-	${supervisor} ${RC_SVCNAME} --signal HUP --pidfile "${pidfile}"
-	eend $?
-}
+
 `
 	bytes := []byte(service)
 	if err := os.WriteFile("/etc/init.d/netclient", bytes, 0755); err != nil {
