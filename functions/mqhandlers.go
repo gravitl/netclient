@@ -135,7 +135,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("error checking version less than", "error", err)
 			return
 		}
-		if config.Netclient().Verbosity == 3 && vlt && config.Netclient().Host.AutoUpdate {
+		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
