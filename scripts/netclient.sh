@@ -1,5 +1,6 @@
 #!/bin/bash
 
+sh -c rc-status
 #Define cleanup
 cleanup() {
     nets=($(wg show interfaces))
