@@ -1,7 +1,7 @@
 import { createTheme, PaletteMode } from "@mui/material";
 import { teal } from "@mui/material/colors";
 
-const DEFAULT_APP_THEME: PaletteMode = 'dark'
+const DEFAULT_APP_THEME: PaletteMode = "dark";
 
 const appTheme = createTheme({
   palette: {
@@ -10,4 +10,4 @@ const appTheme = createTheme({
   },
 });
 
-export default appTheme
+export default appTheme;

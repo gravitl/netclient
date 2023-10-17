@@ -7,7 +7,7 @@ export default function AppHeader() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  return(
+  return (
     <Grid container>
       <Grid container item xs={12}>
         <Button

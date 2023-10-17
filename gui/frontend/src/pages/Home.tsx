@@ -1,8 +1,8 @@
-import Grid from '@mui/material/Grid';
+import Grid from "@mui/material/Grid";
 
 function Home() {
   const test = () => {
-    console.log('test');
+    console.log("test");
   };
 
   return (

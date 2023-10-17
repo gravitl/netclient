@@ -23,13 +23,13 @@ interface NetworkTableProps {
 
 export default function NetworkTable(props: NetworkTableProps) {
   const getNetworkLink = useCallback((network: main.Network) => {
-    return getNetworkDetailsPageUrl(network?.node?.network ?? '');
+    return getNetworkDetailsPageUrl(network?.node?.network ?? "");
   }, []);
 
   return (
     <>
       {props?.networks?.length > 0 ? (
-        <TableContainer component={Paper} style={{ width: '80vw'}}>
+        <TableContainer component={Paper} style={{ width: "80vw" }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -39,7 +39,10 @@ export default function NetworkTable(props: NetworkTableProps) {
             </TableHead>
             <TableBody>
               {props.networks.map((nw, i) => (
-                <TableRow key={(nw?.node?.network ?? '') + i} data-testid="network-row">
+                <TableRow
+                  key={(nw?.node?.network ?? "") + i}
+                  data-testid="network-row"
+                >
                   <TableCell data-testid="network-name">
                     <Button
                       variant="text"
@@ -47,7 +50,7 @@ export default function NetworkTable(props: NetworkTableProps) {
                       component={Link}
                       to={getNetworkLink(nw)}
                     >
-                      {nw?.node?.network ?? 'n/a'}
+                      {nw?.node?.network ?? "n/a"}
                     </Button>
                   </TableCell>
                   <TableCell align="right">
@@ -55,7 +58,10 @@ export default function NetworkTable(props: NetworkTableProps) {
                       data-testid="status-toggle"
                       checked={nw?.node?.connected ?? false}
                       onChange={() =>
-                        props.onNetworkStatusChange(nw?.node?.network ?? '', !nw?.node?.connected)
+                        props.onNetworkStatusChange(
+                          nw?.node?.network ?? "",
+                          !nw?.node?.connected,
+                        )
                       }
                     />
                   </TableCell>

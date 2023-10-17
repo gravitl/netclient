@@ -23,9 +23,11 @@ export default function App() {
       console.error(err);
       setIsDaemonReachable(false);
       await notifyUser(
-        "Cannot connect to daemon. Ensure that the netclient daemon is running then retry."
+        "Cannot connect to daemon. Ensure that the netclient daemon is running then retry.",
       );
-      await LogFatal("Cannot connect to daemon. Ensure that the netclient daemon is running then retry.")
+      await LogFatal(
+        "Cannot connect to daemon. Ensure that the netclient daemon is running then retry.",
+      );
     }
   }, []);
 

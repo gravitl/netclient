@@ -30,7 +30,7 @@ export default function SettingsPage() {
       setIsLoadingDetails(true);
       const config = await GoGetNetclientConfig();
       setNcSettings(config);
-      console.log(config)
+      console.log(config);
     } catch (err) {
       await notifyUser(("Failed to load settings\n" + err) as string);
       console.error(err);
@@ -434,7 +434,9 @@ export default function SettingsPage() {
             <Grid item xs={8} md={9}>
               Interfaces:{" "}
               {ncSettings?.interfaces
-                .map((iface) => `${iface.name} (${String(iface.addressString)})`)
+                .map(
+                  (iface) => `${iface.name} (${String(iface.addressString)})`,
+                )
                 .join(", ")}
             </Grid>
 
