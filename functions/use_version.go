@@ -12,17 +12,15 @@ import (
 	"unicode"
 
 	"github.com/blang/semver"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 )
 
 var binPath, filePath string
 
 func createDirIfNotExists() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	binPath = filepath.Join(homeDir, ".netmaker", "bin")
+
+	binPath = filepath.Join(config.GetNetclientPath(), ".netmaker", "bin")
 	if err := os.MkdirAll(binPath, os.ModePerm); err != nil {
 		return err
 	}
