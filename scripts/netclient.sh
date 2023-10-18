@@ -48,6 +48,12 @@ if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
+# if this is set (e.g. when running the default docker image), we disable the gui server
+if [ -n "${GUI_SERVER_DISABLE}" ];then
+    echo "[netclient] disabling gui server"
+    /root/netclient guiServer disable
+fi
+
 /root/netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 

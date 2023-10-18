@@ -19,5 +19,11 @@ COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
 
+# accepts an arg for gui server to be disabled, which is true by default.
+# if you need the guiserver, build the image with this variable set to ""
+# i.e.: `docker build ... --build-arg gui_server_disable=""` to enable it
+ARG gui_server_disable="true"
+# pass the arg to an env var that the script checks to disable guiserver
+ENV GUI_SERVER_DISABLE=$gui_server_disable
 
 ENTRYPOINT ["/bin/bash", "./netclient.sh"]
