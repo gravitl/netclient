@@ -62,7 +62,6 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
-
 	// initialize firewall manager
 	var err error
 	config.FwClose, err = firewall.Init()
@@ -243,6 +242,11 @@ func setupMQTT(server *config.Server) error {
 				config.IsHostInetGateway(), false,
 				nil,
 			)
+		}
+
+		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
+		if !config.Netclient().IsStatic {
+			daemon.Restart()
 		}
 	})
 	Mqclient = mqtt.NewClient(opts)
@@ -464,14 +468,9 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
-	stunServers := []models.StunServer{
-		{Domain: "stun1.netmaker.io", Port: 3478},
-		{Domain: "stun2.netmaker.io", Port: 3478},
-		{Domain: "stun1.l.google.com", Port: 19302},
-		{Domain: "stun2.l.google.com", Port: 19302},
-	}
+
 	portToStun := config.Netclient().ListenPort
-	pubIP, pubPort, natType = stun.HolePunch(stunServers, portToStun)
+	pubIP, pubPort, natType = stun.HolePunch(portToStun)
 	return
 }
 
