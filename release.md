@@ -1,4 +1,4 @@
-# Netclient v0.21.1
+# Netclient v0.21.2
 
 ## Whats New
 - Additional args added to register cmd to set from client side
