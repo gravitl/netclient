@@ -11,7 +11,7 @@ FROM alpine:3.18.4
 
 WORKDIR /root/
 
-RUN apk add --no-cache --update bash libmnl gcompat openresolv iproute2 openrc \
+RUN apk add --no-cache --update bash libmnl gcompat openresolv iproute2 wireguard-tools openrc \
     && mkdir -p /run/openrc \
     && touch /run/openrc/softlevel
 RUN apk add iptables ip6tables \
