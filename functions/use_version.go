@@ -14,6 +14,7 @@ import (
 	"github.com/blang/semver"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 )
 
 var binPath, filePath string
@@ -31,6 +32,21 @@ func downloadVersion(version string) error {
 	url := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
 		url += ".exe"
+	}
+	if runtime.GOOS == "freebsd" {
+		out, err := ncutils.RunCmd("grep VERSION_ID /etc/os-release", false)
+		if err != nil {
+			return fmt.Errorf("get freebsd version %w", err)
+		}
+		parts := strings.Split(out, "=")
+		if len(parts) < 2 {
+			return fmt.Errorf("get freebsd version parts %v", parts)
+		}
+		freebsdVersion := strings.Split(parts[1], ".")
+		if len(freebsdVersion) < 2 {
+			return fmt.Errorf("get freebsd vesion %v", freebsdVersion)
+		}
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsdVersion[0], runtime.GOARCH)
 	}
 	res, err := http.Get(url)
 	if err != nil {
