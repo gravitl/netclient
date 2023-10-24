@@ -3,6 +3,7 @@ package daemon
 import (
 	"errors"
 	"os"
+	"syscall"
 
 	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
@@ -14,16 +15,20 @@ func setupOpenRC() error {
 
 description="netclient daemon"
 pidfile="/var/run/netclient.pid"
+RC_SVCNAME="netclient"
 command="/sbin/netclient"
 command_args="daemon"
-command_background="true"
 command_user="root"
+supervisor="supervise-daemon"
+respawn_max=3
+respawn_period=10
 output_log="/var/log/netclient.log"
 error_log="/var/log/netclient.log"
 depend() {
 	need net
 	after firewall
 }
+
 `
 	bytes := []byte(service)
 	if err := os.WriteFile("/etc/init.d/netclient", bytes, 0755); err != nil {
@@ -49,8 +54,7 @@ func stopOpenRC() error {
 
 func restartOpenRC() error {
 	slog.Info("restarting netclient service")
-	_, err := ncutils.RunCmd("/sbin/rc-service netclient restart", false)
-	return err
+	return signalDaemon(syscall.SIGTERM)
 }
 
 func removeOpenRC() error {

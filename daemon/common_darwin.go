@@ -16,11 +16,13 @@ const MacExecDir = "/usr/local/bin/"
 
 // install- Creates a daemon service from the netclient under LaunchAgents for MacOS
 func install() error {
+	stop()
 	binarypath, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	if ncutils.FileExists(MacExecDir + "netclient") {
+		os.Remove(MacExecDir + "netclient")
 		logger.Log(0, "updating netclient binary in", MacExecDir)
 	}
 	if err := ncutils.Copy(binarypath, MacExecDir+"netclient"); err != nil {
@@ -30,7 +32,7 @@ func install() error {
 	if err := createMacService(MacServiceName); err != nil {
 		return err
 	}
-	return nil
+	return start()
 }
 
 func start() error {
@@ -49,7 +51,7 @@ func stop() error {
 }
 
 func hardRestart() error {
-	if _, err := ncutils.RunCmd("launchctl kickstart -k /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
+	if _, err := ncutils.RunCmd("launchctl kickstart -k system/"+MacServiceName+" /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
 		return err
 	}
 	return nil
