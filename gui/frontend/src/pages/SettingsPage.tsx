@@ -445,34 +445,6 @@ export default function SettingsPage() {
             <Grid item xs={4} md={3}>
               <FormControlLabel
                 disabled={!isEditing}
-                label="Relay"
-                control={
-                  <Switch
-                    checked={
-                      isEditing
-                        ? ncSettingsFormData?.isrelay
-                        : ncSettings?.isrelay
-                    }
-                    onChange={(ev) =>
-                      setNcSettingsFormData({
-                        ...ncSettingsFormData!,
-                        isrelay: ev.target.checked,
-                      })
-                    }
-                  />
-                }
-              />
-            </Grid>
-            <Grid item xs={8} md={9}>
-              Relaying (hosts):{" "}
-              {ncSettings?.relay_hosts.map((hostId) => hostId).join(", ")}
-            </Grid>
-
-            <Grid item xs={12}></Grid>
-
-            <Grid item xs={4} md={3}>
-              <FormControlLabel
-                disabled={!isEditing}
                 label="Default Host"
                 control={
                   <Switch
