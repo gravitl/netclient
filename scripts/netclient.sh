@@ -48,8 +48,10 @@ if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
-# if this is set (e.g. when running the default docker image), we disable the gui server
-if [ -n "${GUI_SERVER_DISABLE}" ];then
+if [ "${GUI_SERVER_ENABLED}" == "true" ]; then
+    echo "[netclient] enabling gui server"
+    /root/netclient guiServer enable
+elif [ "${GUI_SERVER_ENABLED}" == "false" ]; then
     echo "[netclient] disabling gui server"
     /root/netclient guiServer disable
 fi
