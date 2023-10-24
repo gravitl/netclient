@@ -26,9 +26,18 @@ func (app *App) GoGetStatus() (any, error) {
 		httpclient.Client.Timeout = 30 * time.Second
 	}()
 
-	_, err := httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
-		return nil, errors.New("netclient http server is not running")
+		return nil, errors.New("netclient http server is not running or unreachable")
 	}
 	return nil, nil
 }
@@ -36,7 +45,16 @@ func (app *App) GoGetStatus() (any, error) {
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
 	networks := []Network{}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/allnetworks", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(nil, http.MethodGet, url+"/allnetworks", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return networks, err
 	}
@@ -52,7 +70,16 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
 	network := Network{}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/networks/"+networkName, "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(nil, http.MethodGet, url+"/networks/"+networkName, "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return network, err
 	}
@@ -69,7 +96,16 @@ func (app *App) GoGetNetwork(networkName string) (Network, error) {
 // (params the remain constant regardless the networks nc is connected to)
 func (app *App) GoGetNetclientConfig() (NcConfig, error) {
 	config := NcConfig{}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/netclient", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(nil, http.MethodGet, url+"/netclient", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return config, err
 	}
@@ -89,7 +125,16 @@ func (app *App) GoConnectToNetwork(networkName string) (any, error) {
 	}{
 		Connect: true,
 	}
-	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +151,16 @@ func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
 	}{
 		Connect: false,
 	}
-	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +172,16 @@ func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
 
 // App.GoLeaveNetwork leaves a known network
 func (app *App) GoLeaveNetwork(networkName string) (any, error) {
-	response, err := httpclient.GetResponse("", http.MethodPost, url+"/leave/"+networkName, "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse("", http.MethodPost, url+"/leave/"+networkName, "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +196,16 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 	var servers struct {
 		Name []string
 	}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/servers", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(nil, http.MethodGet, url+"/servers", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return []string{}, err
 	}
@@ -156,7 +228,17 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDt
 	}
 	res := SsoJoinResDto{}
 
-	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/sso/", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(payload, http.MethodPost, url+"/sso/", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		return res, err
 	}
@@ -181,7 +263,17 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 		AllNetworks: false,
 	}
 
-	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/join/", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(payload, http.MethodPost, url+"/join/", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +285,17 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 
 // App.GoUninstall uninstalls netclient form the machine
 func (app *App) GoUninstall() (any, error) {
-	response, err := httpclient.GetResponse("", http.MethodPost, url+"/uninstall/", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse("", http.MethodPost, url+"/uninstall/", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +345,16 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 // App.GoGetNodePeers returns the peers for the given node
 func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	var peers []wgtypes.PeerConfig
-	response, err := httpclient.GetResponse(node, http.MethodPost, url+"/nodepeers", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(node, http.MethodPost, url+"/nodepeers", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return peers, err
 	}
@@ -270,7 +381,16 @@ func (app *App) GoRegisterWithEnrollmentKey(key string) (any, error) {
 	}{
 		Token: key,
 	}
-	response, err := httpclient.GetResponse(token, http.MethodPost, url+"/register/", "", headers)
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(token, http.MethodPost, url+"/register/", "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			defer response.Body.Close()
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return nil, err
 	}
