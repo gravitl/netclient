@@ -38,7 +38,7 @@ func downloadVersion(version string) error {
 		if err != nil {
 			return fmt.Errorf("get freebsd version %w", err)
 		}
-		parts := strings.Split(out, "\"")
+		parts := strings.Split(out, "=")
 		if len(parts) < 2 {
 			return fmt.Errorf("get freebsd version parts %v", parts)
 		}
@@ -46,7 +46,8 @@ func downloadVersion(version string) error {
 		if len(freebsdVersion) < 2 {
 			return fmt.Errorf("get freebsd vesion %v", freebsdVersion)
 		}
-		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsdVersion[0], runtime.GOARCH)
+		freebsd := strings.Trim(freebsdVersion[0], "\"")
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsd, runtime.GOARCH)
 	}
 	res, err := http.Get(url)
 	if err != nil {
