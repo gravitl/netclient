@@ -38,7 +38,7 @@ func downloadVersion(version string) error {
 		if err != nil {
 			return fmt.Errorf("get freebsd version %w", err)
 		}
-		parts := strings.Split(out, "=")
+		parts := strings.Split(out, "\"")
 		if len(parts) < 2 {
 			return fmt.Errorf("get freebsd version parts %v", parts)
 		}
@@ -55,7 +55,7 @@ func downloadVersion(version string) error {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		if res.StatusCode == http.StatusNotFound {
-			return errors.New("specified version of netclient doesn't exist")
+			return fmt.Errorf("specified version of netclient doesn't exist %s", url)
 		}
 		return fmt.Errorf("error making HTTP request Code: %d", res.StatusCode)
 	}
