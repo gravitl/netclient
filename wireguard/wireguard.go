@@ -1,7 +1,6 @@
 package wireguard
 
 import (
-	"crypto/sha1"
 	"fmt"
 
 	"github.com/gravitl/netclient/cache"
@@ -66,7 +65,7 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 	if peer.Endpoint == nil {
 		return false
 	}
-	if endpoint, ok := cache.EndpointCache.Load(fmt.Sprintf("%v", sha1.Sum([]byte(peer.PublicKey.String())))); ok && endpoint != nil {
+	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok && endpoint != nil {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
 		if ok {

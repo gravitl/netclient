@@ -2,7 +2,6 @@ package networking
 
 import (
 	"context"
-	"crypto/sha1"
 	"fmt"
 	"net"
 	"sync"
@@ -69,26 +68,25 @@ func sendError(c net.Conn, message string) {
 	}
 }
 
-func storeNewPeerIface(clientPubKeyHash string, endpoint *net.UDPAddr) error {
+func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Endpoint: endpoint,
 	}
-	err := setPeerEndpoint(clientPubKeyHash, newIfaceValue)
+	err := setPeerEndpoint(peerPubKey, newIfaceValue)
 	if err != nil {
 		return err
 	}
-	cache.EndpointCache.Store(clientPubKeyHash, newIfaceValue)
+	cache.EndpointCache.Store(peerPubKey, newIfaceValue)
 
 	return nil
 }
 
-func setPeerEndpoint(publicKeyHash string, value cache.EndpointCacheValue) error {
+func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 
 	currentServerPeers := config.Netclient().HostPeers
 	for i := range currentServerPeers {
 		currPeer := currentServerPeers[i]
-		peerPubkeyHash := fmt.Sprintf("%v", sha1.Sum([]byte(currPeer.PublicKey.String())))
-		if peerPubkeyHash == publicKeyHash { // filter for current peer to overwrite endpoint
+		if currPeer.PublicKey.String() == peerPubKey { // filter for current peer to overwrite endpoint
 			wgEndpoint := value.Endpoint
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
 			// check if conn is active on proxy and update

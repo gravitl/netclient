@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -175,6 +176,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
+	log.Println("------------->####### HEREEEEEE--------------> ")
 	if peerUpdate.EndpointDetection {
 		slog.Debug("endpoint detection enabled")
 		go handleEndpointDetection(&peerUpdate)
@@ -319,7 +321,6 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
-	hostPubKey := config.Netclient().PublicKey.String()
 	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
 	for idx := range peerUpdate.Peers {
 
@@ -347,9 +348,9 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					continue
 				}
 				if peerIP.IsPrivate() {
+					fmt.Println("-------> ###### checking ", peerIP, peerInfo.ListenPort, "for Peer PUB: ", peerPubKey)
 					networking.FindBestEndpoint(
 						peerIP.String(),
-						hostPubKey,
 						peerPubKey,
 						peerInfo.ListenPort,
 					)
