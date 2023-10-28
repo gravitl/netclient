@@ -3,7 +3,6 @@ package wireguard
 import (
 	"crypto/sha1"
 	"fmt"
-	"net"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -71,7 +70,7 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
 		if ok {
-			peer.Endpoint = net.UDPAddrFromAddrPort(cacheEndpoint.Endpoint)
+			peer.Endpoint = cacheEndpoint.Endpoint
 		}
 		return ok
 	}

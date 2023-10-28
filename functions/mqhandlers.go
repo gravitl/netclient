@@ -346,14 +346,15 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
-				if err := networking.FindBestEndpoint(
-					peerIP.String(),
-					hostPubKey,
-					peerPubKey,
-					peerInfo.ListenPort,
-				); err != nil { // happens v often
-					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "ip", peerIP, "port", peerInfo.ListenPort, "error", err)
+				if peerIP.IsPrivate() {
+					networking.FindBestEndpoint(
+						peerIP.String(),
+						hostPubKey,
+						peerPubKey,
+						peerInfo.ListenPort,
+					)
 				}
+
 			}
 		}
 	}

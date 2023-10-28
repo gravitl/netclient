@@ -1,63 +1,19 @@
 package networking
 
 import (
-	"crypto/sha1"
-	"encoding/json"
-	"fmt"
 	"net"
-	"net/netip"
-	"strconv"
-	"time"
 
-	"github.com/gravitl/netclient/config"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"github.com/gravitl/netclient/metrics"
 )
 
 // FindBestEndpoint - requests against a given addr and port
-func FindBestEndpoint(reqAddr, currentHostPubKey, peerPubKey string, port int) error {
-	peerAddr, err := netip.ParseAddr(reqAddr) // begin validate
-	if err != nil {
-		return err
+func FindBestEndpoint(peerIp, currentHostPubKey, peerPubKey string, port int) {
+
+	connected, _ := metrics.PeerConnStatus(peerIp, port)
+	if connected {
+		storeNewPeerIface(peerPubKey, &net.UDPAddr{
+			IP:   net.IP(peerIp),
+			Port: port,
+		})
 	}
-	if _, err = wgtypes.ParseKey(peerPubKey); err != nil {
-		return err
-	}
-	if _, err = wgtypes.ParseKey(currentHostPubKey); err != nil {
-		return err
-	}
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(reqAddr, strconv.Itoa(port)), reqTimeout)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	sentTime := time.Now().UnixMilli()
-	msg := bestIfaceMsg{
-		Hash:       fmt.Sprintf("%v", sha1.Sum([]byte(currentHostPubKey))),
-		TimeStamp:  sentTime,
-		ListenPort: config.Netclient().ListenPort,
-	}
-	reqData, err := json.Marshal(&msg)
-	if err != nil {
-		return err
-	}
-	_, err = c.Write(reqData)
-	if err != nil {
-		return err
-	}
-	if err = c.SetReadDeadline(time.Now().Add(reqTimeout)); err != nil {
-		return err
-	}
-	buf := make([]byte, 1024)
-	numBytes, err := c.Read(buf)
-	if err != nil {
-		return err
-	}
-	latency := time.Now().UnixMilli() - sentTime
-	response := string(buf[:numBytes])
-	if response == messages.Success { // found new best interface, save it
-		if err = storeNewPeerIface(fmt.Sprintf("%v", sha1.Sum([]byte(peerPubKey))), netip.AddrPortFrom(peerAddr, uint16(port)), time.Duration(latency)); err != nil {
-			return err
-		}
-	}
-	return fmt.Errorf(response)
 }
