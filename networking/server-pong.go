@@ -72,23 +72,18 @@ func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 			wgEndpoint := value.Endpoint
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
 			// check if conn is active on proxy and update
-			if conn, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
-				if !conn.Config.PeerConf.Endpoint.IP.Equal(wgEndpoint.IP) {
-					conn.Config.PeerConf.Endpoint = wgEndpoint
-					proxy_config.GetCfg().UpdatePeer(&conn)
-					proxy_config.GetCfg().ResetPeer(currPeer.PublicKey.String())
-				}
-			} else {
-				return wireguard.UpdatePeer(&wgtypes.PeerConfig{
-					PublicKey:                   currPeer.PublicKey,
-					Endpoint:                    wgEndpoint,
-					AllowedIPs:                  currPeer.AllowedIPs,
-					PersistentKeepaliveInterval: currPeer.PersistentKeepaliveInterval,
-					ReplaceAllowedIPs:           true,
-				})
+			if _, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
+				proxy_config.GetCfg().RemovePeer(currPeer.PublicKey.String())
 			}
-
+			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
+				PublicKey:                   currPeer.PublicKey,
+				Endpoint:                    wgEndpoint,
+				AllowedIPs:                  currPeer.AllowedIPs,
+				PersistentKeepaliveInterval: currPeer.PersistentKeepaliveInterval,
+				ReplaceAllowedIPs:           true,
+			})
 		}
+
 	}
 	return fmt.Errorf("no peer found")
 }
