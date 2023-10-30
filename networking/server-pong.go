@@ -47,25 +47,7 @@ func StartIfaceDetection(ctx context.Context, wg *sync.WaitGroup, port int) {
 // responds PONG if best connection found
 func handleRequest(c net.Conn) {
 	defer c.Close()
-
-	buffer := make([]byte, 1024) // handle incoming data
-	numBytes, err := c.Read(buffer)
-	if err != nil {
-		if numBytes == 0 {
-			return
-		}
-		logger.Log(0, "error reading ping", err.Error())
-		return
-	}
-
 	sendSuccess(c)
-}
-
-func sendError(c net.Conn, message string) {
-	_, err := c.Write([]byte(message))
-	if err != nil {
-		logger.Log(0, "error writing response", err.Error())
-	}
 }
 
 func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {

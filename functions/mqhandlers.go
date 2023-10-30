@@ -2,7 +2,6 @@ package functions
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -348,7 +347,6 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 					continue
 				}
 				if peerIP.IsPrivate() {
-					fmt.Println("-------> ###### checking ", peerIP, peerInfo.ListenPort, "for Peer PUB: ", peerPubKey)
 					networking.FindBestEndpoint(
 						peerIP.String(),
 						peerPubKey,
