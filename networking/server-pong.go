@@ -69,15 +69,15 @@ func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 	for i := range currentServerPeers {
 		currPeer := currentServerPeers[i]
 		if currPeer.PublicKey.String() == peerPubKey { // filter for current peer to overwrite endpoint
-			wgEndpoint := value.Endpoint
-			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", wgEndpoint.String())
-			// check if conn is active on proxy and update
+
+			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", value.Endpoint.String())
+			// check if conn is active on proxy and stop it
 			if _, ok := proxy_config.GetCfg().GetPeer(currPeer.PublicKey.String()); ok {
 				proxy_config.GetCfg().RemovePeer(currPeer.PublicKey.String())
 			}
 			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 				PublicKey:                   currPeer.PublicKey,
-				Endpoint:                    wgEndpoint,
+				Endpoint:                    value.Endpoint,
 				AllowedIPs:                  currPeer.AllowedIPs,
 				PersistentKeepaliveInterval: currPeer.PersistentKeepaliveInterval,
 				ReplaceAllowedIPs:           true,
