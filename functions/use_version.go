@@ -14,6 +14,7 @@ import (
 	"github.com/blang/semver"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 )
 
 var binPath, filePath string
@@ -32,6 +33,22 @@ func downloadVersion(version string) error {
 	if runtime.GOOS == "windows" {
 		url += ".exe"
 	}
+	if runtime.GOOS == "freebsd" {
+		out, err := ncutils.RunCmd("grep VERSION_ID /etc/os-release", false)
+		if err != nil {
+			return fmt.Errorf("get freebsd version %w", err)
+		}
+		parts := strings.Split(out, "=")
+		if len(parts) < 2 {
+			return fmt.Errorf("get freebsd version parts %v", parts)
+		}
+		freebsdVersion := strings.Split(parts[1], ".")
+		if len(freebsdVersion) < 2 {
+			return fmt.Errorf("get freebsd vesion %v", freebsdVersion)
+		}
+		freebsd := strings.Trim(freebsdVersion[0], "\"")
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsd, runtime.GOARCH)
+	}
 	res, err := http.Get(url)
 	if err != nil {
 		return err
@@ -39,7 +56,7 @@ func downloadVersion(version string) error {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		if res.StatusCode == http.StatusNotFound {
-			return errors.New("specified version of netclient doesn't exist")
+			return fmt.Errorf("specified version of netclient doesn't exist %s", url)
 		}
 		return fmt.Errorf("error making HTTP request Code: %d", res.StatusCode)
 	}
