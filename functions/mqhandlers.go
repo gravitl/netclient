@@ -175,7 +175,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-	go handleEndpointDetection(&peerUpdate)
+	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
@@ -313,12 +313,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
-func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
-	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
-	for idx := range peerUpdate.Peers {
+func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
+	currentCidrs := getAllAllowedIPs(peers[:])
+	for idx := range peers {
 
-		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
-		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+		peerPubKey := peers[idx].PublicKey.String()
+		if peerInfo, ok := peerInfo[peerPubKey]; ok {
 			if peerInfo.IsStatic {
 				// peer is a static host shouldn't disturb the configuration set by the user
 				continue
@@ -326,7 +326,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
-				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+				if peers[idx].Endpoint == nil || peerIP == nil {
 					continue
 				}
 				// check to skip bridge network
@@ -336,7 +336,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
-					peerUpdate.Peers[idx].Endpoint.IP.Equal(peerIP) ||
+					peers[idx].Endpoint.IP.Equal(peerIP) ||
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}

@@ -15,16 +15,16 @@ import (
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(restart bool) error {
+func Pull(restart bool) (models.HostPull, error) {
 
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	if server == nil {
-		return errors.New("server config not found")
+		return models.HostPull{}, errors.New("server config not found")
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
-		return err
+		return models.HostPull{}, err
 	}
 	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
 		URL:           "https://" + server.API,
@@ -39,7 +39,7 @@ func Pull(restart bool) error {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "error pulling server", serverName, strconv.Itoa(errData.Code), errData.Message)
 		}
-		return err
+		return models.HostPull{}, err
 	}
 	_ = config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
@@ -52,7 +52,7 @@ func Pull(restart bool) error {
 	_ = config.WriteNodeConfig()
 	if restart {
 		logger.Log(3, "restarting daemon")
-		return daemon.Restart()
+		return models.HostPull{}, daemon.Restart()
 	}
-	return nil
+	return pullResponse, nil
 }

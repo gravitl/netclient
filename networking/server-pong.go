@@ -81,6 +81,7 @@ func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 				AllowedIPs:                  currPeer.AllowedIPs,
 				PersistentKeepaliveInterval: currPeer.PersistentKeepaliveInterval,
 				ReplaceAllowedIPs:           true,
+				UpdateOnly:                  true,
 			})
 		}
 
