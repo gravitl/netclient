@@ -22,7 +22,7 @@ wait $!
 if [ "${GUI_SERVER_ENABLED}" == "true" ]; then
     echo "[netclient] enabling gui server"
     netclient guiServer enable
-elif [ "${GUI_SERVER_ENABLED}" == "false" ]; then
+else
     echo "[netclient] disabling gui server"
     netclient guiServer disable
 fi
