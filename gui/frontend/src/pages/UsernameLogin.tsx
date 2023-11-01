@@ -73,7 +73,7 @@ export default function UsernameLogin() {
       username,
       networkName,
       password,
-    ]
+    ],
   );
 
   const onSsoLoginClick = useCallback(async () => {
@@ -81,16 +81,16 @@ export default function UsernameLogin() {
 
     setIsConnecting(true);
     try {
-      const { authendpoint: oauthLink } = (await GoJoinNetworkBySso(
+      const { authendpoint: oauthLink } = await GoJoinNetworkBySso(
         serverName,
-        networkName
-      ));
+        networkName,
+      );
 
       BrowserOpenURL(oauthLink);
       await notifyUser(
         `To complete joining network ${networkName}, open the below link in the browser and complete the steps.\nThe new network will enlist in a few moment after the join is complete\n\nLink: ${oauthLink}`,
         "Complete joinby OAuth",
-        "info"
+        "info",
       );
 
       const data: NetworksContextDispatcherProps = {
@@ -124,7 +124,7 @@ export default function UsernameLogin() {
         serverName,
         username,
         networkName,
-        password
+        password,
       );
 
       const data: NetworksContextDispatcherProps = {

@@ -1,9 +1,9 @@
-import { GoWriteToClipboard } from "../../wailsjs/go/main/App"
+import { GoWriteToClipboard } from "../../wailsjs/go/main/App";
 
 export async function writeTextToClipboard(text: string) {
   try {
-    return await GoWriteToClipboard(text)
+    return await GoWriteToClipboard(text);
   } catch (err) {
-    return Promise.reject(err)
+    return Promise.reject(err);
   }
 }

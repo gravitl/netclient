@@ -13,7 +13,7 @@ export interface NetworksContextDispatcherProps {
 }
 
 export type NetworksContextDispatcher = (
-  props: NetworksContextDispatcherProps
+  props: NetworksContextDispatcherProps,
 ) => void;
 
 type NetworksContextProviderProps = { children: ReactNode };
@@ -22,13 +22,13 @@ type NetworksContextConsumerProps = { children: FC };
 
 function networksContextReducer(
   state: NetworksContextType,
-  dispatchProps: NetworksContextDispatcherProps
+  dispatchProps: NetworksContextDispatcherProps,
 ): NetworksContextType {
   switch (dispatchProps.action) {
     case "refresh-networks":
-      const networks = dispatchProps.data as main.Network[] ?? [];
+      const networks = (dispatchProps.data as main.Network[]) ?? [];
       // sort by network name asc
-      networks.sort((a, b) => (a.node!).network.localeCompare((b.node!).network))
+      networks.sort((a, b) => a.node!.network.localeCompare(b.node!.network));
       return { networks };
 
     default:
@@ -53,7 +53,7 @@ const initialState: NetworksContextType = {
 function NetworksContextProvider({ children }: NetworksContextProviderProps) {
   const [networksState, networksDispatch] = useReducer(
     networksContextReducer,
-    initialState
+    initialState,
   );
 
   return (
@@ -80,7 +80,7 @@ function useNetworksContext() {
   const context = useContext(NetworksContext);
   if (context === undefined) {
     throw new Error(
-      "useNetworksContext must be used within a NetworksContextProvider"
+      "useNetworksContext must be used within a NetworksContextProvider",
     );
   }
   return context;
