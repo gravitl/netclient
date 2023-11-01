@@ -50,7 +50,7 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		if isExtClient {
 			newMetric.Connected, newMetric.Latency = extPeerConnStatus(address)
 		} else {
-			newMetric.Connected, newMetric.Latency = peerConnStatus(address, port)
+			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, port)
 		}
 		if newMetric.Connected {
 			newMetric.Uptime = 1
@@ -112,7 +112,7 @@ func extPeerConnStatus(address string) (connected bool, latency int64) {
 	return
 }
 
-func peerConnStatus(address string, port int) (connected bool, latency int64) {
+func PeerConnStatus(address string, port int) (connected bool, latency int64) {
 	latency = 999
 	if address == "" || port == 0 {
 		return

@@ -151,7 +151,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
-	Pull(false)
+	pullresp, pullErr := Pull(false)
+	if pullErr != nil {
+		slog.Error("fail to pull config from server", "error", pullErr.Error())
+	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
@@ -160,6 +163,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
+	if pullErr == nil {
+		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
+	}
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return cancel
