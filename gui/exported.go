@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netclient/functions"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/clipboard"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -25,25 +26,23 @@ func (app *App) GoGetStatus() (any, error) {
 	defer func() {
 		httpclient.Client.Timeout = 30 * time.Second
 	}()
-
-	_, err := httpclient.GetResponse(nil, http.MethodGet, url+"/status", "", headers)
+	res, err := GetResponseWithRetry(url+"/status", http.MethodGet, nil)
 	if err != nil {
-		return nil, errors.New("netclient http server is not running")
+		return nil, errors.New("netclient http server is not running or unreachable")
 	}
+	defer res.Body.Close()
 	return nil, nil
 }
 
 // App.GoGetKnownNetworks returns all known network configs (node, server)
 func (app *App) GoGetKnownNetworks() ([]Network, error) {
 	networks := []Network{}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/allnetworks", "", headers)
+	res, err := GetResponseWithRetry(url+"/allnetworks", http.MethodGet, nil)
 	if err != nil {
 		return networks, err
 	}
-	if response.StatusCode != http.StatusOK {
-		return networks, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
-	}
-	if err := json.NewDecoder(response.Body).Decode(&networks); err != nil {
+	defer res.Body.Close()
+	if err := json.NewDecoder(res.Body).Decode(&networks); err != nil {
 		return networks, err
 	}
 	return networks, nil
@@ -52,10 +51,11 @@ func (app *App) GoGetKnownNetworks() ([]Network, error) {
 // App.GoGetNetwork returns node, server configs for the given network
 func (app *App) GoGetNetwork(networkName string) (Network, error) {
 	network := Network{}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/networks/"+networkName, "", headers)
+	response, err := GetResponseWithRetry(url+"/networks/"+networkName, http.MethodGet, nil)
 	if err != nil {
 		return network, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return network, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -69,10 +69,11 @@ func (app *App) GoGetNetwork(networkName string) (Network, error) {
 // (params the remain constant regardless the networks nc is connected to)
 func (app *App) GoGetNetclientConfig() (NcConfig, error) {
 	config := NcConfig{}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/netclient", "", headers)
+	response, err := GetResponseWithRetry(url+"/netclient/", http.MethodGet, nil)
 	if err != nil {
 		return config, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return config, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -82,34 +83,36 @@ func (app *App) GoGetNetclientConfig() (NcConfig, error) {
 	return config, nil
 }
 
-// App.goConnectToNetwork connects to the given network
+// App.GoConnectToNetwork connects to the given network
 func (app *App) GoConnectToNetwork(networkName string) (any, error) {
-	connect := struct {
+	payload := struct {
 		Connect bool
 	}{
 		Connect: true,
 	}
-	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+	response, err := GetResponseWithRetry(url+"/connect/"+networkName, http.MethodPost, payload)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
 	return nil, nil
 }
 
-// App.goDisconnectFromNetwork disconnects from the given network
+// App.GoDisconnectFromNetwork disconnects from the given network
 func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
-	connect := struct {
+	payload := struct {
 		Connect bool
 	}{
 		Connect: false,
 	}
-	response, err := httpclient.GetResponse(connect, http.MethodPost, url+"/connect/"+networkName, "", headers)
+	response, err := GetResponseWithRetry(url+"/connect/"+networkName, http.MethodPost, payload)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -118,10 +121,11 @@ func (app *App) GoDisconnectFromNetwork(networkName string) (any, error) {
 
 // App.GoLeaveNetwork leaves a known network
 func (app *App) GoLeaveNetwork(networkName string) (any, error) {
-	response, err := httpclient.GetResponse("", http.MethodPost, url+"/leave/"+networkName, "", headers)
+	response, err := GetResponseWithRetry(url+"/leave/"+networkName, http.MethodPost, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -133,10 +137,11 @@ func (app *App) GoGetRecentServerNames() ([]string, error) {
 	var servers struct {
 		Name []string
 	}
-	response, err := httpclient.GetResponse(nil, http.MethodGet, url+"/servers", "", headers)
+	response, err := GetResponseWithRetry(url+"/servers", http.MethodPost, nil)
 	if err != nil {
 		return []string{}, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return []string{}, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -156,10 +161,11 @@ func (app *App) GoJoinNetworkBySso(serverName, networkName string) (SsoJoinResDt
 	}
 	res := SsoJoinResDto{}
 
-	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/sso/", "", headers)
+	response, err := GetResponseWithRetry(url+"/sso/", http.MethodPost, payload)
 	if err != nil {
 		return res, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return res, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -181,10 +187,11 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 		AllNetworks: false,
 	}
 
-	response, err := httpclient.GetResponse(payload, http.MethodPost, url+"/join/", "", headers)
+	response, err := GetResponseWithRetry(url+"/join/", http.MethodPost, payload)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -193,10 +200,11 @@ func (app *App) GoJoinNetworkByBasicAuth(serverName, username, networkName, pass
 
 // App.GoUninstall uninstalls netclient form the machine
 func (app *App) GoUninstall() (any, error) {
-	response, err := httpclient.GetResponse("", http.MethodPost, url+"/uninstall/", "", headers)
+	response, err := GetResponseWithRetry(url+"/uninstall/", http.MethodPost, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
 	}
@@ -240,17 +248,17 @@ func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
 	return Network{}, nil
 }
 
-// App.GoGetNodePeers returns the peers for the given node
+// GoGetNodePeers returns the peers for the given node
 func (app *App) GoGetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	var peers []wgtypes.PeerConfig
-	response, err := httpclient.GetResponse(node, http.MethodPost, url+"/nodepeers", "", headers)
+	res, err := GetResponseWithRetry(url+"/nodepeers", http.MethodPost, node)
 	if err != nil {
+		slog.Error("error reading response body", "err", err)
 		return peers, err
 	}
-	if response.StatusCode != http.StatusOK {
-		return peers, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
-	}
-	if err := json.NewDecoder(response.Body).Decode(&peers); err != nil {
+	defer res.Body.Close()
+	slog.Info("response body", "body", res.Body)
+	if err = json.NewDecoder(res.Body).Decode(&peers); err != nil {
 		return peers, err
 	}
 	return peers, nil
@@ -270,12 +278,28 @@ func (app *App) GoRegisterWithEnrollmentKey(key string) (any, error) {
 	}{
 		Token: key,
 	}
-	response, err := httpclient.GetResponse(token, http.MethodPost, url+"/register/", "", headers)
+	res, err := GetResponseWithRetry(url+"/register/", http.MethodPost, token)
 	if err != nil {
 		return nil, err
 	}
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http status err %d %s", response.StatusCode, response.Status)
-	}
+	defer res.Body.Close()
 	return nil, nil
+}
+
+// GetResponseWithRetry sends a request to the given URL with the given method and payload
+// and returns the *http.Response and an error
+func GetResponseWithRetry(url string, method string, payload any) (*http.Response, error) {
+	var response *http.Response
+	var err error
+	for i := 0; i < 3; i++ {
+		response, err = httpclient.GetResponse(payload, method, url, "", headers)
+		if err == nil && response.StatusCode == http.StatusOK {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
 }

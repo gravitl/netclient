@@ -19,7 +19,7 @@ import { GoGetNodePeers } from "../../wailsjs/go/main/App";
 
 export default function NetworkDetailsPage() {
   const [networkDetails, setNetworkDetails] = useState<main.Network | null>(
-    null
+    null,
   );
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [isLoadingPeers, setIsLoadingPeers] = useState(true);
@@ -28,6 +28,25 @@ export default function NetworkDetailsPage() {
   const navigate = useNavigate();
   const { networksState, networksDispatch } = useNetworksContext();
   const { networkName } = useParams();
+
+  const loadPeers = useCallback(
+    async (shouldNotifyOnError = false) => {
+      if (!networkDetails?.node) return;
+      try {
+        const peers = (await GoGetNodePeers(networkDetails.node)) ?? [];
+        peers.sort((a, b) => a.Endpoint.IP.localeCompare(b.Endpoint.IP));
+        setNetworkPeers(() => peers);
+      } catch (err) {
+        console.error(err);
+        if (shouldNotifyOnError) {
+          await notifyUser(("Failed to load peers\n" + err) as string);
+        }
+      } finally {
+        setIsLoadingPeers(() => false);
+      }
+    },
+    [networkDetails, setNetworkPeers],
+  );
 
   const loadNetworkDetails = useCallback(async () => {
     try {
@@ -55,7 +74,7 @@ export default function NetworkDetailsPage() {
           newStatus === false &&
           !(await getUserConfirmation(
             `Are you sure you want to disconnect from network: ${networkName}`,
-            "Disconnect from network?"
+            "Disconnect from network?",
           ))
         ) {
           return;
@@ -63,14 +82,14 @@ export default function NetworkDetailsPage() {
         await updateConnectionStatusAndRefreshNetworks(
           networksDispatch,
           networkName,
-          newStatus
+          newStatus,
         );
       } catch (err) {
         await notifyUser(("Failed to update network status\n" + err) as string);
         console.error(err);
       }
     },
-    [setNetworkDetails, networkDetails, networkName, networksDispatch]
+    [setNetworkDetails, networkDetails, networkName, networksDispatch],
   );
 
   const onLeaveNetwork = useCallback(async () => {
@@ -82,7 +101,7 @@ export default function NetworkDetailsPage() {
       if (
         !(await getUserConfirmation(
           `Are you sure you want to leave network: ${networkName}`,
-          "Leave network?"
+          "Leave network?",
         ))
       ) {
         return;
@@ -96,25 +115,6 @@ export default function NetworkDetailsPage() {
       setIsLeavingNetwork(false);
     }
   }, [navigate, networksDispatch, setIsLeavingNetwork, networkName]);
-
-  const loadPeers = useCallback(
-    async (shouldNotifyOnError = false) => {
-      if (!networkDetails?.node) return;
-      try {
-        const peers = await GoGetNodePeers(networkDetails.node) ?? [];
-        peers.sort((a, b) => a.Endpoint.IP.localeCompare(b.Endpoint.IP))
-        setNetworkPeers(() => peers);
-      } catch (err) {
-        console.error(err);
-        if (shouldNotifyOnError) {
-          await notifyUser(("Failed to load peers\n" + err) as string);
-        }
-      } finally {
-        setIsLoadingPeers(() => false);
-      }
-    },
-    [networkDetails, setNetworkPeers]
-  );
 
   useEffect(() => {
     loadNetworkDetails();

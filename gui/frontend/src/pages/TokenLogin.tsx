@@ -26,7 +26,7 @@ function TokenLogin() {
   const [enrollmentKey, setEnrollmentKey] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [type, setType] = useState<"access-key" | "enrollment-key">(
-    "enrollment-key"
+    "enrollment-key",
   );
   const navigate = useNavigate();
   const { networksDispatch } = useNetworksContext();

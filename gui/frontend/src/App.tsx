@@ -25,7 +25,9 @@ export default function App() {
       await notifyUser(
         "Cannot connect to daemon. Ensure that the netclient daemon is running then retry."
       );
-      await LogFatal("Cannot connect to daemon. Ensure that the netclient daemon is running then retry.")
+      await LogFatal(
+        "Cannot connect to daemon. Ensure that the netclient daemon is running then retry."
+      );
     }
   }, []);
 
