@@ -102,7 +102,7 @@ func versionLessThan(v1, v2 string) (bool, error) {
 func UseVersion(version string, rebootDaemon bool) error {
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
-		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-windows-amd64.exe", version)
+		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
 		if err := windowsUpdate(windowsBinaryURL); err != nil {
 			return err
 		}
