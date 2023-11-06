@@ -13,11 +13,22 @@ cleanup() {
 #Trap SigTerm
 trap 'cleanup' SIGTERM
 
-echo "[netclient] joining network"
+# install netclient
+echo "[netclient] starting netclient daemon"
+/root/netclient install
+wait $!
 
-if [ -z "${SLEEP}" ]; then
-    SLEEP=10
+# check if needs to use the gui server
+if [ "${GUI_SERVER_ENABLED}" == "true" ]; then
+    echo "[netclient] enabling gui server"
+    netclient guiServer enable
+else
+    echo "[netclient] disabling gui server"
+    netclient guiServer disable
 fi
+
+# join network based on env vars
+echo "[netclient] joining network"
 
 TOKEN_CMD=""
 if [ "$TOKEN" != "" ]; then
@@ -49,11 +60,7 @@ if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
-echo "[netclient] Starting netclient daemon"
-/root/netclient install
-wait $!
-
-/root/netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
-if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
+netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
+if [ $? -ne 0 ]; then { echo "failed to join, quitting." ; exit 1; } fi
 
 sleep infinity
