@@ -25,6 +25,10 @@ var interfaceCmd = &cobra.Command{
 			fmt.Printf("iface `%s` already exists\n", args[0])
 			return
 		}
+		if args[0] == "netmaker-test" {
+			fmt.Println("cannot use `netmaker-test`")
+			return
+		}
 		config.Netclient().Interface = args[0]
 		err = functions.Push(false)
 		if err != nil {

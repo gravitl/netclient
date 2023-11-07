@@ -63,6 +63,9 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	InitConfig(flags)
+	if config.Netclient().Interface != "" {
+		ncutils.SetInterfaceName(config.Netclient().Interface)
+	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
 	if runtime.GOOS == "darwin" {
