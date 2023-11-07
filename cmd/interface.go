@@ -30,7 +30,12 @@ var interfaceCmd = &cobra.Command{
 			return
 		}
 		config.Netclient().Interface = args[0]
-		err = functions.Push(false)
+		restart, err := cmd.Flags().GetBool("restart-daemon")
+		if err != nil {
+			fmt.Println("failed to set interface ", err)
+			return
+		}
+		err = functions.Push(restart)
 		if err != nil {
 			fmt.Println("failed to push data to server", err.Error())
 		}
@@ -40,4 +45,5 @@ var interfaceCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(interfaceCmd)
+	interfaceCmd.Flags().BoolP("restart-daemon", "D", true, "when set to true, daemon will be restarted")
 }
