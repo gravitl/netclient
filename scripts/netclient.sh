@@ -49,11 +49,14 @@ if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
+
 echo "[netclient] Starting netclient daemon"
 /root/netclient install
 wait $!
-
-/root/netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
+if [ "${IFACE_NAME}" != "" ];then
+    netclient interface ${IFACE_NAME}
+fi
+netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 sleep infinity

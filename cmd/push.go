@@ -13,7 +13,7 @@ var pushCmd = &cobra.Command{
 	Long:  `updates host config locally and updates server`,
 	Run: func(cmd *cobra.Command, args []string) {
 		setHostFields(cmd)
-		err := functions.Push()
+		err := functions.Push(true)
 		if err != nil {
 			logger.Log(0, "failed to push", err.Error())
 		}

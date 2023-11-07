@@ -25,6 +25,8 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+var ifaceName string
+
 // MaxNameLength - maximum node name length
 const MaxNameLength = 62
 
@@ -501,8 +503,15 @@ func IPIsPrivate(ipnet net.IP) bool {
 	return ipnet.IsPrivate() || ipnet.IsLoopback()
 }
 
+func SetInterfaceName(iface string) {
+	ifaceName = iface
+}
+
 // GetInterfaceName - fetches the interface name
 func GetInterfaceName() string {
+	if ifaceName != "" {
+		return ifaceName
+	}
 	if runtime.GOOS == "darwin" {
 		return "utun69"
 	}
@@ -541,4 +550,18 @@ func RandomString(length int) string {
 // ConvHostPassToHash - converts password to md5 hash
 func ConvHostPassToHash(hostPass string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(hostPass)))
+}
+
+// InterfaceExists - checks if iface exists already
+func InterfaceExists(ifaceName string) (bool, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return false, err
+	}
+	for _, inet := range interfaces {
+		if inet.Name == ifaceName {
+			return true, nil
+		}
+	}
+	return false, nil
 }
