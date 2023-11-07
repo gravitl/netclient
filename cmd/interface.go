@@ -30,6 +30,10 @@ var interfaceCmd = &cobra.Command{
 			return
 		}
 		config.Netclient().Interface = args[0]
+		if err := config.WriteNetclientConfig(); err != nil {
+			fmt.Println("failed to save netclient config")
+			return
+		}
 		restart, err := cmd.Flags().GetBool("restart-daemon")
 		if err != nil {
 			fmt.Println("failed to set interface ", err)
