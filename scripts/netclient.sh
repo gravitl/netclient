@@ -54,7 +54,7 @@ echo "[netclient] Starting netclient daemon"
 /root/netclient install
 wait $!
 if [ "${IFACE_NAME}" != "" ];then
-    netclient interface ${IFACE_NAME}
+    netclient interface ${IFACE_NAME} -D false
 fi
 netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
