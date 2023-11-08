@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -63,9 +62,6 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	InitConfig(flags)
-	if config.Netclient().Interface != "" {
-		ncutils.SetInterfaceName(config.Netclient().Interface)
-	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
 	if runtime.GOOS == "darwin" {
@@ -82,6 +78,9 @@ func initConfig() {
 func InitConfig(viper *viper.Viper) {
 	config.CheckUID()
 	config.ReadNetclientConfig()
+	if config.Netclient().Interface != "" {
+		ncutils.SetInterfaceName(config.Netclient().Interface)
+	}
 	setupLogging(viper)
 	config.ReadNodeConfig()
 	config.ReadServerConf()
@@ -205,7 +204,7 @@ func checkConfig() {
 	}
 	if netclient.Interface == "" {
 		logger.Log(0, "setting wireguard interface")
-		netclient.Interface = models.WIREGUARD_INTERFACE
+		netclient.Interface = ncutils.GetInterfaceName()
 		saveRequired = true
 	}
 	if netclient.ListenPort == 0 {

@@ -52,6 +52,7 @@ fi
 
 echo "[netclient] Starting netclient daemon"
 if [ "${IFACE_NAME}" != "" ];then
+    echo "IFACE NAME ${IFACE_NAME}"
     /root/netclient interface ${IFACE_NAME} -D false
 fi
 /root/netclient install
