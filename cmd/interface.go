@@ -35,6 +35,10 @@ var interfaceCmd = &cobra.Command{
 			fmt.Println("use utun as interface on darwin")
 			return
 		}
+		if runtime.GOOS != "darwin" && !strings.HasPrefix(args[0], "netmaker") {
+			fmt.Println("invalid interface name, should contain `netmaker` as prefix")
+			return
+		}
 		config.Netclient().Interface = args[0]
 		if err := config.WriteNetclientConfig(); err != nil {
 			fmt.Println("failed to save netclient config")
