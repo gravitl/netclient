@@ -3,15 +3,18 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
+    touch /etc/netclient/a.out
     nets=($(wg show interfaces))
     for net in ${nets[@]}; do
-        echo "deleting interface" $net
-        ip link del $net
+        if [ ${net} == "netmaker*" ]
+            echo "deleting interface" $net >> /etc/netclient/a.out
+            ip link del $net
+        fi
     done
 }
 
-#Trap SigTerm
-trap 'cleanup' SIGTERM
+# #Trap SigTerm
+# trap 'cleanup' SIGTERM
 
 echo "[netclient] joining network"
 
@@ -59,4 +62,6 @@ wait $!
 netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
-sleep infinity
+sleep infinity &
+wait $!
+cleanup
