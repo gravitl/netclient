@@ -13,8 +13,8 @@ cleanup() {
     done
 }
 
-# #Trap SigTerm
-# trap 'cleanup' SIGTERM
+#Trap SigTerm
+trap 'cleanup' SIGTERM &
 
 echo "[netclient] joining network"
 
@@ -63,5 +63,4 @@ netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 sleep infinity &
-wait $!
-cleanup
+
