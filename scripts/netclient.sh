@@ -48,13 +48,12 @@ STATIC_CMD=""
 if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
-
+IFACE_CMD=""
+if [ "${IFACE_NAME}" != "" ];then
+    STATIC_CMD="-I ${IFACE_NAME}"
+fi
 
 echo "[netclient] Starting netclient daemon"
-if [ "${IFACE_NAME}" != "" ];then
-    echo "IFACE NAME ${IFACE_NAME}"
-    /root/netclient interface ${IFACE_NAME} -D false
-fi
 /root/netclient install
 wait $!
 netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
