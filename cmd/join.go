@@ -48,5 +48,6 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.MTU, "m", "", "sets MTU on host")
 	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
 	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
+	joinCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(joinCmd)
 }

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/gravitl/netclient/config"
@@ -27,6 +29,7 @@ var registerFlags = struct {
 	Port        string
 	MTU         string
 	Static      string
+	Interface   string
 	Name        string
 }{
 	Server:      "server",
@@ -39,6 +42,7 @@ var registerFlags = struct {
 	MTU:         "mtu",
 	Static:      "static",
 	Name:        "name",
+	Interface:   "interface",
 }
 
 // registerCmd represents the register command
@@ -86,10 +90,43 @@ func setHostFields(cmd *cobra.Command) {
 	if hostName, err := cmd.Flags().GetString(registerFlags.Name); err == nil && hostName != "" {
 		config.Netclient().Name = hostName
 	}
-
+	if ifaceName, err := cmd.Flags().GetString(registerFlags.Interface); err == nil && ifaceName != "" {
+		if !validateIface(ifaceName) {
+			fmt.Println("invalid interface name", ifaceName)
+			os.Exit(1)
+		}
+		config.Netclient().Interface = ifaceName
+	}
 	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
 		config.Netclient().IsStatic = isStatic
 	}
+}
+func validateIface(iface string) bool {
+	if iface == "" {
+		return false
+	}
+	exists, err := ncutils.InterfaceExists(iface)
+	if err != nil {
+		fmt.Println("error checking for interfaces ", err)
+		return false
+	}
+	if exists {
+		fmt.Printf("iface `%s` already exists\n", iface)
+		return false
+	}
+	if iface == "netmaker-test" || iface == "utun70" {
+		fmt.Println("cannot use `netmaker-test` interface")
+		return false
+	}
+	if runtime.GOOS == "darwin" && !strings.HasPrefix(iface, "utun") {
+		fmt.Println("use utun as interface on darwin")
+		return false
+	}
+	if runtime.GOOS != "darwin" && !strings.HasPrefix(iface, "netmaker") {
+		fmt.Println("invalid interface name, should contain `netmaker` as prefix")
+		return false
+	}
+	return true
 }
 
 func checkUserRegistration(cmd *cobra.Command) error {
@@ -140,5 +177,6 @@ func init() {
 	registerCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
 	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
+	registerCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(registerCmd)
 }
