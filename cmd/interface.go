@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"runtime"
+	"strings"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
@@ -25,8 +27,12 @@ var interfaceCmd = &cobra.Command{
 			fmt.Printf("iface `%s` already exists\n", args[0])
 			return
 		}
-		if args[0] == "netmaker-test" {
-			fmt.Println("cannot use `netmaker-test`")
+		if args[0] == "netmaker-test" || args[0] == "utun70" {
+			fmt.Println("cannot use `netmaker-test` interface")
+			return
+		}
+		if runtime.GOOS == "darwin" && !strings.HasPrefix(args[0], "utun") {
+			fmt.Println("use utun as interface on darwin")
 			return
 		}
 		config.Netclient().Interface = args[0]

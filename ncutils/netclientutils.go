@@ -509,7 +509,7 @@ func SetInterfaceName(iface string) {
 
 // GetInterfaceName - fetches the interface name
 func GetInterfaceName() string {
-	if ifaceName != "" {
+	if ifaceName != "" && (runtime.GOOS == "darwin" && strings.HasPrefix(ifaceName, "utun")) {
 		return ifaceName
 	}
 	if runtime.GOOS == "darwin" {
