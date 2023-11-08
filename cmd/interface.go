@@ -14,7 +14,6 @@ import (
 // interfaceCmd represents the interface command
 var interfaceCmd = &cobra.Command{
 	Use:   "interface",
-	Args:  cobra.ExactArgs(1),
 	Short: "sets netclient interface name",
 	Long:  `used to set interface name`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -59,5 +58,5 @@ var interfaceCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(interfaceCmd)
-	interfaceCmd.Flags().BoolP("restart-daemon", "D", true, "when set to true, daemon will be restarted")
+	interfaceCmd.Flags().BoolP("restart-daemon", "D", true, "when set to false, daemon will not be restarted")
 }
