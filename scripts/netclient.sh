@@ -6,7 +6,7 @@ cleanup() {
     touch /etc/netclient/a.out
     nets=($(wg show interfaces))
     for net in ${nets[@]}; do
-        if [ ${net} == "netmaker*" ]
+        if [ ${net} == "netmaker*" ]; then
             echo "deleting interface" $net >> /etc/netclient/a.out
             ip link del $net
         fi
