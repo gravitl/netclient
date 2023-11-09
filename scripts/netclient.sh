@@ -3,14 +3,11 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
-    echo "cleaning up netmaker interfaces..."
-    nets=($(wg show interfaces))
-    for net in ${nets[@]}; do
-        if  [[ ${net} == netmaker* ]]; then
-            echo "deleting interface" $net
-            ip link del $net
-        fi
-    done
+    echo "deleting interface" $net
+    if [ "${IFACE_NAME}" == "" ];then
+        IFACE_NAME="netmaker"
+    fi
+    ip link del $IFACE_NAME
 }
 
 
