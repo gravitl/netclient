@@ -14,7 +14,7 @@ cleanup() {
 }
 
 #Trap SigTerm
-trap 'cleanup' SIGTERM &
+trap 'cleanup' SIGTERM
 
 # install netclient
 echo "[netclient] starting netclient daemon"
