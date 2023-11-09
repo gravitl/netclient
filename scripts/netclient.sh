@@ -73,5 +73,5 @@ wait $!
 netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
-sleep infinity
+tail -f /var/log/netclient.log
 
