@@ -21,5 +21,6 @@ COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
 
+ENV GUI_SERVER_ENABLED="false"
 
 ENTRYPOINT ["/bin/bash", "./netclient.sh"]
