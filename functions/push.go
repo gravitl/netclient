@@ -9,7 +9,7 @@ import (
 )
 
 // Push - updates server with new host config
-func Push() error {
+func Push(restart bool) error {
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
 		if err := setupMQTTSingleton(server, true); err != nil {
@@ -22,9 +22,11 @@ func Push() error {
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}
-	if err := daemon.Restart(); err != nil {
-		if err := daemon.Start(); err != nil {
-			return fmt.Errorf("daemon restart failed %w", err)
+	if restart {
+		if err := daemon.Restart(); err != nil {
+			if err := daemon.Start(); err != nil {
+				return fmt.Errorf("daemon restart failed %w", err)
+			}
 		}
 	}
 

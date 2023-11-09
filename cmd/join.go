@@ -23,6 +23,7 @@ user: netclient join -s <server> -u <user_name> // attempt to join/register via 
 
 	Run: func(cmd *cobra.Command, args []string) {
 		setHostFields(cmd)
+		functions.Push(false)
 		token, err := cmd.Flags().GetString(registerFlags.Token)
 		if err != nil || len(token) == 0 {
 			if regErr := checkUserRegistration(cmd); regErr != nil {

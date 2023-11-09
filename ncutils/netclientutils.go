@@ -504,6 +504,9 @@ func IPIsPrivate(ipnet net.IP) bool {
 }
 
 func SetInterfaceName(iface string) {
+	if runtime.GOOS == "darwin" && !strings.HasPrefix(iface, "utun") {
+		return
+	}
 	ifaceName = iface
 }
 
