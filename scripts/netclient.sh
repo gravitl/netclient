@@ -3,11 +3,11 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
-    touch /etc/netclient/a.out
+    echo "cleaning up netmaker interfaces..."
     nets=($(wg show interfaces))
     for net in ${nets[@]}; do
         if  [[ ${net} == netmaker* ]]; then
-            echo "deleting interface" $net >> /etc/netclient/a.out
+            echo "deleting interface" $net
             ip link del $net
         fi
     done
