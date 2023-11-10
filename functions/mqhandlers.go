@@ -421,6 +421,9 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	}
 	switch dns.Action {
 	case models.DNSInsert:
+		// remove any existing entries
+		hosts.RemoveHost(dns.Name, etcHostsComment)
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
 		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
 	case models.DNSDeleteByName:
 		hosts.RemoveHost(dns.Name, etcHostsComment)
@@ -495,6 +498,9 @@ func applyAllDNS(dns []models.DNSUpdate) {
 			slog.Info("invalid dns actions", "action", entry.Action)
 			continue
 		}
+		// remove any existing entries
+		hosts.RemoveHost(entry.Name, etcHostsComment)
+		hosts.RemoveAddress(entry.Address, etcHostsComment)
 		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
 	}
 
