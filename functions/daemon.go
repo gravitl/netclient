@@ -479,6 +479,9 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	pubIP, pubPort, natType = stun.HolePunch(portToStun)
 	if pubIP == nil { // if stun has failed fallback to ip service to get publicIP
 		server := config.GetServer(config.CurrServer)
+		if server == nil {
+			return
+		}
 		publicIP, err := ncutils.GetPublicIP(server.API)
 		if err != nil {
 			slog.Error("failed to get publicIP", "error", err)
