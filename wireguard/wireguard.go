@@ -18,6 +18,9 @@ func SetPeers(replace bool) error {
 	peers := config.Netclient().HostPeers
 	for i := range peers {
 		peer := peers[i]
+		if peer.Endpoint.IP == nil {
+			peers[i].Endpoint = nil
+		}
 		if !peer.Remove && checkForBetterEndpoint(&peer) {
 			peers[i] = peer
 		}
