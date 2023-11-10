@@ -26,6 +26,14 @@ import (
 // MQTimeout - time out for mqtt connections
 const MQTimeout = 30
 
+// MQTT Fallback Routine
+var MQFallbackStop chan bool
+var MQFallbackRunning bool
+var MQFallbackTicker *time.Ticker
+var MQFallbackTickerStop chan bool
+
+const MQ_FALLBACK_TIMEOUT = time.Minute * 1
+
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("default message handler -- received message but not handling", "topic", msg.Topic())
@@ -102,6 +110,15 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	// Resets MQTT Fallback Goroutine Ticker
+	MQFallbackTicker.Reset(MQ_FALLBACK_TIMEOUT)
+
+	// stop mqtt fallback goroutine if it is already running
+	if MQFallbackRunning {
+		MQFallbackStop <- true // signal the goroutine to stop
+		slog.Info("mqtt fallback goroutine stopped")
+	}
+
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -572,4 +589,26 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 		firewall.DeleteEgressGwRoutes(server)
 	}
 
+}
+
+// MQTT Fallback Mechanism
+func MQFallback(MQFallbackStop chan bool) {
+	for {
+		select {
+		case <-MQFallbackStop:
+			// Stop the goroutine
+			MQFallbackRunning = false
+			return
+		default:
+			MQFallbackRunning = true
+
+			// Call http netclient config pull
+			_, err := Pull(false)
+			if err != nil {
+				slog.Error("failed to pull")
+			}
+
+			time.Sleep(time.Second * 30) // Execute pull every 30 seconds
+		}
+	}
 }

@@ -109,6 +109,13 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
+
+	// Closing MQTT Fallback Go Routines
+	MQFallbackTickerStop <- true // signal the tick based goroutine to stop
+	if MQFallbackRunning {
+		MQFallbackStop <- true // signal the goroutine to stop
+	}
+	slog.Info("mqtt fallback goroutines stopped")
 }
 
 // startGoRoutines starts the daemon goroutines
@@ -187,6 +194,30 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
+
+	// MQTT Fallback Channel and Ticker
+	MQFallbackStop = make(chan bool)
+	MQFallbackTicker = time.NewTicker(MQ_FALLBACK_TIMEOUT)
+	MQFallbackTickerStop = make(chan bool)
+
+	// MQTT Peer Update fallback ticker
+	go func() {
+		for {
+			select {
+			case <-MQFallbackTickerStop:
+				// Stop the ticker and goroutine
+				MQFallbackTicker.Stop()
+				return
+			case <-MQFallbackTicker.C:
+				// start mqtt fallback goroutine if it is not running
+				if !MQFallbackRunning {
+					go MQFallback(MQFallbackStop)
+					slog.Info("mqtt fallback goroutine started")
+				}
+			}
+		}
+	}()
+
 	return cancel
 }
 
@@ -231,6 +262,12 @@ func setupMQTT(server *config.Server) error {
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
+
+		// stop mqtt fallback goroutine if it is already running
+		if MQFallbackRunning {
+			MQFallbackStop <- true // signal the goroutine to stop
+			slog.Info("mqtt fallback goroutine stopped")
+		}
 	})
 	opts.SetOrderMatters(false)
 	opts.SetResumeSubs(true)
@@ -248,6 +285,12 @@ func setupMQTT(server *config.Server) error {
 				config.IsHostInetGateway(), false,
 				nil,
 			)
+		}
+
+		// start mqtt fallback goroutine if it is not running
+		if !MQFallbackRunning {
+			go MQFallback(MQFallbackStop)
+			slog.Info("mqtt fallback goroutine started")
 		}
 
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
