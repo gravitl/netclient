@@ -478,18 +478,18 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	portToStun := config.Netclient().ListenPort
 	pubIP, pubPort, natType = stun.HolePunch(portToStun)
 	if pubIP == nil { // if stun has failed fallback to ip service to get publicIP
+		var api string
 		server := config.GetServer(config.CurrServer)
-		if server == nil {
-			return
+		if server != nil {
+			api = server.API
 		}
-		publicIP, err := ncutils.GetPublicIP(server.API)
+		publicIP, err := ncutils.GetPublicIP(api)
 		if err != nil {
 			slog.Error("failed to get publicIP", "error", err)
 			return
 		}
 		pubIP = publicIP
 		pubPort = portToStun
-		natType = models.NAT_Types.BehindNAT
 	}
 	return
 }
