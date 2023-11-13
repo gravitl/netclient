@@ -66,9 +66,9 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 }
 
 func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
-	for _, peer := range peers {
+	for i, peer := range peers {
 		if peer.Endpoint != nil && peer.Endpoint.IP == nil {
-			peer.Endpoint = nil
+			peers[i].Endpoint = nil
 		}
 	}
 	return peers
