@@ -105,17 +105,18 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	if Mqclient != nil {
 		Mqclient.Disconnect(250)
 	}
+
+	// Closing MQTT Fallback Go Routines
+	MQMessageLostFallbackTickerStop <- true // signal the tick based goroutine to stop
+	if MQFallbackRunning.Load() {
+		MQFallbackStop <- true // signal the goroutine to stop
+	}
+	slog.Info("mqtt fallback goroutines stopped")
+
 	wg.Wait()
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
-
-	// Closing MQTT Fallback Go Routines
-	MQFallbackTickerStop <- true // signal the tick based goroutine to stop
-	if MQFallbackRunning {
-		MQFallbackStop <- true // signal the goroutine to stop
-	}
-	slog.Info("mqtt fallback goroutines stopped")
 }
 
 // startGoRoutines starts the daemon goroutines
@@ -195,28 +196,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
 
-	// MQTT Fallback Channel and Ticker
-	MQFallbackStop = make(chan bool)
-	MQFallbackTicker = time.NewTicker(MQ_FALLBACK_TIMEOUT)
-	MQFallbackTickerStop = make(chan bool)
-
-	// MQTT Peer Update fallback ticker
-	go func() {
-		for {
-			select {
-			case <-MQFallbackTickerStop:
-				// Stop the ticker and goroutine
-				MQFallbackTicker.Stop()
-				return
-			case <-MQFallbackTicker.C:
-				// start mqtt fallback goroutine if it is not running
-				if !MQFallbackRunning {
-					go MQFallback(MQFallbackStop)
-					slog.Info("mqtt fallback goroutine started")
-				}
-			}
-		}
-	}()
+	// MQTT Peer Update fallback
+	wg.Add(1)
+	go MQMessageLostFallback(wg)
 
 	return cancel
 }
@@ -229,6 +211,12 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 	err := setupMQTT(server)
 	if err != nil {
 		slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
+
+		// start mqtt fallback goroutine if it is not running
+		if !MQFallbackRunning.Load() {
+			go MQFallback(MQFallbackStop)
+			slog.Info("mqtt fallback goroutine started")
+		}
 		return
 	}
 	defer func() {
@@ -264,7 +252,7 @@ func setupMQTT(server *config.Server) error {
 		checkin()
 
 		// stop mqtt fallback goroutine if it is already running
-		if MQFallbackRunning {
+		if MQFallbackRunning.Load() {
 			MQFallbackStop <- true // signal the goroutine to stop
 			slog.Info("mqtt fallback goroutine stopped")
 		}
@@ -288,7 +276,7 @@ func setupMQTT(server *config.Server) error {
 		}
 
 		// start mqtt fallback goroutine if it is not running
-		if !MQFallbackRunning {
+		if !MQFallbackRunning.Load() {
 			go MQFallback(MQFallbackStop)
 			slog.Info("mqtt fallback goroutine started")
 		}
@@ -546,4 +534,21 @@ func resetServerRoutes() bool {
 		return true
 	}
 	return false
+}
+
+// MQTT Peer Update Lost Fallback
+func MQMessageLostFallback(wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case <-MQMessageLostFallbackTickerStop: // Stop the ticker and goroutine
+			MQMessageLostFallbackTicker.Stop()
+			return
+		case <-MQMessageLostFallbackTicker.C: // start mqtt fallback goroutine if it is not running
+			if !MQFallbackRunning.Load() {
+				go MQFallback(MQFallbackStop)
+				slog.Info("mqtt fallback goroutine started")
+			}
+		}
+	}
 }

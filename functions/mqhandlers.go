@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -27,12 +28,14 @@ import (
 const MQTimeout = 30
 
 // MQTT Fallback Routine
-var MQFallbackStop chan bool
-var MQFallbackRunning bool
-var MQFallbackTicker *time.Ticker
-var MQFallbackTickerStop chan bool
+var MQFallbackRunning atomic.Bool
+var MQFallbackStop chan bool = make(chan bool)
+var MQFallbackTicker *time.Ticker = time.NewTicker(MQ_FALLBACK_TICK)
+var MQMessageLostFallbackTickerStop chan bool = make(chan bool)
+var MQMessageLostFallbackTicker *time.Ticker = time.NewTicker(MQ_FALLBACK_TIMEOUT)
 
-const MQ_FALLBACK_TIMEOUT = time.Minute * 1
+const MQ_FALLBACK_TICK = time.Second * 30
+const MQ_FALLBACK_TIMEOUT = time.Minute * 6
 
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
@@ -111,10 +114,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// Resets MQTT Fallback Goroutine Ticker
-	MQFallbackTicker.Reset(MQ_FALLBACK_TIMEOUT)
+	MQMessageLostFallbackTicker.Reset(MQ_FALLBACK_TIMEOUT)
 
 	// stop mqtt fallback goroutine if it is already running
-	if MQFallbackRunning {
+	if MQFallbackRunning.Load() {
 		MQFallbackStop <- true // signal the goroutine to stop
 		slog.Info("mqtt fallback goroutine stopped")
 	}
@@ -593,22 +596,19 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 
 // MQTT Fallback Mechanism
 func MQFallback(MQFallbackStop chan bool) {
+	MQFallbackRunning.Store(true)
 	for {
 		select {
-		case <-MQFallbackStop:
-			// Stop the goroutine
-			MQFallbackRunning = false
+		case <-MQFallbackStop: // Stop the goroutine
+			MQFallbackTicker.Stop()
+			MQFallbackRunning.Store(false)
 			return
-		default:
-			MQFallbackRunning = true
-
-			// Call http netclient config pull
+		case <-MQFallbackTicker.C: // Execute pull every 30 seconds
+			// Call netclient http config pull
 			_, err := Pull(false)
 			if err != nil {
 				slog.Error("failed to pull")
 			}
-
-			time.Sleep(time.Second * 30) // Execute pull every 30 seconds
 		}
 	}
 }
