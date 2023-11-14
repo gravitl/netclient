@@ -25,6 +25,7 @@ import (
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
+	"github.com/sagikazarmark/slog-shim"
 	"gortc.io/stun"
 )
 
@@ -117,6 +118,37 @@ func allocateAddr(client *turn.Client) (net.PacketConn, error) {
 	// address assigned on the TURN server.
 	log.Printf("relayed-address=%s", relayConn.LocalAddr().String())
 	return relayConn, nil
+}
+
+// RelayMe - signals the server to relay me
+func RelayMe(serverName string) error {
+	server := ncconfig.GetServer(serverName)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	host := ncconfig.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	endpoint := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         fmt.Sprintf("/api/v1/host/%s/relayme", ncconfig.Netclient().ID.String()),
+		Method:        http.MethodPost,
+		Authorization: "Bearer " + token,
+		ErrorResponse: nm_models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+		}
+		return err
+	}
+	return nil
 }
 
 // SignalPeer - signals the peer with host's turn relay endpoint

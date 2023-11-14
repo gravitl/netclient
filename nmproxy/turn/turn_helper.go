@@ -49,7 +49,28 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
-				err = handlePeerNegotiation(signal)
+				if signal.IsPro {
+					// signal back
+					err := SignalPeer(signal.Server, nm_models.Signal{
+						Server:         signal.Server,
+						FromHostPubKey: signal.ToHostPubKey,
+						ToHostPubKey:   signal.FromHostPubKey,
+						Reply:          true,
+						PeerNATtype:    ncconfig.Netclient().NatType,
+						Action:         nm_models.ConnNegotiation,
+					})
+					if err != nil {
+						slog.Error("failed to signal peer", "error", err.Error())
+					}
+					if ncconfig.Netclient().NatType == nm_models.NAT_Types.BehindNAT {
+						err = RelayMe(signal.Server)
+						if err != nil {
+							slog.Error("failed to signal server to relay me", "error", err)
+						}
+					}
+				} else {
+					err = handlePeerNegotiation(signal)
+				}
 			case nm_models.Disconnect:
 				err = handleDisconnect(signal)
 			}
