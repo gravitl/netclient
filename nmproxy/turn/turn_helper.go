@@ -232,7 +232,11 @@ func isPeerConnected(peerKey string) (connected bool, err error) {
 	if err != nil {
 		return
 	}
-	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
+	if peer.LastHandshakeTime.IsZero() {
+		connected = true
+		return
+	}
+	if !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
 		connected = true
 	}
 	return
