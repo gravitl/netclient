@@ -28,14 +28,16 @@ import (
 const MQTimeout = 30
 
 // MQTT Fallback Routine
-var MQFallbackRunning atomic.Bool
-var MQFallbackStop chan bool = make(chan bool)
-var MQFallbackTicker *time.Ticker = time.NewTicker(MQ_FALLBACK_TICK)
-var MQMessageLostFallbackTickerStop chan bool = make(chan bool)
-var MQMessageLostFallbackTicker *time.Ticker = time.NewTicker(MQ_FALLBACK_TIMEOUT)
+var mqFallbackRunning atomic.Bool
+var mqFallbackStop chan bool = make(chan bool)
+var mqFallbackTicker *time.Ticker = time.NewTicker(mq_fallback_tick)
+var mqMessageLostFallbackTickerStop chan bool = make(chan bool)
+var mqMessageLostFallbackTicker *time.Ticker = time.NewTicker(mq_fallback_timeout)
 
-const MQ_FALLBACK_TICK = time.Second * 30
-const MQ_FALLBACK_TIMEOUT = time.Minute * 6
+const (
+	mq_fallback_tick    = time.Second * 30
+	mq_fallback_timeout = time.Minute * 6
+)
 
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
@@ -114,11 +116,11 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// Resets MQTT Fallback Goroutine Ticker
-	MQMessageLostFallbackTicker.Reset(MQ_FALLBACK_TIMEOUT)
+	mqMessageLostFallbackTicker.Reset(mq_fallback_timeout)
 
 	// stop mqtt fallback goroutine if it is already running
-	if MQFallbackRunning.Load() {
-		MQFallbackStop <- true // signal the goroutine to stop
+	if mqFallbackRunning.Load() {
+		mqFallbackStop <- true // signal the goroutine to stop
 		slog.Info("mqtt fallback goroutine stopped")
 	}
 
@@ -595,20 +597,83 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 // MQTT Fallback Mechanism
-func MQFallback(MQFallbackStop chan bool) {
-	MQFallbackRunning.Store(true)
+func MQFallback(mqFallbackStop chan bool) {
+	mqFallbackRunning.Store(true)
 	for {
 		select {
-		case <-MQFallbackStop: // Stop the goroutine
-			MQFallbackTicker.Stop()
-			MQFallbackRunning.Store(false)
+		case <-mqFallbackStop: // Stop the goroutine
+			mqFallbackTicker.Stop()
+			mqFallbackRunning.Store(false)
 			return
-		case <-MQFallbackTicker.C: // Execute pull every 30 seconds
+		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
 			// Call netclient http config pull
-			_, err := Pull(false)
+			pullResponse, err := Pull(false)
 			if err != nil {
 				slog.Error("failed to pull")
+				return
+			}
+			MQFallbackPull(pullResponse)
+		}
+	}
+}
+
+// MQTT Fallback Config Pull
+func MQFallbackPull(pullResponse models.HostPull) {
+	serverName := config.CurrServer
+	server := config.GetServer(serverName)
+	if server == nil {
+		slog.Error("server not found in config", "server", serverName)
+		return
+	}
+	if server.UseTurn {
+		turn.ResetCh <- struct{}{}
+	}
+	if pullResponse.ServerVersion != config.Version {
+		slog.Warn("server/client version mismatch", "server", pullResponse.ServerVersion, "client", config.Version)
+		vlt, err := versionLessThan(config.Version, pullResponse.ServerVersion)
+		if err != nil {
+			slog.Error("error checking version less than", "error", err)
+			return
+		}
+		if vlt && config.Netclient().Host.AutoUpdate {
+			slog.Info("updating client to server's version", "version", pullResponse.ServerVersion)
+			if err := UseVersion(pullResponse.ServerVersion, false); err != nil {
+				slog.Error("error updating client to server's version", "error", err)
+			} else {
+				slog.Info("updated client to server's version", "version", pullResponse.ServerVersion)
+				daemon.HardRestart()
 			}
 		}
 	}
+	if pullResponse.ServerVersion != server.Version {
+		slog.Info("updating server version", "server", serverName, "version", pullResponse.ServerVersion)
+		server.Version = pullResponse.ServerVersion
+		config.WriteServerConfig()
+	}
+	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
+	currentGW4 := config.GW4Addr
+	currentGW6 := config.GW6Addr
+	isInetGW := config.UpdateHostPeers(pullResponse.Peers)
+	_ = config.WriteNetclientConfig()
+	_ = wireguard.SetPeers(false)
+	if len(pullResponse.EgressRoutes) > 0 {
+		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+	}
+	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+		slog.Warn("error when setting peer routes on mq fallback pull", "error", err)
+	}
+	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
+		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
+	originalGW := currentGW4
+	if originalGW.IP != nil {
+		originalGW = currentGW6
+	}
+	handlePeerInetGateways(
+		gwDetected,
+		isInetGW,
+		gwDelta,
+		&originalGW,
+	)
+	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
+	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 }
