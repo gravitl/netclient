@@ -50,18 +50,21 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
 				if signal.IsPro {
-					// signal back
-					err := SignalPeer(signal.Server, nm_models.Signal{
-						Server:         signal.Server,
-						FromHostPubKey: signal.ToHostPubKey,
-						ToHostPubKey:   signal.FromHostPubKey,
-						Reply:          true,
-						PeerNATtype:    ncconfig.Netclient().NatType,
-						Action:         nm_models.ConnNegotiation,
-					})
-					if err != nil {
-						slog.Error("failed to signal peer", "error", err.Error())
+					if !signal.Reply {
+						// signal back
+						err := SignalPeer(signal.Server, nm_models.Signal{
+							Server:         signal.Server,
+							FromHostPubKey: signal.ToHostPubKey,
+							ToHostPubKey:   signal.FromHostPubKey,
+							Reply:          true,
+							PeerNATtype:    ncconfig.Netclient().NatType,
+							Action:         nm_models.ConnNegotiation,
+						})
+						if err != nil {
+							slog.Error("failed to signal peer", "error", err.Error())
+						}
 					}
+
 					if ncconfig.Netclient().NatType == nm_models.NAT_Types.BehindNAT {
 						err = RelayMe(signal.Server)
 						if err != nil {
@@ -69,7 +72,7 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 						}
 					}
 				} else {
-					err = handlePeerNegotiation(signal)
+					//err = handlePeerNegotiation(signal)
 				}
 			case nm_models.Disconnect:
 				err = handleDisconnect(signal)
@@ -220,28 +223,36 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					// peer is connected,so continue
 					continue
 				}
-				// signal peer to use turn
-				turnCfg := config.GetCfg().GetTurnCfg()
-				if turnCfg == nil || turnCfg.TurnConn == nil {
+				s := nm_models.Signal{
+					Server:         ncconfig.CurrServer,
+					FromHostPubKey: iface.Device.PublicKey.String(),
+					ToHostPubKey:   peer.PublicKey.String(),
+					Action:         nm_models.ConnNegotiation,
+					TimeStamp:      time.Now().Unix(),
+					PeerNATtype:    ncconfig.Netclient().NatType,
+				}
+				server := ncconfig.GetServer(ncconfig.CurrServer)
+				if server == nil {
 					continue
 				}
-				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
-					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{})
+				if !server.IsPro {
+					turnCfg := config.GetCfg().GetTurnCfg()
+					if turnCfg == nil || turnCfg.TurnConn == nil {
+						continue
+					}
+					if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
+						config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{})
+					}
+					turnCfg.Mutex.RLock()
+					s.TurnRelayEndpoint = turnCfg.TurnConn.LocalAddr().String()
+					turnCfg.Mutex.RUnlock()
 				}
-				turnCfg.Mutex.RLock()
-				// signal peer with the host relay addr for the peer
-				err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
-					Server:            ncconfig.CurrServer,
-					FromHostPubKey:    iface.Device.PublicKey.String(),
-					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
-					ToHostPubKey:      peer.PublicKey.String(),
-					Action:            nm_models.ConnNegotiation,
-					TimeStamp:         time.Now().Unix(),
-				})
+				// signal peer
+				err = SignalPeer(ncconfig.CurrServer, s)
 				if err != nil {
 					logger.Log(2, "failed to signal peer: ", err.Error())
 				}
-				turnCfg.Mutex.RUnlock()
+
 			}
 		}
 	}
@@ -249,6 +260,8 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 
 // isPeerConnected - get peer connection status by checking last handshake time
 func isPeerConnected(peerKey string) (connected bool, err error) {
+	connected = false
+	return
 	peer, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	if err != nil {
 		return
