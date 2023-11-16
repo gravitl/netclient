@@ -628,26 +628,26 @@ func MQFallbackPull(pullResponse models.HostPull) {
 	if server.UseTurn {
 		turn.ResetCh <- struct{}{}
 	}
-	if pullResponse.ServerVersion != config.Version {
-		slog.Warn("server/client version mismatch", "server", pullResponse.ServerVersion, "client", config.Version)
-		vlt, err := versionLessThan(config.Version, pullResponse.ServerVersion)
+	if pullResponse.ServerConfig.Version != config.Version {
+		slog.Warn("server/client version mismatch", "server", pullResponse.ServerConfig.Version, "client", config.Version)
+		vlt, err := versionLessThan(config.Version, pullResponse.ServerConfig.Version)
 		if err != nil {
 			slog.Error("error checking version less than", "error", err)
 			return
 		}
 		if vlt && config.Netclient().Host.AutoUpdate {
-			slog.Info("updating client to server's version", "version", pullResponse.ServerVersion)
-			if err := UseVersion(pullResponse.ServerVersion, false); err != nil {
+			slog.Info("updating client to server's version", "version", pullResponse.ServerConfig.Version)
+			if err := UseVersion(pullResponse.ServerConfig.Version, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
-				slog.Info("updated client to server's version", "version", pullResponse.ServerVersion)
+				slog.Info("updated client to server's version", "version", pullResponse.ServerConfig.Version)
 				daemon.HardRestart()
 			}
 		}
 	}
-	if pullResponse.ServerVersion != server.Version {
-		slog.Info("updating server version", "server", serverName, "version", pullResponse.ServerVersion)
-		server.Version = pullResponse.ServerVersion
+	if pullResponse.ServerConfig.Version != server.Version {
+		slog.Info("updating server version", "server", serverName, "version", pullResponse.ServerConfig.Version)
+		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
 	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
