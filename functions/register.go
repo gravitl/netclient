@@ -101,14 +101,6 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 		}
 	}
 
-	if host.EndpointIP == nil || host.WgPublicListenPort == 0 || host.NatType == "" {
-		publicIp, publicPort, natType := holePunchWgPort()
-		host.EndpointIP = publicIp
-		host.WgPublicListenPort = publicPort
-		host.NatType = natType
-		shouldUpdateHost = true
-	}
-
 	if shouldUpdateHost {
 		config.UpdateNetclient(*host)
 		config.WriteNetclientConfig()

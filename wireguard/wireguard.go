@@ -18,6 +18,9 @@ func SetPeers(replace bool) error {
 	peers := config.Netclient().HostPeers
 	for i := range peers {
 		peer := peers[i]
+		if peer.Endpoint != nil && peer.Endpoint.IP == nil {
+			peers[i].Endpoint = nil
+		}
 		if !peer.Remove && checkForBetterEndpoint(&peer) {
 			peers[i] = peer
 		}
@@ -62,9 +65,6 @@ func apply(c *wgtypes.Config) error {
 // returns if better endpoint has been calculated for this peer already
 // if so sets it and returns true
 func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
-	if peer.Endpoint == nil {
-		return false
-	}
 	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok && endpoint != nil {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
