@@ -28,10 +28,8 @@ import (
 const MQTimeout = 30
 
 // MQTT Fallback Routine
-var mqFallbackRunning atomic.Bool
-var mqFallbackStop chan bool = make(chan bool)
+var invokeMQFallback atomic.Bool
 var mqFallbackTicker *time.Ticker = time.NewTicker(mq_fallback_tick)
-var mqMessageLostFallbackTickerStop chan bool = make(chan bool)
 var mqMessageLostFallbackTicker *time.Ticker = time.NewTicker(mq_fallback_timeout)
 
 const (
@@ -118,11 +116,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// Resets MQTT Fallback Goroutine Ticker
 	mqMessageLostFallbackTicker.Reset(mq_fallback_timeout)
 
-	// stop mqtt fallback goroutine if it is already running
-	if mqFallbackRunning.Load() {
-		mqFallbackStop <- true // signal the goroutine to stop
-		slog.Info("mqtt fallback goroutine stopped")
-	}
+	// disable mqtt fallback
+	invokeMQFallback.Store(false)
+	slog.Info("mqtt fallback goroutine disabled")
 
 	var peerUpdate models.HostPeerUpdate
 	var err error
@@ -597,22 +593,19 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 // MQTT Fallback Mechanism
-func MQFallback(mqFallbackStop chan bool) {
-	mqFallbackRunning.Store(true)
+func MQFallback() {
 	for {
-		select {
-		case <-mqFallbackStop: // Stop the goroutine
-			mqFallbackTicker.Stop()
-			mqFallbackRunning.Store(false)
-			return
-		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
+		// Execute pull every 30 seconds
+		if _, tick := <-mqFallbackTicker.C; tick {
 			// Call netclient http config pull
-			pullResponse, err := Pull(false)
-			if err != nil {
-				slog.Error("failed to pull")
-				return
+			if invokeMQFallback.Load() {
+				pullResponse, err := Pull(false)
+				if err != nil {
+					slog.Error("failed to pull")
+					continue
+				}
+				MQFallbackPull(pullResponse)
 			}
-			MQFallbackPull(pullResponse)
 		}
 	}
 }
