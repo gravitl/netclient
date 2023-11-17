@@ -120,8 +120,8 @@ func allocateAddr(client *turn.Client) (net.PacketConn, error) {
 	return relayConn, nil
 }
 
-// RelayMe - signals the server to relay me
-func RelayMe(serverName string) error {
+// failOverMe - signals the server to failOver ME
+func failOverMe(serverName, nodeID, peernodeID string) error {
 	server := ncconfig.GetServer(serverName)
 	if server == nil {
 		return errors.New("server config not found")
@@ -136,8 +136,9 @@ func RelayMe(serverName string) error {
 	}
 	endpoint := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
 		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/host/%s/relayme", ncconfig.Netclient().ID.String()),
+		Route:         fmt.Sprintf("/api/v1/node/%s/failover_me", nodeID),
 		Method:        http.MethodPost,
+		Data:          nm_models.FailOverMeReq{NodeID: peernodeID},
 		Authorization: "Bearer " + token,
 		ErrorResponse: nm_models.ErrorResponse{},
 	}

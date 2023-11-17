@@ -33,8 +33,8 @@ func Start(ctx context.Context, waitg *sync.WaitGroup) {
 		time.Sleep(time.Second * 2) // add a delay for clients to send turn register message to server
 		turn.Init(ctx, proxyWaitG, turnCfgs)
 		defer turn.DissolvePeerConnections()
-		proxyWaitG.Add(1)
-		go turn.WatchPeerConnections(ctx, proxyWaitG)
 	}
+	proxyWaitG.Add(1)
+	go turn.WatchPeerConnections(ctx, proxyWaitG)
 	proxyWaitG.Wait()
 }
