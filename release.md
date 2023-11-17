@@ -3,6 +3,7 @@
 ## Whats New
 - Local Routing Improvements
 ## What's Fixed
+- windows GUI prompt for server connection closed is fixed
 - Fixed client version auto upgrades, works on all supported OS
 - DNS Entries Management
 - Handled nil endpoint on peers
