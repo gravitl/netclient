@@ -53,6 +53,9 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
+				if !isPeerExist(signal.FromHostPubKey) {
+					continue
+				}
 				if signal.IsPro {
 					handlePeerFailOver(signal)
 					continue
@@ -217,10 +220,6 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				t.Reset(peerConnectionCheckInterval)
 			}
 		case <-t.C:
-			// if peersAreConnected() {
-			// 	continue
-			// }
-			fmt.Println("----->0 SENDING SIGNAL TO PEERRR: ")
 			iface, err := wg.GetWgIface(ncutils.GetInterfaceName())
 			if err != nil {
 				logger.Log(1, "failed to get iface: ", err.Error())
@@ -234,24 +233,20 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				if node.Server != ncconfig.CurrServer {
 					continue
 				}
-				fmt.Println("-----> -1 SENDING SIGNAL TO PEERRR: ")
 				peers, err := getPeerInfo(node)
 				if err != nil {
 					slog.Error("failed to get peer Info", "error", err)
 					continue
 				}
-				fmt.Println("-----> -2 SENDING SIGNAL TO PEERRR: ", len(peers))
 				for pubKey, peer := range peers {
 					if peer.IsExtClient {
 						continue
 					}
-					fmt.Println("----->1 SENDING SIGNAL TO PEERRR: ", pubKey)
 					connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort)
-					if connected && pubKey != "b6E+SCOhR51ZOxxRdTkX03N1XGkx2liqrk5BOs5b03o=" {
+					if connected {
 						// peer is connected,so continue
 						continue
 					}
-					fmt.Println("----->2 SENDING SIGNAL TO PEERRR: ", pubKey)
 					s := nm_models.Signal{
 						Server:         ncconfig.CurrServer,
 						FromHostID:     ncconfig.Netclient().ID.String(),
@@ -292,14 +287,9 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
-func peersAreConnected() bool {
-	peers := ncconfig.Netclient().HostPeers
-	for _, peer := range peers {
-		if connected, _ := isPeerConnected(peer.PublicKey.String()); !connected {
-			return false
-		}
-	}
-	return true
+func isPeerExist(peerKey string) bool {
+	_, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
+	return err == nil
 }
 
 // isPeerConnected - get peer connection status by checking last handshake time
