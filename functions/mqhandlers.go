@@ -270,6 +270,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 	case models.SignalHost:
+		clearRetainedMsg(client, msg.Topic())
 		turn.PeerSignalCh <- hostUpdate.Signal
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
