@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test-watch": "vitest"
+    "test-watch": "vitest",
+    "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx"
   },
   "dependencies": {
     "@mui/lab": "^5.0.0-alpha.110",
@@ -24,8 +25,14 @@
     "@testing-library/react": "^13.4.0",
     "@types/react": "^18.0.17",
     "@types/react-dom": "^18.0.6",
+    "@typescript-eslint/eslint-plugin": "^6.8.0",
     "@vitejs/plugin-react": "^2.0.1",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
     "jsdom": "^20.0.3",
+    "prettier": "^3.0.3",
     "react-router-dom": "^6.4.2",
     "typescript": "^4.6.4",
     "vite": "^3.0.7",

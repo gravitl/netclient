@@ -12,17 +12,17 @@ import (
 	"unicode"
 
 	"github.com/blang/semver"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/minio/selfupdate"
 )
 
 var binPath, filePath string
 
 func createDirIfNotExists() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	binPath = filepath.Join(homeDir, ".netmaker", "bin")
+
+	binPath = filepath.Join(config.GetNetclientPath(), ".netmaker", "bin")
 	if err := os.MkdirAll(binPath, os.ModePerm); err != nil {
 		return err
 	}
@@ -31,8 +31,21 @@ func createDirIfNotExists() error {
 
 func downloadVersion(version string) error {
 	url := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		url += ".exe"
+	if runtime.GOOS == "freebsd" {
+		out, err := ncutils.RunCmd("grep VERSION_ID /etc/os-release", false)
+		if err != nil {
+			return fmt.Errorf("get freebsd version %w", err)
+		}
+		parts := strings.Split(out, "=")
+		if len(parts) < 2 {
+			return fmt.Errorf("get freebsd version parts %v", parts)
+		}
+		freebsdVersion := strings.Split(parts[1], ".")
+		if len(freebsdVersion) < 2 {
+			return fmt.Errorf("get freebsd vesion %v", freebsdVersion)
+		}
+		freebsd := strings.Trim(freebsdVersion[0], "\"")
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsd, runtime.GOARCH)
 	}
 	res, err := http.Get(url)
 	if err != nil {
@@ -41,7 +54,7 @@ func downloadVersion(version string) error {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		if res.StatusCode == http.StatusNotFound {
-			return errors.New("specified version of netclient doesn't exist")
+			return fmt.Errorf("specified version of netclient doesn't exist %s", url)
 		}
 		return fmt.Errorf("error making HTTP request Code: %d", res.StatusCode)
 	}
@@ -87,6 +100,19 @@ func versionLessThan(v1, v2 string) (bool, error) {
 
 // UseVersion switches the current netclient version to the one specified if available in the github releases page
 func UseVersion(version string, rebootDaemon bool) error {
+	// Use Windows specific version change process
+	if runtime.GOOS == "windows" {
+		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
+		if err := windowsUpdate(windowsBinaryURL); err != nil {
+			return err
+		}
+		if rebootDaemon {
+			daemon.HardRestart()
+		}
+		return nil
+	}
+
+	// Use Linux and MacOS specific version change process
 	if err := createDirIfNotExists(); err != nil {
 		return err
 	}
@@ -127,6 +153,20 @@ func UseVersion(version string, rebootDaemon bool) error {
 	}
 	if rebootDaemon {
 		daemon.Start()
+	}
+	return nil
+}
+
+// windowsUpdate uses a different package and process to upgrade netclient binary on windows
+func windowsUpdate(url string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
+	if err != nil {
+		return err
 	}
 	return nil
 }

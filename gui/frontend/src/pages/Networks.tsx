@@ -36,10 +36,11 @@ function Networks() {
   }, [setIsLoadingNetworks]);
 
   const filteredNetworks = useMemo(() => {
-    return networksState.networks.filter((nw) =>
-      nw.node?.network
-        .toLocaleLowerCase()
-        .includes(networksSearch.toLocaleLowerCase())
+    return networksState.networks.filter(
+      (nw) =>
+        nw.node?.network
+          .toLocaleLowerCase()
+          .includes(networksSearch.toLocaleLowerCase()),
     );
   }, [networksSearch, networksState]);
 
@@ -53,7 +54,7 @@ function Networks() {
           newStatus === false &&
           !(await getUserConfirmation(
             `Are you sure you want to disconnect from network: ${networkName}`,
-            "Disconnect from network?"
+            "Disconnect from network?",
           ))
         ) {
           return;
@@ -61,21 +62,21 @@ function Networks() {
         await updateConnectionStatusAndRefreshNetworks(
           networksDispatch,
           networkName,
-          newStatus
+          newStatus,
         );
       } catch (err) {
         await notifyUser(("Failed to update network status\n" + err) as string);
         console.error(err);
       }
     },
-    [networks, setNetworks]
+    [networks, setNetworks],
   );
 
   // on init
   useEffect(() => {
-    loadNetworks()
+    loadNetworks();
     const id = setInterval(() => refreshNetworks(networksDispatch), 5000);
-    return () => clearInterval(id)
+    return () => clearInterval(id);
   }, [loadNetworks, networksDispatch]);
 
   return (

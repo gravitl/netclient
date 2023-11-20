@@ -43,13 +43,13 @@ export default function PeersTable(props: PeersTableProps) {
 
   const handleChangePage = (
     event: React.MouseEvent<HTMLButtonElement> | null,
-    newPage: number
+    newPage: number,
   ) => {
     setPage(newPage);
   };
 
   const handleChangeRowsPerPage = (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
@@ -79,8 +79,8 @@ export default function PeersTable(props: PeersTableProps) {
               {(rowsPerPage > 0
                 ? props.peers?.slice(
                     page * rowsPerPage,
-                    page * rowsPerPage + rowsPerPage
-                  )
+                    page * rowsPerPage + rowsPerPage,
+                  ) ?? []
                 : props.peers
               ).map((p, i) => (
                 <TableRow key={`${p.PublicKey}-${i}`} data-testid="peer-row">
@@ -115,7 +115,7 @@ export default function PeersTable(props: PeersTableProps) {
                           </span>
                           {i !== endpoints.length - 1 ? ", " : ""}
                         </>
-                      )
+                      ),
                     )}
                   </TableCell>
                   <TableCell data-testid="public-key">

@@ -175,12 +175,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		gwDelta,
 		&originalGW,
 	)
-	if peerUpdate.EndpointDetection {
-		slog.Debug("endpoint detection enabled")
-		go handleEndpointDetection(&peerUpdate)
-	} else {
-		slog.Debug("endpoint detection disabled")
-	}
+	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
@@ -318,13 +313,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
-func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
-	hostPubKey := config.Netclient().PublicKey.String()
-	currentCidrs := getAllAllowedIPs(peerUpdate.Peers[:])
-	for idx := range peerUpdate.Peers {
+func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
+	currentCidrs := getAllAllowedIPs(peers[:])
+	for idx := range peers {
 
-		peerPubKey := peerUpdate.Peers[idx].PublicKey.String()
-		if peerInfo, ok := peerUpdate.HostNetworkInfo[peerPubKey]; ok {
+		peerPubKey := peers[idx].PublicKey.String()
+		if peerInfo, ok := peerInfo[peerPubKey]; ok {
 			if peerInfo.IsStatic {
 				// peer is a static host shouldn't disturb the configuration set by the user
 				continue
@@ -332,7 +326,7 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
-				if peerUpdate.Peers[idx].Endpoint == nil || peerIP == nil {
+				if peerIP == nil {
 					continue
 				}
 				// check to skip bridge network
@@ -342,17 +336,15 @@ func handleEndpointDetection(peerUpdate *models.HostPeerUpdate) {
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
-					peerUpdate.Peers[idx].Endpoint.IP.Equal(peerIP) ||
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
-				if err := networking.FindBestEndpoint(
-					peerIP.String(),
-					hostPubKey,
-					peerPubKey,
-					peerInfo.ListenPort,
-				); err != nil { // happens v often
-					slog.Debug("failed to check for endpoint on peer", "peer", peerPubKey, "ip", peerIP, "port", peerInfo.ListenPort, "error", err)
+				if peerIP.IsPrivate() {
+					networking.FindBestEndpoint(
+						peerIP.String(),
+						peerPubKey,
+						peerInfo.ListenPort,
+					)
 				}
 			}
 		}
@@ -427,6 +419,9 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	}
 	switch dns.Action {
 	case models.DNSInsert:
+		// remove any existing entries
+		hosts.RemoveHost(dns.Name, etcHostsComment)
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
 		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
 	case models.DNSDeleteByName:
 		hosts.RemoveHost(dns.Name, etcHostsComment)
@@ -501,6 +496,9 @@ func applyAllDNS(dns []models.DNSUpdate) {
 			slog.Info("invalid dns actions", "action", entry.Action)
 			continue
 		}
+		// remove any existing entries
+		hosts.RemoveHost(entry.Name, etcHostsComment)
+		hosts.RemoveAddress(entry.Address, etcHostsComment)
 		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
 	}
 

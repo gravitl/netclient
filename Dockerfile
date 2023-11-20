@@ -11,7 +11,9 @@ FROM alpine:3.18.4
 
 WORKDIR /root/
 
-RUN apk add --no-cache --update bash libmnl gcompat openresolv iproute2
+RUN apk add --no-cache --update bash libmnl gcompat openresolv iproute2 wireguard-tools openrc \
+    && mkdir -p /run/openrc \
+    && touch /run/openrc/softlevel
 RUN apk add iptables ip6tables \
     && mv -v /sbin/ip6tables /sbin/ip6tables-disabled \
     && cp -v /sbin/ip6tables-nft /sbin/ip6tables
@@ -19,5 +21,6 @@ COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
 
+ENV GUI_SERVER_ENABLED="false"
 
 ENTRYPOINT ["/bin/bash", "./netclient.sh"]
