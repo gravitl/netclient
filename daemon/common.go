@@ -23,9 +23,6 @@ func Restart() error {
 
 // Start - starts system daemon using signals (unix) or init system (windows)
 func Start() error {
-	if err := removeAllLockFiles(); err != nil {
-		slog.Error("failed to remove all lockfiles. remove them manually and restart daemon", "err", err)
-	}
 	return start()
 }
 
@@ -43,42 +40,40 @@ func CleanUp() error {
 	return cleanUp()
 }
 
-// removeAllLockFiles - removes all lock files used by netclient
-func removeAllLockFiles() error {
+// RemoveAllLockFiles - removes all lock files used by netclient
+func RemoveAllLockFiles() {
 	// remove config lockfile
 	lockfile := filepath.Join(os.TempDir(), config.ConfigLockfile)
 	err := os.Remove(lockfile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		slog.Error("failed to remove config lockfile", "err", err)
 	}
 
 	// remove node lockfile
 	lockfile = filepath.Join(os.TempDir(), config.NodeLockfile)
 	err = os.Remove(lockfile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		slog.Error("failed to remove node lockfile", "err", err)
 	}
 
 	// remove server lockfile
 	lockfile = filepath.Join(os.TempDir(), config.ServerLockfile)
 	err = os.Remove(lockfile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		slog.Error("failed to remove server lockfile", "err", err)
 	}
 
 	// remove gui lock file
 	lockfile = filepath.Join(os.TempDir(), config.GUILockFile)
 	err = os.Remove(lockfile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		slog.Error("failed to remove gui lockfile", "err", err)
 	}
 
 	// remove netclient lock file
 	lockfile = filepath.Join(os.TempDir(), "netclient-lock")
 	err = os.Remove(lockfile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		slog.Error("failed to remove netclient lockfile", "err", err)
 	}
-
-	return nil
 }
