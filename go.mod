@@ -23,7 +23,7 @@ require (
 	github.com/minio/selfupdate v0.6.0
 	github.com/pion/logging v0.2.2
 	github.com/pion/turn/v2 v2.1.3
-	github.com/spf13/cobra v1.7.0
+	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.17.0
 	github.com/stretchr/testify v1.8.4
 	github.com/vishvananda/netlink v1.1.0
