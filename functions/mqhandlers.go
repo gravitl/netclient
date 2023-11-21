@@ -1,12 +1,13 @@
 package functions
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net"
 	"os"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -28,14 +29,7 @@ import (
 const MQTimeout = 30
 
 // MQTT Fallback Routine
-var invokeMQFallback atomic.Bool
-var mqFallbackTicker *time.Ticker = time.NewTicker(mq_fallback_tick)
-var mqMessageLostFallbackTicker *time.Ticker = time.NewTicker(mq_fallback_timeout)
-
-const (
-	mq_fallback_tick    = time.Second * 30
-	mq_fallback_timeout = time.Minute * 6
-)
+var mqFallbackTicker *time.Ticker = time.NewTicker(time.Second * 30)
 
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
@@ -113,13 +107,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	// Resets MQTT Fallback Goroutine Ticker
-	mqMessageLostFallbackTicker.Reset(mq_fallback_timeout)
-
-	// disable mqtt fallback
-	invokeMQFallback.Store(false)
-	slog.Info("mqtt fallback goroutine disabled")
-
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -593,18 +580,22 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 // MQTT Fallback Mechanism
-func MQFallback() {
+func MQFallback(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
-		// Execute pull every 30 seconds
-		if _, tick := <-mqFallbackTicker.C; tick {
-			// Call netclient http config pull
-			if invokeMQFallback.Load() {
-				pullResponse, err := Pull(false)
+		select {
+		case <-ctx.Done():
+			mqFallbackTicker.Stop()
+			return
+		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
+			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+				// Call netclient http config pull
+				response, err := Pull(false)
 				if err != nil {
-					slog.Error("failed to pull")
-					continue
+					slog.Error("pull failed", "error", err)
+				} else {
+					MQFallbackPull(response)
 				}
-				MQFallbackPull(pullResponse)
 			}
 		}
 	}

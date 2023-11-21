@@ -189,8 +189,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
 
 	// MQTT Fallback Goroutine
-	go MQFallback()
-	go MQMessageLostFallback()
+	wg.Add(1)
+	go MQFallback(ctx, wg)
 
 	return cancel
 }
@@ -203,16 +203,7 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 	err := setupMQTT(server)
 	if err != nil {
 		slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
-
-		// enable mqtt fallback
-		invokeMQFallback.Store(true)
-		slog.Info("mqtt fallback goroutine enabled")
-
 		return
-	} else {
-		// disable mqtt fallback
-		invokeMQFallback.Store(false)
-		slog.Info("mqtt fallback goroutine disabled")
 	}
 	defer func() {
 		if Mqclient != nil {
@@ -245,10 +236,6 @@ func setupMQTT(server *config.Server) error {
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
-
-		// disable mqtt fallback
-		invokeMQFallback.Store(false)
-		slog.Info("mqtt fallback goroutine disabled")
 	})
 	opts.SetOrderMatters(false)
 	opts.SetResumeSubs(true)
@@ -267,11 +254,6 @@ func setupMQTT(server *config.Server) error {
 				nil,
 			)
 		}
-
-		// enable mqtt fallback
-		invokeMQFallback.Store(true)
-		slog.Info("mqtt fallback goroutine enabled")
-
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
 		if !config.Netclient().IsStatic {
 			daemon.Restart()
@@ -525,15 +507,4 @@ func resetServerRoutes() bool {
 		return true
 	}
 	return false
-}
-
-// MQTT Peer Update Lost Fallback
-func MQMessageLostFallback() {
-	for {
-		if _, enable := <-mqMessageLostFallbackTicker.C; enable {
-			// enable mqtt fallback
-			invokeMQFallback.Store(true)
-			slog.Info("mqtt fallback goroutine enabled")
-		}
-	}
 }
