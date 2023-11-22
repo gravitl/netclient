@@ -75,7 +75,6 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 func handlePeerFailOver(signal nm_models.Signal) error {
 	if !signal.Reply {
 		// signal back
-		fmt.Println("REPLYING RECIV SIGNAL FROM: ", signal.FromHostPubKey)
 		err := SignalPeer(signal.Server, nm_models.Signal{
 			Server:         signal.Server,
 			FromHostID:     signal.ToHostID,
@@ -86,6 +85,7 @@ func handlePeerFailOver(signal nm_models.Signal) error {
 			ToNodeID:       signal.FromNodeID,
 			Reply:          true,
 			Action:         nm_models.ConnNegotiation,
+			TimeStamp:      time.Now().Unix(),
 		})
 		if err != nil {
 			slog.Error("failed to signal peer", "error", err.Error())
@@ -168,6 +168,7 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 				ToHostID:          signal.FromHostID,
 				Reply:             true,
 				Action:            nm_models.ConnNegotiation,
+				TimeStamp:         time.Now().Unix(),
 			})
 			hostTurnCfg.Mutex.RUnlock()
 			if err != nil {
@@ -319,6 +320,7 @@ func DissolvePeerConnections() {
 			ToHostPubKey:      peerPubKey,
 			TurnRelayEndpoint: fmt.Sprintf("%s:%d", ncconfig.Netclient().EndpointIP.String(), port),
 			Action:            nm_models.Disconnect,
+			TimeStamp:         time.Now().Unix(),
 		})
 		if err != nil {
 			logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())

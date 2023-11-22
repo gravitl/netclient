@@ -284,6 +284,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 					TurnRelayEndpoint: turnConn.LocalAddr().String(),
 					ToHostPubKey:      peerKey,
 					Action:            nm_models.ConnNegotiation,
+					TimeStamp:         time.Now().Unix(),
 				})
 				if err != nil {
 					logger.Log(0, "failed to signal peer: ", err.Error())

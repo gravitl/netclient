@@ -189,6 +189,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("server not found in config", "server", serverName)
 		return
 	}
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		slog.Error("error decrypting message", "error", err)
