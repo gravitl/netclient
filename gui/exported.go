@@ -240,7 +240,7 @@ func (app *App) GoWriteToClipboard(data string) (any, error) {
 
 // App.GoPullLatestNodeConfig pulls the latest node config from the server and returns the network config
 func (app *App) GoPullLatestNodeConfig(network string) (Network, error) {
-	_, err := functions.Pull(true)
+	_, _, err := functions.Pull(true)
 	if err != nil {
 		return Network{}, err
 	}

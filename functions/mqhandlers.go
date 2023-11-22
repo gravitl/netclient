@@ -580,7 +580,7 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 // MQTT Fallback Mechanism
-func MQFallback(ctx context.Context, wg *sync.WaitGroup) {
+func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
@@ -590,11 +590,11 @@ func MQFallback(ctx context.Context, wg *sync.WaitGroup) {
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
 			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
 				// Call netclient http config pull
-				response, err := Pull(false)
+				response, resetInterface, err := Pull(false)
 				if err != nil {
 					slog.Error("pull failed", "error", err)
 				} else {
-					MQFallbackPull(response)
+					mqFallbackPull(response, resetInterface)
 				}
 			}
 		}
@@ -602,7 +602,7 @@ func MQFallback(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // MQTT Fallback Config Pull
-func MQFallbackPull(pullResponse models.HostPull) {
+func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -660,4 +660,20 @@ func MQFallbackPull(pullResponse models.HostPull) {
 	)
 	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+
+	if resetInterface {
+		nc := wireguard.GetInterface()
+		nc.Close()
+		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		nc.Create()
+		if err := nc.Configure(); err != nil {
+			slog.Error("could not configure netmaker interface", "error", err)
+			return
+		}
+		if err := wireguard.SetPeers(false); err == nil {
+			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
+				slog.Error("error when setting peer routes after host update", "error", err)
+			}
+		}
+	}
 }

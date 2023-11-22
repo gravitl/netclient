@@ -151,7 +151,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
-	pullresp, pullErr := Pull(false)
+	pullresp, _, pullErr := Pull(false)
 	if pullErr != nil {
 		slog.Error("fail to pull config from server", "error", pullErr.Error())
 	}
@@ -190,7 +190,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	// MQTT Fallback Goroutine
 	wg.Add(1)
-	go MQFallback(ctx, wg)
+	go mqFallback(ctx, wg)
 
 	return cancel
 }

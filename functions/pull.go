@@ -15,16 +15,16 @@ import (
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(restart bool) (models.HostPull, error) {
-
+func Pull(restart bool) (models.HostPull, bool, error) {
+	resetInterface := false
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	if server == nil {
-		return models.HostPull{}, errors.New("server config not found")
+		return models.HostPull{}, resetInterface, errors.New("server config not found")
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
-		return models.HostPull{}, err
+		return models.HostPull{}, resetInterface, err
 	}
 	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
 		URL:           "https://" + server.API,
@@ -39,7 +39,10 @@ func Pull(restart bool) (models.HostPull, error) {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "error pulling server", serverName, strconv.Itoa(errData.Code), errData.Message)
 		}
-		return models.HostPull{}, err
+		return models.HostPull{}, resetInterface, err
+	}
+	if len(config.GetNodes()) != len(pullResponse.Nodes) {
+		resetInterface = true
 	}
 	_ = config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
@@ -52,7 +55,7 @@ func Pull(restart bool) (models.HostPull, error) {
 	_ = config.WriteNodeConfig()
 	if restart {
 		logger.Log(3, "restarting daemon")
-		return models.HostPull{}, daemon.Restart()
+		return models.HostPull{}, resetInterface, daemon.Restart()
 	}
-	return pullResponse, nil
+	return pullResponse, resetInterface, nil
 }
