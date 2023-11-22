@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -63,14 +62,22 @@ func SetRoutes(addrs []ifaceAddress) {
 			addr.Network.String() == "::/0" {
 			continue
 		}
-		mask := net.IP(addr.Network.Mask)
-		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
-		cmd := fmt.Sprintf("route -p add %s MASK %v %s", addr.IP.String(),
-			mask,
-			addr.IP.String())
-		_, err := ncutils.RunCmd(cmd, false)
-		if err != nil {
-			slog.Error("failed to apply", "egress range", addr.IP.String())
+		if addr.Network.IP.To4() != nil {
+			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=%s",
+				addr.Network.String(), ncutils.GetInterfaceName(), "0.0.0.0", "active")
+			_, err := ncutils.RunCmd(cmd, false)
+			if err != nil {
+				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String())
+			}
+		} else {
+			slog.Info("adding ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=%s",
+				addr.Network.String(), ncutils.GetInterfaceName(), "::", "active")
+			_, err := ncutils.RunCmd(cmd, false)
+			if err != nil {
+				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String())
+			}
 		}
 	}
 }
