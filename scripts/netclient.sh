@@ -30,6 +30,11 @@ fi
 # join network based on env vars
 echo "[netclient] joining network"
 
+SERVER_CMD=""
+if [ "$SERVER" != "" ]; then
+    SERVER_CMD="-s $SERVER"
+fi
+
 TOKEN_CMD=""
 if [ "$TOKEN" != "" ]; then
     TOKEN_CMD="-t $TOKEN"
@@ -60,7 +65,7 @@ if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
+netclient join $SERVER_CMD $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
 if [ $? -ne 0 ]; then { echo "failed to join, quitting." ; exit 1; } fi
 
 sleep infinity
