@@ -1,5 +1,17 @@
 #!/bin/bash
 
+_netclient=
+for bin in ./netclient $(which netclient 2>/dev/null ) /root/netclient ; do
+  if [ -x $bin ] ; then
+    _netclient=$bin
+    break
+  fi
+done
+if [ "${_netclient}" == "" ]; then
+    echo netclient binary not found
+    exit 1
+fi
+
 sh -c rc-status
 #Define cleanup
 cleanup() {
@@ -17,7 +29,7 @@ cleanup() {
 
 # install netclient
 echo "[netclient] starting netclient daemon"
-/root/netclient install
+$_netclient install
 wait $!
 
 # join network based on env vars
@@ -65,7 +77,7 @@ fi
 echo "[netclient] Starting netclient daemon"
 /root/netclient install
 wait $!
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD $ENDPOINT6_CMD
+$_netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD $ENDPOINT6_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 tail -f /var/log/netclient.log &
