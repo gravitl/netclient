@@ -1,5 +1,17 @@
 #!/bin/bash
 
+_netclient=
+for bin in ./netclient $(which netclient 2>/dev/null ) /root/netclient ; do
+  if [ -x $bin ] ; then
+    _netclient=$bin
+    break
+  fi
+done
+if [ "${_netclient}" == "" ]; then
+    echo netclient binary not found
+    exit 1
+fi
+
 sh -c rc-status
 #Define cleanup
 cleanup() {
@@ -15,16 +27,16 @@ trap 'cleanup' SIGTERM
 
 # install netclient
 echo "[netclient] starting netclient daemon"
-/root/netclient install
+$_netclient install
 wait $!
 
 # check if needs to use the gui server
 if [ "${GUI_SERVER_ENABLED}" == "true" ]; then
     echo "[netclient] enabling gui server"
-    netclient guiServer enable
+    $_netclient guiServer enable
 else
     echo "[netclient] disabling gui server"
-    netclient guiServer disable
+    $_netclient guiServer disable
 fi
 
 # join network based on env vars
@@ -65,7 +77,7 @@ if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
-netclient join $SERVER_CMD $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
+$_netclient join $SERVER_CMD $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
 if [ $? -ne 0 ]; then { echo "failed to join, quitting." ; exit 1; } fi
 
 sleep infinity
