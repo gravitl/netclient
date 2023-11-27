@@ -74,6 +74,11 @@ func Daemon() {
 	httpWg := sync.WaitGroup{}
 	httpWg.Add(1)
 	go HttpServer(httpctx, &httpWg)
+
+	// MQTT Fallback Goroutine
+	httpWg.Add(1)
+	go mqFallback(httpctx, &httpWg)
+
 	for {
 		select {
 		case <-quit:
@@ -187,10 +192,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
-
-	// MQTT Fallback Goroutine
-	wg.Add(1)
-	go mqFallback(ctx, wg)
 
 	return cancel
 }
