@@ -595,6 +595,16 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 					slog.Error("pull failed", "error", err)
 				} else {
 					mqFallbackPull(response, resetInterface)
+					server := config.GetServer(config.CurrServer)
+					if server == nil {
+						continue
+					}
+					if Mqclient != nil {
+						Mqclient.Disconnect(0)
+					}
+					if err := setupMQTT(server); err != nil {
+						slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
+					}
 				}
 			}
 		}
