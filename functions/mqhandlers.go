@@ -586,10 +586,16 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 		select {
 		case <-ctx.Done():
 			mqFallbackTicker.Stop()
+			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
+			if config.CurrServer == "" {
+				// skip tick if there is no server
+				continue
+			}
 			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
 				// Call netclient http config pull
+				slog.Info("mqfallback routine execute")
 				response, resetInterface, err := Pull(false)
 				if err != nil {
 					slog.Error("pull failed", "error", err)
@@ -599,6 +605,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 					if server == nil {
 						continue
 					}
+					slog.Info("re-attempt mqtt connection after pull")
 					if Mqclient != nil {
 						Mqclient.Disconnect(0)
 					}
@@ -685,5 +692,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 				slog.Error("error when setting peer routes after host update", "error", err)
 			}
 		}
+		slog.Info("mqfallback reset interface")
 	}
 }

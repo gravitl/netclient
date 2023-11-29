@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -41,9 +42,26 @@ func Pull(restart bool) (models.HostPull, bool, error) {
 		}
 		return models.HostPull{}, resetInterface, err
 	}
+
+	// MQTT Fallback Reset Interface
+	var hostPullNode config.Node
+	for _, pullNode := range pullResponse.Nodes {
+		hostPullNode.CommonNode = pullNode.CommonNode
+		nodeMap := config.GetNodes()
+		currNode, ok := nodeMap[pullNode.Network]
+		if !ok {
+			resetInterface = true
+			break
+		}
+		if wireguard.IfaceDelta(&hostPullNode, &currNode) {
+			resetInterface = true
+			break
+		}
+	}
 	if len(config.GetNodes()) != len(pullResponse.Nodes) {
 		resetInterface = true
 	}
+
 	_ = config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
