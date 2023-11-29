@@ -21,7 +21,6 @@ import (
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/nmproxy"
 	"github.com/gravitl/netclient/nmproxy/stun"
-	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -92,7 +91,6 @@ func Daemon() {
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
-			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 		}
 	}
@@ -173,16 +171,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	logger.Log(1, "started daemon for server ", server.Name)
 	wg.Add(1)
 	go nmproxy.Start(ctx, wg)
-	networking.StoreServerAddresses(server)
-	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
-	if err != nil {
-		logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-	}
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
-	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-		slog.Warn("failed to set initial peer routes", "error", err.Error())
-	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
@@ -236,19 +226,6 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
-		if ok := resetServerRoutes(); ok {
-			slog.Info("detected default gateway change, reset server routes")
-			if err := UpdateHostSettings(); err != nil {
-				slog.Error("failed to update host settings", "error", err)
-				return
-			}
-
-			handlePeerInetGateways(
-				!config.GW4PeerDetected && !config.GW6PeerDetected,
-				config.IsHostInetGateway(), false,
-				nil,
-			)
-		}
 
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
 		if !config.Netclient().IsStatic {
@@ -478,29 +455,4 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	portToStun := config.Netclient().ListenPort
 	pubIP, pubPort, natType = stun.HolePunch(portToStun)
 	return
-}
-
-func cleanUpRoutes() {
-	gwAddr := config.GW4Addr
-	if gwAddr.IP == nil {
-		gwAddr = config.GW6Addr
-	}
-	if err := routes.CleanUp(config.Netclient().DefaultInterface, &gwAddr); err != nil {
-		slog.Error("routes not completely cleaned up", "error", err)
-	}
-}
-
-func resetServerRoutes() bool {
-	if routes.HasGatewayChanged() {
-		cleanUpRoutes()
-		server := config.GetServer(config.CurrServer)
-		if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server); err != nil {
-			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-		}
-		if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-		}
-		return true
-	}
-	return false
 }
