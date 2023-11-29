@@ -331,7 +331,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
-				if peers[idx].Endpoint == nil || peerIP == nil {
+				if peerIP == nil {
 					continue
 				}
 				// check to skip bridge network
@@ -341,7 +341,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
-					peers[idx].Endpoint.IP.Equal(peerIP) ||
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
@@ -352,7 +351,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 						peerInfo.ListenPort,
 					)
 				}
-
 			}
 		}
 	}
@@ -426,6 +424,9 @@ func applyDNSUpdate(dns models.DNSUpdate) {
 	}
 	switch dns.Action {
 	case models.DNSInsert:
+		// remove any existing entries
+		hosts.RemoveHost(dns.Name, etcHostsComment)
+		hosts.RemoveAddress(dns.Address, etcHostsComment)
 		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
 	case models.DNSDeleteByName:
 		hosts.RemoveHost(dns.Name, etcHostsComment)
@@ -500,6 +501,9 @@ func applyAllDNS(dns []models.DNSUpdate) {
 			slog.Info("invalid dns actions", "action", entry.Action)
 			continue
 		}
+		// remove any existing entries
+		hosts.RemoveHost(entry.Name, etcHostsComment)
+		hosts.RemoveAddress(entry.Address, etcHostsComment)
 		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
 	}
 

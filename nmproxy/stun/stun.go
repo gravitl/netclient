@@ -73,7 +73,7 @@ func HolePunch(portToStun int) (publicIP net.IP, publicPort int, natType string)
 		slog.Debug(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
 		publicIP, publicPort, natType, err = doStunTransaction(l, s)
 		if err != nil {
-			logger.Log(0, "stun transaction failed: ", stunServer.Domain, err.Error())
+			logger.Log(3, "stun transaction failed: ", stunServer.Domain, err.Error())
 			continue
 		}
 		if publicPort == 0 || publicIP == nil || publicIP.IsUnspecified() {

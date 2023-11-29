@@ -59,10 +59,19 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 			FirewallMark: &firewallMark,
 			ListenPort:   &host.ListenPort,
 			ReplacePeers: true,
-			Peers:        peers,
+			Peers:        cleanUpPeers(peers),
 		},
 	}
 	return &netmaker
+}
+
+func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
+	for i, peer := range peers {
+		if peer.Endpoint != nil && peer.Endpoint.IP == nil {
+			peers[i].Endpoint = nil
+		}
+	}
+	return peers
 }
 
 // ifaceAddress - interface parsed address
