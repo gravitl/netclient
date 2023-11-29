@@ -5,10 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
+	"github.com/devilcove/httpclient"
+	"github.com/gravitl/netclient/auth"
 	ncconfig "github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/nmproxy/config"
 	"github.com/gravitl/netclient/nmproxy/models"
@@ -25,7 +29,7 @@ var (
 	// PeerSignalCh - channel to recieve peer signals
 	PeerSignalCh = make(chan nm_models.Signal, 50)
 	// peerConnectionCheckInterval - time interval to check peer connection status
-	peerConnectionCheckInterval = time.Second * 20
+	peerConnectionCheckInterval = time.Second * 25
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
 
@@ -49,6 +53,13 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			switch signal.Action {
 			case nm_models.ConnNegotiation:
+				if !isPeerExist(signal.FromHostPubKey) {
+					continue
+				}
+				if signal.IsPro {
+					handlePeerFailOver(signal)
+					continue
+				}
 				err = handlePeerNegotiation(signal)
 			case nm_models.Disconnect:
 				err = handleDisconnect(signal)
@@ -59,6 +70,35 @@ func WatchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
 
 		}
 	}
+}
+
+func handlePeerFailOver(signal nm_models.Signal) error {
+	if !signal.Reply {
+		// signal back
+		err := SignalPeer(signal.Server, nm_models.Signal{
+			Server:         signal.Server,
+			FromHostID:     signal.ToHostID,
+			FromNodeID:     signal.ToNodeID,
+			FromHostPubKey: signal.ToHostPubKey,
+			ToHostPubKey:   signal.FromHostPubKey,
+			ToHostID:       signal.FromHostID,
+			ToNodeID:       signal.FromNodeID,
+			Reply:          true,
+			Action:         nm_models.ConnNegotiation,
+			TimeStamp:      time.Now().Unix(),
+		})
+		if err != nil {
+			slog.Error("failed to signal peer", "error", err.Error())
+		}
+	}
+
+	if ncconfig.Netclient().NatType == nm_models.NAT_Types.BehindNAT {
+		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
+		if err != nil {
+			slog.Error("failed to signal server to relay me", "error", err)
+		}
+	}
+	return nil
 }
 
 func handlePeerNegotiation(signal nm_models.Signal) error {
@@ -122,10 +162,13 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 			err := SignalPeer(signal.Server, nm_models.Signal{
 				Server:            signal.Server,
 				FromHostPubKey:    signal.ToHostPubKey,
+				FromHostID:        signal.ToHostID,
 				TurnRelayEndpoint: hostTurnCfg.TurnConn.LocalAddr().String(),
 				ToHostPubKey:      signal.FromHostPubKey,
+				ToHostID:          signal.FromHostID,
 				Reply:             true,
 				Action:            nm_models.ConnNegotiation,
+				TimeStamp:         time.Now().Unix(),
 			})
 			hostTurnCfg.Mutex.RUnlock()
 			if err != nil {
@@ -133,7 +176,6 @@ func handlePeerNegotiation(signal nm_models.Signal) error {
 				return err
 			}
 		}
-
 	}
 	return nil
 }
@@ -184,46 +226,71 @@ func WatchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				logger.Log(1, "failed to get iface: ", err.Error())
 				continue
 			}
-			peers := ncconfig.Netclient().HostPeers
-			for _, peer := range peers {
-
-				if peer.Endpoint == nil || peer.Remove {
-					continue
-				}
-				connected, err := isPeerConnected(peer.PublicKey.String())
-				if err != nil {
-					logger.Log(0, "failed to check if peer is connected: ", err.Error())
-					continue
-				}
-				if connected {
-					// peer is connected,so continue
-					continue
-				}
-				// signal peer to use turn
-				turnCfg := config.GetCfg().GetTurnCfg()
-				if turnCfg == nil || turnCfg.TurnConn == nil {
-					continue
-				}
-				if _, ok := config.GetCfg().GetPeerTurnCfg(peer.PublicKey.String()); !ok {
-					config.GetCfg().SetPeerTurnCfg(peer.PublicKey.String(), models.TurnPeerCfg{})
-				}
-				turnCfg.Mutex.RLock()
-				// signal peer with the host relay addr for the peer
-				err = SignalPeer(ncconfig.CurrServer, nm_models.Signal{
-					Server:            ncconfig.CurrServer,
-					FromHostPubKey:    iface.Device.PublicKey.String(),
-					TurnRelayEndpoint: turnCfg.TurnConn.LocalAddr().String(),
-					ToHostPubKey:      peer.PublicKey.String(),
-					Action:            nm_models.ConnNegotiation,
-					TimeStamp:         time.Now().Unix(),
-				})
-				if err != nil {
-					logger.Log(2, "failed to signal peer: ", err.Error())
-				}
-				turnCfg.Mutex.RUnlock()
+			nodes := ncconfig.GetNodes()
+			if len(nodes) == 0 {
+				continue
 			}
+			for _, node := range nodes {
+				if node.Server != ncconfig.CurrServer {
+					continue
+				}
+				peers, err := getPeerInfo(node)
+				if err != nil {
+					slog.Error("failed to get peer Info", "error", err)
+					continue
+				}
+				for pubKey, peer := range peers {
+					if peer.IsExtClient {
+						continue
+					}
+					connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort)
+					if connected {
+						// peer is connected,so continue
+						continue
+					}
+					s := nm_models.Signal{
+						Server:         ncconfig.CurrServer,
+						FromHostID:     ncconfig.Netclient().ID.String(),
+						ToHostID:       peer.HostID,
+						FromNodeID:     node.ID.String(),
+						ToNodeID:       peer.ID,
+						FromHostPubKey: iface.Device.PublicKey.String(),
+						ToHostPubKey:   pubKey,
+						Action:         nm_models.ConnNegotiation,
+						TimeStamp:      time.Now().Unix(),
+					}
+					server := ncconfig.GetServer(ncconfig.CurrServer)
+					if server == nil {
+						continue
+					}
+					if !server.IsPro {
+						turnCfg := config.GetCfg().GetTurnCfg()
+						if turnCfg == nil || turnCfg.TurnConn == nil {
+							continue
+						}
+						if _, ok := config.GetCfg().GetPeerTurnCfg(pubKey); !ok {
+							config.GetCfg().SetPeerTurnCfg(pubKey, models.TurnPeerCfg{})
+						}
+						turnCfg.Mutex.RLock()
+						s.TurnRelayEndpoint = turnCfg.TurnConn.LocalAddr().String()
+						turnCfg.Mutex.RUnlock()
+					}
+					// signal peer
+					err = SignalPeer(ncconfig.CurrServer, s)
+					if err != nil {
+						logger.Log(2, "failed to signal peer: ", err.Error())
+					}
+
+				}
+			}
+
 		}
 	}
+}
+
+func isPeerExist(peerKey string) bool {
+	_, err := wg.GetPeer(ncutils.GetInterfaceName(), peerKey)
+	return err == nil
 }
 
 // isPeerConnected - get peer connection status by checking last handshake time
@@ -253,10 +320,43 @@ func DissolvePeerConnections() {
 			ToHostPubKey:      peerPubKey,
 			TurnRelayEndpoint: fmt.Sprintf("%s:%d", ncconfig.Netclient().EndpointIP.String(), port),
 			Action:            nm_models.Disconnect,
+			TimeStamp:         time.Now().Unix(),
 		})
 		if err != nil {
 			logger.Log(0, "failed to signal peer: ", peerPubKey, err.Error())
 		}
 	}
 
+}
+
+func getPeerInfo(node ncconfig.Node) (nm_models.PeerMap, error) {
+	server := ncconfig.GetServer(node.Server)
+	if server == nil {
+		return nil, errors.New("server is nil")
+	}
+	token, err := auth.Authenticate(server, ncconfig.Netclient())
+	if err != nil {
+		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
+		return nil, err
+	}
+	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
+	endpoint := httpclient.JSONEndpoint[nm_models.NodeGet, nm_models.ErrorResponse]{
+		URL:           url,
+		Method:        http.MethodGet,
+		Authorization: "Bearer " + token,
+		Data:          nil,
+		Response:      nm_models.NodeGet{},
+		ErrorResponse: nm_models.ErrorResponse{},
+	}
+	response, errData, err := endpoint.GetJSON(nm_models.NodeGet{}, nm_models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
+			return nil, err
+		}
+		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		return nil, err
+	}
+
+	return response.PeerIDs, nil
 }

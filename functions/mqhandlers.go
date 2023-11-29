@@ -189,6 +189,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("server not found in config", "server", serverName)
 		return
 	}
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		slog.Error("error decrypting message", "error", err)
@@ -270,6 +273,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 	case models.SignalHost:
+		clearRetainedMsg(client, msg.Topic())
 		turn.PeerSignalCh <- hostUpdate.Signal
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
