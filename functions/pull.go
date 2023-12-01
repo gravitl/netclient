@@ -10,7 +10,6 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -44,16 +43,18 @@ func Pull(restart bool) (models.HostPull, bool, error) {
 	}
 
 	// MQTT Fallback Reset Interface
-	var hostPullNode config.Node
 	for _, pullNode := range pullResponse.Nodes {
-		hostPullNode.CommonNode = pullNode.CommonNode
 		nodeMap := config.GetNodes()
 		currNode, ok := nodeMap[pullNode.Network]
 		if !ok {
 			resetInterface = true
 			break
 		}
-		if wireguard.IfaceDelta(&hostPullNode, &currNode) {
+		if currNode.Address.IP.String() != pullNode.Address.IP.String() {
+			resetInterface = true
+			break
+		}
+		if currNode.Address6.IP.String() != pullNode.Address6.IP.String() {
 			resetInterface = true
 			break
 		}
