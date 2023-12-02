@@ -49,6 +49,7 @@ type cachedMessage struct {
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
+	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
 		os.Exit(1)
@@ -116,6 +117,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
+	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
@@ -454,5 +456,19 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 
 	portToStun := config.Netclient().ListenPort
 	pubIP, pubPort, natType = stun.HolePunch(portToStun)
+	if pubIP == nil { // if stun has failed fallback to ip service to get publicIP
+		var api string
+		server := config.GetServer(config.CurrServer)
+		if server != nil {
+			api = server.API
+		}
+		publicIP, err := ncutils.GetPublicIP(api)
+		if err != nil {
+			slog.Error("failed to get publicIP", "error", err)
+			return
+		}
+		pubIP = publicIP
+		pubPort = portToStun
+	}
 	return
 }

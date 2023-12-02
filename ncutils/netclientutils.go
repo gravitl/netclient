@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -24,6 +25,8 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
+
+var ifaceName string
 
 // MaxNameLength - maximum node name length
 const MaxNameLength = 62
@@ -117,6 +120,42 @@ func IsEmptyRecord(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), NoDBRecord) || strings.Contains(err.Error(), NoDBRecords)
+}
+
+// GetPublicIP - gets public ip
+func GetPublicIP(api string) (net.IP, error) {
+
+	iplist := []string{"https://ip.client.gravitl.com", "https://ifconfig.me", "https://api.ipify.org", "https://ipinfo.io/ip"}
+
+	if api != "" {
+		api = "https://" + api + "/api/getip"
+		iplist = append([]string{api}, iplist...)
+	}
+
+	endpoint := ""
+	var err error
+	for _, ipserver := range iplist {
+		client := &http.Client{
+			Timeout: time.Second * 10,
+		}
+		resp, err := client.Get(ipserver)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				continue
+			}
+			endpoint = string(bodyBytes)
+			break
+		}
+	}
+	if err == nil && endpoint == "" {
+		err = errors.New("public address not found")
+	}
+	return net.ParseIP(endpoint), err
 }
 
 // GetMacAddr - get's mac address
@@ -501,8 +540,18 @@ func IPIsPrivate(ipnet net.IP) bool {
 	return ipnet.IsPrivate() || ipnet.IsLoopback()
 }
 
+func SetInterfaceName(iface string) {
+	if runtime.GOOS == "darwin" && !strings.HasPrefix(iface, "utun") {
+		return
+	}
+	ifaceName = iface
+}
+
 // GetInterfaceName - fetches the interface name
 func GetInterfaceName() string {
+	if ifaceName != "" {
+		return ifaceName
+	}
 	if runtime.GOOS == "darwin" {
 		return "utun69"
 	}
@@ -541,4 +590,18 @@ func RandomString(length int) string {
 // ConvHostPassToHash - converts password to md5 hash
 func ConvHostPassToHash(hostPass string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(hostPass)))
+}
+
+// InterfaceExists - checks if iface exists already
+func InterfaceExists(ifaceName string) (bool, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return false, err
+	}
+	for _, inet := range interfaces {
+		if inet.Name == ifaceName {
+			return true, nil
+		}
+	}
+	return false, nil
 }

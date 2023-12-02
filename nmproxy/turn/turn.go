@@ -25,6 +25,7 @@ import (
 	nm_models "github.com/gravitl/netmaker/models"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
+	"github.com/sagikazarmark/slog-shim"
 	"gortc.io/stun"
 )
 
@@ -117,6 +118,38 @@ func allocateAddr(client *turn.Client) (net.PacketConn, error) {
 	// address assigned on the TURN server.
 	log.Printf("relayed-address=%s", relayConn.LocalAddr().String())
 	return relayConn, nil
+}
+
+// failOverMe - signals the server to failOver ME
+func failOverMe(serverName, nodeID, peernodeID string) error {
+	server := ncconfig.GetServer(serverName)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	host := ncconfig.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	endpoint := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         fmt.Sprintf("/api/v1/node/%s/failover_me", nodeID),
+		Method:        http.MethodPost,
+		Data:          nm_models.FailOverMeReq{NodeID: peernodeID},
+		Authorization: "Bearer " + token,
+		ErrorResponse: nm_models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+		}
+		return err
+	}
+	return nil
 }
 
 // SignalPeer - signals the peer with host's turn relay endpoint
@@ -251,6 +284,7 @@ func startTurnListener(ctx context.Context, wg *sync.WaitGroup, serverName strin
 					TurnRelayEndpoint: turnConn.LocalAddr().String(),
 					ToHostPubKey:      peerKey,
 					Action:            nm_models.ConnNegotiation,
+					TimeStamp:         time.Now().Unix(),
 				})
 				if err != nil {
 					logger.Log(0, "failed to signal peer: ", err.Error())

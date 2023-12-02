@@ -3,21 +3,31 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
-    nets=($(wg show interfaces))
-    for net in ${nets[@]}; do
-        echo "deleting interface" $net
-        ip link del $net
-    done
+    echo "deleting interface" $net
+    if [ "${IFACE_NAME}" == "" ];then
+        IFACE_NAME="netmaker"
+    fi
+    ip link del $IFACE_NAME
 }
 
-#Trap SigTerm
-trap 'cleanup' SIGTERM
 
-echo "[netclient] joining network"
 
-if [ -z "${SLEEP}" ]; then
-    SLEEP=10
+# install netclient
+echo "[netclient] starting netclient daemon"
+/root/netclient install
+wait $!
+
+# check if needs to use the gui server
+if [ "${GUI_SERVER_ENABLED}" == "true" ]; then
+    echo "[netclient] enabling gui server"
+    netclient guiServer enable
+else
+    echo "[netclient] disabling gui server"
+    netclient guiServer disable
 fi
+
+# join network based on env vars
+echo "[netclient] joining network"
 
 TOKEN_CMD=""
 if [ "$TOKEN" != "" ]; then
@@ -48,12 +58,20 @@ STATIC_CMD=""
 if [ "${IS_STATIC}" != "" ];then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
+IFACE_CMD=""
+if [ "${IFACE_NAME}" != "" ];then
+    IFACE_CMD="-I ${IFACE_NAME}"
+fi
 
 echo "[netclient] Starting netclient daemon"
 /root/netclient install
 wait $!
-
-/root/netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD
+netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
-sleep infinity
+tail -f /var/log/netclient.log &
+
+#Trap SigTerm
+trap 'cleanup' SIGTERM
+
+wait $!

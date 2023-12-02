@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/minio/selfupdate"
 )
 
 var binPath, filePath string
@@ -30,9 +31,6 @@ func createDirIfNotExists() error {
 
 func downloadVersion(version string) error {
 	url := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		url += ".exe"
-	}
 	if runtime.GOOS == "freebsd" {
 		out, err := ncutils.RunCmd("grep VERSION_ID /etc/os-release", false)
 		if err != nil {
@@ -102,6 +100,19 @@ func versionLessThan(v1, v2 string) (bool, error) {
 
 // UseVersion switches the current netclient version to the one specified if available in the github releases page
 func UseVersion(version string, rebootDaemon bool) error {
+	// Use Windows specific version change process
+	if runtime.GOOS == "windows" {
+		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
+		if err := windowsUpdate(windowsBinaryURL); err != nil {
+			return err
+		}
+		if rebootDaemon {
+			daemon.HardRestart()
+		}
+		return nil
+	}
+
+	// Use Linux and MacOS specific version change process
 	if err := createDirIfNotExists(); err != nil {
 		return err
 	}
@@ -142,6 +153,20 @@ func UseVersion(version string, rebootDaemon bool) error {
 	}
 	if rebootDaemon {
 		daemon.Start()
+	}
+	return nil
+}
+
+// windowsUpdate uses a different package and process to upgrade netclient binary on windows
+func windowsUpdate(url string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
+	if err != nil {
+		return err
 	}
 	return nil
 }
