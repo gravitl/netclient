@@ -119,6 +119,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
+	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}

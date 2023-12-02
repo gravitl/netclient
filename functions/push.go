@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
@@ -10,24 +9,26 @@ import (
 )
 
 // Push - updates server with new host config
-func Push() error {
+func Push(restart bool) error {
 	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return errors.New("server cfg is nil")
-	}
-	if err := setupMQTTSingleton(server, true); err != nil {
-		return err
-	}
-	if err := PublishHostUpdate(server.Server, models.UpdateHost); err != nil {
-		return err
+	if server != nil {
+		if err := setupMQTTSingleton(server, true); err != nil {
+			return err
+		}
+		if err := PublishHostUpdate(server.Server, models.UpdateHost); err != nil {
+			return err
+		}
 	}
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}
-	if err := daemon.Restart(); err != nil {
-		if err := daemon.Start(); err != nil {
-			return fmt.Errorf("daemon restart failed %w", err)
+	if restart {
+		if err := daemon.Restart(); err != nil {
+			if err := daemon.Start(); err != nil {
+				return fmt.Errorf("daemon restart failed %w", err)
+			}
 		}
 	}
+
 	return nil
 }
