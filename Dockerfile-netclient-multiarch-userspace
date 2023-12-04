@@ -3,7 +3,7 @@ WORKDIR /app
 COPY . .
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-w -s" -o netclient-app .
 
-FROM alpine:3.18.4
+FROM alpine:3.18.5
 
 WORKDIR /root/
 
