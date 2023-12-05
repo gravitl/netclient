@@ -14,7 +14,6 @@ import (
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
@@ -126,7 +125,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if server.UseTurn {
-		turn.ResetCh <- struct{}{}
+		ResetCh <- struct{}{}
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -274,7 +273,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	case models.SignalHost:
 		clearRetainedMsg(client, msg.Topic())
-		turn.PeerSignalCh <- hostUpdate.Signal
+		PeerSignalCh <- hostUpdate.Signal
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()

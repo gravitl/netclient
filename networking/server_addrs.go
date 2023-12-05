@@ -7,7 +7,7 @@ import (
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/stun"
 )
 
 var (

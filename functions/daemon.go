@@ -19,9 +19,8 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	"github.com/gravitl/netclient/nmproxy"
-	"github.com/gravitl/netclient/nmproxy/stun"
 	"github.com/gravitl/netclient/routes"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -173,8 +172,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
-	wg.Add(1)
-	go nmproxy.Start(ctx, wg)
 	networking.StoreServerAddresses(server)
 	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
 	if err != nil {
@@ -189,6 +186,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
+	wg.Add(1)
+	go watchPeerSignals(ctx, wg)
+	wg.Add(1)
+	go watchPeerConnections(ctx, wg)
 	return cancel
 }
 
