@@ -208,22 +208,3 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 
 	Servers[cfg.Server] = server
 }
-
-// GetAllTurnConfigs - fetches all turn configs from all servers
-func GetAllTurnConfigs() (turnList []TurnConfig) {
-	turnMap := make(map[string]struct{})
-	server := GetServer(CurrServer)
-	if server == nil || !server.UseTurn {
-		return
-	}
-	if _, ok := turnMap[server.TurnDomain]; !ok {
-		turnList = append(turnList, TurnConfig{
-			Server: CurrServer,
-			Domain: server.TurnDomain,
-			Port:   server.TurnPort,
-		})
-		turnMap[server.TurnDomain] = struct{}{}
-	}
-
-	return
-}

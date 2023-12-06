@@ -17,13 +17,12 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	nm_models "github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
 
 var (
-	// PeerSignalCh - channel to recieve peer signals
-	PeerSignalCh = make(chan nm_models.Signal, 50)
 	// peerConnectionCheckInterval - time interval to check peer connection status
 	peerConnectionCheckInterval = time.Second * 25
 	// LastHandShakeThreshold - threshold for considering inactive connection
@@ -32,43 +31,31 @@ var (
 	ResetCh = make(chan struct{}, 2)
 )
 
-// watchPeerSignals - processes the peer signals for any updates from peers
-func watchPeerSignals(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer logger.Log(0, "Exiting Peer Signals Watcher...")
-	var err error
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case signal := <-PeerSignalCh:
-			// process recieved new signal from peer
-			// if signal is older than 10s ignore it,wait for a fresh signal from peer
-			if time.Now().Unix()-signal.TimeStamp > 5 {
-				continue
-			}
-			switch signal.Action {
-			case nm_models.ConnNegotiation:
-				if !isPeerExist(signal.FromHostPubKey) {
-					continue
-				}
-				if signal.IsPro {
-					handlePeerFailOver(signal)
-					continue
-				}
-			}
-			if err != nil {
-				logger.Log(2, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
-			}
+// processPeerSignal - processes the peer signals for any updates from peers
+func processPeerSignal(signal models.Signal) {
 
+	// process recieved new signal from peer
+	// if signal is older than 10s ignore it,wait for a fresh signal from peer
+	if time.Now().Unix()-signal.TimeStamp > 5 {
+		return
+	}
+	switch signal.Action {
+	case nm_models.ConnNegotiation:
+		if !isPeerExist(signal.FromHostPubKey) {
+			return
+		}
+		err := handlePeerFailOver(signal)
+		if err != nil {
+			logger.Log(2, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
 		}
 	}
+
 }
 
 func handlePeerFailOver(signal nm_models.Signal) error {
 	if !signal.Reply {
 		// signal back
-		err := SignalPeer(signal.Server, nm_models.Signal{
+		err := SignalPeer(nm_models.Signal{
 			Server:         signal.Server,
 			FromHostID:     signal.ToHostID,
 			FromNodeID:     signal.ToNodeID,
@@ -147,7 +134,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						continue
 					}
 					// signal peer
-					err = SignalPeer(config.CurrServer, s)
+					err = SignalPeer(s)
 					if err != nil {
 						logger.Log(2, "failed to signal peer: ", err.Error())
 					}
@@ -229,35 +216,6 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 }
 
 // SignalPeer - signals the peer with host's turn relay endpoint
-func SignalPeer(serverName string, signal nm_models.Signal) error {
-	server := ncconfig.GetServer(serverName)
-	if server == nil {
-		return errors.New("server config not found")
-	}
-	host := ncconfig.Netclient()
-	if host == nil {
-		return fmt.Errorf("no configured host found")
-	}
-	token, err := auth.Authenticate(server, host)
-	if err != nil {
-		return err
-	}
-	logger.Log(4, fmt.Sprintf("Sending Signal to Peer: %+v", signal))
-	endpoint := httpclient.JSONEndpoint[nm_models.Signal, nm_models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/host/%s/signalpeer", ncconfig.Netclient().ID.String()),
-		Method:        http.MethodPost,
-		Authorization: "Bearer " + token,
-		Data:          signal,
-		Response:      nm_models.Signal{},
-		ErrorResponse: nm_models.ErrorResponse{},
-	}
-	_, errData, err := endpoint.GetJSON(nm_models.Signal{}, nm_models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "error signalling peer", strconv.Itoa(errData.Code), errData.Message)
-		}
-		return err
-	}
-	return nil
+func SignalPeer(signal nm_models.Signal) error {
+	return publishPeerSignal(config.CurrServer, signal)
 }

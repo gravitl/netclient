@@ -176,10 +176,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
-	wg.Add(1)
-	go watchPeerSignals(ctx, wg)
-	wg.Add(1)
-	go watchPeerConnections(ctx, wg)
+	if server.IsPro {
+		wg.Add(1)
+		go watchPeerConnections(ctx, wg)
+	}
+
 	return cancel
 }
 
@@ -257,15 +258,6 @@ func setupMQTT(server *config.Server) error {
 	} else {
 		slog.Info("successfully requested ACK on server", "server", server.Name)
 	}
-	// send register signal with turn to server
-	if server.UseTurn {
-		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
-			slog.Error("failed to publish host turn register signal to server", "server", server.Server, "error", err)
-		} else {
-			slog.Info("published host turn register signal to server", "server", server.Server)
-		}
-	}
-
 	return nil
 }
 

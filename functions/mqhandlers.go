@@ -123,7 +123,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if server.UseTurn {
+	if server.IsPro {
 		ResetCh <- struct{}{}
 	}
 	if peerUpdate.ServerVersion != config.Version {
@@ -254,7 +254,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	case models.SignalHost:
 		clearRetainedMsg(client, msg.Topic())
-		PeerSignalCh <- hostUpdate.Signal
+		processPeerSignal(hostUpdate.Signal)
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
