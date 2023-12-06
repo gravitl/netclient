@@ -41,7 +41,7 @@ func Pull(restart bool) (models.HostPull, error) {
 		}
 		return models.HostPull{}, err
 	}
-	_ = config.UpdateHostPeers(pullResponse.Peers)
+	config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)
