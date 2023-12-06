@@ -60,14 +60,6 @@ var (
 	netclient Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
-	// GW4PeerDetected - indicates if an IPv4 gwPeer (0.0.0.0/0) was found
-	GW4PeerDetected bool
-	// GW4Addr - the peer's address for IPv4 gateways
-	GW4Addr net.IPNet
-	// GW6PeerDetected - indicates if an IPv6 gwPeer (::/0) was found, currently unused
-	GW6PeerDetected bool
-	// GW6Addr - the peer's address for IPv6 gateways
-	GW6Addr net.IPNet
 	// FwClose - firewall manager shutdown func
 	FwClose func() = func() {}
 	// WgPublicListenPort - host's wireguard public listen port
@@ -142,9 +134,8 @@ func Netclient() *Config {
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
+func UpdateHostPeers(peers []wgtypes.PeerConfig) {
 	netclient.HostPeers = peers
-	return detectOrFilterGWPeers(peers)
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
@@ -416,92 +407,6 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 		logger.Log(0, "node unmarshal err", h.Name, err.Error())
 	}
 	return host, node
-}
-
-func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
-	isInetGW := IsHostInetGateway()
-	if len(peers) > 0 {
-		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
-			for i := range peers {
-				peer := peers[i]
-				if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) && peer.Remove { // Indicates a removal of current gw, set detected to false to recalc
-					GW4PeerDetected = false
-					break
-				} else if peerHasIp(&GW6Addr, peer.AllowedIPs[:]) { // TODO (IPv6)
-					GW6PeerDetected = false
-					break
-				}
-			}
-		}
-	}
-	clientPeers := netclient.HostPeers
-	var foundGW4Again, foundGW6Again bool
-	if len(clientPeers) > 0 {
-		for i := range clientPeers {
-			peer := clientPeers[i]
-			for j := range peer.AllowedIPs {
-				ip := peer.AllowedIPs[j]
-				if ip.String() == "0.0.0.0/0" { // handle IPv4
-					if isInetGW || peer.Remove { // skip allowed and removed peers IPs for internet gws
-						continue
-					}
-					if !GW4PeerDetected && j > 0 {
-						GW4PeerDetected = true
-						foundGW4Again = true
-						GW4Addr = peer.AllowedIPs[j-1]
-					} else if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) {
-						foundGW4Again = true
-					}
-				} else if ip.String() == "::/0" { // handle IPv6
-					if isInetGW || peer.Remove { // skip allowed IPs for internet gws
-						continue
-					}
-					if !GW6PeerDetected && j > 0 {
-						GW6PeerDetected = true
-						foundGW6Again = true
-						GW6Addr = peer.AllowedIPs[j-1]
-					} else if peerHasIp(&ip, peer.AllowedIPs[:]) {
-						foundGW6Again = true
-					}
-				}
-			}
-		}
-	}
-	GW4PeerDetected = foundGW4Again
-	GW6PeerDetected = foundGW6Again
-
-	return isInetGW
-}
-
-func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
-	if ip == nil {
-		return false
-	}
-	for i := range allowedIPs {
-		if ip.Contains(allowedIPs[i].IP) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsHostInetGateway - checks, based on netclient memory,
-// if current client is an internet gateway
-func IsHostInetGateway() bool {
-
-	serverNodes := GetNodes()
-	for j := range serverNodes {
-		serverNode := serverNodes[j]
-		if serverNode.IsEgressGateway {
-			for _, egressRange := range serverNode.EgressGatewayRanges {
-				if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 // setFirewall - determine and record firewall in use
