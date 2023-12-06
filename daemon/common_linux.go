@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"syscall"
@@ -173,12 +175,18 @@ func GetInitType() config.InitType {
 	if runtime.GOOS != "linux" {
 		return config.UnKnown
 	}
-	out, err := ncutils.RunCmd("ls -l /sbin/init", false)
+        initPath, err := exec.LookPath("init")
 	if err != nil {
-		slog.Error("error checking /sbin/init", "error", err)
+		slog.Error("error checking init", "error", err)
 		return config.UnKnown
 	}
-	slog.Debug("checking /sbin/init", "output ", out)
+
+	out, err := ncutils.RunCmd(fmt.Sprintf("ls -l %s", initPath), true)
+	if err != nil {
+		slog.Error("error checking init", "error", err)
+		return config.UnKnown
+	}
+	slog.Debug("checking init", "output ", out)
 	if strings.Contains(out, "systemd") {
 		// ubuntu, debian, fedora, suse, etc
 		return config.Systemd
