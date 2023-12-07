@@ -12,13 +12,11 @@ import (
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
-	ncconfig "github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	nm_models "github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
 
@@ -40,7 +38,7 @@ func processPeerSignal(signal models.Signal) {
 		return
 	}
 	switch signal.Action {
-	case nm_models.ConnNegotiation:
+	case models.ConnNegotiation:
 		if !isPeerExist(signal.FromHostPubKey) {
 			return
 		}
@@ -52,10 +50,10 @@ func processPeerSignal(signal models.Signal) {
 
 }
 
-func handlePeerFailOver(signal nm_models.Signal) error {
+func handlePeerFailOver(signal models.Signal) error {
 	if !signal.Reply {
 		// signal back
-		err := SignalPeer(nm_models.Signal{
+		err := SignalPeer(models.Signal{
 			Server:         signal.Server,
 			FromHostID:     signal.ToHostID,
 			FromNodeID:     signal.ToNodeID,
@@ -64,7 +62,7 @@ func handlePeerFailOver(signal nm_models.Signal) error {
 			ToHostID:       signal.FromHostID,
 			ToNodeID:       signal.FromNodeID,
 			Reply:          true,
-			Action:         nm_models.ConnNegotiation,
+			Action:         models.ConnNegotiation,
 			TimeStamp:      time.Now().Unix(),
 		})
 		if err != nil {
@@ -72,7 +70,7 @@ func handlePeerFailOver(signal nm_models.Signal) error {
 		}
 	}
 
-	if ncconfig.Netclient().NatType == nm_models.NAT_Types.BehindNAT {
+	if config.Netclient().NatType == models.NAT_Types.BehindNAT {
 		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
 		if err != nil {
 			slog.Error("failed to signal server to relay me", "error", err)
@@ -96,12 +94,12 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				t.Reset(peerConnectionCheckInterval)
 			}
 		case <-t.C:
-			nodes := ncconfig.GetNodes()
+			nodes := config.GetNodes()
 			if len(nodes) == 0 {
 				continue
 			}
 			for _, node := range nodes {
-				if node.Server != ncconfig.CurrServer {
+				if node.Server != config.CurrServer {
 					continue
 				}
 				peers, err := getPeerInfo(node)
@@ -118,18 +116,18 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						// peer is connected,so continue
 						continue
 					}
-					s := nm_models.Signal{
-						Server:         ncconfig.CurrServer,
-						FromHostID:     ncconfig.Netclient().ID.String(),
+					s := models.Signal{
+						Server:         config.CurrServer,
+						FromHostID:     config.Netclient().ID.String(),
 						ToHostID:       peer.HostID,
 						FromNodeID:     node.ID.String(),
 						ToNodeID:       peer.ID,
 						FromHostPubKey: config.Netclient().PublicKey.String(),
 						ToHostPubKey:   pubKey,
-						Action:         nm_models.ConnNegotiation,
+						Action:         models.ConnNegotiation,
 						TimeStamp:      time.Now().Unix(),
 					}
-					server := config.GetServer(ncconfig.CurrServer)
+					server := config.GetServer(config.CurrServer)
 					if server == nil {
 						continue
 					}
@@ -151,26 +149,26 @@ func isPeerExist(peerKey string) bool {
 	return err == nil
 }
 
-func getPeerInfo(node ncconfig.Node) (nm_models.PeerMap, error) {
-	server := ncconfig.GetServer(node.Server)
+func getPeerInfo(node config.Node) (models.PeerMap, error) {
+	server := config.GetServer(node.Server)
 	if server == nil {
 		return nil, errors.New("server is nil")
 	}
-	token, err := auth.Authenticate(server, ncconfig.Netclient())
+	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return nil, err
 	}
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
-	endpoint := httpclient.JSONEndpoint[nm_models.NodeGet, nm_models.ErrorResponse]{
+	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           url,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Data:          nil,
-		Response:      nm_models.NodeGet{},
-		ErrorResponse: nm_models.ErrorResponse{},
+		Response:      models.NodeGet{},
+		ErrorResponse: models.ErrorResponse{},
 	}
-	response, errData, err := endpoint.GetJSON(nm_models.NodeGet{}, nm_models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
@@ -185,11 +183,11 @@ func getPeerInfo(node ncconfig.Node) (nm_models.PeerMap, error) {
 
 // failOverMe - signals the server to failOver ME
 func failOverMe(serverName, nodeID, peernodeID string) error {
-	server := ncconfig.GetServer(serverName)
+	server := config.GetServer(serverName)
 	if server == nil {
 		return errors.New("server config not found")
 	}
-	host := ncconfig.Netclient()
+	host := config.Netclient()
 	if host == nil {
 		return fmt.Errorf("no configured host found")
 	}
@@ -197,15 +195,15 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := httpclient.JSONEndpoint[nm_models.SuccessResponse, nm_models.ErrorResponse]{
+	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/node/%s/failover_me", nodeID),
 		Method:        http.MethodPost,
-		Data:          nm_models.FailOverMeReq{NodeID: peernodeID},
+		Data:          models.FailOverMeReq{NodeID: peernodeID},
 		Authorization: "Bearer " + token,
-		ErrorResponse: nm_models.ErrorResponse{},
+		ErrorResponse: models.ErrorResponse{},
 	}
-	_, errData, err := endpoint.GetJSON(nm_models.SuccessResponse{}, nm_models.ErrorResponse{})
+	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
@@ -216,6 +214,6 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 }
 
 // SignalPeer - signals the peer with host's turn relay endpoint
-func SignalPeer(signal nm_models.Signal) error {
+func SignalPeer(signal models.Signal) error {
 	return publishPeerSignal(config.CurrServer, signal)
 }
