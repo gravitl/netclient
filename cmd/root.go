@@ -99,7 +99,6 @@ func InitConfig(viper *viper.Viper) {
 			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
 		}
 	}
-	//wireguard.WriteWgConfig(Netclient(), GetNodes())
 }
 
 func setupLogging(flags *viper.Viper) {

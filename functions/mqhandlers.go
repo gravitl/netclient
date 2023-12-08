@@ -2,9 +2,7 @@ package functions
 
 import (
 	"encoding/json"
-	"log"
 	"net"
-	"os"
 	"strings"
 	"time"
 
@@ -17,7 +15,6 @@ import (
 	"github.com/gravitl/netclient/nmproxy/turn"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/txeh"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -352,142 +349,6 @@ func parseNetworkFromTopic(topic string) string {
 
 func parseServerFromTopic(topic string) string {
 	return strings.Split(topic, "/")[3]
-}
-
-// dnsUpdate - mq handler for host update dns/<HOSTID>/server
-func dnsUpdate(client mqtt.Client, msg mqtt.Message) {
-	temp := os.TempDir()
-	lockfile := temp + "/netclient-lock"
-	if err := config.Lock(lockfile); err != nil {
-		slog.Error("could not create lock file", "error", err)
-		return
-	}
-	defer config.Unlock(lockfile)
-	var dns models.DNSUpdate
-	serverName := parseServerFromTopic(msg.Topic())
-	server := config.GetServer(serverName)
-	if server == nil {
-		slog.Error("server not found in config", "server", serverName)
-		return
-	}
-	data, err := decryptMsg(serverName, msg.Payload())
-	if err != nil {
-		return
-	}
-	if err := json.Unmarshal([]byte(data), &dns); err != nil {
-		slog.Error("error unmarshalling dns update", "error", err)
-	}
-	if config.Netclient().Debug {
-		log.Println("dnsUpdate received", dns)
-	}
-	var currentMessage = read("dns", lastDNSUpdate)
-	if currentMessage == string(data) {
-		slog.Info("cache hit on dns update ... skipping")
-		return
-	}
-	insert("dns", lastDNSUpdate, string(data))
-	slog.Info("received dns update", "name", dns.Name, "address", dns.Address, "action", dns.Action)
-	applyDNSUpdate(dns)
-}
-
-func applyDNSUpdate(dns models.DNSUpdate) {
-	if config.Netclient().Debug {
-		log.Println(dns)
-	}
-	hosts, err := txeh.NewHostsDefault()
-	if err != nil {
-		slog.Error("failed to read hosts file", "error", err)
-		return
-	}
-	switch dns.Action {
-	case models.DNSInsert:
-		// remove any existing entries
-		hosts.RemoveHost(dns.Name, etcHostsComment)
-		hosts.RemoveAddress(dns.Address, etcHostsComment)
-		hosts.AddHost(dns.Address, dns.Name, etcHostsComment)
-	case models.DNSDeleteByName:
-		hosts.RemoveHost(dns.Name, etcHostsComment)
-	case models.DNSDeleteByIP:
-		hosts.RemoveAddress(dns.Address, etcHostsComment)
-	case models.DNSReplaceName:
-		ok, ip, _ := hosts.HostAddressLookup(dns.Name, txeh.IPFamilyV4, etcHostsComment)
-		if !ok {
-			slog.Error("failed to find dns address for host", "host", dns.Name)
-			return
-		}
-		dns.Address = ip
-		hosts.RemoveHost(dns.Name, etcHostsComment)
-		hosts.AddHost(dns.Address, dns.NewName, etcHostsComment)
-	case models.DNSReplaceIP:
-		hosts.RemoveAddress(dns.Address, etcHostsComment)
-		hosts.AddHost(dns.NewAddress, dns.Name, etcHostsComment)
-	}
-	if err := hosts.Save(); err != nil {
-		slog.Error("error saving hosts file", "error", err)
-		return
-	}
-}
-
-// dnsAll- mq handler for host update dnsall/<HOSTID>/server
-func dnsAll(client mqtt.Client, msg mqtt.Message) {
-	temp := os.TempDir()
-	lockfile := temp + "/netclient-lock"
-	if err := config.Lock(lockfile); err != nil {
-		slog.Error("could not create lock file", "error", err)
-		return
-	}
-	defer config.Unlock(lockfile)
-	var dns []models.DNSUpdate
-	serverName := parseServerFromTopic(msg.Topic())
-	server := config.GetServer(serverName)
-	if server == nil {
-		slog.Error("server not found in config", "server", serverName)
-		return
-	}
-	data, err := decryptMsg(serverName, msg.Payload())
-	if err != nil {
-		return
-	}
-	if err := json.Unmarshal([]byte(data), &dns); err != nil {
-		slog.Error("error unmarshalling dns update", "error", err)
-	}
-	if config.Netclient().Debug {
-		log.Println("all dns", dns)
-	}
-	var currentMessage = read("dnsall", lastALLDNSUpdate)
-	slog.Info("received initial dns", "dns", dns)
-	if currentMessage == string(data) {
-		slog.Info("cache hit on all dns ... skipping")
-		if config.Netclient().Debug {
-			log.Println("dns cache", currentMessage, string(data))
-		}
-		return
-	}
-	insert("dnsall", lastALLDNSUpdate, string(data))
-	applyAllDNS(dns)
-}
-
-func applyAllDNS(dns []models.DNSUpdate) {
-	hosts, err := txeh.NewHostsDefault()
-	if err != nil {
-		slog.Error("failed to read hosts file", "error", err)
-		return
-	}
-	for _, entry := range dns {
-		if entry.Action != models.DNSInsert {
-			slog.Info("invalid dns actions", "action", entry.Action)
-			continue
-		}
-		// remove any existing entries
-		hosts.RemoveHost(entry.Name, etcHostsComment)
-		hosts.RemoveAddress(entry.Address, etcHostsComment)
-		hosts.AddHost(entry.Address, entry.Name, etcHostsComment)
-	}
-
-	if err := hosts.Save(); err != nil {
-		slog.Error("error saving hosts file", "error", err)
-		return
-	}
 }
 
 func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
