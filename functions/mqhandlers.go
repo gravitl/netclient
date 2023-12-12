@@ -593,11 +593,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
-			if config.CurrServer == "" {
-				// skip tick if there is no server
-				continue
-			}
 			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+				if config.CurrServer == "" {
+					// skip tick if there is no server
+					continue
+				}
 				// Call netclient http config pull
 				slog.Info("mqfallback routine execute")
 				response, resetInterface, err := Pull(false)
