@@ -169,7 +169,6 @@ func ConvertOldServerCfg(cfg *models.ServerConfig) *Server {
 	server.API = cfg.API
 	server.CoreDNSAddr = cfg.CoreDNSAddr
 	server.IsPro = cfg.IsPro
-	server.StunPort = cfg.StunPort
 	server.DNSMode = cfg.DNSMode
 	server.Nodes = make(map[string]bool)
 	return &server
