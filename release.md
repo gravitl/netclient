@@ -1,4 +1,4 @@
-# Netclient v0.21.3
+# Netclient v0.22.0
 
 ## Whats New
 - Local Routing Improvements
