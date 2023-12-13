@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl"

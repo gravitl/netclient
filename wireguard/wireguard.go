@@ -6,7 +6,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -26,7 +26,6 @@ func SetPeers(replace bool) error {
 		}
 	}
 	GetInterface().Config.Peers = peers
-	peers = peer.SetPeersEndpointToProxy(peers)
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
 		peers = nil
@@ -74,4 +73,28 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		return ok
 	}
 	return false
+}
+
+// GetPeer - gets the peerinfo from the wg interface
+func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
+	wg, err := wgctrl.New()
+	if err != nil {
+		return wgtypes.Peer{}, err
+	}
+	defer func() {
+		err = wg.Close()
+		if err != nil {
+			logger.Log(0, "got error while closing wgctl: ", err.Error())
+		}
+	}()
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return wgtypes.Peer{}, err
+	}
+	for _, peer := range wgDevice.Peers {
+		if peer.PublicKey.String() == peerPubKey {
+			return peer, nil
+		}
+	}
+	return wgtypes.Peer{}, fmt.Errorf("peer not found")
 }
