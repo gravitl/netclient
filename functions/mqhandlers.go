@@ -16,8 +16,6 @@ import (
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	"github.com/gravitl/netclient/nmproxy/turn"
-	"github.com/gravitl/netclient/routes"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/txeh"
@@ -130,8 +128,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if server.UseTurn {
-		turn.ResetCh <- struct{}{}
+	if server.IsPro {
+		ResetCh <- struct{}{}
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -156,30 +154,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
-	currentGW4 := config.GW4Addr
-	currentGW6 := config.GW6Addr
-	isInetGW := config.UpdateHostPeers(peerUpdate.Peers)
+	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(false)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 	}
-	if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-		slog.Warn("error when setting peer routes after peer update", "error", err)
-	}
-	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
-		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
-	originalGW := currentGW4
-	if originalGW.IP != nil {
-		originalGW = currentGW6
-	}
-	handlePeerInetGateways(
-		gwDetected,
-		isInetGW,
-		gwDelta,
-		&originalGW,
-	)
 	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
@@ -192,6 +172,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	server := config.GetServer(serverName)
 	if server == nil {
 		slog.Error("server not found in config", "server", serverName)
+		return
+	}
+	if len(msg.Payload()) == 0 {
 		return
 	}
 	data, err := decryptMsg(serverName, msg.Payload())
@@ -275,7 +258,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 	case models.SignalHost:
-		turn.PeerSignalCh <- hostUpdate.Signal
+		clearRetainedMsg(client, msg.Topic())
+		processPeerSignal(hostUpdate.Signal)
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
@@ -308,11 +292,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("could not configure netmaker interface", "error", err)
 			return
 		}
-
-		if err = wireguard.SetPeers(false); err == nil {
-			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-				slog.Error("error when setting peer routes after host update", "error", err)
-			}
+		if err = wireguard.SetPeers(false); err != nil {
+			slog.Error("failed to set peers", err)
 		}
 	}
 }
@@ -538,41 +519,6 @@ func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
 	return false
 }
 
-func handlePeerInetGateways(gwDetected, isHostInetGateway, gwDelta bool, originalGW *net.IPNet) { // isHostInetGateway indicates if host should worry about setting gateways
-	if gwDelta { // handle switching gateway IP to other GW peer
-		if config.GW4PeerDetected {
-			if err := routes.RemoveDefaultGW(originalGW); err != nil {
-				slog.Error("failed to remove default gateway from peer", "gateway", originalGW, "error", err)
-			}
-			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
-				slog.Error("failed to set default gateway to peer", "gateway", config.GW4Addr, "error", err)
-			}
-		} else if config.GW6PeerDetected {
-			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
-				slog.Error("failed to set default gateway to peer", "gateway", config.GW6Addr, "error", err)
-			}
-		}
-	} else {
-		if !gwDetected && config.GW4PeerDetected && !isHostInetGateway { // ipv4 gateways take priority
-			if err := routes.SetDefaultGateway(&config.GW4Addr); err != nil {
-				slog.Error("failed to set default gateway to peer", "gateway", config.GW4Addr, "error", err)
-			}
-		} else if gwDetected && !config.GW4PeerDetected {
-			if err := routes.RemoveDefaultGW(&config.GW4Addr); err != nil {
-				slog.Error("failed to remove default gateway to peer", "gateway", config.GW4Addr, "error", err)
-			}
-		} else if !gwDetected && config.GW6PeerDetected && !isHostInetGateway {
-			if err := routes.SetDefaultGateway(&config.GW6Addr); err != nil {
-				slog.Error("failed to set default gateway to peer", "gateway", config.GW6Addr, "error", err)
-			}
-		} else if gwDetected && !config.GW6PeerDetected {
-			if err := routes.RemoveDefaultGW(&config.GW6Addr); err != nil {
-				slog.Error("failed to remove default gateway to peer", "gateway", config.GW6Addr, "error", err)
-			}
-		}
-	}
-}
-
 func handleFwUpdate(server string, payload *models.FwUpdate) {
 
 	if payload.IsEgressGw {
@@ -630,9 +576,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 		slog.Error("server not found in config", "server", serverName)
 		return
 	}
-	if server.UseTurn {
-		turn.ResetCh <- struct{}{}
-	}
 	if pullResponse.ServerConfig.Version != config.Version {
 		slog.Warn("server/client version mismatch", "server", pullResponse.ServerConfig.Version, "client", config.Version)
 		vlt, err := versionLessThan(config.Version, pullResponse.ServerConfig.Version)
@@ -655,30 +598,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-	gwDetected := config.GW4PeerDetected || config.GW6PeerDetected
-	currentGW4 := config.GW4Addr
-	currentGW6 := config.GW6Addr
-	isInetGW := config.UpdateHostPeers(pullResponse.Peers)
+
+	config.UpdateHostPeers(pullResponse.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(false)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 	}
-	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-		slog.Warn("error when setting peer routes on mq fallback pull", "error", err)
-	}
-	gwDelta := (currentGW4.IP != nil && !currentGW4.IP.Equal(config.GW4Addr.IP)) ||
-		(currentGW6.IP != nil && !currentGW6.IP.Equal(config.GW6Addr.IP))
-	originalGW := currentGW4
-	if originalGW.IP != nil {
-		originalGW = currentGW6
-	}
-	handlePeerInetGateways(
-		gwDetected,
-		isInetGW,
-		gwDelta,
-		&originalGW,
-	)
+
 	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
@@ -691,11 +618,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 			slog.Error("could not configure netmaker interface", "error", err)
 			return
 		}
-		if err := wireguard.SetPeers(false); err == nil {
-			if err = routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-				slog.Error("error when setting peer routes after host update", "error", err)
-			}
-		}
+		_ = wireguard.SetPeers(false)
 		slog.Info("mqfallback reset interface")
 	}
 }

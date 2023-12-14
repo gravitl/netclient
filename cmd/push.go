@@ -13,7 +13,7 @@ var pushCmd = &cobra.Command{
 	Long:  `updates host config locally and updates server`,
 	Run: func(cmd *cobra.Command, args []string) {
 		setHostFields(cmd)
-		err := functions.Push()
+		err := functions.Push(true)
 		if err != nil {
 			logger.Log(0, "failed to push", err.Error())
 		}
@@ -26,5 +26,6 @@ func init() {
 	pushCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
 	pushCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
 	pushCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
+	pushCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(pushCmd)
 }

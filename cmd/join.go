@@ -23,6 +23,7 @@ user: netclient join -s <server> -u <user_name> // attempt to join/register via 
 
 	Run: func(cmd *cobra.Command, args []string) {
 		setHostFields(cmd)
+		functions.Push(false)
 		token, err := cmd.Flags().GetString(registerFlags.Token)
 		if err != nil || len(token) == 0 {
 			if regErr := checkUserRegistration(cmd); regErr != nil {
@@ -48,5 +49,6 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.MTU, "m", "", "sets MTU on host")
 	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
 	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
+	joinCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(joinCmd)
 }

@@ -89,6 +89,24 @@ func PublishNodeUpdate(node *config.Node) error {
 	return nil
 }
 
+// publishPeerSignal - publishes peer signal
+func publishPeerSignal(server string, signal models.Signal) error {
+	hostCfg := config.Netclient()
+	hostUpdate := models.HostUpdate{
+		Action: models.SignalHost,
+		Host:   hostCfg.Host,
+		Signal: signal,
+	}
+	data, err := json.Marshal(hostUpdate)
+	if err != nil {
+		return err
+	}
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
+		return err
+	}
+	return nil
+}
+
 // PublishHostUpdate - publishes host updates to server
 func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	hostCfg := config.Netclient()
