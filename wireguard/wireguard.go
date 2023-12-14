@@ -12,6 +12,25 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
+func ShouldReplace(peers []wgtypes.PeerConfig) bool {
+	hostPeers := config.Netclient().HostPeers
+	if len(peers) != len(hostPeers) {
+		return true
+	}
+
+	hostpeerMap := make(map[string]wgtypes.PeerConfig)
+	for _, hostPeer := range hostPeers {
+		hostpeerMap[hostPeer.PublicKey.String()] = hostPeer
+	}
+	for _, peer := range peers {
+		if _, ok := hostpeerMap[peer.PublicKey.String()]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers(replace bool) error {
 

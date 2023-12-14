@@ -3,6 +3,7 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -25,9 +26,6 @@ import (
 
 // MQTimeout - time out for mqtt connections
 const MQTimeout = 30
-
-// MQTT Fallback Routine
-var mqFallbackTicker *time.Ticker = time.NewTicker(time.Second * 30)
 
 // All -- mqtt message hander for all ('#') topics
 var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
@@ -532,6 +530,7 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 // MQTT Fallback Mechanism
 func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+	mqFallbackTicker := time.NewTicker(time.Second * 30)
 	for {
 		select {
 		case <-ctx.Done():
@@ -539,31 +538,29 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
-			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-				if config.CurrServer == "" {
-					// skip tick if there is no server
+			if (Mqclient != nil && Mqclient.IsConnectionOpen()) || config.CurrServer == "" {
+				continue
+			}
+			// Call netclient http config pull
+			fmt.Println("----------> ### mqfallback routine execute")
+			response, resetInterface, err := Pull(false)
+			if err != nil {
+				slog.Error("pull failed", "error", err)
+			} else {
+				mqFallbackPull(response, resetInterface)
+				server := config.GetServer(config.CurrServer)
+				if server == nil {
 					continue
 				}
-				// Call netclient http config pull
-				slog.Info("mqfallback routine execute")
-				response, resetInterface, err := Pull(false)
-				if err != nil {
-					slog.Error("pull failed", "error", err)
-				} else {
-					mqFallbackPull(response, resetInterface)
-					server := config.GetServer(config.CurrServer)
-					if server == nil {
-						continue
-					}
-					slog.Info("re-attempt mqtt connection after pull")
-					if Mqclient != nil {
-						Mqclient.Disconnect(0)
-					}
-					if err := setupMQTT(server); err != nil {
-						slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
-					}
+				slog.Info("re-attempt mqtt connection after pull")
+				if Mqclient != nil {
+					Mqclient.Disconnect(0)
+				}
+				if err := setupMQTT(server); err != nil {
+					slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
 				}
 			}
+
 		}
 	}
 }
@@ -598,10 +595,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-
+	replace := wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = config.WriteNetclientConfig()
-	_ = wireguard.SetPeers(false)
+	slog.Debug("replacing peers on the interface")
+	_ = wireguard.SetPeers(replace)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 	}

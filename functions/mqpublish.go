@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -46,22 +47,63 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			logger.Log(0, "checkin routine closed")
 			return
 		case <-ticker.C:
-
-			if Mqclient == nil || !Mqclient.IsConnected() {
-				logger.Log(0, "MQ client is not connected, skipping checkin for server", config.CurrServer)
+			if config.CurrServer == "" {
 				continue
 			}
-
-			if config.CurrServer != "" {
-				checkin()
+			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+				logger.Log(0, "MQ client is not connected, using fallback checkin for server", config.CurrServer)
+				checkinFallback()
+				continue
 			}
+			checkin()
 		}
 	}
 }
 
+func checkinFallback() {
+	// check/update host settings; publish if changed
+	if err := UpdateHostSettings(true); err != nil {
+		logger.Log(0, "failed to update host settings", err.Error())
+		return
+	}
+	hostUpdateFallback(models.CheckIn)
+}
+
+// hostUpdateFallback - used to send host updates to server when there is a mq connection failure
+func hostUpdateFallback(action models.HostMqAction) error {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	host := config.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
+		Method:        http.MethodPut,
+		Data:          models.HostUpdate{Host: host.Host, Action: action},
+		Authorization: "Bearer " + token,
+		ErrorResponse: models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Error("error sending host update to server", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+		}
+		return err
+	}
+	return nil
+}
+
 func checkin() {
 	// check/update host settings; publish if changed
-	if err := UpdateHostSettings(); err != nil {
+	if err := UpdateHostSettings(false); err != nil {
 		logger.Log(0, "failed to update host settings", err.Error())
 		return
 	}
@@ -232,7 +274,7 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 }
 
 // UpdateHostSettings - checks local host settings, if different, mod config and publish
-func UpdateHostSettings() error {
+func UpdateHostSettings(fallback bool) error {
 	_ = config.ReadNodeConfig()
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
@@ -308,8 +350,12 @@ func UpdateHostSettings() error {
 			return err
 		}
 		slog.Info("publishing host update for endpoint changes")
-		if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
-			logger.Log(0, "could not publish endpoint change", err.Error())
+		if fallback {
+			hostUpdateFallback(models.UpdateHost)
+		} else {
+			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
+				logger.Log(0, "could not publish endpoint change", err.Error())
+			}
 		}
 	}
 	if restartDaemon {

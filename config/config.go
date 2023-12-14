@@ -87,8 +87,10 @@ func init() {
 
 // UpdateNetcllient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
+	if c.Verbosity != logger.Verbosity {
+		logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
+	}
 	logger.Verbosity = c.Verbosity
-	logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
 	netclient = c
 }
 
