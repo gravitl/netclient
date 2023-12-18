@@ -10,21 +10,23 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(restart bool) (models.HostPull, bool, error) {
+func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	resetInterface := false
+	replacePeers := false
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	if server == nil {
-		return models.HostPull{}, resetInterface, errors.New("server config not found")
+		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
-		return models.HostPull{}, resetInterface, err
+		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
 		URL:           "https://" + server.API,
@@ -39,7 +41,7 @@ func Pull(restart bool) (models.HostPull, bool, error) {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "error pulling server", serverName, strconv.Itoa(errData.Code), errData.Message)
 		}
-		return models.HostPull{}, resetInterface, err
+		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
 	// MQTT Fallback Reset Interface
@@ -62,7 +64,7 @@ func Pull(restart bool) (models.HostPull, bool, error) {
 	if len(config.GetNodes()) != len(pullResponse.Nodes) {
 		resetInterface = true
 	}
-
+	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
@@ -74,7 +76,7 @@ func Pull(restart bool) (models.HostPull, bool, error) {
 	_ = config.WriteNodeConfig()
 	if restart {
 		logger.Log(3, "restarting daemon")
-		return models.HostPull{}, resetInterface, daemon.Restart()
+		return models.HostPull{}, resetInterface, replacePeers, daemon.Restart()
 	}
-	return pullResponse, resetInterface, nil
+	return pullResponse, resetInterface, replacePeers, nil
 }

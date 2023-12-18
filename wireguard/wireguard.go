@@ -13,18 +13,25 @@ import (
 )
 
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
-func ShouldReplace(peers []wgtypes.PeerConfig) bool {
+func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 	hostPeers := config.Netclient().HostPeers
-	if len(peers) != len(hostPeers) {
+	if len(incomingPeers) != len(hostPeers) {
 		return true
 	}
 
-	hostpeerMap := make(map[string]wgtypes.PeerConfig)
+	hostpeerMap := make(map[string]struct{})
 	for _, hostPeer := range hostPeers {
-		hostpeerMap[hostPeer.PublicKey.String()] = hostPeer
+		hostpeerMap[hostPeer.PublicKey.String()] = struct{}{}
 	}
-	for _, peer := range peers {
+	incomingPeerMap := make(map[string]struct{})
+	for _, peer := range incomingPeers {
+		incomingPeerMap[peer.PublicKey.String()] = struct{}{}
 		if _, ok := hostpeerMap[peer.PublicKey.String()]; !ok {
+			return true
+		}
+	}
+	for _, hostPeer := range hostPeers {
+		if _, ok := incomingPeerMap[hostPeer.PublicKey.String()]; !ok {
 			return true
 		}
 	}

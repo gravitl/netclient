@@ -543,11 +543,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			// Call netclient http config pull
 			fmt.Println("----------> ### mqfallback routine execute")
-			response, resetInterface, err := Pull(false)
+			response, resetInterface, replacePeers, err := Pull(false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {
-				mqFallbackPull(response, resetInterface)
+				mqFallbackPull(response, resetInterface, replacePeers)
 				server := config.GetServer(config.CurrServer)
 				if server == nil {
 					continue
@@ -566,7 +566,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // MQTT Fallback Config Pull
-func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
+func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -595,11 +595,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface bool) {
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-	replace := wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = config.WriteNetclientConfig()
-	slog.Debug("replacing peers on the interface")
-	_ = wireguard.SetPeers(replace)
+	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 	}

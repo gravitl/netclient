@@ -114,8 +114,8 @@ func WriteServerConfig() error {
 // SaveServer updates the server map with current server struct and writes map to disk
 func SaveServer(name string, server Server) error {
 	serverMutex.Lock()
-	defer serverMutex.Unlock()
 	Servers[name] = server
+	serverMutex.Unlock()
 	return WriteServerConfig()
 }
 
