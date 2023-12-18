@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -57,7 +58,8 @@ func (i InitType) String() string {
 }
 
 var (
-	netclient Config // netclient contains the netclient config
+	netclientCfgMutex = &sync.RWMutex{}
+	netclient         Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
 	// FwClose - firewall manager shutdown func
@@ -85,8 +87,10 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
-// UpdateNetcllient updates the in memory version of the host configuration
+// UpdateNetclient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	if c.Verbosity != logger.Verbosity {
 		logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
 	}
@@ -132,21 +136,28 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
+	netclientCfgMutex.RLock()
+	defer netclientCfgMutex.RUnlock()
 	return &netclient
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	netclient.HostPeers = peers
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg() {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	netclient.HostPeers = []wgtypes.PeerConfig{}
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
 func RemoveServerHostPeerCfg() {
+	netclient := Netclient()
 	if netclient.HostPeers == nil {
 		netclient.HostPeers = []wgtypes.PeerConfig{}
 		return
@@ -158,6 +169,7 @@ func RemoveServerHostPeerCfg() {
 		peers[i] = peer
 	}
 	netclient.HostPeers = peers
+	UpdateNetclient(*netclient)
 	_ = WriteNetclientConfig()
 }
 
@@ -179,6 +191,8 @@ func ReadNetclientConfig() (*Config, error) {
 		return nil, err
 	}
 	defer f.Close()
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	netclient = Config{}
 	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
 		return nil, err
@@ -211,6 +225,8 @@ func WriteNetclientConfig() error {
 		return err
 	}
 	defer f.Close()
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	err = yaml.NewEncoder(f).Encode(netclient)
 	if err != nil {
 		return err
