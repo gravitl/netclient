@@ -66,7 +66,6 @@ func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	}
 	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
-	pullResponse.ServerConfig.MQPassword = server.MQPassword // pwd can't change currently
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
