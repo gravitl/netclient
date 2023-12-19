@@ -214,6 +214,10 @@ func setupMQTT(server *config.Server) error {
 	opts.AddBroker(server.Broker)
 	opts.SetUsername(server.MQUserName)
 	opts.SetPassword(server.MQPassword)
+	if server.BrokerType == "emqx" {
+		opts.SetUsername(config.Netclient().ID.String())
+		opts.SetPassword(config.Netclient().HostPass)
+	}
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
