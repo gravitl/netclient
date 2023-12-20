@@ -306,38 +306,20 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				ruleSpec := []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
 				// to avoid duplicate iface route rule,delete if exists
 				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
-				if isIpv4 {
-					rule = &nftables.Rule{
-						Table:    natTable,
-						Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
-						UserData: []byte(genRuleKey(ruleSpec...)),
-						Exprs: []expr.Any{
-							&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     []byte(egressRangeIface + "\x00"),
-							},
-							&expr.Counter{},
-							&expr.Masq{},
+				rule = &nftables.Rule{
+					Table:    natTable,
+					Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+					UserData: []byte(genRuleKey(ruleSpec...)),
+					Exprs: []expr.Any{
+						&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     []byte(egressRangeIface + "\x00"),
 						},
-					}
-				} else {
-					rule = &nftables.Rule{
-						Table:    natTable,
-						Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
-						UserData: []byte(genRuleKey(ruleSpec...)),
-						Exprs: []expr.Any{
-							&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     []byte(egressRangeIface + "\x00"),
-							},
-							&expr.Counter{},
-							&expr.Masq{},
-						},
-					}
+						&expr.Counter{},
+						&expr.Masq{},
+					},
 				}
 				n.conn.InsertRule(rule)
 				if err := n.conn.Flush(); err != nil {
