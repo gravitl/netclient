@@ -3,7 +3,6 @@ package functions
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -542,7 +541,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 				continue
 			}
 			// Call netclient http config pull
-			fmt.Println("----------> ### mqfallback routine execute")
+			slog.Info("### mqfallback routine execute")
 			response, resetInterface, replacePeers, err := Pull(false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)

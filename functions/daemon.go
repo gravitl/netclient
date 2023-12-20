@@ -69,14 +69,10 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
-	httpctx, httpCancel := context.WithCancel(context.Background())
-	httpWg := sync.WaitGroup{}
-	httpWg.Add(1)
-	go HttpServer(httpctx, &httpWg)
-
-	// MQTT Fallback Goroutine
-	httpWg.Add(1)
-	go mqFallback(httpctx, &httpWg)
+	ctx0, cancel0 := context.WithCancel(context.Background())
+	wg0 := sync.WaitGroup{}
+	wg0.Add(1)
+	go HttpServer(ctx0, &wg0)
 
 	for {
 		select {
@@ -85,8 +81,8 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
-			httpCancel()
-			httpWg.Wait()
+			cancel0()
+			wg0.Wait()
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
@@ -185,6 +181,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
 	}
+	wg.Add(1)
+	go mqFallback(ctx, wg)
 
 	return cancel
 }
@@ -212,11 +210,12 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
-	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.MQPassword)
 	if server.BrokerType == "emqx" {
 		opts.SetUsername(config.Netclient().ID.String())
 		opts.SetPassword(config.Netclient().HostPass)
+	} else {
+		opts.SetUsername(server.MQUserName)
+		opts.SetPassword(server.MQPassword)
 	}
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
