@@ -63,9 +63,6 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	if err := deleteLocalNetwork(&node); err != nil {
 		faults = append(faults, fmt.Errorf("error deleting wireguard interface %w", err))
 	}
-	if err := deleteNetworkDNS(network); err != nil {
-		faults = append(faults, fmt.Errorf("error deleting dns entries %w", err))
-	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
 		nc := wireguard.GetInterface()

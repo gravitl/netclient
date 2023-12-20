@@ -49,6 +49,7 @@ type cachedMessage struct {
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
 	daemon.RemoveAllLockFiles()
+	go deleteAllDNS()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
 		os.Exit(1)
@@ -324,16 +325,6 @@ func setHostSubscription(client mqtt.Client, server string) {
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
-		return
-	}
-	slog.Info("subscribing to dns updates for", "host", hostID, "server", server)
-	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error())
-		return
-	}
-	slog.Info("subscribing to all dns updates for", "host", hostID, "server", server)
-	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 
