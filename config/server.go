@@ -5,12 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"gopkg.in/yaml.v3"
 )
+
+var serverMutex = &sync.RWMutex{}
 
 var serverCtxFile = ".serverctx"
 
@@ -65,9 +68,9 @@ func ReadServerConf() error {
 		return err
 	}
 	defer f.Close()
-	for k := range Servers {
-		delete(Servers, k)
-	}
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
+	Servers = make(map[string]Server)
 	if err := yaml.NewDecoder(f).Decode(&Servers); err != nil {
 		return err
 	}
@@ -99,6 +102,8 @@ func WriteServerConfig() error {
 		return err
 	}
 	defer f.Close()
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
 	err = yaml.NewEncoder(f).Encode(Servers)
 	if err != nil {
 		return err
@@ -108,17 +113,23 @@ func WriteServerConfig() error {
 
 // SaveServer updates the server map with current server struct and writes map to disk
 func SaveServer(name string, server Server) error {
+	serverMutex.Lock()
 	Servers[name] = server
+	serverMutex.Unlock()
 	return WriteServerConfig()
 }
 
 // UpdateServer updates the in-memory server map
 func UpdateServer(name string, server Server) {
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
 	Servers[name] = server
 }
 
 // GetServer returns the server struct for the given server name
 func GetServer(name string) *Server {
+	serverMutex.RLock()
+	defer serverMutex.RUnlock()
 	if server, ok := Servers[name]; ok {
 		return &server
 	}
@@ -127,6 +138,8 @@ func GetServer(name string) *Server {
 
 // GetServers - gets all the server names host has registered to.
 func GetServers() (servers []string) {
+	serverMutex.RLock()
+	defer serverMutex.RUnlock()
 	for _, server := range Servers {
 		servers = append(servers, server.Name)
 	}
@@ -173,6 +186,8 @@ func SetServerCtx() {
 
 // DeleteServer deletes the specified server name from the server map
 func DeleteServer(k string) {
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
 	delete(Servers, k)
 }
 
@@ -194,6 +209,8 @@ func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
 func UpdateServerConfig(cfg *models.ServerConfig) {
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
 	if cfg == nil {
 		return
 	}
@@ -205,6 +222,5 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.Name = cfg.Server
 	server.MQID = netclient.ID
 	server.ServerConfig = *cfg
-
 	Servers[cfg.Server] = server
 }

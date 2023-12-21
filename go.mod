@@ -1,6 +1,8 @@
 module github.com/gravitl/netclient
 
-go 1.19
+go 1.21
+
+toolchain go1.21.4
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
@@ -13,7 +15,7 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.5.0
 	github.com/gorilla/websocket v1.5.1
-	github.com/gravitl/netmaker v0.21.3-0.20231206204427-6b694f57bbb6
+	github.com/gravitl/netmaker v0.21.3-0.20231219175314-16b0e41ea3dc
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4

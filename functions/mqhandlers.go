@@ -1,9 +1,11 @@
 package functions
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -383,4 +385,96 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 		firewall.DeleteEgressGwRoutes(server)
 	}
 
+}
+
+// MQTT Fallback Mechanism
+func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mqFallbackTicker := time.NewTicker(time.Second * 30)
+	for {
+		select {
+		case <-ctx.Done():
+			mqFallbackTicker.Stop()
+			slog.Info("mqfallback routine stop")
+			return
+		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
+			if (Mqclient != nil && Mqclient.IsConnectionOpen()) || config.CurrServer == "" {
+				continue
+			}
+			// Call netclient http config pull
+			slog.Info("### mqfallback routine execute")
+			response, resetInterface, replacePeers, err := Pull(false)
+			if err != nil {
+				slog.Error("pull failed", "error", err)
+			} else {
+				mqFallbackPull(response, resetInterface, replacePeers)
+				server := config.GetServer(config.CurrServer)
+				if server == nil {
+					continue
+				}
+				slog.Info("re-attempt mqtt connection after pull")
+				if Mqclient != nil {
+					Mqclient.Disconnect(0)
+				}
+				if err := setupMQTT(server); err != nil {
+					slog.Error("unable to connect to broker", "server", server.Broker, "error", err)
+				}
+			}
+
+		}
+	}
+}
+
+// MQTT Fallback Config Pull
+func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
+	serverName := config.CurrServer
+	server := config.GetServer(serverName)
+	if server == nil {
+		slog.Error("server not found in config", "server", serverName)
+		return
+	}
+	if pullResponse.ServerConfig.Version != config.Version {
+		slog.Warn("server/client version mismatch", "server", pullResponse.ServerConfig.Version, "client", config.Version)
+		vlt, err := versionLessThan(config.Version, pullResponse.ServerConfig.Version)
+		if err != nil {
+			slog.Error("error checking version less than", "error", err)
+			return
+		}
+		if vlt && config.Netclient().Host.AutoUpdate {
+			slog.Info("updating client to server's version", "version", pullResponse.ServerConfig.Version)
+			if err := UseVersion(pullResponse.ServerConfig.Version, false); err != nil {
+				slog.Error("error updating client to server's version", "error", err)
+			} else {
+				slog.Info("updated client to server's version", "version", pullResponse.ServerConfig.Version)
+				daemon.HardRestart()
+			}
+		}
+	}
+	if pullResponse.ServerConfig.Version != server.Version {
+		slog.Info("updating server version", "server", serverName, "version", pullResponse.ServerConfig.Version)
+		server.Version = pullResponse.ServerConfig.Version
+		config.WriteServerConfig()
+	}
+	config.UpdateHostPeers(pullResponse.Peers)
+	_ = config.WriteNetclientConfig()
+	_ = wireguard.SetPeers(replacePeers)
+	if len(pullResponse.EgressRoutes) > 0 {
+		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+	}
+
+	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
+	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+
+	if resetInterface {
+		nc := wireguard.GetInterface()
+		nc.Close()
+		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		nc.Create()
+		if err := nc.Configure(); err != nil {
+			slog.Error("could not configure netmaker interface", "error", err)
+			return
+		}
+		_ = wireguard.SetPeers(false)
+		slog.Info("mqfallback reset interface")
+	}
 }

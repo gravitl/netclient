@@ -70,10 +70,11 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
-	httpctx, httpCancel := context.WithCancel(context.Background())
-	httpWg := sync.WaitGroup{}
-	httpWg.Add(1)
-	go HttpServer(httpctx, &httpWg)
+	ctx0, cancel0 := context.WithCancel(context.Background())
+	wg0 := sync.WaitGroup{}
+	wg0.Add(1)
+	go HttpServer(ctx0, &wg0)
+
 	for {
 		select {
 		case <-quit:
@@ -81,8 +82,8 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
-			httpCancel()
-			httpWg.Wait()
+			cancel0()
+			wg0.Wait()
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
@@ -151,7 +152,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
-	pullresp, pullErr := Pull(false)
+	pullresp, _, _, pullErr := Pull(false)
 	if pullErr != nil {
 		slog.Error("fail to pull config from server", "error", pullErr.Error())
 	}
@@ -181,6 +182,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
 	}
+	wg.Add(1)
+	go mqFallback(ctx, wg)
 
 	return cancel
 }
@@ -208,8 +211,13 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
-	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.MQPassword)
+	if server.BrokerType == "emqx" {
+		opts.SetUsername(config.Netclient().ID.String())
+		opts.SetPassword(config.Netclient().HostPass)
+	} else {
+		opts.SetUsername(server.MQUserName)
+		opts.SetPassword(server.MQPassword)
+	}
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
@@ -231,7 +239,6 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
-
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
 		if !config.Netclient().IsStatic {
 			daemon.Restart()
