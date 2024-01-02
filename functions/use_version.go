@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -98,67 +97,36 @@ func versionLessThan(v1, v2 string) (bool, error) {
 	return sv1.LT(sv2), nil
 }
 
+func getUrl(version string) (url string) {
+	switch runtime.GOOS {
+	case "windows":
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
+	default:
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
+	}
+	return
+}
+
 // UseVersion switches the current netclient version to the one specified if available in the github releases page
 func UseVersion(version string, rebootDaemon bool) error {
-	// Use Windows specific version change process
-	if runtime.GOOS == "windows" {
-		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
-		if err := windowsUpdate(windowsBinaryURL); err != nil {
-			return err
-		}
-		if rebootDaemon {
-			daemon.HardRestart()
-		}
-		return nil
-	}
 
-	// Use Linux and MacOS specific version change process
-	if err := createDirIfNotExists(); err != nil {
-		return err
-	}
-	filePath = filepath.Join(binPath, "netclient-"+version)
-	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
-		if err := downloadVersion(version); err != nil {
-			return err
-		}
-	}
 	if rebootDaemon {
 		daemon.Stop()
 	}
-	dst, err := os.Executable()
-	if err != nil {
+	defer func() {
+		if rebootDaemon {
+			daemon.Start()
+		}
+	}()
+	if err := updateBinary(getUrl(version)); err != nil {
 		return err
 	}
-	src, err := os.ReadFile(filePath)
-	if err != nil {
-		return err
-	}
-	tmpPath := dst + "-tmp"
-	tmpFile, err := os.Create(tmpPath)
-	if err != nil {
-		return err
-	}
-	defer tmpFile.Close()
-	if _, err := tmpFile.Write(src); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpPath, 0755); err != nil {
-		return err
-	}
-	if err := os.Remove(dst); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpPath, dst); err != nil {
-		return err
-	}
-	if rebootDaemon {
-		daemon.Start()
-	}
+
 	return nil
 }
 
-// windowsUpdate uses a different package and process to upgrade netclient binary on windows
-func windowsUpdate(url string) error {
+// updateBinary - func to upgrade netclient binary
+func updateBinary(url string) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
