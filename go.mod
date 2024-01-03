@@ -1,6 +1,6 @@
 module github.com/gravitl/netclient
 
-go 1.21
+go 1.19
 
 toolchain go1.21.4
 
