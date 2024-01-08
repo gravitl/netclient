@@ -12,12 +12,16 @@ import (
 func Push(restart bool) error {
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
-		if err := setupMQTTSingleton(server, true); err != nil {
-			return err
+		if err := setupMQTTSingleton(server, true); err == nil {
+			if err := PublishHostUpdate(server.Server, models.UpdateHost); err != nil {
+				return err
+			}
+		} else {
+			if err := hostUpdateFallback(models.UpdateHost); err != nil {
+				return err
+			}
 		}
-		if err := PublishHostUpdate(server.Server, models.UpdateHost); err != nil {
-			return err
-		}
+
 	}
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
