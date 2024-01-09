@@ -82,6 +82,13 @@ func SetNodes(nodes []models.Node) {
 	}
 }
 
+// DeleteNodes - removes all nodes
+func DeleteNodes() {
+	nodeMutex.Lock()
+	defer nodeMutex.Unlock()
+	Nodes = make(NodeMap)
+}
+
 // UpdateNodeMap updates the in memory nodemap for the specified network
 func UpdateNodeMap(k string, value Node) {
 	nodeMutex.Lock()

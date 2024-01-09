@@ -80,8 +80,12 @@ func LeaveServer(s string) error {
 		fmt.Println(err)
 		return err
 	}
+	config.DeleteServerHostPeerCfg()
 	config.DeleteServer(server.Name)
+	config.DeleteNodes()
 	config.WriteServerConfig()
+	config.WriteNodeConfig()
+	config.WriteNetclientConfig()
 	daemon.Restart()
 	return nil
 }
