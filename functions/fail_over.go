@@ -73,7 +73,7 @@ func handlePeerFailOver(signal models.Signal) error {
 	if config.Netclient().NatType == models.NAT_Types.BehindNAT {
 		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
 		if err != nil {
-			slog.Error("failed to signal server to relay me", "error", err)
+			slog.Debug("failed to signal server to relay me", "error", err)
 		}
 	}
 	return nil
@@ -206,7 +206,7 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+			slog.Debug("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
 		}
 		return err
 	}
