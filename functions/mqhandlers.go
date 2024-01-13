@@ -322,11 +322,14 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 					continue
 				}
 				if peerIP.IsPrivate() {
-					networking.FindBestEndpoint(
-						peerIP.String(),
-						peerPubKey,
-						peerInfo.ListenPort,
-					)
+					go func(peerIP, peerPubKey string, listenPort int) {
+						networking.FindBestEndpoint(
+							peerIP,
+							peerPubKey,
+							peerInfo.ListenPort,
+						)
+					}(peerIP.String(), peerPubKey, peerInfo.ListenPort)
+
 				}
 			}
 		}

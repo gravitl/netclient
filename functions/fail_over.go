@@ -111,7 +111,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if peer.IsExtClient {
 						continue
 					}
-					connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort)
+					connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 4)
 					if connected {
 						// peer is connected,so continue
 						continue
