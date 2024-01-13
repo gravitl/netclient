@@ -296,8 +296,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
 	currentCidrs := getAllAllowedIPs(peers[:])
 	for idx := range peers {
-
 		peerPubKey := peers[idx].PublicKey.String()
+		if wireguard.EndpointDetectedAlready(peerPubKey) {
+			continue
+		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
 			if peerInfo.IsStatic {
 				// peer is a static host shouldn't disturb the configuration set by the user

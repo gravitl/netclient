@@ -13,6 +13,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/firewall"
@@ -106,6 +107,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		Mqclient.Disconnect(250)
 	}
 	wg.Wait()
+	// clear cache
+	cache.EndpointCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
