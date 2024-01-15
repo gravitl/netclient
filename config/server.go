@@ -5,15 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/sasha-s/go-deadlock"
 	"gopkg.in/yaml.v3"
 )
 
-var serverMutex = &sync.RWMutex{}
+var serverMutex = &deadlock.RWMutex{}
 
 var serverCtxFile = ".serverctx"
 

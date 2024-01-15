@@ -3,7 +3,6 @@ package functions
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -100,7 +99,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
-	fmt.Println("RECV PEER UPDATE------> 1")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -124,11 +122,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	fmt.Println("RECV PEER UPDATE------> 2")
 	if server.IsPro && peerConnTicker != nil {
 		peerConnTicker.Reset(peerConnectionCheckInterval)
 	}
-	fmt.Println("RECV PEER UPDATE------> 3")
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
 		vlt, err := versionLessThan(config.Version, peerUpdate.ServerVersion)
@@ -152,17 +148,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	fmt.Println("RECV PEER UPDATE------> 4")
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 	}
-	fmt.Println("RECV PEER UPDATE------> 5")
 	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
-	fmt.Println("RECV PEER UPDATE------> 6")
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -410,14 +403,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
-			fmt.Println("MQ_FALLBACK TICKER")
 			if (Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "" {
-				fmt.Println("MQ_FALLBACK TICKER STATUS: ", Mqclient.IsConnectionOpen(), Mqclient.IsConnected())
 				continue
 			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
-			fmt.Println("MQ_FALLBACK EXECUTED")
 			response, resetInterface, replacePeers, err := Pull(false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
