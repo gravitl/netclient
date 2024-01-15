@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/go-ping/ping"
@@ -44,7 +45,7 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		var newMetric = models.Metric{
 			NodeName: peerMap[currPeer.PublicKey.String()].Name,
 		}
-		logger.Log(2, "collecting metrics for peer", address)
+		slog.Debug("collecting metrics for peer", "address", address)
 		newMetric.TotalReceived = currPeer.ReceiveBytes
 		newMetric.TotalSent = currPeer.TransmitBytes
 		if isExtClient {

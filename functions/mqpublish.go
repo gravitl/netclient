@@ -200,6 +200,7 @@ func publishMetrics(node *config.Node) {
 	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
+		return
 	}
 	metrics.Network = node.Network
 	metrics.NodeName = config.Netclient().Name
@@ -207,6 +208,7 @@ func publishMetrics(node *config.Node) {
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
+		return
 	}
 
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
@@ -313,8 +315,8 @@ func UpdateHostSettings(fallback bool) error {
 		for _, node := range serverNodes {
 			node := node
 			if node.Connected {
-				logger.Log(0, "collecting metrics for network", node.Network)
-				publishMetrics(&node)
+				slog.Debug("collecting metrics for", "network", node.Network)
+				go publishMetrics(&node)
 			}
 		}
 	}
