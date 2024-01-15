@@ -25,8 +25,7 @@ var (
 	peerConnectionCheckInterval = time.Second * 25
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
-
-	ResetCh = make(chan struct{}, 2)
+	peerConnTicker         *time.Ticker
 )
 
 // processPeerSignal - processes the peer signals for any updates from peers
@@ -83,62 +82,63 @@ func handlePeerFailOver(signal models.Signal) error {
 // if connection is bad, host will signal peers to use turn
 func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	t := time.NewTicker(peerConnectionCheckInterval)
-	defer t.Stop()
+	peerConnTicker = time.NewTicker(peerConnectionCheckInterval)
+	defer peerConnTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			slog.Info("exiting peer connection watcher")
 			return
-		case <-ResetCh:
-			if t != nil {
-				t.Reset(peerConnectionCheckInterval)
-			}
-		case <-t.C:
-			nodes := config.GetNodes()
-			if len(nodes) == 0 {
-				continue
-			}
-			for _, node := range nodes {
-				if node.Server != config.CurrServer {
-					continue
+		case <-peerConnTicker.C:
+			go func() {
+				nodes := config.GetNodes()
+				if len(nodes) == 0 {
+					return
 				}
-				peers, err := getPeerInfo(node)
-				if err != nil {
-					slog.Error("failed to get peer Info", "error", err)
-					continue
-				}
-				for pubKey, peer := range peers {
-					if peer.IsExtClient {
+				for _, node := range nodes {
+					if node.Server != config.CurrServer {
 						continue
 					}
-					connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort)
-					if connected {
-						// peer is connected,so continue
-						continue
-					}
-					s := models.Signal{
-						Server:         config.CurrServer,
-						FromHostID:     config.Netclient().ID.String(),
-						ToHostID:       peer.HostID,
-						FromNodeID:     node.ID.String(),
-						ToNodeID:       peer.ID,
-						FromHostPubKey: config.Netclient().PublicKey.String(),
-						ToHostPubKey:   pubKey,
-						Action:         models.ConnNegotiation,
-						TimeStamp:      time.Now().Unix(),
-					}
-					server := config.GetServer(config.CurrServer)
-					if server == nil {
-						continue
-					}
-					// signal peer
-					err = SignalPeer(s)
+					peers, err := getPeerInfo(node)
 					if err != nil {
-						logger.Log(2, "failed to signal peer: ", err.Error())
+						slog.Error("failed to get peer Info", "error", err)
+						continue
 					}
+					for pubKey, peer := range peers {
+						if peer.IsExtClient {
+							continue
+						}
+						connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
+						if connected {
+							// peer is connected,so continue
+							continue
+						}
+						s := models.Signal{
+							Server:         config.CurrServer,
+							FromHostID:     config.Netclient().ID.String(),
+							ToHostID:       peer.HostID,
+							FromNodeID:     node.ID.String(),
+							ToNodeID:       peer.ID,
+							FromHostPubKey: config.Netclient().PublicKey.String(),
+							ToHostPubKey:   pubKey,
+							Action:         models.ConnNegotiation,
+							TimeStamp:      time.Now().Unix(),
+						}
+						server := config.GetServer(config.CurrServer)
+						if server == nil {
+							continue
+						}
+						// signal peer
+						if Mqclient != nil && Mqclient.IsConnectionOpen() {
+							err = SignalPeer(s)
+							if err != nil {
+								logger.Log(2, "failed to signal peer: ", err.Error())
+							}
+						}
 
+					}
 				}
-			}
+			}()
 
 		}
 	}

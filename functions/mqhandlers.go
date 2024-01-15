@@ -122,8 +122,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if server.IsPro {
-		ResetCh <- struct{}{}
+	if server.IsPro && peerConnTicker != nil {
+		peerConnTicker.Reset(peerConnectionCheckInterval)
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -296,8 +296,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
 	currentCidrs := getAllAllowedIPs(peers[:])
 	for idx := range peers {
-
 		peerPubKey := peers[idx].PublicKey.String()
+		if wireguard.EndpointDetectedAlready(peerPubKey) {
+			continue
+		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
 			if peerInfo.IsStatic {
 				// peer is a static host shouldn't disturb the configuration set by the user
@@ -320,11 +322,14 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 					continue
 				}
 				if peerIP.IsPrivate() {
-					networking.FindBestEndpoint(
-						peerIP.String(),
-						peerPubKey,
-						peerInfo.ListenPort,
-					)
+					go func(peerIP, peerPubKey string, listenPort int) {
+						networking.FindBestEndpoint(
+							peerIP,
+							peerPubKey,
+							peerInfo.ListenPort,
+						)
+					}(peerIP.String(), peerPubKey, peerInfo.ListenPort)
+
 				}
 			}
 		}
@@ -398,7 +403,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
-			if (Mqclient != nil && Mqclient.IsConnectionOpen()) || config.CurrServer == "" {
+			if (Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "" {
 				continue
 			}
 			// Call netclient http config pull

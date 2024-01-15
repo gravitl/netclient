@@ -10,13 +10,13 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/sasha-s/go-deadlock"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -58,7 +58,7 @@ func (i InitType) String() string {
 }
 
 var (
-	netclientCfgMutex = &sync.RWMutex{}
+	netclientCfgMutex = &deadlock.RWMutex{}
 	netclient         Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
@@ -180,24 +180,31 @@ func SetVersion(ver string) {
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
+	netclientl := Config{}
+	var err error
+	defer func() {
+		if err == nil {
+			netclientCfgMutex.Lock()
+			netclient = netclientl
+			netclientCfgMutex.Unlock()
+		}
+	}()
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
-	if err := Lock(lockfile); err != nil {
+	if err = Lock(lockfile); err != nil {
 		return nil, err
 	}
 	defer Unlock(lockfile)
-	f, err := os.Open(file)
-	if err != nil {
+	f, ferr := os.Open(file)
+	if ferr != nil {
+		err = ferr
 		return nil, err
 	}
 	defer f.Close()
-	netclientCfgMutex.Lock()
-	defer netclientCfgMutex.Unlock()
-	netclient = Config{}
-	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
+	if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
 		return nil, err
 	}
-	return &netclient, nil
+	return &netclientl, nil
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk

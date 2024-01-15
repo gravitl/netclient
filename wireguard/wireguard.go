@@ -101,6 +101,14 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 	return false
 }
 
+// EndpointDetectedAlready - checks if better endpoint has been detected already
+func EndpointDetectedAlready(peerPubKey string) bool {
+	if endpoint, ok := cache.EndpointCache.Load(peerPubKey); ok && endpoint != nil {
+		return true
+	}
+	return false
+}
+
 // GetPeer - gets the peerinfo from the wg interface
 func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 	wg, err := wgctrl.New()

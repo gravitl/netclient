@@ -3,6 +3,8 @@ package metrics
 import (
 	"time"
 
+	"golang.org/x/exp/slog"
+
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -44,13 +46,13 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		var newMetric = models.Metric{
 			NodeName: peerMap[currPeer.PublicKey.String()].Name,
 		}
-		logger.Log(2, "collecting metrics for peer", address)
+		slog.Debug("collecting metrics for peer", "address", address)
 		newMetric.TotalReceived = currPeer.ReceiveBytes
 		newMetric.TotalSent = currPeer.TransmitBytes
 		if isExtClient {
 			newMetric.Connected, newMetric.Latency = extPeerConnStatus(address)
 		} else {
-			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, port)
+			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, port, 4)
 		}
 		if newMetric.Connected {
 			newMetric.Uptime = 1
@@ -112,7 +114,7 @@ func extPeerConnStatus(address string) (connected bool, latency int64) {
 	return
 }
 
-func PeerConnStatus(address string, port int) (connected bool, latency int64) {
+func PeerConnStatus(address string, port, counter int) (connected bool, latency int64) {
 	latency = 999
 	if address == "" || port == 0 {
 		return
