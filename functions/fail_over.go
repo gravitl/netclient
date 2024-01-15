@@ -25,8 +25,7 @@ var (
 	peerConnectionCheckInterval = time.Second * 25
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
-
-	ResetCh = make(chan struct{}, 2)
+	peerConnTicker         *time.Ticker
 )
 
 // processPeerSignal - processes the peer signals for any updates from peers
@@ -83,17 +82,13 @@ func handlePeerFailOver(signal models.Signal) error {
 // if connection is bad, host will signal peers to use turn
 func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	t := time.NewTicker(peerConnectionCheckInterval)
-	defer t.Stop()
+	peerConnTicker = time.NewTicker(peerConnectionCheckInterval)
+	defer peerConnTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ResetCh:
-			if t != nil {
-				t.Reset(peerConnectionCheckInterval)
-			}
-		case <-t.C:
+		case <-peerConnTicker.C:
 			nodes := config.GetNodes()
 			if len(nodes) == 0 {
 				continue

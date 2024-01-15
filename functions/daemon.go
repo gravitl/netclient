@@ -306,12 +306,12 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 
 	var connecterr error
 	if token := Mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
-		logger.Log(0, "unable to connect to broker,", server.Broker+",", "retrying...")
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
 		} else {
 			connecterr = token.Error()
 		}
+		slog.Error("unable to connect to broker", "server", server.Broker, "error", connecterr)
 	}
 	return connecterr
 }
