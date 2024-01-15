@@ -17,7 +17,7 @@ func Push(restart bool) error {
 				return err
 			}
 		} else {
-			if err := hostUpdateFallback(models.UpdateHost); err != nil {
+			if err := hostUpdateFallback(models.UpdateHost, nil); err != nil {
 				return err
 			}
 		}

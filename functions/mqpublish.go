@@ -22,8 +22,6 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-var metricsCache = new(sync.Map)
-
 const (
 	// ACK - acknowledgement signal for MQ
 	ACK = 1
@@ -66,11 +64,14 @@ func checkinFallback() {
 		logger.Log(0, "failed to update host settings", err.Error())
 		return
 	}
-	hostUpdateFallback(models.CheckIn)
+	hostUpdateFallback(models.CheckIn, nil)
 }
 
 // hostUpdateFallback - used to send host updates to server when there is a mq connection failure
-func hostUpdateFallback(action models.HostMqAction) error {
+func hostUpdateFallback(action models.HostMqAction, node *models.Node) error {
+	if node == nil {
+		node = &models.Node{}
+	}
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return errors.New("server config not found")
@@ -87,7 +88,7 @@ func hostUpdateFallback(action models.HostMqAction) error {
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
 		Method:        http.MethodPut,
-		Data:          models.HostUpdate{Host: host.Host, Action: action},
+		Data:          models.HostUpdate{Host: host.Host, Action: action, Node: *node},
 		Authorization: "Bearer " + token,
 		ErrorResponse: models.ErrorResponse{},
 	}
@@ -167,7 +168,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
-func publishMetrics(node *config.Node) {
+func publishMetrics(node *config.Node, fallback bool) {
 	server := config.GetServer(node.Server)
 	if server == nil {
 		return
@@ -210,36 +211,14 @@ func publishMetrics(node *config.Node) {
 		logger.Log(0, "something went wrong when marshalling metrics data for node", config.Netclient().Name, err.Error())
 		return
 	}
-
+	if fallback {
+		hostUpdateFallback(models.UpdateMetrics, &nodeGET.Node)
+	}
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
-		logger.Log(0, "aggregating metrics locally until broker connection re-established")
-		val, ok := metricsCache.Load(node.ID)
-		if !ok {
-			metricsCache.Store(node.ID, data)
-		} else {
-			var oldMetrics models.Metrics
-			err = json.Unmarshal(val.([]byte), &oldMetrics)
-			if err == nil {
-				for k := range oldMetrics.Connectivity {
-					currentMetric := metrics.Connectivity[k]
-					if currentMetric.Latency == 0 {
-						currentMetric.Latency = oldMetrics.Connectivity[k].Latency
-					}
-					currentMetric.Uptime += oldMetrics.Connectivity[k].Uptime
-					currentMetric.TotalTime += oldMetrics.Connectivity[k].TotalTime
-					metrics.Connectivity[k] = currentMetric
-				}
-				newData, err := json.Marshal(metrics)
-				if err == nil {
-					metricsCache.Store(node.ID, newData)
-				}
-			}
-		}
-	} else {
-		metricsCache.Delete(node.ID)
-		logger.Log(0, "published metrics for node", config.Netclient().Name)
+
 	}
+
 }
 
 func publish(serverName, dest string, msg []byte, qos byte) error {
@@ -316,7 +295,7 @@ func UpdateHostSettings(fallback bool) error {
 			node := node
 			if node.Connected {
 				slog.Debug("collecting metrics for", "network", node.Network)
-				go publishMetrics(&node)
+				go publishMetrics(&node, fallback)
 			}
 		}
 	}
@@ -353,7 +332,7 @@ func UpdateHostSettings(fallback bool) error {
 		}
 		slog.Info("publishing host update for endpoint changes")
 		if fallback {
-			hostUpdateFallback(models.UpdateHost)
+			hostUpdateFallback(models.UpdateHost, nil)
 		} else {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				logger.Log(0, "could not publish endpoint change", err.Error())
