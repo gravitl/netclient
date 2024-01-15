@@ -1,8 +1,9 @@
 package metrics
 
 import (
-	"log/slog"
 	"time"
+
+	"golang.org/x/exp/slog"
 
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/ncutils"
