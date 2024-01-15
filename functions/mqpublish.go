@@ -213,10 +213,13 @@ func publishMetrics(node *config.Node, fallback bool) {
 	}
 	if fallback {
 		hostUpdateFallback(models.UpdateMetrics, &nodeGET.Node)
+		return
 	}
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 
+	} else {
+		hostUpdateFallback(models.UpdateMetrics, &nodeGET.Node)
 	}
 
 }
