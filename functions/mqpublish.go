@@ -247,6 +247,7 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 		} else {
 			err = token.Error()
 		}
+		slog.Error("could not connect to broker at", "server", serverName, "error", err)
 		if err != nil {
 			return err
 		}
