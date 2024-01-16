@@ -78,8 +78,8 @@ github.com/google/uuid v1.5.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+
 github.com/gopherjs/gopherjs v1.17.2 h1:fQnZVsXk8uxXIStYb0N4bGk7jeyTalG/wsZjQ25dO0g=
 github.com/gorilla/websocket v1.5.1 h1:gmztn0JnHVt9JZquRuzLw3g4wouNVzKL15iLr/zn/QY=
 github.com/gorilla/websocket v1.5.1/go.mod h1:x3kM2JMyaluk02fnUJpQuwD2dCS5NDG2ZHL0uE0tcaY=
-github.com/gravitl/netmaker v0.21.3-0.20240115033602-26fa11ef7fb8 h1:4/AN+mA2VvyS1JEyHMGf3YbNVHMTjTyN0SyHC8dOMow=
-github.com/gravitl/netmaker v0.21.3-0.20240115033602-26fa11ef7fb8/go.mod h1:2WfG/IyyJALxPubCDUOBWbfdLpDf2UWphiCWT/GgRUU=
+github.com/gravitl/netmaker v0.22.0 h1:YXm+JkL7auzeA7FcbuI40oCkRQIK3M/f4fzES0ixpPY=
+github.com/gravitl/netmaker v0.22.0/go.mod h1:2WfG/IyyJALxPubCDUOBWbfdLpDf2UWphiCWT/GgRUU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f h1:XzsYovKdrDvj2z2HEHoeHU67+JIEFMHQKHU6oU+1fVE=
