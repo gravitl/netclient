@@ -13,15 +13,14 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	"github.com/gravitl/netclient/nmproxy"
-	"github.com/gravitl/netclient/nmproxy/stun"
-	"github.com/gravitl/netclient/routes"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -50,6 +49,8 @@ type cachedMessage struct {
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
+	daemon.RemoveAllLockFiles()
+	go deleteAllDNS()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
 		os.Exit(1)
@@ -70,10 +71,11 @@ func Daemon() {
 	}
 	cancel := startGoRoutines(&wg)
 	//start httpserver on its own -- doesn't need to restart on reset
-	httpctx, httpCancel := context.WithCancel(context.Background())
-	httpWg := sync.WaitGroup{}
-	httpWg.Add(1)
-	go HttpServer(httpctx, &httpWg)
+	ctx0, cancel0 := context.WithCancel(context.Background())
+	wg0 := sync.WaitGroup{}
+	wg0.Add(1)
+	go HttpServer(ctx0, &wg0)
+
 	for {
 		select {
 		case <-quit:
@@ -81,8 +83,8 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
-			httpCancel()
-			httpWg.Wait()
+			cancel0()
+			wg0.Wait()
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
@@ -92,7 +94,6 @@ func Daemon() {
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
-			cleanUpRoutes()
 			cancel = startGoRoutines(&wg)
 		}
 	}
@@ -106,6 +107,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		Mqclient.Disconnect(250)
 	}
 	wg.Wait()
+	// clear cache
+	cache.EndpointCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
@@ -118,6 +121,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
+	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
@@ -151,7 +155,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
-	pullresp, pullErr := Pull(false)
+	pullresp, _, _, pullErr := Pull(false)
 	if pullErr != nil {
 		slog.Error("fail to pull config from server", "error", pullErr.Error())
 	}
@@ -172,21 +176,18 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
 	wg.Add(1)
-	go nmproxy.Start(ctx, wg)
-	networking.StoreServerAddresses(server)
-	err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server)
-	if err != nil {
-		logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-	}
-	wg.Add(1)
 	go messageQueue(ctx, wg, server)
-	if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-		slog.Warn("failed to set initial peer routes", "error", err.Error())
-	}
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
+	if server.IsPro {
+		wg.Add(1)
+		go watchPeerConnections(ctx, wg)
+	}
+	wg.Add(1)
+	go mqFallback(ctx, wg)
+
 	return cancel
 }
 
@@ -213,8 +214,13 @@ func messageQueue(ctx context.Context, wg *sync.WaitGroup, server *config.Server
 func setupMQTT(server *config.Server) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
-	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.MQPassword)
+	if server.BrokerType == "emqx" {
+		opts.SetUsername(config.Netclient().ID.String())
+		opts.SetPassword(config.Netclient().HostPass)
+	} else {
+		opts.SetUsername(server.MQUserName)
+		opts.SetPassword(server.MQPassword)
+	}
 	//opts.SetClientID(ncutils.MakeRandomString(23))
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
@@ -236,20 +242,6 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
-		if ok := resetServerRoutes(); ok {
-			slog.Info("detected default gateway change, reset server routes")
-			if err := UpdateHostSettings(); err != nil {
-				slog.Error("failed to update host settings", "error", err)
-				return
-			}
-
-			handlePeerInetGateways(
-				!config.GW4PeerDetected && !config.GW6PeerDetected,
-				config.IsHostInetGateway(), false,
-				nil,
-			)
-		}
-
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
 		if !config.Netclient().IsStatic {
 			daemon.Restart()
@@ -277,15 +269,6 @@ func setupMQTT(server *config.Server) error {
 	} else {
 		slog.Info("successfully requested ACK on server", "server", server.Name)
 	}
-	// send register signal with turn to server
-	if server.UseTurn {
-		if err := PublishHostUpdate(server.Server, models.RegisterWithTurn); err != nil {
-			slog.Error("failed to publish host turn register signal to server", "server", server.Server, "error", err)
-		} else {
-			slog.Info("published host turn register signal to server", "server", server.Server)
-		}
-	}
-
 	return nil
 }
 
@@ -323,12 +306,12 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 
 	var connecterr error
 	if token := Mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
-		logger.Log(0, "unable to connect to broker,", server.Broker+",", "retrying...")
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
 		} else {
 			connecterr = token.Error()
 		}
+		slog.Error("unable to connect to broker", "server", server.Broker, "error", connecterr)
 	}
 	return connecterr
 }
@@ -345,16 +328,6 @@ func setHostSubscription(client mqtt.Client, server string) {
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
-		return
-	}
-	slog.Info("subscribing to dns updates for", "host", hostID, "server", server)
-	if token := client.Subscribe(fmt.Sprintf("dns/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsUpdate)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to dns updates", "host", hostID, "server", server, "error", token.Error())
-		return
-	}
-	slog.Info("subscribing to all dns updates for", "host", hostID, "server", server)
-	if token := client.Subscribe(fmt.Sprintf("dns/all/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(dnsAll)); token.Wait() && token.Error() != nil {
-		slog.Error("unable to subscribe to all dns updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
 
@@ -492,29 +465,4 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 		pubPort = portToStun
 	}
 	return
-}
-
-func cleanUpRoutes() {
-	gwAddr := config.GW4Addr
-	if gwAddr.IP == nil {
-		gwAddr = config.GW6Addr
-	}
-	if err := routes.CleanUp(config.Netclient().DefaultInterface, &gwAddr); err != nil {
-		slog.Error("routes not completely cleaned up", "error", err)
-	}
-}
-
-func resetServerRoutes() bool {
-	if routes.HasGatewayChanged() {
-		cleanUpRoutes()
-		server := config.GetServer(config.CurrServer)
-		if err := routes.SetNetmakerServerRoutes(config.Netclient().DefaultInterface, server); err != nil {
-			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-		}
-		if err := routes.SetNetmakerPeerEndpointRoutes(config.Netclient().DefaultInterface); err != nil {
-			logger.Log(2, "failed to set route(s) for", server.Name, err.Error())
-		}
-		return true
-	}
-	return false
 }

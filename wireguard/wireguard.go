@@ -6,11 +6,37 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/peer"
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+// ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
+func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
+	hostPeers := config.Netclient().HostPeers
+	if len(incomingPeers) != len(hostPeers) {
+		return true
+	}
+
+	hostpeerMap := make(map[string]struct{})
+	for _, hostPeer := range hostPeers {
+		hostpeerMap[hostPeer.PublicKey.String()] = struct{}{}
+	}
+	incomingPeerMap := make(map[string]struct{})
+	for _, peer := range incomingPeers {
+		incomingPeerMap[peer.PublicKey.String()] = struct{}{}
+		if _, ok := hostpeerMap[peer.PublicKey.String()]; !ok {
+			return true
+		}
+	}
+	for _, hostPeer := range hostPeers {
+		if _, ok := incomingPeerMap[hostPeer.PublicKey.String()]; !ok {
+			return true
+		}
+	}
+	return false
+}
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers(replace bool) error {
@@ -26,7 +52,6 @@ func SetPeers(replace bool) error {
 		}
 	}
 	GetInterface().Config.Peers = peers
-	peers = peer.SetPeersEndpointToProxy(peers)
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
 		peers = nil
@@ -74,4 +99,36 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		return ok
 	}
 	return false
+}
+
+// EndpointDetectedAlready - checks if better endpoint has been detected already
+func EndpointDetectedAlready(peerPubKey string) bool {
+	if endpoint, ok := cache.EndpointCache.Load(peerPubKey); ok && endpoint != nil {
+		return true
+	}
+	return false
+}
+
+// GetPeer - gets the peerinfo from the wg interface
+func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
+	wg, err := wgctrl.New()
+	if err != nil {
+		return wgtypes.Peer{}, err
+	}
+	defer func() {
+		err = wg.Close()
+		if err != nil {
+			logger.Log(0, "got error while closing wgctl: ", err.Error())
+		}
+	}()
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return wgtypes.Peer{}, err
+	}
+	for _, peer := range wgDevice.Peers {
+		if peer.PublicKey.String() == peerPubKey {
+			return peer, nil
+		}
+	}
+	return wgtypes.Peer{}, fmt.Errorf("peer not found")
 }

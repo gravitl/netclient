@@ -11,7 +11,7 @@ import (
 // FindBestEndpoint - requests against a given addr and port
 func FindBestEndpoint(peerIp, peerPubKey string, port int) {
 
-	connected, _ := metrics.PeerConnStatus(peerIp, port)
+	connected, _ := metrics.PeerConnStatus(peerIp, port, 2)
 	if connected {
 		peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerIp, port))
 		if err != nil {

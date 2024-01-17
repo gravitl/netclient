@@ -12,47 +12,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - name: Build
         run: |
           env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build .
-  netclient-freebsd:
-    runs-on: ubuntu-latest
-    steps:
-      - name: build on freebsd13
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: freebsd.clustercat.com
-          username: freebsd
-          key: ${{ secrets.TESTING_SSH_KEY }}
-          script: |
-            cd netclient
-            git fetch
-            git switch ${{ github.head_ref }}
-            git pull
-            go build .
-      - name: build on freebsd14
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: freebsd14.clustercat.com
-          username: freebsd
-          key: ${{ secrets.TESTING_SSH_KEY }}
-          script: |
-            cd netclient
-            git fetch
-            git switch ${{ github.head_ref }}
-            git pull
-            go build .
-
+          
   tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - name: Run Go tests
@@ -68,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 19
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - name: test gui
@@ -83,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - name: Run static checks
@@ -100,7 +73,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 19
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - name: build gui
@@ -122,7 +95,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 19
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - run: |
@@ -140,7 +113,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 19
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.19
       - name: build gui

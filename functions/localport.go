@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/nmproxy/stun"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -39,7 +39,7 @@ func getInterfaces() (*[]models.Iface, error) {
 		if iface.Flags&net.FlagUp == 0 || // interface down
 			iface.Flags&net.FlagLoopback != 0 || // loopback interface
 			iface.Flags&net.FlagPointToPoint != 0 || // avoid direct connections
-			iface.Name == ncutils.GetInterfaceName() || // avoid netmaker
+			iface.Name == ncutils.GetInterfaceName() || strings.Contains(iface.Name, "netmaker") || // avoid netmaker
 			ncutils.IsBridgeNetwork(iface.Name) || // avoid bridges
 			strings.Contains(iface.Name, "docker") {
 			continue

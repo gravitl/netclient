@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -79,6 +78,9 @@ func initConfig() {
 func InitConfig(viper *viper.Viper) {
 	config.CheckUID()
 	config.ReadNetclientConfig()
+	if config.Netclient().Interface != "" {
+		ncutils.SetInterfaceName(config.Netclient().Interface)
+	}
 	setupLogging(viper)
 	config.ReadNodeConfig()
 	config.ReadServerConf()
@@ -97,7 +99,6 @@ func InitConfig(viper *viper.Viper) {
 			logger.FatalLog("could not create /etc/netclient dir" + err.Error())
 		}
 	}
-	//wireguard.WriteWgConfig(Netclient(), GetNodes())
 }
 
 func setupLogging(flags *viper.Viper) {
@@ -202,7 +203,7 @@ func checkConfig() {
 	}
 	if netclient.Interface == "" {
 		logger.Log(0, "setting wireguard interface")
-		netclient.Interface = models.WIREGUARD_INTERFACE
+		netclient.Interface = ncutils.GetInterfaceName()
 		saveRequired = true
 	}
 	if netclient.ListenPort == 0 {

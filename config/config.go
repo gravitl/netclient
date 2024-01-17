@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/sasha-s/go-deadlock"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
@@ -57,17 +58,10 @@ func (i InitType) String() string {
 }
 
 var (
-	netclient Config // netclient contains the netclient config
+	netclientCfgMutex = &deadlock.RWMutex{}
+	netclient         Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
-	// GW4PeerDetected - indicates if an IPv4 gwPeer (0.0.0.0/0) was found
-	GW4PeerDetected bool
-	// GW4Addr - the peer's address for IPv4 gateways
-	GW4Addr net.IPNet
-	// GW6PeerDetected - indicates if an IPv6 gwPeer (::/0) was found, currently unused
-	GW6PeerDetected bool
-	// GW6Addr - the peer's address for IPv6 gateways
-	GW6Addr net.IPNet
 	// FwClose - firewall manager shutdown func
 	FwClose func() = func() {}
 	// WgPublicListenPort - host's wireguard public listen port
@@ -93,10 +87,14 @@ func init() {
 	Nodes = make(map[string]Node)
 }
 
-// UpdateNetcllient updates the in memory version of the host configuration
+// UpdateNetclient updates the in memory version of the host configuration
 func UpdateNetclient(c Config) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
+	if c.Verbosity != logger.Verbosity {
+		logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
+	}
 	logger.Verbosity = c.Verbosity
-	logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
 	netclient = c
 }
 
@@ -138,22 +136,28 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 
 // Netclient returns a pointer to the im memory version of the host configuration
 func Netclient() *Config {
+	netclientCfgMutex.RLock()
+	defer netclientCfgMutex.RUnlock()
 	return &netclient
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
-func UpdateHostPeers(peers []wgtypes.PeerConfig) (isHostInetGW bool) {
+func UpdateHostPeers(peers []wgtypes.PeerConfig) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	netclient.HostPeers = peers
-	return detectOrFilterGWPeers(peers)
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg() {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	netclient.HostPeers = []wgtypes.PeerConfig{}
 }
 
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
 func RemoveServerHostPeerCfg() {
+	netclient := Netclient()
 	if netclient.HostPeers == nil {
 		netclient.HostPeers = []wgtypes.PeerConfig{}
 		return
@@ -165,6 +169,7 @@ func RemoveServerHostPeerCfg() {
 		peers[i] = peer
 	}
 	netclient.HostPeers = peers
+	UpdateNetclient(*netclient)
 	_ = WriteNetclientConfig()
 }
 
@@ -175,22 +180,31 @@ func SetVersion(ver string) {
 
 // ReadNetclientConfig reads the host configuration file and returns it as an instance.
 func ReadNetclientConfig() (*Config, error) {
+	netclientl := Config{}
+	var err error
+	defer func() {
+		if err == nil {
+			netclientCfgMutex.Lock()
+			netclient = netclientl
+			netclientCfgMutex.Unlock()
+		}
+	}()
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
-	if err := Lock(lockfile); err != nil {
+	if err = Lock(lockfile); err != nil {
 		return nil, err
 	}
 	defer Unlock(lockfile)
-	f, err := os.Open(file)
-	if err != nil {
+	f, ferr := os.Open(file)
+	if ferr != nil {
+		err = ferr
 		return nil, err
 	}
 	defer f.Close()
-	netclient = Config{}
-	if err := yaml.NewDecoder(f).Decode(&netclient); err != nil {
+	if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
 		return nil, err
 	}
-	return &netclient, nil
+	return &netclientl, nil
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk
@@ -218,6 +232,8 @@ func WriteNetclientConfig() error {
 		return err
 	}
 	defer f.Close()
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
 	err = yaml.NewEncoder(f).Encode(netclient)
 	if err != nil {
 		return err
@@ -416,92 +432,6 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 		logger.Log(0, "node unmarshal err", h.Name, err.Error())
 	}
 	return host, node
-}
-
-func detectOrFilterGWPeers(peers []wgtypes.PeerConfig) bool {
-	isInetGW := IsHostInetGateway()
-	if len(peers) > 0 {
-		if GW4PeerDetected || GW6PeerDetected { // check if there is a change in GWs before proceeding
-			for i := range peers {
-				peer := peers[i]
-				if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) && peer.Remove { // Indicates a removal of current gw, set detected to false to recalc
-					GW4PeerDetected = false
-					break
-				} else if peerHasIp(&GW6Addr, peer.AllowedIPs[:]) { // TODO (IPv6)
-					GW6PeerDetected = false
-					break
-				}
-			}
-		}
-	}
-	clientPeers := netclient.HostPeers
-	var foundGW4Again, foundGW6Again bool
-	if len(clientPeers) > 0 {
-		for i := range clientPeers {
-			peer := clientPeers[i]
-			for j := range peer.AllowedIPs {
-				ip := peer.AllowedIPs[j]
-				if ip.String() == "0.0.0.0/0" { // handle IPv4
-					if isInetGW || peer.Remove { // skip allowed and removed peers IPs for internet gws
-						continue
-					}
-					if !GW4PeerDetected && j > 0 {
-						GW4PeerDetected = true
-						foundGW4Again = true
-						GW4Addr = peer.AllowedIPs[j-1]
-					} else if peerHasIp(&GW4Addr, peer.AllowedIPs[:]) {
-						foundGW4Again = true
-					}
-				} else if ip.String() == "::/0" { // handle IPv6
-					if isInetGW || peer.Remove { // skip allowed IPs for internet gws
-						continue
-					}
-					if !GW6PeerDetected && j > 0 {
-						GW6PeerDetected = true
-						foundGW6Again = true
-						GW6Addr = peer.AllowedIPs[j-1]
-					} else if peerHasIp(&ip, peer.AllowedIPs[:]) {
-						foundGW6Again = true
-					}
-				}
-			}
-		}
-	}
-	GW4PeerDetected = foundGW4Again
-	GW6PeerDetected = foundGW6Again
-
-	return isInetGW
-}
-
-func peerHasIp(ip *net.IPNet, allowedIPs []net.IPNet) bool {
-	if ip == nil {
-		return false
-	}
-	for i := range allowedIPs {
-		if ip.Contains(allowedIPs[i].IP) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsHostInetGateway - checks, based on netclient memory,
-// if current client is an internet gateway
-func IsHostInetGateway() bool {
-
-	serverNodes := GetNodes()
-	for j := range serverNodes {
-		serverNode := serverNodes[j]
-		if serverNode.IsEgressGateway {
-			for _, egressRange := range serverNode.EgressGatewayRanges {
-				if egressRange == "0.0.0.0/0" || egressRange == "::/0" {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 // setFirewall - determine and record firewall in use

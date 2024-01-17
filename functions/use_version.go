@@ -145,9 +145,6 @@ func UseVersion(version string, rebootDaemon bool) error {
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		return err
 	}
-	if err := os.Remove(dst); err != nil {
-		return err
-	}
 	if err := os.Rename(tmpPath, dst); err != nil {
 		return err
 	}

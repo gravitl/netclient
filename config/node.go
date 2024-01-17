@@ -11,8 +11,11 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/sasha-s/go-deadlock"
 	"gopkg.in/yaml.v3"
 )
+
+var nodeMutex = &deadlock.RWMutex{}
 
 // NodeMap is an in memory map of the all nodes indexed by network name
 type NodeMap map[string]Node
@@ -41,9 +44,9 @@ func ReadNodeConfig() error {
 		return err
 	}
 	defer f.Close()
-	for k := range Nodes {
-		delete(Nodes, k)
-	}
+	nodeMutex.Lock()
+	defer nodeMutex.Unlock()
+	Nodes = make(NodeMap)
 	if err := yaml.NewDecoder(f).Decode(&Nodes); err != nil {
 		return err
 	}
@@ -52,11 +55,15 @@ func ReadNodeConfig() error {
 
 // GetNodes returns a copy of the NodeMap
 func GetNodes() NodeMap {
+	nodeMutex.RLock()
+	defer nodeMutex.RUnlock()
 	return Nodes
 }
 
 // GetNode returns returns the node configuation of the specified network name
 func GetNode(k string) Node {
+	nodeMutex.RLock()
+	defer nodeMutex.RUnlock()
 	if node, ok := Nodes[k]; ok {
 		return node
 	}
@@ -65,6 +72,8 @@ func GetNode(k string) Node {
 
 // SetNodes - sets server nodes in client config
 func SetNodes(nodes []models.Node) {
+	nodeMutex.Lock()
+	defer nodeMutex.Unlock()
 	Nodes = make(NodeMap)
 	for _, node := range nodes {
 		Nodes[node.Network] = Node{
@@ -73,13 +82,24 @@ func SetNodes(nodes []models.Node) {
 	}
 }
 
+// DeleteNodes - removes all nodes
+func DeleteNodes() {
+	nodeMutex.Lock()
+	defer nodeMutex.Unlock()
+	Nodes = make(NodeMap)
+}
+
 // UpdateNodeMap updates the in memory nodemap for the specified network
 func UpdateNodeMap(k string, value Node) {
+	nodeMutex.Lock()
+	defer nodeMutex.Unlock()
 	Nodes[k] = value
 }
 
 // DeleteNode deletes the node from the nodemap for the specified network
 func DeleteNode(k string) {
+	nodeMutex.Lock()
+	defer nodeMutex.Unlock()
 	delete(Nodes, k)
 }
 
@@ -116,6 +136,8 @@ func WriteNodeConfig() error {
 		return err
 	}
 	defer f.Close()
+	nodeMutex.RLock()
+	defer nodeMutex.RUnlock()
 	err = yaml.NewEncoder(f).Encode(Nodes)
 	if err != nil {
 		return err

@@ -22,7 +22,7 @@ var assets embed.FS
 
 var appIcon = GetFileAsBytes("./appicon.png")
 
-var version = "v0.21.2"
+var version = "v0.22.0"
 
 var url = "http://" + functions.DefaultHttpServerAddr + ":" + functions.DefaultHttpServerPort
 
