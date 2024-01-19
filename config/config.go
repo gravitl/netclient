@@ -52,6 +52,14 @@ const (
 // Initype - the type of init system in use
 type InitType int
 
+var NameToInitType = map[string]InitType{
+	"systemd": Systemd,
+	"sysv":    SysVInit,
+	"runit":   Runit,
+	"openrc":  OpenRC,
+	"initd":   Initd,
+}
+
 // String - returns the string representation of the init type
 func (i InitType) String() string {
 	return [...]string{"unknown", "systemd", "sysvinit", "runit", "openrc", "initd"}[i]

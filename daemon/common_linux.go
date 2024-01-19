@@ -169,6 +169,20 @@ func cleanUp() error {
 }
 
 func GetInitType() config.InitType {
+	if value := os.Getenv("NETCLIENT_INIT_TYPE"); value != "" {
+		if initType, ok := config.NameToInitType[value]; ok {
+			return initType
+		} else {
+			var initNames []string
+			for key, _ := range config.NameToInitType {
+				initNames = append(initNames, key)
+			}
+			slog.Error("$NETCLIENT_INIT_TYPE has unknown value",
+				"value", value,
+				"allowed", initNames,
+			)
+		}
+	}
 	slog.Debug("getting init type", "os", runtime.GOOS)
 	if runtime.GOOS != "linux" {
 		return config.UnKnown
