@@ -117,6 +117,8 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 			} else {
 				var response models.RegisterResponse
 				if err := json.Unmarshal(msg, &response); err != nil {
+					fmt.Printf("%s\n", string(msg))
+					done <- struct{}{}
 					return
 				}
 				handleRegisterResponse(&response, isGui)
