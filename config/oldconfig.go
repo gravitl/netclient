@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,7 +100,7 @@ func OldAuthenticate(node *Node, host *Config) (string, error) {
 	server := GetServer(node.Server)
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
-		Route:  "/api/nodes/adm/" + node.Network + "/authenticate",
+		Route:  "/api/nodes/adm/" + url.QueryEscape(node.Network) + "/authenticate",
 		Method: http.MethodPost,
 		Data:   data,
 	}

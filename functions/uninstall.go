@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime"
 
 	"github.com/devilcove/httpclient"
@@ -103,7 +104,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	endpoint := httpclient.Endpoint{
 		URL:    "https://" + server.API,
 		Method: http.MethodDelete,
-		Route:  "/api/nodes/" + node.Network + "/" + node.ID.String(),
+		Route:  "/api/nodes/" + url.QueryEscape(node.Network) + "/" + url.QueryEscape(node.ID.String()),
 		Headers: []httpclient.Header{
 			{
 				Name:  "requestfrom",

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -197,7 +198,7 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 	}
 	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
 		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/node/%s/failover_me", nodeID),
+		Route:         fmt.Sprintf("/api/v1/node/%s/failover_me", url.QueryEscape(nodeID)),
 		Method:        http.MethodPost,
 		Data:          models.FailOverMeReq{NodeID: peernodeID},
 		Authorization: "Bearer " + token,

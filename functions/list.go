@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/devilcove/httpclient"
@@ -102,7 +103,7 @@ func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	}
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + server.API,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID.String(),
+		Route:         "/api/nodes/" + url.QueryEscape(node.Network) + "/" + url.QueryEscape(node.ID.String()),
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Response:      models.NodeGet{},

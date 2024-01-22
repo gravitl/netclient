@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -67,7 +68,7 @@ func LeaveServer(s string) error {
 	id := config.Netclient().ID.String()
 	endpoint := httpclient.Endpoint{
 		URL:           "https://" + server.API,
-		Route:         "/api/hosts/" + id + "?force=true",
+		Route:         "/api/hosts/" + url.QueryEscape(id) + "?force=true",
 		Method:        http.MethodDelete,
 		Authorization: "Bearer " + token,
 		Data:          "",

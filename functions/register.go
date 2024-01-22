@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -53,7 +54,7 @@ func Register(token string, isGui bool) error {
 	}
 	api := httpclient.JSONEndpoint[models.RegisterResponse, models.ErrorResponse]{
 		URL:           "https://" + serverData.Server,
-		Route:         "/api/v1/host/register/" + token,
+		Route:         "/api/v1/host/register/" + url.QueryEscape(token),
 		Method:        http.MethodPost,
 		Data:          host,
 		Response:      models.RegisterResponse{},
