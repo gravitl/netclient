@@ -17,15 +17,6 @@ echo "[netclient] starting netclient daemon"
 /root/netclient install
 wait $!
 
-# check if needs to use the gui server
-if [ "${GUI_SERVER_ENABLED}" == "true" ]; then
-    echo "[netclient] enabling gui server"
-    netclient guiServer enable
-else
-    echo "[netclient] disabling gui server"
-    netclient guiServer disable
-fi
-
 # join network based on env vars
 echo "[netclient] joining network"
 

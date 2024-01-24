@@ -20,17 +20,6 @@ builds:
       - linux_mips_softfloat
       - linux_mipsle_softfloat
       - linux_mipsle_hardfloat
-  -
-    id: gui
-    binary: netclient-gui
-    ldflags:
-      - -s -w
-    tags:
-      - production
-      - desktop
-    targets:
-      - linux_amd64
-      - linux_arm64
 
 archives:
   - format: binary
