@@ -64,14 +64,12 @@ func checkinFallback() {
 		logger.Log(0, "failed to update host settings", err.Error())
 		return
 	}
-	hostUpdateFallback(models.CheckIn, nil)
+	hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
 }
 
 // hostUpdateFallback - used to send host updates to server when there is a mq connection failure
-func hostUpdateFallback(action models.HostMqAction, node *models.Node) error {
-	if node == nil {
-		node = &models.Node{}
-	}
+func hostUpdateFallback(hu models.HostUpdate) error {
+
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return errors.New("server config not found")
@@ -84,11 +82,12 @@ func hostUpdateFallback(action models.HostMqAction, node *models.Node) error {
 	if err != nil {
 		return err
 	}
+	hu.Host = host.Host
 	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
 		Method:        http.MethodPut,
-		Data:          models.HostUpdate{Host: host.Host, Action: action, Node: *node},
+		Data:          hu,
 		Authorization: "Bearer " + token,
 		ErrorResponse: models.ErrorResponse{},
 	}
@@ -212,14 +211,12 @@ func publishMetrics(node *config.Node, fallback bool) {
 		return
 	}
 	if fallback {
-		hostUpdateFallback(models.UpdateMetrics, &nodeGET.Node)
+		hostUpdateFallback(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
 		return
 	}
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 
-	} else {
-		hostUpdateFallback(models.UpdateMetrics, &nodeGET.Node)
 	}
 
 }
@@ -336,7 +333,7 @@ func UpdateHostSettings(fallback bool) error {
 		}
 		slog.Info("publishing host update for endpoint changes")
 		if fallback {
-			hostUpdateFallback(models.UpdateHost, nil)
+			hostUpdateFallback(models.HostUpdate{Action: models.UpdateHost})
 		} else {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				logger.Log(0, "could not publish endpoint change", err.Error())
