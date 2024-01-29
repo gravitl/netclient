@@ -7,7 +7,7 @@ COPY . .
 RUN go mod tidy
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-s -w" -o netclient-app .
 
-FROM alpine:3.19.0
+FROM alpine:3.19.1
 
 WORKDIR /root/
 
