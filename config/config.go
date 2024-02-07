@@ -75,11 +75,13 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
-	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
-	InitType          InitType             `json:"inittype" yaml:"inittype"`
+	PrivateKey              wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate       []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	HostPeers               []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	DisableGUIServer        bool                 `json:"disableguiserver" yaml:"disableguiserver"`
+	InitType                InitType             `json:"inittype" yaml:"inittype"`
+	DefaultGatewayIfLinkOld int                  `json:"default_gateway_iflink_old" yaml:"default_gateway_iflink_old"`
+	DefaultGatewayIpOld     string               `json:"default_gateway_ip_old" yaml:"default_gateway_ip_old"`
 }
 
 func init() {
@@ -139,6 +141,14 @@ func Netclient() *Config {
 	netclientCfgMutex.RLock()
 	defer netclientCfgMutex.RUnlock()
 	return &netclient
+}
+
+// UpdateDefaultGatewayOld - update old default gateway iflink and ip in the netclient config
+func UpdateDefaultGatewayOld(ifLink int, ip string) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
+	netclient.DefaultGatewayIfLinkOld = ifLink
+	netclient.DefaultGatewayIpOld = ip
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config

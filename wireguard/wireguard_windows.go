@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -80,6 +81,48 @@ func SetRoutes(addrs []ifaceAddress) {
 			}
 		}
 	}
+}
+
+// GetDefaultGatewayIp - get current default gateway
+func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
+	//get current route
+	output, err := ncutils.RunCmd("netsh int ipv4 show route", true)
+	if err != nil {
+		return ifLink, ip, err
+	}
+
+	//filter and get current default gateway address
+	ip = net.IP(getDefaultGatewayIpFromRouteList(output))
+
+	return 0, ip, nil
+}
+
+// SetDefaultGateway - set a new default gateway
+func SetDefaultGateway(ip net.IP) (err error) {
+
+	//add new route with metric 1 for setting to top priority
+	addCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=1", ncutils.GetInterfaceName(), ip.String())
+
+	_, err = ncutils.RunCmd(addCmd, true)
+	if err != nil {
+		slog.Error("Failed to add route table", "error", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+// RestoreDefaultGateway - restore the old default gateway
+func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) {
+
+	delCmd := fmt.Sprintf("netsh int ipv4 delete route 0.0.0.0/0 interface=%s nexthop=%s store=active", ncutils.GetInterfaceName(), ip.String())
+
+	_, err = ncutils.RunCmd(delCmd, true)
+	if err != nil {
+		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+	}
+
+	return nil
 }
 
 // NCIface.Close - closes the managed WireGuard interface
