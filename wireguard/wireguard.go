@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -131,4 +132,27 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 		}
 	}
 	return wgtypes.Peer{}, fmt.Errorf("peer not found")
+}
+
+// getDefaultGatewayIpFromRouteList - an internal function to get the default gateway ip from route list string
+func getDefaultGatewayIpFromRouteList(output string) string {
+
+	var rList []string
+	if strings.Contains(output, "\r") {
+		rList = strings.Split(output, "\r")
+	} else if strings.Contains(output, "\n") {
+		rList = strings.Split(output, "\n")
+	}
+
+	var rLine string
+	for _, l := range rList {
+		if strings.Contains(l, "0.0.0.0") {
+			rLine = l
+			break
+		}
+	}
+
+	rLineList := strings.Fields(rLine)
+
+	return strings.TrimSpace(rLineList[len(rLineList)-1])
 }
