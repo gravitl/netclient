@@ -114,7 +114,13 @@ func checkAndRestoreDefaultGateway() {
 	}
 
 	//restore the default gateway when the current default gateway is not the same as the one in config
-	if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
+	if config.Netclient().DefaultGatewayIpOld != "" && ip.String() == "<nil>" {
+		err := wireguard.RestoreDefaultGatewayOnly(config.Netclient().DefaultGatewayIfLinkOld, net.IP(config.Netclient().DefaultGatewayIpOld))
+		if err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
+			return
+		}
+	} else if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
 		err := wireguard.RestoreDefaultGateway(config.Netclient().DefaultGatewayIfLinkOld, net.IP(config.Netclient().DefaultGatewayIpOld))
 		if err != nil {
 			slog.Error("error restoring default gateway", "error", err.Error())

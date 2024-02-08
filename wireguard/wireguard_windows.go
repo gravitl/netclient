@@ -112,6 +112,20 @@ func SetDefaultGateway(ip net.IP) (err error) {
 	return nil
 }
 
+// RestoreDefaultGatewayOnly - restore the old default gateway, Linux and Windows do have different behavior, for aligning with Linux, adding this function
+func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) {
+
+	delCmd := fmt.Sprintf("netsh int ipv4 delete route 0.0.0.0/0 interface=%s nexthop=%s store=active", ncutils.GetInterfaceName(), ip.String())
+
+	_, err = ncutils.RunCmd(delCmd, true)
+	if err != nil {
+		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+		return err
+	}
+
+	return nil
+}
+
 // RestoreDefaultGateway - restore the old default gateway
 func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) {
 

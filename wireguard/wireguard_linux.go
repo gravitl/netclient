@@ -219,6 +219,22 @@ func SetDefaultGateway(ip net.IP) (err error) {
 	return nil
 }
 
+// RestoreDefaultGatewayOnly - restore the old default gateway only, do not delete current gateway, it may be not there
+func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) {
+
+	//build the old default gateway route
+	oldGwRoute := netlink.Route{LinkIndex: ifLink, Dst: nil, Gw: ip}
+
+	//set old default gateway back
+	if err := netlink.RouteAdd(&oldGwRoute); err != nil {
+		slog.Error("add old default gateway back failed, please add it back manually", err.Error())
+		slog.Error("old gateway: ", oldGwRoute)
+		return err
+	}
+
+	return nil
+}
+
 // RestoreDefaultGateway - restore the old default gateway
 func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) {
 	//get current default gateway
