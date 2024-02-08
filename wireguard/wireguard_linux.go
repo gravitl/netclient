@@ -213,6 +213,7 @@ func SetDefaultGateway(ip net.IP) (err error) {
 			slog.Error("restore old default gateway failed, please add the route back manually", err.Error())
 			slog.Error("old default gateway info: ", oldGwRoute)
 		}
+		return err
 	}
 
 	return nil

@@ -120,6 +120,7 @@ func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) {
 	_, err = ncutils.RunCmd(delCmd, true)
 	if err != nil {
 		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+		return err
 	}
 
 	return nil
