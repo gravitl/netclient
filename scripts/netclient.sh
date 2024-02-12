@@ -31,8 +31,8 @@ if [ "${PORT}" != "" ]; then
 fi
 
 ENDPOINT_CMD=""
-if [ "${ENPOINT}" != "" ];then
-    ENDPOINT_CMD="-e ${ENPOINT}"
+if [ "${ENDPOINT}" != "" ];then
+    ENDPOINT_CMD="-e ${ENDPOINT}"
 fi
 
 MTU_CMD=""
