@@ -54,7 +54,6 @@ Available Commands:
   connect     connect to a netmaker network
   daemon      netclient daemon
   disconnect  disconnet from a network
-  gui         Starts Netclient GUI
   help        Help about any command
   install     install netclient binary and daemon
   join        join a network
@@ -71,8 +70,6 @@ Flags:
 
 Use "netclient [command] --help" for more information about a command.
 ```
-
-For more information on the GUI, check [here](./gui/README.md)
 
 ## Disclaimer
  [WireGuard](https://wireguard.com/) is a registered trademark of Jason A. Donenfeld.

@@ -7,7 +7,7 @@ COPY . .
 RUN go mod tidy
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-s -w" -o netclient-app .
 
-FROM alpine:3.19.0
+FROM alpine:3.19.1
 
 WORKDIR /root/
 
@@ -20,7 +20,5 @@ RUN apk add iptables ip6tables \
 COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
-
-ENV GUI_SERVER_ENABLED="false"
 
 ENTRYPOINT ["/bin/bash", "./netclient.sh"]
