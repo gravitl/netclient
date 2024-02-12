@@ -192,7 +192,7 @@ func SetDefaultGateway(ip net.IP) (err error) {
 	}
 
 	//build the new default gateway route
-	route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: nil, Gw: ip}
+	route := netlink.Route{LinkIndex: link.Attrs().Index, Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: ip}
 
 	//get current default gateway
 	oldGwRoute, err := GetDefaultGateway()
