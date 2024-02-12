@@ -70,11 +70,6 @@ func Daemon() {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
 	cancel := startGoRoutines(&wg)
-	//start httpserver on its own -- doesn't need to restart on reset
-	ctx0, cancel0 := context.WithCancel(context.Background())
-	wg0 := sync.WaitGroup{}
-	wg0.Add(1)
-	go HttpServer(ctx0, &wg0)
 
 	for {
 		select {
@@ -83,9 +78,6 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
-			cancel0()
-			wg0.Wait()
-
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			config.FwClose()

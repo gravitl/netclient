@@ -78,7 +78,6 @@ type Config struct {
 	PrivateKey              wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate       []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers               []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
-	DisableGUIServer        bool                 `json:"disableguiserver" yaml:"disableguiserver"`
 	InitType                InitType             `json:"inittype" yaml:"inittype"`
 	DefaultGatewayIfLinkOld int                  `json:"default_gateway_iflink_old" yaml:"default_gateway_iflink_old"`
 	DefaultGatewayIpOld     string               `json:"default_gateway_ip_old" yaml:"default_gateway_ip_old"`
