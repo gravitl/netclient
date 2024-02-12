@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 
@@ -110,3 +111,15 @@ func DeleteOldInterface(iface string) {
 		slog.Error("remove wireguard tunnel", "interface", iface, "error", err)
 	}
 }
+
+// GetDefaultGatewayIp - get current default gateway
+func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) { return }
+
+// RestoreDefaultGatewayOnly - restore the old default gateway only, do not delete current gateway, it may be not there
+func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) { return }
+
+// RestoreDefaultGateway - restore the old default gateway
+func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) { return }
+
+// SetDefaultGateway - set a new default gateway
+func SetDefaultGateway(ip net.IP) (err error) { return }
