@@ -200,36 +200,26 @@ func SetDefaultGateway(ip net.IP) (err error) {
 		return err
 	}
 
-	//delete old default gateway at first
-	if err := netlink.RouteDel(&oldGwRoute); err != nil {
-		slog.Error("remove old default gateway failed", "error", err.Error())
-		return err
+	if oldGwRoute.Gw.String() != "<nil>" {
+		//delete old default gateway at first
+		if err := netlink.RouteDel(&oldGwRoute); err != nil {
+			slog.Error("remove old default gateway failed", "error", err.Error())
+			return err
+		}
 	}
 
 	//set new default gateway
-	if err := netlink.RouteAdd(&route); err != nil {
-		slog.Error("add new default gateway failed, it will need to restore the old default gateway", err.Error())
-		if err := netlink.RouteAdd(&oldGwRoute); err != nil {
-			slog.Error("restore old default gateway failed, please add the route back manually", err.Error())
-			slog.Error("old default gateway info: ", oldGwRoute)
+	if route.Gw.String() != oldGwRoute.Gw.String() {
+		if err := netlink.RouteAdd(&route); err != nil {
+			slog.Error("add new default gateway failed, it will need to restore the old default gateway", err.Error())
+			if oldGwRoute.Gw.String() != "<nil>" && route.Gw.String() != oldGwRoute.Gw.String() {
+				if err := netlink.RouteAdd(&oldGwRoute); err != nil {
+					slog.Error("restore old default gateway failed, please add the route back manually", err.Error())
+					slog.Error("old default gateway info: ", oldGwRoute)
+				}
+			}
+			return err
 		}
-		return err
-	}
-
-	return nil
-}
-
-// RestoreDefaultGatewayOnly - restore the old default gateway only, do not delete current gateway, it may be not there
-func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) {
-
-	//build the old default gateway route
-	oldGwRoute := netlink.Route{LinkIndex: ifLink, Dst: nil, Gw: ip}
-
-	//set old default gateway back
-	if err := netlink.RouteAdd(&oldGwRoute); err != nil {
-		slog.Error("add old default gateway back failed, please add it back manually", err.Error())
-		slog.Error("old gateway: ", oldGwRoute)
-		return err
 	}
 
 	return nil
@@ -246,20 +236,24 @@ func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) {
 	//build the old default gateway route
 	oldGwRoute := netlink.Route{LinkIndex: ifLink, Dst: nil, Gw: ip}
 
-	//delete new default gateway at first
-	if err := netlink.RouteDel(&gwRoute); err != nil {
-		slog.Error("remove current default gateway failed", "error", err.Error())
-		slog.Error("please remove the current gateway and restore the old gateway back manually")
-		slog.Error("current gateway: ", gwRoute)
-		slog.Error("old gateway: ", oldGwRoute)
-		return err
+	if gwRoute.Gw.String() != "<nil>" {
+		//delete new default gateway at first
+		if err := netlink.RouteDel(&gwRoute); err != nil {
+			slog.Error("remove current default gateway failed", "error", err.Error())
+			slog.Error("please remove the current gateway and restore the old gateway back manually")
+			slog.Error("current gateway: ", gwRoute)
+			slog.Error("old gateway: ", oldGwRoute)
+			return err
+		}
 	}
 
 	//set old default gateway back
-	if err := netlink.RouteAdd(&oldGwRoute); err != nil {
-		slog.Error("add old default gateway back failed, please add it back manually", err.Error())
-		slog.Error("old gateway: ", oldGwRoute)
-		return err
+	if gwRoute.Gw.String() != oldGwRoute.Gw.String() {
+		if err := netlink.RouteAdd(&oldGwRoute); err != nil {
+			slog.Error("add old default gateway back failed, please add it back manually", err.Error())
+			slog.Error("old gateway: ", oldGwRoute)
+			return err
+		}
 	}
 
 	return nil

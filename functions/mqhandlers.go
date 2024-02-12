@@ -169,14 +169,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().DefaultGatewayIpOld != "" && ip.String() == "<nil>" {
-			err := wireguard.RestoreDefaultGatewayOnly(config.Netclient().DefaultGatewayIfLinkOld, net.IP(config.Netclient().DefaultGatewayIpOld))
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
-		} else if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
-			err := wireguard.RestoreDefaultGateway(config.Netclient().DefaultGatewayIfLinkOld, net.IP(config.Netclient().DefaultGatewayIpOld))
+		if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
+			err := wireguard.RestoreDefaultGateway(config.Netclient().DefaultGatewayIfLinkOld, net.ParseIP(config.Netclient().DefaultGatewayIpOld))
 			if err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
 				return

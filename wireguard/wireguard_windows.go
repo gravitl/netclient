@@ -92,7 +92,7 @@ func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
 	}
 
 	//filter and get current default gateway address
-	ip = net.IP(getDefaultGatewayIpFromRouteList(output))
+	ip = net.ParseIP(getDefaultGatewayIpFromRouteList(output))
 
 	return 0, ip, nil
 }

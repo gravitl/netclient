@@ -75,23 +75,23 @@ func Daemon() {
 		select {
 		case <-quit:
 			slog.Info("shutting down netclient daemon")
+			//check if it needs to restore the default gateway
+			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
-			//check if it needs to restore the default gateway
-			checkAndRestoreDefaultGateway()
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
 			slog.Info("received reset")
+			//check if it needs to restore the default gateway
+			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
 			cancel = startGoRoutines(&wg)
-			//check if it needs to restore the default gateway
-			checkAndRestoreDefaultGateway()
 		}
 	}
 }
@@ -106,14 +106,8 @@ func checkAndRestoreDefaultGateway() {
 	}
 
 	//restore the default gateway when the current default gateway is not the same as the one in config
-	if config.Netclient().DefaultGatewayIpOld != "" && ip.String() == "<nil>" {
-		err := wireguard.RestoreDefaultGatewayOnly(config.Netclient().DefaultGatewayIfLinkOld, net.IP(config.Netclient().DefaultGatewayIpOld))
-		if err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
-			return
-		}
-	} else if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
-		err := wireguard.RestoreDefaultGateway(config.Netclient().DefaultGatewayIfLinkOld, net.IP(config.Netclient().DefaultGatewayIpOld))
+	if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
+		err := wireguard.RestoreDefaultGateway(config.Netclient().DefaultGatewayIfLinkOld, net.ParseIP(config.Netclient().DefaultGatewayIpOld))
 		if err != nil {
 			slog.Error("error restoring default gateway", "error", err.Error())
 			return
