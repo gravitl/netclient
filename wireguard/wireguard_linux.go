@@ -43,9 +43,21 @@ func (nc *NCIface) Create() error {
 		}
 		return nil
 	} else if isTunModuleLoaded() {
+		slog.Info("Kernel WireGuard not detected. Proceeding with userspace WireGuard for iface creation.")
 		if err := nc.createUserSpaceWG(); err != nil {
 			return err
 		}
+		newLink := nc.getKernelLink()
+		if newLink == nil {
+			return fmt.Errorf("failed to create userspace interface")
+		}
+		if err := netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
+			return err
+		}
+		if err := netlink.LinkSetUp(newLink); err != nil {
+			return err
+		}
+		return nil
 	}
 	return fmt.Errorf("WireGuard not detected")
 }
@@ -71,8 +83,12 @@ func (l *netLink) Type() string {
 
 // NCIface.Close closes netmaker interface
 func (n *NCIface) Close() {
-	link := n.getKernelLink()
-	link.Close()
+	if isKernelWireGuardPresent() {
+		link := n.getKernelLink()
+		link.Close()
+	} else if isTunModuleLoaded() {
+		n.closeUserspaceWg()
+	}
 }
 
 // netLink.Close - required function to close linux interface
@@ -117,7 +133,6 @@ func (nc *NCIface) ApplyAddrs() error {
 			slog.Info("adding address", "address", addr.IP.String(), "network", addr.Network.String())
 			if err := netlink.AddrAdd(l, &netlink.Addr{IPNet: &net.IPNet{IP: addr.IP, Mask: addr.Network.Mask}}); err != nil {
 				slog.Error("error adding addr", "error", err.Error())
-
 			}
 		}
 
