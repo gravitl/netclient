@@ -148,7 +148,9 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 	for _, l := range rList {
 		if strings.Contains(l, "0.0.0.0") {
 			rLine = l
-			break
+			if strings.Contains(l, ncutils.GetInterfaceName()) {
+				break
+			}
 		}
 	}
 
