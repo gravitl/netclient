@@ -159,18 +159,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
 		if peerUpdate.DefaultGwIp.String() != ip.String() {
-			err := wireguard.SetDefaultGateway(peerUpdate.DefaultGwIp)
+			err := wireguard.SetInternetGw(peerUpdate.DefaultGwIp, &peerUpdate.DefaultGwEndpoint)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
 			}
 			//update old gateway info to config
-			config.UpdateDefaultGatewayOld(ifLink, ip.String())
+			config.UpdateDefaultGatewayOld(ifLink, ip.String(), peerUpdate.DefaultGwEndpoint.String())
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
 		if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
-			err := wireguard.RestoreDefaultGateway(config.Netclient().DefaultGatewayIfLinkOld, net.ParseIP(config.Netclient().DefaultGatewayIpOld))
+			err = wireguard.RestoreInternetGw(config.Netclient().DefaultGatewayIfLinkOld, net.ParseIP(config.Netclient().DefaultGatewayIpOld), &peerUpdate.DefaultGwEndpoint)
 			if err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
 				return

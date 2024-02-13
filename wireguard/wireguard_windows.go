@@ -97,13 +97,29 @@ func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
 	return 0, ip, nil
 }
 
-// SetDefaultGateway - set a new default gateway
-func SetDefaultGateway(ip net.IP) (err error) {
+// SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
+func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 
-	//add new route with metric 1 for setting to top priority
-	addCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=1", ncutils.GetInterfaceName(), ip.String())
+	//get old gateway ip, must be before adding  new gateway route, otherwise, it might cause issue
+	_, oldGwIp, err := GetDefaultGatewayIp()
+	if err != nil {
+		slog.Error("error loading current default gateway", "error", err.Error())
+		return
+	}
 
-	_, err = ncutils.RunCmd(addCmd, true)
+	//add new gateway route with metric 1 for setting to top priority
+	addGwCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=1", ncutils.GetInterfaceName(), gwIp.String())
+
+	_, err = ncutils.RunCmd(addGwCmd, true)
+	if err != nil {
+		slog.Error("Failed to add route table", "error", err.Error())
+		return err
+	}
+
+	//add new route to Internet Gw's public ip
+	addEpCmd := fmt.Sprintf("netsh int ipv4 add route %s nexthop=%s store=active metric=1", endpointNet.String(), oldGwIp.String())
+
+	_, err = ncutils.RunCmd(addEpCmd, true)
 	if err != nil {
 		slog.Error("Failed to add route table", "error", err.Error())
 		return err
@@ -112,8 +128,8 @@ func SetDefaultGateway(ip net.IP) (err error) {
 	return nil
 }
 
-// RestoreDefaultGatewayOnly - restore the old default gateway, Linux and Windows do have different behavior, for aligning with Linux, adding this function
-func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) {
+// RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's public ip address
+func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error) {
 
 	delCmd := fmt.Sprintf("netsh int ipv4 delete route 0.0.0.0/0 interface=%s nexthop=%s store=active", ncutils.GetInterfaceName(), ip.String())
 
@@ -123,17 +139,19 @@ func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) {
 		return err
 	}
 
-	return nil
-}
-
-// RestoreDefaultGateway - restore the old default gateway
-func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) {
-
-	delCmd := fmt.Sprintf("netsh int ipv4 delete route 0.0.0.0/0 interface=%s nexthop=%s store=active", ncutils.GetInterfaceName(), ip.String())
-
-	_, err = ncutils.RunCmd(delCmd, true)
+	//get old gateway ip, must be after deleting  new gateway route, otherwise, it might cause issue
+	_, oldGwIp, err := GetDefaultGatewayIp()
 	if err != nil {
-		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+		slog.Error("error loading current default gateway", "error", err.Error())
+		return
+	}
+
+	//delete route to Internet Gw's public ip
+	delEpCmd := fmt.Sprintf("netsh int ipv4 delete route %s nexthop=%s store=active", endpointNet.String(), oldGwIp.String())
+
+	_, err = ncutils.RunCmd(delEpCmd, true)
+	if err != nil {
+		slog.Error("Failed to delete route table", "error", err.Error())
 		return err
 	}
 
