@@ -81,6 +81,7 @@ type Config struct {
 	InitType                InitType             `json:"inittype" yaml:"inittype"`
 	DefaultGatewayIfLinkOld int                  `json:"default_gateway_iflink_old" yaml:"default_gateway_iflink_old"`
 	DefaultGatewayIpOld     string               `json:"default_gateway_ip_old" yaml:"default_gateway_ip_old"`
+	DefaultGwEndpoint       string               `json:"default_gw_endpoint" yaml:"default_gw_endpoint"`
 }
 
 func init() {
@@ -143,11 +144,12 @@ func Netclient() *Config {
 }
 
 // UpdateDefaultGatewayOld - update old default gateway iflink and ip in the netclient config
-func UpdateDefaultGatewayOld(ifLink int, ip string) {
+func UpdateDefaultGatewayOld(ifLink int, ip string, endpointNet string) {
 	netclientCfgMutex.Lock()
 	defer netclientCfgMutex.Unlock()
 	netclient.DefaultGatewayIfLinkOld = ifLink
 	netclient.DefaultGatewayIpOld = ip
+	netclient.DefaultGwEndpoint = endpointNet
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
