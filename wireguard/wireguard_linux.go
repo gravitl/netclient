@@ -86,7 +86,7 @@ func (n *NCIface) Close() {
 	if isKernelWireGuardPresent() {
 		link := n.getKernelLink()
 		link.Close()
-	} else {
+	} else if isTunModuleLoaded() {
 		n.closeUserspaceWg()
 	}
 }

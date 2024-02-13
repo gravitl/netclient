@@ -73,8 +73,12 @@ func (nc *NCIface) closeUserspaceWg() error {
 	defer wgMutex.Unlock()
 	slog.Debug("Closing userspace WireGuard interface", "interface", nc.Name)
 
-	tunDevice.Close()
-	uapi.Close()
+	if tunDevice != nil {
+		tunDevice.Close()
+	}
+	if uapi != nil {
+		uapi.Close()
+	}
 	wg.Wait()
 
 	slog.Debug("Closed userspace WireGuard interface", "interface", nc.Name)
