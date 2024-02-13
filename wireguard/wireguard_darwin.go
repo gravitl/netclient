@@ -115,11 +115,8 @@ func DeleteOldInterface(iface string) {
 // GetDefaultGatewayIp - get current default gateway
 func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) { return }
 
-// RestoreDefaultGatewayOnly - restore the old default gateway only, do not delete current gateway, it may be not there
-func RestoreDefaultGatewayOnly(ifLink int, ip net.IP) (err error) { return }
-
 // RestoreDefaultGateway - restore the old default gateway
-func RestoreDefaultGateway(ifLink int, ip net.IP) (err error) { return }
+func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error) { return }
 
 // SetDefaultGateway - set a new default gateway
-func SetDefaultGateway(ip net.IP) (err error) { return }
+func SetInternetGw(ip net.IP, endpointNet *net.IPNet) (err error) { return }

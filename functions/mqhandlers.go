@@ -496,6 +496,42 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
+
+	//get the current default gateway
+	ifLink, ip, err := wireguard.GetDefaultGatewayIp()
+	if err != nil {
+		slog.Error("error loading current default gateway", "error", err.Error())
+		return
+	}
+
+	//setup the default gateway when change_default_gw set to true
+	if pullResponse.ChangeDefaultGw {
+		//only update if the current gateway ip is not the same as desired
+		if pullResponse.DefaultGwIp.String() != ip.String() {
+			err := wireguard.SetInternetGw(pullResponse.DefaultGwIp, &pullResponse.DefaultGwEndpoint)
+			if err != nil {
+				slog.Error("error setting default gateway", "error", err.Error())
+				return
+			}
+			//update old gateway info to config
+			config.UpdateDefaultGatewayOld(ifLink, ip.String(), pullResponse.DefaultGwEndpoint.String())
+		}
+	} else {
+		//when change_default_gw set to false, check if it needs to restore to old gateway
+		if config.Netclient().DefaultGatewayIpOld != "" && config.Netclient().DefaultGatewayIpOld != ip.String() {
+			_, cidr, err := net.ParseCIDR(config.Netclient().DefaultGwEndpoint)
+			if err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+				return
+			}
+			err = wireguard.RestoreInternetGw(config.Netclient().DefaultGatewayIfLinkOld, net.ParseIP(config.Netclient().DefaultGatewayIpOld), cidr)
+			if err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+				return
+			}
+		}
+	}
+
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(replacePeers)
