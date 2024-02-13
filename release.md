@@ -1,4 +1,4 @@
-# Netclient v0.22.1
+# Netclient v0.23.0
 
 ## Whats New
 - MQ fallback
