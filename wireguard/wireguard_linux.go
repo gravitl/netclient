@@ -223,13 +223,12 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 	}
 
 	//set new default gateway
-	if gwRoute.Gw.String() != oldGwRoute.Gw.String() {
-		if err := netlink.RouteAdd(&gwRoute); err != nil && !strings.Contains(err.Error(), "file exists") {
-			slog.Error("add new default gateway failed, it will need to restore the old default gateway", err.Error())
-			RestoreInternetGw()
-			return err
-		}
+	if err := netlink.RouteAdd(&gwRoute); err != nil && !strings.Contains(err.Error(), "file exists") {
+		slog.Error("add new default gateway failed, it will need to restore the old default gateway", err.Error())
+		RestoreInternetGw()
+		return err
 	}
+
 	//build the route to Internet Gw's public ip
 	epRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: endpointNet, Gw: config.Netclient().OriginalDefaultGatewayIp}
 	//add new route to Internet Gw's public ip
