@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/gravitl/netclient/cache"
@@ -157,4 +158,25 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 	rLineList := strings.Fields(rLine)
 
 	return strings.TrimSpace(rLineList[len(rLineList)-1])
+}
+
+// GetOriginalDefaulGw - fetches system's original default gw
+func GetOriginalDefaulGw() (link int, gwIP net.IP, err error) {
+	link = config.Netclient().DefaultGatewayIfLinkOld
+	gwIP = net.ParseIP(config.Netclient().DefaultGatewayIpOld)
+	if link == 0 || gwIP.String() == "" {
+		link, gwIP, err = GetDefaultGatewayIp()
+	}
+	return
+}
+
+// GetIPNetfromIp - converts ip into ipnet based network class
+func GetIPNetfromIp(ip net.IP) (ipCidr *net.IPNet) {
+	if ipv4 := ip.To4(); ipv4 != nil {
+		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/32", ipv4.String()))
+
+	} else {
+		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/128", ipv4.String()))
+	}
+	return
 }

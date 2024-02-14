@@ -147,8 +147,12 @@ func Netclient() *Config {
 func UpdateDefaultGatewayOld(ifLink int, ip string, endpointNet string) {
 	netclientCfgMutex.Lock()
 	defer netclientCfgMutex.Unlock()
-	netclient.DefaultGatewayIfLinkOld = ifLink
-	netclient.DefaultGatewayIpOld = ip
+	if netclient.DefaultGatewayIfLinkOld == 0 {
+		netclient.DefaultGatewayIfLinkOld = ifLink
+	}
+	if netclient.DefaultGatewayIpOld == "" {
+		netclient.DefaultGatewayIpOld = ip
+	}
 	netclient.DefaultGwEndpoint = endpointNet
 }
 

@@ -150,7 +150,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	//get the current default gateway
-	ifLink, ip, err := wireguard.GetDefaultGatewayIp()
+	ifLink, ip, err := wireguard.GetOriginalDefaulGw()
 	if err != nil {
 		slog.Error("error loading current default gateway", "error", err.Error())
 		return
