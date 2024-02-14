@@ -122,3 +122,5 @@ func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error
 func SetInternetGw(ip net.IP, endpointNet *net.IPNet) (err error) { return }
 
 func SetNmServerRoutes(addrs []net.IPNet) error { return nil }
+
+func RemoveNmServerRoutes(addrs []net.IPNet) error { return nil }

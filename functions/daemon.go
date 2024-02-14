@@ -77,6 +77,7 @@ func Daemon() {
 			slog.Info("shutting down netclient daemon")
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
+			wireguard.RemoveNmServerRoutes(wireguard.GetServerAddressesDefaultGw(config.GetServer(config.CurrServer)))
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
@@ -87,6 +88,7 @@ func Daemon() {
 			slog.Info("received reset")
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
+			wireguard.RemoveNmServerRoutes(wireguard.GetServerAddressesDefaultGw(config.GetServer(config.CurrServer)))
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
