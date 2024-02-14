@@ -120,3 +120,5 @@ func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error
 
 // SetDefaultGateway - set a new default gateway
 func SetInternetGw(ip net.IP, endpointNet *net.IPNet) (err error) { return }
+
+func SetNmServerRoutes(addrs []net.IPNet) error { return nil }

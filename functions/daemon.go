@@ -196,6 +196,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	wireguard.SetNmServerRoutes(wireguard.GetServerAddressesDefaultGw(server))
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)

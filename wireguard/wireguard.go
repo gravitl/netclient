@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -177,6 +178,57 @@ func GetIPNetfromIp(ip net.IP) (ipCidr *net.IPNet) {
 
 	} else {
 		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/128", ipv4.String()))
+	}
+	return
+}
+
+func GetServerAddressesDefaultGw(server *config.Server) (addrs []net.IPNet) {
+	if server == nil {
+		return
+	}
+	ips, _ := net.LookupIP(server.Name) // handle server base domain
+	for _, ip := range ips {
+		ipnet := GetIPNetfromIp(ip)
+		if ipnet != nil {
+			addrs = append(addrs, *ipnet)
+		}
+	}
+
+	ips, _ = net.LookupIP(server.API) // handle server api
+	for _, ip := range ips {
+		ipnet := GetIPNetfromIp(ip)
+		if ipnet != nil {
+			addrs = append(addrs, *ipnet)
+		}
+	}
+
+	broker := server.Broker
+	brokerParts := strings.Split(broker, "//")
+	if len(brokerParts) > 1 {
+		broker = brokerParts[1]
+	}
+
+	ips, _ = net.LookupIP(broker) // handle server broker
+	for _, ip := range ips {
+		ipnet := GetIPNetfromIp(ip)
+		if ipnet != nil {
+			addrs = append(addrs, *ipnet)
+		}
+	}
+
+	stunList := stun.StunServers
+	for i := range stunList {
+		stunServer := stunList[i]
+		ips, err := net.LookupIP(stunServer.Domain) // handle server broker
+		if err != nil {
+			continue
+		}
+		for _, ip := range ips {
+			ipnet := GetIPNetfromIp(ip)
+			if ipnet != nil {
+				addrs = append(addrs, *ipnet)
+			}
+		}
 	}
 	return
 }
