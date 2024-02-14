@@ -106,15 +106,9 @@ func checkAndRestoreDefaultGateway() {
 		slog.Error("error loading current default gateway", "error", err.Error())
 		return
 	}
-
 	//restore the default gateway when the current default gateway is not the same as the one in config
-	if config.Netclient().OriginalDefaultGatewayIp != "" && config.Netclient().OriginalDefaultGatewayIp != ip.String() {
-		_, cidr, err := net.ParseCIDR(config.Netclient().OriginalDefaultGatewayIp)
-		if err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
-			return
-		}
-		err = wireguard.RestoreInternetGw(config.Netclient().OriginalDefaultGatewayIfLink, net.ParseIP(config.Netclient().OriginalDefaultGatewayIp), cidr)
+	if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
+		err = wireguard.RestoreInternetGw(config.Netclient().OriginalDefaultGatewayIfLink, config.Netclient().OriginalDefaultGatewayIp, &config.Netclient().CurrGwNmEndpoint)
 		if err != nil {
 			slog.Error("error restoring default gateway", "error", err.Error())
 			return
@@ -173,10 +167,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		updateConfig = true
 	}
 	originalLink, originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
-	if err == nil && (originalLink != config.Netclient().OriginalDefaultGatewayIfLink ||
-		originalDefaultGwIP.String() != config.Netclient().OriginalDefaultGatewayIp) {
+	if (err == nil && originalLink != 0 && originalDefaultGwIP != nil) &&
+		(originalLink != config.Netclient().OriginalDefaultGatewayIfLink ||
+			!originalDefaultGwIP.Equal(config.Netclient().OriginalDefaultGatewayIp)) {
 		config.Netclient().OriginalDefaultGatewayIfLink = originalLink
-		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP.String()
+		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
 		updateConfig = true
 	}
 	if updateConfig {

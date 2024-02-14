@@ -80,7 +80,9 @@ type Config struct {
 	HostPeers                    []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
 	InitType                     InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIfLink int                  `json:"original_default_gateway_iflink_old" yaml:"original_default_gateway_iflink_old"`
-	OriginalDefaultGatewayIp     string               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
+	OriginalDefaultGatewayIp     net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
+	CurrGwNmIP                   net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
+	CurrGwNmEndpoint             net.IPNet            `json:"curr_gw_nm_endpoint" yaml:"curr_gw_nm_endpoint"`
 }
 
 func init() {

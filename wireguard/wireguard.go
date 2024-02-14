@@ -164,7 +164,7 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 // GetOriginalDefaulGw - fetches system's original default gw
 func GetOriginalDefaulGw() (link int, gwIP net.IP, err error) {
 	link = config.Netclient().OriginalDefaultGatewayIfLink
-	gwIP = net.ParseIP(config.Netclient().OriginalDefaultGatewayIp)
+	gwIP = config.Netclient().OriginalDefaultGatewayIp
 	if link == 0 || gwIP.String() == "" {
 		link, gwIP, err = GetDefaultGatewayIp()
 	}
