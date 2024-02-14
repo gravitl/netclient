@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
@@ -83,8 +85,36 @@ func SetRoutes(addrs []ifaceAddress) {
 	}
 }
 
+// getDefaultGatewayIpFromRouteList - an internal function to get the default gateway ip from route list string
+func getDefaultGatewayIpFromRouteList(output string) string {
+
+	var rList []string
+	if strings.Contains(output, "\r") {
+		rList = strings.Split(output, "\r")
+	} else if strings.Contains(output, "\n") {
+		rList = strings.Split(output, "\n")
+	}
+
+	var rLine string
+	for _, l := range rList {
+		if strings.Contains(l, "0.0.0.0/0") {
+			rLine = l
+			break
+		}
+	}
+
+	rLineList := strings.Fields(rLine)
+
+	return strings.TrimSpace(rLineList[len(rLineList)-1])
+}
+
 // GetDefaultGatewayIp - get current default gateway
 func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
+
+	if config.Netclient().CurrGwNmIP != nil && config.Netclient().CurrGwNmIP.String() != "" {
+		return 5, config.Netclient().CurrGwNmIP, nil
+	}
+
 	//get current route
 	output, err := ncutils.RunCmd("netsh int ipv4 show route", true)
 	if err != nil {
@@ -94,7 +124,7 @@ func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
 	//filter and get current default gateway address
 	ip = net.ParseIP(getDefaultGatewayIpFromRouteList(output))
 
-	return 0, ip, nil
+	return 5, ip, nil
 }
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
@@ -108,6 +138,9 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 		slog.Error("Failed to add route table", "error", err.Error())
 		return err
 	}
+
+	config.Netclient().CurrGwNmEndpoint = *endpointNet
+	config.Netclient().CurrGwNmIP = gwIp
 
 	return nil
 }
@@ -123,7 +156,9 @@ func RestoreInternetGw() (err error) {
 		return err
 	}
 
-	return nil
+	config.Netclient().CurrGwNmEndpoint = net.IPNet{}
+	config.Netclient().CurrGwNmIP = net.ParseIP("")
+	return config.WriteNetclientConfig()
 }
 
 // NCIface.Close - closes the managed WireGuard interface
