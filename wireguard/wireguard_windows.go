@@ -113,7 +113,7 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 }
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's public ip address
-func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error) {
+func RestoreInternetGw() (err error) {
 
 	delCmd := fmt.Sprintf("netsh int ipv4 delete route 0.0.0.0/0 interface=%s store=active", ncutils.GetInterfaceName())
 
@@ -164,3 +164,7 @@ func DeleteOldInterface(iface string) {
 		logger.Log(1, err.Error())
 	}
 }
+
+func RemoveNmServerRoutes(addrs []net.IPNet) error { return nil }
+
+func SetNmServerRoutes(addrs []net.IPNet) error { return nil }
