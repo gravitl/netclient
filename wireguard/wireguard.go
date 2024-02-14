@@ -2,11 +2,13 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -157,4 +159,87 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 	rLineList := strings.Fields(rLine)
 
 	return strings.TrimSpace(rLineList[len(rLineList)-1])
+}
+
+// GetOriginalDefaulGw - fetches system's original default gw
+func GetOriginalDefaulGw() (link int, gwIP net.IP, err error) {
+	link = config.Netclient().OriginalDefaultGatewayIfLink
+	gwIP = config.Netclient().OriginalDefaultGatewayIp
+	if link == 0 || gwIP.String() == "" {
+		link, gwIP, err = GetDefaultGatewayIp()
+	}
+	return
+}
+
+// GetIPNetfromIp - converts ip into ipnet based network class
+func GetIPNetfromIp(ip net.IP) (ipCidr *net.IPNet) {
+	if ipv4 := ip.To4(); ipv4 != nil {
+		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/32", ipv4.String()))
+
+	} else {
+		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/128", ipv4.String()))
+	}
+	return
+}
+
+// IsConflictedWithServerAddr - check if address conflicts with server addresses
+func IsConflictedWithServerAddr(checkaddr net.IPNet) bool {
+	addrs := GetServerAddressesDefaultGw(config.GetServer(config.CurrServer))
+	for _, addr := range addrs {
+		if checkaddr.IP.Equal(addr.IP) {
+			return true
+		}
+	}
+	return false
+}
+
+func GetServerAddressesDefaultGw(server *config.Server) (addrs []net.IPNet) {
+	if server == nil {
+		return
+	}
+	ips, _ := net.LookupIP(server.Name) // handle server base domain
+	for _, ip := range ips {
+		ipnet := GetIPNetfromIp(ip)
+		if ipnet != nil {
+			addrs = append(addrs, *ipnet)
+		}
+	}
+
+	ips, _ = net.LookupIP(server.API) // handle server api
+	for _, ip := range ips {
+		ipnet := GetIPNetfromIp(ip)
+		if ipnet != nil {
+			addrs = append(addrs, *ipnet)
+		}
+	}
+
+	broker := server.Broker
+	brokerParts := strings.Split(broker, "//")
+	if len(brokerParts) > 1 {
+		broker = brokerParts[1]
+	}
+
+	ips, _ = net.LookupIP(broker) // handle server broker
+	for _, ip := range ips {
+		ipnet := GetIPNetfromIp(ip)
+		if ipnet != nil {
+			addrs = append(addrs, *ipnet)
+		}
+	}
+
+	stunList := stun.StunServers
+	for i := range stunList {
+		stunServer := stunList[i]
+		ips, err := net.LookupIP(stunServer.Domain) // handle server broker
+		if err != nil {
+			continue
+		}
+		for _, ip := range ips {
+			ipnet := GetIPNetfromIp(ip)
+			if ipnet != nil {
+				addrs = append(addrs, *ipnet)
+			}
+		}
+	}
+	return
 }
