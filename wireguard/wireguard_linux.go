@@ -204,11 +204,14 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 	if config.Netclient().CurrGwNmEndpoint.IP != nil {
 		//build the route to Internet Gw's public ip
 		epRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: &config.Netclient().CurrGwNmEndpoint, Gw: config.Netclient().OriginalDefaultGatewayIp}
-		//add new route to Internet Gw's public ip
-		if err := netlink.RouteDel(&epRoute); err != nil {
-			slog.Error("add route to endpoint failed, it will need to restore the old default gateway", err.Error())
+		//del existing route to Internet Gw's public ip
+		if !IsConflictedWithServerAddr(config.Netclient().CurrGwNmEndpoint) {
+			if err := netlink.RouteDel(&epRoute); err != nil {
+				slog.Error("add route to endpoint failed, it will need to restore the old default gateway", "error", err.Error())
 
+			}
 		}
+
 	}
 
 	if oldGwRoute.Gw.String() != "<nil>" {
@@ -223,7 +226,7 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 	if gwRoute.Gw.String() != oldGwRoute.Gw.String() {
 		if err := netlink.RouteAdd(&gwRoute); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Error("add new default gateway failed, it will need to restore the old default gateway", err.Error())
-			RestoreInternetGw(config.Netclient().OriginalDefaultGatewayIfLink, config.Netclient().OriginalDefaultGatewayIp, endpointNet)
+			RestoreInternetGw()
 			return err
 		}
 	}
@@ -232,7 +235,7 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 	//add new route to Internet Gw's public ip
 	if err := netlink.RouteAdd(&epRoute); err != nil && !strings.Contains(err.Error(), "file exists") {
 		slog.Error("add route to endpoint failed, it will need to restore the old default gateway", err.Error())
-		RestoreInternetGw(config.Netclient().OriginalDefaultGatewayIfLink, config.Netclient().OriginalDefaultGatewayIp, endpointNet)
+		RestoreInternetGw()
 		return err
 	}
 	config.Netclient().CurrGwNmEndpoint = *endpointNet
@@ -241,7 +244,7 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 }
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's public ip address
-func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error) {
+func RestoreInternetGw() (err error) {
 	//get current default gateway
 	gwRoute, err := GetDefaultGateway()
 	if err != nil {
@@ -250,7 +253,7 @@ func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error
 	}
 
 	//build the old default gateway route
-	oldGwRoute := netlink.Route{LinkIndex: ifLink, Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: ip}
+	oldGwRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().OriginalDefaultGatewayIp}
 
 	if gwRoute.Gw.String() != "<nil>" {
 		//delete new default gateway at first
@@ -262,16 +265,16 @@ func RestoreInternetGw(ifLink int, ip net.IP, endpointNet *net.IPNet) (err error
 			return err
 		}
 	}
+	if !IsConflictedWithServerAddr(config.Netclient().CurrGwNmEndpoint) {
+		//build the route to Internet Gw's public ip
+		epRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: &config.Netclient().CurrGwNmEndpoint, Gw: config.Netclient().OriginalDefaultGatewayIp}
 
-	//build the route to Internet Gw's public ip
-	epRoute := netlink.Route{LinkIndex: oldGwRoute.ILinkIndex, Src: net.ParseIP("0.0.0.0"), Dst: endpointNet, Gw: oldGwRoute.Gw}
-
-	//delete endpointIp Net's route
-	if err := netlink.RouteDel(&epRoute); err != nil {
-		slog.Error("delete route to endpoint failed, please delete it manually", err.Error())
-		slog.Error("endpoint Ip Net Route: ", epRoute)
+		//delete endpointIp Net's route
+		if err := netlink.RouteDel(&epRoute); err != nil {
+			slog.Error("delete route to endpoint failed, please delete it manually", err.Error())
+			slog.Error("endpoint Ip Net Route: ", epRoute)
+		}
 	}
-
 	//set old default gateway back
 	if err := netlink.RouteAdd(&oldGwRoute); err != nil {
 		slog.Error("add old default gateway back failed, please add it back manually", err.Error())

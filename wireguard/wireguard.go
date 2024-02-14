@@ -182,6 +182,17 @@ func GetIPNetfromIp(ip net.IP) (ipCidr *net.IPNet) {
 	return
 }
 
+// IsConflictedWithServerAddr - check if address conflicts with server addresses
+func IsConflictedWithServerAddr(checkaddr net.IPNet) bool {
+	addrs := GetServerAddressesDefaultGw(config.GetServer(config.CurrServer))
+	for _, addr := range addrs {
+		if checkaddr.IP.Equal(addr.IP) {
+			return true
+		}
+	}
+	return false
+}
+
 func GetServerAddressesDefaultGw(server *config.Server) (addrs []net.IPNet) {
 	if server == nil {
 		return
