@@ -75,13 +75,12 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey              wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate       []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers               []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
-	InitType                InitType             `json:"inittype" yaml:"inittype"`
-	DefaultGatewayIfLinkOld int                  `json:"default_gateway_iflink_old" yaml:"default_gateway_iflink_old"`
-	DefaultGatewayIpOld     string               `json:"default_gateway_ip_old" yaml:"default_gateway_ip_old"`
-	DefaultGwEndpoint       string               `json:"default_gw_endpoint" yaml:"default_gw_endpoint"`
+	PrivateKey                   wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate            []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	HostPeers                    []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	InitType                     InitType             `json:"inittype" yaml:"inittype"`
+	OriginalDefaultGatewayIfLink int                  `json:"original_default_gateway_iflink_old" yaml:"default_gateway_iflink_old"`
+	OriginalDefaultGatewayIp     string               `json:"original_default_gateway_ip_old" yaml:"default_gateway_ip_old"`
 }
 
 func init() {
@@ -141,19 +140,6 @@ func Netclient() *Config {
 	netclientCfgMutex.RLock()
 	defer netclientCfgMutex.RUnlock()
 	return &netclient
-}
-
-// UpdateDefaultGatewayOld - update old default gateway iflink and ip in the netclient config
-func UpdateDefaultGatewayOld(ifLink int, ip string, endpointNet string) {
-	netclientCfgMutex.Lock()
-	defer netclientCfgMutex.Unlock()
-	if netclient.DefaultGatewayIfLinkOld == 0 {
-		netclient.DefaultGatewayIfLinkOld = ifLink
-	}
-	if netclient.DefaultGatewayIpOld == "" {
-		netclient.DefaultGatewayIpOld = ip
-	}
-	netclient.DefaultGwEndpoint = endpointNet
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
