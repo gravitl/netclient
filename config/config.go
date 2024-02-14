@@ -79,8 +79,8 @@ type Config struct {
 	TrafficKeyPrivate            []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers                    []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
 	InitType                     InitType             `json:"inittype" yaml:"inittype"`
-	OriginalDefaultGatewayIfLink int                  `json:"original_default_gateway_iflink_old" yaml:"default_gateway_iflink_old"`
-	OriginalDefaultGatewayIp     string               `json:"original_default_gateway_ip_old" yaml:"default_gateway_ip_old"`
+	OriginalDefaultGatewayIfLink int                  `json:"original_default_gateway_iflink_old" yaml:"original_default_gateway_iflink_old"`
+	OriginalDefaultGatewayIp     string               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 }
 
 func init() {
