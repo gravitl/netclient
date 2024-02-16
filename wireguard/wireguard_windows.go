@@ -1,9 +1,11 @@
 package wireguard
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 
 	"github.com/gravitl/netclient/config"
@@ -95,36 +97,57 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 		rList = strings.Split(output, "\n")
 	}
 
-	var rLine string
+	rLines := []string{}
 	for _, l := range rList {
 		if strings.Contains(l, "0.0.0.0/0") {
-			rLine = l
-			break
+			rLines = append(rLines, l)
 		}
 	}
 
-	rLineList := strings.Fields(rLine)
+	ipString := ""
+	//in case that multiple default gateway in the route table, return the one with higher priority
+	if len(rLines) == 0 {
+		return ""
+	} else if len(rLines) == 1 {
+		rArray := strings.Fields(rLines[0])
 
-	return strings.TrimSpace(rLineList[len(rLineList)-1])
+		return strings.TrimSpace(rArray[len(rArray)-1])
+	} else {
+
+		metric := 0
+		for i, r := range rLines {
+			slog.Error("item", "debug", i)
+			slog.Error("string", "debug", r)
+			rArray := strings.Fields(r)
+			i, err := strconv.Atoi(rArray[2])
+			if err == nil && i >= metric {
+				metric = i
+				ipString = rArray[len(rArray)-1]
+			}
+		}
+	}
+
+	slog.Error("current default gateway", "debug", ipString)
+	return strings.TrimSpace(ipString)
 }
 
 // GetDefaultGatewayIp - get current default gateway
-func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
-
-	if config.Netclient().CurrGwNmIP != nil && config.Netclient().CurrGwNmIP.String() != "" {
-		return 5, config.Netclient().CurrGwNmIP, nil
-	}
-
+func GetDefaultGatewayIp() (ip net.IP, err error) {
 	//get current route
 	output, err := ncutils.RunCmd("netsh int ipv4 show route", true)
 	if err != nil {
-		return ifLink, ip, err
+		return ip, err
 	}
 
 	//filter and get current default gateway address
-	ip = net.ParseIP(getDefaultGatewayIpFromRouteList(output))
+	ipString := getDefaultGatewayIpFromRouteList(output)
+	if ipString == "" {
+		return ip, errors.New("no default gateway found, please run command route -n to check in the route table")
+	}
 
-	return 5, ip, nil
+	ip = net.ParseIP(ipString)
+
+	return ip, nil
 }
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
