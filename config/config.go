@@ -75,14 +75,13 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey                   wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate            []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers                    []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
-	InitType                     InitType             `json:"inittype" yaml:"inittype"`
-	OriginalDefaultGatewayIfLink int                  `json:"original_default_gateway_iflink_old" yaml:"original_default_gateway_iflink_old"`
-	OriginalDefaultGatewayIp     net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
-	CurrGwNmIP                   net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
-	CurrGwNmEndpoint             net.IPNet            `json:"curr_gw_nm_endpoint" yaml:"curr_gw_nm_endpoint"`
+	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	InitType                 InitType             `json:"inittype" yaml:"inittype"`
+	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
+	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
+	CurrGwNmEndpoint         net.IPNet            `json:"curr_gw_nm_endpoint" yaml:"curr_gw_nm_endpoint"`
 }
 
 func init() {

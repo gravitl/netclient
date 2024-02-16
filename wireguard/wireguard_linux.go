@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -152,14 +153,14 @@ func SetRoutes(addrs []ifaceAddress) {
 }
 
 // GetDefaultGatewayIp - get current default gateway
-func GetDefaultGatewayIp() (ifLink int, ip net.IP, err error) {
+func GetDefaultGatewayIp() (ip net.IP, err error) {
 	//get current default gateway
 	gwRoute, err := GetDefaultGateway()
 	if err != nil {
-		return ifLink, ip, err
+		return ip, err
 	}
 
-	return gwRoute.LinkIndex, gwRoute.Gw, nil
+	return gwRoute.Gw, nil
 }
 
 // GetDefaultGateway - get current default gateway
@@ -172,11 +173,26 @@ func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 		return gwRoute, err
 	}
 
+	gwRoutes := []netlink.Route{}
+
 	//get default gateway by filtering with dst==nil
 	for _, r := range routes {
 		if r.Dst == nil {
-			gwRoute = r
-			break
+			gwRoutes = append(gwRoutes, r)
+		}
+	}
+
+	//in case that multiple default gateway in the route table, return the one with higher priority
+	if len(gwRoutes) == 0 {
+		return gwRoute, errors.New("no default gateway found, please run command route -n to check in the route table")
+	} else if len(gwRoutes) == 1 {
+		return gwRoutes[0], nil
+	} else {
+		gwRoute = gwRoutes[0]
+		for _, r := range gwRoutes {
+			if r.Priority < gwRoute.Priority {
+				gwRoute = r
+			}
 		}
 	}
 
@@ -185,42 +201,19 @@ func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
 func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
-	//get the link for interface netmaker
-	link, err := netlink.LinkByName(ncutils.GetInterfaceName())
-	if err != nil {
-		slog.Error("failed to get link to interface", "error", err.Error())
-		return err
-	}
-
-	//build the new default gateway route
-	gwRoute := netlink.Route{LinkIndex: link.Attrs().Index, Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: gwIp}
-
-	//get current default gateway
-	oldGwRoute, err := GetDefaultGateway()
-	if err != nil {
-		return err
-	}
 
 	if config.Netclient().CurrGwNmEndpoint.IP != nil {
 		//build the route to Internet Gw's public ip
-		epRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: &config.Netclient().CurrGwNmEndpoint, Gw: config.Netclient().OriginalDefaultGatewayIp}
+		epRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: &config.Netclient().CurrGwNmEndpoint, Gw: config.Netclient().OriginalDefaultGatewayIp}
 		//del existing route to Internet Gw's public ip
 		if !IsConflictedWithServerAddr(config.Netclient().CurrGwNmEndpoint) {
 			if err := netlink.RouteDel(&epRoute); err != nil {
 				slog.Error("add route to endpoint failed, it will need to restore the old default gateway", "error", err.Error())
-
 			}
 		}
-
 	}
 
-	if oldGwRoute.Gw.String() != "<nil>" {
-		//delete old default gateway at first
-		if err := netlink.RouteDel(&oldGwRoute); err != nil {
-			slog.Error("remove old default gateway failed", "error", err.Error())
-			return err
-		}
-	}
+	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: gwIp, Priority: 1}
 
 	//set new default gateway
 	if err := netlink.RouteAdd(&gwRoute); err != nil && !strings.Contains(err.Error(), "file exists") {
@@ -230,7 +223,7 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 	}
 
 	//build the route to Internet Gw's public ip
-	epRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: endpointNet, Gw: config.Netclient().OriginalDefaultGatewayIp}
+	epRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: endpointNet, Gw: config.Netclient().OriginalDefaultGatewayIp}
 	//add new route to Internet Gw's public ip
 	if err := netlink.RouteAdd(&epRoute); err != nil && !strings.Contains(err.Error(), "file exists") {
 		slog.Error("add route to endpoint failed, it will need to restore the old default gateway", err.Error())
@@ -244,42 +237,26 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's public ip address
 func RestoreInternetGw() (err error) {
-	//get current default gateway
-	gwRoute, err := GetDefaultGateway()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return err
-	}
-
 	//build the old default gateway route
-	oldGwRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().OriginalDefaultGatewayIp}
+	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Priority: 1}
 
-	if gwRoute.Gw.String() != "<nil>" {
-		//delete new default gateway at first
-		if err := netlink.RouteDel(&gwRoute); err != nil {
-			slog.Error("remove current default gateway failed", "error", err.Error())
-			slog.Error("please remove the current gateway and restore the old gateway back manually")
-			slog.Error("current gateway: ", gwRoute)
-			slog.Error("old gateway: ", oldGwRoute)
-			return err
-		}
-	}
-	if !IsConflictedWithServerAddr(config.Netclient().CurrGwNmEndpoint) {
-		//build the route to Internet Gw's public ip
-		epRoute := netlink.Route{LinkIndex: config.Netclient().OriginalDefaultGatewayIfLink, Src: net.ParseIP("0.0.0.0"), Dst: &config.Netclient().CurrGwNmEndpoint, Gw: config.Netclient().OriginalDefaultGatewayIp}
-
-		//delete endpointIp Net's route
-		if err := netlink.RouteDel(&epRoute); err != nil {
-			slog.Error("delete route to endpoint failed, please delete it manually", err.Error())
-			slog.Error("endpoint Ip Net Route: ", epRoute)
-		}
-	}
-	//set old default gateway back
-	if err := netlink.RouteAdd(&oldGwRoute); err != nil {
-		slog.Error("add old default gateway back failed, please add it back manually", err.Error())
-		slog.Error("old gateway: ", oldGwRoute)
+	//delete new default gateway at first
+	if err := netlink.RouteDel(&gwRoute); err != nil {
+		slog.Error("remove current default gateway failed", "error", err.Error())
+		slog.Error("please remove the current gateway manually")
+		slog.Error("current gateway: ", gwRoute)
 		return err
 	}
+
+	//build the route to Internet Gw's public ip
+	epRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: &config.Netclient().CurrGwNmEndpoint, Gw: config.Netclient().OriginalDefaultGatewayIp}
+
+	//delete endpointIp Net's route
+	if err := netlink.RouteDel(&epRoute); err != nil {
+		slog.Error("delete route to endpoint failed, please delete it manually", err.Error())
+		slog.Error("endpoint Ip Net Route: ", epRoute)
+	}
+
 	config.Netclient().CurrGwNmEndpoint = net.IPNet{}
 	config.Netclient().CurrGwNmIP = net.ParseIP("")
 	return config.WriteNetclientConfig()
@@ -317,7 +294,7 @@ func DeleteOldInterface(iface string) {
 }
 
 func SetNmServerRoutes(addrs []net.IPNet) error {
-	link, gwIP, err := GetOriginalDefaulGw()
+	gwIP, err := GetOriginalDefaulGw()
 	if err != nil {
 		return err
 	}
@@ -330,9 +307,8 @@ func SetNmServerRoutes(addrs []net.IPNet) error {
 			continue
 		}
 		if err = netlink.RouteAdd(&netlink.Route{
-			Dst:       &addr,
-			LinkIndex: link,
-			Gw:        gwIP,
+			Dst: &addr,
+			Gw:  gwIP,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			logger.Log(2, "failed to set route", addr.String(), "to gw", gwIP.String())
 			continue
@@ -343,7 +319,7 @@ func SetNmServerRoutes(addrs []net.IPNet) error {
 }
 
 func RemoveNmServerRoutes(addrs []net.IPNet) error {
-	link, gwIP, err := GetOriginalDefaulGw()
+	gwIP, err := GetOriginalDefaulGw()
 	if err != nil {
 		return err
 	}
@@ -356,9 +332,8 @@ func RemoveNmServerRoutes(addrs []net.IPNet) error {
 			continue
 		}
 		if err = netlink.RouteDel(&netlink.Route{
-			Dst:       &addr,
-			LinkIndex: link,
-			Gw:        gwIP,
+			Dst: &addr,
+			Gw:  gwIP,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			logger.Log(2, "failed to set route", addr.String(), "to gw", gwIP.String())
 			continue

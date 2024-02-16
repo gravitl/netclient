@@ -137,11 +137,10 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 }
 
 // GetOriginalDefaulGw - fetches system's original default gw
-func GetOriginalDefaulGw() (link int, gwIP net.IP, err error) {
-	link = config.Netclient().OriginalDefaultGatewayIfLink
+func GetOriginalDefaulGw() (gwIP net.IP, err error) {
 	gwIP = config.Netclient().OriginalDefaultGatewayIp
-	if link == 0 || gwIP.String() == "" {
-		link, gwIP, err = GetDefaultGatewayIp()
+	if gwIP.String() == "" {
+		gwIP, err = GetDefaultGatewayIp()
 	}
 	return
 }

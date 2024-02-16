@@ -150,7 +150,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	//get the current default gateway
-	_, ip, err := wireguard.GetDefaultGatewayIp()
+	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
 		slog.Error("error loading current default gateway", "error", err.Error())
 		return
@@ -159,7 +159,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	//setup the default gateway when change_default_gw set to true
 	if peerUpdate.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
-		if peerUpdate.DefaultGwIp.String() != ip.String() {
+		if !peerUpdate.DefaultGwIp.Equal(ip) {
 			err := wireguard.SetInternetGw(peerUpdate.DefaultGwIp, &peerUpdate.DefaultGwEndpoint)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
@@ -491,7 +491,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 
 	//get the current default gateway
-	_, ip, err := wireguard.GetDefaultGatewayIp()
+	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
 		slog.Error("error loading current default gateway", "error", err.Error())
 		return
@@ -500,7 +500,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	//setup the default gateway when change_default_gw set to true
 	if pullResponse.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
-		if pullResponse.DefaultGwIp.String() != ip.String() {
+		if !pullResponse.DefaultGwIp.Equal(ip) {
 			err := wireguard.SetInternetGw(pullResponse.DefaultGwIp, &pullResponse.DefaultGwEndpoint)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
