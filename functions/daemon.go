@@ -209,7 +209,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		gwIP, err := wireguard.GetDefaultGatewayIp()
 		if err == nil {
 			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
-				err = wireguard.SetInternetGw(pullresp.DefaultGwIp, &pullresp.DefaultGwEndpoint)
+				err = wireguard.SetInternetGw(pullresp.DefaultGwIp)
 				if err != nil {
 					slog.Error("failed to set inet gw", "error", err)
 				}
