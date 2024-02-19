@@ -199,8 +199,40 @@ func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 	return gwRoute, nil
 }
 
+func resetCurrGwMetric(gwRoute *netlink.Route) error {
+
+	//delete the gw entry at first
+	if err := netlink.RouteDel(gwRoute); err != nil {
+		slog.Error("error removing old default gateway route", "error", err.Error())
+		return err
+	}
+
+	//add the gw back with lower metric
+	gwRoute.Priority = 100
+	if err := netlink.RouteAdd(gwRoute); err != nil {
+		slog.Error("error changing old default gateway route metric, please add it back manually", "error", err.Error())
+		slog.Error("gateway route: ", "error", gwRoute)
+	}
+
+	return nil
+}
+
 // SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
 func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
+
+	//get the current default gateway
+	currGw, err := GetDefaultGateway()
+	if err != nil {
+		slog.Error("error loading current default gateway", "error", err.Error())
+	} else {
+		if currGw.Priority <= 1 {
+			err = resetCurrGwMetric(&currGw)
+			if err != nil {
+				slog.Error("error changing current default gateway metric", "error", err.Error())
+				return err
+			}
+		}
+	}
 
 	if config.Netclient().CurrGwNmEndpoint.IP != nil {
 		//build the route to Internet Gw's public ip
