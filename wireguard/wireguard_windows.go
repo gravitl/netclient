@@ -115,9 +115,7 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 	} else {
 
 		metric := 0
-		for i, r := range rLines {
-			slog.Error("item", "debug", i)
-			slog.Error("string", "debug", r)
+		for _, r := range rLines {
 			rArray := strings.Fields(r)
 			i, err := strconv.Atoi(rArray[2])
 			if err == nil && i >= metric {
@@ -127,7 +125,6 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 		}
 	}
 
-	slog.Error("current default gateway", "debug", ipString)
 	return strings.TrimSpace(ipString)
 }
 
