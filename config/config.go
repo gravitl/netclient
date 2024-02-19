@@ -81,7 +81,6 @@ type Config struct {
 	InitType                 InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
-	CurrGwNmEndpoint         net.IPNet            `json:"curr_gw_nm_endpoint" yaml:"curr_gw_nm_endpoint"`
 }
 
 func init() {

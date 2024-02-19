@@ -148,7 +148,7 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 }
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
-func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
+func SetInternetGw(gwIp net.IP) (err error) {
 
 	//add new gateway route with metric 1 for setting to top priority
 	addGwCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=1", ncutils.GetInterfaceName(), gwIp.String())
@@ -159,7 +159,6 @@ func SetInternetGw(gwIp net.IP, endpointNet *net.IPNet) (err error) {
 		return err
 	}
 
-	config.Netclient().CurrGwNmEndpoint = *endpointNet
 	config.Netclient().CurrGwNmIP = gwIp
 
 	return nil
@@ -176,7 +175,6 @@ func RestoreInternetGw() (err error) {
 		return err
 	}
 
-	config.Netclient().CurrGwNmEndpoint = net.IPNet{}
 	config.Netclient().CurrGwNmIP = net.ParseIP("")
 	return config.WriteNetclientConfig()
 }
