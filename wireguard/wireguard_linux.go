@@ -220,6 +220,18 @@ func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 	return gwRoute, nil
 }
 
+// getLocalIpByDefaultInterfaceName - get local ip address by default interface name in config file
+func getLocalIpByDefaultInterfaceName() (ip net.IP, err error) {
+	dLink, err := netlink.LinkByName(config.Netclient().Host.DefaultInterface)
+	if err == nil && dLink != nil {
+		addrList, err := netlink.AddrList(dLink, netlink.FAMILY_V4)
+		if err == nil && len(addrList) > 0 {
+			return addrList[0].IP, nil
+		}
+	}
+	return ip, errors.New("could not get local ip by default interface name")
+}
+
 // SetInternetGw - set a new default gateway and add rules to activate it
 func SetInternetGw(gwIp net.IP) (err error) {
 
@@ -259,7 +271,12 @@ func SetInternetGw(gwIp net.IP) (err error) {
 		return err
 	}
 	//second rule :ip rule add from 68.183.79.137 table main
-	_, ipnet, err = net.ParseCIDR(config.Netclient().Host.EndpointIP.String() + "/32")
+	lIp, err := getLocalIpByDefaultInterfaceName()
+	if err != nil {
+		lIp = config.Netclient().Host.EndpointIP
+	}
+
+	_, ipnet, err = net.ParseCIDR(lIp.String() + "/32")
 	if err != nil {
 		return err
 	}
@@ -306,7 +323,12 @@ func RestoreInternetGw() (err error) {
 		slog.Error("rule: ", tRule.String())
 	}
 	//second rule :ip rule add from 68.183.79.137 table main
-	_, ipnet, err = net.ParseCIDR(config.Netclient().Host.EndpointIP.String() + "/32")
+	lIp, err := getLocalIpByDefaultInterfaceName()
+	if err != nil {
+		lIp = config.Netclient().Host.EndpointIP
+	}
+
+	_, ipnet, err = net.ParseCIDR(lIp.String() + "/32")
 	if err != nil {
 		return err
 	}
