@@ -217,7 +217,3 @@ func DeleteOldInterface(iface string) {
 		logger.Log(1, err.Error())
 	}
 }
-
-func RemoveNmServerRoutes(addrs []net.IPNet) error { return nil }
-
-func SetNmServerRoutes(addrs []net.IPNet) error { return nil }

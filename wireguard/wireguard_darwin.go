@@ -120,7 +120,3 @@ func RestoreInternetGw() (err error) { return }
 
 // SetDefaultGateway - set a new default gateway
 func SetInternetGw(ip net.IP) (err error) { return }
-
-func SetNmServerRoutes(addrs []net.IPNet) error { return nil }
-
-func RemoveNmServerRoutes(addrs []net.IPNet) error { return nil }
