@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -375,54 +374,4 @@ func DeleteOldInterface(iface string) {
 	if _, err := ncutils.RunCmd(ip+" link del "+iface, true); err != nil {
 		logger.Log(0, "error removing interface", iface, err.Error())
 	}
-}
-
-func SetNmServerRoutes(addrs []net.IPNet) error {
-	gwIP, err := GetOriginalDefaulGw()
-	if err != nil {
-		return err
-	}
-	for i := range addrs {
-		addr := addrs[i]
-		if addr.IP == nil {
-			continue
-		}
-		if addr.IP.IsPrivate() {
-			continue
-		}
-		if err = netlink.RouteAdd(&netlink.Route{
-			Dst: &addr,
-			Gw:  gwIP,
-		}); err != nil && !strings.Contains(err.Error(), "file exists") {
-			logger.Log(2, "failed to set route", addr.String(), "to gw", gwIP.String())
-			continue
-		}
-		logger.Log(0, "added server route for interface")
-	}
-	return nil
-}
-
-func RemoveNmServerRoutes(addrs []net.IPNet) error {
-	gwIP, err := GetOriginalDefaulGw()
-	if err != nil {
-		return err
-	}
-	for i := range addrs {
-		addr := addrs[i]
-		if addr.IP == nil {
-			continue
-		}
-		if addr.IP.IsPrivate() {
-			continue
-		}
-		if err = netlink.RouteDel(&netlink.Route{
-			Dst: &addr,
-			Gw:  gwIP,
-		}); err != nil && !strings.Contains(err.Error(), "file exists") {
-			logger.Log(2, "failed to set route", addr.String(), "to gw", gwIP.String())
-			continue
-		}
-		logger.Log(0, "added server route for interface")
-	}
-	return nil
 }
