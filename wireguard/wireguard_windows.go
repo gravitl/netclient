@@ -87,6 +87,22 @@ func SetRoutes(addrs []ifaceAddress) {
 	}
 }
 
+func getInterfaceInfo() (iList []string, err error) {
+	//get current interfaces
+	output, err := ncutils.RunCmd("netsh int ipv4 show interfaces", true)
+	if err != nil {
+		return iList, err
+	}
+
+	if strings.Contains(output, "\r") {
+		iList = strings.Split(output, "\r")
+	} else if strings.Contains(output, "\n") {
+		iList = strings.Split(output, "\n")
+	}
+
+	return iList, nil
+}
+
 // getDefaultGatewayIpFromRouteList - an internal function to get the default gateway ip from route list string
 func getDefaultGatewayIpFromRouteList(output string) string {
 
@@ -113,12 +129,39 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 
 		return strings.TrimSpace(rArray[len(rArray)-1])
 	} else {
-
-		metric := 0
+		metric := 10000
+		iList, err := getInterfaceInfo()
+		if err != nil {
+			iList = []string{}
+		} else {
+			//remove the empty and title lines
+			iList = iList[3:]
+		}
 		for _, r := range rLines {
+			//on Windows, when "Automatic Metric" is enabled on interface, there is a default metric for each route entry
+			//So the overall metric will be "default metric"+"route entry metric"
+			dMetric := 0
 			rArray := strings.Fields(r)
+
+			//get the default metric value,  dMetric, by matching the interface Idx
+			if len(iList) > 0 {
+				for _, if1 := range iList {
+					iArray := strings.Fields(if1)
+
+					if strings.TrimSpace(rArray[len(rArray)-2]) == strings.TrimSpace(iArray[0]) {
+						j, err := strconv.Atoi(iArray[1])
+						if err == nil && j >= 0 {
+							dMetric = j
+							break
+						}
+					}
+				}
+			}
+
+			//get the gateway ip with lowest metric
+
 			i, err := strconv.Atoi(rArray[2])
-			if err == nil && i >= metric {
+			if err == nil && i+dMetric <= metric {
 				metric = i
 				ipString = rArray[len(rArray)-1]
 			}
