@@ -103,16 +103,24 @@ func getInterfaceInfo() (iList []string, err error) {
 	return iList, nil
 }
 
-// getDefaultGatewayIpFromRouteList - an internal function to get the default gateway ip from route list string
-func getDefaultGatewayIpFromRouteList(output string) string {
+// getDefaultGateway - an internal function to get the default gateway route entry
+func getDefaultGateway() (output []string, err error) {
 
-	var rList []string
-	if strings.Contains(output, "\r") {
-		rList = strings.Split(output, "\r")
-	} else if strings.Contains(output, "\n") {
-		rList = strings.Split(output, "\n")
+	//get current route
+	input, err := ncutils.RunCmd("netsh int ipv4 show route", true)
+	if err != nil {
+		return []string{}, err
 	}
 
+	//split the output to multiple lines
+	var rList []string
+	if strings.Contains(input, "\r") {
+		rList = strings.Split(input, "\r")
+	} else if strings.Contains(input, "\n") {
+		rList = strings.Split(input, "\n")
+	}
+
+	//get the lines with gateway route
 	rLines := []string{}
 	for _, l := range rList {
 		if strings.Contains(l, "0.0.0.0/0") {
@@ -120,14 +128,11 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 		}
 	}
 
-	ipString := ""
 	//in case that multiple default gateway in the route table, return the one with higher priority
 	if len(rLines) == 0 {
-		return ""
+		output = []string{}
 	} else if len(rLines) == 1 {
-		rArray := strings.Fields(rLines[0])
-
-		return strings.TrimSpace(rArray[len(rArray)-1])
+		output = strings.Fields(rLines[0])
 	} else {
 		metric := 10000
 		iList, err := getInterfaceInfo()
@@ -148,7 +153,9 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 				for _, if1 := range iList {
 					iArray := strings.Fields(if1)
 
+					//match with Idx, first column in interface info,  last second column in route info
 					if strings.TrimSpace(rArray[len(rArray)-2]) == strings.TrimSpace(iArray[0]) {
+						//default metric in in the second column in inteface info
 						j, err := strconv.Atoi(iArray[1])
 						if err == nil && j >= 0 {
 							dMetric = j
@@ -159,32 +166,31 @@ func getDefaultGatewayIpFromRouteList(output string) string {
 			}
 
 			//get the gateway ip with lowest metric
-
 			i, err := strconv.Atoi(rArray[2])
 			if err == nil && i+dMetric <= metric {
 				metric = i
-				ipString = rArray[len(rArray)-1]
+				output = rArray
 			}
 		}
 	}
 
-	return strings.TrimSpace(ipString)
+	if len(output) == 0 {
+		output = strings.Fields(rLines[0])
+	}
+	return output, nil
 }
 
-// GetDefaultGatewayIp - get current default gateway
+// GetDefaultGatewayIp - get current default gateway ip
 func GetDefaultGatewayIp() (ip net.IP, err error) {
-	//get current route
-	output, err := ncutils.RunCmd("netsh int ipv4 show route", true)
-	if err != nil {
-		return ip, err
-	}
 
-	//filter and get current default gateway address
-	ipString := getDefaultGatewayIpFromRouteList(output)
-	if ipString == "" {
+	//filter and get current default gateway route
+	gwRoute, err := getDefaultGateway()
+	if err != nil || len(gwRoute) == 0 {
 		return ip, errors.New("no default gateway found, please run command route -n to check in the route table")
 	}
 
+	//get the ip address from the last column
+	ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
 	ip = net.ParseIP(ipString)
 
 	return ip, nil
@@ -193,8 +199,29 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 // SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
 func SetInternetGw(gwIp net.IP) (err error) {
 
-	//add new gateway route with metric 1 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=1", ncutils.GetInterfaceName(), gwIp.String())
+	//get current default gateway route
+	gwRoute, err := getDefaultGateway()
+	if err != nil || len(gwRoute) == 0 {
+		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
+	} else {
+		//if default gateway metric is 0, then reset it to 50
+		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
+		metric := strings.TrimSpace(gwRoute[2])
+		if metric == "0" && ipString != gwIp.String() {
+			//set the original gateway metric to 50
+			setGwCmd := fmt.Sprintf("netsh int ipv4 set route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=50", strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+
+			_, err = ncutils.RunCmd(setGwCmd, true)
+			if err != nil {
+				slog.Error("Failed to set original gateway route metric", "error", err.Error())
+				slog.Error("please change the metric to 50 manaull to avoid issue", "error")
+				slog.Error("netsh int ipv4 set route 0.0.0.0/0 interface=<Idx> nexthop=<192.168.1.1> store=active metric=50", "error")
+			}
+		}
+	}
+
+	//add new gateway route with metric 0 for setting to top priority
+	addGwCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=0", ncutils.GetInterfaceName(), gwIp.String())
 
 	_, err = ncutils.RunCmd(addGwCmd, true)
 	if err != nil {
