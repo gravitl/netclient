@@ -269,7 +269,19 @@ func SetInternetGw(gwIp net.IP) (err error) {
 		RestoreInternetGw()
 		return err
 	}
-	//second rule :ip rule add from 68.183.79.137 table main
+	//second rule :ip rule add table main suppress_prefixlength 0
+	sRule := netlink.NewRule()
+	sRule.Src = ipnet
+	sRule.Table = unix.RT_TABLE_MAIN
+	sRule.SuppressPrefixlen = 0
+	sRule.Priority = 2500
+	if err := netlink.RuleAdd(sRule); err != nil {
+		slog.Error("add new rule failed", "error", err.Error())
+		slog.Error("mRule: ", sRule.String())
+		RestoreInternetGw()
+		return err
+	}
+	//third rule :ip rule add from 68.183.79.137 table main
 	lIp, err := getLocalIpByDefaultInterfaceName()
 	if err != nil {
 		lIp = config.Netclient().Host.EndpointIP
@@ -285,7 +297,7 @@ func SetInternetGw(gwIp net.IP) (err error) {
 	mRule.Priority = 2000
 	if err := netlink.RuleAdd(mRule); err != nil {
 		slog.Error("add new rule failed", "error", err.Error())
-		slog.Error("mRule: ", tRule.String())
+		slog.Error("mRule: ", mRule.String())
 		RestoreInternetGw()
 		return err
 	}
@@ -317,11 +329,22 @@ func RestoreInternetGw() (err error) {
 	tRule.Table = ROUTE_TABLE_NAME
 	tRule.Priority = 3000
 	if err := netlink.RuleDel(tRule); err != nil {
-		slog.Error("delete new rule failed", "error", err.Error())
+		slog.Error("delete rule failed", "error", err.Error())
 		slog.Error("please remove the rule manually")
 		slog.Error("rule: ", tRule.String())
 	}
-	//second rule :ip rule add from 68.183.79.137 table main
+	//second rule :ip rule add table main suppress_prefixlength 0
+	sRule := netlink.NewRule()
+	sRule.Src = ipnet
+	sRule.Table = unix.RT_TABLE_MAIN
+	sRule.SuppressPrefixlen = 0
+	sRule.Priority = 2500
+	if err := netlink.RuleDel(sRule); err != nil {
+		slog.Error("delete rule failed", "error", err.Error())
+		slog.Error("please remove the rule manually")
+		slog.Error("rule: ", sRule.String())
+	}
+	//third rule :ip rule add from 68.183.79.137 table main
 	lIp, err := getLocalIpByDefaultInterfaceName()
 	if err != nil {
 		lIp = config.Netclient().Host.EndpointIP
@@ -336,7 +359,7 @@ func RestoreInternetGw() (err error) {
 	mRule.Table = unix.RT_TABLE_MAIN
 	mRule.Priority = 2000
 	if err := netlink.RuleDel(mRule); err != nil {
-		slog.Error("delete new rule failed", "error", err.Error())
+		slog.Error("delete rule failed", "error", err.Error())
 		slog.Error("please remove the rule manually")
 		slog.Error("rule: ", mRule.String())
 	}
