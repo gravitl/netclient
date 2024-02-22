@@ -191,7 +191,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
-	if pullErr == nil {
+	if pullErr == nil && !pullresp.ChangeDefaultGw && !pullresp.IsInternetGw {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	}
 	server := config.GetServer(config.CurrServer)
