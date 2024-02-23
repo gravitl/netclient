@@ -9,7 +9,6 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/firewall"
@@ -177,20 +176,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	if peerUpdate.ChangeDefaultGw || peerUpdate.IsInternetGw {
-		// reset local endpoints cache
-		// clear cache
-		cache.EndpointCache = sync.Map{}
-	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 	}
-	if !peerUpdate.ChangeDefaultGw && !peerUpdate.IsInternetGw {
-		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
-	}
+	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
@@ -525,20 +517,13 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			}
 		}
 	}
-	if pullResponse.ChangeDefaultGw || pullResponse.IsInternetGw {
-		// reset local endpoints cache
-		// clear cache
-		cache.EndpointCache = sync.Map{}
-	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 	}
-	if !pullResponse.ChangeDefaultGw && !pullResponse.IsInternetGw {
-		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
-	}
+	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
