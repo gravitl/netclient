@@ -3,6 +3,9 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
+    ip rule delete pref 3000
+    ip rule delete pref 2500
+    ip rule delete pref 2000
     echo "deleting interface" $net
     if [ "${IFACE_NAME}" == "" ];then
         IFACE_NAME="netmaker"
