@@ -279,8 +279,7 @@ func SetInternetGw(gwIp net.IP) (err error) {
 	tRule.Table = ROUTE_TABLE_NAME
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
-		slog.Error("add new rule failed", "error", err.Error())
-		slog.Error("rule: ", tRule.String())
+		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
 		RestoreInternetGw()
 		return err
 	}
@@ -291,8 +290,7 @@ func SetInternetGw(gwIp net.IP) (err error) {
 	sRule.SuppressPrefixlen = 0
 	sRule.Priority = 2500
 	if err := netlink.RuleAdd(sRule); err != nil {
-		slog.Error("add new rule failed", "error", err.Error())
-		slog.Error("mRule: ", sRule.String())
+		slog.Error("add new rule failed", "mRule: ", sRule.String(), "error", err.Error())
 		RestoreInternetGw()
 		return err
 	}
@@ -311,12 +309,10 @@ func SetInternetGw(gwIp net.IP) (err error) {
 	mRule.Table = unix.RT_TABLE_MAIN
 	mRule.Priority = 2000
 	if err := netlink.RuleAdd(mRule); err != nil {
-		slog.Error("add new rule failed", "error", err.Error())
-		slog.Error("mRule: ", mRule.String())
+		slog.Error("add new rule failed", "mRule: ", mRule.String(), "error", err.Error())
 		RestoreInternetGw()
 		return err
 	}
-
 	config.Netclient().CurrGwNmIP = gwIp
 	return nil
 }
@@ -356,8 +352,7 @@ func RestoreInternetGw() (err error) {
 	sRule.Priority = 2500
 	if err := netlink.RuleDel(sRule); err != nil {
 		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually")
-		slog.Error("rule: ", sRule.String())
+		slog.Error("please remove the rule manually", "rule: ", sRule.String())
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
 	lIp, err := getLocalIpByDefaultInterfaceName()
@@ -375,8 +370,8 @@ func RestoreInternetGw() (err error) {
 	mRule.Priority = 2000
 	if err := netlink.RuleDel(mRule); err != nil {
 		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually")
-		slog.Error("rule: ", mRule.String())
+		slog.Error("please remove the rule manually", "rule: ", mRule.String())
+
 	}
 
 	config.Netclient().CurrGwNmIP = net.ParseIP("")

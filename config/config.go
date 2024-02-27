@@ -224,8 +224,8 @@ func WriteNetclientConfig() error {
 			return err
 		}
 	}
-	if Lock(lockfile) != nil {
-		return errors.New("failed to obtain lockfile")
+	if lerr := Lock(lockfile); lerr != nil {
+		return errors.New("failed to obtain lockfile " + lerr.Error())
 	}
 	defer Unlock(lockfile)
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
@@ -234,8 +234,9 @@ func WriteNetclientConfig() error {
 	}
 	defer f.Close()
 	netclientCfgMutex.Lock()
-	defer netclientCfgMutex.Unlock()
-	err = yaml.NewEncoder(f).Encode(netclient)
+	netclientI := netclient
+	netclientCfgMutex.Unlock()
+	err = yaml.NewEncoder(f).Encode(netclientI)
 	if err != nil {
 		return err
 	}
