@@ -186,6 +186,7 @@ func ReadNetclientConfig() (*Config, error) {
 	defer func() {
 		if err == nil {
 			netclientCfgMutex.Lock()
+			netclient = Config{}
 			netclient = netclientl
 			netclientCfgMutex.Unlock()
 		}
