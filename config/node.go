@@ -144,9 +144,10 @@ func WriteNodeConfig() error {
 		return err
 	}
 	defer f.Close()
-	nodeMutex.RLock()
-	defer nodeMutex.RUnlock()
-	err = yaml.NewEncoder(f).Encode(Nodes)
+	nodeMutex.Lock()
+	nodesI := Nodes
+	nodeMutex.Unlock()
+	err = yaml.NewEncoder(f).Encode(nodesI)
 	if err != nil {
 		return err
 	}
