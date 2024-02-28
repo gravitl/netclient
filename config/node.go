@@ -33,21 +33,29 @@ type Node struct {
 
 // ReadNodeConfig reads node configuration from disk
 func ReadNodeConfig() error {
+	nodesI := make(NodeMap)
+	var err error
+	defer func() {
+		if err == nil {
+			nodeMutex.Lock()
+			Nodes = make(NodeMap)
+			Nodes = nodesI
+			nodeMutex.Unlock()
+		}
+	}()
 	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
 	file := GetNetclientPath() + "nodes.yml"
-	if err := Lock(lockfile); err != nil {
+	if err = Lock(lockfile); err != nil {
 		return err
 	}
 	defer Unlock(lockfile)
-	f, err := os.Open(file)
-	if err != nil {
+	f, ferr := os.Open(file)
+	if ferr != nil {
+		err = ferr
 		return err
 	}
 	defer f.Close()
-	nodeMutex.Lock()
-	defer nodeMutex.Unlock()
-	Nodes = make(NodeMap)
-	if err := yaml.NewDecoder(f).Decode(&Nodes); err != nil {
+	if err = yaml.NewDecoder(f).Decode(&nodesI); err != nil {
 		return err
 	}
 	return nil
