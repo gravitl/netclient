@@ -103,7 +103,7 @@ func extPeerConnStatus(address string) (connected bool, latency int64) {
 		pinger.Timeout = time.Second * 2
 		err = pinger.Run()
 		if err != nil {
-			logger.Log(0, "failed ping for metrics on peer address", address, err.Error())
+			slog.Debug("failed ping for metrics on peer address", address, err.Error())
 		} else {
 			pingStats := pinger.Statistics()
 			if pingStats.PacketsRecv > 0 {

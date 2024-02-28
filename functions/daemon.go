@@ -75,6 +75,8 @@ func Daemon() {
 		select {
 		case <-quit:
 			slog.Info("shutting down netclient daemon")
+			//check if it needs to restore the default gateway
+			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
@@ -83,11 +85,31 @@ func Daemon() {
 			return
 		case <-reset:
 			slog.Info("received reset")
+			//check if it needs to restore the default gateway
+			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
 			cancel = startGoRoutines(&wg)
+		}
+	}
+}
+
+// checkAndRestoreDefaultGateway -check if it needs to restore the default gateway
+func checkAndRestoreDefaultGateway() {
+	//get the current default gateway
+	ip, err := wireguard.GetDefaultGatewayIp()
+	if err != nil {
+		slog.Error("error loading current default gateway", "error", err.Error())
+		return
+	}
+	//restore the default gateway when the current default gateway is not the same as the one in config
+	if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
+		err = wireguard.RestoreInternetGw()
+		if err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
+			return
 		}
 	}
 }
@@ -142,6 +164,15 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		config.Netclient().NatType = config.HostNatType
 		updateConfig = true
 	}
+
+	if config.Netclient().OriginalDefaultGatewayIp == nil {
+		originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
+		if err == nil && originalDefaultGwIP != nil {
+			config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
+			updateConfig = true
+		}
+	}
+
 	if updateConfig {
 		if err := config.WriteNetclientConfig(); err != nil {
 			slog.Error("error writing endpoint/port netclient config file", "error", err)
@@ -168,6 +199,21 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	// set original default gw info
+
+	// check if default gw needs to be set
+	if pullErr == nil {
+		gwIP, err := wireguard.GetDefaultGatewayIp()
+		if err == nil {
+			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
+				err = wireguard.SetInternetGw(pullresp.DefaultGwIp)
+				if err != nil {
+					slog.Error("failed to set inet gw", "error", err)
+				}
+			}
+		}
+	}
+
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
