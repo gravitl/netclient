@@ -8,7 +8,6 @@
 
 ## What's Fixed/Improved 🛠
 
-- Removed docker Netclient rules when the container is stopped
 - Fixed ENDPOINT environment variable for Docker
 - Stability fixes
 - Deprecated Netclient GUI
