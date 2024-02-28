@@ -23,13 +23,17 @@ func (nc *NCIface) Create() error {
 
 	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
 	if err != nil {
-		logger.Log(3, "creating Windows tunnel")
-		windowsGUID, err := windows.GenerateGUID()
+		slog.Info("creating Windows tunnel")
+		//{0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6} is a fixed string, for creating the unique GUID. It's meaningless
+		//unique GUID here to make sure only one network profile created
+		windowsGUID, err := windows.GUIDFromString("{0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6}")
 		if err != nil {
+			slog.Error("generating guid error: ", "error", err)
 			return err
 		}
 		adapter, err = driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
 		if err != nil {
+			slog.Error("creating adapter error: ", "error", err)
 			return err
 		}
 	} else {
