@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -131,4 +132,24 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 		}
 	}
 	return wgtypes.Peer{}, fmt.Errorf("peer not found")
+}
+
+// GetOriginalDefaulGw - fetches system's original default gw
+func GetOriginalDefaulGw() (gwIP net.IP, err error) {
+	gwIP = config.Netclient().OriginalDefaultGatewayIp
+	if gwIP.String() == "" {
+		gwIP, err = GetDefaultGatewayIp()
+	}
+	return
+}
+
+// GetIPNetfromIp - converts ip into ipnet based network class
+func GetIPNetfromIp(ip net.IP) (ipCidr *net.IPNet) {
+	if ipv4 := ip.To4(); ipv4 != nil {
+		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/32", ipv4.String()))
+
+	} else {
+		_, ipCidr, _ = net.ParseCIDR(fmt.Sprintf("%s/128", ipv4.String()))
+	}
+	return
 }

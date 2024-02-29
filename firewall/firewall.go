@@ -58,7 +58,7 @@ func Init() (func(), error) {
 	logger.Log(0, "Starting firewall...")
 	fwCrtl, err = newFirewall()
 	if err != nil {
-		return nil, err
+		return func() {}, err
 	}
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err

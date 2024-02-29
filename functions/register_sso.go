@@ -24,7 +24,7 @@ type RegisterSSO struct {
 }
 
 // RegisterWithSSO - register with user credentials with a netmaker server
-func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
+func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 	if registerData == nil || len(registerData.API) == 0 { // begin validation
 		return fmt.Errorf("no server data provided")
 	}
@@ -76,10 +76,10 @@ func RegisterWithSSO(registerData *RegisterSSO, isGui bool) (err error) {
 	registerData.Pass = ""
 
 	defer conn.Close()
-	return handeServerSSORegisterConn(&request, registerData.API, conn, isGui)
+	return handeServerSSORegisterConn(&request, registerData.API, conn)
 }
 
-func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn, isGui bool) error {
+func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn) error {
 	reqData, err := json.Marshal(&reqMsg)
 	if err != nil {
 		return err
@@ -112,14 +112,16 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 				done <- struct{}{}
 				return
 			}
-			if strings.Contains(string(msg), "oauth/register") { // TODO: maybe send to channel for GUI in future?
+			if strings.Contains(string(msg), "oauth/register") {
 				fmt.Printf("Please visit:\n %s \nto authenticate\n", string(msg))
 			} else {
 				var response models.RegisterResponse
 				if err := json.Unmarshal(msg, &response); err != nil {
+					fmt.Printf("%s\n", string(msg))
+					done <- struct{}{}
 					return
 				}
-				handleRegisterResponse(&response, isGui)
+				handleRegisterResponse(&response)
 			}
 		}
 	}()

@@ -19,7 +19,7 @@ import (
 )
 
 // Register - should be simple to register with a token
-func Register(token string, isGui bool) error {
+func Register(token string) error {
 	data, err := b64.StdEncoding.DecodeString(token)
 	if err != nil {
 		logger.FatalLog("could not read enrollment token")
@@ -69,7 +69,7 @@ func Register(token string, isGui bool) error {
 	if config.CurrServer != "" && config.CurrServer != registerResponse.ServerConf.Server {
 		fmt.Println("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
 	}
-	handleRegisterResponse(&registerResponse, isGui)
+	handleRegisterResponse(&registerResponse)
 	return nil
 }
 
@@ -109,7 +109,7 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 	return
 }
 
-func handleRegisterResponse(registerResponse *models.RegisterResponse, isGui bool) {
+func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	config.UpdateServerConfig(&registerResponse.ServerConf)
 	server := config.GetServer(registerResponse.ServerConf.Server)
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
@@ -117,10 +117,8 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse, isGui boo
 	}
 	config.UpdateHost(&registerResponse.RequestedHost)
 	config.SetCurrServerCtxInFile(server.Server)
-	if !isGui {
-		if err := daemon.Restart(); err != nil {
-			logger.Log(3, "daemon restart failed:", err.Error())
-		}
+	if err := daemon.Restart(); err != nil {
+		logger.Log(3, "daemon restart failed:", err.Error())
 	}
 	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
 }

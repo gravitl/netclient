@@ -64,6 +64,9 @@ func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	if len(config.GetNodes()) != len(pullResponse.Nodes) {
 		resetInterface = true
 	}
+	if config.Netclient().ListenPort != pullResponse.Host.ListenPort {
+		resetInterface = true
+	}
 	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)

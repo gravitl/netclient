@@ -75,11 +75,12 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers         []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
-	DisableGUIServer  bool                 `json:"disableguiserver" yaml:"disableguiserver"`
-	InitType          InitType             `json:"inittype" yaml:"inittype"`
+	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	InitType                 InitType             `json:"inittype" yaml:"inittype"`
+	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
+	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
 }
 
 func init() {
@@ -185,6 +186,7 @@ func ReadNetclientConfig() (*Config, error) {
 	defer func() {
 		if err == nil {
 			netclientCfgMutex.Lock()
+			netclient = Config{}
 			netclient = netclientl
 			netclientCfgMutex.Unlock()
 		}
@@ -223,8 +225,8 @@ func WriteNetclientConfig() error {
 			return err
 		}
 	}
-	if Lock(lockfile) != nil {
-		return errors.New("failed to obtain lockfile")
+	if lerr := Lock(lockfile); lerr != nil {
+		return errors.New("failed to obtain lockfile " + lerr.Error())
 	}
 	defer Unlock(lockfile)
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
@@ -233,8 +235,9 @@ func WriteNetclientConfig() error {
 	}
 	defer f.Close()
 	netclientCfgMutex.Lock()
-	defer netclientCfgMutex.Unlock()
-	err = yaml.NewEncoder(f).Encode(netclient)
+	netclientI := netclient
+	netclientCfgMutex.Unlock()
+	err = yaml.NewEncoder(f).Encode(netclientI)
 	if err != nil {
 		return err
 	}

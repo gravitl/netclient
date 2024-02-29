@@ -148,6 +148,34 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
+
+	//get the current default gateway
+	ip, err := wireguard.GetDefaultGatewayIp()
+	if err != nil {
+		slog.Error("error loading current default gateway", "error", err.Error())
+		return
+	}
+
+	//setup the default gateway when change_default_gw set to true
+	if peerUpdate.ChangeDefaultGw {
+		//only update if the current gateway ip is not the same as desired
+		if !peerUpdate.DefaultGwIp.Equal(ip) {
+			err := wireguard.SetInternetGw(peerUpdate.DefaultGwIp)
+			if err != nil {
+				slog.Error("error setting default gateway", "error", err.Error())
+				return
+			}
+		}
+	} else {
+		//when change_default_gw set to false, check if it needs to restore to old gateway
+		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
+			err = wireguard.RestoreInternetGw()
+			if err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+				return
+			}
+		}
+	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
@@ -155,6 +183,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 	}
 	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
+
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
@@ -460,14 +489,42 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
+
+	//get the current default gateway
+	ip, err := wireguard.GetDefaultGatewayIp()
+	if err != nil {
+		slog.Error("error loading current default gateway", "error", err.Error())
+		return
+	}
+
+	//setup the default gateway when change_default_gw set to true
+	if pullResponse.ChangeDefaultGw {
+		//only update if the current gateway ip is not the same as desired
+		if !pullResponse.DefaultGwIp.Equal(ip) {
+			err := wireguard.SetInternetGw(pullResponse.DefaultGwIp)
+			if err != nil {
+				slog.Error("error setting default gateway", "error", err.Error())
+				return
+			}
+		}
+	} else {
+		//when change_default_gw set to false, check if it needs to restore to old gateway
+		if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
+			err = wireguard.RestoreInternetGw()
+			if err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+				return
+			}
+		}
+	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 	}
-
 	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
+
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if resetInterface {

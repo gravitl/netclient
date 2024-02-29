@@ -63,13 +63,6 @@ func RemoveAllLockFiles() {
 		slog.Error("failed to remove server lockfile", "err", err)
 	}
 
-	// remove gui lock file
-	lockfile = filepath.Join(os.TempDir(), config.GUILockFile)
-	err = os.Remove(lockfile)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		slog.Error("failed to remove gui lockfile", "err", err)
-	}
-
 	// remove netclient lock file
 	lockfile = filepath.Join(os.TempDir(), "netclient-lock")
 	err = os.Remove(lockfile)

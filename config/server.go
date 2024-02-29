@@ -57,21 +57,28 @@ type TurnConfig struct {
 
 // ReadServerConf reads the servers configuration file and populates the server map
 func ReadServerConf() error {
+	serversI := make(map[string]Server)
+	var err error
+	defer func() {
+		if err == nil {
+			serverMutex.Lock()
+			Servers = serversI
+			serverMutex.Unlock()
+		}
+	}()
 	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
 	file := GetNetclientPath() + "servers.yml"
-	if err := Lock(lockfile); err != nil {
+	if err = Lock(lockfile); err != nil {
 		return err
 	}
 	defer Unlock(lockfile)
-	f, err := os.Open(file)
-	if err != nil {
+	f, ferr := os.Open(file)
+	if ferr != nil {
+		err = ferr
 		return err
 	}
 	defer f.Close()
-	serverMutex.Lock()
-	defer serverMutex.Unlock()
-	Servers = make(map[string]Server)
-	if err := yaml.NewDecoder(f).Decode(&Servers); err != nil {
+	if err = yaml.NewDecoder(f).Decode(&serversI); err != nil {
 		return err
 	}
 	return nil
@@ -103,8 +110,9 @@ func WriteServerConfig() error {
 	}
 	defer f.Close()
 	serverMutex.Lock()
-	defer serverMutex.Unlock()
-	err = yaml.NewEncoder(f).Encode(Servers)
+	serversI := Servers
+	serverMutex.Unlock()
+	err = yaml.NewEncoder(f).Encode(serversI)
 	if err != nil {
 		return err
 	}
