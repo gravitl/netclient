@@ -26,7 +26,11 @@ func (nc *NCIface) Create() error {
 		slog.Info("creating Windows tunnel")
 		//{0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6} is a fixed string, for creating the unique GUID. It's meaningless
 		//unique GUID here to make sure only one network profile created
-		windowsGUID, err := windows.GUIDFromString("{0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6}")
+		idString := config.Netclient().Host.ID.String()
+		if idString == "" {
+			idString = "0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6"
+		}
+		windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
 		if err != nil {
 			slog.Error("generating guid error: ", "error", err)
 			return err
