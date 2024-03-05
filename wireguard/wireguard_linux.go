@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -164,7 +165,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			LinkIndex: l.Attrs().Index,
 			Gw:        addr.IP,
 			Dst:       &addr.Network,
-		}); err != nil {
+		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Error("error adding route", "error", err.Error())
 		}
 
