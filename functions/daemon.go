@@ -316,8 +316,13 @@ func setupMQTT(server *config.Server) error {
 func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
-	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.MQPassword)
+	if server.BrokerType == "emqx" {
+		opts.SetUsername(config.Netclient().ID.String())
+		opts.SetPassword(config.Netclient().HostPass)
+	} else {
+		opts.SetUsername(server.MQUserName)
+		opts.SetPassword(server.MQPassword)
+	}
 	opts.SetClientID(server.MQID.String())
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
