@@ -86,7 +86,13 @@ func cleanUp() error {
 	_ = writeServiceConfig() // will auto check if file is present before writing
 	_ = runWinSWCMD("stop")
 	_ = runWinSWCMD("uninstall")
-	return os.RemoveAll(config.GetNetclientPath())
+	time.Sleep(8 * time.Second)
+	os.RemoveAll(config.GetNetclientPath())
+
+	msg := "uninstalling...the window will be closed automatically"
+	winCmd := fmt.Sprintf(`start "%s" /min timeout /t 2 /nobreak > null && rmdir /s /q "%s"`, msg, config.GetNetclientPath())
+
+	return ncutils.StartCmdFormatted(winCmd)
 }
 
 func writeServiceConfig() error {
