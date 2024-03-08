@@ -31,7 +31,6 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
-	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
 	server := config.Servers[node.Server]
 	data, err := decryptMsg(server.Name, msg.Payload())
@@ -44,6 +43,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling node update data", "error", err)
 		return
 	}
+	slog.Info("processing node update for network", "network", network, "update", serverNode)
 	newNode := config.Node{}
 	newNode.CommonNode = serverNode.CommonNode
 
@@ -111,7 +111,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("server not found in config", "server", serverName)
 		return
 	}
-	slog.Info("processing peer update for server", "server", serverName)
 	data, err := decryptMsg(serverName, msg.Payload())
 	if err != nil {
 		slog.Error("error decrypting message", "error", err)
@@ -122,6 +121,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
+	slog.Info("processing peer update for server", "server", serverName, "update", peerUpdate)
 	if server.IsPro && peerConnTicker != nil {
 		peerConnTicker.Reset(peerConnectionCheckInterval)
 	}
@@ -210,7 +210,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling host update data", "error", err)
 		return
 	}
-	slog.Info("processing host update", "server", serverName, "action", hostUpdate.Action)
+	slog.Info("processing host update", "server", serverName, "action", hostUpdate.Action, "update", hostUpdate)
 	var resetInterface, restartDaemon, sendHostUpdate, clearMsg bool
 	switch hostUpdate.Action {
 	case models.Upgrade:
