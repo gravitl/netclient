@@ -10,6 +10,8 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"golang.org/x/exp/slog"
+	"golang.org/x/sys/windows/registry"
 )
 
 var serviceConfigPath = config.GetNetclientPath() + "winsw.xml"
@@ -86,6 +88,8 @@ func cleanUp() error {
 	_ = writeServiceConfig() // will auto check if file is present before writing
 	_ = runWinSWCMD("stop")
 	_ = runWinSWCMD("uninstall")
+	//delete the key for adapter in registry
+	deleteRegistryKeys()
 	time.Sleep(8 * time.Second)
 	os.RemoveAll(config.GetNetclientPath())
 
@@ -93,6 +97,54 @@ func cleanUp() error {
 	winCmd := fmt.Sprintf(`start "%s" /min timeout /t 2 /nobreak > null && rmdir /s /q "%s"`, msg, config.GetNetclientPath())
 
 	return ncutils.StartCmdFormatted(winCmd)
+}
+
+// deleteRegistryKeys - delete the keys in registry for netmaker profiles
+func deleteRegistryKeys() {
+	//get key for Profiles
+	key := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
+	mainK, err := registry.OpenKey(registry.LOCAL_MACHINE, key, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		slog.Error("error opening key in registry", "error", key, err.Error())
+		return
+	}
+	defer mainK.Close()
+
+	//get all the subkey under Profiles
+	subKeys, err := mainK.ReadSubKeyNames(-1)
+	if err != nil {
+		slog.Error("error reading sub keys", "error", err.Error())
+		return
+	}
+
+	//iterate the sub keys and delete the one with Description:netmaker and ProfileName:netmaker X
+	for _, k := range subKeys {
+
+		subKey, err := registry.OpenKey(registry.LOCAL_MACHINE, key+`\`+k, registry.QUERY_VALUE)
+		if err != nil {
+			slog.Error("error opening key in registry", "error", key+`\`+k, err.Error())
+			subKey.Close()
+			continue
+		}
+
+		desc, _, err := subKey.GetStringValue("Description")
+		if err != nil {
+			slog.Error("error getting Description", "error", key+`\`+k, err.Error())
+		}
+		pName, _, err := subKey.GetStringValue("ProfileName")
+		if err != nil {
+			slog.Error("error getting Description", "error", key+`\`+k, err.Error())
+		}
+
+		//if Description and profile name are with prefix netmaker, delete the subkey
+		if strings.HasPrefix(desc, "netmaker") && strings.HasPrefix(pName, "netmaker") {
+			err = registry.DeleteKey(registry.LOCAL_MACHINE, key+`\`+k)
+			if err != nil {
+				slog.Error("error deleting key in registry", "error", key+`\`+k)
+			}
+		}
+		subKey.Close()
+	}
 }
 
 func writeServiceConfig() error {
