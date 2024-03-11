@@ -43,7 +43,8 @@ func Uninstall() ([]error, error) {
 	}
 
 	if runtime.GOOS == "windows" {
-		err = errors.New("if the install is from msi package, please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22")
+		err = errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22")
+		allfaults = append(allfaults, errors.New("please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22"))
 	}
 	return allfaults, err
 }

@@ -176,7 +176,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	config.UpdateHost(&peerUpdate.Host)
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)

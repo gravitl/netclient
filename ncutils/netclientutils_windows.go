@@ -47,19 +47,6 @@ func RunCmdFormatted(command string, printerr bool) (string, error) {
 	return string(out), err
 }
 
-// StartCmdFormatted - runs a local command, without wait for response
-func StartCmdFormatted(command string) error {
-	var comSpec = os.Getenv("COMSPEC")
-	if comSpec == "" {
-		comSpec = os.Getenv("SystemRoot") + "\\System32\\cmd.exe"
-	}
-	cmd := exec.Command(comSpec)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: "/C \"" + command + "\""}
-	cmd.Start()
-
-	return nil
-}
-
 // GetEmbedded - Gets the Windows daemon creator
 func GetEmbedded() error {
 	data, err := winswContent.ReadFile("windowsdaemon/winsw.exe")
