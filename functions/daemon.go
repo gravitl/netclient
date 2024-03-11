@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -141,29 +140,37 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
-	if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
-		log.Fatal("no free ports available for use by netclient")
-	} else if freeport != config.Netclient().ListenPort {
-		slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
-		config.Netclient().ListenPort = freeport
-		updateConfig = true
-	}
-	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
-	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+	if !config.Netclient().IsStatic {
 
-	if config.Netclient().WgPublicListenPort == 0 {
-		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
+			slog.Error("no free ports available for use by netclient", "error", err.Error())
+		} else if freeport != config.Netclient().ListenPort {
+			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
+			config.Netclient().ListenPort = freeport
+			updateConfig = true
+		}
+
+		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
+		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+
+		if config.Netclient().WgPublicListenPort == 0 {
+			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+			updateConfig = true
+		}
+		if config.Netclient().EndpointIP == nil {
+			config.Netclient().EndpointIP = config.HostPublicIP
+			updateConfig = true
+		}
+		if config.Netclient().NatType == "" {
+			config.Netclient().NatType = config.HostNatType
+			updateConfig = true
+		}
+	} else {
+		config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
 		updateConfig = true
 	}
-	if config.Netclient().EndpointIP == nil {
-		config.Netclient().EndpointIP = config.HostPublicIP
-		updateConfig = true
-	}
-	if config.Netclient().NatType == "" {
-		config.Netclient().NatType = config.HostNatType
-		updateConfig = true
-	}
+
+	config.SetServerCtx()
 
 	if config.Netclient().OriginalDefaultGatewayIp == nil {
 		originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()

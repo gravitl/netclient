@@ -282,7 +282,11 @@ func UpdateHostSettings(fallback bool) error {
 		}
 	}
 	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
-		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		if !config.Netclient().IsStatic {
+			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		} else {
+			config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
+		}
 		publishMsg = true
 	}
 
