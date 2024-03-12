@@ -74,7 +74,8 @@ user: netclient register -s <server> -u <user_name> // attempt to join/register 
 
 func setHostFields(cmd *cobra.Command) {
 	fmt.Println("setting host fields")
-	if port, err := cmd.Flags().GetInt(registerFlags.Port); err == nil && port != 0 {
+	port, err := cmd.Flags().GetInt(registerFlags.Port)
+	if err == nil && port != 0 {
 		// check if port is available
 		if !ncutils.IsPortFree(port) {
 			fmt.Printf("port %d is not free\n", port)
@@ -82,7 +83,8 @@ func setHostFields(cmd *cobra.Command) {
 		}
 		config.Netclient().ListenPort = port
 	}
-	if endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP); err == nil && endpointIP != "" {
+	endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP)
+	if err == nil && endpointIP != "" {
 		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
 	}
 	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
@@ -100,6 +102,12 @@ func setHostFields(cmd *cobra.Command) {
 	}
 	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
 		config.Netclient().IsStatic = isStatic
+	}
+	if config.Netclient().IsStatic && (endpointIP == "" || port == 0) {
+		fmt.Println("endpoint from command: ", endpointIP)
+		fmt.Println("port from command: ", port)
+		fmt.Println("error: static port is enabled, please specify valid endpoint ip and port with -e and -p options")
+		os.Exit(1)
 	}
 }
 func validateIface(iface string) bool {
