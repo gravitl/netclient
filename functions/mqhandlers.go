@@ -186,6 +186,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if peerUpdate.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
+	} else {
+
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+
 	}
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
@@ -534,6 +539,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	if pullResponse.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
+	} else {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
 	}
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 

@@ -201,6 +201,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wireguard.SetPeers(true)
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
+	} else {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
 	}
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
