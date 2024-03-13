@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/firewall"
@@ -329,6 +330,12 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 		peerPubKey := peers[idx].PublicKey.String()
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
 			continue
+		}
+		// check if endpoint detection to be skipped for the peer
+		if retryCnt, ok := cache.SkipEndpointCache.Load(peerPubKey); ok {
+			if retryCnt.(int) > 3 {
+				continue
+			}
 		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
 			if peerInfo.IsStatic {
