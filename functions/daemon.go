@@ -335,7 +335,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts.SetClientID(logic.RandomString(9))
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
+	opts.SetConnectRetryInterval(time.Second * 4)
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetCleanSession(true)
