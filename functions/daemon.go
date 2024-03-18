@@ -336,7 +336,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second * 4)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetKeepAlive(time.Second * 30)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
