@@ -335,7 +335,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 >>>>>>> af54f1f (disconnect singleton connections, set clean session to true)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
+	opts.SetConnectRetryInterval(time.Second * 4)
 	opts.SetKeepAlive(time.Minute >> 1)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetCleanSession(true)
