@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"net"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 )
@@ -12,7 +13,16 @@ func getDefaultInterface() (string, error) {
 	// routes[0] will be default route
 	routes, err := netlink.RouteGet(dest)
 	if err != nil {
-		return "", err
+		if !strings.Contains(err.Error(), "network is unreachable") {
+			return "", err
+		}
+		//if ipv4 address is unreachable, try ipv6 address
+		dest = net.ParseIP("2606:4700:4700::1111")
+		// routes[0] will be default route
+		routes, err = netlink.RouteGet(dest)
+		if err != nil {
+			return "", err
+		}
 	}
 	ifaces, err := net.Interfaces()
 	if err != nil {
