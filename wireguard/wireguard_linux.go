@@ -175,9 +175,9 @@ func SetRoutes(addrs []ifaceAddress) {
 func GetDefaultGatewayIp() (ip net.IP, err error) {
 	//if table ROUTE_TABLE_NAME existed, return the gateway ip from table ROUTE_TABLE_NAME
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	tRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Table: ROUTE_TABLE_NAME}
+	tRoute := netlink.Route{Dst: nil, Table: ROUTE_TABLE_NAME}
 	//Check if table ROUTE_TABLE_NAME existed
-	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V4, &tRoute, netlink.RT_FILTER_TABLE)
+	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_ALL, &tRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) == 1 {
 		return routes[0].Gw, nil
 	} else if len(routes) > 1 {
@@ -202,7 +202,7 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 
 	//get the present route list
-	routes, err := netlink.RouteList(nil, netlink.FAMILY_V4)
+	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		slog.Error("error loading route tables", "error", err.Error())
 		return gwRoute, err
