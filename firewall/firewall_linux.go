@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"os/exec"
+	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/nftables"
@@ -58,7 +59,17 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 	}
 	routes, err := h.RouteGet(dst.IP)
 	if err != nil {
-		return "", err
+		if !strings.Contains(err.Error(), "network is unreachable") {
+			return "", err
+		}
+		//if ipv4 address is unreachable, try ipv6 address
+		dst.IP = net.ParseIP("2606:4700:4700::1111")
+		// routes[0] will be default route
+		routes, err = netlink.RouteGet(dst.IP)
+		if err != nil {
+			return "", err
+		}
+
 	}
 	for _, r := range routes {
 		iface, err := net.InterfaceByIndex(r.LinkIndex)
