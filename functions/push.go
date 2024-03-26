@@ -16,6 +16,7 @@ func Push(restart bool) error {
 			if err := PublishHostUpdate(server.Server, models.UpdateHost); err != nil {
 				return err
 			}
+			Mqclient.Disconnect(250)
 		} else {
 			if err := hostUpdateFallback(models.HostUpdate{Action: models.UpdateHost}); err != nil {
 				return err
