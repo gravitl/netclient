@@ -150,6 +150,7 @@ func Migrate() {
 		if err := PublishHostUpdate(k, models.UpdateHost); err != nil {
 			slog.Error("pub host update", "server", k, "error", err)
 		}
+		Mqclient.Disconnect(250)
 	}
 
 	if delete {

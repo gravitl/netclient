@@ -30,6 +30,7 @@ func Disconnect(network string) error {
 	if err := setupMQTTSingleton(server, true); err != nil {
 		return err
 	}
+	defer Mqclient.Disconnect(250)
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
 	}
@@ -64,6 +65,7 @@ func Connect(network string) error {
 	if err := setupMQTTSingleton(server, true); err != nil {
 		return err
 	}
+	defer Mqclient.Disconnect(250)
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
 	}
