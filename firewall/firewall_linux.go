@@ -12,6 +12,13 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const (
+	TESTIPV4    = "1.1.1.1"
+	TESTIPV6    = "2606:4700:4700::1111"
+	IPV4NETWORk = "0.0.0.0/0"
+	IPV6NETWORk = "::/0"
+)
+
 // newFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
 func newFirewall() (firewallController, error) {
 
@@ -54,8 +61,8 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if dst.String() == "0.0.0.0/0" || dst.String() == "::/0" {
-		dst.IP = net.ParseIP("1.1.1.1")
+	if dst.String() == IPV4NETWORk || dst.String() == IPV6NETWORk {
+		dst.IP = net.ParseIP(TESTIPV4)
 	}
 	routes, err := h.RouteGet(dst.IP)
 	if err != nil {
@@ -63,7 +70,7 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 			return "", err
 		}
 		//if ipv4 address is unreachable, try ipv6 address
-		dst.IP = net.ParseIP("2606:4700:4700::1111")
+		dst.IP = net.ParseIP(TESTIPV6)
 		// routes[0] will be default route
 		routes, err = netlink.RouteGet(dst.IP)
 		if err != nil {
