@@ -8,8 +8,13 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const (
+	TESTIPV4 = "1.1.1.1"
+	TESTIPV6 = "2606:4700:4700::1111"
+)
+
 func getDefaultInterface() (string, error) {
-	dest := net.ParseIP("1.1.1.1")
+	dest := net.ParseIP(TESTIPV4)
 	// routes[0] will be default route
 	routes, err := netlink.RouteGet(dest)
 	if err != nil {
@@ -17,7 +22,7 @@ func getDefaultInterface() (string, error) {
 			return "", err
 		}
 		//if ipv4 address is unreachable, try ipv6 address
-		dest = net.ParseIP("2606:4700:4700::1111")
+		dest = net.ParseIP(TESTIPV6)
 		// routes[0] will be default route
 		routes, err = netlink.RouteGet(dest)
 		if err != nil {
