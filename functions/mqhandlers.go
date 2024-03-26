@@ -3,18 +3,24 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -422,6 +428,41 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 
 }
 
+func getServerBrokerStatus() (bool, error) {
+	type status struct {
+		Broker bool `json:"broker_connected"`
+	}
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return false, errors.New("server is nil")
+	}
+	token, err := auth.Authenticate(server, config.Netclient())
+	if err != nil {
+		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
+		return false, err
+	}
+	url := fmt.Sprintf("https://%s/api/server/status", server.API)
+	endpoint := httpclient.JSONEndpoint[status, models.ErrorResponse]{
+		URL:           url,
+		Method:        http.MethodGet,
+		Authorization: "Bearer " + token,
+		Data:          nil,
+		Response:      status{},
+		ErrorResponse: models.ErrorResponse{},
+	}
+	response, errData, err := endpoint.GetJSON(status{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
+			return false, err
+		}
+		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		return false, err
+	}
+	return response.Broker, nil
+}
+
 // MQTT Fallback Mechanism
 func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -433,7 +474,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
-			if (Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "" {
+			skip := true
+			if connected, err := getServerBrokerStatus(); err == nil && !connected {
+				skip = false
+			}
+			if skip && (Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "" {
 				continue
 			}
 			// Call netclient http config pull
