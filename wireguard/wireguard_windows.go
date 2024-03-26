@@ -16,6 +16,11 @@ import (
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
+const (
+	IPV4NETWORk = "0.0.0.0/0"
+	IPV6NETWORk = "::/0"
+)
+
 // NCIface.Create - makes a new Wireguard interface and sets given addresses
 func (nc *NCIface) Create() error {
 	wgMutex.Lock()
@@ -114,7 +119,7 @@ func getInterfaceInfo() (iList []string, err error) {
 // getDefaultGateway - an internal function to get the default gateway route entry
 func getDefaultGateway() (output []string, err error) {
 
-	//get current route
+	//get current ipv4 route
 	input, err := ncutils.RunCmd("netsh int ipv4 show route", true)
 	if err != nil {
 		return []string{}, err
@@ -131,8 +136,31 @@ func getDefaultGateway() (output []string, err error) {
 	//get the lines with gateway route
 	rLines := []string{}
 	for _, l := range rList {
-		if strings.Contains(l, "0.0.0.0/0") {
+		if strings.Contains(l, IPV4NETWORk) {
 			rLines = append(rLines, l)
+		}
+	}
+
+	if len(rLines) == 0 {
+		//get current ipv6 route
+		input, err := ncutils.RunCmd("netsh int ipv6 show route", true)
+		if err != nil {
+			return []string{}, err
+		}
+
+		//split the output to multiple lines
+		var rList []string
+		if strings.Contains(input, "\r") {
+			rList = strings.Split(input, "\r")
+		} else if strings.Contains(input, "\n") {
+			rList = strings.Split(input, "\n")
+		}
+
+		//get the lines with gateway route
+		for _, l := range rList {
+			if strings.Contains(l, IPV6NETWORk) {
+				rLines = append(rLines, l)
+			}
 		}
 	}
 
