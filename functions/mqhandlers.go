@@ -477,7 +477,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			if connected, err := getServerBrokerStatus(); err == nil && !connected {
 				skip = false
 			}
-			if skip && (Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "" {
+			if skip && ((Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "") {
 				continue
 			}
 			// Call netclient http config pull
