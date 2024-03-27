@@ -232,8 +232,17 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 	return ip, nil
 }
 
-// SetInternetGw - set a new default gateway and the route to Internet Gw's public ip address
+// SetInternetGw - set a new default gateway and the route to Internet Gw's ip address
 func SetInternetGw(gwIp net.IP) (err error) {
+	if ipv4 := gwIp.To4(); ipv4 != nil {
+		return setInternetGwV4(gwIp)
+	} else {
+		return setInternetGwV6(gwIp)
+	}
+}
+
+// setInternetGwV6 - set a new default gateway and the route to Internet Gw's ip address
+func setInternetGwV6(gwIp net.IP) (err error) {
 
 	//get current default gateway route
 	gwRoute, err := getDefaultGateway()
@@ -245,19 +254,19 @@ func SetInternetGw(gwIp net.IP) (err error) {
 		metric := strings.TrimSpace(gwRoute[2])
 		if metric == "0" && ipString != gwIp.String() {
 			//set the original gateway metric to 50
-			setGwCmd := fmt.Sprintf("netsh int ipv4 set route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=50", strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+			setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPV6NETWORk, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 
 			_, err = ncutils.RunCmd(setGwCmd, true)
 			if err != nil {
 				slog.Error("Failed to set original gateway route metric", "error", err.Error())
 				slog.Error("please change the metric to 50 manaull to avoid issue", "error")
-				slog.Error("netsh int ipv4 set route 0.0.0.0/0 interface=<Idx> nexthop=<192.168.1.1> store=active metric=50", "error")
+				slog.Error("netsh int ipv6 set route ::/0 interface=<Idx> nexthop=<ipv6 address> store=active metric=50", "error")
 			}
 		}
 	}
 
 	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv4 add route 0.0.0.0/0 interface=%s nexthop=%s store=active metric=0", ncutils.GetInterfaceName(), gwIp.String())
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=0", IPV6NETWORk, ncutils.GetInterfaceName(), gwIp.String())
 
 	_, err = ncutils.RunCmd(addGwCmd, true)
 	if err != nil {
@@ -270,10 +279,72 @@ func SetInternetGw(gwIp net.IP) (err error) {
 	return nil
 }
 
-// RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's public ip address
-func RestoreInternetGw() (err error) {
+// setInternetGwV4 - set a new default gateway and the route to Internet Gw's ip address
+func setInternetGwV4(gwIp net.IP) (err error) {
 
-	delCmd := fmt.Sprintf("netsh int ipv4 delete route 0.0.0.0/0 interface=%s store=active", ncutils.GetInterfaceName())
+	//get current default gateway route
+	gwRoute, err := getDefaultGateway()
+	if err != nil || len(gwRoute) == 0 {
+		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
+	} else {
+		//if default gateway metric is 0, then reset it to 50
+		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
+		metric := strings.TrimSpace(gwRoute[2])
+		if metric == "0" && ipString != gwIp.String() {
+			//set the original gateway metric to 50
+			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPV4NETWORk, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+
+			_, err = ncutils.RunCmd(setGwCmd, true)
+			if err != nil {
+				slog.Error("Failed to set original gateway route metric", "error", err.Error())
+				slog.Error("please change the metric to 50 manaull to avoid issue", "error")
+				slog.Error("netsh int ipv4 set route 0.0.0.0/0 interface=<Idx> nexthop=<192.168.1.1> store=active metric=50", "error")
+			}
+		}
+	}
+
+	//add new gateway route with metric 0 for setting to top priority
+	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=0", IPV4NETWORk, ncutils.GetInterfaceName(), gwIp.String())
+
+	_, err = ncutils.RunCmd(addGwCmd, true)
+	if err != nil {
+		slog.Error("Failed to add route table", "error", err.Error())
+		return err
+	}
+
+	config.Netclient().CurrGwNmIP = gwIp
+
+	return nil
+}
+
+// RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's ip address
+func RestoreInternetGw() (err error) {
+	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
+		return restoreInternetGwV4()
+	} else {
+		return restoreInternetGwV6()
+	}
+}
+
+// restoreInternetGwV6 - restore the old default gateway and delte the route to the Internet Gw's ip address
+func restoreInternetGwV6() (err error) {
+
+	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPV6NETWORk, ncutils.GetInterfaceName())
+
+	_, err = ncutils.RunCmd(delCmd, true)
+	if err != nil {
+		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+		return err
+	}
+
+	config.Netclient().CurrGwNmIP = net.ParseIP("")
+	return config.WriteNetclientConfig()
+}
+
+// restoreInternetGwV4 - restore the old default gateway and delte the route to the Internet Gw's ip address
+func restoreInternetGwV4() (err error) {
+
+	delCmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=active", IPV4NETWORk, ncutils.GetInterfaceName())
 
 	_, err = ncutils.RunCmd(delCmd, true)
 	if err != nil {
