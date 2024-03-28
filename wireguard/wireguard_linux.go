@@ -18,7 +18,9 @@ import (
 )
 
 const (
-	ROUTE_TABLE_NAME = 111
+	RouteTableName = 111
+	IPv4Network    = "0.0.0.0/0"
+	IPv6Network    = "::/0"
 )
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
@@ -158,8 +160,8 @@ func SetRoutes(addrs []ifaceAddress) {
 	}
 
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
-			addr.Network.String() == "::/0" {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network {
 			continue
 		}
 		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
@@ -176,7 +178,7 @@ func SetRoutes(addrs []ifaceAddress) {
 func GetDefaultGatewayIp() (ip net.IP, err error) {
 	//if table ROUTE_TABLE_NAME existed, return the gateway ip from table ROUTE_TABLE_NAME
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	tRoute := netlink.Route{Dst: nil, Table: ROUTE_TABLE_NAME}
+	tRoute := netlink.Route{Dst: nil, Table: RouteTableName}
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_ALL, &tRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) == 1 {
@@ -267,14 +269,14 @@ func SetInternetGw(gwIp net.IP) (err error) {
 func setInternetGwV6(gwIp net.IP) (err error) {
 
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	gwRoute := netlink.Route{Src: net.ParseIP("0::"), Dst: nil, Gw: gwIp, Table: ROUTE_TABLE_NAME, Priority: 1}
+	gwRoute := netlink.Route{Src: net.ParseIP("0::"), Dst: nil, Gw: gwIp, Table: RouteTableName, Priority: 1}
 
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V6, &gwRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) > 0 {
 		err = RestoreInternetGw()
 		if err != nil {
-			slog.Error("remove table "+fmt.Sprintf("%d", ROUTE_TABLE_NAME)+" failed", "error", err.Error())
+			slog.Error("remove table "+fmt.Sprintf("%d", RouteTableName)+" failed", "error", err.Error())
 			return err
 		}
 	}
@@ -286,7 +288,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	}
 
 	//add rules
-	_, ipnet, err := net.ParseCIDR("0::/0")
+	_, ipnet, err := net.ParseCIDR(IPv6Network)
 	if err != nil {
 		return err
 	}
@@ -294,7 +296,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	tRule := netlink.NewRule()
 	tRule.Family = syscall.AF_INET6
 	tRule.Src = ipnet
-	tRule.Table = ROUTE_TABLE_NAME
+	tRule.Table = RouteTableName
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
 		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
@@ -341,14 +343,14 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 func setInternetGwV4(gwIp net.IP) (err error) {
 
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: gwIp, Table: ROUTE_TABLE_NAME, Priority: 1}
+	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: gwIp, Table: RouteTableName, Priority: 1}
 
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V4, &gwRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) > 0 {
 		err = RestoreInternetGw()
 		if err != nil {
-			slog.Error("remove table "+fmt.Sprintf("%d", ROUTE_TABLE_NAME)+" failed", "error", err.Error())
+			slog.Error("remove table "+fmt.Sprintf("%d", RouteTableName)+" failed", "error", err.Error())
 			return err
 		}
 	}
@@ -360,14 +362,14 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 	}
 
 	//add rules
-	_, ipnet, err := net.ParseCIDR("0.0.0.0/0")
+	_, ipnet, err := net.ParseCIDR(IPv4Network)
 	if err != nil {
 		return err
 	}
 	//first rule :ip rule add from all table ROUTE_TABLE_NAME
 	tRule := netlink.NewRule()
 	tRule.Src = ipnet
-	tRule.Table = ROUTE_TABLE_NAME
+	tRule.Table = RouteTableName
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
 		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
@@ -420,7 +422,7 @@ func RestoreInternetGw() (err error) {
 // restoreInternetGwV6 - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func restoreInternetGwV6() (err error) {
 	//build the default gateway route
-	gwRoute := netlink.Route{Src: net.ParseIP("0::"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: ROUTE_TABLE_NAME, Priority: 1}
+	gwRoute := netlink.Route{Src: net.ParseIP("0::"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
 
 	//delete default gateway at first
 	if err := netlink.RouteDel(&gwRoute); err != nil {
@@ -430,7 +432,7 @@ func restoreInternetGwV6() (err error) {
 	}
 
 	//delete rules
-	_, ipnet, err := net.ParseCIDR("0::/0")
+	_, ipnet, err := net.ParseCIDR(IPv6Network)
 	if err != nil {
 		return err
 	}
@@ -438,7 +440,7 @@ func restoreInternetGwV6() (err error) {
 	tRule := netlink.NewRule()
 	tRule.Family = syscall.AF_INET6
 	tRule.Src = ipnet
-	tRule.Table = ROUTE_TABLE_NAME
+	tRule.Table = RouteTableName
 	tRule.Priority = 3000
 	if err := netlink.RuleDel(tRule); err != nil {
 		slog.Error("delete rule failed", "error", err.Error())
@@ -484,7 +486,7 @@ func restoreInternetGwV6() (err error) {
 // restoreInternetGwV4 - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func restoreInternetGwV4() (err error) {
 	//build the default gateway route
-	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: ROUTE_TABLE_NAME, Priority: 1}
+	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
 
 	//delete default gateway at first
 	if err := netlink.RouteDel(&gwRoute); err != nil {
@@ -494,14 +496,14 @@ func restoreInternetGwV4() (err error) {
 	}
 
 	//delete rules
-	_, ipnet, err := net.ParseCIDR("0.0.0.0/0")
+	_, ipnet, err := net.ParseCIDR(IPv4Network)
 	if err != nil {
 		return err
 	}
 	//first rule :ip rule add from all table ROUTE_TABLE_NAME
 	tRule := netlink.NewRule()
 	tRule.Src = ipnet
-	tRule.Table = ROUTE_TABLE_NAME
+	tRule.Table = RouteTableName
 	tRule.Priority = 3000
 	if err := netlink.RuleDel(tRule); err != nil {
 		slog.Error("delete rule failed", "error", err.Error())

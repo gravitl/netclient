@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	IPV4NETWORk = "0.0.0.0/0"
-	IPV6NETWORk = "::/0"
+	IPv4Network = "0.0.0.0/0"
+	IPv6Network = "::/0"
 )
 
 // NCIface.Create - makes a new Wireguard interface and sets given addresses
@@ -76,14 +76,14 @@ func (nc *NCIface) ApplyAddrs() error {
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
-			addr.Network.String() == "::/0" {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {
 			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
 			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=%s",
-				addr.Network.String(), ncutils.GetInterfaceName(), "0.0.0.0", "active")
+				addr.Network.String(), ncutils.GetInterfaceName(), IPv4Network, "active")
 			_, err := ncutils.RunCmd(cmd, false)
 			if err != nil {
 				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String())
@@ -136,7 +136,7 @@ func getDefaultGateway() (output []string, err error) {
 	//get the lines with gateway route
 	rLines := []string{}
 	for _, l := range rList {
-		if strings.Contains(l, IPV4NETWORk) {
+		if strings.Contains(l, IPv4Network) {
 			rLines = append(rLines, l)
 		}
 	}
@@ -158,7 +158,7 @@ func getDefaultGateway() (output []string, err error) {
 
 		//get the lines with gateway route
 		for _, l := range rList {
-			if strings.Contains(l, IPV6NETWORk) {
+			if strings.Contains(l, IPv6Network) {
 				rLines = append(rLines, l)
 			}
 		}
@@ -254,7 +254,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 		metric := strings.TrimSpace(gwRoute[2])
 		if metric == "0" && ipString != gwIp.String() {
 			//set the original gateway metric to 50
-			setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPV6NETWORk, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+			setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPv6Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 
 			_, err = ncutils.RunCmd(setGwCmd, true)
 			if err != nil {
@@ -266,7 +266,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	}
 
 	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=0", IPV6NETWORk, ncutils.GetInterfaceName(), gwIp.String())
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName(), gwIp.String())
 
 	_, err = ncutils.RunCmd(addGwCmd, true)
 	if err != nil {
@@ -292,7 +292,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 		metric := strings.TrimSpace(gwRoute[2])
 		if metric == "0" && ipString != gwIp.String() {
 			//set the original gateway metric to 50
-			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPV4NETWORk, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPv4Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 
 			_, err = ncutils.RunCmd(setGwCmd, true)
 			if err != nil {
@@ -304,7 +304,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 	}
 
 	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=0", IPV4NETWORk, ncutils.GetInterfaceName(), gwIp.String())
+	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, ncutils.GetInterfaceName(), gwIp.String())
 
 	_, err = ncutils.RunCmd(addGwCmd, true)
 	if err != nil {
@@ -329,7 +329,7 @@ func RestoreInternetGw() (err error) {
 // restoreInternetGwV6 - restore the old default gateway and delte the route to the Internet Gw's ip address
 func restoreInternetGwV6() (err error) {
 
-	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPV6NETWORk, ncutils.GetInterfaceName())
+	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPv6Network, ncutils.GetInterfaceName())
 
 	_, err = ncutils.RunCmd(delCmd, true)
 	if err != nil {
@@ -344,7 +344,7 @@ func restoreInternetGwV6() (err error) {
 // restoreInternetGwV4 - restore the old default gateway and delte the route to the Internet Gw's ip address
 func restoreInternetGwV4() (err error) {
 
-	delCmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=active", IPV4NETWORk, ncutils.GetInterfaceName())
+	delCmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=active", IPv4Network, ncutils.GetInterfaceName())
 
 	_, err = ncutils.RunCmd(delCmd, true)
 	if err != nil {

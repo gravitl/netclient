@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	TESTIPV4 = "1.1.1.1"
-	TESTIPV6 = "2606:4700:4700::1111"
+	TestIPv4 = "1.1.1.1"
+	TestIPv6 = "2606:4700:4700::1111"
 )
 
 func getDefaultInterface() (string, error) {
-	dest := net.ParseIP(TESTIPV4)
+	dest := net.ParseIP(TestIPv4)
 	// routes[0] will be default route
 	routes, err := netlink.RouteGet(dest)
 	if err != nil {
@@ -22,7 +22,7 @@ func getDefaultInterface() (string, error) {
 			return "", err
 		}
 		//if ipv4 address is unreachable, try ipv6 address
-		dest = net.ParseIP(TESTIPV6)
+		dest = net.ParseIP(TestIPv6)
 		// routes[0] will be default route
 		routes, err = netlink.RouteGet(dest)
 		if err != nil {
