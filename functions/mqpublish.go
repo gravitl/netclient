@@ -281,6 +281,11 @@ func UpdateHostSettings(fallback bool) error {
 			}
 		}
 	}
+	//if endpoint is ipv6, set EndpointIPv6 as the same value
+	if ipv4 := config.Netclient().EndpointIP.To4(); ipv4 == nil {
+		config.Netclient().EndpointIPv6 = config.Netclient().EndpointIP
+		publishMsg = true
+	}
 	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
 		if !config.Netclient().IsStatic {
 			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
