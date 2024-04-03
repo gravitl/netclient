@@ -92,26 +92,36 @@ func fillUnconnectedData(metrics *models.Metrics, peerMap models.PeerMap) {
 	}
 }
 
-func extPeerConnStatus(address string) (connected bool, latency int64) {
-	latency = 999
+func extPeerConnStatus(address string) (bool, int64) {
+	connected := false
+	latency := int64(999)
+
+	slog.Debug("[metrics] checking external peer connectivity", "address", address)
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
-		logger.Log(0, "could not initiliaze ping for metrics on peer address", address, err.Error())
+		slog.Error("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
 	} else {
 		pinger.SetPrivileged(true)
 		pinger.Count = 3
 		pinger.Timeout = time.Second * 2
 		err = pinger.Run()
 		if err != nil {
-			slog.Debug("failed ping for metrics on peer address", address, err.Error())
+			slog.Error("failed ping for metrics on peer address", "address", address, "err", err)
 		} else {
 			pingStats := pinger.Statistics()
 			if pingStats.PacketsRecv > 0 {
 				latency = pingStats.AvgRtt.Milliseconds()
 			}
+			if pingStats.PacketLoss == 100 {
+				connected = false
+			} else {
+				connected = true
+			}
 		}
 	}
-	return
+
+	slog.Debug("[metrics] external peer connectivity check complete", "address", address, "connected", connected, "latency", latency)
+	return connected, latency
 }
 
 func PeerConnStatus(address string, port, counter int) (connected bool, latency int64) {
