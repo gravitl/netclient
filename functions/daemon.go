@@ -22,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -278,6 +279,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectRetryInterval(time.Second << 2)
 	opts.SetKeepAlive(time.Second * 10)
 	opts.SetWriteTimeout(time.Minute)
+	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		slog.Info("mqtt connect handler")
 		nodes := config.GetNodes()
@@ -334,12 +336,13 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 		opts.SetUsername(server.MQUserName)
 		opts.SetPassword(server.MQPassword)
 	}
-	opts.SetClientID(server.MQID.String())
+	opts.SetClientID(logic.RandomString(9))
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetConnectRetryInterval(time.Second * 4)
+	opts.SetKeepAlive(time.Second * 30)
 	opts.SetWriteTimeout(time.Minute)
+	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		if !publishOnly {
 			slog.Info("mqtt connect handler")
@@ -360,7 +363,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	Mqclient = mqtt.NewClient(opts)
 
 	var connecterr error
-	if token := Mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+	if token := Mqclient.Connect(); !token.WaitTimeout(5*time.Second) || token.Error() != nil {
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
 		} else {
