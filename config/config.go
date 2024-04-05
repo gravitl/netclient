@@ -193,6 +193,18 @@ func ReadNetclientConfig() (*Config, error) {
 	}()
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
+	if _, err := os.Stat(file); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+				logger.Log(0, "error creating netclient config directory", err.Error())
+			}
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
+			}
+		} else if err != nil {
+			return nil, err
+		}
+	}
 	if err = Lock(lockfile); err != nil {
 		return nil, err
 	}
