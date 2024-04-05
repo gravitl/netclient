@@ -59,6 +59,9 @@ func DoesIPExistLocally(ip net.IP) bool {
 
 // HolePunch - performs udp hole punching on the given port
 func HolePunch(portToStun int) (publicIP net.IP, publicPort int, natType string) {
+	defer func() {
+		publicPort = portToStun
+	}()
 	for _, stunServer := range StunServers {
 		stunServer := stunServer
 		s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
