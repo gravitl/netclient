@@ -201,6 +201,10 @@ func ReadNetclientConfig() (*Config, error) {
 			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
 				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
 			}
+			err = WriteNetclientConfig()
+			if err != nil {
+				logger.FatalLog("failed to initialize netclient config", err.Error())
+			}
 		} else if err != nil {
 			return nil, err
 		}
