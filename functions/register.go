@@ -103,7 +103,7 @@ func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err 
 
 	if shouldUpdateHost {
 		config.UpdateNetclient(*host)
-		config.WriteNetclientConfig()
+		config.WriteNetclientConfigV1()
 		return true, nil
 	}
 	return

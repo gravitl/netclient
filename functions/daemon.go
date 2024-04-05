@@ -183,7 +183,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if updateConfig {
-		if err := config.WriteNetclientConfig(); err != nil {
+		if err := config.WriteNetclientConfigV1(); err != nil {
 			slog.Error("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
@@ -496,7 +496,7 @@ func UpdateKeys() error {
 		return err
 	}
 	host.PublicKey = host.PrivateKey.PublicKey()
-	if err := config.WriteNetclientConfig(); err != nil {
+	if err := config.WriteNetclientConfigV1(); err != nil {
 		slog.Error("error saving netclient config:", "error", err)
 	}
 	PublishHostUpdate(config.CurrServer, models.UpdateHost)

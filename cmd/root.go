@@ -246,7 +246,7 @@ func checkConfig() {
 	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")
-		if err := config.WriteNetclientConfig(); err != nil {
+		if err := config.WriteNetclientConfigV1(); err != nil {
 			logger.FatalLog("could not save netclient config " + err.Error())
 		}
 	}

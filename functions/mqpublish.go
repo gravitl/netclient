@@ -332,9 +332,6 @@ func UpdateHostSettings(fallback bool) error {
 		publishMsg = true
 	}
 	if publishMsg {
-		if err := config.WriteNetclientConfig(); err != nil {
-			return err
-		}
 		slog.Info("publishing host update for endpoint changes")
 		if fallback {
 			hostUpdateFallback(models.HostUpdate{Action: models.UpdateHost})

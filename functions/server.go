@@ -9,7 +9,6 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // SwitchServer - switches netclient server context
@@ -31,8 +30,6 @@ func SwitchServer(server string) error {
 		fmt.Println("failed to set server context ", err)
 		return err
 	}
-	config.Netclient().HostPeers = []wgtypes.PeerConfig{}
-	_ = config.WriteNetclientConfig()
 	return daemon.Restart()
 }
 
@@ -85,7 +82,6 @@ func LeaveServer(s string) error {
 	config.DeleteNodes()
 	config.WriteServerConfig()
 	config.WriteNodeConfig()
-	config.WriteNetclientConfig()
 	daemon.Restart()
 	return nil
 }

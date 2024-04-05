@@ -139,8 +139,6 @@ func deleteLocalNetwork(node *config.Node) error {
 			config.DeleteServerHostPeerCfg()
 		}
 	}
-
-	config.WriteNetclientConfig()
 	config.WriteNodeConfig()
 	config.WriteServerConfig()
 	return nil

@@ -125,7 +125,7 @@ func Migrate() {
 			netclient.TrafficKeyPrivate = getOldTrafficKey(migrateResponse.Nodes[0].Network)
 			netclient.HostPass = getOldPassword(migrateResponse.Nodes[0].Network)
 
-			if err := config.WriteNetclientConfig(); err != nil {
+			if err := config.WriteNetclientConfigV1(); err != nil {
 				slog.Error("write config", "error", err)
 			}
 			hostSet = true

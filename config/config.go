@@ -77,7 +77,7 @@ type Config struct {
 	models.Host
 	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"-"`
 	InitType                 InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
@@ -131,7 +131,6 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
-	WriteNetclientConfig()
 	return
 }
 
@@ -171,7 +170,6 @@ func RemoveServerHostPeerCfg() {
 	}
 	netclient.HostPeers = peers
 	UpdateNetclient(*netclient)
-	_ = WriteNetclientConfig()
 }
 
 // SetVersion - sets version for use by other packages
@@ -210,7 +208,7 @@ func ReadNetclientConfig() (*Config, error) {
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk
-func WriteNetclientConfig() error {
+func WriteNetclientConfigV1() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
 	if _, err := os.Stat(file); err != nil {

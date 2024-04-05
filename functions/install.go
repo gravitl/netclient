@@ -34,6 +34,6 @@ func Install() error {
 		return err
 	}
 	config.Netclient().DaemonInstalled = true
-	_ = config.WriteNetclientConfig()
+	_ = config.WriteNetclientConfigV1()
 	return daemon.Start()
 }

@@ -185,7 +185,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHost(&peerUpdate.Host)
 	config.UpdateHostPeers(peerUpdate.Peers)
-	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
@@ -307,10 +306,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
 	}
-	if err = config.WriteNetclientConfig(); err != nil {
-		slog.Error("failed to write host config", "error", err)
-		return
-	}
+	config.UpdateHost(&hostUpdate.Host)
 	if restartDaemon {
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
@@ -577,7 +573,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
-	_ = config.WriteNetclientConfig()
+	config.UpdateHost(&pullResponse.Host)
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)

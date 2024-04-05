@@ -24,7 +24,7 @@ func Push(restart bool) error {
 		}
 
 	}
-	if err := config.WriteNetclientConfig(); err != nil {
+	if err := config.WriteNetclientConfigV1(); err != nil {
 		return err
 	}
 	if restart {

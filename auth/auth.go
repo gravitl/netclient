@@ -76,9 +76,6 @@ func cleanUpByServer(server *config.Server) error {
 		logger.Log(0, "interface not up, failed to remove peers for %s \n", server.Name)
 	}
 	config.DeleteServerHostPeerCfg()
-	if err := config.WriteNetclientConfig(); err != nil {
-		return err
-	}
 	config.DeleteServer(server.Name)
 	if err := config.WriteServerConfig(); err != nil {
 		return err

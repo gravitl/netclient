@@ -74,7 +74,6 @@ func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	config.UpdateHost(&pullResponse.Host)
 	fmt.Printf("completed pull for server %s\n", serverName)
 	_ = config.WriteServerConfig()
-	_ = config.WriteNetclientConfig()
 	_ = config.WriteNodeConfig()
 	if restart {
 		logger.Log(3, "restarting daemon")
