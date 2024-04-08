@@ -19,16 +19,22 @@ cleanUp(){
    # delete config directories
    rm -rf /etc/netclient*
 }
+restart(){
+
+}
 
 main(){
 
-   while getopts :sr flag; do
+   while getopts :sdr flag; do
 	case "${flag}" in
    s)
       run
    ;;
-   r)
+   d)
       cleanUp
+   ;;
+   r)
+      restart
    ;;
    esac
 done

@@ -69,7 +69,7 @@ func handlePeerFailOver(signal models.Signal) error {
 			slog.Error("failed to signal peer", "error", err.Error())
 		}
 	} else {
-		signalRecorderCache.Delete(signal.FromHostID)
+		//signalRecorderCache.Delete(signal.FromHostID)
 	}
 
 	if config.Netclient().NatType == models.NAT_Types.BehindNAT {
