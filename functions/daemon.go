@@ -125,6 +125,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	// clear cache
 	cache.EndpointCache = sync.Map{}
 	cache.SkipEndpointCache = sync.Map{}
+	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
