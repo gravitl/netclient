@@ -26,7 +26,7 @@ var (
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
 	peerConnTicker         *time.Ticker
-	signalRecorderCache    = sync.Map{}
+	signalThrottleCache    = sync.Map{}
 )
 
 // processPeerSignal - processes the peer signals for any updates from peers
@@ -69,13 +69,15 @@ func handlePeerFailOver(signal models.Signal) error {
 			slog.Error("failed to signal peer", "error", err.Error())
 		}
 	} else {
-		signalRecorderCache.Delete(signal.FromHostID)
+		signalThrottleCache.Delete(signal.FromHostID)
 	}
 
 	if config.Netclient().NatType == models.NAT_Types.BehindNAT {
 		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
 		if err != nil {
 			slog.Debug("failed to signal server to relay me", "error", err)
+		} else {
+			signalThrottleCache.Delete(signal.FromHostID)
 		}
 	}
 	return nil
@@ -111,7 +113,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if peer.IsExtClient {
 							continue
 						}
-						if cnt, ok := signalRecorderCache.Load(peer.HostID); ok && cnt.(int) > 3 {
+						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
 						connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
@@ -140,13 +142,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							if err != nil {
 								logger.Log(2, "failed to signal peer: ", err.Error())
 							} else {
-								if cnt, ok := signalRecorderCache.Load(peer.HostID); ok {
+								if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
 									if cnt.(int) <= 3 {
 										cnt := cnt.(int) + 1
-										signalRecorderCache.Store(peer.HostID, cnt)
+										signalThrottleCache.Store(peer.HostID, cnt)
 									}
 								} else {
-									signalRecorderCache.Store(peer.HostID, 1)
+									signalThrottleCache.Store(peer.HostID, 1)
 								}
 
 							}
