@@ -112,6 +112,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							continue
 						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
+							fmt.Println("--------> Skippping FAILOVER Signal for peer ", peer.HostID, peer.Address)
 							continue
 						}
 						connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
