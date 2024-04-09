@@ -31,7 +31,7 @@ var (
 
 // processPeerSignal - processes the peer signals for any updates from peers
 func processPeerSignal(signal models.Signal) {
-
+	return
 	// process recieved new signal from peer
 	// if signal is older than 10s ignore it,wait for a fresh signal from peer
 	if time.Now().Unix()-signal.TimeStamp > 5 {
