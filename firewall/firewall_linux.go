@@ -4,11 +4,19 @@ import (
 	"errors"
 	"net"
 	"os/exec"
+	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/nftables"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/vishvananda/netlink"
+)
+
+const (
+	TestIPv4    = "1.1.1.1"
+	TestIPv6    = "2606:4700:4700::1111"
+	IPv4Network = "0.0.0.0/0"
+	IPv6Network = "::/0"
 )
 
 // newFirewall if supported, returns an iptables manager, otherwise returns a nftables manager
@@ -53,12 +61,22 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if dst.String() == "0.0.0.0/0" || dst.String() == "::/0" {
-		dst.IP = net.ParseIP("1.1.1.1")
+	if dst.String() == IPv4Network || dst.String() == IPv6Network {
+		dst.IP = net.ParseIP(TestIPv4)
 	}
 	routes, err := h.RouteGet(dst.IP)
 	if err != nil {
-		return "", err
+		if !strings.Contains(err.Error(), "network is unreachable") {
+			return "", err
+		}
+		//if ipv4 address is unreachable, try ipv6 address
+		dst.IP = net.ParseIP(TestIPv6)
+		// routes[0] will be default route
+		routes, err = netlink.RouteGet(dst.IP)
+		if err != nil {
+			return "", err
+		}
+
 	}
 	for _, r := range routes {
 		iface, err := net.InterfaceByIndex(r.LinkIndex)
