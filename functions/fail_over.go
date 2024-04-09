@@ -67,6 +67,8 @@ func handlePeerFailOver(signal models.Signal) error {
 		})
 		if err != nil {
 			slog.Error("failed to signal peer", "error", err.Error())
+		} else {
+			signalThrottleCache.Delete(signal.FromHostID)
 		}
 	} else {
 		signalThrottleCache.Delete(signal.FromHostID)
@@ -76,8 +78,6 @@ func handlePeerFailOver(signal models.Signal) error {
 		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
 		if err != nil {
 			slog.Debug("failed to signal server to relay me", "error", err)
-		} else {
-			signalThrottleCache.Delete(signal.FromHostID)
 		}
 	}
 	return nil
