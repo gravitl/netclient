@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/firewall"
@@ -183,8 +184,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 	}
-	go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
+	if peerUpdate.EndpointDetection {
+		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
+	} else {
 
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+
+	}
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
@@ -329,6 +336,12 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 		peerPubKey := peers[idx].PublicKey.String()
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
 			continue
+		}
+		// check if endpoint detection to be skipped for the peer
+		if retryCnt, ok := cache.SkipEndpointCache.Load(peerPubKey); ok {
+			if retryCnt.(int) > 3 {
+				continue
+			}
 		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
 			if peerInfo.IsStatic {
@@ -524,8 +537,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 	}
-	go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
-
+	if pullResponse.EndpointDetection {
+		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
+	} else {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+	}
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if resetInterface {

@@ -124,6 +124,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	wg.Wait()
 	// clear cache
 	cache.EndpointCache = sync.Map{}
+	cache.SkipEndpointCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
@@ -212,8 +213,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
-	if pullErr == nil {
+	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
+	} else {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
 	}
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
