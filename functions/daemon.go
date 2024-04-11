@@ -319,11 +319,6 @@ func setupMQTT(server *config.Server) error {
 func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
-<<<<<<< HEAD
-	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.MQPassword)
-	opts.SetClientID(server.MQID.String())
-=======
 	if server.BrokerType == "emqx" {
 		opts.SetUsername(config.Netclient().ID.String())
 		opts.SetPassword(config.Netclient().HostPass)
@@ -332,7 +327,6 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 		opts.SetPassword(server.MQPassword)
 	}
 	opts.SetClientID(logic.RandomString(9))
->>>>>>> af54f1f (disconnect singleton connections, set clean session to true)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second * 4)
