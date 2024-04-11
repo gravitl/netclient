@@ -168,6 +168,24 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			config.Netclient().NatType = config.HostNatType
 			updateConfig = true
 		}
+
+		ipv6, err := ncutils.GetPublicIPv6()
+		if err != nil {
+			slog.Error("GetPublicIPv6 error: ", "error", err.Error())
+		} else {
+			if ipv4 := ipv6.To4(); ipv4 != nil {
+				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
+			} else {
+				if config.Netclient().EndpointIPv6 == nil {
+					config.Netclient().EndpointIPv6 = ipv6
+					config.HostPublicIP6 = ipv6
+					updateConfig = true
+				} else {
+					config.HostPublicIP6 = ipv6
+				}
+			}
+		}
+
 	} else {
 		config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
 		updateConfig = true

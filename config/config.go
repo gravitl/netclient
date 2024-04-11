@@ -66,8 +66,10 @@ var (
 	FwClose func() = func() {}
 	// WgPublicListenPort - host's wireguard public listen port
 	WgPublicListenPort int
-	// HostPublicIP - host's public endpoint
+	// HostPublicIP - host's public ipv4 endpoint
 	HostPublicIP net.IP
+	// HostPublicIP6 - host's public ipv6 endpoint
+	HostPublicIP6 net.IP
 	// HostNatType - host's NAT type
 	HostNatType string
 )
