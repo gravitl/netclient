@@ -236,7 +236,7 @@ func WriteNetclientConfig() error {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
 				logger.Log(0, "error creating netclient config directory", err.Error())
 			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+			if err := os.Chmod(GetNetclientPath(), os.ModePerm); err != nil {
 				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
 			}
 		} else if err != nil {

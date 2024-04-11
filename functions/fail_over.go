@@ -22,7 +22,7 @@ import (
 
 var (
 	// peerConnectionCheckInterval - time interval to check peer connection status
-	peerConnectionCheckInterval = time.Second * 25
+	peerConnectionCheckInterval = time.Second * 30
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
 	peerConnTicker         *time.Ticker
@@ -70,14 +70,15 @@ func handlePeerFailOver(signal models.Signal) error {
 		} else {
 			signalThrottleCache.Delete(signal.FromHostID)
 		}
+	} else {
+		signalThrottleCache.Delete(signal.FromHostID)
 	}
 
-	if config.Netclient().NatType == models.NAT_Types.BehindNAT {
-		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
-		if err != nil {
-			slog.Debug("failed to signal server to relay me", "error", err)
-		}
+	err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
+	if err != nil {
+		slog.Debug("failed to signal server to relay me", "error", err)
 	}
+
 	return nil
 }
 
@@ -111,12 +112,20 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if peer.IsExtClient {
 							continue
 						}
+						if !isPeerExist(pubKey) {
+							continue
+						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
 						connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
 						if connected {
 							// peer is connected,so continue
+							continue
+						}
+						// check if there is handshake on interface as fallback in case ping failed due to unknown reasons
+						connected, err = isPeerConnected(pubKey)
+						if err != nil || connected {
 							continue
 						}
 						s := models.Signal{
@@ -232,4 +241,16 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 // SignalPeer - signals the peer with host's turn relay endpoint
 func SignalPeer(signal models.Signal) error {
 	return publishPeerSignal(config.CurrServer, signal)
+}
+
+// isPeerConnected - get peer connection status by checking last handshake time
+func isPeerConnected(peerKey string) (connected bool, err error) {
+	peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
+	if err != nil {
+		return
+	}
+	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
+		connected = true
+	}
+	return
 }

@@ -172,6 +172,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
 			}
+			_ = config.WriteNetclientConfig()
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
@@ -185,7 +186,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHost(&peerUpdate.Host)
 	config.UpdateHostPeers(peerUpdate.Peers)
-	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
@@ -205,6 +205,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	var hostUpdate models.HostUpdate
 	var err error
+	writeToDisk := true
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -294,9 +295,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
+		writeToDisk = false
 	case models.SignalHost:
 		clearRetainedMsg(client, msg.Topic())
 		processPeerSignal(hostUpdate.Signal)
+		writeToDisk = false
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
@@ -307,9 +310,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
 	}
-	if err = config.WriteNetclientConfig(); err != nil {
-		slog.Error("failed to write host config", "error", err)
-		return
+	if writeToDisk {
+		if err = config.WriteNetclientConfig(); err != nil {
+			slog.Error("failed to write host config", "error", err)
+			return
+		}
 	}
 	if restartDaemon {
 		if clearMsg {
