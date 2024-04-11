@@ -45,6 +45,7 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.Network, "n", "", "network to attempt to join/register to")
 	joinCmd.Flags().BoolP(registerFlags.AllNetworks, "A", false, "attempts to join/register to all available networks to user")
 	joinCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
+	joinCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	joinCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
 	joinCmd.Flags().StringP(registerFlags.MTU, "m", "", "sets MTU on host")
 	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")
