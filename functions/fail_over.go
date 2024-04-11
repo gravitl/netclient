@@ -72,12 +72,11 @@ func handlePeerFailOver(signal models.Signal) error {
 		signalThrottleCache.Delete(signal.FromHostID)
 	}
 
-	if config.Netclient().NatType == models.NAT_Types.BehindNAT {
-		err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
-		if err != nil {
-			slog.Debug("failed to signal server to relay me", "error", err)
-		}
+	err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
+	if err != nil {
+		slog.Debug("failed to signal server to relay me", "error", err)
 	}
+
 	return nil
 }
 
