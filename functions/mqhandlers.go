@@ -3,12 +3,17 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -16,6 +21,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -166,6 +172,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
 			}
+			_ = config.WriteNetclientConfig()
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
@@ -179,7 +186,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHost(&peerUpdate.Host)
 	config.UpdateHostPeers(peerUpdate.Peers)
-	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
@@ -199,6 +205,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	var hostUpdate models.HostUpdate
 	var err error
+	writeToDisk := true
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
@@ -288,9 +295,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
+		writeToDisk = false
 	case models.SignalHost:
 		clearRetainedMsg(client, msg.Topic())
 		processPeerSignal(hostUpdate.Signal)
+		writeToDisk = false
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
@@ -301,9 +310,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
 	}
-	if err = config.WriteNetclientConfig(); err != nil {
-		slog.Error("failed to write host config", "error", err)
-		return
+	if writeToDisk {
+		if err = config.WriteNetclientConfig(); err != nil {
+			slog.Error("failed to write host config", "error", err)
+			return
+		}
 	}
 	if restartDaemon {
 		if clearMsg {
@@ -435,6 +446,41 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 
 }
 
+func getServerBrokerStatus() (bool, error) {
+	type status struct {
+		Broker bool `json:"broker_connected"`
+	}
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return false, errors.New("server is nil")
+	}
+	token, err := auth.Authenticate(server, config.Netclient())
+	if err != nil {
+		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
+		return false, err
+	}
+	url := fmt.Sprintf("https://%s/api/server/status", server.API)
+	endpoint := httpclient.JSONEndpoint[status, models.ErrorResponse]{
+		URL:           url,
+		Method:        http.MethodGet,
+		Authorization: "Bearer " + token,
+		Data:          nil,
+		Response:      status{},
+		ErrorResponse: models.ErrorResponse{},
+	}
+	response, errData, err := endpoint.GetJSON(status{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
+			return false, err
+		}
+		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		return false, err
+	}
+	return response.Broker, nil
+}
+
 // MQTT Fallback Mechanism
 func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -446,7 +492,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			slog.Info("mqfallback routine stop")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
-			if (Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "" {
+			skip := true
+			if connected, err := getServerBrokerStatus(); err == nil && !connected {
+				skip = false
+			}
+			if skip && ((Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "") {
 				continue
 			}
 			// Call netclient http config pull
