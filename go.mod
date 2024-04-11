@@ -12,7 +12,7 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.1
-	github.com/gravitl/netmaker v0.23.1-0.20240313082051-3c6e3979efcc
+	github.com/gravitl/netmaker v0.23.1-0.20240410111855-6959e7da7894
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
@@ -25,11 +25,11 @@ require (
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.1.0
-	golang.org/x/crypto v0.21.0
+	golang.org/x/crypto v0.22.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.22.0
 	golang.org/x/sys v0.19.0
-	golang.org/x/term v0.18.0
+	golang.org/x/term v0.19.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
