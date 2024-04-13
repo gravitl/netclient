@@ -10,11 +10,11 @@ var (
 )
 
 type rulesCfg struct {
-	isIpv4   bool
 	rulesMap map[string][]ruleInfo
 }
 
 type ruleInfo struct {
+	isIpv4 bool
 	rule   []string
 	nfRule any
 	table  string

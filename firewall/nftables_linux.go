@@ -291,14 +291,16 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	// add jump Rules for egress GW
 	var (
 		rule           *nftables.Rule
-		isIpv4         = isAddrIpv4(egressInfo.EgressGwAddr.String())
 		egressGwRoutes = []ruleInfo{}
 	)
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
+		isIpv4 := true
+		if !isAddrIpv4(egressGwRange) {
+			isIpv4 = false
+		}
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
@@ -326,6 +328,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 				} else {
 					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						isIpv4: isIpv4,
 						nfRule: rule,
 						table:  defaultNatTable,
 						chain:  nattablePRTChain,
