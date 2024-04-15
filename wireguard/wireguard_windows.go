@@ -85,7 +85,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s store=%s",
 				addr.Network.String(), ncutils.GetInterfaceName(), "active")
 			_, err := ncutils.RunCmd(cmd, false)
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), "exit status 1") {
 				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
 			}
 		} else {
@@ -93,7 +93,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			cmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=%s",
 				addr.Network.String(), ncutils.GetInterfaceName(), "active")
 			_, err := ncutils.RunCmd(cmd, false)
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), "exit status 1") {
 				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
 			}
 		}
