@@ -3,9 +3,10 @@ package firewall
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
+
+	"golang.org/x/exp/slog"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"

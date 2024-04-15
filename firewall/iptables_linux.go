@@ -3,9 +3,10 @@ package firewall
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
+
+	"golang.org/x/exp/slog"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/gravitl/netclient/config"
