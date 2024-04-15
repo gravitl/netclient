@@ -3,6 +3,7 @@ package firewall
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -385,8 +386,8 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
 			if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
-				return fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
-					rule.table, rule.rule, peerKey, err)
+				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, peerKey, err))
 			}
 		}
 	}

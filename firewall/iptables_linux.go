@@ -3,6 +3,7 @@ package firewall
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -148,12 +149,12 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 	defer i.mux.Unlock()
 	for _, rulesCfg := range ruleTable {
 		for key, rules := range rulesCfg.rulesMap {
-			iptablesClient := i.ipv4Client
-			if !rulesCfg.isIpv4 {
-				iptablesClient = i.ipv6Client
-			}
 			for _, rule := range rules {
-				err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+				err := i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
+				}
+				err = i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 				if err != nil {
 					logger.Log(1, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
 				}
@@ -428,17 +429,18 @@ func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	if _, ok := rulesTable[peerKey]; !ok {
 		return errors.New("peer not found in rule table: " + peerKey)
 	}
-	iptablesClient := i.ipv4Client
-	if !rulesTable[peerKey].isIpv4 {
-		iptablesClient = i.ipv6Client
-	}
 
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
-			err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			err := i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 			if err != nil {
-				return fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
-					rule.table, rule.rule, peerKey, err)
+				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, peerKey, err))
+			}
+			err = i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, peerKey, err))
 			}
 		}
 
