@@ -219,6 +219,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
+	if len(pullresp.EgressRoutes) > 0 {
+		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+	}
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {
@@ -291,8 +294,7 @@ func setupMQTT(server *config.Server) error {
 		opts.SetUsername(server.MQUserName)
 		opts.SetPassword(server.MQPassword)
 	}
-	//opts.SetClientID(ncutils.MakeRandomString(23))
-	opts.SetClientID(server.MQID.String())
+	opts.SetClientID(logic.RandomString(23))
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
