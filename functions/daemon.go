@@ -291,8 +291,7 @@ func setupMQTT(server *config.Server) error {
 		opts.SetUsername(server.MQUserName)
 		opts.SetPassword(server.MQPassword)
 	}
-	//opts.SetClientID(ncutils.MakeRandomString(23))
-	opts.SetClientID(server.MQID.String())
+	opts.SetClientID(logic.RandomString(23))
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
