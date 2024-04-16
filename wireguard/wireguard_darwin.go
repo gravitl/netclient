@@ -30,7 +30,7 @@ func (nc *NCIface) ApplyAddrs() error {
 				}
 			} else {
 
-				cmd := exec.Command("ifconfig", nc.Name, "inet6", "add", address.IP.String(), address.IP.String())
+				cmd := exec.Command("ifconfig", nc.Name, "inet6", address.IP.String(), "prefixlen", "64", "alias")
 				if out, err := cmd.CombinedOutput(); err != nil {
 					slog.Error("error adding address", "command", cmd.String(), "error", string(out))
 					continue
