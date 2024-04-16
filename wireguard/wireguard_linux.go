@@ -167,7 +167,7 @@ func SetRoutes(addrs []ifaceAddress) {
 		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
 		if err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
-			Gw:        addr.IP,
+			Src:       addr.IP,
 			Dst:       &addr.Network,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Error("error adding route", "error", err.Error())
