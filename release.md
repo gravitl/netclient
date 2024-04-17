@@ -16,8 +16,10 @@
 - Fixed Windows Adapter Issues
 - Added Improvments For Handling Static Host Args On `netclient join` Command
 - Mac IPv6 addresses/route issues
-- Fixed Client Connectivity Metrics Data 
+- Fixed Client Connectivity Metrics Data
+
 ## Known Issues 🐞
+
 - Windows Intermittent Issues With Interface Disappearing When Joined On Multiple Networks
 - Erratic Traffic Data In Metrics
 - `netclient server leave`  Leaves a Stale Node Record In At Least One Network When Part Of Multiple Networks, But Can Be Deleted From The UI.
