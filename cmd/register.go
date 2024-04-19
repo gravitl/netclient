@@ -26,6 +26,7 @@ var registerFlags = struct {
 	Network     string
 	AllNetworks string
 	EndpointIP  string
+	EndpointIP6 string
 	Port        string
 	MTU         string
 	Static      string
@@ -74,7 +75,8 @@ user: netclient register -s <server> -u <user_name> // attempt to join/register 
 
 func setHostFields(cmd *cobra.Command) {
 	fmt.Println("setting host fields")
-	if port, err := cmd.Flags().GetInt(registerFlags.Port); err == nil && port != 0 {
+	port, err := cmd.Flags().GetInt(registerFlags.Port)
+	if err == nil && port != 0 {
 		// check if port is available
 		if !ncutils.IsPortFree(port) {
 			fmt.Printf("port %d is not free\n", port)
@@ -82,8 +84,13 @@ func setHostFields(cmd *cobra.Command) {
 		}
 		config.Netclient().ListenPort = port
 	}
-	if endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP); err == nil && endpointIP != "" {
+	endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP)
+	if err == nil && endpointIP != "" {
 		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
+	}
+	endpointIP6, err := cmd.Flags().GetString(registerFlags.EndpointIP6)
+	if err == nil && endpointIP6 != "" {
+		config.Netclient().EndpointIPv6 = net.ParseIP(endpointIP6)
 	}
 	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
 		config.Netclient().MTU = mtu
@@ -100,6 +107,12 @@ func setHostFields(cmd *cobra.Command) {
 	}
 	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
 		config.Netclient().IsStatic = isStatic
+	}
+	if config.Netclient().IsStatic && ((endpointIP == "" && endpointIP6 == "") || port == 0) {
+		fmt.Println("endpoint from command: ", endpointIP)
+		fmt.Println("port from command: ", port)
+		fmt.Println("error: static port is enabled, please specify valid endpoint ip and port with -e and -p options")
+		os.Exit(1)
 	}
 }
 func validateIface(iface string) bool {
@@ -174,6 +187,7 @@ func init() {
 	registerCmd.Flags().StringP(registerFlags.Network, "n", "", "network to attempt to register to")
 	registerCmd.Flags().BoolP(registerFlags.AllNetworks, "A", false, "attempts to register to all available networks to user")
 	registerCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
+	registerCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	registerCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
 	registerCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
 	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static")

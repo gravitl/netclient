@@ -106,10 +106,21 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	addrs := []ifaceAddress{}
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRanges {
-			addrs = append(addrs, ifaceAddress{
-				IP:      egressRoute.NodeAddr.IP,
-				Network: config.ToIPNet(egressRange),
-			})
+			egressRangeIPNet := config.ToIPNet(egressRange)
+			if egressRangeIPNet.IP != nil {
+				if egressRangeIPNet.IP.To4() != nil {
+					addrs = append(addrs, ifaceAddress{
+						IP:      egressRoute.NodeAddr.IP,
+						Network: egressRangeIPNet,
+					})
+				} else if egressRoute.NodeAddr6.IP != nil {
+					addrs = append(addrs, ifaceAddress{
+						IP:      egressRoute.NodeAddr6.IP,
+						Network: egressRangeIPNet,
+					})
+				}
+
+			}
 
 		}
 

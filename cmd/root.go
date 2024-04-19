@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"crypto/rand"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -77,7 +78,17 @@ func initConfig() {
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
 	config.CheckUID()
-	config.ReadNetclientConfig()
+	_, err := config.ReadNetclientConfig()
+	if err != nil {
+		if errors.Is(err, errors.New("failed to obtain lockfile TIMEOUT")) {
+			daemon.RemoveAllLockFiles()
+		}
+		// retry reading config
+		_, err := config.ReadNetclientConfig()
+		if err != nil {
+			logger.FatalLog("config is unreadable, fix it before proceeding", err.Error())
+		}
+	}
 	if config.Netclient().Interface != "" {
 		ncutils.SetInterfaceName(config.Netclient().Interface)
 	}

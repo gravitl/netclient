@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/exp/slog"
+
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -148,12 +150,12 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 	defer i.mux.Unlock()
 	for _, rulesCfg := range ruleTable {
 		for key, rules := range rulesCfg.rulesMap {
-			iptablesClient := i.ipv4Client
-			if !rulesCfg.isIpv4 {
-				iptablesClient = i.ipv6Client
-			}
 			for _, rule := range rules {
-				err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+				err := i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
+				}
+				err = i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 				if err != nil {
 					logger.Log(1, fmt.Sprintf("failed to delete rule [%s]: %+v, Err: %s", key, rule, err.Error()))
 				}
@@ -290,19 +292,16 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	// add jump Rules for egress GW
-	iptablesClient := i.ipv4Client
-	isIpv4 := true
-	if !isAddrIpv4(egressInfo.EgressGwAddr.String()) {
-		iptablesClient = i.ipv6Client
-		isIpv4 = false
-	}
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+			iptablesClient := i.ipv4Client
+			if !isAddrIpv4(egressGwRange) {
+				iptablesClient = i.ipv6Client
+			}
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
@@ -431,17 +430,18 @@ func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	if _, ok := rulesTable[peerKey]; !ok {
 		return errors.New("peer not found in rule table: " + peerKey)
 	}
-	iptablesClient := i.ipv4Client
-	if !rulesTable[peerKey].isIpv4 {
-		iptablesClient = i.ipv6Client
-	}
 
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
-			err := iptablesClient.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			err := i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 			if err != nil {
-				return fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
-					rule.table, rule.rule, peerKey, err)
+				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, peerKey, err))
+			}
+			err = i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("iptables: error while removing existing %s rules [%v] for %s: %v",
+					rule.table, rule.rule, peerKey, err))
 			}
 		}
 

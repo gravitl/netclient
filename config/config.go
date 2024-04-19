@@ -66,8 +66,10 @@ var (
 	FwClose func() = func() {}
 	// WgPublicListenPort - host's wireguard public listen port
 	WgPublicListenPort int
-	// HostPublicIP - host's public endpoint
+	// HostPublicIP - host's public ipv4 endpoint
 	HostPublicIP net.IP
+	// HostPublicIP6 - host's public ipv6 endpoint
+	HostPublicIP6 net.IP
 	// HostNatType - host's NAT type
 	HostNatType string
 )
@@ -77,7 +79,7 @@ type Config struct {
 	models.Host
 	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"host_peers"`
+	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"-"`
 	InitType                 InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
@@ -193,6 +195,22 @@ func ReadNetclientConfig() (*Config, error) {
 	}()
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
 	file := GetNetclientPath() + "netclient.yml"
+	if _, err := os.Stat(file); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
+				logger.Log(0, "error creating netclient config directory", err.Error())
+			}
+			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
+				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
+			}
+			err = WriteNetclientConfig()
+			if err != nil {
+				logger.FatalLog("failed to initialize netclient config", err.Error())
+			}
+		} else if err != nil {
+			return nil, err
+		}
+	}
 	if err = Lock(lockfile); err != nil {
 		return nil, err
 	}

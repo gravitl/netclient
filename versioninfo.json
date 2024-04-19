@@ -3,12 +3,12 @@
         "FileVersion": {
             "Major": 0,
             "Minor": 23,
-            "Patch": 0,
+            "Patch": 1,
             "Build": 0
         },
         "ProductVersion": {
             "Major": 0,
-            "Minor": 22,
+            "Minor": 23,
             "Patch": 1,
             "Build": 0
         },
@@ -29,7 +29,7 @@
         "OriginalFilename": "",
         "PrivateBuild": "",
         "ProductName": "Netclient",
-        "ProductVersion": "v0.23.0.0",
+        "ProductVersion": "v0.24.0.0",
         "SpecialBuild": ""
     },
     "VarFileInfo": {

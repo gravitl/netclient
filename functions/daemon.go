@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -23,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -124,6 +124,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	wg.Wait()
 	// clear cache
 	cache.EndpointCache = sync.Map{}
+	cache.SkipEndpointCache = sync.Map{}
+	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
 	iface.Close()
@@ -141,29 +143,55 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
-	if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
-		log.Fatal("no free ports available for use by netclient")
-	} else if freeport != config.Netclient().ListenPort {
-		slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
-		config.Netclient().ListenPort = freeport
-		updateConfig = true
-	}
-	config.SetServerCtx()
-	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
-	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+	if !config.Netclient().IsStatic {
 
-	if config.Netclient().WgPublicListenPort == 0 {
-		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
+			slog.Error("no free ports available for use by netclient", "error", err.Error())
+		} else if freeport != config.Netclient().ListenPort {
+			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
+			config.Netclient().ListenPort = freeport
+			updateConfig = true
+		}
+
+		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
+		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+
+		if config.Netclient().WgPublicListenPort == 0 {
+			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+			updateConfig = true
+		}
+		if config.Netclient().EndpointIP == nil {
+			config.Netclient().EndpointIP = config.HostPublicIP
+			updateConfig = true
+		}
+		if config.Netclient().NatType == "" {
+			config.Netclient().NatType = config.HostNatType
+			updateConfig = true
+		}
+
+		ipv6, err := ncutils.GetPublicIPv6()
+		if err != nil {
+			slog.Error("GetPublicIPv6 error: ", "error", err.Error())
+		} else {
+			if ipv4 := ipv6.To4(); ipv4 != nil {
+				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
+			} else {
+				if config.Netclient().EndpointIPv6 == nil {
+					config.Netclient().EndpointIPv6 = ipv6
+					config.HostPublicIP6 = ipv6
+					updateConfig = true
+				} else {
+					config.HostPublicIP6 = ipv6
+				}
+			}
+		}
+
+	} else {
+		config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
 		updateConfig = true
 	}
-	if config.Netclient().EndpointIP == nil {
-		config.Netclient().EndpointIP = config.HostPublicIP
-		updateConfig = true
-	}
-	if config.Netclient().NatType == "" {
-		config.Netclient().NatType = config.HostNatType
-		updateConfig = true
-	}
+
+	config.SetServerCtx()
 
 	if config.Netclient().OriginalDefaultGatewayIp == nil {
 		originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
@@ -191,8 +219,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
-	if pullErr == nil {
+	if len(pullresp.EgressRoutes) > 0 {
+		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+	}
+	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
+	} else {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
 	}
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
@@ -260,13 +294,13 @@ func setupMQTT(server *config.Server) error {
 		opts.SetUsername(server.MQUserName)
 		opts.SetPassword(server.MQPassword)
 	}
-	//opts.SetClientID(ncutils.MakeRandomString(23))
-	opts.SetClientID(server.MQID.String())
+	opts.SetClientID(logic.RandomString(23))
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
 	opts.SetKeepAlive(time.Second * 10)
 	opts.SetWriteTimeout(time.Minute)
+	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		slog.Info("mqtt connect handler")
 		nodes := config.GetNodes()
@@ -316,14 +350,20 @@ func setupMQTT(server *config.Server) error {
 func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
-	opts.SetUsername(server.MQUserName)
-	opts.SetPassword(server.MQPassword)
-	opts.SetClientID(server.MQID.String())
+	if server.BrokerType == "emqx" {
+		opts.SetUsername(config.Netclient().ID.String())
+		opts.SetPassword(config.Netclient().HostPass)
+	} else {
+		opts.SetUsername(server.MQUserName)
+		opts.SetPassword(server.MQPassword)
+	}
+	opts.SetClientID(logic.RandomString(9))
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Minute >> 1)
+	opts.SetConnectRetryInterval(time.Second * 4)
+	opts.SetKeepAlive(time.Second * 30)
 	opts.SetWriteTimeout(time.Minute)
+	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		if !publishOnly {
 			slog.Info("mqtt connect handler")
@@ -344,7 +384,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	Mqclient = mqtt.NewClient(opts)
 
 	var connecterr error
-	if token := Mqclient.Connect(); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
+	if token := Mqclient.Connect(); !token.WaitTimeout(5*time.Second) || token.Error() != nil {
 		if token.Error() == nil {
 			connecterr = errors.New("connect timeout")
 		} else {

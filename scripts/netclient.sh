@@ -38,6 +38,11 @@ if [ "${ENDPOINT}" != "" ];then
     ENDPOINT_CMD="-e ${ENDPOINT}"
 fi
 
+ENDPOINT6_CMD=""
+if [ "${ENDPOINT6}" != "" ];then
+    ENDPOINT6_CMD="-E ${ENDPOINT6}"
+fi
+
 MTU_CMD=""
 if [ "${MTU}" != "" ];then
     MTU_CMD="-m ${MTU}"
@@ -57,10 +62,7 @@ if [ "${IFACE_NAME}" != "" ];then
     IFACE_CMD="-I ${IFACE_NAME}"
 fi
 
-echo "[netclient] Starting netclient daemon"
-/root/netclient install
-wait $!
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD
+netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD $ENDPOINT6_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 tail -f /var/log/netclient.log &

@@ -281,8 +281,28 @@ func UpdateHostSettings(fallback bool) error {
 			}
 		}
 	}
+	if !config.Netclient().IsStatic {
+		if config.Netclient().EndpointIPv6 == nil {
+			config.Netclient().EndpointIPv6 = config.HostPublicIP6
+		} else {
+			if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() && !config.Netclient().EndpointIPv6.Equal(config.HostPublicIP6) {
+				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
+				config.Netclient().EndpointIPv6 = config.HostPublicIP6
+				publishMsg = true
+			}
+		}
+	}
+	// //if endpoint is ipv6, set EndpointIPv6 as the same value
+	// if ipv4 := config.Netclient().EndpointIP.To4(); ipv4 == nil && config.Netclient().EndpointIPv6 == nil {
+	// 	config.Netclient().EndpointIPv6 = config.Netclient().EndpointIP
+	// 	publishMsg = true
+	// }
 	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
-		config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		if !config.Netclient().IsStatic {
+			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		} else {
+			config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
+		}
 		publishMsg = true
 	}
 

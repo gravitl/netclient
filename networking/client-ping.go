@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/metrics"
 	"golang.org/x/exp/slog"
 )
@@ -19,5 +20,15 @@ func FindBestEndpoint(peerIp, peerPubKey string, port int) {
 			return
 		}
 		storeNewPeerIface(peerPubKey, peerEndpoint)
+	} else {
+		if retryCnt, ok := cache.SkipEndpointCache.Load(peerPubKey); ok {
+			cnt := retryCnt.(int)
+			if cnt <= 3 {
+				cnt += 1
+				cache.SkipEndpointCache.Store(peerPubKey, cnt)
+			}
+		} else {
+			cache.SkipEndpointCache.Store(peerPubKey, 1)
+		}
 	}
 }
