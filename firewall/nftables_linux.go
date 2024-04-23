@@ -305,7 +305,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-				ruleSpec := []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec := []string{"-s", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
 				// to avoid duplicate iface route rule,delete if exists
 				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
 				rule = &nftables.Rule{
