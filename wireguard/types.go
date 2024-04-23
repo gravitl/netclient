@@ -3,8 +3,10 @@ package wireguard
 import (
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -102,6 +104,14 @@ func (n *NCIface) Configure() error {
 	return apply(&n.Config)
 }
 
+func RemoveEgressRoutes() {
+	if addrs, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		RemoveRoutes(addrs.([]ifaceAddress))
+	}
+
+	cache.EgressRouteCache = sync.Map{}
+}
+
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	addrs := []ifaceAddress{}
 	for _, egressRoute := range egressRoutes {
@@ -125,7 +135,37 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 		}
 
 	}
-	SetRoutes(addrs)
+
+	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		isSame := checkEgressRoutes(addrs, addrs1.([]ifaceAddress))
+
+		if !isSame {
+			RemoveRoutes(addrs1.([]ifaceAddress))
+			SetRoutes(addrs)
+			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+		}
+	} else {
+		SetRoutes(addrs)
+		cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+	}
+}
+
+// checkEgressRoutes - check if the addr are the same ones
+func checkEgressRoutes(addrs, addrs1 []ifaceAddress) bool {
+	if len(addrs) != len(addrs1) {
+		return false
+	}
+
+	sort.Slice(addrs, func(i, j int) bool { return addrs[i].IP.String() < addrs[j].IP.String() })
+	sort.Slice(addrs1, func(i, j int) bool { return addrs1[i].IP.String() < addrs1[j].IP.String() })
+
+	for i := range addrs {
+		if addrs[i].IP.String() != addrs1[i].IP.String() || addrs[i].Network.String() != addrs1[i].Network.String() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func GetInterface() *NCIface {
