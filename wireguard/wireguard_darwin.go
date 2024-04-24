@@ -93,6 +93,8 @@ func (nc *NCIface) SetMTU() error {
 }
 
 func (nc *NCIface) Close() {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	err := nc.Iface.Close()
 	if err == nil {
 		sockPath := "/var/run/wireguard/" + nc.Name + ".sock"
