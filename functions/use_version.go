@@ -52,6 +52,11 @@ func downloadVersion(version string) error {
 		if err != nil {
 			return fmt.Errorf("get arm version %w", err)
 		}
+		if strings.Contains(out, "\r") {
+			out = strings.ReplaceAll(out, "\r", "")
+		} else if strings.Contains(out, "\n") {
+			out = strings.ReplaceAll(out, "\n", "")
+		}
 		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
 	}
 	res, err := http.Get(url)
