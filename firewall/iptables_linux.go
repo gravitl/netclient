@@ -299,14 +299,16 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
 			iptablesClient := i.ipv4Client
+			source := egressInfo.Network.String()
 			if !isAddrIpv4(egressGwRange) {
 				iptablesClient = i.ipv6Client
+				source = egressInfo.Network6.String()
 			}
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-				ruleSpec := []string{"-s", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				// to avoid duplicate iface route rule,delete if exists
 				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
