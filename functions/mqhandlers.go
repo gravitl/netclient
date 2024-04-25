@@ -35,6 +35,8 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("default message handler -- received message but not handling", "topic", msg.Topic())
 }
 
+var mNMutex = sync.Mutex{} // used to mutex functions of the interface
+
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
@@ -326,17 +328,23 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if resetInterface {
-		nc := wireguard.GetInterface()
-		nc.Close()
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		nc.Create()
-		if err := nc.Configure(); err != nil {
-			slog.Error("could not configure netmaker interface", "error", err)
-			return
-		}
-		if err = wireguard.SetPeers(false); err != nil {
-			slog.Error("failed to set peers", err)
-		}
+		resetInterfaceFunc()
+	}
+}
+
+func resetInterfaceFunc() {
+	mNMutex.Lock()
+	defer mNMutex.Unlock()
+	nc := wireguard.GetInterface()
+	nc.Close()
+	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	if err := nc.Configure(); err != nil {
+		slog.Error("could not configure netmaker interface", "error", err)
+		return
+	}
+	if err := wireguard.SetPeers(false); err != nil {
+		slog.Error("failed to set peers", err)
 	}
 }
 
@@ -596,15 +604,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if resetInterface {
-		nc := wireguard.GetInterface()
-		nc.Close()
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		nc.Create()
-		if err := nc.Configure(); err != nil {
-			slog.Error("could not configure netmaker interface", "error", err)
-			return
-		}
-		_ = wireguard.SetPeers(false)
-		slog.Info("mqfallback reset interface")
+		resetInterfaceFunc()
 	}
 }
