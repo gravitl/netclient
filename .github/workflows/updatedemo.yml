@@ -3,3 +3,26 @@ name: Update Demo Server
 on:
   release:
     types: [published]
+  workflow_call:
+
+
+jobs:
+  update-demo-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: setup ssh
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SSH_KEY" > ~/.ssh/id_devops
+          chmod 600 ~/.ssh/id_devops
+          cat >>~/.ssh/config <<END
+          Host *.clustercat.com
+            User root
+            IdentityFile ~/.ssh/id_devops
+            StrictHostKeyChecking no
+          END
+        env:
+          SSH_KEY: ${{ secrets.TESTING_SSH_KEY }}
+    - name: test release tag
+      run: | 
+        echo ${{ github.event.release.tag_name }}
