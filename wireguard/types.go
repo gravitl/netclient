@@ -113,6 +113,8 @@ func RemoveEgressRoutes() {
 }
 
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	addrs := []ifaceAddress{}
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRanges {
