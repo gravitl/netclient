@@ -57,6 +57,7 @@ net: netclient register -s <server> -n <net> // attempt to join specified networ
 all-networks: netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
 user: netclient register -s <server> -u <user_name> // attempt to join/register via basic auth`,
 	Run: func(cmd *cobra.Command, args []string) {
+		validateArgs(cmd)
 		setHostFields(cmd)
 		functions.Push(false)
 		token, err := cmd.Flags().GetString(registerFlags.Token)
