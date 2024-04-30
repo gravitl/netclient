@@ -61,18 +61,17 @@ func init() {
 func validateArgs(cmd *cobra.Command) {
 	allNetworks, _ := cmd.Flags().GetBool(registerFlags.AllNetworks)
 	user, _ := cmd.Flags().GetString(registerFlags.User)
+	server, _ := cmd.Flags().GetString(registerFlags.Server)
 	if len(user) != 0 {
-		server, err := cmd.Flags().GetString(registerFlags.Server)
-		if err != nil || len(server) == 0 {
+		if len(server) == 0 {
 			fmt.Println("server name is required")
 			cmd.Usage()
 			os.Exit(1)
 		}
-
 	}
 	network, _ := cmd.Flags().GetString(registerFlags.Network)
-	if (len(network) != 0 || allNetworks) && len(user) == 0 {
-		fmt.Println("user name is required using SSO/Auth registration")
+	if (len(network) != 0 || allNetworks) && len(server) == 0 {
+		fmt.Println("server name is required using SSO/Auth registration")
 		cmd.Usage()
 		os.Exit(1)
 	}
