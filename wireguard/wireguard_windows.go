@@ -73,6 +73,33 @@ func (nc *NCIface) ApplyAddrs() error {
 	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
 }
 
+// RemoveRoutes - remove routes to the interface
+func RemoveRoutes(addrs []ifaceAddress) {
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network {
+			continue
+		}
+		if addr.Network.IP.To4() != nil {
+			slog.Info("removing ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s nexthop=%s store=%s",
+				addr.Network.String(), ncutils.GetInterfaceName(), "0.0.0.0", "active")
+			_, err := ncutils.RunCmd(cmd, false)
+			if err != nil {
+				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
+			}
+		} else {
+			slog.Info("removing ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s nexthop=%s store=%s",
+				addr.Network.String(), ncutils.GetInterfaceName(), "::", "active")
+			_, err := ncutils.RunCmd(cmd, false)
+			if err != nil {
+				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
+			}
+		}
+	}
+}
+
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
