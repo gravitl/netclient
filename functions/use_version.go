@@ -47,6 +47,18 @@ func downloadVersion(version string) error {
 		freebsd := strings.Trim(freebsdVersion[0], "\"")
 		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsd, runtime.GOARCH)
 	}
+	if runtime.GOARCH == "arm" && runtime.GOOS == "linux" {
+		out, err := ncutils.RunCmd("cat /proc/cpuinfo | grep architecture | head -1 | grep -o -E '[0-9]+'", false)
+		if err != nil {
+			return fmt.Errorf("get arm version %w", err)
+		}
+		if strings.Contains(out, "\r") {
+			out = strings.ReplaceAll(out, "\r", "")
+		} else if strings.Contains(out, "\n") {
+			out = strings.ReplaceAll(out, "\n", "")
+		}
+		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
+	}
 	res, err := http.Get(url)
 	if err != nil {
 		return err
