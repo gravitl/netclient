@@ -162,8 +162,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 		if config.Netclient().EndpointIP == nil {
-			config.Netclient().EndpointIP = config.HostPublicIP
-			updateConfig = true
+			if ipv4 := config.HostPublicIP.To4(); ipv4 != nil {
+				config.Netclient().EndpointIP = config.HostPublicIP
+				updateConfig = true
+			} else {
+				config.HostPublicIP = nil
+			}
 		}
 		if config.Netclient().NatType == "" {
 			config.Netclient().NatType = config.HostNatType
