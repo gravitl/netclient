@@ -151,6 +151,30 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
+// RemoveRoutes - Remove routes to the interface
+func RemoveRoutes(addrs []ifaceAddress) {
+	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		slog.Error("failed to get link to interface", "error", err)
+		return
+	}
+
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network {
+			continue
+		}
+		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+		if err := netlink.RouteDel(&netlink.Route{
+			LinkIndex: l.Attrs().Index,
+			Src:       addr.IP,
+			Dst:       &addr.Network,
+		}); err != nil {
+			slog.Error("error removing route", "error", err.Error())
+		}
+	}
+}
+
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) {
 	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
