@@ -88,11 +88,11 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 		return err
 	}
 	done := make(chan struct{})
-	defer close(done)
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
 	go func() {
+		defer close(done)
 		for {
 			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
@@ -123,6 +123,7 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 				}
 				handleRegisterResponse(&response)
 			}
+
 		}
 	}()
 

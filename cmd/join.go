@@ -4,6 +4,9 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
@@ -22,6 +25,7 @@ all-networks: netclient join -s <server> -A // attempt to register to all allowe
 user: netclient join -s <server> -u <user_name> // attempt to join/register via basic auth`,
 
 	Run: func(cmd *cobra.Command, args []string) {
+		validateArgs(cmd)
 		setHostFields(cmd)
 		functions.Push(false)
 		token, err := cmd.Flags().GetString(registerFlags.Token)
@@ -52,4 +56,24 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	joinCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(joinCmd)
+}
+
+func validateArgs(cmd *cobra.Command) {
+	allNetworks, _ := cmd.Flags().GetBool(registerFlags.AllNetworks)
+	user, _ := cmd.Flags().GetString(registerFlags.User)
+	server, _ := cmd.Flags().GetString(registerFlags.Server)
+	if len(user) != 0 {
+		if len(server) == 0 {
+			fmt.Println("server name is required")
+			cmd.Usage()
+			os.Exit(1)
+		}
+	}
+	network, _ := cmd.Flags().GetString(registerFlags.Network)
+	if (len(network) != 0 || allNetworks) && len(server) == 0 {
+		fmt.Println("server name is required using SSO/Auth registration")
+		cmd.Usage()
+		os.Exit(1)
+	}
+
 }
