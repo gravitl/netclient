@@ -385,6 +385,8 @@ func restoreInternetGwV4() (err error) {
 
 // NCIface.Close - closes the managed WireGuard interface
 func (nc *NCIface) Close() {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	err := nc.Iface.Close()
 	if err != nil {
 		logger.Log(0, "error closing netclient interface -", err.Error())

@@ -64,17 +64,7 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
-		nc := wireguard.GetInterface()
-		nc.Close()
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		nc.Create()
-		if err := nc.Configure(); err != nil {
-			faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
-		} else {
-			if err = wireguard.SetPeers(true); err != nil {
-				faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
-			}
-		}
+		faults = resetInterfaceUninstall(faults)
 	} else { // was called from CLI so restart daemon
 		if err := daemon.Restart(); err != nil {
 			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))
@@ -85,6 +75,23 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 		return faults, errors.New("error(s) leaving nework")
 	}
 	return faults, nil
+}
+
+func resetInterfaceUninstall(faults []error) []error {
+	mNMutex.Lock()
+	defer mNMutex.Unlock()
+	nc := wireguard.GetInterface()
+	nc.Close()
+	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	if err := nc.Configure(); err != nil {
+		faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
+	} else {
+		if err = wireguard.SetPeers(true); err != nil {
+			faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
+		}
+	}
+	return faults
 }
 
 func deleteNodeFromServer(node *config.Node) error {
