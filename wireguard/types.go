@@ -78,6 +78,7 @@ func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
+	GwIP     net.IP
 	IP       net.IP
 	Network  net.IPNet
 	AddRoute bool
@@ -122,11 +123,13 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			if egressRangeIPNet.IP != nil {
 				if egressRangeIPNet.IP.To4() != nil {
 					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr.IP,
 						IP:      egressRoute.NodeAddr.IP,
 						Network: egressRangeIPNet,
 					})
 				} else if egressRoute.NodeAddr6.IP != nil {
 					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr6.IP,
 						IP:      egressRoute.NodeAddr6.IP,
 						Network: egressRangeIPNet,
 					})

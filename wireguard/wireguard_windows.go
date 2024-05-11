@@ -77,21 +77,21 @@ func (nc *NCIface) ApplyAddrs() error {
 func RemoveRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network {
+			addr.Network.String() == IPv6Network || addr.GwIP == nil {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {
-			slog.Info("removing ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			slog.Info("removing ipv4 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 			cmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s nexthop=%s store=%s",
-				addr.Network.String(), ncutils.GetInterfaceName(), "0.0.0.0", "active")
+				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active")
 			_, err := ncutils.RunCmd(cmd, false)
 			if err != nil {
 				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
 			}
 		} else {
-			slog.Info("removing ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			slog.Info("removing ipv6 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 			cmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s nexthop=%s store=%s",
-				addr.Network.String(), ncutils.GetInterfaceName(), "::", "active")
+				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active")
 			_, err := ncutils.RunCmd(cmd, false)
 			if err != nil {
 				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
@@ -104,21 +104,21 @@ func RemoveRoutes(addrs []ifaceAddress) {
 func SetRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network {
+			addr.Network.String() == IPv6Network || addr.GwIP == nil {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {
-			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=%s",
-				addr.Network.String(), ncutils.GetInterfaceName(), "0.0.0.0", "active")
+				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active")
 			out, err := ncutils.RunCmd(cmd, false)
 			if err != nil && !strings.Contains(out, "already exists") {
 				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
 			}
 		} else {
-			slog.Info("adding ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			slog.Info("adding ipv6 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 			cmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=%s",
-				addr.Network.String(), ncutils.GetInterfaceName(), "::", "active")
+				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active")
 			out, err := ncutils.RunCmd(cmd, false)
 			if err != nil && !strings.Contains(out, "already exists") {
 				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
