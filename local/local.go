@@ -21,9 +21,9 @@ func SetIPForwarding() error {
 	case "freebsd":
 		err = SetIPForwardingFreeBSD()
 	case "darwin":
-		err = SetIPForwardingMac()
+		//err = SetIPForwardingMac()
 	case "windows":
-		err = SetIPForwardingWindows()
+		//err = SetIPForwardingWindows()
 	default:
 		err = errors.New("this OS is not currently supported")
 	}
