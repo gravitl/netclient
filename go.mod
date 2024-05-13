@@ -25,7 +25,7 @@ require (
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.1.0
-	golang.org/x/crypto v0.22.0
+	golang.org/x/crypto v0.23.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.24.0
 	golang.org/x/sys v0.20.0
@@ -91,7 +91,7 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/text v0.15.0 // indirect
 	golang.org/x/tools v0.17.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
