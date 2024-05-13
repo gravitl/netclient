@@ -102,7 +102,13 @@ func (n *NCIface) Configure() error {
 	if err := n.SetMTU(); err != nil {
 		return fmt.Errorf("Configure set MTU %w", err)
 	}
-	return apply(&n.Config)
+	err := apply(&n.Config)
+	if err != nil {
+		return err
+	}
+	//clear Egress route cache
+	cache.EgressRouteCache = sync.Map{}
+	return nil
 }
 
 func RemoveEgressRoutes() {
