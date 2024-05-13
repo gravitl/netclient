@@ -161,12 +161,13 @@ func RemoveRoutes(addrs []ifaceAddress) {
 
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network {
+			addr.Network.String() == IPv6Network || addr.GwIP == nil {
 			continue
 		}
-		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 		if err := netlink.RouteDel(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
+			Gw:        addr.GwIP,
 			Src:       addr.IP,
 			Dst:       &addr.Network,
 		}); err != nil {
@@ -185,12 +186,13 @@ func SetRoutes(addrs []ifaceAddress) {
 
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network {
+			addr.Network.String() == IPv6Network || addr.GwIP == nil {
 			continue
 		}
-		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 		if err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
+			Gw:        addr.GwIP,
 			Src:       addr.IP,
 			Dst:       &addr.Network,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
