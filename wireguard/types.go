@@ -106,8 +106,6 @@ func (n *NCIface) Configure() error {
 	if err != nil {
 		return err
 	}
-	//clear Egress route cache
-	cache.EgressRouteCache = sync.Map{}
 	return nil
 }
 
@@ -158,6 +156,12 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	} else {
 		SetRoutes(addrs)
 		cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+	}
+}
+
+func SetRoutesFromCache() {
+	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		SetRoutes(addrs1.([]ifaceAddress))
 	}
 }
 
