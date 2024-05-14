@@ -84,19 +84,20 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.NODE_NOOP:
 	default:
 	}
-	// Save new config
-	newNode.Action = models.NODE_NOOP
-	config.UpdateNodeMap(network, newNode)
-	if err := config.WriteNodeConfig(); err != nil {
-		slog.Warn("failed to write node config", "error", err)
-	}
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	if err := nc.Configure(); err != nil {
-		slog.Error("could not configure netmaker interface", "error", err)
-		return
-	}
-	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
+		// Save new config
+		newNode.Action = models.NODE_NOOP
+		config.UpdateNodeMap(network, newNode)
+		if err := config.WriteNodeConfig(); err != nil {
+			slog.Warn("failed to write node config", "error", err)
+		}
+		nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		if err := nc.Configure(); err != nil {
+			slog.Error("could not configure netmaker interface", "error", err)
+			return
+		}
+		time.Sleep(time.Second)
+
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
 			slog.Warn("could not notify server to update peers after interface change", "network:", newNode.Network, "error", doneErr)
@@ -348,6 +349,7 @@ func resetInterfaceFunc() {
 	if err := wireguard.SetPeers(false); err != nil {
 		slog.Error("failed to set peers", err)
 	}
+	wireguard.SetRoutesFromCache()
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint

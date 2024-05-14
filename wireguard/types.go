@@ -78,6 +78,7 @@ func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
+	GwIP     net.IP
 	IP       net.IP
 	Network  net.IPNet
 	AddRoute bool
@@ -101,7 +102,11 @@ func (n *NCIface) Configure() error {
 	if err := n.SetMTU(); err != nil {
 		return fmt.Errorf("Configure set MTU %w", err)
 	}
-	return apply(&n.Config)
+	err := apply(&n.Config)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func RemoveEgressRoutes() {
@@ -122,11 +127,13 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			if egressRangeIPNet.IP != nil {
 				if egressRangeIPNet.IP.To4() != nil {
 					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr.IP,
 						IP:      egressRoute.NodeAddr.IP,
 						Network: egressRangeIPNet,
 					})
 				} else if egressRoute.NodeAddr6.IP != nil {
 					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr6.IP,
 						IP:      egressRoute.NodeAddr6.IP,
 						Network: egressRangeIPNet,
 					})
@@ -149,6 +156,12 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	} else {
 		SetRoutes(addrs)
 		cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+	}
+}
+
+func SetRoutesFromCache() {
+	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		SetRoutes(addrs1.([]ifaceAddress))
 	}
 }
 
