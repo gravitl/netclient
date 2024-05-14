@@ -177,11 +177,11 @@ func RemoveRoutes(addrs []ifaceAddress) {
 }
 
 // SetRoutes - sets additional routes to the interface
-func SetRoutes(addrs []ifaceAddress) {
+func SetRoutes(addrs []ifaceAddress) error {
 	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
 	if err != nil {
 		slog.Error("failed to get link to interface", "error", err)
-		return
+		return err
 	}
 
 	for _, addr := range addrs {
@@ -199,6 +199,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			slog.Error("error adding route", "error", err.Error())
 		}
 	}
+	return nil
 }
 
 // GetDefaultGatewayIp - get current default gateway

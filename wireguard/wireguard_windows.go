@@ -101,7 +101,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 }
 
 // SetRoutes - sets additional routes to the interface
-func SetRoutes(addrs []ifaceAddress) {
+func SetRoutes(addrs []ifaceAddress) error {
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
 			addr.Network.String() == IPv6Network || addr.GwIP == nil {
@@ -125,6 +125,7 @@ func SetRoutes(addrs []ifaceAddress) {
 			}
 		}
 	}
+	return nil
 }
 
 func getInterfaceInfo() (iList []string, err error) {
