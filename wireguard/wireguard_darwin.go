@@ -83,7 +83,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 }
 
 // SetRoutes - sets additional routes to the interface
-func SetRoutes(addrs []ifaceAddress) {
+func SetRoutes(addrs []ifaceAddress) error {
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
 			addr.Network.String() == "::/0" {
@@ -105,6 +105,7 @@ func SetRoutes(addrs []ifaceAddress) {
 		}
 
 	}
+	return nil
 }
 
 func (nc *NCIface) SetMTU() error {

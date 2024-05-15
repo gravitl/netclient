@@ -150,12 +150,16 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 
 		if !isSame {
 			RemoveRoutes(addrs1.([]ifaceAddress))
-			SetRoutes(addrs)
-			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+			err := SetRoutes(addrs)
+			if err == nil {
+				cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+			}
 		}
 	} else {
-		SetRoutes(addrs)
-		cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+		err := SetRoutes(addrs)
+		if err == nil {
+			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+		}
 	}
 }
 
