@@ -8,7 +8,7 @@
 - Egress Enhancement In Multiple Networks
 - Fix armv5-v7 Upgrade Download Link
 - Fix Windows Interface Issue In Multiple Networks
-- Scalability Fixes
+- SSO network join Improvements.
 - Remove Egress Routes After Egress Gateway Is Removed
 
 ## Known Issues 🐞
