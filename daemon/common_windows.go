@@ -34,7 +34,14 @@ func install() error {
 	if err != nil {
 		return err
 	}
-
+	//add netclient path to PATH
+	if !strings.Contains(os.Getenv("PATH"), strings.TrimSuffix(config.GetNetclientPath(), "\\")) {
+		pathCmd := fmt.Sprintf(`setx /M PATH "%%PATH%%;%s"`, strings.TrimSuffix(config.GetNetclientPath(), "\\"))
+		out, err := ncutils.RunCmdFormatted(pathCmd, true)
+		if err != nil {
+			slog.Error("update Path error:", "Error", err.Error()+out)
+		}
+	}
 	err = ncutils.GetEmbedded()
 	if err != nil {
 		return err
