@@ -1,4 +1,4 @@
-# Netclient v0.24.1
+# Netclient v0.24.2
 
 ## Whats New ✨
 - IPv6 Enhancements
