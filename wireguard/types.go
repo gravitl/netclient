@@ -3,8 +3,10 @@ package wireguard
 import (
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -76,6 +78,7 @@ func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
+	GwIP     net.IP
 	IP       net.IP
 	Network  net.IPNet
 	AddRoute bool
@@ -99,10 +102,24 @@ func (n *NCIface) Configure() error {
 	if err := n.SetMTU(); err != nil {
 		return fmt.Errorf("Configure set MTU %w", err)
 	}
-	return apply(&n.Config)
+	err := apply(&n.Config)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func RemoveEgressRoutes() {
+	if addrs, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		RemoveRoutes(addrs.([]ifaceAddress))
+	}
+
+	cache.EgressRouteCache = sync.Map{}
 }
 
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	addrs := []ifaceAddress{}
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRanges {
@@ -110,11 +127,13 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			if egressRangeIPNet.IP != nil {
 				if egressRangeIPNet.IP.To4() != nil {
 					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr.IP,
 						IP:      egressRoute.NodeAddr.IP,
 						Network: egressRangeIPNet,
 					})
 				} else if egressRoute.NodeAddr6.IP != nil {
 					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr6.IP,
 						IP:      egressRoute.NodeAddr6.IP,
 						Network: egressRangeIPNet,
 					})
@@ -125,7 +144,47 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 		}
 
 	}
-	SetRoutes(addrs)
+
+	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		isSame := checkEgressRoutes(addrs, addrs1.([]ifaceAddress))
+
+		if !isSame {
+			RemoveRoutes(addrs1.([]ifaceAddress))
+			err := SetRoutes(addrs)
+			if err == nil {
+				cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+			}
+		}
+	} else {
+		err := SetRoutes(addrs)
+		if err == nil {
+			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
+		}
+	}
+}
+
+func SetRoutesFromCache() {
+	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		SetRoutes(addrs1.([]ifaceAddress))
+	}
+}
+
+// checkEgressRoutes - check if the addr are the same ones
+func checkEgressRoutes(addrs, addrs1 []ifaceAddress) bool {
+	if len(addrs) != len(addrs1) {
+		return false
+	}
+
+	sort.Slice(addrs, func(i, j int) bool { return addrs[i].IP.String() < addrs[j].IP.String() })
+	sort.Slice(addrs1, func(i, j int) bool { return addrs1[i].IP.String() < addrs1[j].IP.String() })
+
+	for i := range addrs {
+		if addrs[i].IP.String() != addrs1[i].IP.String() || addrs[i].Network.String() != addrs1[i].Network.String() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func GetInterface() *NCIface {

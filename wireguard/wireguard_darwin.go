@@ -57,8 +57,33 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
+// RemoveRoutes - remove routes to the interface
+func RemoveRoutes(addrs []ifaceAddress) {
+	for _, addr := range addrs {
+		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
+			addr.Network.String() == "::/0" {
+			continue
+		}
+
+		if addr.Network.IP.To4() != nil {
+			cmd := exec.Command("route", "delete", "-net", "-inet", addr.Network.String(), addr.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				slog.Error("failed to delete route with", "command", cmd.String(), "error", string(out))
+				continue
+			}
+		} else {
+			cmd := exec.Command("route", "delete", "-net", "-inet6", addr.Network.String(), addr.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				slog.Error("failed to delete route with", "command", cmd.String(), "error", string(out))
+				continue
+			}
+		}
+
+	}
+}
+
 // SetRoutes - sets additional routes to the interface
-func SetRoutes(addrs []ifaceAddress) {
+func SetRoutes(addrs []ifaceAddress) error {
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
 			addr.Network.String() == "::/0" {
@@ -80,6 +105,7 @@ func SetRoutes(addrs []ifaceAddress) {
 		}
 
 	}
+	return nil
 }
 
 func (nc *NCIface) SetMTU() error {
@@ -93,6 +119,8 @@ func (nc *NCIface) SetMTU() error {
 }
 
 func (nc *NCIface) Close() {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	err := nc.Iface.Close()
 	if err == nil {
 		sockPath := "/var/run/wireguard/" + nc.Name + ".sock"

@@ -125,6 +125,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	// clear cache
 	cache.EndpointCache = sync.Map{}
 	cache.SkipEndpointCache = sync.Map{}
+	cache.EgressRouteCache = sync.Map{}
 	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	iface := wireguard.GetInterface()
@@ -161,8 +162,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 		if config.Netclient().EndpointIP == nil {
-			config.Netclient().EndpointIP = config.HostPublicIP
-			updateConfig = true
+			if ipv4 := config.HostPublicIP.To4(); ipv4 != nil {
+				config.Netclient().EndpointIP = config.HostPublicIP
+				updateConfig = true
+			} else {
+				config.HostPublicIP = nil
+			}
 		}
 		if config.Netclient().NatType == "" {
 			config.Netclient().NatType = config.HostNatType
@@ -221,6 +226,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wireguard.SetPeers(true)
 	if len(pullresp.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+	} else {
+		wireguard.RemoveEgressRoutes()
 	}
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)

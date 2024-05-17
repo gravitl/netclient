@@ -18,3 +18,6 @@ type EndpointCacheValue struct {
 
 // ServerAddrCache - server addresses mapped to server names
 var ServerAddrCache sync.Map // config.Server.Name -> []net.IP
+
+// EgressRouteCache - Egress Route in local cache
+var EgressRouteCache sync.Map

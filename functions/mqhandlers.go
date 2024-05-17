@@ -35,6 +35,8 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("default message handler -- received message but not handling", "topic", msg.Topic())
 }
 
+var mNMutex = sync.Mutex{} // used to mutex functions of the interface
+
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
@@ -82,19 +84,20 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.NODE_NOOP:
 	default:
 	}
-	// Save new config
-	newNode.Action = models.NODE_NOOP
-	config.UpdateNodeMap(network, newNode)
-	if err := config.WriteNodeConfig(); err != nil {
-		slog.Warn("failed to write node config", "error", err)
-	}
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	if err := nc.Configure(); err != nil {
-		slog.Error("could not configure netmaker interface", "error", err)
-		return
-	}
-	time.Sleep(time.Second)
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
+		// Save new config
+		newNode.Action = models.NODE_NOOP
+		config.UpdateNodeMap(network, newNode)
+		if err := config.WriteNodeConfig(); err != nil {
+			slog.Warn("failed to write node config", "error", err)
+		}
+		nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+		if err := nc.Configure(); err != nil {
+			slog.Error("could not configure netmaker interface", "error", err)
+			return
+		}
+		time.Sleep(time.Second)
+
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
 			slog.Warn("could not notify server to update peers after interface change", "network:", newNode.Network, "error", doneErr)
@@ -189,6 +192,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+	} else {
+		wireguard.RemoveEgressRoutes()
 	}
 	if peerUpdate.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
@@ -326,18 +331,25 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if resetInterface {
-		nc := wireguard.GetInterface()
-		nc.Close()
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		nc.Create()
-		if err := nc.Configure(); err != nil {
-			slog.Error("could not configure netmaker interface", "error", err)
-			return
-		}
-		if err = wireguard.SetPeers(false); err != nil {
-			slog.Error("failed to set peers", err)
-		}
+		resetInterfaceFunc()
 	}
+}
+
+func resetInterfaceFunc() {
+	mNMutex.Lock()
+	defer mNMutex.Unlock()
+	nc := wireguard.GetInterface()
+	nc.Close()
+	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc.Create()
+	if err := nc.Configure(); err != nil {
+		slog.Error("could not configure netmaker interface", "error", err)
+		return
+	}
+	if err := wireguard.SetPeers(false); err != nil {
+		slog.Error("failed to set peers", err)
+	}
+	wireguard.SetRoutesFromCache()
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
@@ -586,6 +598,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+	} else {
+		wireguard.RemoveEgressRoutes()
 	}
 	if pullResponse.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
@@ -596,15 +610,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if resetInterface {
-		nc := wireguard.GetInterface()
-		nc.Close()
-		nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-		nc.Create()
-		if err := nc.Configure(); err != nil {
-			slog.Error("could not configure netmaker interface", "error", err)
-			return
-		}
-		_ = wireguard.SetPeers(false)
-		slog.Info("mqfallback reset interface")
+		resetInterfaceFunc()
 	}
 }
