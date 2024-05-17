@@ -286,6 +286,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		deleteHostCfg(client, serverName)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		config.DeleteClientNodes()
 		restartDaemon = true
 	case models.UpdateHost:
 		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)

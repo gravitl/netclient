@@ -158,6 +158,13 @@ func DeleteServerHostPeerCfg() {
 	netclient.HostPeers = []wgtypes.PeerConfig{}
 }
 
+// DeleteClientNodes - delete the nodes in client config
+func DeleteClientNodes() {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
+	netclient.Nodes = []string{}
+}
+
 // RemoveServerHostPeerCfg - sets remove flag for all peers on the given server peers
 func RemoveServerHostPeerCfg() {
 	netclient := Netclient()

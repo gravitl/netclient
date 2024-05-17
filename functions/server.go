@@ -83,6 +83,7 @@ func LeaveServer(s string) error {
 	config.DeleteServerHostPeerCfg()
 	config.DeleteServer(server.Name)
 	config.DeleteNodes()
+	config.DeleteClientNodes()
 	config.WriteServerConfig()
 	config.WriteNodeConfig()
 	config.WriteNetclientConfig()
