@@ -14,10 +14,14 @@ cleanup() {
 }
 
 
+VERBOSITY_CMD=""
+if [ "$VERBOSITY" != "" ]; then
+    VERBOSITY_CMD="-v ${VERBOSITY}"
+fi
 
 # install netclient
 echo "[netclient] starting netclient daemon"
-/root/netclient install
+/root/netclient $VERBOSITY_CMD install
 wait $!
 
 # join network based on env vars
@@ -62,7 +66,7 @@ if [ "${IFACE_NAME}" != "" ];then
     IFACE_CMD="-I ${IFACE_NAME}"
 fi
 
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD $ENDPOINT6_CMD
+netclient $VERBOSITY_CMD join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $IFACE_CMD $ENDPOINT6_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 tail -f /var/log/netclient.log &
