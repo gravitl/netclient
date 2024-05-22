@@ -179,7 +179,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
+		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
 			err = wireguard.RestoreInternetGw()
 			if err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
@@ -585,7 +585,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
+		if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
 			err = wireguard.RestoreInternetGw()
 			if err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())

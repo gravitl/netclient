@@ -98,6 +98,9 @@ func Daemon() {
 
 // checkAndRestoreDefaultGateway -check if it needs to restore the default gateway
 func checkAndRestoreDefaultGateway() {
+	if config.Netclient().CurrGwNmIP == nil {
+		return
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
@@ -198,12 +201,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	config.SetServerCtx()
 
-	if config.Netclient().OriginalDefaultGatewayIp == nil {
-		originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
-		if err == nil && originalDefaultGwIP != nil {
-			config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
-			updateConfig = true
-		}
+	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
+	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
+		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
+		updateConfig = true
 	}
 
 	if updateConfig {
