@@ -67,6 +67,11 @@ if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 tail -f /var/log/netclient.log &
 
+cleanup() {
+    echo "Container stopped, performing cleanup..."
+    netclient uninstall
+}
+
 #Trap SigTerm
 trap 'cleanup' SIGTERM
 
