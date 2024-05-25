@@ -164,8 +164,15 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 }
 
 func SetRoutesFromCache() {
+	//egress route
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		SetRoutes(addrs1.([]ifaceAddress))
+	}
+	//inetGW route
+	gwIp := config.Netclient().CurrGwNmIP
+	if gwIp != nil {
+		RestoreInternetGw()
+		SetInternetGw(gwIp)
 	}
 }
 

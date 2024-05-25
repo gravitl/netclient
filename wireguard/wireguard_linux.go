@@ -528,7 +528,7 @@ func restoreInternetGwV4() (err error) {
 	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
 
 	//delete default gateway at first
-	if err := netlink.RouteDel(&gwRoute); err != nil {
+	if err := netlink.RouteDel(&gwRoute); err != nil && !strings.Contains(err.Error(), "no such process") {
 		slog.Error("remove default gateway failed", "error", err.Error())
 		slog.Error("please remove the gateway route manually")
 		slog.Error("gateway route: ", gwRoute.String())
