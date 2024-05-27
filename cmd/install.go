@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"errors"
-	"log/slog"
 	"runtime"
 
 	"github.com/gravitl/netclient/functions"
@@ -24,7 +23,6 @@ ensure you specify the full path to then new binary to be installed`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if runtime.GOOS == "windows" {
 			cmd.SilenceUsage = true
-			slog.Warn("cmd install on Windows is deprecated, please install with msi installer")
 			return errors.New("cmd install on Windows is deprecated, please install with msi installer")
 		}
 		return nil
