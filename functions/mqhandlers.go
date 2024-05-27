@@ -35,7 +35,8 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("default message handler -- received message but not handling", "topic", msg.Topic())
 }
 
-var mNMutex = sync.Mutex{} // used to mutex functions of the interface
+var mNMutex = sync.Mutex{}  // used to mutex functions of the interface
+var upgMutex = sync.Mutex{} // used to mutex functions of upgrade
 
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
@@ -144,12 +145,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
+			upgMutex.Lock()
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
 				daemon.HardRestart()
 			}
+			upgMutex.Unlock()
 			//daemon.Restart()
 		}
 	}
@@ -251,6 +254,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Warn("error checking version less than, but will proceed with upgrade", "error", err)
 		}
 		slog.Info("upgrading client to server's version", "version", sv)
+		upgMutex.Lock()
 		if err := UseVersion(sv, false); err != nil {
 			slog.Error("error upgrading client to server's version", "error", err)
 			break
@@ -259,6 +263,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err := daemon.HardRestart(); err != nil {
 			slog.Error("failed to hard restart daemon", "error", err)
 		}
+		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
@@ -552,12 +557,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", pullResponse.ServerConfig.Version)
+			upgMutex.Lock()
 			if err := UseVersion(pullResponse.ServerConfig.Version, false); err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", pullResponse.ServerConfig.Version)
 				daemon.HardRestart()
 			}
+			upgMutex.Unlock()
 		}
 	}
 	if pullResponse.ServerConfig.Version != server.Version {
