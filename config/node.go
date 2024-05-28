@@ -222,7 +222,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.Action = node.Action
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
-	netmakerNode.IsStatic = FormatBool(host.IsStatic)
+	netmakerNode.IsStatic = FormatBool(host.IsStaticPort)
 	netmakerNode.DNSOn = FormatBool(node.DNSOn)
 
 	return &netmakerNode

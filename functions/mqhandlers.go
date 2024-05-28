@@ -367,7 +367,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 			}
 		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
-			if peerInfo.IsStatic {
+			if peerInfo.IsStaticEndpoint {
 				// peer is a static host shouldn't disturb the configuration set by the user
 				continue
 			}
