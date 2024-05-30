@@ -9,6 +9,10 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+var (
+	LogFile = "/var/log/netclient.log"
+)
+
 // setupOpenRC - sets up openrc daemon
 func setupOpenRC() error {
 	service := `#!/sbin/openrc-run
@@ -25,7 +29,6 @@ respawn_period=10
 output_log="/var/log/netclient.log"
 error_log="/var/log/netclient.log"
 depend() {
-	need net
 	after firewall
 }
 
@@ -33,6 +36,13 @@ depend() {
 	bytes := []byte(service)
 	if err := os.WriteFile("/etc/init.d/netclient", bytes, 0755); err != nil {
 		return err
+	}
+	if _, err := os.Stat(LogFile); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.WriteFile(LogFile, []byte("--------------------"), 0644); err != nil {
+				return err
+			}
+		}
 	}
 	if _, err := ncutils.RunCmd("/sbin/rc-update add netclient default", false); err != nil {
 		return err
