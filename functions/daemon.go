@@ -161,14 +161,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
-		if config.Netclient().EndpointIP == nil {
-			if ipv4 := config.HostPublicIP.To4(); ipv4 != nil {
-				config.Netclient().EndpointIP = config.HostPublicIP
-				updateConfig = true
-			} else {
-				config.HostPublicIP = nil
-			}
+		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
+			config.Netclient().EndpointIP = config.HostPublicIP
+			updateConfig = true
+		} else {
+			config.Netclient().EndpointIP = nil
+			updateConfig = true
 		}
+
 		if config.Netclient().NatType == "" {
 			config.Netclient().NatType = config.HostNatType
 			updateConfig = true
@@ -180,14 +180,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		} else {
 			if ipv4 := ipv6.To4(); ipv4 != nil {
 				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
+				config.HostPublicIP6 = nil
+				config.Netclient().EndpointIPv6 = nil
+				updateConfig = true
 			} else {
-				if config.Netclient().EndpointIPv6 == nil {
-					config.Netclient().EndpointIPv6 = ipv6
-					config.HostPublicIP6 = ipv6
-					updateConfig = true
-				} else {
-					config.HostPublicIP6 = ipv6
-				}
+				config.Netclient().EndpointIPv6 = ipv6
+				config.HostPublicIP6 = ipv6
+				updateConfig = true
 			}
 		}
 
@@ -549,6 +548,9 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 		}
 		pubIP = publicIP
 		pubPort = portToStun
+	}
+	if ipv4 := pubIP.To4(); ipv4 == nil {
+		pubIP = nil
 	}
 	return
 }
