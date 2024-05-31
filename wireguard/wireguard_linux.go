@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	RouteTableName = 111
-	IPv4Network    = "0.0.0.0/0"
-	IPv6Network    = "::/0"
+	RouteTableName    = 111
+	IPv4Network       = "0.0.0.0/0"
+	IPv6Network       = "::/0"
+	EgressRouteMetric = 256
 )
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
@@ -170,6 +171,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 			Gw:        addr.GwIP,
 			Src:       addr.IP,
 			Dst:       &addr.Network,
+			Priority:  EgressRouteMetric,
 		}); err != nil {
 			slog.Error("error removing route", "error", err.Error())
 		}
@@ -195,6 +197,7 @@ func SetRoutes(addrs []ifaceAddress) error {
 			Gw:        addr.GwIP,
 			Src:       addr.IP,
 			Dst:       &addr.Network,
+			Priority:  EgressRouteMetric,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Error("error adding route", "error", err.Error())
 		}
