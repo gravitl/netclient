@@ -166,7 +166,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		updateConfig = true
 	}
 
-	if !config.Netclient().IsStaticEndpoint {
+	if !config.Netclient().IsStatic {
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			config.Netclient().EndpointIP = config.HostPublicIP
 			updateConfig = true
@@ -324,7 +324,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
-		if !config.Netclient().IsStaticPort || !config.Netclient().IsStaticEndpoint {
+		if !config.Netclient().IsStaticPort || !config.Netclient().IsStatic {
 			daemon.Restart()
 		}
 	})

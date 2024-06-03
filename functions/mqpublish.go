@@ -270,7 +270,7 @@ func UpdateHostSettings(fallback bool) error {
 	if server == nil {
 		return errors.New("server config is nil")
 	}
-	if !config.Netclient().IsStaticEndpoint {
+	if !config.Netclient().IsStatic {
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			if !config.Netclient().EndpointIP.Equal(config.HostPublicIP) {
 				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
@@ -283,7 +283,7 @@ func UpdateHostSettings(fallback bool) error {
 		}
 	}
 
-	if !config.Netclient().IsStaticEndpoint {
+	if !config.Netclient().IsStatic {
 		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
 			if !config.Netclient().EndpointIPv6.Equal(config.HostPublicIP6) {
 				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())

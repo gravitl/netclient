@@ -20,32 +20,32 @@ import (
 )
 
 var registerFlags = struct {
-	Server         string
-	User           string
-	Token          string
-	Network        string
-	AllNetworks    string
-	EndpointIP     string
-	EndpointIP6    string
-	Port           string
-	MTU            string
-	StaticPort     string
-	StaticEndpoint string
-	Interface      string
-	Name           string
+	Server      string
+	User        string
+	Token       string
+	Network     string
+	AllNetworks string
+	EndpointIP  string
+	EndpointIP6 string
+	Port        string
+	MTU         string
+	StaticPort  string
+	Static      string
+	Interface   string
+	Name        string
 }{
-	Server:         "server",
-	User:           "user",
-	Token:          "token",
-	Network:        "net",
-	AllNetworks:    "all-networks",
-	EndpointIP:     "endpoint-ip",
-	Port:           "port",
-	MTU:            "mtu",
-	StaticPort:     "static-port",
-	StaticEndpoint: "static-endpoint",
-	Name:           "name",
-	Interface:      "interface",
+	Server:      "server",
+	User:        "user",
+	Token:       "token",
+	Network:     "net",
+	AllNetworks: "all-networks",
+	EndpointIP:  "endpoint-ip",
+	Port:        "port",
+	MTU:         "mtu",
+	StaticPort:  "static-port",
+	Static:      "static-endpoint",
+	Name:        "name",
+	Interface:   "interface",
 }
 
 // registerCmd represents the register command
@@ -111,15 +111,15 @@ func setHostFields(cmd *cobra.Command) {
 	if isStaticPort, err := cmd.Flags().GetBool(registerFlags.StaticPort); err == nil {
 		config.Netclient().IsStaticPort = isStaticPort
 	}
-	if isStaticEndpoint, err := cmd.Flags().GetBool(registerFlags.StaticEndpoint); err == nil {
-		config.Netclient().IsStaticEndpoint = isStaticEndpoint
+	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
+		config.Netclient().IsStatic = isStatic
 	}
 	if config.Netclient().IsStaticPort && port == 0 {
 		fmt.Println("port from command: ", port)
 		fmt.Println("error: static port is enabled, please specify valid port with -p option")
 		os.Exit(1)
 	}
-	if config.Netclient().IsStaticEndpoint && (endpointIP == "" && endpointIP6 == "") {
+	if config.Netclient().IsStatic && (endpointIP == "" && endpointIP6 == "") {
 		fmt.Println("endpoint from command: ", endpointIP)
 		fmt.Println("error: static endpoint is enabled, please specify valid endpoint ip with -e option")
 		os.Exit(1)
@@ -200,8 +200,8 @@ func init() {
 	registerCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	registerCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
 	registerCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
-	registerCmd.Flags().BoolP(registerFlags.StaticPort, "i", false, "flag to set host as static port")
-	registerCmd.Flags().BoolP(registerFlags.StaticEndpoint, "j", false, "flag to set host as static endpoint")
+	registerCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
+	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	registerCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(registerCmd)
