@@ -153,7 +153,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				daemon.HardRestart()
 			}
 			upgMutex.Unlock()
-			//daemon.Restart()
 		}
 	}
 	if peerUpdate.ServerVersion != server.Version {
@@ -257,11 +256,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		upgMutex.Lock()
 		if err := UseVersion(sv, false); err != nil {
 			slog.Error("error upgrading client to server's version", "error", err)
-			break
-		}
-		slog.Info("upgraded client to server's version, restarting", "version", sv)
-		if err := daemon.HardRestart(); err != nil {
-			slog.Error("failed to hard restart daemon", "error", err)
+		} else {
+			slog.Info("upgraded client to server's version, restarting", "version", sv)
+			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
