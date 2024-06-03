@@ -14,10 +14,14 @@ cleanup() {
 }
 
 
+VERBOSITY_CMD=""
+if [ "$VERBOSITY" != "" ]; then
+    VERBOSITY_CMD="-v ${VERBOSITY}"
+fi
 
 # install netclient
 echo "[netclient] starting netclient daemon"
-/root/netclient install
+/root/netclient $VERBOSITY_CMD install
 wait $!
 
 # join network based on env vars
