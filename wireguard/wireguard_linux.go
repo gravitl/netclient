@@ -287,6 +287,15 @@ func getLocalIpByDefaultInterfaceName() (ip net.IP, err error) {
 	return ip, errors.New("could not get local ip by default interface name")
 }
 
+func getSourceIpv6(gw net.IP) (src net.IP) {
+	for _, v := range config.Nodes {
+		if v.NetworkRange6.Contains(gw) {
+			return v.Address6.IP
+		}
+	}
+	return src
+}
+
 // SetInternetGw - set a new default gateway and add rules to activate it
 func SetInternetGw(gwIp net.IP) (err error) {
 	if ipv4 := gwIp.To4(); ipv4 != nil {
@@ -299,8 +308,9 @@ func SetInternetGw(gwIp net.IP) (err error) {
 // setInternetGwV6 - set a new default gateway and add rules to activate it
 func setInternetGwV6(gwIp net.IP) (err error) {
 
+	srcIp := getSourceIpv6(gwIp)
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	gwRoute := netlink.Route{Src: net.ParseIP("0::"), Dst: nil, Gw: gwIp, Table: RouteTableName, Priority: 1}
+	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: gwIp, Table: RouteTableName, Priority: 1}
 
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V6, &gwRoute, netlink.RT_FILTER_TABLE)
@@ -452,8 +462,9 @@ func RestoreInternetGw() (err error) {
 
 // restoreInternetGwV6 - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func restoreInternetGwV6() (err error) {
+	srcIp := getSourceIpv6(config.Netclient().CurrGwNmIP)
 	//build the default gateway route
-	gwRoute := netlink.Route{Src: net.ParseIP("0::"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
+	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
 
 	//delete default gateway at first
 	if err := netlink.RouteDel(&gwRoute); err != nil {
@@ -520,7 +531,7 @@ func restoreInternetGwV4() (err error) {
 	gwRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
 
 	//delete default gateway at first
-	if err := netlink.RouteDel(&gwRoute); err != nil {
+	if err := netlink.RouteDel(&gwRoute); err != nil && !strings.Contains(err.Error(), "no such process") {
 		slog.Error("remove default gateway failed", "error", err.Error())
 		slog.Error("please remove the gateway route manually")
 		slog.Error("gateway route: ", gwRoute.String())
