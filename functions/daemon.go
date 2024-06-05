@@ -147,8 +147,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
-	if !config.Netclient().IsStatic {
+	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
+	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
+	if !config.Netclient().IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
 			slog.Error("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != config.Netclient().ListenPort {
@@ -157,13 +159,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 
-		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
-		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
-
 		if config.Netclient().WgPublicListenPort == 0 {
 			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
+
+	} else {
+		config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
+		updateConfig = true
+	}
+
+	if !config.Netclient().IsStatic {
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			config.Netclient().EndpointIP = config.HostPublicIP
 			updateConfig = true
@@ -192,10 +198,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 				updateConfig = true
 			}
 		}
-
-	} else {
-		config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
-		updateConfig = true
 	}
 
 	config.SetServerCtx()
@@ -323,7 +325,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
-		if !config.Netclient().IsStatic {
+		if !config.Netclient().IsStaticPort || !config.Netclient().IsStatic {
 			daemon.Restart()
 		}
 	})
