@@ -39,6 +39,8 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ticker := time.NewTicker(time.Minute * CheckInInterval)
 	defer ticker.Stop()
+	ipTicker := time.NewTicker(time.Second * 15)
+	defer ipTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -54,7 +56,20 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				continue
 			}
 			checkin()
+		case <-ipTicker.C:
+			//
+			if !config.Netclient().IsStatic {
+				ip4, err := GetPublicIP(4)
+				if err == nil && ip4 != nil && !ip4.IsUnspecified() {
+					config.HostPublicIP = ip4
+				}
+				ip6, err := GetPublicIP(6)
+				if err == nil && ip6 != nil && !ip6.IsUnspecified() {
+					config.HostPublicIP6 = ip6
+				}
+			}
 		}
+
 	}
 }
 

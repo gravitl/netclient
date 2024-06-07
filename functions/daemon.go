@@ -12,6 +12,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	externalip "github.com/glendc/go-external-ip"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -324,10 +325,6 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
-		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
-		if !config.Netclient().IsStaticPort || !config.Netclient().IsStatic {
-			daemon.Restart()
-		}
 	})
 	Mqclient = mqtt.NewClient(opts)
 	var connecterr error
@@ -556,4 +553,20 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 		pubIP = nil
 	}
 	return
+}
+
+func GetPublicIP(proto uint) (net.IP, error) {
+	// Create the default consensus,
+	// using the default configuration and no logger.
+	consensus := externalip.DefaultConsensus(&externalip.ConsensusConfig{
+		Timeout: time.Second * 10,
+	}, nil)
+
+	// By default Ipv4 or Ipv6 is returned,
+	// use the function below to limit yourself to IPv4,
+	// or pass in `6` instead to limit yourself to IPv6.
+	consensus.UseIPProtocol(proto)
+	// Get your IP,
+
+	return consensus.ExternalIP()
 }
