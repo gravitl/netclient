@@ -97,6 +97,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("could not configure netmaker interface", "error", err)
 			return
 		}
+		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
 
 		doneErr := publishSignal(&newNode, DONE)
