@@ -26,7 +26,6 @@ func IfaceDelta(currentNode *config.Node, newNode *config.Node) bool {
 	// single comparison statements
 	if newNode.Address.IP.String() != currentNode.Address.IP.String() ||
 		newNode.Address6.IP.String() != currentNode.Address6.IP.String() ||
-		newNode.DNSOn != currentNode.DNSOn ||
 		newNode.Connected != currentNode.Connected {
 		return true
 	}
