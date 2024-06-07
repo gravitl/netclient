@@ -59,13 +59,17 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 		case <-ipTicker.C:
 			//
 			if !config.Netclient().IsStatic {
+				restart := false
 				ip4, err := GetPublicIP(4)
-				if err == nil && ip4 != nil && !ip4.IsUnspecified() {
-					config.HostPublicIP = ip4
+				if err == nil && ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
+					restart = true
 				}
 				ip6, err := GetPublicIP(6)
-				if err == nil && ip6 != nil && !ip6.IsUnspecified() {
-					config.HostPublicIP6 = ip6
+				if err == nil && ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+					restart = true
+				}
+				if restart {
+					daemon.Restart()
 				}
 			}
 		}

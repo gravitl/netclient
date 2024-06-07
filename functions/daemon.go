@@ -184,7 +184,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 
-		ipv6, err := ncutils.GetPublicIPv6()
+		ipv6, err := GetPublicIP(6)
 		if err != nil {
 			slog.Error("GetPublicIPv6 error: ", "error", err.Error())
 		} else {
@@ -536,12 +536,7 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 	portToStun := config.Netclient().ListenPort
 	pubIP, pubPort, natType = stun.HolePunch(portToStun)
 	if pubIP == nil { // if stun has failed fallback to ip service to get publicIP
-		var api string
-		server := config.GetServer(config.CurrServer)
-		if server != nil {
-			api = server.API
-		}
-		publicIP, err := ncutils.GetPublicIP(api)
+		publicIP, err := GetPublicIP(4)
 		if err != nil {
 			slog.Error("failed to get publicIP", "error", err)
 			return
