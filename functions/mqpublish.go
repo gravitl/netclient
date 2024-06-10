@@ -57,18 +57,22 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			checkin()
 		case <-ipTicker.C:
-			//
+			// this ticker is used to detect network changes, and publish new public ip to peers
 			if !config.Netclient().IsStatic {
 				restart := false
 				ip4, err := GetPublicIP(4)
-				slog.Error("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP, "error", err)
 				if err == nil && ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
+					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					restart = true
+				} else if err != nil {
+					slog.Warn("failed to get IPv4", "error", err)
 				}
 				ip6, err := GetPublicIP(6)
-				slog.Error("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6, "error", err)
 				if err == nil && ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					restart = true
+				} else if err != nil {
+					slog.Warn("failed to get IPv6", "error", err)
 				}
 				if restart {
 					daemon.HardRestart()

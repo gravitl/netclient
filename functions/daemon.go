@@ -172,34 +172,29 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	if !config.Netclient().IsStatic {
 		var err error
-		config.HostPublicIP, _ = GetPublicIP(4)
-		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
+		// IPV4
+		config.HostPublicIP, err = GetPublicIP(4)
+		if err == nil && config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			config.Netclient().EndpointIP = config.HostPublicIP
 			updateConfig = true
 		} else {
+			slog.Warn("GetPublicIPv4 error:", "error", err.Error())
 			config.Netclient().EndpointIP = nil
 			updateConfig = true
 		}
-
 		if config.Netclient().NatType == "" {
 			config.Netclient().NatType = config.HostNatType
 			updateConfig = true
 		}
-
-		ipv6, err := GetPublicIP(6)
-		if err != nil {
-			slog.Error("GetPublicIPv6 error: ", "error", err.Error())
+		// IPV6
+		config.HostPublicIP6, err = GetPublicIP(6)
+		if err == nil && config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
+			config.Netclient().EndpointIPv6 = config.HostPublicIP6
+			updateConfig = true
 		} else {
-			if ipv4 := ipv6.To4(); ipv4 != nil {
-				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
-				config.HostPublicIP6 = nil
-				config.Netclient().EndpointIPv6 = nil
-				updateConfig = true
-			} else {
-				config.Netclient().EndpointIPv6 = ipv6
-				config.HostPublicIP6 = ipv6
-				updateConfig = true
-			}
+			slog.Warn("GetPublicIPv6 Warn: ", "Warn", err)
+			config.Netclient().EndpointIPv6 = nil
+			updateConfig = true
 		}
 	}
 
