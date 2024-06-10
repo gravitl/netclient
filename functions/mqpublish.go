@@ -75,6 +75,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					slog.Warn("failed to get IPv6", "error", err)
 				}
 				if restart {
+					logger.Log(0, "restarting netclient due to network changes...")
 					daemon.HardRestart()
 				}
 			}
