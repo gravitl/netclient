@@ -61,38 +61,61 @@ func DoesIPExistLocally(ip net.IP) bool {
 func HolePunch(portToStun int) (publicIP net.IP, publicPort int, natType string) {
 	for _, stunServer := range StunServers {
 		stunServer := stunServer
-		s, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
+		var err error
+		publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp4")
 		if err != nil {
-			logger.Log(1, "failed to resolve udp addr: ", err.Error())
-			continue
-		}
-		l := &net.UDPAddr{
-			IP:   net.ParseIP(""),
-			Port: portToStun,
-		}
-		slog.Debug(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
-		publicIP, publicPort, natType, err = doStunTransaction(l, s)
-		if err != nil {
-			logger.Log(3, "stun transaction failed: ", stunServer.Domain, err.Error())
-			continue
+			slog.Warn("callHolePunch udp4 error", err.Error())
 		}
 		if publicPort == 0 || publicIP == nil || publicIP.IsUnspecified() {
-			continue
+			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp6")
+			if err != nil {
+				slog.Warn("callHolePunch udp6 error", err.Error())
+				continue
+			}
 		}
 		break
 	}
-	slog.Debug("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort))
+	slog.Debug("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort), "nat type", natType)
+	return
+}
+
+func callHolePunch(stunServer StunServer, portToStun int, network string) (publicIP net.IP, publicPort int, natType string, err error) {
+	s, err := net.ResolveUDPAddr(network, fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
+	if err != nil {
+		logger.Log(1, "failed to resolve udp addr: ", network, err.Error())
+		return nil, 0, "", err
+	}
+	l := &net.UDPAddr{
+		IP:   net.ParseIP(""),
+		Port: portToStun,
+	}
+	slog.Debug(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
+	publicIP, publicPort, natType, err = doStunTransaction(l, s)
+	if err != nil {
+		logger.Log(3, "stun transaction failed: ", stunServer.Domain, err.Error())
+		return nil, 0, "", err
+	}
+
 	return
 }
 
 func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort int, natType string, err error) {
 	conn, err := net.DialUDP("udp", lAddr, rAddr)
 	if err != nil {
-		logger.Log(0, "failed to dial: ", err.Error())
+		logger.Log(1, "failed to dial: ", err.Error())
 		return
 	}
-	re := strings.Split(conn.LocalAddr().String(), ":")
-	privIp := net.ParseIP(re[0])
+
+	re := conn.LocalAddr().String()
+	lIP := re[0:strings.LastIndex(re, ":")]
+	if strings.ContainsAny(lIP, "[") {
+		lIP = strings.ReplaceAll(lIP, "[", "")
+	}
+	if strings.ContainsAny(lIP, "]") {
+		lIP = strings.ReplaceAll(lIP, "]", "")
+	}
+
+	privIp := net.ParseIP(lIP)
 	defer func() {
 		if !privIp.Equal(publicIP) {
 			natType = nmmodels.NAT_Types.BehindNAT
