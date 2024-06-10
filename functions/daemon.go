@@ -553,15 +553,15 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 func GetPublicIP(proto uint) (net.IP, error) {
 	// Create the default consensus,
 	// using the default configuration and no logger.
-	consensus := externalip.DefaultConsensus(&externalip.ConsensusConfig{
+	consensus := externalip.NewConsensus(&externalip.ConsensusConfig{
 		Timeout: time.Second * 10,
 	}, nil)
-
+	consensus.AddVoter(externalip.NewHTTPSource("https://icanhazip.com/"), 3)
+	//consensus.AddVoter(externalip.NewHTTPSource("https://myexternalip.com/raw"), 3)
 	// By default Ipv4 or Ipv6 is returned,
 	// use the function below to limit yourself to IPv4,
 	// or pass in `6` instead to limit yourself to IPv6.
 	consensus.UseIPProtocol(proto)
 	// Get your IP,
-
 	return consensus.ExternalIP()
 }
