@@ -206,7 +206,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	if updateConfig {
 		if err := config.WriteNetclientConfig(); err != nil {
-			slog.Error("error writing endpoint/port netclient config file", "error", err)
+			slog.Warn("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
@@ -247,7 +247,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
 				err = wireguard.SetInternetGw(pullresp.DefaultGwIp)
 				if err != nil {
-					slog.Error("failed to set inet gw", "error", err)
+					slog.Warn("failed to set inet gw", "error", err)
 				}
 			}
 		}
