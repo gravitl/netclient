@@ -16,8 +16,8 @@ var (
 	StunServers = []StunServer{
 		{Domain: "stun1.l.google.com", Port: 19302},
 		{Domain: "stun2.l.google.com", Port: 19302},
-		{Domain: "stun1.netmaker.io", Port: 3478},
-		{Domain: "stun2.netmaker.io", Port: 3478},
+		{Domain: "stun3.l.google.com", Port: 19302},
+		{Domain: "stun4.l.google.com", Port: 19302},
 	}
 )
 
@@ -58,15 +58,16 @@ func DoesIPExistLocally(ip net.IP) bool {
 }
 
 // HolePunch - performs udp hole punching on the given port
-func HolePunch(portToStun int) (publicIP net.IP, publicPort int, natType string) {
+func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType string) {
 	for _, stunServer := range StunServers {
 		stunServer := stunServer
 		var err error
-		publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp4")
-		if err != nil {
-			slog.Warn("callHolePunch udp4 error", err.Error())
-		}
-		if publicPort == 0 || publicIP == nil || publicIP.IsUnspecified() {
+		if proto == 4 {
+			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp4")
+			if err != nil {
+				slog.Warn("callHolePunch udp4 error", err.Error())
+			}
+		} else {
 			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp6")
 			if err != nil {
 				slog.Warn("callHolePunch udp6 error", err.Error())
