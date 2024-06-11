@@ -16,8 +16,8 @@ var (
 	StunServers = []StunServer{
 		{Domain: "stun1.l.google.com", Port: 19302},
 		{Domain: "stun2.l.google.com", Port: 19302},
-		{Domain: "stun1.netmaker.io", Port: 3478},
-		{Domain: "stun2.netmaker.io", Port: 3478},
+		{Domain: "stun3.l.google.com", Port: 19302},
+		{Domain: "stun4.l.google.com", Port: 19302},
 	}
 )
 

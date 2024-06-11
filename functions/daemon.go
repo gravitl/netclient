@@ -169,16 +169,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if !config.Netclient().IsStatic {
-		var err error
 		// IPV4
 		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, config.Netclient().ListenPort)
 		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
-		//config.HostPublicIP, err = GetPublicIP(4)
-		if err == nil && config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
+		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			config.Netclient().EndpointIP = config.HostPublicIP
 			updateConfig = true
 		} else {
-			slog.Warn("GetPublicIPv4 error:", "error", err.Error())
+			slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
 			config.Netclient().EndpointIP = nil
 			updateConfig = true
 		}
@@ -188,12 +186,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 		// IPV6
 		config.HostPublicIP6, _, _ = holePunchWgPort(6, config.Netclient().ListenPort)
-		//config.HostPublicIP6, err = GetPublicIP(6)
-		if err == nil && config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
+		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
 			config.Netclient().EndpointIPv6 = config.HostPublicIP6
 			updateConfig = true
 		} else {
-			slog.Warn("GetPublicIPv6 Warn: ", "Warn", err)
+			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
 			config.Netclient().EndpointIPv6 = nil
 			updateConfig = true
 		}
@@ -531,20 +528,16 @@ func UpdateKeys() error {
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
 
-	//portToStun := config.Netclient().ListenPort
 	pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
-	// if pubIP == nil { // if stun has failed fallback to ip service to get publicIP
-	// 	publicIP, err := GetPublicIP(0)
-	// 	if err != nil {
-	// 		slog.Error("failed to get publicIP", "error", err)
-	// 		return
-	// 	}
-	// 	pubIP = publicIP
-	// 	pubPort = portToStun
-	// }
-	// if ipv4 := pubIP.To4(); ipv4 == nil {
-	// 	pubIP = nil
-	// }
+	if pubIP == nil || pubIP.IsUnspecified() { // if stun has failed fallback to ip service to get publicIP
+		publicIP, err := GetPublicIP(uint(proto))
+		if err != nil {
+			slog.Error("failed to get publicIP", "error", err)
+			return
+		}
+		pubIP = publicIP
+		pubPort = portToStun
+	}
 	return
 }
 
