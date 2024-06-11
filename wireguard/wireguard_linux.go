@@ -144,7 +144,7 @@ func (nc *NCIface) ApplyAddrs() error {
 		if addr.IP != nil && addr.Network.IP != nil {
 			slog.Info("adding address", "address", addr.IP.String(), "network", addr.Network.String())
 			if err := netlink.AddrAdd(l, &netlink.Addr{IPNet: &net.IPNet{IP: addr.IP, Mask: addr.Network.Mask}}); err != nil {
-				slog.Error("error adding addr", "error", err.Error())
+				slog.Warn("error adding addr", "error", err.Error())
 			}
 		}
 
@@ -173,7 +173,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 			Dst:       &addr.Network,
 			Priority:  EgressRouteMetric,
 		}); err != nil {
-			slog.Error("error removing route", "error", err.Error())
+			slog.Warn("error removing route", "error", err.Error())
 		}
 	}
 }
@@ -199,7 +199,7 @@ func SetRoutes(addrs []ifaceAddress) error {
 			Dst:       &addr.Network,
 			Priority:  EgressRouteMetric,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
-			slog.Error("error adding route", "error", err.Error())
+			slog.Warn("error adding route", "error", err.Error())
 		}
 	}
 	return nil
@@ -468,9 +468,9 @@ func restoreInternetGwV6() (err error) {
 
 	//delete default gateway at first
 	if err := netlink.RouteDel(&gwRoute); err != nil {
-		slog.Error("remove default gateway failed", "error", err.Error())
-		slog.Error("please remove the gateway route manually")
-		slog.Error("gateway route: ", gwRoute.String())
+		slog.Warn("remove default gateway failed", "error", err.Error())
+		slog.Warn("please remove the gateway route manually")
+		slog.Warn("gateway route: ", gwRoute.String())
 	}
 
 	//delete rules
@@ -485,9 +485,9 @@ func restoreInternetGwV6() (err error) {
 	tRule.Table = RouteTableName
 	tRule.Priority = 3000
 	if err := netlink.RuleDel(tRule); err != nil {
-		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually")
-		slog.Error("rule: ", tRule.String())
+		slog.Warn("delete rule failed", "error", err.Error())
+		slog.Warn("please remove the rule manually")
+		slog.Warn("rule: ", tRule.String())
 	}
 	//second rule :ip rule add table main suppress_prefixlength 0
 	sRule := netlink.NewRule()
@@ -497,8 +497,8 @@ func restoreInternetGwV6() (err error) {
 	sRule.SuppressPrefixlen = 0
 	sRule.Priority = 2500
 	if err := netlink.RuleDel(sRule); err != nil {
-		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually", "rule: ", sRule.String())
+		slog.Warn("delete rule failed", "error", err.Error())
+		slog.Warn("please remove the rule manually", "rule: ", sRule.String())
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
 	lIp, err := getLocalIpByDefaultInterfaceName()
@@ -516,8 +516,8 @@ func restoreInternetGwV6() (err error) {
 	mRule.Table = unix.RT_TABLE_MAIN
 	mRule.Priority = 2000
 	if err := netlink.RuleDel(mRule); err != nil {
-		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually", "rule: ", mRule.String())
+		slog.Warn("delete rule failed", "error", err.Error())
+		slog.Warn("please remove the rule manually", "rule: ", mRule.String())
 
 	}
 
@@ -532,9 +532,9 @@ func restoreInternetGwV4() (err error) {
 
 	//delete default gateway at first
 	if err := netlink.RouteDel(&gwRoute); err != nil && !strings.Contains(err.Error(), "no such process") {
-		slog.Error("remove default gateway failed", "error", err.Error())
-		slog.Error("please remove the gateway route manually")
-		slog.Error("gateway route: ", gwRoute.String())
+		slog.Warn("remove default gateway failed", "error", err.Error())
+		slog.Warn("please remove the gateway route manually")
+		slog.Warn("gateway route: ", gwRoute.String())
 	}
 
 	//delete rules
@@ -548,9 +548,9 @@ func restoreInternetGwV4() (err error) {
 	tRule.Table = RouteTableName
 	tRule.Priority = 3000
 	if err := netlink.RuleDel(tRule); err != nil {
-		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually")
-		slog.Error("rule: ", tRule.String())
+		slog.Warn("delete rule failed", "error", err.Error())
+		slog.Warn("please remove the rule manually")
+		slog.Warn("rule: ", tRule.String())
 	}
 	//second rule :ip rule add table main suppress_prefixlength 0
 	sRule := netlink.NewRule()
@@ -559,8 +559,8 @@ func restoreInternetGwV4() (err error) {
 	sRule.SuppressPrefixlen = 0
 	sRule.Priority = 2500
 	if err := netlink.RuleDel(sRule); err != nil {
-		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually", "rule: ", sRule.String())
+		slog.Warn("delete rule failed", "error", err.Error())
+		slog.Warn("please remove the rule manually", "rule: ", sRule.String())
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
 	lIp, err := getLocalIpByDefaultInterfaceName()
@@ -577,8 +577,8 @@ func restoreInternetGwV4() (err error) {
 	mRule.Table = unix.RT_TABLE_MAIN
 	mRule.Priority = 2000
 	if err := netlink.RuleDel(mRule); err != nil {
-		slog.Error("delete rule failed", "error", err.Error())
-		slog.Error("please remove the rule manually", "rule: ", mRule.String())
+		slog.Warn("delete rule failed", "error", err.Error())
+		slog.Warn("please remove the rule manually", "rule: ", mRule.String())
 
 	}
 

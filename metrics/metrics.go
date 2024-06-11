@@ -99,7 +99,7 @@ func extPeerConnStatus(address string) (bool, int64) {
 	slog.Debug("[metrics] checking external peer connectivity", "address", address)
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
-		slog.Error("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
+		slog.Warn("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
 	} else {
 		pinger.SetPrivileged(true)
 		pinger.Count = 3

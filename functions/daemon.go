@@ -139,7 +139,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
-		slog.Error("error reading netclient config file", "error", err)
+		slog.Warn("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
 	ncutils.SetInterfaceName(config.Netclient().Interface)
@@ -152,7 +152,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	if !config.Netclient().IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
-			slog.Error("no free ports available for use by netclient", "error", err.Error())
+			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != config.Netclient().ListenPort {
 			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
 			config.Netclient().ListenPort = freeport
@@ -185,7 +185,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 		ipv6, err := ncutils.GetPublicIPv6()
 		if err != nil {
-			slog.Error("GetPublicIPv6 error: ", "error", err.Error())
+			slog.Warn("GetPublicIPv6 error: ", "error", err.Error())
 		} else {
 			if ipv4 := ipv6.To4(); ipv4 != nil {
 				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
@@ -210,7 +210,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	if updateConfig {
 		if err := config.WriteNetclientConfig(); err != nil {
-			slog.Error("error writing endpoint/port netclient config file", "error", err)
+			slog.Warn("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
@@ -251,7 +251,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
 				err = wireguard.SetInternetGw(pullresp.DefaultGwIp)
 				if err != nil {
-					slog.Error("failed to set inet gw", "error", err)
+					slog.Warn("failed to set inet gw", "error", err)
 				}
 			}
 		}
