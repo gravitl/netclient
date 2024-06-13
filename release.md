@@ -7,7 +7,7 @@
 
 - Improved FailOver Functionality
 - Local Peer Routing in Dual-Stack Environments
-- Stale Node Issue On Multinet When With `netclient uninstall`
+- Stale Node Issue On Multinet With `netclient uninstall`
 - IPv6 Internet Gateways Improvements
 - Made Version Upgrade Process More Resilient
 - Egress Route Management Improvements
