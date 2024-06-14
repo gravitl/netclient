@@ -58,7 +58,8 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			checkin()
 		case <-ipTicker.C:
 			// this ticker is used to detect network changes, and publish new public ip to peers
-			if !config.Netclient().IsStatic {
+			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
+			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
 				restart := false
 				ip4, _, _ := holePunchWgPort(4, 0)
 				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
