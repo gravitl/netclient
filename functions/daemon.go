@@ -263,7 +263,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 4)
+	wg.Add(1)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 6)
 	if server.IsPro {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)

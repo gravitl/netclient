@@ -1,18 +1,18 @@
-# Netclient v0.24.2
+# Netclient v0.24.3
 
 ## Whats New ✨
-- IPv6 Enhancements
+- Static Host Functionality With Separate Settings For Port and endpoint IP
 
 ## What's Fixed/Improved 🛠
 
-- Egress Enhancement In Multiple Networks
-- Fix armv5-v7 Upgrade Download Link
-- Fix Windows Interface Issue In Multiple Networks
-- SSO network join Improvements.
-- Remove Egress Routes After Egress Gateway Is Removed
+- Improved FailOver Functionality
+- Local Peer Routing in Dual-Stack Environments
+- Stale Node Issue On Multinet With `netclient uninstall`
+- IPv6 Internet Gateways Improvements
+- Made Version Upgrade Process More Resilient
+- Egress Route Management Improvements
 
 ## Known Issues 🐞
 
 - Erratic Traffic Data In Metrics
-- `netclient server leave`  Leaves a Stale Node Record In At Least One Network When Part Of Multiple Networks, But Can Be Deleted From The UI.
-- IPv6 internet traffic does not route to the InetGw in Dual Stack Network
+- Stale peer on the interface, when forced removed from multiple networks at once.
