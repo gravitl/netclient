@@ -1,4 +1,4 @@
-# Netclient v0.24.2
+# Netclient v0.24.3
 
 ## Whats New ✨
 - Static Host Functionality With Separate Settings For Port and endpoint IP
