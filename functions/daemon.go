@@ -185,9 +185,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 		// IPV6
-		config.HostPublicIP6, _, _ = holePunchWgPort(6, config.Netclient().ListenPort)
-		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
-			config.Netclient().EndpointIPv6 = config.HostPublicIP6
+		publicIP6, wgport, natType := holePunchWgPort(6, config.Netclient().ListenPort)
+		if publicIP6 != nil && !publicIP6.IsUnspecified() {
+			config.Netclient().EndpointIPv6 = publicIP6
+			config.HostPublicIP6 = publicIP6
+			if config.HostPublicIP == nil {
+				config.WgPublicListenPort = wgport
+				config.HostNatType = natType
+			}
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
