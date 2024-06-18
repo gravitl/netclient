@@ -1,29 +1,18 @@
-# Netclient v0.24.1
+# Netclient v0.24.2
 
 ## Whats New ✨
-
-- IPv6 and Dual Stack Networks Support Across Platform
-- Turned Off Hole Punching For Static Hosts
-- Endpoint Detection Can Now Be Turned Off By Setting `ENDPOINT_DETECTION=false` On Server Config
+- Static Host Functionality With Separate Settings For Port and endpoint IP
 
 ## What's Fixed/Improved 🛠
 
-- Fixed The Issues Around Config Getting Corrupted
-- Scalability Fixes
-- Improved Endpoint Detection Logic, Optimised To Throttle The Number Of Open Test Connections
-- Improved FailedOver Logic To Work At Scale
-- Fixed Egress Routes In Dual Stack Netmaker Overlay Networks
-- Fixed Windows Adapter Issues
-- Added Improvments For Handling Static Host Args On `netclient join` Command
-- Mac IPv6 addresses/route issues
-- Fixed Client Connectivity Metrics Data
+- Improved FailOver Functionality
+- Local Peer Routing in Dual-Stack Environments
+- Stale Node Issue On Multinet With `netclient uninstall`
+- IPv6 Internet Gateways Improvements
+- Made Version Upgrade Process More Resilient
+- Egress Route Management Improvements
 
 ## Known Issues 🐞
 
-- Windows Intermittent Issues With Interface Disappearing When Joined On Multiple Networks
 - Erratic Traffic Data In Metrics
-- `netclient server leave`  Leaves a Stale Node Record In At Least One Network When Part Of Multiple Networks, But Can Be Deleted From The UI.
-- On Darwin Stale Egress Route Entries Remain On The Machine After Removing Egress Range Or Removing The Egress Server
-
-
-
+- Stale peer on the interface, when forced removed from multiple networks at once.

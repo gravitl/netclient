@@ -98,6 +98,9 @@ func Daemon() {
 
 // checkAndRestoreDefaultGateway -check if it needs to restore the default gateway
 func checkAndRestoreDefaultGateway() {
+	if config.Netclient().CurrGwNmIP == nil {
+		return
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
@@ -136,7 +139,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
-		slog.Error("error reading netclient config file", "error", err)
+		slog.Warn("error reading netclient config file", "error", err)
 	}
 	config.UpdateNetclient(*config.Netclient())
 	ncutils.SetInterfaceName(config.Netclient().Interface)
@@ -144,51 +147,21 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
-	if !config.Netclient().IsStatic {
+	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
+	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
+	if !config.Netclient().IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
-			slog.Error("no free ports available for use by netclient", "error", err.Error())
+			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != config.Netclient().ListenPort {
 			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
 			config.Netclient().ListenPort = freeport
 			updateConfig = true
 		}
 
-		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
-		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
-
 		if config.Netclient().WgPublicListenPort == 0 {
 			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
-		}
-		if config.Netclient().EndpointIP == nil {
-			if ipv4 := config.HostPublicIP.To4(); ipv4 != nil {
-				config.Netclient().EndpointIP = config.HostPublicIP
-				updateConfig = true
-			} else {
-				config.HostPublicIP = nil
-			}
-		}
-		if config.Netclient().NatType == "" {
-			config.Netclient().NatType = config.HostNatType
-			updateConfig = true
-		}
-
-		ipv6, err := ncutils.GetPublicIPv6()
-		if err != nil {
-			slog.Error("GetPublicIPv6 error: ", "error", err.Error())
-		} else {
-			if ipv4 := ipv6.To4(); ipv4 != nil {
-				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
-			} else {
-				if config.Netclient().EndpointIPv6 == nil {
-					config.Netclient().EndpointIPv6 = ipv6
-					config.HostPublicIP6 = ipv6
-					updateConfig = true
-				} else {
-					config.HostPublicIP6 = ipv6
-				}
-			}
 		}
 
 	} else {
@@ -196,19 +169,48 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		updateConfig = true
 	}
 
-	config.SetServerCtx()
-
-	if config.Netclient().OriginalDefaultGatewayIp == nil {
-		originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
-		if err == nil && originalDefaultGwIP != nil {
-			config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
+	if !config.Netclient().IsStatic {
+		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
+			config.Netclient().EndpointIP = config.HostPublicIP
+			updateConfig = true
+		} else {
+			config.Netclient().EndpointIP = nil
 			updateConfig = true
 		}
+
+		if config.Netclient().NatType == "" {
+			config.Netclient().NatType = config.HostNatType
+			updateConfig = true
+		}
+
+		ipv6, err := ncutils.GetPublicIPv6()
+		if err != nil {
+			slog.Warn("GetPublicIPv6 error: ", "error", err.Error())
+		} else {
+			if ipv4 := ipv6.To4(); ipv4 != nil {
+				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
+				config.HostPublicIP6 = nil
+				config.Netclient().EndpointIPv6 = nil
+				updateConfig = true
+			} else {
+				config.Netclient().EndpointIPv6 = ipv6
+				config.HostPublicIP6 = ipv6
+				updateConfig = true
+			}
+		}
+	}
+
+	config.SetServerCtx()
+
+	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
+	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
+		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
+		updateConfig = true
 	}
 
 	if updateConfig {
 		if err := config.WriteNetclientConfig(); err != nil {
-			slog.Error("error writing endpoint/port netclient config file", "error", err)
+			slog.Warn("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
@@ -249,7 +251,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
 				err = wireguard.SetInternetGw(pullresp.DefaultGwIp)
 				if err != nil {
-					slog.Error("failed to set inet gw", "error", err)
+					slog.Warn("failed to set inet gw", "error", err)
 				}
 			}
 		}
@@ -260,7 +262,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 4)
+	wg.Add(1)
+	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 6)
 	if server.IsPro {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
@@ -323,7 +327,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
 		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
-		if !config.Netclient().IsStatic {
+		if !config.Netclient().IsStaticPort || !config.Netclient().IsStatic {
 			daemon.Restart()
 		}
 	})
@@ -549,6 +553,9 @@ func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
 		}
 		pubIP = publicIP
 		pubPort = portToStun
+	}
+	if ipv4 := pubIP.To4(); ipv4 == nil {
+		pubIP = nil
 	}
 	return
 }

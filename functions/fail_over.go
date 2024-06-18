@@ -66,7 +66,7 @@ func handlePeerFailOver(signal models.Signal) error {
 			TimeStamp:      time.Now().Unix(),
 		})
 		if err != nil {
-			slog.Error("failed to signal peer", "error", err.Error())
+			slog.Warn("failed to signal peer", "error", err.Error())
 		} else {
 			signalThrottleCache.Delete(signal.FromHostID)
 		}

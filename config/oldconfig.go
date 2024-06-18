@@ -150,6 +150,7 @@ func ConvertOldNode(netmakerNode *models.LegacyNode) (*Node, *Config) {
 	node.Action = netmakerNode.Action
 	node.IsEgressGateway = ParseBool(netmakerNode.IsEgressGateway)
 	node.IsIngressGateway = ParseBool(netmakerNode.IsIngressGateway)
+	host.IsStaticPort = ParseBool(netmakerNode.IsStatic)
 	host.IsStatic = ParseBool(netmakerNode.IsStatic)
 	node.DNSOn = ParseBool(netmakerNode.DNSOn)
 	// node.Peers = nodeGet.Peers
