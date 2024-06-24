@@ -54,25 +54,12 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			if config.CurrServer == "" {
 				continue
 			}
-			server := config.GetServer(config.CurrServer)
-			if server == nil {
-				slog.Warn("server config is nil")
-				continue
-			}
 			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
 				slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+				callPublishMetrics(true)
 				continue
 			}
-			if server.IsPro {
-				serverNodes := config.GetNodes()
-				for _, node := range serverNodes {
-					node := node
-					if node.Connected {
-						slog.Debug("collecting metrics for", "network", node.Network)
-						go publishMetrics(&node, false)
-					}
-				}
-			}
+			callPublishMetrics(false)
 		case <-checkinTicker.C:
 			if config.CurrServer == "" {
 				continue
@@ -221,6 +208,25 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 		return err
 	}
 	return nil
+}
+
+func callPublishMetrics(fallback bool) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		slog.Warn("server config is nil")
+		return
+	}
+
+	if server.IsPro {
+		serverNodes := config.GetNodes()
+		for _, node := range serverNodes {
+			node := node
+			if node.Connected {
+				slog.Debug("collecting metrics for", "network", node.Network)
+				go publishMetrics(&node, fallback)
+			}
+		}
+	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
