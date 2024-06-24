@@ -12,6 +12,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	externalip "github.com/glendc/go-external-ip"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -147,8 +148,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
-	config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort()
-	slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 
 	if !config.Netclient().IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
@@ -170,33 +169,35 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if !config.Netclient().IsStatic {
+		// IPV4
+		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, config.Netclient().ListenPort)
+		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			config.Netclient().EndpointIP = config.HostPublicIP
 			updateConfig = true
 		} else {
+			slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
 			config.Netclient().EndpointIP = nil
 			updateConfig = true
 		}
-
 		if config.Netclient().NatType == "" {
 			config.Netclient().NatType = config.HostNatType
 			updateConfig = true
 		}
-
-		ipv6, err := ncutils.GetPublicIPv6()
-		if err != nil {
-			slog.Warn("GetPublicIPv6 error: ", "error", err.Error())
-		} else {
-			if ipv4 := ipv6.To4(); ipv4 != nil {
-				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "No IPv6 public ip found")
-				config.HostPublicIP6 = nil
-				config.Netclient().EndpointIPv6 = nil
-				updateConfig = true
-			} else {
-				config.Netclient().EndpointIPv6 = ipv6
-				config.HostPublicIP6 = ipv6
-				updateConfig = true
+		// IPV6
+		publicIP6, wgport, natType := holePunchWgPort(6, config.Netclient().ListenPort)
+		if publicIP6 != nil && !publicIP6.IsUnspecified() {
+			config.Netclient().EndpointIPv6 = publicIP6
+			config.HostPublicIP6 = publicIP6
+			if config.HostPublicIP == nil {
+				config.WgPublicListenPort = wgport
+				config.HostNatType = natType
 			}
+			updateConfig = true
+		} else {
+			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
+			config.Netclient().EndpointIPv6 = nil
+			updateConfig = true
 		}
 	}
 
@@ -326,10 +327,6 @@ func setupMQTT(server *config.Server) error {
 	opts.SetResumeSubs(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
 		slog.Warn("detected broker connection lost for", "server", server.Broker)
-		// restart daemon for new udp hole punch if MQTT connection is lost (can happen on network change)
-		if !config.Netclient().IsStaticPort || !config.Netclient().IsStatic {
-			daemon.Restart()
-		}
 	})
 	Mqclient = mqtt.NewClient(opts)
 	var connecterr error
@@ -536,26 +533,34 @@ func UpdateKeys() error {
 	return nil
 }
 
-func holePunchWgPort() (pubIP net.IP, pubPort int, natType string) {
+func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
 
-	portToStun := config.Netclient().ListenPort
-	pubIP, pubPort, natType = stun.HolePunch(portToStun)
-	if pubIP == nil { // if stun has failed fallback to ip service to get publicIP
-		var api string
-		server := config.GetServer(config.CurrServer)
-		if server != nil {
-			api = server.API
-		}
-		publicIP, err := ncutils.GetPublicIP(api)
+	pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
+	if pubIP == nil || pubIP.IsUnspecified() { // if stun has failed fallback to ip service to get publicIP
+		publicIP, err := GetPublicIP(uint(proto))
 		if err != nil {
-			slog.Error("failed to get publicIP", "error", err)
+			slog.Warn("failed to get publicIP", "error", err)
 			return
 		}
 		pubIP = publicIP
 		pubPort = portToStun
 	}
-	if ipv4 := pubIP.To4(); ipv4 == nil {
-		pubIP = nil
-	}
 	return
+}
+
+func GetPublicIP(proto uint) (net.IP, error) {
+	// Create the default consensus,
+	// using the default configuration and no logger.
+	consensus := externalip.NewConsensus(&externalip.ConsensusConfig{
+		Timeout: time.Second * 10,
+	}, nil)
+	consensus.AddVoter(externalip.NewHTTPSource("https://icanhazip.com/"), 3)
+	consensus.AddVoter(externalip.NewHTTPSource("https://ifconfig.me/ip"), 3)
+	consensus.AddVoter(externalip.NewHTTPSource("https://myexternalip.com/raw"), 3)
+	// By default Ipv4 or Ipv6 is returned,
+	// use the function below to limit yourself to IPv4,
+	// or pass in `6` instead to limit yourself to IPv6.
+	consensus.UseIPProtocol(proto)
+	// Get your IP,
+	return consensus.ExternalIP()
 }
