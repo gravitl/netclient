@@ -39,6 +39,8 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ticker := time.NewTicker(time.Minute * CheckInInterval)
 	defer ticker.Stop()
+	ipTicker := time.NewTicker(time.Second * 15)
+	defer ipTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -54,7 +56,28 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				continue
 			}
 			checkin()
+		case <-ipTicker.C:
+			// this ticker is used to detect network changes, and publish new public ip to peers
+			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
+			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
+				restart := false
+				ip4, _, _ := holePunchWgPort(4, 0)
+				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
+					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					restart = true
+				}
+				ip6, _, _ := holePunchWgPort(6, 0)
+				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					restart = true
+				}
+				if restart {
+					logger.Log(0, "restarting netclient due to network changes...")
+					daemon.HardRestart()
+				}
+			}
 		}
+
 	}
 }
 
