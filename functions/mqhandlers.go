@@ -315,7 +315,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.RequestPull:
 		clearRetainedMsg(client, msg.Topic())
 		Pull(true)
-	case models.JoinPull:
+	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
 		Pull(false)
 	default:
