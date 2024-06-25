@@ -56,10 +56,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
 				slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				callPublishMetrics(true)
+				go callPublishMetrics(true)
 				continue
 			}
-			callPublishMetrics(false)
+			go callPublishMetrics(false)
 		case <-checkinTicker.C:
 			if config.CurrServer == "" {
 				continue
