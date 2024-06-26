@@ -317,7 +317,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		Pull(true)
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		Pull(false)
+		response, resetInterface, replacePeers, err := Pull(false)
+		if err != nil {
+			slog.Error("pull failed", "error", err)
+		} else {
+			mqFallbackPull(response, resetInterface, replacePeers)
+		}
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
