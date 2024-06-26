@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
@@ -15,8 +16,12 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+var pMutex = sync.Mutex{} // used to mutex functions for pull
+
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(restart bool) (models.HostPull, bool, bool, error) {
+	pMutex.Lock()
+	defer pMutex.Unlock()
 	resetInterface := false
 	replacePeers := false
 	serverName := config.CurrServer
@@ -79,6 +84,8 @@ func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	if restart {
 		logger.Log(3, "restarting daemon")
 		return models.HostPull{}, resetInterface, replacePeers, daemon.Restart()
+	} else {
+		_ = wireguard.SetPeers(replacePeers)
 	}
 	return pullResponse, resetInterface, replacePeers, nil
 }
