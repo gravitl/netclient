@@ -204,7 +204,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	if err != nil {
 		return err
 	}
-	if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 0); err != nil {
+	if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
 		return err
 	}
 	return nil
@@ -277,7 +277,7 @@ func publishMetrics(node *config.Node, fallback bool) {
 		hostUpdateFallback(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
 		return
 	}
-	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 0); err != nil {
+	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
 		logger.Log(0, "error occurred during publishing of metrics on node", config.Netclient().Name, err.Error())
 
 	}
