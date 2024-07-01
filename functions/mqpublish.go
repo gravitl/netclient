@@ -43,7 +43,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer ipTicker.Stop()
 	checkinTicker := time.NewTicker(time.Minute * 4)
 	defer checkinTicker.Stop()
-	metricTicker := time.NewTicker(time.Minute * 5)
+	metricTicker := time.NewTicker(time.Minute * 10)
 	defer metricTicker.Stop()
 	for {
 		select {
@@ -76,7 +76,11 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
 				slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				checkinFallback()
+				// check/update host settings; publish if changed
+				if err := UpdateHostSettings(true); err != nil {
+					logger.Log(0, "failed to update host settings", err.Error())
+					return
+				}
 				continue
 			}
 			// check/update host settings; publish if changed
@@ -105,14 +109,6 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			}
 		}
 
-	}
-}
-
-func checkinFallback() {
-	// check/update host settings; publish if changed
-	if err := UpdateHostSettings(true); err != nil {
-		logger.Log(0, "failed to update host settings", err.Error())
-		return
 	}
 }
 
