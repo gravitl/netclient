@@ -484,9 +484,12 @@ func getServerBrokerStatus() (bool, error) {
 		Response:      status,
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, _, err := endpoint.GetJSON(status, models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(status, models.ErrorResponse{})
 	if err != nil {
-
+		if errors.Is(err, httpclient.ErrStatus) {
+			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
+			return false, err
+		}
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
 		return false, err
 	}
