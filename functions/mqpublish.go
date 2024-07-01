@@ -54,39 +54,39 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			if config.CurrServer == "" {
 				continue
 			}
-			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-				slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				go callPublishMetrics(true)
-				continue
-			}
-			go callPublishMetrics(false)
+			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+			go callPublishMetrics(true)
+			// 	continue
+			// }
+			// go callPublishMetrics(false)
 		case <-checkinTicker.C:
 			if config.CurrServer == "" {
 				continue
 			}
-			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-				slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
-				continue
-			}
-			checkin()
+			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+			hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
+			// 	continue
+			// }
+			// checkin()
 		case <-ticker.C:
 			if config.CurrServer == "" {
 				continue
 			}
-			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-				slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				// check/update host settings; publish if changed
-				if err := UpdateHostSettings(true); err != nil {
-					logger.Log(0, "failed to update host settings", err.Error())
-					return
-				}
-				continue
-			}
-			// check/update host settings; publish if changed
-			if err := UpdateHostSettings(false); err != nil {
+			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+			// 	// check/update host settings; publish if changed
+			if err := UpdateHostSettings(true); err != nil {
 				slog.Warn("failed to update host settings", err.Error())
+				// 		return
 			}
+			// 	continue
+			// }
+			// // check/update host settings; publish if changed
+			// if err := UpdateHostSettings(false); err != nil {
+			// 	slog.Warn("failed to update host settings", err.Error())
+			// }
 		case <-ipTicker.C:
 			// this ticker is used to detect network changes, and publish new public ip to peers
 			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
