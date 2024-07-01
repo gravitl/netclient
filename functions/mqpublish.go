@@ -41,21 +41,52 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer ticker.Stop()
 	ipTicker := time.NewTicker(time.Second * 15)
 	defer ipTicker.Stop()
+	checkinTicker := time.NewTicker(time.Minute * 4)
+	defer checkinTicker.Stop()
+	metricTicker := time.NewTicker(time.Minute * 10)
+	defer metricTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Log(0, "checkin routine closed")
 			return
+		case <-metricTicker.C:
+			if config.CurrServer == "" {
+				continue
+			}
+			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+			go callPublishMetrics(true)
+			// 	continue
+			// }
+			// go callPublishMetrics(false)
+		case <-checkinTicker.C:
+			if config.CurrServer == "" {
+				continue
+			}
+			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+			hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
+			// 	continue
+			// }
+			// checkin()
 		case <-ticker.C:
 			if config.CurrServer == "" {
 				continue
 			}
-			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-				logger.Log(0, "MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				checkinFallback()
-				continue
+			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
+			// 	// check/update host settings; publish if changed
+			if err := UpdateHostSettings(true); err != nil {
+				slog.Warn("failed to update host settings", err.Error())
+				// 		return
 			}
-			checkin()
+			// 	continue
+			// }
+			// // check/update host settings; publish if changed
+			// if err := UpdateHostSettings(false); err != nil {
+			// 	slog.Warn("failed to update host settings", err.Error())
+			// }
 		case <-ipTicker.C:
 			// this ticker is used to detect network changes, and publish new public ip to peers
 			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
@@ -79,15 +110,6 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 	}
-}
-
-func checkinFallback() {
-	// check/update host settings; publish if changed
-	if err := UpdateHostSettings(true); err != nil {
-		logger.Log(0, "failed to update host settings", err.Error())
-		return
-	}
-	hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
 }
 
 // hostUpdateFallback - used to send host updates to server when there is a mq connection failure
@@ -125,11 +147,6 @@ func hostUpdateFallback(hu models.HostUpdate) error {
 }
 
 func checkin() {
-	// check/update host settings; publish if changed
-	if err := UpdateHostSettings(false); err != nil {
-		logger.Log(0, "failed to update host settings", err.Error())
-		return
-	}
 	if err := PublishHostUpdate(config.CurrServer, models.HostMqAction(models.CheckIn)); err != nil {
 		logger.Log(0, "error publishing checkin", err.Error())
 		return
@@ -187,6 +204,25 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 		return err
 	}
 	return nil
+}
+
+func callPublishMetrics(fallback bool) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		slog.Warn("server config is nil")
+		return
+	}
+
+	if server.IsPro {
+		serverNodes := config.GetNodes()
+		for _, node := range serverNodes {
+			node := node
+			if node.Connected {
+				slog.Debug("collecting metrics for", "network", node.Network)
+				go publishMetrics(&node, fallback)
+			}
+		}
+	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
@@ -334,16 +370,6 @@ func UpdateHostSettings(fallback bool) error {
 	if config.HostNatType != "" && config.Netclient().NatType != config.HostNatType {
 		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
-	}
-	if server.IsPro {
-		serverNodes := config.GetNodes()
-		for _, node := range serverNodes {
-			node := node
-			if node.Connected {
-				slog.Debug("collecting metrics for", "network", node.Network)
-				go publishMetrics(&node, fallback)
-			}
-		}
 	}
 
 	ip, err := getInterfaces()
