@@ -43,7 +43,15 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer ipTicker.Stop()
 	checkinTicker := time.NewTicker(time.Minute * 4)
 	defer checkinTicker.Stop()
-	metricTicker := time.NewTicker(time.Minute * 10)
+	mi := 15
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		i, err := strconv.Atoi(server.MetricInterval)
+		if err == nil && i > 0 {
+			mi = i
+		}
+	}
+	metricTicker := time.NewTicker(time.Minute * time.Duration(mi))
 	defer metricTicker.Stop()
 	for {
 		select {

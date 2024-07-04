@@ -53,7 +53,7 @@ func processPeerSignal(signal models.Signal) {
 func handlePeerFailOver(signal models.Signal) error {
 	if !signal.Reply {
 		// signal back
-		err := SignalPeer(models.Signal{
+		s := models.Signal{
 			Server:         signal.Server,
 			FromHostID:     signal.ToHostID,
 			FromNodeID:     signal.ToNodeID,
@@ -64,7 +64,8 @@ func handlePeerFailOver(signal models.Signal) error {
 			Reply:          true,
 			Action:         models.ConnNegotiation,
 			TimeStamp:      time.Now().Unix(),
-		})
+		}
+		err := hostUpdateFallback(models.HostUpdate{Action: models.SignalHost, Signal: s})
 		if err != nil {
 			slog.Warn("failed to signal peer", "error", err.Error())
 		} else {
@@ -148,7 +149,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						}
 						// signal peer
 						if Mqclient != nil && Mqclient.IsConnectionOpen() {
-							err = SignalPeer(s)
+							err = hostUpdateFallback(models.HostUpdate{Action: models.SignalHost, Signal: s})
 							if err != nil {
 								logger.Log(2, "failed to signal peer: ", err.Error())
 							} else {
