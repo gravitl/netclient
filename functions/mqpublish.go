@@ -62,39 +62,19 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			if config.CurrServer == "" {
 				continue
 			}
-			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
 			go callPublishMetrics(true)
-			// 	continue
-			// }
-			// go callPublishMetrics(false)
 		case <-checkinTicker.C:
 			if config.CurrServer == "" {
 				continue
 			}
-			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-			hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
-			// 	continue
-			// }
-			// checkin()
+			hostServerUpdate(models.HostUpdate{Action: models.CheckIn})
 		case <-ticker.C:
 			if config.CurrServer == "" {
 				continue
 			}
-			// if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-			// 	slog.Warn("MQ client is not connected, using fallback checkin for server", config.CurrServer)
-			// 	// check/update host settings; publish if changed
 			if err := UpdateHostSettings(true); err != nil {
 				slog.Warn("failed to update host settings", err.Error())
-				// 		return
 			}
-			// 	continue
-			// }
-			// // check/update host settings; publish if changed
-			// if err := UpdateHostSettings(false); err != nil {
-			// 	slog.Warn("failed to update host settings", err.Error())
-			// }
 		case <-ipTicker.C:
 			// this ticker is used to detect network changes, and publish new public ip to peers
 			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
@@ -120,8 +100,8 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-// hostUpdateFallback - used to send host updates to server when there is a mq connection failure
-func hostUpdateFallback(hu models.HostUpdate) error {
+// hostServerUpdate - used to send host updates to server via restful api
+func hostServerUpdate(hu models.HostUpdate) error {
 
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
@@ -278,7 +258,7 @@ func publishMetrics(node *config.Node, fallback bool) {
 		return
 	}
 	if fallback {
-		hostUpdateFallback(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
+		hostServerUpdate(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
 		return
 	}
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
@@ -412,7 +392,7 @@ func UpdateHostSettings(fallback bool) error {
 		}
 		slog.Info("publishing host update for endpoint changes")
 		if fallback {
-			hostUpdateFallback(models.HostUpdate{Action: models.UpdateHost})
+			hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
 		} else {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				logger.Log(0, "could not publish endpoint change", err.Error())
