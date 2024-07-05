@@ -123,14 +123,14 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
-						connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
-						if connected {
-							// peer is connected,so continue
+						// check if there is handshake on interface
+						connected, err := isPeerConnected(pubKey)
+						if err != nil || connected {
 							continue
 						}
-						// check if there is handshake on interface as fallback in case ping failed due to unknown reasons
-						connected, err = isPeerConnected(pubKey)
-						if err != nil || connected {
+						connected, _ = metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
+						if connected {
+							// peer is connected,so continue
 							continue
 						}
 						s := models.Signal{
