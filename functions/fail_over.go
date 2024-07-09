@@ -54,6 +54,7 @@ func handlePeerFailOver(signal models.Signal) error {
 	if !signal.Reply {
 		// signal back
 		err := SignalPeer(models.Signal{
+
 			Server:         signal.Server,
 			FromHostID:     signal.ToHostID,
 			FromNodeID:     signal.ToNodeID,
@@ -65,6 +66,7 @@ func handlePeerFailOver(signal models.Signal) error {
 			Action:         models.ConnNegotiation,
 			TimeStamp:      time.Now().Unix(),
 		})
+
 		if err != nil {
 			slog.Warn("failed to signal peer", "error", err.Error())
 		} else {
@@ -103,6 +105,9 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
+					if !failOverExists(node) {
+						continue
+					}
 					peers, err := getPeerInfo(node)
 					if err != nil {
 						slog.Error("failed to get peer Info", "error", err)
@@ -118,14 +123,14 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
-						connected, _ := metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
-						if connected {
-							// peer is connected,so continue
+						// check if there is handshake on interface
+						connected, err := isPeerConnected(pubKey)
+						if err != nil || connected {
 							continue
 						}
-						// check if there is handshake on interface as fallback in case ping failed due to unknown reasons
-						connected, err = isPeerConnected(pubKey)
-						if err != nil || connected {
+						connected, _ = metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
+						if connected {
+							// peer is connected,so continue
 							continue
 						}
 						s := models.Signal{
@@ -172,6 +177,39 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 func isPeerExist(peerKey string) bool {
 	_, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	return err == nil
+}
+
+func failOverExists(node config.Node) bool {
+	server := config.GetServer(node.Server)
+	if server == nil {
+		return false
+	}
+	token, err := auth.Authenticate(server, config.Netclient())
+	if err != nil {
+		slog.Warn("failed to authenticate when checking failover node", err.Error())
+		return false
+	}
+
+	url := fmt.Sprintf("https://%s/api/v1/node/%s/failover", server.API, node.ID)
+	endpoint := httpclient.JSONEndpoint[models.Node, models.ErrorResponse]{
+		URL:           url,
+		Method:        http.MethodGet,
+		Authorization: "Bearer " + token,
+		Data:          nil,
+		Response:      models.Node{},
+		ErrorResponse: models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(models.Node{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Warn("status error calling ", endpoint.URL, errData.Message)
+			return false
+		}
+		slog.Warn("no failover node returned", err.Error())
+		return false
+	}
+
+	return true
 }
 
 func getPeerInfo(node config.Node) (models.PeerMap, error) {
