@@ -84,8 +84,6 @@ func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	if restart {
 		logger.Log(3, "restarting daemon")
 		return models.HostPull{}, resetInterface, replacePeers, daemon.Restart()
-	} else {
-		_ = wireguard.SetPeers(replacePeers)
 	}
 	return pullResponse, resetInterface, replacePeers, nil
 }
