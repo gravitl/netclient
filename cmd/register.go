@@ -87,13 +87,18 @@ func setHostFields(cmd *cobra.Command) {
 		}
 		config.Netclient().ListenPort = port
 	}
+	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
+		config.Netclient().IsStatic = isStatic
+	}
 	endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP)
 	if err == nil && endpointIP != "" {
 		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
+		config.Netclient().IsStatic = true
 	}
 	endpointIP6, err := cmd.Flags().GetString(registerFlags.EndpointIP6)
 	if err == nil && endpointIP6 != "" {
 		config.Netclient().EndpointIPv6 = net.ParseIP(endpointIP6)
+		config.Netclient().IsStatic = true
 	}
 	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
 		config.Netclient().MTU = mtu
@@ -110,9 +115,6 @@ func setHostFields(cmd *cobra.Command) {
 	}
 	if isStaticPort, err := cmd.Flags().GetBool(registerFlags.StaticPort); err == nil {
 		config.Netclient().IsStaticPort = isStaticPort
-	}
-	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
-		config.Netclient().IsStatic = isStatic
 	}
 	if config.Netclient().IsStaticPort && port == 0 {
 		fmt.Println("port from command: ", port)
