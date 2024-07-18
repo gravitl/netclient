@@ -14,7 +14,7 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.24.3-0.20240704124720-780da3b69617
+	github.com/gravitl/netmaker v0.24.3
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
@@ -80,6 +80,8 @@ require (
 	github.com/rqlite/gorqlite v0.0.0-20240122221808-a8a425b1a6aa // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/seancfoley/bintree v1.3.1 // indirect
+	github.com/seancfoley/ipaddress-go v1.6.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
