@@ -1,16 +1,16 @@
 # Netclient v0.24.3
 
 ## Whats New ✨
-- Static Host Functionality With Separate Settings For Port and endpoint IP
+
+- Network Change Detection System
+- Switched Client Checkins To API
 
 ## What's Fixed/Improved 🛠
 
-- Improved FailOver Functionality
-- Local Peer Routing in Dual-Stack Environments
-- Stale Node Issue On Multinet With `netclient uninstall`
-- IPv6 Internet Gateways Improvements
-- Made Version Upgrade Process More Resilient
-- Egress Route Management Improvements
+- Fixed IPv6 Only Public Listen Port Issue
+- Scalability Improvements
+- Improved FailOver Peer Checks
+- Netclient Push Command Fix For Static Endpoint
 
 ## Known Issues 🐞
 
