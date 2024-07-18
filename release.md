@@ -15,4 +15,4 @@
 ## Known Issues 🐞
 
 - Erratic Traffic Data In Metrics
-- Stale peer on the interface, when forced removed from multiple networks at once.
+- Stale Peer On The Interface, When Forced Removed From Multiple Networks At Once.
