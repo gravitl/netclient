@@ -2,14 +2,14 @@
     "FixedFileInfo": {
         "FileVersion": {
             "Major": 0,
-            "Minor": 24,
-            "Patch": 3,
+            "Minor": 25,
+            "Patch": 0,
             "Build": 0
         },
         "ProductVersion": {
             "Major": 0,
-            "Minor": 24,
-            "Patch": 3,
+            "Minor": 25,
+            "Patch": 0,
             "Build": 0
         },
         "FileFlagsMask": "3f",
@@ -29,7 +29,7 @@
         "OriginalFilename": "",
         "PrivateBuild": "",
         "ProductName": "Netclient",
-        "ProductVersion": "v0.24.4.0",
+        "ProductVersion": "v0.25.0.0",
         "SpecialBuild": ""
     },
     "VarFileInfo": {

@@ -1,4 +1,4 @@
-# Netclient v0.24.4
+# Netclient v0.25.0
 
 ## Whats New ✨
 

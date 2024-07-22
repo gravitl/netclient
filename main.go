@@ -11,7 +11,7 @@ import (
 )
 
 // TODO: use -ldflags to set the right version at build time
-var version = "v0.24.4"
+var version = "v0.25.0"
 
 func main() {
 	config.SetVersion(version)
