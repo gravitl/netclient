@@ -39,36 +39,69 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ticker := time.NewTicker(time.Minute * CheckInInterval)
 	defer ticker.Stop()
+	ipTicker := time.NewTicker(time.Second * 15)
+	defer ipTicker.Stop()
+	checkinTicker := time.NewTicker(time.Minute * 4)
+	defer checkinTicker.Stop()
+	mi := 15
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		i, err := strconv.Atoi(server.MetricInterval)
+		if err == nil && i > 0 {
+			mi = i
+		}
+	}
+	metricTicker := time.NewTicker(time.Minute * time.Duration(mi))
+	defer metricTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Log(0, "checkin routine closed")
 			return
+		case <-metricTicker.C:
+			if config.CurrServer == "" {
+				continue
+			}
+			go callPublishMetrics(true)
+		case <-checkinTicker.C:
+			if config.CurrServer == "" {
+				continue
+			}
+			hostServerUpdate(models.HostUpdate{Action: models.CheckIn})
 		case <-ticker.C:
 			if config.CurrServer == "" {
 				continue
 			}
-			if Mqclient == nil || !Mqclient.IsConnectionOpen() {
-				logger.Log(0, "MQ client is not connected, using fallback checkin for server", config.CurrServer)
-				checkinFallback()
-				continue
+			if err := UpdateHostSettings(true); err != nil {
+				slog.Warn("failed to update host settings", err.Error())
 			}
-			checkin()
+		case <-ipTicker.C:
+			// this ticker is used to detect network changes, and publish new public ip to peers
+			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
+			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
+				restart := false
+				ip4, _, _ := holePunchWgPort(4, 0)
+				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
+					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					restart = true
+				}
+				ip6, _, _ := holePunchWgPort(6, 0)
+				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					restart = true
+				}
+				if restart {
+					logger.Log(0, "restarting netclient due to network changes...")
+					daemon.HardRestart()
+				}
+			}
 		}
+
 	}
 }
 
-func checkinFallback() {
-	// check/update host settings; publish if changed
-	if err := UpdateHostSettings(true); err != nil {
-		logger.Log(0, "failed to update host settings", err.Error())
-		return
-	}
-	hostUpdateFallback(models.HostUpdate{Action: models.CheckIn})
-}
-
-// hostUpdateFallback - used to send host updates to server when there is a mq connection failure
-func hostUpdateFallback(hu models.HostUpdate) error {
+// hostServerUpdate - used to send host updates to server via restful api
+func hostServerUpdate(hu models.HostUpdate) error {
 
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
@@ -102,11 +135,6 @@ func hostUpdateFallback(hu models.HostUpdate) error {
 }
 
 func checkin() {
-	// check/update host settings; publish if changed
-	if err := UpdateHostSettings(false); err != nil {
-		logger.Log(0, "failed to update host settings", err.Error())
-		return
-	}
 	if err := PublishHostUpdate(config.CurrServer, models.HostMqAction(models.CheckIn)); err != nil {
 		logger.Log(0, "error publishing checkin", err.Error())
 		return
@@ -166,6 +194,25 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	return nil
 }
 
+func callPublishMetrics(fallback bool) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		slog.Warn("server config is nil")
+		return
+	}
+
+	if server.IsPro {
+		serverNodes := config.GetNodes()
+		for _, node := range serverNodes {
+			node := node
+			if node.Connected {
+				slog.Debug("collecting metrics for", "network", node.Network)
+				go publishMetrics(&node, fallback)
+			}
+		}
+	}
+}
+
 // publishMetrics - publishes the metrics of a given nodecfg
 func publishMetrics(node *config.Node, fallback bool) {
 	server := config.GetServer(node.Server)
@@ -211,7 +258,7 @@ func publishMetrics(node *config.Node, fallback bool) {
 		return
 	}
 	if fallback {
-		hostUpdateFallback(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
+		hostServerUpdate(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
 		return
 	}
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
@@ -312,16 +359,6 @@ func UpdateHostSettings(fallback bool) error {
 		config.Netclient().NatType = config.HostNatType
 		publishMsg = true
 	}
-	if server.IsPro {
-		serverNodes := config.GetNodes()
-		for _, node := range serverNodes {
-			node := node
-			if node.Connected {
-				slog.Debug("collecting metrics for", "network", node.Network)
-				go publishMetrics(&node, fallback)
-			}
-		}
-	}
 
 	ip, err := getInterfaces()
 	if err != nil {
@@ -355,7 +392,7 @@ func UpdateHostSettings(fallback bool) error {
 		}
 		slog.Info("publishing host update for endpoint changes")
 		if fallback {
-			hostUpdateFallback(models.HostUpdate{Action: models.UpdateHost})
+			hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
 		} else {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				logger.Log(0, "could not publish endpoint change", err.Error())

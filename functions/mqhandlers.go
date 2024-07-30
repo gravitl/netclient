@@ -13,7 +13,6 @@ import (
 
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -315,6 +314,14 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.RequestPull:
 		clearRetainedMsg(client, msg.Topic())
 		Pull(true)
+	case models.SignalPull:
+		clearRetainedMsg(client, msg.Topic())
+		response, resetInterface, replacePeers, err := Pull(false)
+		if err != nil {
+			slog.Error("pull failed", "error", err)
+		} else {
+			mqFallbackPull(response, resetInterface, replacePeers)
+		}
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -463,29 +470,21 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 func getServerBrokerStatus() (bool, error) {
-	type status struct {
-		Broker bool `json:"broker_connected"`
-	}
 
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return false, errors.New("server is nil")
 	}
-	token, err := auth.Authenticate(server, config.Netclient())
-	if err != nil {
-		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
-		return false, err
-	}
+	var status map[string]interface{}
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
-	endpoint := httpclient.JSONEndpoint[status, models.ErrorResponse]{
+	endpoint := httpclient.JSONEndpoint[map[string]interface{}, models.ErrorResponse]{
 		URL:           url,
 		Method:        http.MethodGet,
-		Authorization: "Bearer " + token,
 		Data:          nil,
-		Response:      status{},
+		Response:      status,
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, errData, err := endpoint.GetJSON(status{}, models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(status, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
@@ -494,7 +493,12 @@ func getServerBrokerStatus() (bool, error) {
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
 		return false, err
 	}
-	return response.Broker, nil
+
+	if _, ok := response["is_broker_conn_open"]; ok {
+		return response["is_broker_conn_open"].(bool), nil
+	}
+
+	return response["broker_connected"].(bool), nil
 }
 
 // MQTT Fallback Mechanism

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/devilcove/httpclient"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/wireguard"
@@ -15,8 +17,31 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+var (
+	jwtToken     string
+	jwtSecretKey []byte
+)
+
+func isTokenExpired(tokenString string) bool {
+	claims := &models.Claims{}
+	token, _ := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecretKey, nil
+	})
+
+	if token != nil {
+		if claims.ExpiresAt.Unix() != 0 && claims.ExpiresAt.Unix() > time.Now().Unix() {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Authenticate authenticates with netmaker api to permit subsequent interactions with the api
 func Authenticate(server *config.Server, host *config.Config) (string, error) {
+	if jwtToken != "" && !isTokenExpired(jwtToken) {
+		return jwtToken, nil
+	}
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
 		ID:         host.ID.String(),
@@ -50,6 +75,7 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 	}
 	tokenData := resp.Response.(map[string]interface{})
 	token := tokenData["AuthToken"]
+	jwtToken = token.(string)
 	return token.(string), nil
 }
 
