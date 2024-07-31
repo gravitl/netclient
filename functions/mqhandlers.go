@@ -494,9 +494,9 @@ func getServerBrokerStatus() (bool, error) {
 		return false, err
 	}
 
-	if _, ok := response["is_broker_conn_open"]; ok {
-		return response["is_broker_conn_open"].(bool), nil
-	}
+	// if _, ok := response["is_broker_conn_open"]; ok {
+	// 	return response["is_broker_conn_open"].(bool), nil
+	// }
 
 	return response["broker_connected"].(bool), nil
 }
