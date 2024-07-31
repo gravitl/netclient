@@ -286,7 +286,7 @@ func publish(serverName, dest string, msg []byte, qos byte) error {
 	if err != nil {
 		return err
 	}
-	if Mqclient == nil || !Mqclient.IsConnectionOpen() {
+	if Mqclient == nil || !Mqclient.IsConnected() {
 		return errors.New("cannot publish ... Mqclient not connected")
 	}
 	if token := Mqclient.Publish(dest, qos, false, encrypted); !token.WaitTimeout(30*time.Second) || token.Error() != nil {
