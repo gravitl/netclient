@@ -152,7 +152,7 @@ func writeServiceConfig() error {
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
 <name>netclient</name>
-<description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
+<description>Manages Windows Netclient Hosts on one or more Nodeshift networks.</description>
 <executable>%s</executable>
 <arguments>daemon</arguments>
 <log mode="roll"></log>

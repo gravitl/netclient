@@ -28,8 +28,8 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "netclient",
-	Short: "Netmaker's netclient agent and CLI",
-	Long: `Netmaker's netclient agent and CLI to manage wireguard networks
+	Short: "Nodeshift netclient agent and CLI",
+	Long: `Nodeshift netclient agent and CLI to manage wireguard networks
 
 Join, leave, connect and disconnect from netmaker wireguard networks.`,
 	// Uncomment the following line if your bare application

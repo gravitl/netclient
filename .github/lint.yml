@@ -1,0 +1,54 @@
+name: Lint Validations
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-title-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Secrets
+        uses: bitwarden/sm-action@v2
+        with:
+          access_token: ${{ secrets.BW_PIPELINE_ACCESS_TOKEN }}
+          secrets: |
+            73fd78b1-23c6-446a-afdd-b16400945670 > GITHUB_TOKEN
+
+      - uses: thehanimo/pr-title-checker@v1.4.2
+        with:
+          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+          pass_on_octokit_error: false
+          remote_configuration_url: "https://raw.githubusercontent.com/deweb-services/.github/main/config/pr_title_checker_config.json"
+
+  commit-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wagoid/commitlint-github-action@v6
+
+
+  branch-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint branch name
+        uses: lekterable/branchlint-action@2.1.0
+        with:
+          allowed: |
+            /dws-\d.*-.*/i
+            /branch-sync-\d{2}-\d{2}-\d{4}/i
+          errorMessage: 'Please fix branch name. Examples: dws-0000-staging, dws-0000-main, dws-0000-<small task description>'
+          startAfter: '2024-06-01 00:00:00'
