@@ -13,8 +13,8 @@ import (
 // daemonCmd represents the daemon command
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
-	Short: "netclient daemon",
-	Long:  `netclient daemon gets and sends updates to netmaker server"`,
+	Short: "nodeshift daemon",
+	Long:  `nodeshift daemon gets and sends updates to netmaker server"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("daemon called")
 		functions.Daemon()

@@ -24,6 +24,8 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
+	"github.com/gravitl/netclient/internal/nodeshift"
 )
 
 // MQTimeout - time out for mqtt connections
@@ -282,6 +284,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		setSubscriptions(client, &nodeCfg)
 		resetInterface = true
+		if err := nodeshift.Notify(hostUpdate); err != nil {
+			slog.Error("error notifying host update event", "error", err)
+		}
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)

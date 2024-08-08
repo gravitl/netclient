@@ -51,8 +51,8 @@ var registerFlags = struct {
 // registerCmd represents the register command
 var registerCmd = &cobra.Command{
 	Use:   "register",
-	Short: "register to a Netmaker instance",
-	Long: `register to a Netmaker instance using: 
+	Short: "register to a Nodeshift instance",
+	Long: `register to a Nodeshift instance using: 
 token: netclient register -t <token> // join using an enrollment token
 server: netclient register -s <server> // join a specific server via SSO if Oauth configured
 net: netclient register -s <server> -n <net> // attempt to join specified network via auth
@@ -194,7 +194,7 @@ func checkUserRegistration(cmd *cobra.Command) error {
 
 func init() {
 	registerCmd.Flags().StringP(registerFlags.Server, "s", "", "server for attempting SSO/Auth registration")
-	registerCmd.Flags().StringP(registerFlags.Token, "t", "", "enrollment token for registering to a Netmaker instance")
+	registerCmd.Flags().StringP(registerFlags.Token, "t", "", "enrollment token for registering to a Nodeshift instance")
 	registerCmd.Flags().StringP(registerFlags.User, "u", "", "user name for attempting Basic Auth registration")
 	registerCmd.Flags().StringP(registerFlags.Network, "n", "", "network to attempt to register to")
 	registerCmd.Flags().BoolP(registerFlags.AllNetworks, "A", false, "attempts to register to all available networks to user")
