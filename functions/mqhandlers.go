@@ -177,7 +177,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
 			}
-			_ = config.WriteNetclientConfig()
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
