@@ -250,23 +250,37 @@ func WriteNetclientConfig() error {
 			return err
 		}
 	}
+	//defind a temporary config file and write to the content to the temporary file at first
+	medFileName := GetNetclientPath() + "netclient-med.yml"
+
 	if lerr := Lock(lockfile); lerr != nil {
 		return errors.New("failed to obtain lockfile " + lerr.Error())
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	f, err := os.OpenFile(medFileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	netclientCfgMutex.Lock()
 	netclientI := netclient
-	netclientCfgMutex.Unlock()
+	defer netclientCfgMutex.Unlock()
 	err = yaml.NewEncoder(f).Encode(netclientI)
 	if err != nil {
 		return err
 	}
-	return f.Sync()
+	err = f.Sync()
+	if err != nil {
+		return err
+	}
+
+	//rename back to config file. If something wrong in writing to temporary file, it will not overrite the normal config file
+	err = os.Rename(medFileName, file)
+	if err != nil {
+		logger.Log(1, "error renaming config file", err.Error())
+	}
+
+	return nil
 }
 
 // GetNetclientPath - returns path to netclient config directory
