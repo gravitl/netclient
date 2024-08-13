@@ -12,27 +12,35 @@ jobs:
   release-branch:
     runs-on: ubuntu-latest
     steps:
+      - name: Fetch Secrets
+        uses: bitwarden/sm-action@v2
+        with:
+          access_token: ${{ secrets.BW_PUBLIC_PIPELINE_ACCESS_TOKEN }}
+          secrets: |
+            73fd78b1-23c6-446a-afdd-b16400945670 > GITHUB_TOKEN
+
       - name: Checkout
         uses: actions/checkout@v3
         with:
           repository: deweb-services/netclient
           ref: develop
+          token: ${{ env.GITHUB_TOKEN }}
+
       - name: setup go
         uses: actions/setup-go@v4
         with:
           go-version: 1.19
-      - name: Setup git
-        run: |
-          git config --global user.name "Gravitl"
-          git config --global user.email "info@netmaker.io"
+
       - name: Create Release Branch
         run: |
           git switch -c release-${{ inputs.version }}
+
       - name: Fix go mod
         run: |
-          go get deweb-services/netmaker@${{ inputs.version }}
+          go get github.com/gravitl/netmaker@v0.24.3
           go mod tidy
           git commit -am 'update go mod for release'
+
       - name: Update Release Branch
         run: |
           git tag -f ${{ inputs.version }}
@@ -46,7 +54,7 @@ jobs:
       - name: Fetch Secrets
         uses: bitwarden/sm-action@v2
         with:
-          access_token: ${{ secrets.BW_PIPELINE_ACCESS_TOKEN }}
+          access_token: ${{ secrets.BW_PUBLIC_PIPELINE_ACCESS_TOKEN }}
           secrets: |
             73fd78b1-23c6-446a-afdd-b16400945670 > GITHUB_TOKEN
       - name: Checkout
@@ -74,7 +82,7 @@ jobs:
       - name: Fetch Secrets
         uses: bitwarden/sm-action@v2
         with:
-          access_token: ${{ secrets.BW_PIPELINE_ACCESS_TOKEN }}
+          access_token: ${{ secrets.BW_PUBLIC_PIPELINE_ACCESS_TOKEN }}
           secrets: |
             36f7899e-da1c-47a1-bfaa-b16300eee9f3 > REGISTRY_USER
             55987f21-7148-48e2-b88c-b17f00791f98 > REGISTRY_PASSWORD
@@ -90,6 +98,7 @@ jobs:
       - name: Login to DockerHub
         uses: docker/login-action@v2
         with:
+          registry: ghcr.io
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
       - name: Build and push
@@ -110,7 +119,7 @@ jobs:
       - name: Fetch Secrets
         uses: bitwarden/sm-action@v2
         with:
-          access_token: ${{ secrets.BW_PIPELINE_ACCESS_TOKEN }}
+          access_token: ${{ secrets.BW_PUBLIC_PIPELINE_ACCESS_TOKEN }}
           secrets: |
             73fd78b1-23c6-446a-afdd-b16400945670 > GITHUB_TOKEN
       - name: create pr

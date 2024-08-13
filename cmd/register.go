@@ -20,32 +20,36 @@ import (
 )
 
 var registerFlags = struct {
-	Server      string
-	User        string
-	Token       string
-	Network     string
-	AllNetworks string
-	EndpointIP  string
-	EndpointIP6 string
-	Port        string
-	MTU         string
-	StaticPort  string
-	Static      string
-	Interface   string
-	Name        string
+	Server            string
+	User              string
+	Token             string
+	Network           string
+	AllNetworks       string
+	EndpointIP        string
+	EndpointIP6       string
+	Port              string
+	MTU               string
+	StaticPort        string
+	Static            string
+	Interface         string
+	Name              string
+	EndpointIPRetry   string
+	EndpointIPTimeout string
 }{
-	Server:      "server",
-	User:        "user",
-	Token:       "token",
-	Network:     "net",
-	AllNetworks: "all-networks",
-	EndpointIP:  "endpoint-ip",
-	Port:        "port",
-	MTU:         "mtu",
-	StaticPort:  "static-port",
-	Static:      "static-endpoint",
-	Name:        "name",
-	Interface:   "interface",
+	Server:            "server",
+	User:              "user",
+	Token:             "token",
+	Network:           "net",
+	AllNetworks:       "all-networks",
+	EndpointIP:        "endpoint-ip",
+	Port:              "port",
+	MTU:               "mtu",
+	StaticPort:        "static-port",
+	Static:            "static-endpoint",
+	Name:              "name",
+	Interface:         "interface",
+	EndpointIPRetry:   "endpoint-ip-retry",
+	EndpointIPTimeout: "endpoint-ip-timeout",
 }
 
 // registerCmd represents the register command

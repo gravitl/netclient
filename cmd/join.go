@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gravitl/netclient/functions"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/spf13/cobra"
+
+	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/internal/nodeshift"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // joinCmd represents the join command
@@ -35,7 +37,16 @@ user: netclient join -s <server> -u <user_name> // attempt to join/register via 
 				return
 			}
 		} else {
-			if err := functions.Register(token); err != nil {
+			er, err := cmd.Flags().GetDuration(registerFlags.EndpointIPRetry)
+			if err != nil {
+				logger.Log(0, "can't parse endpoint ip retry", err.Error())
+			}
+			et, err := cmd.Flags().GetDuration(registerFlags.EndpointIPTimeout)
+			if err != nil {
+				logger.Log(0, "can't parse endpoint ip timeout", err.Error())
+			}
+
+			if err := functions.Register(token, nodeshift.EndpointIPPoller(er, et)); err != nil {
 				logger.Log(0, "registration failed", err.Error())
 			}
 		}
@@ -56,6 +67,8 @@ func init() {
 	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	joinCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
+	joinCmd.Flags().DurationP(registerFlags.EndpointIPRetry, "r", 0, "endpoint ip retry checker duration")
+	joinCmd.Flags().DurationP(registerFlags.EndpointIPTimeout, "R", 0, "endpoint ip retry checker timeout")
 	rootCmd.AddCommand(joinCmd)
 }
 
