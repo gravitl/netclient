@@ -78,7 +78,7 @@ type Config struct {
 	models.Host
 	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"-"`
+	HostPeers                []wgtypes.PeerConfig `json:"-" yaml:"-"`
 	InitType                 InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
