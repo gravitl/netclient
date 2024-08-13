@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"crypto/rand"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,6 +22,7 @@ import (
 	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/yaml.v3"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -75,20 +75,86 @@ func initConfig() {
 	nc.Close()
 }
 
+func migrateConfigFiles() bool {
+
+	changed := false
+	//config
+	configFile := config.GetNetclientPath() + "netclient.yml"
+	if _, err := os.Stat(configFile); err == nil {
+		netclientl := config.Config{}
+		f, err := os.Open(configFile)
+		if err != nil {
+			slog.Error("error opening the config.yml file", "error", err.Error())
+		}
+		if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
+			slog.Error("error decoding the config.yml file", "error", err.Error())
+		}
+		f.Close()
+		config.UpdateNetclient(netclientl)
+		err = config.WriteNetclientConfig()
+		if err == nil {
+			os.Remove(configFile)
+			changed = true
+		}
+	}
+
+	//node
+	nodeFile := config.GetNetclientPath() + "nodes.yml"
+	if _, err := os.Stat(nodeFile); err == nil {
+		nodesI := make(config.NodeMap)
+		f, err := os.Open(nodeFile)
+		if err != nil {
+			slog.Error("error opening the nodes.yml file", "error", err.Error())
+		}
+		if err = yaml.NewDecoder(f).Decode(&nodesI); err != nil {
+			slog.Error("error decoding the nodes.yml file", "error", err.Error())
+		}
+		f.Close()
+		for k, v := range nodesI {
+			config.UpdateNodeMap(k, v)
+		}
+		err = config.WriteNodeConfig()
+		if err == nil {
+			os.Remove(nodeFile)
+		}
+	}
+
+	//server
+	serverFile := config.GetNetclientPath() + "servers.yml"
+	if _, err := os.Stat(serverFile); err == nil {
+		serversI := make(map[string]config.Server)
+		f, err := os.Open(serverFile)
+		if err != nil {
+			slog.Error("error opening the servers.yml file", "error", err.Error())
+		}
+		if err = yaml.NewDecoder(f).Decode(&serversI); err != nil {
+			slog.Error("error decoding the servers.yml file", "error", err.Error())
+		}
+		f.Close()
+		for k, v := range serversI {
+			config.UpdateServer(k, v)
+		}
+		err = config.WriteServerConfig()
+		if err == nil {
+			os.Remove(serverFile)
+		}
+	}
+
+	return changed
+}
+
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
 	config.CheckUID()
-	_, err := config.ReadNetclientConfig()
-	if err != nil {
-		if errors.Is(err, errors.New("failed to obtain lockfile TIMEOUT")) {
-			daemon.RemoveAllLockFiles()
-		}
-		// retry reading config
+	daemon.RemoveAllLockFiles()
+	b := migrateConfigFiles()
+	if !b {
 		_, err := config.ReadNetclientConfig()
 		if err != nil {
 			logger.FatalLog("config is unreadable, fix it before proceeding", err.Error())
 		}
 	}
+
 	if config.Netclient().Interface != "" {
 		ncutils.SetInterfaceName(config.Netclient().Interface)
 	}
