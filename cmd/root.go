@@ -75,84 +75,133 @@ func initConfig() {
 	nc.Close()
 }
 
-func migrateConfigFiles() bool {
-
-	changed := false
+func migrateConfigFile() error {
 	//config
 	configFile := config.GetNetclientPath() + "netclient.yml"
-	if _, err := os.Stat(configFile); err == nil {
+	_, err := os.Stat(configFile)
+	if err == nil {
 		netclientl := config.Config{}
 		f, err := os.Open(configFile)
 		if err != nil {
 			slog.Error("error opening the config.yml file", "error", err.Error())
+			return err
 		}
+		defer f.Close()
 		if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
 			slog.Error("error decoding the config.yml file", "error", err.Error())
+			return err
 		}
-		f.Close()
+
 		config.UpdateNetclient(netclientl)
 		err = config.WriteNetclientConfig()
 		if err == nil {
 			os.Remove(configFile)
-			changed = true
+			return nil
 		}
+		return err
 	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
 
+func migrateNodeFile() error {
 	//node
 	nodeFile := config.GetNetclientPath() + "nodes.yml"
-	if _, err := os.Stat(nodeFile); err == nil {
+	_, err := os.Stat(nodeFile)
+	if err == nil {
 		nodesI := make(config.NodeMap)
 		f, err := os.Open(nodeFile)
 		if err != nil {
 			slog.Error("error opening the nodes.yml file", "error", err.Error())
+			return err
 		}
+		defer f.Close()
 		if err = yaml.NewDecoder(f).Decode(&nodesI); err != nil {
 			slog.Error("error decoding the nodes.yml file", "error", err.Error())
+			return err
 		}
-		f.Close()
+
 		for k, v := range nodesI {
 			config.UpdateNodeMap(k, v)
 		}
 		err = config.WriteNodeConfig()
 		if err == nil {
 			os.Remove(nodeFile)
+			return nil
 		}
+		return err
 	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
 
+func migrateServerFile() error {
 	//server
 	serverFile := config.GetNetclientPath() + "servers.yml"
-	if _, err := os.Stat(serverFile); err == nil {
+	_, err := os.Stat(serverFile)
+	if err == nil {
 		serversI := make(map[string]config.Server)
 		f, err := os.Open(serverFile)
 		if err != nil {
 			slog.Error("error opening the servers.yml file", "error", err.Error())
+			return err
 		}
+		defer f.Close()
 		if err = yaml.NewDecoder(f).Decode(&serversI); err != nil {
 			slog.Error("error decoding the servers.yml file", "error", err.Error())
+			return err
 		}
-		f.Close()
+
 		for k, v := range serversI {
 			config.UpdateServer(k, v)
 		}
 		err = config.WriteServerConfig()
 		if err == nil {
 			os.Remove(serverFile)
+			return nil
 		}
+		return err
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func migrateConfigFiles() error {
+
+	err := migrateConfigFile()
+	if err != nil {
+		return err
 	}
 
-	return changed
+	err = migrateNodeFile()
+	if err != nil {
+		return err
+	}
+	err = migrateServerFile()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
 	config.CheckUID()
 	daemon.RemoveAllLockFiles()
-	b := migrateConfigFiles()
-	if !b {
-		_, err := config.ReadNetclientConfig()
-		if err != nil {
-			logger.FatalLog("config is unreadable, fix it before proceeding", err.Error())
-		}
+	err := migrateConfigFiles()
+	if err != nil {
+		logger.FatalLog("config migration from yml to json failed, restart and try again later", err.Error())
+	}
+	_, err = config.ReadNetclientConfig()
+	if err != nil {
+		logger.FatalLog("config is unreadable, fix it before proceeding", err.Error())
 	}
 
 	if config.Netclient().Interface != "" {
