@@ -86,16 +86,19 @@ func migrateConfigFile() error {
 			slog.Error("error opening the config.yml file", "error", err.Error())
 			return err
 		}
-		defer f.Close()
 		if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
 			slog.Error("error decoding the config.yml file", "error", err.Error())
+			f.Close()
 			return err
 		}
-
+		f.Close()
 		config.UpdateNetclient(netclientl)
 		err = config.WriteNetclientConfig()
 		if err == nil {
-			os.Remove(configFile)
+			err = os.Remove(configFile)
+			if err != nil {
+				slog.Error("error removing the config.yml file", "error", err.Error())
+			}
 			return nil
 		}
 		return err
@@ -117,18 +120,21 @@ func migrateNodeFile() error {
 			slog.Error("error opening the nodes.yml file", "error", err.Error())
 			return err
 		}
-		defer f.Close()
 		if err = yaml.NewDecoder(f).Decode(&nodesI); err != nil {
 			slog.Error("error decoding the nodes.yml file", "error", err.Error())
+			f.Close()
 			return err
 		}
-
+		f.Close()
 		for k, v := range nodesI {
 			config.UpdateNodeMap(k, v)
 		}
 		err = config.WriteNodeConfig()
 		if err == nil {
-			os.Remove(nodeFile)
+			err = os.Remove(nodeFile)
+			if err != nil {
+				slog.Error("error removing the nodes.yml file", "error", err.Error())
+			}
 			return nil
 		}
 		return err
@@ -150,18 +156,22 @@ func migrateServerFile() error {
 			slog.Error("error opening the servers.yml file", "error", err.Error())
 			return err
 		}
-		defer f.Close()
 		if err = yaml.NewDecoder(f).Decode(&serversI); err != nil {
 			slog.Error("error decoding the servers.yml file", "error", err.Error())
+			f.Close()
 			return err
 		}
+		f.Close()
 
 		for k, v := range serversI {
 			config.UpdateServer(k, v)
 		}
 		err = config.WriteServerConfig()
 		if err == nil {
-			os.Remove(serverFile)
+			err = os.Remove(serverFile)
+			if err != nil {
+				slog.Error("error removing the servers.yml file", "error", err.Error())
+			}
 			return nil
 		}
 		return err
