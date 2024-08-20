@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"crypto/rand"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,6 +22,7 @@ import (
 	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"gopkg.in/yaml.v3"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -75,20 +75,145 @@ func initConfig() {
 	nc.Close()
 }
 
+func migrateConfigFile() error {
+	//config
+	configFile := config.GetNetclientPath() + "netclient.yml"
+	_, err := os.Stat(configFile)
+	if err == nil {
+		netclientl := config.Config{}
+		f, err := os.Open(configFile)
+		if err != nil {
+			slog.Error("error opening the config.yml file", "error", err.Error())
+			return err
+		}
+		if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
+			slog.Error("error decoding the config.yml file", "error", err.Error())
+			f.Close()
+			return err
+		}
+		f.Close()
+		config.UpdateNetclient(netclientl)
+		err = config.WriteNetclientConfig()
+		if err == nil {
+			err = os.Remove(configFile)
+			if err != nil {
+				slog.Error("error removing the config.yml file", "error", err.Error())
+			}
+			return nil
+		}
+		return err
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func migrateNodeFile() error {
+	//node
+	nodeFile := config.GetNetclientPath() + "nodes.yml"
+	_, err := os.Stat(nodeFile)
+	if err == nil {
+		nodesI := make(config.NodeMap)
+		f, err := os.Open(nodeFile)
+		if err != nil {
+			slog.Error("error opening the nodes.yml file", "error", err.Error())
+			return err
+		}
+		if err = yaml.NewDecoder(f).Decode(&nodesI); err != nil {
+			slog.Error("error decoding the nodes.yml file", "error", err.Error())
+			f.Close()
+			return err
+		}
+		f.Close()
+		for k, v := range nodesI {
+			config.UpdateNodeMap(k, v)
+		}
+		err = config.WriteNodeConfig()
+		if err == nil {
+			err = os.Remove(nodeFile)
+			if err != nil {
+				slog.Error("error removing the nodes.yml file", "error", err.Error())
+			}
+			return nil
+		}
+		return err
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func migrateServerFile() error {
+	//server
+	serverFile := config.GetNetclientPath() + "servers.yml"
+	_, err := os.Stat(serverFile)
+	if err == nil {
+		serversI := make(map[string]config.Server)
+		f, err := os.Open(serverFile)
+		if err != nil {
+			slog.Error("error opening the servers.yml file", "error", err.Error())
+			return err
+		}
+		if err = yaml.NewDecoder(f).Decode(&serversI); err != nil {
+			slog.Error("error decoding the servers.yml file", "error", err.Error())
+			f.Close()
+			return err
+		}
+		f.Close()
+
+		for k, v := range serversI {
+			config.UpdateServer(k, v)
+		}
+		err = config.WriteServerConfig()
+		if err == nil {
+			err = os.Remove(serverFile)
+			if err != nil {
+				slog.Error("error removing the servers.yml file", "error", err.Error())
+			}
+			return nil
+		}
+		return err
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func migrateConfigFiles() error {
+
+	err := migrateConfigFile()
+	if err != nil {
+		return err
+	}
+
+	err = migrateNodeFile()
+	if err != nil {
+		return err
+	}
+	err = migrateServerFile()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
 	config.CheckUID()
-	_, err := config.ReadNetclientConfig()
+	daemon.RemoveAllLockFiles()
+	err := migrateConfigFiles()
 	if err != nil {
-		if errors.Is(err, errors.New("failed to obtain lockfile TIMEOUT")) {
-			daemon.RemoveAllLockFiles()
-		}
-		// retry reading config
-		_, err := config.ReadNetclientConfig()
-		if err != nil {
-			logger.FatalLog("config is unreadable, fix it before proceeding", err.Error())
-		}
+		logger.FatalLog("config migration from yml to json failed, restart and try again later", err.Error())
 	}
+	_, err = config.ReadNetclientConfig()
+	if err != nil {
+		logger.FatalLog("config is unreadable, fix it before proceeding", err.Error())
+	}
+
 	if config.Netclient().Interface != "" {
 		ncutils.SetInterfaceName(config.Netclient().Interface)
 	}

@@ -377,7 +377,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 		return err
 	}
 	config.Netclient().CurrGwNmIP = gwIp
-	return nil
+	return config.WriteNetclientConfig()
 }
 
 // setInternetGwV4 - set a new default gateway and add rules to activate it
@@ -448,7 +448,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 		return err
 	}
 	config.Netclient().CurrGwNmIP = gwIp
-	return nil
+	return config.WriteNetclientConfig()
 }
 
 // RestoreInternetGw - delete the route in table ROUTE_TABLE_NAME and delet the rules

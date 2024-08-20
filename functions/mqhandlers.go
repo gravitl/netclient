@@ -177,7 +177,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
 			}
-			_ = config.WriteNetclientConfig()
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
@@ -189,7 +188,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
-	config.UpdateHost(&peerUpdate.Host)
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
@@ -298,6 +296,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 		clearMsg = true
+		writeToDisk = false
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
@@ -311,9 +310,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.UpdateKeys:
 		clearRetainedMsg(client, msg.Topic()) // clear message
 		UpdateKeys()
+		writeToDisk = false
 	case models.RequestPull:
 		clearRetainedMsg(client, msg.Topic())
 		Pull(true)
+		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
 		response, resetInterface, replacePeers, err := Pull(false)
@@ -322,6 +323,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		} else {
 			mqFallbackPull(response, resetInterface, replacePeers)
 		}
+		writeToDisk = false
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -604,7 +606,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
-	_ = config.WriteNetclientConfig()
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)

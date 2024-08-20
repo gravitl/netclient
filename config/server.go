@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
-	"gopkg.in/yaml.v3"
 )
 
 var serverMutex = &deadlock.RWMutex{}
@@ -67,7 +67,7 @@ func ReadServerConf() error {
 		}
 	}()
 	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
-	file := GetNetclientPath() + "servers.yml"
+	file := GetNetclientPath() + "servers.json"
 	if err = Lock(lockfile); err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func ReadServerConf() error {
 		return err
 	}
 	defer f.Close()
-	if err = yaml.NewDecoder(f).Decode(&serversI); err != nil {
+	if err = json.NewDecoder(f).Decode(&serversI); err != nil {
 		return err
 	}
 	return nil
@@ -87,7 +87,7 @@ func ReadServerConf() error {
 // WriteServerConfig writes server map to disk
 func WriteServerConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
-	file := GetNetclientPath() + "servers.yml"
+	file := GetNetclientPath() + "servers.json"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
@@ -104,7 +104,7 @@ func WriteServerConfig() error {
 		return err
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,9 @@ func WriteServerConfig() error {
 	serverMutex.Lock()
 	serversI := Servers
 	serverMutex.Unlock()
-	err = yaml.NewEncoder(f).Encode(serversI)
+	j := json.NewEncoder(f)
+	j.SetIndent("", "    ")
+	err = j.Encode(serversI)
 	if err != nil {
 		return err
 	}
