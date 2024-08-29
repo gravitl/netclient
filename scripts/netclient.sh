@@ -24,6 +24,8 @@ echo "[netclient] starting netclient daemon"
 /root/netclient $VERBOSITY_CMD install
 wait $!
 
+sleep 5
+
 # join network based on env vars
 echo "[netclient] joining network"
 

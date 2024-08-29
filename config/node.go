@@ -12,7 +12,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
-	"gopkg.in/yaml.v3"
 )
 
 var nodeMutex = &deadlock.RWMutex{}
@@ -44,7 +43,7 @@ func ReadNodeConfig() error {
 		}
 	}()
 	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
-	file := GetNetclientPath() + "nodes.yml"
+	file := GetNetclientPath() + "nodes.json"
 	if err = Lock(lockfile); err != nil {
 		return err
 	}
@@ -55,7 +54,7 @@ func ReadNodeConfig() error {
 		return err
 	}
 	defer f.Close()
-	if err = yaml.NewDecoder(f).Decode(&nodesI); err != nil {
+	if err = json.NewDecoder(f).Decode(&nodesI); err != nil {
 		return err
 	}
 	return nil
@@ -122,7 +121,7 @@ func (node *Node) PrimaryAddress() net.IPNet {
 // WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
 	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
-	file := GetNetclientPath() + "nodes.yml"
+	file := GetNetclientPath() + "nodes.json"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
@@ -139,7 +138,7 @@ func WriteNodeConfig() error {
 		return err
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
 	if err != nil {
 		return err
 	}
@@ -147,7 +146,9 @@ func WriteNodeConfig() error {
 	nodeMutex.Lock()
 	nodesI := Nodes
 	nodeMutex.Unlock()
-	err = yaml.NewEncoder(f).Encode(nodesI)
+	j := json.NewEncoder(f)
+	j.SetIndent("", "    ")
+	err = j.Encode(nodesI)
 	if err != nil {
 		return err
 	}

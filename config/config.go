@@ -18,7 +18,6 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -79,7 +78,7 @@ type Config struct {
 	models.Host
 	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers                []wgtypes.PeerConfig `json:"host_peers" yaml:"-"`
+	HostPeers                []wgtypes.PeerConfig `json:"-" yaml:"-"`
 	InitType                 InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
@@ -201,7 +200,7 @@ func ReadNetclientConfig() (*Config, error) {
 		}
 	}()
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
-	file := GetNetclientPath() + "netclient.yml"
+	file := GetNetclientPath() + "netclient.json"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
@@ -228,7 +227,7 @@ func ReadNetclientConfig() (*Config, error) {
 		return nil, err
 	}
 	defer f.Close()
-	if err = yaml.NewDecoder(f).Decode(&netclientl); err != nil {
+	if err = json.NewDecoder(f).Decode(&netclientl); err != nil {
 		return nil, err
 	}
 	return &netclientl, nil
@@ -237,7 +236,7 @@ func ReadNetclientConfig() (*Config, error) {
 // WriteNetclientConfiig writes the in memory host configuration to disk
 func WriteNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
-	file := GetNetclientPath() + "netclient.yml"
+	file := GetNetclientPath() + "netclient.json"
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
@@ -254,7 +253,7 @@ func WriteNetclientConfig() error {
 		return errors.New("failed to obtain lockfile " + lerr.Error())
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
 	if err != nil {
 		return err
 	}
@@ -262,7 +261,9 @@ func WriteNetclientConfig() error {
 	netclientCfgMutex.Lock()
 	netclientI := netclient
 	netclientCfgMutex.Unlock()
-	err = yaml.NewEncoder(f).Encode(netclientI)
+	j := json.NewEncoder(f)
+	j.SetIndent("", "    ")
+	err = j.Encode(netclientI)
 	if err != nil {
 		return err
 	}

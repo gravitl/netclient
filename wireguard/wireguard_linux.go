@@ -232,6 +232,41 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 	return gwRoute.Gw, nil
 }
 
+// GetDefaultGatewayV6 - get current default gateway ipv6
+func GetDefaultGatewayV6() (gwRoute netlink.Route, err error) {
+	// get the present route list
+	routes, err := netlink.RouteList(nil, netlink.FAMILY_V6)
+	if err != nil {
+		slog.Error("error loading route tables", "error", err.Error())
+		return gwRoute, err
+	}
+
+	gwRoutes := []netlink.Route{}
+
+	// get default gateway by filtering with dst==nil
+	for _, r := range routes {
+		if r.Dst == nil {
+			gwRoutes = append(gwRoutes, r)
+		}
+	}
+
+	// in case that multiple default gateway in the route table, return the one with higher priority
+	if len(gwRoutes) == 0 {
+		return gwRoute, errors.New("no default gateway found, please run command route -n to check in the route table")
+	} else if len(gwRoutes) == 1 {
+		return gwRoutes[0], nil
+	} else {
+		gwRoute = gwRoutes[0]
+		for _, r := range gwRoutes {
+			if r.Priority < gwRoute.Priority {
+				gwRoute = r
+			}
+		}
+	}
+
+	return gwRoute, nil
+}
+
 // GetDefaultGateway - get current default gateway
 func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 
@@ -307,6 +342,12 @@ func SetInternetGw(gwIp net.IP) (err error) {
 
 // setInternetGwV6 - set a new default gateway and add rules to activate it
 func setInternetGwV6(gwIp net.IP) (err error) {
+	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
+		ipv6, err := GetDefaultGatewayV6()
+		if err == nil && ipv6.Gw != nil {
+			config.Netclient().OriginalDefaultGatewayIp = ipv6.Gw
+		}
+	}
 
 	srcIp := getSourceIpv6(gwIp)
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
@@ -357,10 +398,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 		return err
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
-	lIp, err := getLocalIpByDefaultInterfaceName()
-	if err != nil {
-		lIp = config.Netclient().Host.EndpointIP
-	}
+	lIp := config.Netclient().Host.EndpointIPv6
 
 	_, ipnet, err = net.ParseCIDR(lIp.String() + "/128")
 	if err != nil {
@@ -377,7 +415,8 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 		return err
 	}
 	config.Netclient().CurrGwNmIP = gwIp
-	return nil
+
+	return config.WriteNetclientConfig()
 }
 
 // setInternetGwV4 - set a new default gateway and add rules to activate it
@@ -448,12 +487,12 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 		return err
 	}
 	config.Netclient().CurrGwNmIP = gwIp
-	return nil
+	return config.WriteNetclientConfig()
 }
 
 // RestoreInternetGw - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func RestoreInternetGw() (err error) {
-	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
+	if ipv4 := config.Netclient().CurrGwNmIP.To4(); ipv4 != nil {
 		return restoreInternetGwV4()
 	} else {
 		return restoreInternetGwV6()
@@ -462,6 +501,7 @@ func RestoreInternetGw() (err error) {
 
 // restoreInternetGwV6 - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func restoreInternetGwV6() (err error) {
+
 	srcIp := getSourceIpv6(config.Netclient().CurrGwNmIP)
 	//build the default gateway route
 	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
@@ -501,10 +541,7 @@ func restoreInternetGwV6() (err error) {
 		slog.Warn("please remove the rule manually", "rule: ", sRule.String())
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
-	lIp, err := getLocalIpByDefaultInterfaceName()
-	if err != nil {
-		lIp = config.Netclient().Host.EndpointIP
-	}
+	lIp := config.Netclient().Host.EndpointIPv6
 
 	_, ipnet, err = net.ParseCIDR(lIp.String() + "/128")
 	if err != nil {
@@ -522,6 +559,13 @@ func restoreInternetGwV6() (err error) {
 	}
 
 	config.Netclient().CurrGwNmIP = net.ParseIP("")
+	if ipv6 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv6 == nil {
+		ipv4, err := GetDefaultGateway()
+		if err == nil && ipv4.Gw != nil {
+			config.Netclient().OriginalDefaultGatewayIp = ipv4.Gw
+		}
+	}
+
 	return config.WriteNetclientConfig()
 }
 

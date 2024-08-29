@@ -1,16 +1,14 @@
-# Netclient v0.24.3
+# Netclient v0.25.0
 
 ## Whats New ✨
 
-- Network Change Detection System
-- Switched Client Checkins To API
 
 ## What's Fixed/Improved 🛠
 
-- Fixed IPv6 Only Public Listen Port Issue
 - Scalability Improvements
-- Improved FailOver Peer Checks
+- Fixed MQ Decrypt Error Due To Config Corruption
 - Netclient Push Command Fix For Static Endpoint
+- Handled Inernet gw issues in Dual Stack Networks
 
 ## Known Issues 🐞
 
