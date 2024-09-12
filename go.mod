@@ -7,7 +7,7 @@ require (
 	github.com/c-robinson/iplib v1.0.8
 	github.com/coreos/go-iptables v0.7.0
 	github.com/devilcove/httpclient v0.6.0
-	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/glendc/go-external-ip v0.1.0
 	github.com/go-ping/ping v1.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
@@ -27,9 +27,9 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.1.0
-	golang.org/x/crypto v0.23.0
+	golang.org/x/crypto v0.25.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/net v0.25.0
+	golang.org/x/net v0.27.0
 	golang.org/x/sys v0.25.0
 	golang.org/x/term v0.22.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
