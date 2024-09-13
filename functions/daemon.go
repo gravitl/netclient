@@ -319,6 +319,7 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			node := node
 			setSubscriptions(client, &node)
+			setDNSSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
@@ -379,6 +380,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			for _, node := range nodes {
 				node := node
 				setSubscriptions(client, &node)
+				setDNSSubscriptions(client, &node)
 			}
 			setHostSubscription(client, server.Name)
 		}
@@ -432,6 +434,20 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		return
 	}
 	slog.Info("subscribed to updates for node", "node", node.ID, "network", node.Network)
+}
+
+// setDNSSubscriptions sets MQ client subscriptions for a specific node config
+// should be called for each node belonging to a given server
+func setDNSSubscriptions(client mqtt.Client, node *config.Node) {
+	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s", node.Network), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		if token.Error() == nil {
+			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", "connection timeout")
+		} else {
+			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", token.Error())
+		}
+		return
+	}
+	slog.Info("subscribed to DNS sync for node", "node", node.ID, "network", node.Network)
 }
 
 // should only ever use node client configs

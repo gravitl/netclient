@@ -108,6 +108,28 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
+// DNSSync -- mqtt message handler for host/dns/sync/<network id> topic
+func DNSSync(client mqtt.Client, msg mqtt.Message) {
+
+	var dnsEntries []models.DNSEntry
+	err := json.Unmarshal([]byte(msg.Payload()), &dnsEntries)
+	if err != nil {
+		slog.Error("error unmarshalling DNS data", "error", err)
+		return
+	}
+
+	//TODO update DNS entries
+	slog.Error("DNS entry number for network", "Debug", len(dnsEntries))
+	if len(dnsEntries) > 0 {
+		for _, v := range dnsEntries {
+			slog.Error("DNS entry Name: ", "Debug", v.Name)
+			slog.Error("DNS entry Network: ", "Debug", v.Network)
+			slog.Error("DNS entry Address: ", "Debug", v.Address)
+			slog.Error("DNS entry Address6: ", "Debug", v.Address6)
+		}
+	}
+}
+
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
