@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
@@ -71,11 +72,12 @@ func Daemon() {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
 	cancel := startGoRoutines(&wg)
-
+	dns.GetDNSServerInstance().Start()
 	for {
 		select {
 		case <-quit:
 			slog.Info("shutting down netclient daemon")
+			dns.GetDNSServerInstance().Stop()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{

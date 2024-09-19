@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -118,14 +119,10 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	//TODO update DNS entries
-	slog.Error("DNS entry number for network", "Debug", len(dnsEntries))
 	if len(dnsEntries) > 0 {
-		for _, v := range dnsEntries {
-			slog.Error("DNS entry Name: ", "Debug", v.Name)
-			slog.Error("DNS entry Network: ", "Debug", v.Network)
-			slog.Error("DNS entry Address: ", "Debug", v.Address)
-			slog.Error("DNS entry Address6: ", "Debug", v.Address6)
+		err = dns.SyncDNS(dnsEntries)
+		if err != nil {
+			slog.Error("synchronize DNS error ", "error", err.Error())
 		}
 	}
 }
