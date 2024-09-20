@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.8
-	github.com/coreos/go-iptables v0.7.0
+	github.com/coreos/go-iptables v0.8.0
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/glendc/go-external-ip v0.1.0
