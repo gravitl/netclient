@@ -12,7 +12,6 @@ import (
 var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
 
 type DNSResolver struct {
-	//dnsEntriesCacheMap   map[string]DNSRecord
 	DnsEntriesCacheStore map[string]dns.RR
 }
 

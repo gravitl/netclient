@@ -34,19 +34,31 @@ func (dnsServer *DNSServer) Start() {
 	if dnsServer.DnsServer != nil {
 		return
 	}
-	lIp := config.Netclient().Host.EndpointIP.String() + ":53"
-	if config.Netclient().Host.EndpointIP == nil {
-		lIp = "[" + config.Netclient().Host.EndpointIPv6.String() + "]:53"
+
+	if len(config.GetNodes()) == 0 {
+		return
 	}
-	if config.Netclient().Host.EndpointIPv6 == nil && config.Netclient().Host.EndpointIP == nil {
-		lIp = ":5353"
+
+	var node config.Node
+	for _, v := range config.GetNodes() {
+		node = v
+		break
+	}
+
+	lIp := ":5353"
+	if node.Address6.IP != nil {
+		lIp = "[" + node.Address6.IP.String() + "]:53"
+	}
+	if node.Address.IP != nil {
+		lIp = node.Address.IP.String() + ":53"
 	}
 
 	dns.HandleFunc(".", handleDNSRequest)
 
 	srv := &dns.Server{
-		Net:  "udp",
-		Addr: lIp,
+		Net:     "udp",
+		Addr:    lIp,
+		UDPSize: 65535,
 	}
 
 	go func() {
@@ -55,6 +67,8 @@ func (dnsServer *DNSServer) Start() {
 			slog.Error("error in starting dns server", "error", lIp, err.Error())
 		}
 	}()
+
+	dnsServer.AddrStr = lIp
 
 	slog.Info("DNS server listens on: ", "Info", lIp)
 }

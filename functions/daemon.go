@@ -275,6 +275,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go mqFallback(ctx, wg)
 
+	if dns.GetDNSServerInstance().AddrStr == "" {
+		dns.GetDNSServerInstance().Start()
+	}
+
 	return cancel
 }
 
