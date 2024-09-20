@@ -281,7 +281,7 @@ func GetDefaultGateway() (gwRoute netlink.Route, err error) {
 
 	//get default gateway by filtering with dst==nil
 	for _, r := range routes {
-		if r.Dst == nil {
+		if r.Dst == nil || r.Dst.IP.Equal(net.ParseIP("0.0.0.0")) || r.Dst.IP.Equal(net.ParseIP("::")) {
 			gwRoutes = append(gwRoutes, r)
 		}
 	}
