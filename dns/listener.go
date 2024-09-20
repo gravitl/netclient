@@ -45,12 +45,16 @@ func (dnsServer *DNSServer) Start() {
 		break
 	}
 
-	lIp := ":5353"
+	lIp := ""
 	if node.Address6.IP != nil {
 		lIp = "[" + node.Address6.IP.String() + "]:53"
 	}
 	if node.Address.IP != nil {
 		lIp = node.Address.IP.String() + ":53"
+	}
+
+	if lIp == "" {
+		return
 	}
 
 	dns.HandleFunc(".", handleDNSRequest)
