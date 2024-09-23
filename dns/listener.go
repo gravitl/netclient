@@ -31,7 +31,7 @@ func GetDNSServerInstance() *DNSServer {
 func (dnsServer *DNSServer) Start() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if dnsServer.DnsServer != nil {
+	if dnsServer.AddrStr != "" {
 		return
 	}
 
@@ -75,6 +75,7 @@ func (dnsServer *DNSServer) Start() {
 	}()
 
 	dnsServer.AddrStr = lIp
+	dnsServer.DnsServer = srv
 
 	slog.Info("DNS server listens on: ", "Info", lIp)
 }
@@ -82,7 +83,7 @@ func (dnsServer *DNSServer) Start() {
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if dnsServer.DnsServer == nil {
+	if dnsServer.AddrStr == "" || dnsServer.DnsServer == nil {
 		return
 	}
 
@@ -93,4 +94,7 @@ func (dnsServer *DNSServer) Stop() {
 	if err != nil {
 		slog.Error("could not shutdown DNS server", "error", err.Error())
 	}
+
+	dnsServer.AddrStr = ""
+	dnsServer.DnsServer = nil
 }

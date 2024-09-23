@@ -97,6 +97,7 @@ func Daemon() {
 			return
 		case <-reset:
 			slog.Info("received reset")
+			dns.GetDNSServerInstance().Stop()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
