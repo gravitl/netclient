@@ -44,7 +44,7 @@ jobs:
             -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
             "https://api.digitalocean.com/v2/droplets?tag_name=$TAG"
         env:
-          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+          DIGITALOCEAN_TOKEN: ${{ secrets.DO_TEST_TOKEN }}
           TAG: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
       - name: mark server as available
         uses: appleboy/ssh-action@master
@@ -101,7 +101,7 @@ jobs:
             -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
             "https://api.digitalocean.com/v2/droplets?tag_name=$TAG"
         env:
-          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+          DIGITALOCEAN_TOKEN: ${{ secrets.DO_TEST_TOKEN }}
           TAG: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
       - name: mark server as available
         if: success() || failure()
