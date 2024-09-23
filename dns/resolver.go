@@ -13,12 +13,16 @@ var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
 
 type DNSResolver struct {
 	DnsEntriesCacheStore map[string]dns.RR
+	DnsEntriesCacheMap   map[string][]dnsRecord
 }
 
 var DnsResolver *DNSResolver
 
 func init() {
-	DnsResolver = &DNSResolver{}
+	DnsResolver = &DNSResolver{
+		DnsEntriesCacheStore: make(map[string]dns.RR),
+		DnsEntriesCacheMap:   make(map[string][]dnsRecord),
+	}
 }
 
 // GetInstance

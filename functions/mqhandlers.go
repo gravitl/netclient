@@ -112,6 +112,8 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 // DNSSync -- mqtt message handler for host/dns/sync/<network id> topic
 func DNSSync(client mqtt.Client, msg mqtt.Message) {
 
+	network := parseServerFromTopic(msg.Topic())
+
 	var dnsEntries []models.DNSEntry
 	err := json.Unmarshal([]byte(msg.Payload()), &dnsEntries)
 	if err != nil {
@@ -120,7 +122,7 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	if len(dnsEntries) > 0 {
-		err = dns.SyncDNS(dnsEntries)
+		err = dns.SyncDNS(network, dnsEntries)
 		if err != nil {
 			slog.Error("synchronize DNS error ", "error", err.Error())
 		}

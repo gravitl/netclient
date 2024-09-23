@@ -72,7 +72,16 @@ func Daemon() {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
 	cancel := startGoRoutines(&wg)
-	dns.GetDNSServerInstance().Start()
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		logger.Log(0, "failed to load server config")
+	} else {
+		if server.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		} else {
+			dns.GetDNSServerInstance().Stop()
+		}
+	}
 	for {
 		select {
 		case <-quit:
@@ -275,8 +284,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go mqFallback(ctx, wg)
 
-	if dns.GetDNSServerInstance().AddrStr == "" {
-		dns.GetDNSServerInstance().Start()
+	if server.ManageDNS {
+		if dns.GetDNSServerInstance().AddrStr == "" {
+			dns.GetDNSServerInstance().Start()
+		}
+	} else {
+		dns.GetDNSServerInstance().Stop()
 	}
 
 	return cancel
@@ -519,6 +532,15 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 		}
 		ok = false
 	} // peer updates belong to host now
+
+	if token := client.Unsubscribe(fmt.Sprintf("host/dns/sync/%s", node.Network)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		if token.Error() == nil {
+			slog.Error("unable to unsubscribe from DNS sync for node ", "node", node.ID, "error", "connection timeout")
+		} else {
+			slog.Error("unable to unsubscribe from DNS sync for node ", "node", node.ID, "error", token.Error())
+		}
+		ok = false
+	}
 
 	if ok {
 		slog.Info("unsubscribed from updates for node", "node", node.ID, "network", node.Network)

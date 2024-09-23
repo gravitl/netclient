@@ -60,9 +60,11 @@ func (dnsServer *DNSServer) Start() {
 	dns.HandleFunc(".", handleDNSRequest)
 
 	srv := &dns.Server{
-		Net:     "udp",
-		Addr:    lIp,
-		UDPSize: 65535,
+		Net:       "udp",
+		Addr:      lIp,
+		UDPSize:   65535,
+		ReusePort: true,
+		ReuseAddr: true,
 	}
 
 	go func() {
