@@ -224,6 +224,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		cache.SkipEndpointCache = sync.Map{}
 
 	}
+
+	if peerUpdate.ManageDNS != server.ManageDNS {
+		server.ManageDNS = peerUpdate.ManageDNS
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
+		if peerUpdate.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		} else {
+			dns.GetDNSServerInstance().Stop()
+		}
+	}
+
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
