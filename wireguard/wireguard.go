@@ -62,6 +62,7 @@ func SetPeers(replace bool) error {
 		ReplacePeers: replace,
 		Peers:        peers,
 	}
+	slog.Error("peers in SetPeers", "Debug", peers)
 	return apply(&config)
 }
 

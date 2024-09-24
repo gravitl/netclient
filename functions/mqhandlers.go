@@ -189,6 +189,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
+	slog.Error("peerUpdate.Peers", "Debug", peerUpdate.Peers)
+	slog.Error("peerUpdate.ReplacePeers", "Debug", peerUpdate.ReplacePeers)
+	slog.Error("peerUpdate.HostNetworkInfo", "Debug", peerUpdate.HostNetworkInfo)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
