@@ -396,6 +396,11 @@ func resetInterfaceFunc() {
 		slog.Error("failed to set peers", err)
 	}
 	wireguard.SetRoutesFromCache()
+
+	//Setup resolveconf for Linux
+	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" {
+		dns.SetupResolvconf()
+	}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint

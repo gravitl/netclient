@@ -67,15 +67,22 @@ func (dnsServer *DNSServer) Start() {
 		ReuseAddr: true,
 	}
 
+	dnsServer.AddrStr = lIp
+	dnsServer.DnsServer = srv
+
 	go func() {
 		err := srv.ListenAndServe()
 		if err != nil {
 			slog.Error("error in starting dns server", "error", lIp, err.Error())
+			dnsServer.AddrStr = ""
+			dnsServer.DnsServer = nil
 		}
 	}()
 
-	dnsServer.AddrStr = lIp
-	dnsServer.DnsServer = srv
+	//Setup resolveconf for Linux
+	if config.Netclient().Host.OS == "linux" {
+		SetupResolvconf()
+	}
 
 	slog.Info("DNS server listens on: ", "Info", lIp)
 }
