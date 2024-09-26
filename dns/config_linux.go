@@ -22,13 +22,13 @@ func isStubSupported() bool {
 	return config.Netclient().DNSManagerType == DNS_MANAGER_STUB
 }
 
-func isUplinkSupported() bool {
-	return config.Netclient().DNSManagerType == DNS_MANAGER_UPLINK
-}
+// func isUplinkSupported() bool {
+// 	return config.Netclient().DNSManagerType == DNS_MANAGER_UPLINK
+// }
 
-func isFileSupported() bool {
-	return config.Netclient().DNSManagerType == DNS_MANAGER_FILE
-}
+// func isFileSupported() bool {
+// 	return config.Netclient().DNSManagerType == DNS_MANAGER_FILE
+// }
 
 func SetupDNSConfig() (err error) {
 
