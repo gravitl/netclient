@@ -79,9 +79,12 @@ func (dnsServer *DNSServer) Start() {
 		}
 	}()
 
-	//Setup resolveconf for Linux
+	//Setup DNS config for Linux
 	if config.Netclient().Host.OS == "linux" {
-		SetupResolvconf()
+		err := SetupDNSConfig()
+		if err != nil {
+			slog.Error("setup DNS conig failed", "error", err.Error())
+		}
 	}
 
 	slog.Info("DNS server listens on: ", "Info", lIp)
@@ -104,4 +107,12 @@ func (dnsServer *DNSServer) Stop() {
 
 	dnsServer.AddrStr = ""
 	dnsServer.DnsServer = nil
+
+	//restore DNS config for Linux
+	if config.Netclient().Host.OS == "linux" {
+		err := RestoreDNSConfig()
+		if err != nil {
+			slog.Error("Restore DNS conig failed", "error", err.Error())
+		}
+	}
 }

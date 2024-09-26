@@ -36,6 +36,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply := &dns.Msg{}
 	reply.SetReply(r)
 	reply.RecursionAvailable = true
+	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
 
 	resp := GetDNSResolverInstance().Lookup(r)

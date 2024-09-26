@@ -82,6 +82,10 @@ type Config struct {
 	InitType                 InitType             `json:"inittype" yaml:"inittype"`
 	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
 	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
+	DNSManagerType           string               `json:"dns_manager_type" yaml:"dns_manager_type"`
+	NameServers              []string             `json:"name_servers" yaml:"name_servers"`
+	DNSSearch                string               `json:"dns_search" yaml:"dns_search"`
+	DNSOptions               string               `json:"dns_options" yaml:"dns_options"`
 }
 
 func init() {

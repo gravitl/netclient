@@ -399,7 +399,7 @@ func resetInterfaceFunc() {
 
 	//Setup resolveconf for Linux
 	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" {
-		dns.SetupResolvconf()
+		dns.SetupDNSConfig()
 	}
 }
 

@@ -72,16 +72,7 @@ func Daemon() {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
 	cancel := startGoRoutines(&wg)
-	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		logger.Log(0, "failed to load server config")
-	} else {
-		if server.ManageDNS {
-			dns.GetDNSServerInstance().Start()
-		} else {
-			dns.GetDNSServerInstance().Stop()
-		}
-	}
+
 	for {
 		select {
 		case <-quit:
@@ -160,6 +151,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
+
+	if config.Netclient().Host.OS == "linux" {
+		dns.InitDNSConfig()
+		updateConfig = true
+	}
 
 	if !config.Netclient().IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
