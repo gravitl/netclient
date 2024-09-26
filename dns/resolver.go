@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
 )
@@ -43,7 +44,24 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if resp != nil {
 		reply.Answer = append(reply.Answer, resp)
 	} else {
-		reply.Rcode = dns.RcodeNameError
+		if config.Netclient().DNSManagerType != DNS_MANAGER_STUB {
+			client := &dns.Client{}
+			for _, v := range config.Netclient().NameServers {
+				resp, _, err := client.Exchange(r, v+":53")
+				if err != nil {
+					continue
+				}
+
+				if resp.Rcode != dns.RcodeSuccess {
+					continue
+				}
+
+				reply.Answer = append(reply.Answer, resp.Answer[0])
+				break
+			}
+		} else {
+			reply.Rcode = dns.RcodeNameError
+		}
 	}
 
 	err := w.WriteMsg(reply)
