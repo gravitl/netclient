@@ -56,8 +56,10 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 					continue
 				}
 
-				reply.Answer = append(reply.Answer, resp.Answer[0])
-				break
+				if len(resp.Answer) > 0 {
+					reply.Answer = append(reply.Answer, resp.Answer[0])
+					break
+				}
 			}
 		} else {
 			reply.Rcode = dns.RcodeNameError

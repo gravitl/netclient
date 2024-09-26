@@ -97,6 +97,14 @@ func (dnsServer *DNSServer) Stop() {
 		return
 	}
 
+	//restore DNS config for Linux
+	if config.Netclient().Host.OS == "linux" {
+		err := RestoreDNSConfig()
+		if err != nil {
+			slog.Error("Restore DNS conig failed", "error", err.Error())
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -107,12 +115,4 @@ func (dnsServer *DNSServer) Stop() {
 
 	dnsServer.AddrStr = ""
 	dnsServer.DnsServer = nil
-
-	//restore DNS config for Linux
-	if config.Netclient().Host.OS == "linux" {
-		err := RestoreDNSConfig()
-		if err != nil {
-			slog.Error("Restore DNS conig failed", "error", err.Error())
-		}
-	}
 }

@@ -398,7 +398,7 @@ func resetInterfaceFunc() {
 	wireguard.SetRoutesFromCache()
 
 	//Setup resolveconf for Linux
-	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" {
+	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && (config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB || config.Netclient().DNSManagerType == dns.DNS_MANAGER_UPLINK) {
 		dns.SetupDNSConfig()
 	}
 }
