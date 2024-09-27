@@ -10,6 +10,10 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+const (
+	ttlTimeout = 3600
+)
+
 var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
 
 type DNSResolver struct {
@@ -77,7 +81,7 @@ func (d *DNSResolver) RegisterA(record dnsRecord) error {
 	defer dnsMapMutex.Unlock()
 
 	r := new(dns.A)
-	r.Hdr = dns.RR_Header{Name: dns.Fqdn(record.Name), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 3600}
+	r.Hdr = dns.RR_Header{Name: dns.Fqdn(record.Name), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttlTimeout}
 	r.A = net.ParseIP(record.RData)
 
 	d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)] = r
@@ -92,10 +96,12 @@ func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 	defer dnsMapMutex.Unlock()
 
 	r := new(dns.AAAA)
-	r.Hdr = dns.RR_Header{Name: record.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 3600}
+	r.Hdr = dns.RR_Header{Name: dns.Fqdn(record.Name), Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttlTimeout}
 	r.AAAA = net.ParseIP(record.RData)
 
 	d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)] = r
+
+	slog.Info("registering AAAA record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
 
 	return nil
 }
