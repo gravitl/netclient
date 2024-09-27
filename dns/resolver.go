@@ -57,7 +57,9 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 				}
 
 				if len(resp.Answer) > 0 {
-					reply.Answer = append(reply.Answer, resp.Answer[0])
+					for _, answ := range resp.Answer {
+						reply.Answer = append(reply.Answer, answ)
+					}
 					break
 				}
 			}
