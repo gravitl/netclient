@@ -79,6 +79,10 @@ func setupResolvectl() (err error) {
 	for _, v := range config.GetNodes() {
 		domains = domains + " " + v.Network
 	}
+	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	if defaultDomain != "" {
+		domains = domains + " " + defaultDomain
+	}
 
 	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl domain netmaker %s", domains), false)
 	if err != nil {
@@ -190,10 +194,12 @@ func setupResolveconf() error {
 	defer f.Close()
 
 	for _, v := range lines {
-		_, err = fmt.Fprintln(f, v)
-		if err != nil {
-			slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
-			return err
+		if v != "" {
+			_, err = fmt.Fprintln(f, v)
+			if err != nil {
+				slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
+				return err
+			}
 		}
 	}
 
@@ -215,6 +221,11 @@ func getNSAndDomains() (string, string, error) {
 		domains = domains + " " + v.Network
 	}
 	domains = domains + " " + config.Netclient().DNSSearch
+
+	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	if defaultDomain != "" {
+		domains = domains + " " + defaultDomain
+	}
 
 	dnsIp = getIpFromServerString(dnsIp)
 
@@ -276,10 +287,12 @@ func restoreResolveconf() error {
 	defer f.Close()
 
 	for _, v := range lines {
-		_, err = fmt.Fprintln(f, v)
-		if err != nil {
-			slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
-			return err
+		if v != "" {
+			_, err = fmt.Fprintln(f, v)
+			if err != nil {
+				slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
+				return err
+			}
 		}
 	}
 

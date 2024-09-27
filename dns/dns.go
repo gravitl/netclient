@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
 )
@@ -34,12 +35,16 @@ func SyncDNS(network string, dnsEntries []models.DNSEntry) error {
 		return errors.New("no DNS entry")
 	}
 
+	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+
 	dnsEntryMap := []dnsRecord{}
 
 	for _, v := range dnsEntries {
 
 		if !strings.HasSuffix(v.Name, v.Network) {
-			continue
+			if !strings.HasSuffix(v.Name, defaultDomain) {
+				continue
+			}
 		}
 
 		if v.Address != "" {
