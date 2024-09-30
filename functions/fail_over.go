@@ -128,10 +128,19 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if err != nil || connected {
 							continue
 						}
-						connected, _ = metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
-						if connected {
-							// peer is connected,so continue
-							continue
+						if peer.Address != "" {
+							connected, _ = metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
+							if connected {
+								// peer is connected,so continue
+								continue
+							}
+						}
+						if peer.Address6 != "" {
+							connected, _ = metrics.PeerConnStatus(peer.Address6, peer.ListenPort, 2)
+							if connected {
+								// peer is connected,so continue
+								continue
+							}
 						}
 						s := models.Signal{
 							Server:         config.CurrServer,
