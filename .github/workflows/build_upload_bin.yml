@@ -96,14 +96,7 @@ jobs:
     - name: Upload to server
       env:
         UPLOAD_PATH_VERSION: /var/www/files/releases/download/${{ github.event.inputs.version }}
-        UPLOAD_PATH_LATEST: /var/www/files/releases/latest
-        UPLOAD_PATH_ROOT_LATEST: /var/www/files/latest
       run: |
-        ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION $UPLOAD_PATH_LATEST $UPLOAD_PATH_ROOT_LATEST"
-        
-        find . -type f -name "netclient-*" -exec scp {} root@fileserver.clustercat.com:$UPLOAD_PATH/ \;        
+        ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION
 
-        ssh root@fileserver.clustercat.com "cp $UPLOAD_PATH_VERSION/* $UPLOAD_PATH_LATEST/"
-        
-        ssh root@fileserver.clustercat.com "cp $UPLOAD_PATH_VERSION/* $UPLOAD_PATH_ROOT_LATEST/"
-
+        find . -type f -name "netclient-*" -exec scp {} root@fileserver.clustercat.com:$UPLOAD_PATH_VERSION/ \;        
