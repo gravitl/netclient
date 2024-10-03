@@ -48,24 +48,26 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if resp != nil {
 		reply.Answer = append(reply.Answer, resp)
 	} else {
-		if config.Netclient().DNSManagerType != DNS_MANAGER_STUB {
-			client := &dns.Client{}
-			for _, v := range config.Netclient().NameServers {
-				resp, _, err := client.Exchange(r, v+":53")
-				if err != nil {
-					continue
-				}
-
-				if resp.Rcode != dns.RcodeSuccess {
-					continue
-				}
-
-				if len(resp.Answer) > 0 {
-					reply.Answer = append(reply.Answer, resp.Answer...)
-					break
-				}
+		gotResult := false
+		client := &dns.Client{}
+		for _, v := range config.Netclient().NameServers {
+			resp, _, err := client.Exchange(r, v+":53")
+			if err != nil {
+				continue
 			}
-		} else {
+
+			if resp.Rcode != dns.RcodeSuccess {
+				continue
+			}
+
+			if len(resp.Answer) > 0 {
+				reply.Answer = append(reply.Answer, resp.Answer...)
+				gotResult = true
+				break
+			}
+		}
+
+		if !gotResult {
 			reply.Rcode = dns.RcodeNameError
 		}
 	}

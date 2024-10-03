@@ -335,13 +335,39 @@ func InitDNSConfig() {
 			continue
 		} else {
 			if strings.HasPrefix(line, "nameserver") {
-				nslist = append(nslist, strings.TrimSpace(line[11:]))
+				ns := strings.TrimSpace(line[11:])
+				if ns != "127.0.0.53" && ns != "127.0.0.54" {
+					nslist = append(nslist, ns)
+				}
 			}
 			if strings.HasPrefix(line, "search") {
 				config.Netclient().DNSSearch = strings.TrimSpace(line[7:])
 			}
 			if strings.HasPrefix(line, "options") {
 				config.Netclient().DNSOptions = strings.TrimSpace(line[8:])
+			}
+		}
+	}
+
+	//For stub and uplink mode, 127.0.0.53 is contained in resolve.conf file, this is to get the real upstream dns servers
+	if len(nslist) == 0 && config.Netclient().DNSManagerType != DNS_MANAGER_FILE {
+		output, err := ncutils.RunCmd("resolvectl status", false)
+		if err != nil {
+			slog.Error("resolvectl status command failed", "error", err.Error())
+		} else {
+			lines := strings.Split(output, "\n")
+
+			for _, l := range lines {
+				if strings.HasPrefix(strings.TrimSpace(l), "DNS Servers:") {
+
+					t := strings.TrimSpace(strings.TrimSpace(l)[12:])
+					ll := strings.Split(t, " ")
+					if len(ll) > 0 {
+						nslist = append(nslist, ll...)
+					}
+
+					break
+				}
 			}
 		}
 	}
