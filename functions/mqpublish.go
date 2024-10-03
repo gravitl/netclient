@@ -83,14 +83,19 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				ip4, _, _ := holePunchWgPort(4, 0)
 				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
 					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					config.HostPublicIP = ip4
 					restart = true
 				}
 				ip6, _, _ := holePunchWgPort(6, 0)
 				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					config.HostPublicIP6 = ip6
 					restart = true
 				}
 				if restart {
+					if err := UpdateHostSettings(true); err != nil {
+						slog.Warn("failed to update host settings", err.Error())
+					}
 					logger.Log(0, "restarting netclient due to network changes...")
 					daemon.HardRestart()
 				}
