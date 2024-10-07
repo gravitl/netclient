@@ -85,11 +85,19 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
 					restart = true
+				} else if ip4 == nil && config.HostPublicIP != nil {
+					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					config.HostPublicIP = nil
+					restart = true
 				}
 				ip6, _, _ := holePunchWgPort(6, 0)
 				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
+					restart = true
+				} else if ip6 == nil && config.HostPublicIP6 != nil {
+					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					config.HostPublicIP6 = nil
 					restart = true
 				}
 				if restart {
