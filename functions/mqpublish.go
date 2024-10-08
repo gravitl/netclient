@@ -341,6 +341,7 @@ func UpdateHostSettings(fallback bool) error {
 				publishMsg = true
 			}
 		} else {
+			logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
 			config.Netclient().EndpointIP = nil
 			publishMsg = true
 		}
@@ -349,11 +350,12 @@ func UpdateHostSettings(fallback bool) error {
 	if !config.Netclient().IsStatic {
 		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
 			if !config.Netclient().EndpointIPv6.Equal(config.HostPublicIP6) {
-				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
+				logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 				config.Netclient().EndpointIPv6 = config.HostPublicIP6
 				publishMsg = true
 			}
 		} else {
+			logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 			config.Netclient().EndpointIPv6 = nil
 			publishMsg = true
 		}
