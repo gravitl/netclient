@@ -341,7 +341,6 @@ func UpdateHostSettings(fallback bool) error {
 				publishMsg = true
 			}
 		} else {
-			logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
 			config.Netclient().EndpointIP = nil
 			publishMsg = true
 		}
@@ -355,7 +354,6 @@ func UpdateHostSettings(fallback bool) error {
 				publishMsg = true
 			}
 		} else {
-			logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 			config.Netclient().EndpointIPv6 = nil
 			publishMsg = true
 		}
