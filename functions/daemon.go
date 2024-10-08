@@ -226,7 +226,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
-	config.UpdateHostPeers(pullresp.Peers)
 	wireguard.SetPeers(true)
 	if len(pullresp.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
