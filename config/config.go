@@ -76,16 +76,18 @@ var (
 // Config configuration for netclient and host as a whole
 type Config struct {
 	models.Host
-	PrivateKey               wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
-	TrafficKeyPrivate        []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
-	HostPeers                []wgtypes.PeerConfig `json:"-" yaml:"-"`
-	InitType                 InitType             `json:"inittype" yaml:"inittype"`
-	OriginalDefaultGatewayIp net.IP               `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
-	CurrGwNmIP               net.IP               `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
-	DNSManagerType           string               `json:"dns_manager_type" yaml:"dns_manager_type"`
-	NameServers              []string             `json:"name_servers" yaml:"name_servers"`
-	DNSSearch                string               `json:"dns_search" yaml:"dns_search"`
-	DNSOptions               string               `json:"dns_options" yaml:"dns_options"`
+	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
+	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
+	HostPeers         []wgtypes.PeerConfig `json:"-" yaml:"-"`
+	InitType          InitType             `json:"inittype" yaml:"inittype"`
+	//for Internet gateway
+	OriginalDefaultGatewayIp net.IP `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
+	CurrGwNmIP               net.IP `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
+	//for manage DNS
+	DNSManagerType string   `json:"dns_manager_type" yaml:"dns_manager_type"`
+	NameServers    []string `json:"name_servers" yaml:"name_servers"`
+	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
+	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
 }
 
 func init() {

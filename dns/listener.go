@@ -28,6 +28,7 @@ func GetDNSServerInstance() *DNSServer {
 	return dnsServer
 }
 
+// Start the DNS listener
 func (dnsServer *DNSServer) Start() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
@@ -90,6 +91,7 @@ func (dnsServer *DNSServer) Start() {
 	slog.Info("DNS server listens on: ", "Info", lIp)
 }
 
+// Stop the DNS listener
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()

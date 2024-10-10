@@ -78,6 +78,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	}
 }
 
+// Register A record
 func (d *DNSResolver) RegisterA(record dnsRecord) error {
 	dnsMapMutex.Lock()
 	defer dnsMapMutex.Unlock()
@@ -93,6 +94,7 @@ func (d *DNSResolver) RegisterA(record dnsRecord) error {
 	return nil
 }
 
+// Register AAAA record
 func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 	dnsMapMutex.Lock()
 	defer dnsMapMutex.Unlock()
@@ -108,6 +110,7 @@ func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 	return nil
 }
 
+// Lookup DNS entry in local directory
 func (d *DNSResolver) Lookup(m *dns.Msg) dns.RR {
 	dnsMapMutex.Lock()
 	defer dnsMapMutex.Unlock()

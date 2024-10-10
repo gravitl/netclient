@@ -33,6 +33,7 @@ func isStubSupported() bool {
 // 	return config.Netclient().DNSManagerType == DNS_MANAGER_FILE
 // }
 
+// Entry point to setup DNS settings
 func SetupDNSConfig() (err error) {
 	dnsConfigMutex.Lock()
 	defer dnsConfigMutex.Unlock()
@@ -45,6 +46,7 @@ func SetupDNSConfig() (err error) {
 	return err
 }
 
+// Entry point to restore DNS settings
 func RestoreDNSConfig() (err error) {
 	dnsConfigMutex.Lock()
 	defer dnsConfigMutex.Unlock()
@@ -306,6 +308,7 @@ func restoreResolveconf() error {
 	return nil
 }
 
+// Entry point to read current DNS settings and write to config
 func InitDNSConfig() {
 	dnsConfigMutex.Lock()
 	defer dnsConfigMutex.Unlock()

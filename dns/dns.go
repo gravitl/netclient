@@ -18,6 +18,7 @@ type dnsRecord struct {
 	RData string
 }
 
+// new a dnsRecord object
 func newDNSRecord(name string, t uint16, dest string) dnsRecord {
 	return dnsRecord{
 		Name:  name,
@@ -30,6 +31,7 @@ func buildDNSEntryKey(name string, t uint16) string {
 	return fmt.Sprintf("%s.%d", name, t)
 }
 
+// Sync up the DNS entries with NM server
 func SyncDNS(network string, dnsEntries []models.DNSEntry) error {
 	if len(dnsEntries) == 0 {
 		return errors.New("no DNS entry")
