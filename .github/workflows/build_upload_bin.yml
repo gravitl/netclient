@@ -1,0 +1,102 @@
+name: Build and Upload netclient Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'develop'
+      version:
+        description: 'Version to build'
+        required: true
+        default: 'v0.0.0'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.branch }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Build
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        go version
+        go mod tidy
+        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} .
+
+    - name: List built binary (Unix)
+      if: matrix.goos != 'windows'
+      run: ls -l netclient-*
+
+    - name: List built binary (Windows)
+      if: matrix.goos == 'windows'
+      run: Get-ChildItem netclient-*
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: netclient-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Display structure of downloaded files
+      run: ls -R
+
+    - name: Install SSH key
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H fileserver.clustercat.com >> ~/.ssh/known_hosts
+
+    - name: Test SSH connection
+      run: |
+          if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -T root@fileserver.clustercat.com; then
+            echo "SSH connection successful"
+          else
+            echo "SSH connection failed"
+            exit 1
+          fi
+
+    - name: Upload to server
+      env:
+        UPLOAD_PATH_VERSION: /var/www/files/releases/download/${{ github.event.inputs.version }}
+      run: |
+        ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION
+
+        find . -type f -name "netclient-*" -exec scp {} root@fileserver.clustercat.com:$UPLOAD_PATH_VERSION/ \;        
