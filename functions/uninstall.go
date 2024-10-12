@@ -51,6 +51,7 @@ func Uninstall() ([]error, error) {
 
 // LeaveNetwork - client exits a network
 func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
+	dns.RestoreDNSConfig()
 	faults := []error{}
 	node, ok := config.Nodes[network]
 	if !ok {

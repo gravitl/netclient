@@ -58,22 +58,21 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if resp != nil {
 		reply.Answer = append(reply.Answer, resp)
 	} else {
+		nslist := config.Netclient().NameServers
 		if config.Netclient().CurrGwNmIP != nil {
-			nslist := []string{}
+			nslist = []string{}
 			nslist = append(nslist, config.Netclient().CurrGwNmIP.String())
-			config.Netclient().NameServers = nslist
 		} else if isInternetGW() {
-			nslist := []string{}
+			nslist = []string{}
 			nslist = append(nslist, "8.8.8.8")
 			nslist = append(nslist, "8.8.4.4")
 			nslist = append(nslist, "2001:4860:4860::8888")
 			nslist = append(nslist, "2001:4860:4860::8844")
-			config.Netclient().NameServers = nslist
 		}
 
 		gotResult := false
 		client := &dns.Client{}
-		for _, v := range config.Netclient().NameServers {
+		for _, v := range nslist {
 			if strings.Contains(v, ":") {
 				v = "[" + v + "]"
 			}

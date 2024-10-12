@@ -103,11 +103,11 @@ func (dnsServer *DNSServer) Stop() {
 	if config.Netclient().Host.OS == "linux" {
 		err := RestoreDNSConfig()
 		if err != nil {
-			slog.Error("Restore DNS conig failed", "error", err.Error())
+			slog.Warn("Restore DNS conig failed", "error", err.Error())
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	err := dnsServer.DnsServer.ShutdownContext(ctx)

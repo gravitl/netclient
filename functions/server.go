@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -60,6 +61,7 @@ func LeaveServer(s string) error {
 	if server == nil {
 		return errors.New("server not found")
 	}
+	dns.RestoreDNSConfig()
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		return err

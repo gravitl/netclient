@@ -222,11 +222,15 @@ func getNSAndDomains() (string, string, error) {
 	for _, v := range config.GetNodes() {
 		domains = domains + " " + v.Network
 	}
-	domains = domains + " " + config.Netclient().DNSSearch
 
 	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
 	if defaultDomain != "" {
 		domains = domains + " " + defaultDomain
+	}
+	if config.Netclient().DNSSearch != "" {
+		domains = domains + " " + config.Netclient().DNSSearch
+	} else {
+		domains = domains + " ."
 	}
 
 	dnsIp = getIpFromServerString(dnsIp)
@@ -235,6 +239,30 @@ func getNSAndDomains() (string, string, error) {
 	ns = ns + " " + dnsIp
 
 	return ns, domains, nil
+}
+
+func getDomains() (string, error) {
+
+	if len(config.GetNodes()) == 0 {
+		return "", errors.New("no network joint")
+	}
+
+	domains := "search"
+	for _, v := range config.GetNodes() {
+		domains = domains + " " + v.Network
+	}
+
+	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	if defaultDomain != "" {
+		domains = domains + " " + defaultDomain
+	}
+	if config.Netclient().DNSSearch != "" {
+		domains = domains + " " + config.Netclient().DNSSearch
+	} else {
+		domains = domains + " ."
+	}
+
+	return domains, nil
 }
 
 func buildDeleteConfigContent() ([]string, error) {
@@ -253,9 +281,9 @@ func buildDeleteConfigContent() ([]string, error) {
 	lines := strings.Split(string(rawBytes), "\n")
 
 	//get nameserver and search domain
-	_, domains, err := getNSAndDomains()
+	domains, err := getDomains()
 	if err != nil {
-		slog.Error("error in getting getNSAndDomains", "error", err.Error())
+		slog.Warn("error in getting getNSAndDomains", "error", err.Error())
 		return []string{}, err
 	}
 
@@ -277,7 +305,7 @@ func restoreResolveconf() error {
 
 	lines, err := buildDeleteConfigContent()
 	if err != nil {
-		slog.Error("could not build config content", "error", err.Error())
+		slog.Warn("could not build config content", "error", err.Error())
 		return err
 	}
 
