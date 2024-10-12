@@ -364,6 +364,12 @@ func InitDNSConfig() {
 				config.Netclient().DNSManagerType = DNS_MANAGER_FILE
 			}
 			continue
+			//for ubuntu 20
+		} else if i == 3 {
+			if strings.Contains(line, "DNS stub resolver") {
+				config.Netclient().DNSManagerType = DNS_MANAGER_STUB
+			}
+			continue
 		} else {
 			if strings.HasPrefix(line, "nameserver") {
 				ns := strings.TrimSpace(line[11:])
