@@ -454,6 +454,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
+	dns.RestoreDNSConfig()
 	config.DeleteServerHostPeerCfg()
 	nodes := config.GetNodes()
 	for k, node := range nodes {
