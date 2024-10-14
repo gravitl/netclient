@@ -287,7 +287,7 @@ func buildDeleteConfigContent() ([]string, error) {
 		return []string{}, err
 	}
 
-	lNo := 0
+	lNo := 100
 	for i, line := range lines {
 		if strings.Contains(line, domains) {
 			lNo = i
