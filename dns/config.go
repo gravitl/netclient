@@ -15,8 +15,8 @@ const (
 	DNS_MANAGER_FILE   = "file"   // other than above
 )
 
-const (
-	dnsConfigPath = "/etc/netclient/dns.json"
+var (
+	dnsConfigPath = config.GetNetclientPath() + "dns.json"
 )
 
 type DNSConfig struct {
