@@ -38,7 +38,7 @@ func Uninstall() ([]error, error) {
 	if err := deleteAllDNS(); err != nil {
 		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
 	}
-	dns.RestoreDNSConfig()
+
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
 	}
@@ -51,7 +51,6 @@ func Uninstall() ([]error, error) {
 
 // LeaveNetwork - client exits a network
 func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
-	dns.RestoreDNSConfig()
 	faults := []error{}
 	node, ok := config.Nodes[network]
 	if !ok {

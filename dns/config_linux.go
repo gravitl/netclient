@@ -43,6 +43,9 @@ func SetupDNSConfig() (err error) {
 		err = setupResolveconf()
 	}
 
+	//write to dns.json
+	syncDNSJsonFile()
+
 	return err
 }
 
@@ -55,6 +58,8 @@ func RestoreDNSConfig() (err error) {
 	} else {
 		err = restoreResolveconf()
 	}
+
+	cleanDNSJsonFile()
 
 	return err
 }
@@ -243,23 +248,23 @@ func getNSAndDomains() (string, string, error) {
 
 func getDomains() (string, error) {
 
-	if len(config.GetNodes()) == 0 {
-		return "", errors.New("no network joint")
+	dnsConfig, err := readDNSJsonFile()
+	if err != nil {
+		return "", err
 	}
 
 	domains := "search"
-	for _, v := range config.GetNodes() {
-		domains = domains + " " + v.Network
+	for _, v := range dnsConfig.Domains {
+		domains = domains + " " + v
 	}
 
-	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	defaultDomain := dnsConfig.DefaultDomain
 	if defaultDomain != "" {
 		domains = domains + " " + defaultDomain
 	}
-	if config.Netclient().DNSSearch != "" {
-		domains = domains + " " + config.Netclient().DNSSearch
-	} else {
-		domains = domains + " ."
+	dnsSearch := dnsConfig.DNSSearch
+	if dnsSearch != "" {
+		domains = domains + " " + dnsSearch
 	}
 
 	return domains, nil
