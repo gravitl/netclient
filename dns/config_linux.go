@@ -462,11 +462,79 @@ func restoreResolveUplink() error {
 
 	_, err = ncutils.RunCmd("systemctl restart systemd-resolved", false)
 	if err != nil {
-		slog.Error("restart systemd-resolved failed", "error", err.Error())
+		slog.Warn("restart systemd-resolved failed", "error", err.Error())
+		//remove the nameserver from file directly
+		removeNSUplink()
 		return err
 	}
 
 	return nil
+}
+
+func buildDeleteConfigUplink() ([]string, error) {
+	//get nameserver
+	dnsIp := GetDNSServerInstance().AddrStr
+	if dnsIp == "" {
+		return []string{}, errors.New("no listener is running")
+	}
+
+	f, err := os.Open(resolvconfFilePath)
+	if err != nil {
+		slog.Error("error opending file", "error", resolvconfFilePath, err.Error())
+		return []string{}, err
+	}
+	defer f.Close()
+
+	rawBytes, err := io.ReadAll(f)
+	if err != nil {
+		slog.Error("error reading file", "error", resolvconfFilePath, err.Error())
+		return []string{}, err
+	}
+	lines := strings.Split(string(rawBytes), "\n")
+
+	//get search domain
+	dnsIp = getIpFromServerString(dnsIp)
+	ns := "nameserver " + dnsIp
+
+	lNo := 100
+	for i, line := range lines {
+		if strings.Contains(line, ns) {
+			lNo = i
+			break
+		}
+	}
+
+	lines = slices.Delete(lines, lNo, lNo+1)
+
+	return lines, nil
+}
+
+func removeNSUplink() error {
+	lines, err := buildDeleteConfigUplink()
+	if err != nil {
+		slog.Warn("could not build config content", "error", err.Error())
+		return err
+	}
+
+	f, err := os.OpenFile(resolvconfFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	if err != nil {
+		slog.Error("error opending file", "error", resolvconfFilePath, err.Error())
+		return err
+	}
+	defer f.Close()
+
+	for _, v := range lines {
+		if v != "" {
+			_, err = fmt.Fprintln(f, v)
+			if err != nil {
+				slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
+				return err
+			}
+		}
+	}
+
+	return nil
+
 }
 
 func restoreResolveconf() error {

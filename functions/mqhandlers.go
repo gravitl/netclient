@@ -99,6 +99,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
+		if server.ManageDNS {
+			dns.GetDNSServerInstance().Stop()
+			dns.GetDNSServerInstance().Start()
+		}
 
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {

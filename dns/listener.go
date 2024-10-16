@@ -42,8 +42,10 @@ func (dnsServer *DNSServer) Start() {
 
 	var node config.Node
 	for _, v := range config.GetNodes() {
-		node = v
-		break
+		if v.Connected {
+			node = v
+			break
+		}
 	}
 
 	lIp := ""
