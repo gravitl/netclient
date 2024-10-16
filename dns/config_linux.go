@@ -20,15 +20,17 @@ var dnsConfigMutex = sync.Mutex{} // used to mutex functions of the DNS
 const (
 	resolvconfFilePath    = "/etc/resolv.conf"
 	resolvconfFileBkpPath = "/etc/netclient/resolv.conf.nm.bkp"
+	resolvUplinkPath      = "/etc/systemd/resolved.conf"
+	resolvUplinkBkpPath   = "/etc/netclient/resolved.conf.nm.bkp"
 )
 
 func isStubSupported() bool {
 	return config.Netclient().DNSManagerType == DNS_MANAGER_STUB
 }
 
-// func isUplinkSupported() bool {
-// 	return config.Netclient().DNSManagerType == DNS_MANAGER_UPLINK
-// }
+func isUplinkSupported() bool {
+	return config.Netclient().DNSManagerType == DNS_MANAGER_UPLINK
+}
 
 // func isFileSupported() bool {
 // 	return config.Netclient().DNSManagerType == DNS_MANAGER_FILE
@@ -40,6 +42,8 @@ func SetupDNSConfig() (err error) {
 	defer dnsConfigMutex.Unlock()
 	if isStubSupported() {
 		err = setupResolvectl()
+	} else if isUplinkSupported() {
+		err = setupResolveUplink()
 	} else {
 		err = setupResolveconf()
 	}
@@ -56,6 +60,8 @@ func RestoreDNSConfig() (err error) {
 	defer dnsConfigMutex.Unlock()
 	if isStubSupported() {
 
+	} else if isUplinkSupported() {
+		err = restoreResolveUplink()
 	} else {
 		err = restoreResolveconf()
 	}
@@ -63,6 +69,84 @@ func RestoreDNSConfig() (err error) {
 	cleanDNSJsonFile()
 
 	return err
+}
+
+func buildAddConfigContentUplink() ([]string, error) {
+
+	dnsIp := GetDNSServerInstance().AddrStr
+	if dnsIp == "" {
+		return []string{}, errors.New("no listener is running")
+	}
+
+	dnsIp = getIpFromServerString(dnsIp)
+	ns := "DNS=" + dnsIp
+
+	f, err := os.Open(resolvUplinkPath)
+	if err != nil {
+		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
+		return []string{}, err
+	}
+	defer f.Close()
+
+	rawBytes, err := io.ReadAll(f)
+	if err != nil {
+		slog.Error("error reading file", "error", resolvUplinkPath, err.Error())
+		return []string{}, err
+	}
+	lines := strings.Split(string(rawBytes), "\n")
+	lNo := 21
+	for i, line := range lines {
+		if strings.HasPrefix(line, "#DNS=") {
+			lNo = i
+			break
+		}
+	}
+
+	lines = slices.Insert(lines, lNo, ns)
+
+	return lines, nil
+}
+
+func setupResolveUplink() (err error) {
+
+	// backup /etc/systemd/resolved.conf
+	err = backupResolveconfFile(resolvUplinkPath, resolvUplinkBkpPath)
+	if err != nil {
+		slog.Error("could not backup ", resolvUplinkPath, "error", err.Error())
+		return err
+	}
+
+	// add nameserver
+	lines, err := buildAddConfigContentUplink()
+	if err != nil {
+		slog.Error("could not build config content", "error", err.Error())
+		return err
+	}
+
+	f, err := os.OpenFile(resolvUplinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	if err != nil {
+		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
+		return err
+	}
+	defer f.Close()
+
+	for _, v := range lines {
+		if v != "" {
+			_, err = fmt.Fprintln(f, v)
+			if err != nil {
+				slog.Error("error writing file", "error", resolvUplinkPath, err.Error())
+				return err
+			}
+		}
+	}
+
+	_, err = ncutils.RunCmd("systemctl restart systemd-resolved", false)
+	if err != nil {
+		slog.Error("restart systemd-resolved failed", "error", err.Error())
+		return err
+	}
+
+	return nil
 }
 
 func setupResolvectl() (err error) {
@@ -116,26 +200,26 @@ func getIpFromServerString(addrStr string) string {
 	return s
 }
 
-func backupResolveconfFile() error {
+func backupResolveconfFile(src, dst string) error {
 
-	_, err := os.Stat(resolvconfFileBkpPath)
+	_, err := os.Stat(dst)
 	if err != nil {
-		src_file, err := os.Open(resolvconfFilePath)
+		src_file, err := os.Open(src)
 		if err != nil {
-			slog.Error("could not open ", resolvconfFilePath, "error", err.Error())
+			slog.Error("could not open ", src, "error", err.Error())
 			return err
 		}
 		defer src_file.Close()
-		dst_file, err := os.Create(resolvconfFileBkpPath)
+		dst_file, err := os.Create(dst)
 		if err != nil {
-			slog.Error("could not open ", resolvconfFileBkpPath, "error", err.Error())
+			slog.Error("could not open ", dst, "error", err.Error())
 			return err
 		}
 		defer dst_file.Close()
 
 		_, err = io.Copy(dst_file, src_file)
 		if err != nil {
-			slog.Error("could not backup ", resolvconfFilePath, "error", err.Error())
+			slog.Error("could not backup ", src, "error", err.Error())
 			return err
 		}
 	}
@@ -181,7 +265,7 @@ func buildAddConfigContent() ([]string, error) {
 func setupResolveconf() error {
 
 	// backup /etc/resolv.conf
-	err := backupResolveconfFile()
+	err := backupResolveconfFile(resolvconfFilePath, resolvconfFileBkpPath)
 	if err != nil {
 		slog.Error("could not backup ", resolvconfFilePath, "error", err.Error())
 		return err
@@ -277,6 +361,44 @@ func getDomains() (string, error) {
 	return domains, nil
 }
 
+func buildDeleteConfigContentUplink() ([]string, error) {
+
+	//get nameserver
+	dnsIp := GetDNSServerInstance().AddrStr
+	if dnsIp == "" {
+		return []string{}, errors.New("no listener is running")
+	}
+
+	f, err := os.Open(resolvUplinkPath)
+	if err != nil {
+		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
+		return []string{}, err
+	}
+	defer f.Close()
+
+	rawBytes, err := io.ReadAll(f)
+	if err != nil {
+		slog.Error("error reading file", "error", resolvUplinkPath, err.Error())
+		return []string{}, err
+	}
+	lines := strings.Split(string(rawBytes), "\n")
+
+	dnsIp = getIpFromServerString(dnsIp)
+	ns := "DNS=" + dnsIp
+
+	lNo := 21
+	for i, line := range lines {
+		if strings.Contains(line, ns) {
+			lNo = i
+			break
+		}
+	}
+
+	lines = slices.Delete(lines, lNo, lNo+1)
+
+	return lines, nil
+}
+
 func buildDeleteConfigContent() ([]string, error) {
 	f, err := os.Open(resolvconfFilePath)
 	if err != nil {
@@ -292,10 +414,10 @@ func buildDeleteConfigContent() ([]string, error) {
 	}
 	lines := strings.Split(string(rawBytes), "\n")
 
-	//get nameserver and search domain
+	//get search domain
 	domains, err := getDomains()
 	if err != nil {
-		slog.Warn("error in getting getNSAndDomains", "error", err.Error())
+		slog.Warn("error in getting getDomains", "error", err.Error())
 		return []string{}, err
 	}
 
@@ -311,6 +433,40 @@ func buildDeleteConfigContent() ([]string, error) {
 	lines = slices.Delete(lines, lNo, lNo+1)
 
 	return lines, nil
+}
+
+func restoreResolveUplink() error {
+
+	lines, err := buildDeleteConfigContentUplink()
+	if err != nil {
+		slog.Warn("could not build config content", "error", err.Error())
+		return err
+	}
+
+	f, err := os.OpenFile(resolvUplinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	if err != nil {
+		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
+		return err
+	}
+	defer f.Close()
+
+	for _, v := range lines {
+		if v != "" {
+			_, err = fmt.Fprintln(f, v)
+			if err != nil {
+				slog.Error("error writing file", "error", resolvUplinkPath, err.Error())
+				return err
+			}
+		}
+	}
+
+	_, err = ncutils.RunCmd("systemctl restart systemd-resolved", false)
+	if err != nil {
+		slog.Error("restart systemd-resolved failed", "error", err.Error())
+		return err
+	}
+
+	return nil
 }
 
 func restoreResolveconf() error {
@@ -336,13 +492,6 @@ func restoreResolveconf() error {
 				return err
 			}
 		}
-	}
-
-	//delete backup resolv.conf file
-	err = os.Remove(resolvconfFileBkpPath)
-	if err != nil {
-		slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
-		return err
 	}
 
 	return nil

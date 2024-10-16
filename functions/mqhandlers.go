@@ -401,7 +401,7 @@ func resetInterfaceFunc() {
 	wireguard.SetRoutesFromCache()
 
 	//Setup resolveconf for Linux
-	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && (config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB || config.Netclient().DNSManagerType == dns.DNS_MANAGER_UPLINK) {
+	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
 		dns.SetupDNSConfig()
 	}
 }
@@ -457,7 +457,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
-	dns.RestoreDNSConfig()
 	config.DeleteServerHostPeerCfg()
 	nodes := config.GetNodes()
 	for k, node := range nodes {
