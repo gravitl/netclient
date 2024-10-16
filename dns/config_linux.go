@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 
@@ -223,9 +224,15 @@ func getNSAndDomains() (string, string, error) {
 		return "", "", errors.New("no network joint")
 	}
 
-	domains := "search"
+	dStrings := []string{}
 	for _, v := range config.GetNodes() {
-		domains = domains + " " + v.Network
+		dStrings = append(dStrings, v.Network)
+	}
+	sort.Strings(dStrings)
+
+	domains := "search"
+	for _, v := range dStrings {
+		domains = domains + " " + v
 	}
 
 	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain

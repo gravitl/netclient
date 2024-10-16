@@ -3,6 +3,7 @@ package dns
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"sync"
 
 	"github.com/gravitl/netclient/config"
@@ -58,6 +59,7 @@ func syncDNSJsonFile() error {
 	for _, v := range config.GetNodes() {
 		domains = append(domains, v.Network)
 	}
+	sort.Strings(domains)
 	dnsConfig.Domains = domains
 
 	//write the DNSconfig to dns.json
