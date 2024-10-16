@@ -45,7 +45,7 @@ func syncDNSJsonFile() error {
 	// read from config and build DNSConfig
 	dnsConfig := &DNSConfig{}
 	if config.Netclient().DNSSearch != "" {
-		dnsConfig.DNSSearch = config.Netclient().DNSSearch + " ."
+		dnsConfig.DNSSearch = config.Netclient().DNSSearch
 	} else {
 		dnsConfig.DNSSearch = "."
 	}
