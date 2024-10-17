@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
@@ -76,6 +77,7 @@ func Daemon() {
 		select {
 		case <-quit:
 			slog.Info("shutting down netclient daemon")
+			dns.GetDNSServerInstance().Stop()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
@@ -86,6 +88,7 @@ func Daemon() {
 			return
 		case <-reset:
 			slog.Info("received reset")
+			dns.GetDNSServerInstance().Stop()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
@@ -148,6 +151,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
 	updateConfig := false
+
+	if config.Netclient().Host.OS == "linux" {
+		dns.InitDNSConfig()
+		updateConfig = true
+	}
 
 	if !config.Netclient().IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
@@ -273,6 +281,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go mqFallback(ctx, wg)
 
+	if server.ManageDNS {
+		if dns.GetDNSServerInstance().AddrStr == "" {
+			dns.GetDNSServerInstance().Start()
+		}
+	} else {
+		dns.GetDNSServerInstance().Stop()
+	}
+
 	return cancel
 }
 
@@ -319,6 +335,9 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			node := node
 			setSubscriptions(client, &node)
+			if server.ManageDNS {
+				setDNSSubscriptions(client, &node)
+			}
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
@@ -379,6 +398,9 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			for _, node := range nodes {
 				node := node
 				setSubscriptions(client, &node)
+				if server.ManageDNS {
+					setDNSSubscriptions(client, &node)
+				}
 			}
 			setHostSubscription(client, server.Name)
 		}
@@ -432,6 +454,20 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 		return
 	}
 	slog.Info("subscribed to updates for node", "node", node.ID, "network", node.Network)
+}
+
+// setDNSSubscriptions sets MQ client subscriptions for a specific node config
+// should be called for each node belonging to a given server
+func setDNSSubscriptions(client mqtt.Client, node *config.Node) {
+	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s", node.Network), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		if token.Error() == nil {
+			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", "connection timeout")
+		} else {
+			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", token.Error())
+		}
+		return
+	}
+	slog.Info("subscribed to DNS sync for node", "node", node.ID, "network", node.Network)
 }
 
 // should only ever use node client configs
@@ -493,6 +529,15 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 		}
 		ok = false
 	} // peer updates belong to host now
+
+	if token := client.Unsubscribe(fmt.Sprintf("host/dns/sync/%s", node.Network)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
+		if token.Error() == nil {
+			slog.Error("unable to unsubscribe from DNS sync for node ", "node", node.ID, "error", "connection timeout")
+		} else {
+			slog.Error("unable to unsubscribe from DNS sync for node ", "node", node.ID, "error", token.Error())
+		}
+		ok = false
+	}
 
 	if ok {
 		slog.Info("unsubscribed from updates for node", "node", node.ID, "network", node.Network)
