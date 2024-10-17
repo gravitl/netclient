@@ -82,6 +82,12 @@ func (dnsServer *DNSServer) Start() {
 		}
 	}()
 
+	time.Sleep(time.Second * 2)
+	//if listener failed to start, do not make DNS changes
+	if dnsServer.AddrStr == "" || dnsServer.DnsServer == nil {
+		return
+	}
+
 	//Setup DNS config for Linux
 	if config.Netclient().Host.OS == "linux" {
 		err := SetupDNSConfig()
