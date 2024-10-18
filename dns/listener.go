@@ -82,7 +82,7 @@ func (dnsServer *DNSServer) Start() {
 		}
 	}()
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 1)
 	//if listener failed to start, do not make DNS changes
 	if dnsServer.AddrStr == "" || dnsServer.DnsServer == nil {
 		return
@@ -115,7 +115,7 @@ func (dnsServer *DNSServer) Stop() {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	err := dnsServer.DnsServer.ShutdownContext(ctx)

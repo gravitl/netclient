@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
 )
+
+var dnsSyncMutex = sync.Mutex{} // used to mutex functions of the DNS
 
 type dnsRecord struct {
 	Name string
@@ -33,6 +36,8 @@ func buildDNSEntryKey(name string, t uint16) string {
 
 // Sync up the DNS entries with NM server
 func SyncDNS(network string, dnsEntries []models.DNSEntry) error {
+	dnsSyncMutex.Lock()
+	defer dnsSyncMutex.Unlock()
 	if len(dnsEntries) == 0 {
 		return errors.New("no DNS entry")
 	}
