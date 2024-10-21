@@ -35,9 +35,6 @@ func Uninstall() ([]error, error) {
 		}
 		Mqclient.Disconnect(250)
 	}
-	if err := deleteAllDNS(); err != nil {
-		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
-	}
 
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
