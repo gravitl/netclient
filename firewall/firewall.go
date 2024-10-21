@@ -10,8 +10,9 @@ var (
 )
 
 type rulesCfg struct {
-	isIpv4   bool
-	rulesMap map[string][]ruleInfo
+	isIpv4    bool
+	rulesMap  map[string][]ruleInfo
+	extraInfo interface{}
 }
 
 type ruleInfo struct {
@@ -27,6 +28,7 @@ type serverrulestable map[string]ruletable
 const (
 	ingressTable = "ingress"
 	egressTable  = "egress"
+	aclTable     = "acl"
 )
 
 type firewallController interface {
@@ -36,6 +38,8 @@ type firewallController interface {
 	ForwardRule() error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
+	// RestrictUserToUserComms - adds rules to restrict user to user comms
+	RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer

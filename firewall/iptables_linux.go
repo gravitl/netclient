@@ -26,6 +26,8 @@ const (
 	iptableFWDChain     = "FORWARD"
 	nattablePRTChain    = "POSTROUTING"
 	netmakerSignature   = "NETMAKER"
+	aclInputRulesChain  = "NETMAKER-ACL-IN"
+	aclOutputRulesChain = "NETMAKER-ACL-OUT"
 )
 
 type iptablesManager struct {
@@ -53,6 +55,11 @@ var (
 
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
+		{
+			rule:  []string{"-j", netmakerFilterChain},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
 		{
 			rule:  []string{"-j", "RETURN"},
 			table: defaultIpTable,
@@ -111,6 +118,8 @@ func (i *iptablesManager) ForwardRule() error {
 	iptablesClient.DeleteIfExists(dropRuleFilter.table, dropRuleFilter.chain, dropRuleFilter.rule...)
 	iptablesClient.DeleteIfExists(dropRuleNat.table, dropRuleNat.chain, dropRuleNat.rule...)
 	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
+	createChain(iptablesClient, defaultIpTable, aclInputRulesChain)
+	createChain(iptablesClient, defaultIpTable, aclOutputRulesChain)
 	ruleSpec := []string{"-i", "netmaker", "-j", "ACCEPT"}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
@@ -327,6 +336,71 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	ruleTable[egressInfo.EgressID].rulesMap[egressInfo.EgressID] = egressGwRoutes
 
+	return nil
+}
+
+// iptablesManager.RestrictUserToUserComms - inserts ingress routes to restrict user to user comms for the GW peers
+func (i *iptablesManager) RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error {
+	ruleTable := i.FetchRuleTable(server, ingressTable)
+	defer i.SaveRules(server, ingressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	// add jump Rules for egress GW
+	ruleTable[ingressInfo.IngressID] = rulesCfg{
+		rulesMap: make(map[string][]ruleInfo),
+	}
+	ingressGwRoutes := []ruleInfo{}
+	ipv4Addrs := []string{}
+	ipv6Addrs := []string{}
+	for _, userIp := range ingressInfo.UserIps {
+		if isAddrIpv4(userIp.String()) {
+			ipv4Addrs = append(ipv4Addrs, userIp.String())
+		} else {
+			ipv6Addrs = append(ipv6Addrs, userIp.String())
+		}
+	}
+	if len(ipv4Addrs) > 0 {
+		iptablesClient := i.ipv4Client
+		// iptables -I FORWARD -i netmaker -s 10.101.252.0/22 -d 10.101.252.0/22 -j DROP
+		ruleSpec := []string{"-s", strings.Join(ipv4Addrs, ","), "-d", strings.Join(ipv4Addrs, ","), "-j", "DROP"}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		// to avoid duplicate iface route rule,delete if exists
+		iptablesClient.DeleteIfExists(defaultIpTable, netmakerFilterChain, ruleSpec...)
+		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: netmakerFilterChain,
+				rule:  ruleSpec,
+			})
+		}
+	} else if len(ipv6Addrs) > 0 {
+		iptablesClient := i.ipv6Client
+		ruleSpec := []string{"-s", strings.Join(ipv4Addrs, ","), "-d", strings.Join(ipv4Addrs, ","), "-j", "DROP"}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		// to avoid duplicate iface route rule,delete if exists
+		iptablesClient.DeleteIfExists(defaultIpTable, netmakerFilterChain, ruleSpec...)
+		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: netmakerFilterChain,
+				rule:  ruleSpec,
+			})
+		}
+	}
+
+	ruleTable[ingressInfo.IngressID].rulesMap[ingressInfo.IngressID] = ingressGwRoutes
+	ruleTable[ingressInfo.IngressID] = rulesCfg{
+		rulesMap: map[string][]ruleInfo{
+			ingressInfo.IngressID: ingressGwRoutes,
+		},
+		extraInfo: ingressInfo,
+	}
 	return nil
 }
 

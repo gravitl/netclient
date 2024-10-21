@@ -362,6 +362,11 @@ func (n *nftablesManager) FetchRuleTable(server string, tableName string) ruleta
 	return rules
 }
 
+// RestrictUserToUserComms - adds rules to restrict user to user comms
+func (n *nftablesManager) RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error {
+	return nil
+}
+
 // nftables.SaveRules - saves the rule table by tablename
 func (n *nftablesManager) SaveRules(server, tableName string, rules ruletable) {
 	n.mux.Lock()

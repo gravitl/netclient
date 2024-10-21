@@ -56,6 +56,9 @@ func (unimplementedFirewall) AddEgressRoutingRule(server string, egressInfo mode
 func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
 
 }
+func (unimplementedFirewall) RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error {
+	return nil
+}
 
 // newFirewall returns an unimplemented Firewall manager
 func newFirewall() (firewallController, error) {
