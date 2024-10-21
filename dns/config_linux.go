@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -22,6 +23,7 @@ const (
 	resolvconfFileBkpPath = "/etc/netclient/resolv.conf.nm.bkp"
 	resolvUplinkPath      = "/etc/systemd/resolved.conf"
 	resolvUplinkBkpPath   = "/etc/netclient/resolved.conf.nm.bkp"
+	resolvconfUplinkPath  = "/run/systemd/resolve/resolv.conf"
 )
 
 func isStubSupported() bool {
@@ -443,6 +445,26 @@ func restoreResolveUplink() error {
 		return err
 	}
 
+	err = writeConfigUplink(lines)
+	if err != nil {
+		slog.Warn("could not write config content", "error", err.Error())
+		return err
+	}
+	time.Sleep(1 * time.Second)
+
+	_, err = ncutils.RunCmd("systemctl restart systemd-resolved", false)
+	if err != nil {
+		slog.Warn("restart systemd-resolved failed", "error", err.Error())
+		//remove the nameserver from file directly
+		removeNSUplink()
+		return err
+	}
+
+	return nil
+}
+
+func writeConfigUplink(lines []string) error {
+
 	f, err := os.OpenFile(resolvUplinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
 		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
@@ -459,15 +481,6 @@ func restoreResolveUplink() error {
 			}
 		}
 	}
-
-	_, err = ncutils.RunCmd("systemctl restart systemd-resolved", false)
-	if err != nil {
-		slog.Warn("restart systemd-resolved failed", "error", err.Error())
-		//remove the nameserver from file directly
-		removeNSUplink()
-		return err
-	}
-
 	return nil
 }
 
@@ -516,9 +529,9 @@ func removeNSUplink() error {
 		return err
 	}
 
-	f, err := os.OpenFile(resolvconfFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	f, err := os.OpenFile(resolvconfUplinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
-		slog.Error("error opending file", "error", resolvconfFilePath, err.Error())
+		slog.Error("error opending file", "error", resolvconfUplinkPath, err.Error())
 		return err
 	}
 	defer f.Close()
@@ -527,7 +540,7 @@ func removeNSUplink() error {
 		if v != "" {
 			_, err = fmt.Fprintln(f, v)
 			if err != nil {
-				slog.Error("error writing file", "error", resolvconfFilePath, err.Error())
+				slog.Error("error writing file", "error", resolvconfUplinkPath, err.Error())
 				return err
 			}
 		}
