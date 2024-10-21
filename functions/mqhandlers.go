@@ -404,9 +404,18 @@ func resetInterfaceFunc() {
 	}
 	wireguard.SetRoutesFromCache()
 
-	//Setup resolveconf for Linux
-	if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
-		dns.SetupDNSConfig()
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	if server.ManageDNS {
+		if dns.GetDNSServerInstance().AddrStr == "" {
+			dns.GetDNSServerInstance().Start()
+		}
+		//Setup resolveconf for Linux
+		if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+			dns.SetupDNSConfig()
+		}
 	}
 }
 
