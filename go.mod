@@ -7,7 +7,7 @@ require (
 	github.com/c-robinson/iplib v1.0.8
 	github.com/coreos/go-iptables v0.8.0
 	github.com/devilcove/httpclient v0.6.0
-	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/glendc/go-external-ip v0.1.0
 	github.com/go-ping/ping v1.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
@@ -16,7 +16,6 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/gravitl/netmaker v0.24.3-0.20240704124720-780da3b69617
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
-	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
 	github.com/kr/pretty v0.3.1
