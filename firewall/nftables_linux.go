@@ -525,3 +525,7 @@ func (n *nftablesManager) removeJumpRules() {
 func genRuleKey(rule ...string) string {
 	return strings.Join(rule, ":")
 }
+
+func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error {
+	return nil
+}

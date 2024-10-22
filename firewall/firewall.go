@@ -31,6 +31,11 @@ const (
 	aclTable     = "acl"
 )
 
+const (
+	userRestrictRules = "user-restrict"
+	staticNodeRules   = "static-node"
+)
+
 type firewallController interface {
 	// CreateChains  creates a firewall chains and jump rules
 	CreateChains() error
@@ -38,8 +43,8 @@ type firewallController interface {
 	ForwardRule() error
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
-	// RestrictUserToUserComms - adds rules to restrict user to user comms
-	RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error
+	// InsertIngressRoutingRules - inserts fw rules on ingress gw
+	InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer

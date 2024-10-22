@@ -29,7 +29,7 @@ func restrictUserToUserComms(server string, ingressUpdate map[string]models.Ingr
 		rules, ok := ruleTable[nodeID]
 		if !ok {
 			// set up rules for the ingress GW on first time creation
-			fwCrtl.RestrictUserToUserComms(server, ingressInfo)
+			fwCrtl.InsertIngressRoutingRules(server, ingressInfo)
 			slog.Info("setting ingress routes", "network", nodeID)
 			continue
 		} else {
@@ -45,7 +45,7 @@ func restrictUserToUserComms(server string, ingressUpdate map[string]models.Ingr
 				// refresh the rules
 				fwCrtl.RemoveRoutingRules(server, ingressTable, nodeID)
 				// set up rules for the ingress GW on first time creation
-				fwCrtl.RestrictUserToUserComms(server, ingressInfo)
+				fwCrtl.InsertIngressRoutingRules(server, ingressInfo)
 			}
 		}
 	}
