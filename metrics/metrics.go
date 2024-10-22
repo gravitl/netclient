@@ -1,11 +1,13 @@
 package metrics
 
 import (
+	"strconv"
 	"time"
 
 	"golang.org/x/exp/slog"
 
 	"github.com/go-ping/ping"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -15,6 +17,14 @@ import (
 
 // Collect - collects metrics
 func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
+	mi := 15
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		i, err := strconv.Atoi(server.MetricInterval)
+		if err == nil && i > 0 {
+			mi = i
+		}
+	}
 	var metrics models.Metrics
 	metrics.Connectivity = make(map[string]models.Metric)
 	var wgclient, err = wgctrl.New()
@@ -55,7 +65,7 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, port, 4)
 		}
 		if newMetric.Connected {
-			newMetric.Uptime = 1
+			newMetric.Uptime = 1 * int64(mi)
 		}
 		// check device peer to see if WG is working if ping failed
 		if !newMetric.Connected {
@@ -63,10 +73,10 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 				currPeer.TransmitBytes > 0 &&
 				time.Now().Before(currPeer.LastHandshakeTime.Add(time.Minute<<1)) {
 				newMetric.Connected = true
-				newMetric.Uptime = 1
+				newMetric.Uptime = 1 * int64(mi)
 			}
 		}
-		newMetric.TotalTime = 1
+		newMetric.TotalTime = 1 * int64(mi)
 		metrics.Connectivity[id] = newMetric
 	}
 
