@@ -239,6 +239,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		}
 	}
+	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+		dns.SetupDNSConfig()
+	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
