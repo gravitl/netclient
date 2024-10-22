@@ -39,7 +39,7 @@ type iptablesManager struct {
 }
 
 var (
-	dropRuleFilter = ruleInfo{
+	dropRuleNmFilter = ruleInfo{
 
 		rule:  []string{"-j", "DROP"},
 		table: defaultIpTable,
@@ -60,11 +60,11 @@ var (
 		// 	table: defaultIpTable,
 		// 	chain: iptableFWDChain,
 		// },
-		{
-			rule:  []string{"-j", "RETURN"},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
-		},
+		// {
+		// 	rule:  []string{"-j", "RETURN"},
+		// 	table: defaultIpTable,
+		// 	chain: netmakerFilterChain,
+		// },
 	}
 	// nat table nm jump rules
 	natNmJumpRules = []ruleInfo{
@@ -115,7 +115,7 @@ func (i *iptablesManager) ForwardRule() error {
 	// Set the policy To accept on forward chain
 	iptablesClient.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
 	// remove DROP rule if present
-	iptablesClient.DeleteIfExists(dropRuleFilter.table, dropRuleFilter.chain, dropRuleFilter.rule...)
+	iptablesClient.DeleteIfExists(dropRuleNmFilter.table, dropRuleNmFilter.chain, dropRuleNmFilter.rule...)
 	iptablesClient.DeleteIfExists(dropRuleNat.table, dropRuleNat.chain, dropRuleNat.rule...)
 	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
 	createChain(iptablesClient, defaultIpTable, aclInputRulesChain)
@@ -212,6 +212,7 @@ func (i *iptablesManager) CreateChains() error {
 }
 
 func (i *iptablesManager) addJumpRules() {
+
 	for _, rule := range filterNmJumpRules {
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
 		if err != nil {
@@ -232,6 +233,22 @@ func (i *iptablesManager) addJumpRules() {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
 	}
+	// create drop rule in netmakefilterchain
+	ok, err := i.ipv4Client.Exists(dropRuleNmFilter.table, dropRuleNmFilter.chain, dropRuleNmFilter.rule...)
+	if err == nil && !ok {
+		if err := i.ipv4Client.Append(dropRule.table,
+			dropRule.chain, dropRule.rule...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", dropRuleNmFilter, err.Error()))
+		}
+	}
+	ok, err = i.ipv6Client.Exists(dropRuleNmFilter.table, dropRuleNmFilter.chain, dropRuleNmFilter.rule...)
+	if err == nil && !ok {
+		if err := i.ipv6Client.Append(dropRuleNmFilter.table,
+			dropRuleNmFilter.chain, dropRuleNmFilter.rule...); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", dropRuleNmFilter, err.Error()))
+		}
+	}
+
 }
 
 // checks if rule has been added by netmaker
@@ -400,7 +417,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 	}
 
 	ingressRules.rulesMap[staticNodeRules] = ingressGwRoutes
-	ingressRules.rulesMap[userRestrictRules] = i.restrictUserToUserComms(ingressInfo)
+	//ingressRules.rulesMap[userRestrictRules] = i.restrictUserToUserComms(ingressInfo)
 	ingressRules.extraInfo = ingressInfo
 	ruleTable[ingressInfo.IngressID] = ingressRules
 	return nil
@@ -418,7 +435,7 @@ func (i *iptablesManager) restrictUserToUserComms(ingressInfo models.IngressInfo
 			ipv6Addrs = append(ipv6Addrs, userIp.String())
 		}
 	}
-	if len(ipv4Addrs) > 0 {
+	if len(ipv4Addrs) > 1 {
 		iptablesClient := i.ipv4Client
 		// iptables -I FORWARD -i netmaker -s 10.101.252.0/22 -d 10.101.252.0/22 -j DROP
 		ruleSpec := []string{"-s", strings.Join(ipv4Addrs, ","), "-d", strings.Join(ipv4Addrs, ","), "-j", "DROP"}
@@ -435,7 +452,7 @@ func (i *iptablesManager) restrictUserToUserComms(ingressInfo models.IngressInfo
 				rule:  ruleSpec,
 			})
 		}
-	} else if len(ipv6Addrs) > 0 {
+	} else if len(ipv6Addrs) > 1 {
 		iptablesClient := i.ipv6Client
 		ruleSpec := []string{"-s", strings.Join(ipv4Addrs, ","), "-d", strings.Join(ipv4Addrs, ","), "-j", "DROP"}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
