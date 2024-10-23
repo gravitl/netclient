@@ -40,15 +40,13 @@ type iptablesManager struct {
 
 var (
 	dropRuleNmFilter = ruleInfo{
-
-		rule:  []string{"-j", "DROP"},
+		rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
 		table: defaultIpTable,
 		chain: netmakerFilterChain,
 	}
 
 	dropRuleNat = ruleInfo{
-
-		rule:  []string{"-j", "DROP"},
+		rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
 		table: defaultNatTable,
 		chain: netmakerNatChain,
 	}
