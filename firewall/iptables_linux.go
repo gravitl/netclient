@@ -372,10 +372,12 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 	ingressGwRoutes := []ruleInfo{}
 	for _, ip := range ingressInfo.StaticNodeIps {
 		iptablesClient := i.ipv4Client
+		network := ingressInfo.Network.String()
 		if ip.To4() == nil {
+			network = ingressInfo.Network6.String()
 			iptablesClient = i.ipv6Client
 		}
-		ruleSpec := []string{"-s", ip.String(), "-j", netmakerFilterChain}
+		ruleSpec := []string{"-s", ip.String(), "-d", network, "-j", netmakerFilterChain}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		// to avoid duplicate iface route rule,delete if exists
 		iptablesClient.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
