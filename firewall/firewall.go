@@ -40,10 +40,8 @@ type firewallController interface {
 	CreateChains() error
 	// ForwardRule inserts forwarding rules
 	ForwardRule() error
-	// Add DROP Rule
-	AddDropRule(dropRule ruleInfo)
-	// Remove DROP Rule
-	RemoveDropRule(dropRule ruleInfo)
+	// Add DROP Rules
+	AddDropRules([]ruleInfo)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw

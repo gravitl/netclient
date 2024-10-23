@@ -39,10 +39,12 @@ type iptablesManager struct {
 }
 
 var (
-	dropRuleNmFilter = ruleInfo{
-		rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
-		table: defaultIpTable,
-		chain: netmakerFilterChain,
+	dropRules = []ruleInfo{
+		{
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
+			table: defaultIpTable,
+			chain: netmakerFilterChain,
+		},
 	}
 
 	dropRuleNat = ruleInfo{
@@ -230,7 +232,7 @@ func (i *iptablesManager) addJumpRules() {
 		}
 	}
 
-	i.AddDropRule(dropRuleNmFilter)
+	i.AddDropRules(dropRules)
 
 }
 
@@ -339,33 +341,25 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	return nil
 }
 
-func (i *iptablesManager) AddDropRule(dropRule ruleInfo) {
-	// create drop rule in netmakefilterchain
-	ok, err := i.ipv4Client.Exists(dropRuleNmFilter.table, dropRuleNmFilter.chain, dropRuleNmFilter.rule...)
-	if err == nil && !ok {
-		if err := i.ipv4Client.Append(dropRuleNmFilter.table,
-			dropRuleNmFilter.chain, dropRuleNmFilter.rule...); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", dropRuleNmFilter, err.Error()))
+func (i *iptablesManager) AddDropRules(dropRules []ruleInfo) {
+	for _, dropRule := range dropRules {
+		// create drop rule in netmakefilterchain
+		ok, err := i.ipv4Client.Exists(dropRule.table, dropRule.chain, dropRule.rule...)
+		if err == nil && !ok {
+			if err := i.ipv4Client.Append(dropRule.table,
+				dropRule.chain, dropRule.rule...); err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v",
+					dropRule, err.Error()))
+			}
 		}
-	}
-	ok, err = i.ipv6Client.Exists(dropRuleNmFilter.table, dropRuleNmFilter.chain, dropRuleNmFilter.rule...)
-	if err == nil && !ok {
-		if err := i.ipv6Client.Append(dropRuleNmFilter.table,
-			dropRuleNmFilter.chain, dropRuleNmFilter.rule...); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", dropRuleNmFilter, err.Error()))
+		ok, err = i.ipv6Client.Exists(dropRule.table, dropRule.chain, dropRule.rule...)
+		if err == nil && !ok {
+			if err := i.ipv6Client.Append(dropRule.table,
+				dropRule.chain, dropRule.rule...); err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v",
+					dropRule, err.Error()))
+			}
 		}
-	}
-}
-
-func (i *iptablesManager) RemoveDropRule(dropRule ruleInfo) {
-	// create drop rule in netmakefilterchain
-	if err := i.ipv4Client.DeleteIfExists(dropRule.table,
-		dropRule.chain, dropRule.rule...); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", dropRule, err.Error()))
-	}
-	if err := i.ipv6Client.DeleteIfExists(dropRule.table,
-		dropRule.chain, dropRule.rule...); err != nil {
-		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", dropRule, err.Error()))
 	}
 }
 
