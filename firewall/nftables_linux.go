@@ -135,6 +135,9 @@ var (
 	}
 )
 
+func (n *nftablesManager) AddDropRule(dropRule ruleInfo)    {}
+func (n *nftablesManager) RemoveDropRule(dropRule ruleInfo) {}
+
 // nftables.CreateChains - creates default chains and rules
 func (n *nftablesManager) CreateChains() error {
 	n.mux.Lock()

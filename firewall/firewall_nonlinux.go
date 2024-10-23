@@ -59,6 +59,8 @@ func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
 func (unimplementedFirewall) RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error {
 	return nil
 }
+func (unimplementedFirewall) AddDropRule(dropRule ruleInfo)    {}
+func (unimplementedFirewall) RemoveDropRule(dropRule ruleInfo) {}
 
 // newFirewall returns an unimplemented Firewall manager
 func newFirewall() (firewallController, error) {

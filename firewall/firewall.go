@@ -32,8 +32,7 @@ const (
 )
 
 const (
-	userRestrictRules = "user-restrict"
-	staticNodeRules   = "static-node"
+	staticNodeRules = "static-node"
 )
 
 type firewallController interface {
@@ -41,6 +40,10 @@ type firewallController interface {
 	CreateChains() error
 	// ForwardRule inserts forwarding rules
 	ForwardRule() error
+	// Add DROP Rule
+	AddDropRule(dropRule ruleInfo)
+	// Remove DROP Rule
+	RemoveDropRule(dropRule ruleInfo)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw
