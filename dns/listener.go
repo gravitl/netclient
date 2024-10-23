@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -40,13 +41,16 @@ func (dnsServer *DNSServer) Start() {
 		return
 	}
 
-	var node config.Node
+	//sort the nodes
+	nodes := []config.Node{}
 	for _, v := range config.GetNodes() {
-		if v.Connected {
-			node = v
-			break
+		if v.Connected && v.IsIngressGateway {
+			nodes = slices.Insert(nodes, 0, v)
+		} else {
+			nodes = append(nodes, v)
 		}
 	}
+	node := nodes[0]
 
 	lIp := ""
 	if node.Address6.IP != nil {
