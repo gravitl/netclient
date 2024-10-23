@@ -58,46 +58,46 @@ var (
 		},
 	}
 	nfFilterJumpRules = []ruleInfo{
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: netmakerFilterChain},
-				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					&expr.Counter{},
-					&expr.Verdict{Kind: expr.VerdictReturn},
-				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", "RETURN")),
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "RETURN"},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
-		},
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableFWDChain},
-				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					&expr.Counter{},
-					&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
-				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain)),
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
-		},
+		// {
+		// 	nfRule: &nftables.Rule{
+		// 		Table: filterTable,
+		// 		Chain: &nftables.Chain{Name: netmakerFilterChain},
+		// 		Exprs: []expr.Any{
+		// 			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+		// 			&expr.Cmp{
+		// 				Op:       expr.CmpOpEq,
+		// 				Register: 1,
+		// 				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+		// 			},
+		// 			&expr.Counter{},
+		// 			&expr.Verdict{Kind: expr.VerdictReturn},
+		// 		},
+		// 		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", "RETURN")),
+		// 	},
+		// 	rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "RETURN"},
+		// 	table: defaultIpTable,
+		// 	chain: netmakerFilterChain,
+		// },
+		// {
+		// 	nfRule: &nftables.Rule{
+		// 		Table: filterTable,
+		// 		Chain: &nftables.Chain{Name: iptableFWDChain},
+		// 		Exprs: []expr.Any{
+		// 			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+		// 			&expr.Cmp{
+		// 				Op:       expr.CmpOpEq,
+		// 				Register: 1,
+		// 				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+		// 			},
+		// 			&expr.Counter{},
+		// 			&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerFilterChain},
+		// 		},
+		// 		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain)),
+		// 	},
+		// 	rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", netmakerFilterChain},
+		// 	table: defaultIpTable,
+		// 	chain: netmakerFilterChain,
+		// },
 	}
 	// nat table nm jump rules
 	nfNatJumpRules = []ruleInfo{
@@ -520,7 +520,7 @@ func (n *nftablesManager) addJumpRules() {
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add jump rules, Err: %s", err.Error()))
 	}
-	n.AddDropRules(dropRules)
+	n.AddDropRules(nfDropRules)
 }
 
 func (n *nftablesManager) removeJumpRules() {
