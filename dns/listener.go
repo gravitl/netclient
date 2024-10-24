@@ -14,7 +14,8 @@ import (
 var dnsMutex = sync.Mutex{} // used to mutex functions of the DNS
 
 type DNSServer struct {
-	DnsServer *dns.Server
+	DnsServer []*dns.Server
+	AddrList  []string
 	AddrStr   string
 }
 
@@ -41,54 +42,51 @@ func (dnsServer *DNSServer) Start() {
 		return
 	}
 
-	//sort the nodes
-	nodes := []config.Node{}
 	for _, v := range config.GetNodes() {
-		if v.Connected && v.IsIngressGateway {
-			nodes = slices.Insert(nodes, 0, v)
-		} else {
-			nodes = append(nodes, v)
+		node := v
+		if v.Connected {
+
+			lIp := ""
+			if node.Address6.IP != nil {
+				lIp = "[" + node.Address6.IP.String() + "]:53"
+			}
+			if node.Address.IP != nil {
+				lIp = node.Address.IP.String() + ":53"
+			}
+
+			if lIp == "" {
+				continue
+			}
+
+			dns.HandleFunc(".", handleDNSRequest)
+
+			srv := &dns.Server{
+				Net:       "udp",
+				Addr:      lIp,
+				UDPSize:   65535,
+				ReusePort: true,
+				ReuseAddr: true,
+			}
+
+			dnsServer.AddrStr = lIp
+			dnsServer.AddrList = append(dnsServer.AddrList, lIp)
+			dnsServer.DnsServer = append(dnsServer.DnsServer, srv)
+
+			go func(dnsServer *DNSServer) {
+				err := srv.ListenAndServe()
+				if err != nil {
+					slog.Error("error in starting dns server", "error", lIp, err.Error())
+					dnsServer.AddrStr = ""
+					dnsServer.AddrList = slices.Delete(dnsServer.AddrList, len(dnsServer.AddrList)-1, len(dnsServer.AddrList))
+					dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, len(dnsServer.DnsServer)-1, len(dnsServer.DnsServer))
+				}
+			}(dnsServer)
 		}
 	}
-	node := nodes[0]
-
-	lIp := ""
-	if node.Address6.IP != nil {
-		lIp = "[" + node.Address6.IP.String() + "]:53"
-	}
-	if node.Address.IP != nil {
-		lIp = node.Address.IP.String() + ":53"
-	}
-
-	if lIp == "" {
-		return
-	}
-
-	dns.HandleFunc(".", handleDNSRequest)
-
-	srv := &dns.Server{
-		Net:       "udp",
-		Addr:      lIp,
-		UDPSize:   65535,
-		ReusePort: true,
-		ReuseAddr: true,
-	}
-
-	dnsServer.AddrStr = lIp
-	dnsServer.DnsServer = srv
-
-	go func() {
-		err := srv.ListenAndServe()
-		if err != nil {
-			slog.Error("error in starting dns server", "error", lIp, err.Error())
-			dnsServer.AddrStr = ""
-			dnsServer.DnsServer = nil
-		}
-	}()
 
 	time.Sleep(time.Second * 1)
 	//if listener failed to start, do not make DNS changes
-	if dnsServer.AddrStr == "" || dnsServer.DnsServer == nil {
+	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
 		return
 	}
 
@@ -100,14 +98,14 @@ func (dnsServer *DNSServer) Start() {
 		}
 	}
 
-	slog.Info("DNS server listens on: ", "Info", lIp)
+	slog.Info("DNS server listens on: ", "Info", dnsServer.AddrStr)
 }
 
 // Stop the DNS listener
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if dnsServer.AddrStr == "" || dnsServer.DnsServer == nil {
+	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
 		return
 	}
 
@@ -122,11 +120,14 @@ func (dnsServer *DNSServer) Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	err := dnsServer.DnsServer.ShutdownContext(ctx)
-	if err != nil {
-		slog.Error("could not shutdown DNS server", "error", err.Error())
+	for _, v := range dnsServer.DnsServer {
+		err := v.ShutdownContext(ctx)
+		if err != nil {
+			slog.Error("could not shutdown DNS server", "error", err.Error())
+		}
 	}
 
 	dnsServer.AddrStr = ""
-	dnsServer.DnsServer = nil
+	dnsServer.AddrList = []string{}
+	dnsServer.DnsServer = []*dns.Server{}
 }
