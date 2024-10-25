@@ -87,5 +87,8 @@ func SyncDNS(network string, dnsEntries []models.DNSEntry) error {
 		}
 	}
 
+	//Flush local dns cache if any
+	FlushLocalDnsCache()
+
 	return nil
 }

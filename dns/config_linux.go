@@ -42,6 +42,19 @@ func isResolveconfSupported() bool {
 // 	return config.Netclient().DNSManagerType == DNS_MANAGER_FILE
 // }
 
+// Flush local DNS cache
+func FlushLocalDnsCache() (err error) {
+	dnsConfigMutex.Lock()
+	defer dnsConfigMutex.Unlock()
+	if isStubSupported() || isUplinkSupported() {
+		_, err = ncutils.RunCmd("resolvectl flush-caches", false)
+		if err != nil {
+			slog.Warn("Flush local DNS domain caches failed", "error", err.Error())
+		}
+	}
+	return err
+}
+
 // Entry point to setup DNS settings
 func SetupDNSConfig() (err error) {
 	dnsConfigMutex.Lock()
