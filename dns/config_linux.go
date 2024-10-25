@@ -190,9 +190,10 @@ func setupResolvectl() (err error) {
 		return
 	}
 
+	time.Sleep(1 * time.Second)
 	_, err = ncutils.RunCmd("resolvectl flush-caches", false)
 	if err != nil {
-		slog.Warn("Flush local DNS domain caches failed", "error", err.Error())
+		slog.Error("Flush local DNS domain caches failed", "error", err.Error())
 	}
 
 	return nil
