@@ -29,13 +29,13 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 	metrics.Connectivity = make(map[string]models.Metric)
 	var wgclient, err = wgctrl.New()
 	if err != nil {
-		fillUnconnectedData(&metrics, peerMap)
+		fillUnconnectedData(&metrics, peerMap, mi)
 		return &metrics, err
 	}
 	defer wgclient.Close()
 	device, err := wgclient.Device(ncutils.GetInterfaceName())
 	if err != nil {
-		fillUnconnectedData(&metrics, peerMap)
+		fillUnconnectedData(&metrics, peerMap, mi)
 		return &metrics, err
 	}
 	// TODO handle freebsd??
@@ -80,19 +80,19 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		metrics.Connectivity[id] = newMetric
 	}
 
-	fillUnconnectedData(&metrics, peerMap)
+	fillUnconnectedData(&metrics, peerMap, mi)
 	return &metrics, nil
 }
 
 // == used to fill zero value data for non connected peers ==
-func fillUnconnectedData(metrics *models.Metrics, peerMap models.PeerMap) {
+func fillUnconnectedData(metrics *models.Metrics, peerMap models.PeerMap, mi int) {
 	for r := range peerMap {
 		id := peerMap[r].ID
 		if !metrics.Connectivity[id].Connected {
 			newMetric := models.Metric{
 				NodeName:  peerMap[r].Name,
 				Uptime:    0,
-				TotalTime: 1,
+				TotalTime: 1 * int64(mi),
 				Connected: false,
 				Latency:   999,
 				PercentUp: 0,
