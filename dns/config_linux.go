@@ -171,8 +171,7 @@ func setupResolvectl() (err error) {
 
 	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl dns netmaker %s", dnsIp), false)
 	if err != nil {
-		slog.Error("add DNS IP for netmaker failed", "error", err.Error())
-		return
+		slog.Warn("add DNS IP for netmaker failed", "error", err.Error())
 	}
 
 	domains := ""
@@ -186,14 +185,13 @@ func setupResolvectl() (err error) {
 
 	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl domain netmaker %s", domains), false)
 	if err != nil {
-		slog.Error("add DNS domain for netmaker failed", "error", err.Error())
-		return
+		slog.Warn("add DNS domain for netmaker failed", "error", err.Error())
 	}
 
 	time.Sleep(1 * time.Second)
 	_, err = ncutils.RunCmd("resolvectl flush-caches", false)
 	if err != nil {
-		slog.Error("Flush local DNS domain caches failed", "error", err.Error())
+		slog.Warn("Flush local DNS domain caches failed", "error", err.Error())
 	}
 
 	return nil
