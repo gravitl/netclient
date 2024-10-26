@@ -24,6 +24,7 @@ const (
 	defaultNatTable     = "nat"
 	netmakerNatChain    = "netmakernat"
 	iptableFWDChain     = "FORWARD"
+	iptableINChain      = "INPUT"
 	nattablePRTChain    = "POSTROUTING"
 	netmakerSignature   = "NETMAKER"
 	aclInputRulesChain  = "NETMAKER-ACL-IN"
@@ -387,14 +388,14 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		ruleSpec := []string{"-s", ip.String(), "-d", network, "-j", netmakerFilterChain}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		// to avoid duplicate iface route rule,delete if exists
-		iptablesClient.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
-		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+		iptablesClient.DeleteIfExists(defaultIpTable, iptableINChain, ruleSpec...)
+		err := iptablesClient.Insert(defaultIpTable, iptableINChain, 1, ruleSpec...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 		} else {
 			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
 				table: defaultIpTable,
-				chain: iptableFWDChain,
+				chain: iptableINChain,
 				rule:  ruleSpec,
 			})
 		}
