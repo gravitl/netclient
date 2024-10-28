@@ -181,7 +181,7 @@ func (n *nftablesManager) CreateChains() error {
 	n.conn.AddChain(forwardChain)
 
 	n.conn.AddChain(&nftables.Chain{
-		Name:     "INPUT",
+		Name:     iptableINChain,
 		Table:    filterTable,
 		Type:     nftables.ChainTypeFilter,
 		Hooknum:  nftables.ChainHookInput,
@@ -557,9 +557,115 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		}
 		ruleSpec := []string{"-s", ip.String(), "-d", network, "-j", netmakerFilterChain}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-		n.deleteRule(defaultIpTable, iptableFWDChain, genRuleKey(ruleSpec...))
+		n.deleteRule(defaultIpTable, iptableINChain, genRuleKey(ruleSpec...))
 		// to avoid duplicate iface route rule,delete if exists
 		rule := &nftables.Rule{}
+		if ip.To4() != nil {
+			rule = &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableINChain},
+				Exprs: []expr.Any{
+					// Match packets from source IP 100.59.157.250/32
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       12, // Source IP offset
+						Len:          4,  // IPv4 address size
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ip.To4(),
+					},
+					// Match packets to destination IP 100.59.157.0/24 using Bitwise operation
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       16, // Destination IP offset
+						Len:          4,  // IPv4 address size
+					},
+					// Apply a bitwise AND operation to match the subnet
+					&expr.Bitwise{
+						SourceRegister: 1,
+						DestRegister:   1,
+						Len:            4,                        // Length of the IPv4 address
+						Mask:           ingressInfo.Network.Mask, // /24 subnet mask
+						Xor:            []byte{0, 0, 0, 0},       // No XOR
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ingressInfo.Network.IP.To4(),
+					},
+					// Jump to the netmakerfilter chain
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: netmakerFilterChain, // Jump to the netmakerfilter chain
+					},
+				},
+				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+			}
+		} else {
+			rule = &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableINChain},
+				Exprs: []expr.Any{
+					// Match packets from source IP 2001:db8::1/128
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       8,  // IPv6 Source IP offset
+						Len:          16, // IPv6 address length
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ip.To16(), // IPv6 source address
+					},
+					// Match packets to destination IP 2001:db8::/64 using Bitwise operation
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       24, // IPv6 Destination IP offset
+						Len:          16, // IPv6 address length
+					},
+					// Apply a bitwise AND operation to match the subnet
+					&expr.Bitwise{
+						SourceRegister: 1,
+						DestRegister:   1,
+						Len:            16,                                                     // Length of the IPv6 address
+						Mask:           ingressInfo.Network6.Mask,                              // /64 subnet mask
+						Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // No XOR
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ingressInfo.Network6.IP.To16(), // IPv6 destination network
+					},
+					// Jump to the netmakerfilter chain
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: netmakerFilterChain, // Jump to the netmakerfilter chain
+					},
+				},
+				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+			}
+		}
+
+		n.conn.InsertRule(rule)
+		if err := n.conn.Flush(); err != nil {
+			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				nfRule: rule,
+				table:  defaultIpTable,
+				chain:  iptableINChain,
+				rule:   ruleSpec,
+			})
+		}
+
+		//  rule for FWD chain
+		n.deleteRule(defaultIpTable, iptableFWDChain, genRuleKey(ruleSpec...))
 		if ip.To4() != nil {
 			rule = &nftables.Rule{
 				Table: filterTable,
@@ -670,7 +776,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		}
 		ruleSpec := []string{"-s", rule.SrcIp.String(), "-d",
 			rule.DstIP.String(), "-j", "ACCEPT"}
-		n.deleteRule(defaultIpTable, iptableFWDChain, genRuleKey(ruleSpec...))
+		n.deleteRule(defaultIpTable, netmakerFilterChain, genRuleKey(ruleSpec...))
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		var nfRule *nftables.Rule
 		if rule.SrcIp.To4() != nil {

@@ -181,7 +181,8 @@ func (i *iptablesManager) CreateChains() error {
 	i.removeJumpRules()
 	i.cleanup(defaultIpTable, netmakerFilterChain)
 	i.cleanup(defaultNatTable, netmakerNatChain)
-
+	i.clearNetmakerRules(defaultIpTable, iptableINChain)
+	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
 	//errMSGFormat := "iptables: failed creating %s chain %s,error: %v"
 
 	err := createChain(i.ipv4Client, defaultIpTable, netmakerFilterChain)
@@ -388,8 +389,20 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		ruleSpec := []string{"-s", ip.String(), "-d", network, "-j", netmakerFilterChain}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		// to avoid duplicate iface route rule,delete if exists
+		iptablesClient.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
+		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: iptableFWDChain,
+				rule:  ruleSpec,
+			})
+		}
+		// to avoid duplicate iface route rule,delete if exists
 		iptablesClient.DeleteIfExists(defaultIpTable, iptableINChain, ruleSpec...)
-		err := iptablesClient.Insert(defaultIpTable, iptableINChain, 1, ruleSpec...)
+		err = iptablesClient.Insert(defaultIpTable, iptableINChain, 1, ruleSpec...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 		} else {
@@ -477,6 +490,51 @@ func (i *iptablesManager) cleanup(table, chain string) {
 	if err != nil {
 		logger.Log(1, "[ipv6] failed to clear chain: ", table, chain, err.Error())
 	}
+}
+
+func (i *iptablesManager) clearNetmakerRules(table, chain string) {
+
+	// List all rules in the specified chain
+	rules, err := i.ipv4Client.List(table, chain)
+	if err != nil {
+		logger.Log(1, "Failed to list rules: ", table, chain, err.Error())
+	}
+
+	// Iterate through rules to find the one with the target comment
+	for _, rule := range rules {
+		if containsComment(rule, netmakerSignature) {
+			// Delete the rule once found
+			// Split the rule into components
+			ruleComponents := strings.Fields(rule)
+			err = i.ipv4Client.Delete(table, chain, ruleComponents...)
+			if err != nil {
+				logger.Log(4, "Failed to delete rule: ", rule, err.Error())
+			}
+		}
+	}
+	rules, err = i.ipv6Client.List(table, chain)
+	if err != nil {
+		logger.Log(1, "Failed to list v6 rules: ", table, chain, err.Error())
+	}
+
+	// Iterate through rules to find the one with the target comment
+	for _, rule := range rules {
+		if containsComment(rule, netmakerSignature) {
+			// Delete the rule once found
+			// Split the rule into components
+			ruleComponents := strings.Fields(rule)
+			err = i.ipv4Client.Delete(table, chain, ruleComponents...)
+			if err != nil {
+				logger.Log(4, "Failed to delete rule: ", rule, err.Error())
+			}
+
+		}
+	}
+}
+
+// Helper function to check if a rule contains a specific comment
+func containsComment(rule string, comment string) bool {
+	return strings.Contains(rule, fmt.Sprintf("--comment %q", comment))
 }
 
 // iptablesManager.FetchRuleTable - fetches the rule table by table name
@@ -591,6 +649,8 @@ func (i *iptablesManager) FlushAll() {
 	i.removeJumpRules()
 	i.cleanup(defaultIpTable, netmakerFilterChain)
 	i.cleanup(defaultNatTable, netmakerNatChain)
+	i.clearNetmakerRules(defaultIpTable, iptableINChain)
+	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
 }
 
 func iptablesProtoToString(proto iptables.Protocol) string {
