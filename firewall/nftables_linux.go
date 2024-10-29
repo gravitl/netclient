@@ -774,12 +774,12 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		if !rule.Allow {
 			continue
 		}
-		ruleSpec := []string{"-s", rule.SrcIp.String(), "-d",
+		ruleSpec := []string{"-s", rule.SrcIP.String(), "-d",
 			rule.DstIP.String(), "-j", "ACCEPT"}
 		n.deleteRule(defaultIpTable, netmakerFilterChain, genRuleKey(ruleSpec...))
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		var nfRule *nftables.Rule
-		if rule.SrcIp.To4() != nil {
+		if rule.SrcIP.IP.To4() != nil {
 			nfRule = &nftables.Rule{
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: netmakerFilterChain},
@@ -794,7 +794,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     rule.SrcIp.To4(), // IPv4 source address
+						Data:     rule.SrcIP.IP.To4(), // IPv4 source address
 					},
 					// Match packets to destination IP 100.59.157.250/32
 					&expr.Payload{
@@ -806,7 +806,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     rule.DstIP.To4(), // IPv4 destination address
+						Data:     rule.DstIP.IP.To4(), // IPv4 destination address
 					},
 					// Accept the packet
 					&expr.Verdict{
@@ -831,7 +831,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     rule.SrcIp.To16(), // IPv6 source address
+						Data:     rule.SrcIP.IP.To16(), // IPv6 source address
 					},
 					// Match packets to destination IP 2001:db8::2/128
 					&expr.Payload{
@@ -843,7 +843,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     rule.DstIP.To16(), // IPv6 destination address
+						Data:     rule.DstIP.IP.To16(), // IPv6 destination address
 					},
 					// Accept the packet
 					&expr.Verdict{
