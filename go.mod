@@ -14,13 +14,13 @@ require (
 	github.com/google/nftables v0.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.24.3-0.20240704124720-780da3b69617
+	github.com/gravitl/netmaker v0.25.1-0.20241018065020-d7c11711b710
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
-	github.com/gravitl/txeh v0.0.0-20230509181318-3778c58bd69f
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
+	github.com/miekg/dns v1.1.62
 	github.com/minio/selfupdate v0.6.0
 	github.com/sasha-s/go-deadlock v0.3.5
 	github.com/spf13/cobra v1.8.1
@@ -37,6 +37,7 @@ require (
 	golang.zx2c4.com/wireguard/windows v0.5.3
 	gopkg.in/yaml.v3 v3.0.1
 	gortc.io/stun v1.23.0
+
 )
 
 require (
@@ -52,7 +53,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.22.0 // indirect
+	github.com/go-playground/validator/v10 v10.22.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
@@ -63,7 +64,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/mdlayher/genetlink v1.2.0 // indirect
 	github.com/mdlayher/netlink v1.6.2 // indirect
 	github.com/mdlayher/socket v0.2.3 // indirect
@@ -74,12 +75,14 @@ require (
 	github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/posthog/posthog-go v0.0.0-20211028072449-93c17c49e2b0 // indirect
+	github.com/posthog/posthog-go v1.2.24 // indirect
 	github.com/rivo/uniseg v0.4.6 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/rqlite/gorqlite v0.0.0-20240122221808-a8a425b1a6aa // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/seancfoley/bintree v1.3.1 // indirect
+	github.com/seancfoley/ipaddress-go v1.7.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
@@ -87,13 +90,12 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/txn2/txeh v1.5.5 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
-	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/mod v0.17.0 // indirect
+	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
-	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
+	golang.org/x/tools v0.22.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
