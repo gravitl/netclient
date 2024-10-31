@@ -525,6 +525,11 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 	} else {
 		firewall.DeleteEgressGwRoutes(server)
 	}
+	if payload.IsIngressGw {
+		firewall.ProcessIngressUpdate(server, payload.IngressInfo)
+	} else {
+		firewall.RemoveIngressRoutingRules(server)
+	}
 
 }
 

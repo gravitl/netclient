@@ -11,10 +11,10 @@ require (
 	github.com/glendc/go-external-ip v0.1.0
 	github.com/go-ping/ping v1.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
-	github.com/google/nftables v0.1.0
+	github.com/google/nftables v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.25.1-0.20241018065020-d7c11711b710
+	github.com/gravitl/netmaker v0.25.1-0.20241030074022-9331431a4efe
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
@@ -59,15 +59,15 @@ require (
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/josharian/native v1.0.0 // indirect
+	github.com/josharian/native v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/mdlayher/genetlink v1.2.0 // indirect
-	github.com/mdlayher/netlink v1.6.2 // indirect
-	github.com/mdlayher/socket v0.2.3 // indirect
+	github.com/mdlayher/netlink v1.7.2 // indirect
+	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
