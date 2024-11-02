@@ -48,12 +48,6 @@ var (
 		},
 	}
 
-	dropRuleNat = ruleInfo{
-		rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
-		table: defaultNatTable,
-		chain: netmakerNatChain,
-	}
-
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
 		// {
