@@ -676,5 +676,13 @@ func InitDNSConfig() {
 		}
 	}
 
+	//in case there is no upstream name server found, add Google's DNS server as upstream DNS servers
+	if len(nslist) == 0 {
+		nslist = append(nslist, "8.8.8.8")
+		nslist = append(nslist, "8.8.4.4")
+		nslist = append(nslist, "2001:4860:4860::8888")
+		nslist = append(nslist, "2001:4860:4860::8844")
+	}
+
 	config.Netclient().NameServers = nslist
 }
