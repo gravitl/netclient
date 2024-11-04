@@ -49,5 +49,5 @@ func RemoveIngressRoutingRules(server string) {
 	if fwCrtl == nil {
 		return
 	}
-	fwCrtl.CleanRoutingRules(server, egressTable)
+	fwCrtl.CleanRoutingRules(server, ingressTable)
 }
