@@ -23,11 +23,11 @@ This is the client for Netmaker networks. To learn more about Netmaker, [see her
 
 ## Installation
 
-https://docs.netmaker.org/netclient.html#installation
-
+[https://docs.netmaker.io/docs/netclient#installation
+](https://docs.netmaker.io/docs/netclient#installation)
 ## Usage
 
-https://docs.netmaker.org/netclient.html#joining-a-network
+[https://docs.netmaker.org/netclient.html#joining-a-network](https://docs.netmaker.io/docs/netclient#joining-a-network)
 
 ## Join a network
 
