@@ -569,11 +569,11 @@ func getServerBrokerStatus() (bool, error) {
 func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	mqFallbackTicker := time.NewTicker(time.Second * 30)
+	defer mqFallbackTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			mqFallbackTicker.Stop()
-			slog.Info("mqfallback routine stop")
+			logger.Log(0, "mqfallback routine stopped")
 			return
 		case <-mqFallbackTicker.C: // Execute pull every 30 seconds
 			skip := true
