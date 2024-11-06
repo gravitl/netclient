@@ -97,6 +97,6 @@ jobs:
       env:
         UPLOAD_PATH_VERSION: /var/www/files/releases/download/${{ github.event.inputs.version }}
       run: |
-        ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION
+        ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION"
 
         find . -type f -name "netclient-*" -exec scp {} root@fileserver.clustercat.com:$UPLOAD_PATH_VERSION/ \;        
