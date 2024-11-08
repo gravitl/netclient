@@ -14,7 +14,7 @@ require (
 	github.com/google/nftables v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.25.1-0.20241030074022-9331431a4efe
+	github.com/gravitl/netmaker v0.26.0
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
@@ -56,6 +56,7 @@ require (
 	github.com/go-playground/validator/v10 v10.22.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
