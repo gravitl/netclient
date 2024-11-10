@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -98,12 +99,36 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
+		if server.ManageDNS {
+			dns.GetDNSServerInstance().Stop()
+			dns.GetDNSServerInstance().Start()
+		}
 
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
 			slog.Warn("could not notify server to update peers after interface change", "network:", newNode.Network, "error", doneErr)
 		} else {
 			slog.Info("signalled finished interface update to server", "network", newNode.Network)
+		}
+	}
+}
+
+// DNSSync -- mqtt message handler for host/dns/sync/<network id> topic
+func DNSSync(client mqtt.Client, msg mqtt.Message) {
+
+	network := parseServerFromTopic(msg.Topic())
+
+	var dnsEntries []models.DNSEntry
+	err := json.Unmarshal([]byte(msg.Payload()), &dnsEntries)
+	if err != nil {
+		slog.Error("error unmarshalling DNS data", "error", err)
+		return
+	}
+
+	if len(dnsEntries) > 0 {
+		err = dns.SyncDNS(network, dnsEntries)
+		if err != nil {
+			slog.Error("synchronize DNS error ", "error", err.Error())
 		}
 	}
 }
@@ -203,6 +228,21 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		cache.SkipEndpointCache = sync.Map{}
 
 	}
+
+	if peerUpdate.ManageDNS != server.ManageDNS {
+		server.ManageDNS = peerUpdate.ManageDNS
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
+		if peerUpdate.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		} else {
+			dns.GetDNSServerInstance().Stop()
+		}
+	}
+	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+		dns.SetupDNSConfig()
+	}
+
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 }
 
@@ -279,6 +319,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 		setSubscriptions(client, &nodeCfg)
+		if server.ManageDNS {
+			setDNSSubscriptions(client, &nodeCfg)
+		}
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -363,6 +406,20 @@ func resetInterfaceFunc() {
 		slog.Error("failed to set peers", err)
 	}
 	wireguard.SetRoutesFromCache()
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	if server.ManageDNS {
+		if dns.GetDNSServerInstance().AddrStr == "" {
+			dns.GetDNSServerInstance().Start()
+		}
+		//Setup resolveconf for Linux
+		if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+			dns.SetupDNSConfig()
+		}
+	}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
@@ -467,6 +524,11 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 		firewall.SetEgressRoutes(server, payload.EgressInfo)
 	} else {
 		firewall.DeleteEgressGwRoutes(server)
+	}
+	if payload.IsIngressGw {
+		firewall.ProcessIngressUpdate(server, payload.IngressInfo)
+	} else {
+		firewall.RemoveIngressRoutingRules(server)
 	}
 
 }

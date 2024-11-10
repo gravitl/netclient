@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -33,9 +34,6 @@ func Uninstall() ([]error, error) {
 			allfaults = append(allfaults, err)
 		}
 		Mqclient.Disconnect(250)
-	}
-	if err := deleteAllDNS(); err != nil {
-		logger.Log(0, "failed to delete entries from /etc/hosts", err.Error())
 	}
 
 	if err = daemon.CleanUp(); err != nil {
@@ -64,7 +62,12 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
+		dns.GetDNSServerInstance().Stop()
 		faults = resetInterfaceUninstall(faults)
+		server := config.GetServer(config.CurrServer)
+		if server != nil && server.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		}
 	} else { // was called from CLI so restart daemon
 		if err := daemon.Restart(); err != nil {
 			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))

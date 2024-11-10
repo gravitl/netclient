@@ -10,8 +10,9 @@ var (
 )
 
 type rulesCfg struct {
-	isIpv4   bool
-	rulesMap map[string][]ruleInfo
+	isIpv4    bool
+	rulesMap  map[string][]ruleInfo
+	extraInfo interface{}
 }
 
 type ruleInfo struct {
@@ -27,6 +28,11 @@ type serverrulestable map[string]ruletable
 const (
 	ingressTable = "ingress"
 	egressTable  = "egress"
+	aclTable     = "acl"
+)
+
+const (
+	staticNodeRules = "static-node"
 )
 
 type firewallController interface {
@@ -34,8 +40,12 @@ type firewallController interface {
 	CreateChains() error
 	// ForwardRule inserts forwarding rules
 	ForwardRule() error
+	// Add DROP Rules
+	AddDropRules([]ruleInfo)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
+	// InsertIngressRoutingRules - inserts fw rules on ingress gw
+	InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer

@@ -24,8 +24,11 @@ const (
 	defaultNatTable     = "nat"
 	netmakerNatChain    = "netmakernat"
 	iptableFWDChain     = "FORWARD"
+	iptableINChain      = "INPUT"
 	nattablePRTChain    = "POSTROUTING"
 	netmakerSignature   = "NETMAKER"
+	aclInputRulesChain  = "NETMAKER-ACL-IN"
+	aclOutputRulesChain = "NETMAKER-ACL-OUT"
 )
 
 type iptablesManager struct {
@@ -37,27 +40,26 @@ type iptablesManager struct {
 }
 
 var (
-	dropRuleFilter = ruleInfo{
-
-		rule:  []string{"-j", "DROP"},
-		table: defaultIpTable,
-		chain: netmakerFilterChain,
-	}
-
-	dropRuleNat = ruleInfo{
-
-		rule:  []string{"-j", "DROP"},
-		table: defaultNatTable,
-		chain: netmakerNatChain,
+	dropRules = []ruleInfo{
+		{
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
+			table: defaultIpTable,
+			chain: netmakerFilterChain,
+		},
 	}
 
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
-		{
-			rule:  []string{"-j", "RETURN"},
-			table: defaultIpTable,
-			chain: netmakerFilterChain,
-		},
+		// {
+		// 	rule:  []string{"-j", netmakerFilterChain},
+		// 	table: defaultIpTable,
+		// 	chain: iptableFWDChain,
+		// },
+		// {
+		// 	rule:  []string{"-j", "RETURN"},
+		// 	table: defaultIpTable,
+		// 	chain: netmakerFilterChain,
+		// },
 	}
 	// nat table nm jump rules
 	natNmJumpRules = []ruleInfo{
@@ -108,9 +110,9 @@ func (i *iptablesManager) ForwardRule() error {
 	// Set the policy To accept on forward chain
 	iptablesClient.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
 	// remove DROP rule if present
-	iptablesClient.DeleteIfExists(dropRuleFilter.table, dropRuleFilter.chain, dropRuleFilter.rule...)
-	iptablesClient.DeleteIfExists(dropRuleNat.table, dropRuleNat.chain, dropRuleNat.rule...)
 	createChain(iptablesClient, defaultIpTable, netmakerFilterChain)
+	createChain(iptablesClient, defaultIpTable, aclInputRulesChain)
+	createChain(iptablesClient, defaultIpTable, aclOutputRulesChain)
 	ruleSpec := []string{"-i", "netmaker", "-j", "ACCEPT"}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
@@ -173,7 +175,8 @@ func (i *iptablesManager) CreateChains() error {
 	i.removeJumpRules()
 	i.cleanup(defaultIpTable, netmakerFilterChain)
 	i.cleanup(defaultNatTable, netmakerNatChain)
-
+	i.clearNetmakerRules(defaultIpTable, iptableINChain)
+	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
 	//errMSGFormat := "iptables: failed creating %s chain %s,error: %v"
 
 	err := createChain(i.ipv4Client, defaultIpTable, netmakerFilterChain)
@@ -203,6 +206,7 @@ func (i *iptablesManager) CreateChains() error {
 }
 
 func (i *iptablesManager) addJumpRules() {
+
 	for _, rule := range filterNmJumpRules {
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
 		if err != nil {
@@ -223,6 +227,9 @@ func (i *iptablesManager) addJumpRules() {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
 	}
+
+	i.AddDropRules(dropRules)
+
 }
 
 // checks if rule has been added by netmaker
@@ -330,6 +337,114 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	return nil
 }
 
+func (i *iptablesManager) AddDropRules(dropRules []ruleInfo) {
+	for _, dropRule := range dropRules {
+		// create drop rule in netmakefilterchain
+		ok, err := i.ipv4Client.Exists(dropRule.table, dropRule.chain, dropRule.rule...)
+		if err == nil && !ok {
+			if err := i.ipv4Client.Append(dropRule.table,
+				dropRule.chain, dropRule.rule...); err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v",
+					dropRule, err.Error()))
+			}
+		}
+		ok, err = i.ipv6Client.Exists(dropRule.table, dropRule.chain, dropRule.rule...)
+		if err == nil && !ok {
+			if err := i.ipv6Client.Append(dropRule.table,
+				dropRule.chain, dropRule.rule...); err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v",
+					dropRule, err.Error()))
+			}
+		}
+	}
+}
+
+func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error {
+	ruleTable := i.FetchRuleTable(server, ingressTable)
+	defer i.SaveRules(server, ingressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	var ingressRules rulesCfg
+	var ok bool
+	ingressRules, ok = ruleTable[ingressInfo.IngressID]
+	if !ok {
+		ingressRules = rulesCfg{
+			rulesMap: make(map[string][]ruleInfo),
+		}
+	}
+	ingressGwRoutes := []ruleInfo{}
+	for _, ip := range ingressInfo.StaticNodeIps {
+		iptablesClient := i.ipv4Client
+		networks := []string{ingressInfo.Network.String()}
+		for _, egressNet := range ingressInfo.EgressRanges {
+			networks = append(networks, egressNet.String())
+		}
+		if ip.To4() == nil {
+			networks = []string{ingressInfo.Network6.String()}
+			for _, egressNet := range ingressInfo.EgressRanges6 {
+				networks = append(networks, egressNet.String())
+			}
+			iptablesClient = i.ipv6Client
+		}
+		ruleSpec := []string{"-s", ip.String(), "-d", strings.Join(networks, ","), "-j", netmakerFilterChain}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		// to avoid duplicate iface route rule,delete if exists
+		iptablesClient.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
+		err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: iptableFWDChain,
+				rule:  ruleSpec,
+			})
+		}
+		// to avoid duplicate iface route rule,delete if exists
+		iptablesClient.DeleteIfExists(defaultIpTable, iptableINChain, ruleSpec...)
+		err = iptablesClient.Insert(defaultIpTable, iptableINChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: iptableINChain,
+				rule:  ruleSpec,
+			})
+		}
+	}
+	for _, rule := range ingressInfo.Rules {
+		if !rule.Allow {
+			continue
+		}
+		iptablesClient := i.ipv4Client
+		if rule.SrcIP.IP.To4() == nil {
+			iptablesClient = i.ipv6Client
+		}
+		ruleSpec := []string{"-s", rule.SrcIP.String(), "-d",
+			rule.DstIP.String(), "-j", "ACCEPT"}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		// to avoid duplicate iface route rule,delete if exists
+		iptablesClient.DeleteIfExists(defaultIpTable, netmakerFilterChain, ruleSpec...)
+		err := iptablesClient.Insert(defaultIpTable, netmakerFilterChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: netmakerFilterChain,
+				rule:  ruleSpec,
+			})
+		}
+
+	}
+
+	ingressRules.rulesMap[staticNodeRules] = ingressGwRoutes
+	ingressRules.extraInfo = ingressInfo
+	ruleTable[ingressInfo.IngressID] = ingressRules
+	return nil
+}
+
 // iptablesManager.AddEgressRoutingRule - inserts iptable rule for gateway peer
 func (i *iptablesManager) AddEgressRoutingRule(server string, egressInfo models.EgressInfo,
 	peer models.PeerRouteInfo) error {
@@ -375,6 +490,51 @@ func (i *iptablesManager) cleanup(table, chain string) {
 	if err != nil {
 		logger.Log(1, "[ipv6] failed to clear chain: ", table, chain, err.Error())
 	}
+}
+
+func (i *iptablesManager) clearNetmakerRules(table, chain string) {
+
+	// List all rules in the specified chain
+	rules, err := i.ipv4Client.List(table, chain)
+	if err != nil {
+		logger.Log(1, "Failed to list rules: ", table, chain, err.Error())
+	}
+
+	// Iterate through rules to find the one with the target comment
+	for _, rule := range rules {
+		if containsComment(rule, netmakerSignature) {
+			// Delete the rule once found
+			// Split the rule into components
+			ruleComponents := strings.Fields(rule)
+			err = i.ipv4Client.Delete(table, chain, ruleComponents...)
+			if err != nil {
+				logger.Log(4, "Failed to delete rule: ", rule, err.Error())
+			}
+		}
+	}
+	rules, err = i.ipv6Client.List(table, chain)
+	if err != nil {
+		logger.Log(1, "Failed to list v6 rules: ", table, chain, err.Error())
+	}
+
+	// Iterate through rules to find the one with the target comment
+	for _, rule := range rules {
+		if containsComment(rule, netmakerSignature) {
+			// Delete the rule once found
+			// Split the rule into components
+			ruleComponents := strings.Fields(rule)
+			err = i.ipv4Client.Delete(table, chain, ruleComponents...)
+			if err != nil {
+				logger.Log(4, "Failed to delete rule: ", rule, err.Error())
+			}
+
+		}
+	}
+}
+
+// Helper function to check if a rule contains a specific comment
+func containsComment(rule string, comment string) bool {
+	return strings.Contains(rule, fmt.Sprintf("--comment %q", comment))
 }
 
 // iptablesManager.FetchRuleTable - fetches the rule table by table name
@@ -489,6 +649,8 @@ func (i *iptablesManager) FlushAll() {
 	i.removeJumpRules()
 	i.cleanup(defaultIpTable, netmakerFilterChain)
 	i.cleanup(defaultNatTable, netmakerNatChain)
+	i.clearNetmakerRules(defaultIpTable, iptableINChain)
+	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
 }
 
 func iptablesProtoToString(proto iptables.Protocol) string {

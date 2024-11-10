@@ -1,4 +1,4 @@
-FROM gravitl/go-builder AS builder
+FROM gravitl/go-builder:1.23.0 AS builder
 # add glib support daemon manager
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY . .
 RUN go mod tidy
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-s -w" -o netclient-app .
 
-FROM alpine:3.20.2
+FROM alpine:3.20.3
 
 WORKDIR /root/
 
