@@ -324,7 +324,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-				ruleSpec := []string{"-s", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 				// to avoid duplicate iface route rule,delete if exists
 				var exp []expr.Any
 				if isAddrIpv4(source) {
@@ -374,13 +374,13 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 							SourceRegister: 1,
 							DestRegister:   1,
 							Len:            16,
-							Mask:           egressInfo.Network.Mask, // /64 mask
+							Mask:           egressInfo.Network6.Mask, // /64 mask
 							Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 						},
 						&expr.Cmp{
 							Op:       expr.CmpOpEq,
 							Register: 1,
-							Data:     egressInfo.Network.IP.To16(), // 2001:db8::/64
+							Data:     egressInfo.Network6.IP.To16(), // 2001:db8::/64
 						},
 						// Match outgoing interface by name
 						&expr.Meta{
