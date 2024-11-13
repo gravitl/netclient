@@ -503,6 +503,7 @@ func (n *nftablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 func (n *nftablesManager) FlushAll() {
 	n.mux.Lock()
 	defer n.mux.Unlock()
+	logger.Log(0, "flushing netmaker rules...")
 	n.conn.FlushTable(filterTable)
 	n.conn.FlushTable(natTable)
 	if err := n.conn.Flush(); err != nil {
