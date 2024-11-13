@@ -341,8 +341,10 @@ func UpdateHostSettings(fallback bool) error {
 				publishMsg = true
 			}
 		} else {
-			config.Netclient().EndpointIP = nil
-			publishMsg = true
+			if config.Netclient().EndpointIP != nil {
+				config.Netclient().EndpointIP = nil
+				publishMsg = true
+			}
 		}
 	}
 
@@ -354,8 +356,10 @@ func UpdateHostSettings(fallback bool) error {
 				publishMsg = true
 			}
 		} else {
-			config.Netclient().EndpointIPv6 = nil
-			publishMsg = true
+			if config.Netclient().EndpointIPv6 != nil {
+				config.Netclient().EndpointIPv6 = nil
+				publishMsg = true
+			}
 		}
 	}
 
