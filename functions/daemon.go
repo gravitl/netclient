@@ -64,12 +64,7 @@ func Daemon() {
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
-	// initialize firewall manager
-	var err error
-	config.FwClose, err = firewall.Init()
-	if err != nil {
-		logger.Log(0, "failed to intialize firewall: ", err.Error())
-	}
+
 	cancel := startGoRoutines(&wg)
 
 	for {
@@ -86,6 +81,7 @@ func Daemon() {
 			return
 		case <-reset:
 			slog.Info("received reset")
+			config.FwClose()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
@@ -146,6 +142,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
+	}
+	// initialize firewall manager
+	var err error
+	config.FwClose, err = firewall.Init()
+	if err != nil {
+		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
 	updateConfig := false
 
