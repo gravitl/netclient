@@ -251,6 +251,20 @@ func (n *nftablesManager) ForwardRule() error {
 			&expr.Verdict{Kind: expr.VerdictAccept},
 		},
 	})
+	n.conn.InsertRule(&nftables.Rule{
+		Table: natTable,
+		Chain: &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Counter{},
+			&expr.Masq{},
+		},
+	})
 	return n.conn.Flush()
 }
 
