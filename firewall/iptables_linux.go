@@ -493,19 +493,20 @@ func (i *iptablesManager) cleanup(table, chain string) {
 }
 
 func (i *iptablesManager) clearNetmakerRules(table, chain string) {
-
 	// List all rules in the specified chain
 	rules, err := i.ipv4Client.List(table, chain)
 	if err != nil {
 		logger.Log(1, "Failed to list rules: ", table, chain, err.Error())
 	}
-
 	// Iterate through rules to find the one with the target comment
 	for _, rule := range rules {
 		if containsComment(rule, netmakerSignature) {
 			// Delete the rule once found
 			// Split the rule into components
 			ruleComponents := strings.Fields(rule)
+			if len(ruleComponents) > 2 {
+				ruleComponents = ruleComponents[2:]
+			}
 			err = i.ipv4Client.Delete(table, chain, ruleComponents...)
 			if err != nil {
 				logger.Log(4, "Failed to delete rule: ", rule, err.Error())
@@ -523,6 +524,9 @@ func (i *iptablesManager) clearNetmakerRules(table, chain string) {
 			// Delete the rule once found
 			// Split the rule into components
 			ruleComponents := strings.Fields(rule)
+			if len(ruleComponents) > 2 {
+				ruleComponents = ruleComponents[2:]
+			}
 			err = i.ipv4Client.Delete(table, chain, ruleComponents...)
 			if err != nil {
 				logger.Log(4, "Failed to delete rule: ", rule, err.Error())
@@ -534,7 +538,7 @@ func (i *iptablesManager) clearNetmakerRules(table, chain string) {
 
 // Helper function to check if a rule contains a specific comment
 func containsComment(rule string, comment string) bool {
-	return strings.Contains(rule, fmt.Sprintf("--comment %q", comment))
+	return strings.Contains(rule, fmt.Sprintf("--comment %s", comment))
 }
 
 // iptablesManager.FetchRuleTable - fetches the rule table by table name
@@ -646,11 +650,12 @@ func (i *iptablesManager) FlushAll() {
 	i.mux.Lock()
 	defer i.mux.Unlock()
 	// remove jump rules
+	logger.Log(0, "flushing netmaker rules...")
 	i.removeJumpRules()
-	i.cleanup(defaultIpTable, netmakerFilterChain)
-	i.cleanup(defaultNatTable, netmakerNatChain)
 	i.clearNetmakerRules(defaultIpTable, iptableINChain)
 	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
+	i.cleanup(defaultIpTable, netmakerFilterChain)
+	i.cleanup(defaultNatTable, netmakerNatChain)
 }
 
 func iptablesProtoToString(proto iptables.Protocol) string {
