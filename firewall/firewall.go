@@ -17,6 +17,7 @@ type rulesCfg struct {
 
 type ruleInfo struct {
 	rule   []string
+	isIpv4 bool
 	nfRule any
 	table  string
 	chain  string
@@ -46,6 +47,12 @@ type firewallController interface {
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw
 	InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error
+	// AddAclRules - inserts all rules related to acl policy
+	AddAclRules(server string, aclRules map[string]models.AclRule)
+	// UpsertAclRules - update a acl policy rules
+	UpsertAclRule(server string, aclRule models.AclRule)
+	// DeleteAclRule - cleanup all the rules associated with a acl policy
+	DeleteAclRule(server, aclID string)
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer

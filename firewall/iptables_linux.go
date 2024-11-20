@@ -480,6 +480,150 @@ func (i *iptablesManager) AddEgressRoutingRule(server string, egressInfo models.
 	return nil
 }
 
+func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.AclRule) {
+	ruleTable := i.FetchRuleTable(server, aclTable)
+	defer i.SaveRules(server, aclTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+
+	for _, aclRule := range aclRules {
+		rules := []ruleInfo{}
+		if _, ok := ruleTable[aclRule.ID]; !ok {
+			ruleTable[aclRule.ID] = rulesCfg{
+				rulesMap: make(map[string][]ruleInfo),
+			}
+		}
+		if len(aclRule.IPList) > 0 {
+			allowedIps := []string{}
+			for _, ip := range aclRule.IPList {
+				allowedIps = append(allowedIps, ip.String())
+			}
+			ruleSpec := []string{"-s", strings.Join(allowedIps, ","), "-j", "ACCEPT"}
+			err := i.ipv4Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				rules = append(rules, ruleInfo{
+					isIpv4: true,
+					table:  defaultIpTable,
+					chain:  aclInputRulesChain,
+					rule:   ruleSpec,
+				})
+
+			}
+		}
+		if len(aclRule.IP6List) > 0 {
+			allowedIps := []string{}
+			for _, ip := range aclRule.IP6List {
+				allowedIps = append(allowedIps, ip.String())
+			}
+			ruleSpec := []string{"-s", strings.Join(allowedIps, ","), "-j", "ACCEPT"}
+			err := i.ipv6Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				rules = append(rules, ruleInfo{
+					table: defaultIpTable,
+					chain: aclInputRulesChain,
+					rule:  ruleSpec,
+				})
+			}
+		}
+		if len(rules) > 0 {
+			rCfg := rulesCfg{
+				rulesMap: map[string][]ruleInfo{
+					aclRule.ID: rules,
+				},
+				extraInfo: aclRule,
+			}
+			ruleTable[aclRule.ID] = rCfg
+		}
+	}
+}
+
+func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
+	ruleTable := i.FetchRuleTable(server, aclTable)
+	defer i.SaveRules(server, aclTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	ruleTable[aclRule.ID] = rulesCfg{
+		rulesMap: make(map[string][]ruleInfo),
+	}
+	rules := []ruleInfo{}
+	if _, ok := ruleTable[aclRule.ID]; !ok {
+		ruleTable[aclRule.ID] = rulesCfg{
+			rulesMap: make(map[string][]ruleInfo),
+		}
+	}
+	if len(aclRule.IPList) > 0 {
+		allowedIps := []string{}
+		for _, ip := range aclRule.IPList {
+			allowedIps = append(allowedIps, ip.String())
+		}
+		ruleSpec := []string{"-s", strings.Join(allowedIps, ","), "-j", "ACCEPT"}
+		err := i.ipv4Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			rules = append(rules, ruleInfo{
+				isIpv4: true,
+				table:  defaultIpTable,
+				chain:  aclInputRulesChain,
+				rule:   ruleSpec,
+			})
+
+		}
+	}
+	if len(aclRule.IP6List) > 0 {
+		allowedIps := []string{}
+		for _, ip := range aclRule.IP6List {
+			allowedIps = append(allowedIps, ip.String())
+		}
+		ruleSpec := []string{"-s", strings.Join(allowedIps, ","), "-j", "ACCEPT"}
+		err := i.ipv6Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			rules = append(rules, ruleInfo{
+				table: defaultIpTable,
+				chain: aclInputRulesChain,
+				rule:  ruleSpec,
+			})
+		}
+	}
+	if len(rules) > 0 {
+		rCfg := rulesCfg{
+			rulesMap: map[string][]ruleInfo{
+				aclRule.ID: rules,
+			},
+			extraInfo: aclRule,
+		}
+		ruleTable[aclRule.ID] = rCfg
+	}
+
+}
+
+func (i *iptablesManager) DeleteAclRule(server, aclID string) {
+	ruleTable := i.FetchRuleTable(server, aclTable)
+	defer i.SaveRules(server, aclTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	rulesCfg, ok := ruleTable[aclID]
+	if !ok {
+		return
+	}
+	rules := rulesCfg.rulesMap[aclID]
+	for _, rule := range rules {
+		if rule.isIpv4 {
+			i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+		} else {
+			i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+		}
+	}
+	delete(ruleTable, aclID)
+
+}
+
 func (i *iptablesManager) cleanup(table, chain string) {
 
 	err := i.ipv4Client.ClearAndDeleteChain(table, chain)

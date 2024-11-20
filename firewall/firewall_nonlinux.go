@@ -56,6 +56,17 @@ func (unimplementedFirewall) AddEgressRoutingRule(server string, egressInfo mode
 func (unimplementedFirewall) DeleteRuleTable(server, ruleTableName string) {
 
 }
+
+func (unimplementedFirewall) AddAclRules(server string, aclRules map[string]models.AclRule) {
+
+}
+func (unimplementedFirewall) UpsertAclRule(server string, aclRule models.AclRule) {
+
+}
+
+func (unimplementedFirewall) DeleteAclRule(server string, aclID string) {
+
+}
 func (unimplementedFirewall) RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error {
 	return nil
 }

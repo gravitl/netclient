@@ -937,3 +937,15 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 	ruleTable[ingressInfo.IngressID] = ingressRules
 	return nil
 }
+
+func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.AclRule) {
+
+}
+
+func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
+
+}
+
+func (n *nftablesManager) DeleteAclRule(server, aclID string) {
+
+}
