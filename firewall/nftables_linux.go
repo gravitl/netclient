@@ -316,26 +316,93 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+
+			source := egressInfo.Network.String()
+			if !isAddrIpv4(egressGwRange) {
+				source = egressInfo.Network6.String()
+			}
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-				ruleSpec := []string{"-s", egressInfo.Network.String(), "-o", egressRangeIface, "-j", "MASQUERADE"}
+				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 				// to avoid duplicate iface route rule,delete if exists
+				var exp []expr.Any
+				if isAddrIpv4(source) {
+					exp = []expr.Any{
+						// Match source IP address
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       12, // Source address offset in IP header
+							Len:          4,
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            4,
+							Mask:           egressInfo.Network.Mask, // /16 mask for 100.64.0.0/16
+							Xor:            []byte{0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     egressInfo.Network.IP.To4(), // 100.64.0.0/16
+						},
+						// Match outgoing interface by index
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     []byte(egressRangeIface), // Interface name with null terminator
+						},
+						// Perform masquerade
+						&expr.Masq{},
+					}
+				} else {
+					exp = []expr.Any{
+						// Match source IPv6 address (2001:db8::/64)
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       8,  // Source address offset in IPv6 header
+							Len:          16, // Length of IPv6 address
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            16,
+							Mask:           egressInfo.Network6.Mask, // /64 mask
+							Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     egressInfo.Network6.IP.To16(), // 2001:db8::/64
+						},
+						// Match outgoing interface by name
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     []byte(egressRangeIface), // Interface name with null terminator
+						},
+						// Perform masquerade
+						&expr.Masq{},
+					}
+				}
+
 				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
 				rule = &nftables.Rule{
 					Table:    natTable,
 					Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
 					UserData: []byte(genRuleKey(ruleSpec...)),
-					Exprs: []expr.Any{
-						&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-						&expr.Cmp{
-							Op:       expr.CmpOpEq,
-							Register: 1,
-							Data:     []byte(egressRangeIface + "\x00"),
-						},
-						&expr.Counter{},
-						&expr.Masq{},
-					},
+					Exprs:    exp,
 				}
 				n.conn.InsertRule(rule)
 				if err := n.conn.Flush(); err != nil {
@@ -436,6 +503,7 @@ func (n *nftablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 func (n *nftablesManager) FlushAll() {
 	n.mux.Lock()
 	defer n.mux.Unlock()
+	logger.Log(0, "flushing netmaker rules...")
 	n.conn.FlushTable(filterTable)
 	n.conn.FlushTable(natTable)
 	if err := n.conn.Flush(); err != nil {
