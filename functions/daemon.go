@@ -1,9 +1,14 @@
 package functions
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -469,27 +474,50 @@ func setDNSSubscriptions(client mqtt.Client, node *config.Node) {
 	slog.Info("subscribed to DNS sync for node", "node", node.ID, "network", node.Network)
 }
 
-// should only ever use node client configs
-func decryptMsg(serverName string, msg []byte) ([]byte, error) {
-	if len(msg) <= 24 { // make sure message is of appropriate length
-		return nil, fmt.Errorf("received invalid message from broker %v", msg)
+func unzipPayload(data []byte) (resData []byte, err error) {
+	b := bytes.NewBuffer(data)
+
+	var r io.Reader
+	r, err = gzip.NewReader(b)
+	if err != nil {
+		return
 	}
-	host := config.Netclient()
-	// setup the keys
-	diskKey, err := ncutils.ConvertBytesToKey(host.TrafficKeyPrivate)
+
+	var resB bytes.Buffer
+	_, err = resB.ReadFrom(r)
+	if err != nil {
+		return
+	}
+
+	resData = resB.Bytes()
+
+	return
+}
+
+func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
+	// Create AES block cipher
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 
-	server := config.GetServer(serverName)
-	if server == nil {
-		return nil, errors.New("nil server for " + serverName)
-	}
-	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
+	// Create GCM (Galois/Counter Mode) cipher
+	aesGCM, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
-	return DeChunk(msg, serverPubKey, diskKey)
+
+	// Separate nonce and ciphertext
+	nonceSize := aesGCM.NonceSize()
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+
+	// Decrypt the data
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
 }
 
 func read(network, which string) string {
