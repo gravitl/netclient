@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -25,12 +26,12 @@ func InitialiseMetricsThread(ctx context.Context, wg *sync.WaitGroup) {
 		if node.Address.IP != nil {
 			addr4 := node.Address.IP.String()
 			wg.Add(1)
-			go startMetricsServer(ctx, wg, addr4, config.Netclient().ListenPort, 4)
+			go startTcpServer(ctx, wg, addr4, config.Netclient().ListenPort, 4)
 		}
 		if node.Address6.IP != nil {
 			addr6 := node.Address6.IP.String()
 			wg.Add(1)
-			go startMetricsServer(ctx, wg, addr6, config.Netclient().ListenPort, 6)
+			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", addr6, ncutils.GetInterfaceName()), config.Netclient().ListenPort, 6)
 		}
 
 	}
@@ -47,66 +48,27 @@ func InitialiseIfaceDetection(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		if iface.Address.IP.To4() != nil {
 			wg.Add(1)
-			startIfaceDetection(ctx, wg, iface.Address.IP.String(), config.Netclient().ListenPort, 4)
+			go startTcpServer(ctx, wg, iface.Address.IP.String(), config.Netclient().ListenPort, 4)
 		} else {
 			wg.Add(1)
-			startIfaceDetection(ctx, wg, iface.Address.IP.String(), config.Netclient().ListenPort, 6)
+			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), config.Netclient().ListenPort, 6)
 		}
-	}
-}
-
-// startMetricsServer - metrics server
-func startMetricsServer(ctx context.Context, wg *sync.WaitGroup, addr string, port, protocol int) {
-	defer wg.Done()
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", addr, port))
-	if err != nil {
-		logger.Log(0, "failed to resolve metrics server address -", err.Error())
-		return
-	}
-	if protocol == 6 {
-		tcpAddr, err = net.ResolveTCPAddr("tcp6", fmt.Sprintf("[::1]:%d", port))
-		if err != nil {
-			logger.Log(0, "failed to resolve metrics server address -", err.Error())
-			return
-		}
-	}
-	network := "tcp4"
-	if protocol == 6 {
-		network = "tcp6"
-	}
-	l, err := net.ListenTCP(network, tcpAddr)
-	if err != nil {
-		logger.Log(0, "failed to metrics server", err.Error())
-		return
-	}
-	logger.Log(0, "initialized metrics server on", tcpAddr.String())
-	go func(ctx context.Context, listener *net.TCPListener) {
-		<-ctx.Done()
-		logger.Log(0, "closed metrics server")
-		l.Close()
-	}(ctx, l)
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			logger.Log(1, "failed to accept connection", err.Error())
-			return
-		}
-		go handleRequest(conn) // handle connection
 	}
 }
 
 // startIfaceDetection - starts server to listen for best endpoints between netclients
-func startIfaceDetection(ctx context.Context, wg *sync.WaitGroup, addr string, port, protocol int) {
+func startTcpServer(ctx context.Context, wg *sync.WaitGroup, addr string, port, protocol int) {
 	defer wg.Done()
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", addr, port))
-	if err != nil {
-		logger.Log(0, "failed to resolve iface detection address -", err.Error())
-		return
-	}
-	if protocol == 6 {
-		tcpAddr, err = net.ResolveTCPAddr("tcp6", fmt.Sprintf("%s:%d", addr, port))
+	var tcpAddr *net.TCPAddr
+	var err error
+	if protocol == 4 {
+		tcpAddr, err = net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", addr, port))
+		if err != nil {
+			logger.Log(0, "failed to resolve iface detection address -", err.Error())
+			return
+		}
+	} else {
+		tcpAddr, err = net.ResolveTCPAddr("tcp6", fmt.Sprintf("[%s]:%d", addr, port))
 		if err != nil {
 			logger.Log(0, "failed to resolve iface detection address -", err.Error())
 			return
