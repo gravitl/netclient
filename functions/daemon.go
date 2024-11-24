@@ -271,7 +271,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
 	go Checkin(ctx, wg)
-	wg.Add(1)
 	networking.InitialiseIfaceDetection(ctx, wg)
 	if server.IsPro {
 		wg.Add(1)
