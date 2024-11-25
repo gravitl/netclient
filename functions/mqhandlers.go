@@ -46,18 +46,22 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	server := config.Servers[node.Server]
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
-		slog.Error("error decrypting message", "error", err)
-		return
-	}
-
-	zipped, err := unzipPayload(data)
-	if err != nil {
-		slog.Error("error unzipping message", "error", err)
-		return
+		slog.Warn("error decrypting message", "warn", err)
+		data, err = decryptMsg(server.Name, msg.Payload())
+		if err != nil {
+			slog.Error("error decrypting message", "error", err)
+			return
+		}
+	} else {
+		data, err = unzipPayload(data)
+		if err != nil {
+			slog.Error("error unzipping message", "error", err)
+			return
+		}
 	}
 
 	serverNode := models.Node{}
-	if err = json.Unmarshal([]byte(zipped), &serverNode); err != nil {
+	if err = json.Unmarshal([]byte(data), &serverNode); err != nil {
 		slog.Error("error unmarshalling node update data", "error", err)
 		return
 	}
@@ -157,17 +161,21 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("processing peer update for server", "server", serverName)
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
-		slog.Error("error decrypting message", "error", err)
-		return
+		slog.Warn("error decrypting message", "warn", err)
+		data, err = decryptMsg(server.Name, msg.Payload())
+		if err != nil {
+			slog.Error("error decrypting message", "error", err)
+			return
+		}
+	} else {
+		data, err = unzipPayload(data)
+		if err != nil {
+			slog.Error("error unzipping message", "error", err)
+			return
+		}
 	}
 
-	zipped, err := unzipPayload(data)
-	if err != nil {
-		slog.Error("error unzipping message", "error", err)
-		return
-	}
-
-	err = json.Unmarshal([]byte(zipped), &peerUpdate)
+	err = json.Unmarshal([]byte(data), &peerUpdate)
 	if err != nil {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
@@ -276,16 +284,20 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
-		slog.Error("error decrypting message", "error", err)
-		return
+		slog.Warn("error decrypting message", "warn", err)
+		data, err = decryptMsg(server.Name, msg.Payload())
+		if err != nil {
+			slog.Error("error decrypting message", "error", err)
+			return
+		}
+	} else {
+		data, err = unzipPayload(data)
+		if err != nil {
+			slog.Error("error unzipping message", "error", err)
+			return
+		}
 	}
-
-	zipped, err := unzipPayload(data)
-	if err != nil {
-		slog.Error("error unzipping message", "error", err)
-		return
-	}
-	err = json.Unmarshal([]byte(zipped), &hostUpdate)
+	err = json.Unmarshal([]byte(data), &hostUpdate)
 	if err != nil {
 		slog.Error("error unmarshalling host update data", "error", err)
 		return

@@ -494,6 +494,28 @@ func unzipPayload(data []byte) (resData []byte, err error) {
 	return
 }
 
+func decryptMsg(serverName string, msg []byte) ([]byte, error) {
+	if len(msg) <= 24 { // make sure message is of appropriate length
+		return nil, fmt.Errorf("received invalid message from broker %v", msg)
+	}
+	host := config.Netclient()
+	// setup the keys
+	diskKey, err := ncutils.ConvertBytesToKey(host.TrafficKeyPrivate)
+	if err != nil {
+		return nil, err
+	}
+
+	server := config.GetServer(serverName)
+	if server == nil {
+		return nil, errors.New("nil server for " + serverName)
+	}
+	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
+	if err != nil {
+		return nil, err
+	}
+	return DeChunk(msg, serverPubKey, diskKey)
+}
+
 func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
 	// Create AES block cipher
 	block, err := aes.NewCipher(key)
