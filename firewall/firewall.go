@@ -34,6 +34,8 @@ const (
 
 const (
 	staticNodeRules = "static-node"
+	targetAccept    = "ACCEPT"
+	targetDrop      = "DROP"
 )
 
 type firewallController interface {
@@ -43,6 +45,8 @@ type firewallController interface {
 	ForwardRule() error
 	// Add DROP Rules
 	AddDropRules([]ruleInfo)
+	// ChangeACLTarget - deletes if any current target and adds rule with new target
+	ChangeACLTarget(target string)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw

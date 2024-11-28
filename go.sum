@@ -90,6 +90,14 @@ github.com/gravitl/netmaker v0.26.1-0.20241120085704-031a0c14aceb h1:Kc9bOl7hzFl
 github.com/gravitl/netmaker v0.26.1-0.20241120085704-031a0c14aceb/go.mod h1:J5tvCRmUXFnv3qmmgrGZTmj0GLst+W0kHqUjgtr+G9M=
 github.com/gravitl/netmaker v0.26.1-0.20241120090954-f5145745ee62 h1:UHm/PPU88fgKp3dC6I+d8xKeQW7l23E7CjkOV6iZZNA=
 github.com/gravitl/netmaker v0.26.1-0.20241120090954-f5145745ee62/go.mod h1:J5tvCRmUXFnv3qmmgrGZTmj0GLst+W0kHqUjgtr+G9M=
+github.com/gravitl/netmaker v0.26.1-0.20241125073154-376d7c021b16 h1:PKvsBscOQJwx8rGow3xcu9ISEvOsxZgSiRIOvrtyAlk=
+github.com/gravitl/netmaker v0.26.1-0.20241125073154-376d7c021b16/go.mod h1:J5tvCRmUXFnv3qmmgrGZTmj0GLst+W0kHqUjgtr+G9M=
+github.com/gravitl/netmaker v0.26.1-0.20241126070511-a11bbd932376 h1:vZAuYlFLhQLYS6siPFW1A1hgQvEERZ0iIUE9mUpU2fg=
+github.com/gravitl/netmaker v0.26.1-0.20241126070511-a11bbd932376/go.mod h1:J5tvCRmUXFnv3qmmgrGZTmj0GLst+W0kHqUjgtr+G9M=
+github.com/gravitl/netmaker v0.26.1-0.20241128033555-52f6529ac252 h1:iUR0pdfUwmlTLZyDC5LXJ580oo2JntaOzz5NDxCkzZU=
+github.com/gravitl/netmaker v0.26.1-0.20241128033555-52f6529ac252/go.mod h1:J5tvCRmUXFnv3qmmgrGZTmj0GLst+W0kHqUjgtr+G9M=
+github.com/gravitl/netmaker v0.26.1-0.20241128044908-a91bf8184ca1 h1:ZosmoHGzZON+1mi8s+PvDwW/OWbIinkomHFKMFTiL1s=
+github.com/gravitl/netmaker v0.26.1-0.20241128044908-a91bf8184ca1/go.mod h1:J5tvCRmUXFnv3qmmgrGZTmj0GLst+W0kHqUjgtr+G9M=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/guumaster/hostctl v1.1.4 h1:4zb9wEurBlz/hQiXFz9feHHfunf7oj+9serAH8ohGuM=

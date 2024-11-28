@@ -949,3 +949,5 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 func (n *nftablesManager) DeleteAclRule(server, aclID string) {
 
 }
+
+func (n *nftablesManager) ChangeACLTarget(target string) {}

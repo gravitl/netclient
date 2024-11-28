@@ -6,10 +6,17 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
-func ProcessAclRules(server string, aclRules map[string]models.AclRule) {
+func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	if fwCrtl == nil {
 		return
 	}
+	if fwUpdate.AllowAll {
+		fwCrtl.ChangeACLTarget(targetAccept)
+	} else {
+		fwCrtl.ChangeACLTarget(targetDrop)
+	}
+	return
+	aclRules := fwUpdate.AclRules
 	ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
 	if len(ruleTable) == 0 && len(aclRules) > 0 {
 		fwCrtl.AddAclRules(server, aclRules)
