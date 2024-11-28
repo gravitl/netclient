@@ -332,7 +332,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Second * 10)
+	opts.SetKeepAlive(time.Second * 15)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
