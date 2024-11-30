@@ -248,18 +248,53 @@ func GetNetworkIPMask(networkstring string) (string, string, error) {
 }
 
 // GetFreePort - gets free port of machine
-func GetFreePort(rangestart int) (int, error) {
-	addr := net.UDPAddr{}
+func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
+	if init || currListenPort == 443 {
+		// check 443 is free
+		udpAddr := net.UDPAddr{
+			Port: 443,
+		}
+		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
+		if udpErr == nil {
+			defer udpConn.Close()
+		} else {
+			fmt.Println("UDP 443 ERR: ", udpErr)
+		}
+		tcpAddr := net.TCPAddr{
+			Port: 443,
+		}
+		tcpConn, tcpErr := net.ListenTCP("tcp", &tcpAddr)
+		if tcpErr == nil {
+			defer tcpConn.Close()
+		} else {
+			fmt.Println("TCP 443 ERR: ", tcpErr)
+		}
+		if tcpErr == nil && udpErr == nil {
+			fmt.Println("#### ====> PORT: 443")
+			return 443, nil
+		}
+	}
+
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
 	}
 	for x := rangestart; x <= 65535; x++ {
-		addr.Port = int(x)
-		conn, err := net.ListenUDP("udp", &addr)
-		if err != nil {
+		udpAddr := net.UDPAddr{
+			Port: x,
+		}
+		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
+		if udpErr != nil {
 			continue
 		}
-		defer conn.Close()
+		udpConn.Close()
+		tcpAddr := net.TCPAddr{
+			Port: x,
+		}
+		tcpConn, tcpErr := net.ListenTCP("tcp", &tcpAddr)
+		if tcpErr != nil {
+			continue
+		}
+		tcpConn.Close()
 		return x, nil
 	}
 	return rangestart, errors.New("no free ports")

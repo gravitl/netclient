@@ -159,7 +159,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if !config.Netclient().IsStaticPort {
-		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
+		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, config.Netclient().ListenPort, false); err != nil {
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != config.Netclient().ListenPort {
 			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)

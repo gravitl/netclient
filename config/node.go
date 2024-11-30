@@ -259,13 +259,6 @@ func ParseAccessToken(token string) (*models.AccessToken, error) {
 	return &accesstoken, nil
 }
 
-// ModPort - Change Node Port if ListenPort is not free
-func ModPort(host *Config) error {
-	var err error
-	host.ListenPort, err = ncutils.GetFreePort(host.ListenPort)
-	return err
-}
-
 // FormatBool converts a boolean to a [yes|no] string
 func FormatBool(b bool) string {
 	s := "no"
