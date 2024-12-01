@@ -27,6 +27,29 @@ type StunServer struct {
 	Port   int    `json:"port" yaml:"port"`
 }
 
+// LoadStunServers - load customized stun servers
+func LoadStunServers(list string) {
+	l1 := strings.Split(list, ",")
+	stunServers := []StunServer{}
+	for _, v := range l1 {
+		l2 := strings.Split(v, ":")
+		port, _ := strconv.Atoi(l2[1])
+		sS := StunServer{Domain: l2[0], Port: port}
+		stunServers = append(stunServers, sS)
+	}
+
+	StunServers = stunServers
+}
+
+func SetDefaultStunServers() {
+	StunServers = []StunServer{
+		{Domain: "stun1.l.google.com", Port: 19302},
+		{Domain: "stun2.l.google.com", Port: 19302},
+		{Domain: "stun3.l.google.com", Port: 19302},
+		{Domain: "stun4.l.google.com", Port: 19302},
+	}
+}
+
 // IsPublicIP indicates whether IP is public or not.
 func IsPublicIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {

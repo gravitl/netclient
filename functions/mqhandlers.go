@@ -20,6 +20,7 @@ import (
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -229,10 +230,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	}
 
+	saveServerConfig := false
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
-		config.UpdateServer(serverName, *server)
-		_ = config.WriteServerConfig()
+		saveServerConfig = true
 		if peerUpdate.ManageDNS {
 			dns.GetDNSServerInstance().Start()
 		} else {
@@ -241,6 +242,31 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
 		dns.SetupDNSConfig()
+	}
+
+	reloadStun := false
+	if peerUpdate.Stun != server.Stun {
+		server.Stun = peerUpdate.Stun
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if peerUpdate.StunServers != server.StunServers {
+		server.StunServers = peerUpdate.StunServers
+		saveServerConfig = true
+		reloadStun = true
+	}
+
+	if reloadStun {
+		if server.Stun && server.StunServers != "" {
+			stun.LoadStunServers(server.StunServers)
+		} else {
+			stun.SetDefaultStunServers()
+		}
+	}
+
+	if saveServerConfig {
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)

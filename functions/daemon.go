@@ -153,6 +153,19 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	updateConfig := false
 
+	config.SetServerCtx()
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return cancel
+	}
+	logger.Log(1, "started daemon for server ", server.Name)
+	if server.Stun && server.StunServers != "" {
+		stun.LoadStunServers(server.StunServers)
+	} else {
+		stun.SetDefaultStunServers()
+	}
+
 	if config.Netclient().Host.OS == "linux" {
 		dns.InitDNSConfig()
 		updateConfig = true
@@ -210,8 +223,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 
-	config.SetServerCtx()
-
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
 	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
 		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
@@ -247,11 +258,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
-	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return cancel
-	}
-	logger.Log(1, "started daemon for server ", server.Name)
+
 	// set original default gw info
 
 	// check if default gw needs to be set
