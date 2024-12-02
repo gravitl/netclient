@@ -21,6 +21,7 @@ type nftablesManager struct {
 	conn         *nftables.Conn
 	ingRules     serverrulestable
 	engressRules serverrulestable
+	aclRules     serverrulestable
 	mux          sync.Mutex
 }
 
@@ -431,14 +432,13 @@ func (n *nftablesManager) FetchRuleTable(server string, tableName string) ruleta
 	switch tableName {
 	case ingressTable:
 		rules = n.ingRules[server]
-		if rules == nil {
-			rules = make(ruletable)
-		}
 	case egressTable:
 		rules = n.engressRules[server]
-		if rules == nil {
-			rules = make(ruletable)
-		}
+	case aclTable:
+		rules = n.aclRules[server]
+	}
+	if rules == nil {
+		rules = make(ruletable)
 	}
 	return rules
 }

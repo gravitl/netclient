@@ -16,13 +16,17 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	} else {
 		fwCrtl.ChangeACLTarget(targetDrop)
 	}
-	fmt.Printf("======> ACL RULES: %+v\n", fwUpdate.AclRules)
+
 	aclRules := fwUpdate.AclRules
 	ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
+	fmt.Printf("======> ACL RULES: %+v\n, Curr Rule table: %+v\n", fwUpdate.AclRules, ruleTable)
 	if len(ruleTable) == 0 && len(aclRules) > 0 {
 		fwCrtl.AddAclRules(server, aclRules)
+		ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
+		fmt.Printf("======> AFTER ACL RULES: Curr Rule table: %+v\n", ruleTable)
 		return
 	}
+	fmt.Println("## CHECKING New RULES==>")
 	// add new acl rules
 	for _, aclRule := range aclRules {
 		if _, ok := ruleTable[aclRule.ID]; !ok {
@@ -37,10 +41,17 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 				(!reflect.DeepEqual(localAclRule.IP6List, aclRule.IP6List)) ||
 				(len(localAclRule.AllowedPorts) != len(aclRule.AllowedPorts)) ||
 				(!reflect.DeepEqual(localAclRule.AllowedPorts, aclRule.AllowedPorts)) ||
+				(aclRule.AllowedProtocols != localAclRule.AllowedProtocols) ||
 				(localAclRule.Direction) != aclRule.Direction {
 				fwCrtl.DeleteAclRule(server, aclRule.ID)
 				fwCrtl.UpsertAclRule(server, aclRule)
 			}
+		}
+	}
+	// check if any rules needs to be deleted
+	for aclID := range ruleTable {
+		if _, ok := aclRules[aclID]; !ok {
+			fwCrtl.DeleteAclRule(server, aclID)
 		}
 	}
 }

@@ -36,6 +36,7 @@ type iptablesManager struct {
 	ipv6Client   *iptables.IPTables
 	ingRules     serverrulestable
 	engressRules serverrulestable
+	aclRules     serverrulestable
 	mux          sync.Mutex
 }
 
@@ -580,19 +581,28 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			}
 			rulesSpec := [][]string{}
 			if len(aclRule.AllowedPorts) > 0 {
-				if aclRule.AllowedProtocols.String() != "" {
-					for _, port := range aclRule.AllowedPorts {
-						ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
-						ruleSpec = append(ruleSpec, "--dport", port)
-						ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-						rulesSpec = append(rulesSpec, ruleSpec)
+
+				for _, port := range aclRule.AllowedPorts {
+					if port == "" {
+						continue
 					}
+					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+					if aclRule.AllowedProtocols.String() != "" {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+					}
+					ruleSpec = append(ruleSpec, "--dport", port)
+					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					rulesSpec = append(rulesSpec, ruleSpec)
 				}
+
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				if aclRule.AllowedProtocols.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
 			}
 
@@ -619,19 +629,28 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			}
 			rulesSpec := [][]string{}
 			if len(aclRule.AllowedPorts) > 0 {
-				if aclRule.AllowedProtocols.String() != "" {
-					for _, port := range aclRule.AllowedPorts {
-						ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
-						ruleSpec = append(ruleSpec, "--dport", port)
-						ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-						rulesSpec = append(rulesSpec, ruleSpec)
+
+				for _, port := range aclRule.AllowedPorts {
+					if port == "" {
+						continue
 					}
+					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+					if aclRule.AllowedProtocols.String() != "" {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+					}
+					ruleSpec = append(ruleSpec, "--dport", port)
+					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					rulesSpec = append(rulesSpec, ruleSpec)
 				}
+
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				if aclRule.AllowedProtocols.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
 			}
 
@@ -651,6 +670,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			}
 		}
 		if len(rules) > 0 {
+			fmt.Printf("====> IN ADDACLRULES: %+v\n", rules)
 			rCfg := rulesCfg{
 				rulesMap: map[string][]ruleInfo{
 					aclRule.ID: rules,
@@ -660,6 +680,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			ruleTable[aclRule.ID] = rCfg
 		}
 	}
+	fmt.Printf("===> AFTER ADDACLRULES: %+v\n", ruleTable)
 }
 
 func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
@@ -681,35 +702,87 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 		for _, ip := range aclRule.IPList {
 			allowedIps = append(allowedIps, ip.String())
 		}
-		ruleSpec := []string{"-s", strings.Join(allowedIps, ","), "-j", "ACCEPT"}
-		err := i.ipv4Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			rules = append(rules, ruleInfo{
-				isIpv4: true,
-				table:  defaultIpTable,
-				chain:  aclInputRulesChain,
-				rule:   ruleSpec,
-			})
+		rulesSpec := [][]string{}
+		if len(aclRule.AllowedPorts) > 0 {
+			for _, port := range aclRule.AllowedPorts {
+				if port == "" {
+					continue
+				}
+				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if aclRule.AllowedProtocols.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				}
+				ruleSpec = append(ruleSpec, "--dport", port)
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
 
+		} else {
+			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+			if aclRule.AllowedProtocols.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+			}
+			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+			rulesSpec = append(rulesSpec, ruleSpec)
 		}
+		for _, ruleSpec := range rulesSpec {
+			err := i.ipv4Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				rules = append(rules, ruleInfo{
+					isIpv4: true,
+					table:  defaultIpTable,
+					chain:  aclInputRulesChain,
+					rule:   ruleSpec,
+				})
+
+			}
+		}
+
 	}
 	if len(aclRule.IP6List) > 0 {
 		allowedIps := []string{}
 		for _, ip := range aclRule.IP6List {
 			allowedIps = append(allowedIps, ip.String())
 		}
-		ruleSpec := []string{"-s", strings.Join(allowedIps, ","), "-j", "ACCEPT"}
-		err := i.ipv6Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		rulesSpec := [][]string{}
+		if len(aclRule.AllowedPorts) > 0 {
+
+			for _, port := range aclRule.AllowedPorts {
+				if port == "" {
+					continue
+				}
+				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if aclRule.AllowedProtocols.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				}
+				ruleSpec = append(ruleSpec, "--dport", port)
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
+
 		} else {
-			rules = append(rules, ruleInfo{
-				table: defaultIpTable,
-				chain: aclInputRulesChain,
-				rule:  ruleSpec,
-			})
+			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+			if aclRule.AllowedProtocols.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+			}
+			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+			rulesSpec = append(rulesSpec, ruleSpec)
+		}
+		for _, ruleSpec := range rulesSpec {
+			err := i.ipv6Client.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				rules = append(rules, ruleInfo{
+					table: defaultIpTable,
+					chain: aclInputRulesChain,
+					rule:  ruleSpec,
+				})
+			}
 		}
 	}
 	if len(rules) > 0 {
@@ -814,14 +887,13 @@ func (i *iptablesManager) FetchRuleTable(server string, tableName string) ruleta
 	switch tableName {
 	case ingressTable:
 		rules = i.ingRules[server]
-		if rules == nil {
-			rules = make(ruletable)
-		}
 	case egressTable:
 		rules = i.engressRules[server]
-		if rules == nil {
-			rules = make(ruletable)
-		}
+	case aclTable:
+		rules = i.aclRules[server]
+	}
+	if rules == nil {
+		rules = make(ruletable)
 	}
 	return rules
 }
@@ -849,6 +921,8 @@ func (i *iptablesManager) SaveRules(server, tableName string, rules ruletable) {
 		i.ingRules[server] = rules
 	case egressTable:
 		i.engressRules[server] = rules
+	case aclTable:
+		i.aclRules[server] = rules
 	}
 }
 

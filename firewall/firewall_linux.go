@@ -33,6 +33,7 @@ func newFirewall() (firewallController, error) {
 			ipv6Client:   ipv6Client,
 			ingRules:     make(serverrulestable),
 			engressRules: make(serverrulestable),
+			aclRules:     make(serverrulestable),
 		}
 		return manager, nil
 	}
@@ -43,6 +44,7 @@ func newFirewall() (firewallController, error) {
 			conn:         &nftables.Conn{},
 			ingRules:     make(serverrulestable),
 			engressRules: make(serverrulestable),
+			aclRules:     make(serverrulestable),
 		}
 		return manager, nil
 	}
