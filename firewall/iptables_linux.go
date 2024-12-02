@@ -71,11 +71,13 @@ var (
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
-		// {
-		// 	rule:  []string{"-m", "comment", "--comment", netmakerSignature, "-j", "ACCEPT"},
-		// 	table: defaultIpTable,
-		// 	chain: aclInputRulesChain,
-		// },
+		{
+			rule: []string{"-o", ncutils.GetInterfaceName(), "-j", aclOutputRulesChain,
+				"-m", "comment", "--comment", netmakerSignature},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+
 		{
 			rule:  []string{"-m", "comment", "--comment", netmakerSignature, "-j", "ACCEPT"},
 			table: defaultIpTable,
@@ -173,7 +175,7 @@ func (i *iptablesManager) ForwardRule() error {
 	// Set the policy To accept on forward chain
 	iptablesClient.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
 
-	ruleSpec := []string{"-i", "netmaker", "-j", "ACCEPT"}
+	ruleSpec := []string{"-i", "netmaker", "-j", aclInputRulesChain}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
 	if err == nil && !ok {
@@ -187,7 +189,7 @@ func (i *iptablesManager) ForwardRule() error {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
 		}
 	}
-	ruleSpec = []string{"-o", "netmaker", "-j", "ACCEPT"}
+	ruleSpec = []string{"-o", "netmaker", "-j", aclOutputRulesChain}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	ok, err = i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
 	if err == nil && !ok {

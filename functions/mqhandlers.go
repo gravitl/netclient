@@ -530,9 +530,6 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 	} else {
 		firewall.RemoveIngressRoutingRules(server)
 	}
-	if payload.AllowAll {
-
-	}
 	firewall.ProcessAclRules(server, payload)
 
 }
