@@ -502,20 +502,45 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		if rule.SrcIP.IP.To4() == nil {
 			iptablesClient = i.ipv6Client
 		}
-		ruleSpec := []string{"-s", rule.SrcIP.String(), "-d",
-			rule.DstIP.String(), "-j", "ACCEPT"}
-		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-		// to avoid duplicate iface route rule,delete if exists
-		iptablesClient.DeleteIfExists(defaultIpTable, aclInputRulesChain, ruleSpec...)
-		err := iptablesClient.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		rulesSpec := [][]string{}
+		if len(rule.AllowedPorts) > 0 {
+
+			for _, port := range rule.AllowedPorts {
+				if port == "" {
+					continue
+				}
+				ruleSpec := []string{"-s", rule.SrcIP.String()}
+				if rule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
+				}
+				ruleSpec = append(ruleSpec, "--dport", port)
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
+
 		} else {
-			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
-				table: defaultIpTable,
-				chain: aclInputRulesChain,
-				rule:  ruleSpec,
-			})
+			ruleSpec := []string{"-s", rule.SrcIP.String()}
+			if rule.AllowedProtocol.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
+			}
+			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+			rulesSpec = append(rulesSpec, ruleSpec)
+		}
+		for _, ruleSpec := range rulesSpec {
+			// to avoid duplicate iface route rule,delete if exists
+			iptablesClient.DeleteIfExists(defaultIpTable, aclInputRulesChain, ruleSpec...)
+			err := iptablesClient.Insert(defaultIpTable, aclInputRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+					table: defaultIpTable,
+					chain: aclInputRulesChain,
+					rule:  ruleSpec,
+				})
+			}
 		}
 
 	}
@@ -589,8 +614,8 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						continue
 					}
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-					if aclRule.AllowedProtocols.String() != "" {
-						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+					if aclRule.AllowedProtocol.String() != "" {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -600,8 +625,8 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				if aclRule.AllowedProtocols.String() != "" {
-					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				if aclRule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -637,8 +662,8 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						continue
 					}
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-					if aclRule.AllowedProtocols.String() != "" {
-						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+					if aclRule.AllowedProtocol.String() != "" {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -648,8 +673,8 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				if aclRule.AllowedProtocols.String() != "" {
-					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				if aclRule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -711,8 +736,8 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					continue
 				}
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				if aclRule.AllowedProtocols.String() != "" {
-					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				if aclRule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -722,8 +747,8 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 
 		} else {
 			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-			if aclRule.AllowedProtocols.String() != "" {
-				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+			if aclRule.AllowedProtocol.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -758,8 +783,8 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					continue
 				}
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				if aclRule.AllowedProtocols.String() != "" {
-					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+				if aclRule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -768,8 +793,8 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 
 		} else {
 			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-			if aclRule.AllowedProtocols.String() != "" {
-				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocols.String())
+			if aclRule.AllowedProtocol.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			rulesSpec = append(rulesSpec, ruleSpec)
