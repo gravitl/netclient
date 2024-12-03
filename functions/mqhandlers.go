@@ -262,6 +262,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		} else {
 			stun.SetDefaultStunServers()
 		}
+		daemon.Restart()
 	}
 
 	if saveServerConfig {
