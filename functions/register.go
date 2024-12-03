@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -29,13 +30,13 @@ func Register(token string) error {
 		logger.FatalLog("could not read enrollment token")
 	}
 	host := config.Netclient()
-	ip, err := getInterfaces()
+	ip, err := networking.GetInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
 	} else {
 		// just in case getInterfaces() returned nil, nil
 		if ip != nil {
-			host.Interfaces = *ip
+			host.Interfaces = ip
 		}
 	}
 	defaultInterface, err := getDefaultInterface()
