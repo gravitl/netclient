@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -76,6 +77,7 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 				newMetric.Uptime = 1 * int64(mi)
 			}
 		}
+		fmt.Printf("=====> %+v\n", newMetric)
 		newMetric.TotalTime = 1 * int64(mi)
 		metrics.Connectivity[id] = newMetric
 	}
