@@ -37,6 +37,10 @@ func isTokenExpired(tokenString string) bool {
 	return true
 }
 
+func CleanJwtToken() {
+	jwtToken = ""
+}
+
 // Authenticate authenticates with netmaker api to permit subsequent interactions with the api
 func Authenticate(server *config.Server, host *config.Config) (string, error) {
 	if jwtToken != "" && !isTokenExpired(jwtToken) {

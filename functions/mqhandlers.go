@@ -13,6 +13,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -617,6 +618,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
+			auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
