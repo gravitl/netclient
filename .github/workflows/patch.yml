@@ -1,0 +1,165 @@
+name: Patch Netclient
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        type: string
+        default: 'develop'
+      version:
+        description: 'Version to patch'
+        required: true
+        type: string
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version }}
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64, linux/arm/v7
+          push: true
+          tags: |
+            gravitl/netclient:${{ inputs.version }}
+            gravitl/netclient:latest
+
+  build-and-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Get Dependencies
+        run: |
+          go mod tidy
+          
+      - name: Setup Build Directory
+        run: mkdir -p builds
+
+      - name: Cross Compile
+        env:
+          VERSION: ${{ inputs.version }}
+          CGO_ENABLED: 0
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
+          
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
+          
+          GOOS=linux GOARCH=arm GOARM=5 go build -ldflags="-s -w" -o builds/netclient-linux-armv5
+          GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o builds/netclient-linux-armv6
+          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o builds/netclient-linux-armv7
+          
+          GOOS=linux GOARCH=mips GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-hardfloat
+          GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-softfloat
+          GOOS=linux GOARCH=mipsle GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-hardfloat
+          GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-softfloat
+          
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-windows-amd64.exe
+
+      - name: Verify Builds
+        run: |
+          ls -lh builds/
+          
+      - name: Update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          assets_urls=$(curl -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ inputs.version }}" \
+            | jq -r '.assets[].url')
+          
+          for url in $assets_urls; do
+            curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" $url
+          done
+          
+          release_id=$(curl -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ inputs.version }}" \
+            | jq -r '.id')
+          
+          cd builds
+          for file in *; do
+            echo "Uploading $file to GitHub release..."
+            curl -H "Authorization: token $GITHUB_TOKEN" \
+                 -H "Content-Type: application/octet-stream" \
+                 --data-binary @"$file" \
+                 "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=$file"
+          done
+
+      - name: Install SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H fileserver.clustercat.com >> ~/.ssh/known_hosts
+
+      - name: Upload to File Server
+        env:
+          UPLOAD_PATH: /var/www/files/releases/download/${{ inputs.version }}
+        run: |
+          ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH"
+          
+          echo "Uploading files to file server..."
+          cd builds
+          for file in *; do
+            echo "Uploading $file..."
+            scp "$file" "root@fileserver.clustercat.com:$UPLOAD_PATH/"
+          done
+
+    packages:
+    needs: [build-and-patch]
+    runs-on: ubuntu-latest
+    steps:
+      - name: setup ssh
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SSH_KEY" > ~/.ssh/id_devops
+          chmod 600 ~/.ssh/id_devops
+          cat >>~/.ssh/config <<END
+          Host *.clustercat.com
+            User root
+            IdentityFile ~/.ssh/id_devops
+            StrictHostKeyChecking no
+          END
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: set version
+        run: |
+            VERSION=$(echo ${{ inputs.version }} | tr -cd '[:digit:].')
+            echo "VERSION=${VERSION}" >> $GITHUB_ENV
+            echo ${VERSION}
+      - name: apt/rpm
+        run: |
+          ssh fileserver.clustercat.com "cd packages; ./apt_builder.sh; ./rpm_builder.sh"
+        env:
+          LC_VERSION: ${{ env.VERSION }}
+          LC_REVISION: 0
