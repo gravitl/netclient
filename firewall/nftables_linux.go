@@ -67,29 +67,6 @@ var (
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableINChain},
 				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					&expr.Counter{},
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclInputRulesChain,
-					},
-				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain)),
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain},
-			table: defaultIpTable,
-			chain: iptableINChain,
-		},
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableINChain},
-				Exprs: []expr.Any{
 					// Match on input interface (-i netmaker)
 					&expr.Meta{
 						Key:      expr.MetaKeyIIFNAME, // Input interface name
@@ -128,6 +105,30 @@ var (
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
 				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
 				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableINChain,
+		},
+		{
+
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableINChain},
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					&expr.Counter{},
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: aclInputRulesChain,
+					},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain)),
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain},
 			table: defaultIpTable,
 			chain: iptableINChain,
 		},
@@ -176,6 +177,28 @@ var (
 			rule:  []string{"-o", ncutils.GetInterfaceName(), "-j", aclOutputRulesChain},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclOutputRulesChain},
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					&expr.Counter{},
+					&expr.Verdict{
+						Kind: expr.VerdictAccept,
+					},
+				},
+				UserData: []byte(genRuleKey("-o", ncutils.GetInterfaceName(), "-j", targetAccept)),
+			},
+			rule:  []string{"-o", ncutils.GetInterfaceName(), "-j", targetAccept},
+			table: defaultIpTable,
+			chain: aclOutputRulesChain,
 		},
 	}
 	// nat table nm jump rules
@@ -317,7 +340,6 @@ func (n *nftablesManager) CreateChains() error {
 	n.conn.AddChain(&nftables.Chain{
 		Name:  aclOutputRulesChain,
 		Table: filterTable,
-		//Policy: &defaultAcceptPolicy,
 	})
 	natChain := &nftables.Chain{
 		Name:  netmakerNatChain,
@@ -983,23 +1005,23 @@ func (n *nftablesManager) ChangeACLTarget(target string) {
 			Kind: expr.VerdictDrop,
 		}
 	}
-	e := []expr.Any{
-		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-		&expr.Cmp{
-			Op:       expr.CmpOpEq,
-			Register: 1,
-			Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+
+	newRule := &nftables.Rule{
+		Table: filterTable,
+		Chain: &nftables.Chain{Name: aclInputRulesChain},
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Counter{},
+			v,
 		},
-		&expr.Counter{},
-		v,
-	}
-	r := &nftables.Rule{
-		Table:    filterTable,
-		Chain:    &nftables.Chain{Name: aclInputRulesChain},
-		Exprs:    e,
 		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", target)),
 	}
-	if n.ruleExists(r) {
+	if n.ruleExists(newRule) {
 		return
 	}
 	fmt.Println("===>CHANGING ACL TARGET ", target)
@@ -1007,17 +1029,44 @@ func (n *nftablesManager) ChangeACLTarget(target string) {
 	oldVerdict := &expr.Verdict{
 		Kind: expr.VerdictAccept,
 	}
+	oldTarget := targetAccept
 	if target == targetAccept {
 		oldVerdict = &expr.Verdict{
 			Kind: expr.VerdictDrop,
 		}
+		oldTarget = targetDrop
 	}
-	e[len(e)-1] = oldVerdict
-	r.Exprs = e
-	n.conn.DelRule(r)
-	e[len(e)-1] = v
-	r.Exprs = e
-	n.conn.InsertRule(r)
+	oldRule := &nftables.Rule{
+		Table: filterTable,
+		Chain: &nftables.Chain{Name: aclInputRulesChain},
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Counter{},
+			oldVerdict,
+		},
+		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", oldTarget)),
+	}
+	rules, err := n.conn.GetRules(newRule.Table, newRule.Chain)
+	if err != nil {
+		log.Fatalf("Error fetching rules: %v", err)
+	}
+	for _, rI := range rules {
+		if rulesEqual(rI, oldRule) {
+			logger.Log(0, "DELETING OLD TARGET ", oldTarget)
+			err = n.conn.DelRule(rI)
+			if err != nil {
+				logger.Log(0, "failed to delete old target ", err.Error())
+			}
+			break
+		}
+	}
+
+	n.conn.InsertRule(newRule)
 	// Apply the changes
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, "Error Changing ACL TArget: %v\n", err.Error())
@@ -1040,67 +1089,12 @@ func (n *nftablesManager) ruleExists(r *nftables.Rule) bool {
 
 // rulesEqual checks if two rules are equivalent
 func rulesEqual(rule1, rule2 *nftables.Rule) bool {
-	// Simplistic comparison: compare expressions (extend as needed)
 	if len(rule1.Exprs) != len(rule2.Exprs) {
 		return false
 	}
 	if string(rule1.UserData) == string(rule2.UserData) {
 		return true
 	}
-	//for i := range rule1.Exprs {
-
-	// // Compare the expression bytes
-	// if !exprEqual(rule1.Exprs[i], rule2.Exprs[i]) {
-	// 	return false
-	// }
-	//}
 
 	return false
-}
-
-// exprEqual compares two nftables expressions
-func exprEqual(e1, e2 expr.Any) bool {
-	// Use a type switch to compare expressions by type
-	switch ex1 := e1.(type) {
-	case *expr.Meta:
-		ex2, ok := e2.(*expr.Meta)
-		if !ok {
-			return false
-		}
-		return ex1.Key == ex2.Key && ex1.Register == ex2.Register
-
-	case *expr.Cmp:
-		ex2, ok := e2.(*expr.Cmp)
-		if !ok {
-			return false
-		}
-		return ex1.Op == ex2.Op && ex1.Register == ex2.Register && string(ex1.Data) == string(ex2.Data)
-
-	case *expr.Ct:
-		ex2, ok := e2.(*expr.Ct)
-		if !ok {
-			return false
-		}
-		return ex1.Key == ex2.Key && ex1.Register == ex2.Register
-
-	case *expr.Bitwise:
-		ex2, ok := e2.(*expr.Bitwise)
-		if !ok {
-			return false
-		}
-		return ex1.SourceRegister == ex2.SourceRegister &&
-			ex1.DestRegister == ex2.DestRegister &&
-			ex1.Len == ex2.Len &&
-			string(ex1.Mask) == string(ex2.Mask) &&
-			string(ex1.Xor) == string(ex2.Xor)
-	case *expr.Verdict:
-		ex2, ok := e2.(*expr.Verdict)
-		if !ok {
-			return false
-		}
-		return ex1.Kind == ex2.Kind && ex1.Chain == ex2.Chain
-	default:
-		// Unknown or unsupported expression type
-		return false
-	}
 }
