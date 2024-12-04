@@ -235,18 +235,20 @@ func (n *nftablesManager) CreateChains() error {
 	defer n.mux.Unlock()
 	// remove jump rules
 	n.removeJumpRules()
-
+	n.conn.FlushTable(filterTable)
+	n.conn.FlushTable(natTable)
+	n.conn.Flush()
 	n.conn.AddTable(filterTable)
 	n.conn.AddTable(natTable)
 
 	if err := n.conn.Flush(); err != nil {
+		fmt.Println("-==> HERE ERRROR: ", err)
 		return err
 	}
 
-	n.deleteChain(defaultIpTable, netmakerFilterChain)
-	n.deleteChain(defaultNatTable, netmakerNatChain)
+	// n.deleteChain(defaultNatTable, netmakerNatChain)
 	//defaultDropPolicy := nftables.ChainPolicyDrop
-	defaultAcceptPolicy := nftables.ChainPolicyAccept
+	//defaultAcceptPolicy := nftables.ChainPolicyAccept
 	defaultForwardPolicy := new(nftables.ChainPolicy)
 	*defaultForwardPolicy = nftables.ChainPolicyAccept
 
@@ -307,21 +309,15 @@ func (n *nftablesManager) CreateChains() error {
 		Priority: nftables.ChainPriorityNATDest,
 	})
 
-	filterChain := &nftables.Chain{
-		Name:  netmakerFilterChain,
-		Table: filterTable,
-	}
-	n.conn.AddChain(filterChain)
-
 	aclInChain := &nftables.Chain{
 		Name:  aclInputRulesChain,
 		Table: filterTable,
 	}
 	n.conn.AddChain(aclInChain)
 	n.conn.AddChain(&nftables.Chain{
-		Name:   aclOutputRulesChain,
-		Table:  filterTable,
-		Policy: &defaultAcceptPolicy,
+		Name:  aclOutputRulesChain,
+		Table: filterTable,
+		//Policy: &defaultAcceptPolicy,
 	})
 	natChain := &nftables.Chain{
 		Name:  netmakerNatChain,
@@ -330,6 +326,7 @@ func (n *nftablesManager) CreateChains() error {
 	n.conn.AddChain(natChain)
 
 	if err := n.conn.Flush(); err != nil {
+		fmt.Println("===============> ERRORRRRR: ", err)
 		return err
 	}
 	// add jump rules
@@ -940,7 +937,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				})
 			nfRule = &nftables.Rule{
 				Table:    filterTable,
-				Chain:    &nftables.Chain{Name: netmakerFilterChain},
+				Chain:    &nftables.Chain{Name: aclInputRulesChain},
 				Exprs:    e,
 				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
 			}
@@ -976,7 +973,8 @@ func (n *nftablesManager) DeleteAclRule(server, aclID string) {
 }
 
 func (n *nftablesManager) ChangeACLTarget(target string) {
-
+	// check if rule exists with current target
+	fmt.Println("===> ACL TARGET ", target)
 	v := &expr.Verdict{
 		Kind: expr.VerdictAccept,
 	}
@@ -985,24 +983,124 @@ func (n *nftablesManager) ChangeACLTarget(target string) {
 			Kind: expr.VerdictDrop,
 		}
 	}
-	r := &nftables.Rule{
-		Table: filterTable,
-		Chain: &nftables.Chain{Name: aclInputRulesChain},
-		Exprs: []expr.Any{
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-			},
-			&expr.Counter{},
-			v,
+	e := []expr.Any{
+		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+		&expr.Cmp{
+			Op:       expr.CmpOpEq,
+			Register: 1,
+			Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 		},
+		&expr.Counter{},
+		v,
+	}
+	r := &nftables.Rule{
+		Table:    filterTable,
+		Chain:    &nftables.Chain{Name: aclInputRulesChain},
+		Exprs:    e,
 		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", target)),
 	}
-	n.conn.ReplaceRule(r)
+	if n.ruleExists(r) {
+		return
+	}
+	fmt.Println("===>CHANGING ACL TARGET ", target)
+	// delete old target and insert new rule
+	oldVerdict := &expr.Verdict{
+		Kind: expr.VerdictAccept,
+	}
+	if target == targetAccept {
+		oldVerdict = &expr.Verdict{
+			Kind: expr.VerdictDrop,
+		}
+	}
+	e[len(e)-1] = oldVerdict
+	r.Exprs = e
+	n.conn.DelRule(r)
+	e[len(e)-1] = v
+	r.Exprs = e
+	n.conn.InsertRule(r)
 	// Apply the changes
 	if err := n.conn.Flush(); err != nil {
-		log.Fatalf("Error flushing changes: %v\n", err)
+		logger.Log(0, "Error Changing ACL TArget: %v\n", err.Error())
+	}
+}
+
+func (n *nftablesManager) ruleExists(r *nftables.Rule) bool {
+	rules, err := n.conn.GetRules(r.Table, r.Chain)
+	if err != nil {
+		return false
+	}
+	for _, rule := range rules {
+		fmt.Printf("======> RULE: %+v\n", rule)
+		if rulesEqual(r, rule) {
+			return true
+		}
+	}
+	return false
+}
+
+// rulesEqual checks if two rules are equivalent
+func rulesEqual(rule1, rule2 *nftables.Rule) bool {
+	// Simplistic comparison: compare expressions (extend as needed)
+	if len(rule1.Exprs) != len(rule2.Exprs) {
+		return false
+	}
+	if string(rule1.UserData) == string(rule2.UserData) {
+		return true
+	}
+	//for i := range rule1.Exprs {
+
+	// // Compare the expression bytes
+	// if !exprEqual(rule1.Exprs[i], rule2.Exprs[i]) {
+	// 	return false
+	// }
+	//}
+
+	return false
+}
+
+// exprEqual compares two nftables expressions
+func exprEqual(e1, e2 expr.Any) bool {
+	// Use a type switch to compare expressions by type
+	switch ex1 := e1.(type) {
+	case *expr.Meta:
+		ex2, ok := e2.(*expr.Meta)
+		if !ok {
+			return false
+		}
+		return ex1.Key == ex2.Key && ex1.Register == ex2.Register
+
+	case *expr.Cmp:
+		ex2, ok := e2.(*expr.Cmp)
+		if !ok {
+			return false
+		}
+		return ex1.Op == ex2.Op && ex1.Register == ex2.Register && string(ex1.Data) == string(ex2.Data)
+
+	case *expr.Ct:
+		ex2, ok := e2.(*expr.Ct)
+		if !ok {
+			return false
+		}
+		return ex1.Key == ex2.Key && ex1.Register == ex2.Register
+
+	case *expr.Bitwise:
+		ex2, ok := e2.(*expr.Bitwise)
+		if !ok {
+			return false
+		}
+		return ex1.SourceRegister == ex2.SourceRegister &&
+			ex1.DestRegister == ex2.DestRegister &&
+			ex1.Len == ex2.Len &&
+			string(ex1.Mask) == string(ex2.Mask) &&
+			string(ex1.Xor) == string(ex2.Xor)
+	case *expr.Verdict:
+		ex2, ok := e2.(*expr.Verdict)
+		if !ok {
+			return false
+		}
+		return ex1.Kind == ex2.Kind && ex1.Chain == ex2.Chain
+	default:
+		// Unknown or unsupported expression type
+		return false
 	}
 }
