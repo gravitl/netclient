@@ -20,7 +20,6 @@ import (
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
-	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -257,11 +256,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	if reloadStun {
-		if server.Stun && server.StunServers != "" {
-			stun.LoadStunServers(server.StunServers)
-		} else {
-			stun.SetDefaultStunServers()
-		}
 		daemon.Restart()
 	}
 
