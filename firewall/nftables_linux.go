@@ -117,6 +117,9 @@ var (
 						Register: 1,
 						Data:     []byte{0x00, 0x00, 0x00, 0x00},
 					},
+					&expr.Verdict{
+						Kind: expr.VerdictAccept,
+					},
 				},
 				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-m", "conntrack",
 					"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
