@@ -454,46 +454,6 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		}
 	}
 	ingressGwRoutes := []ruleInfo{}
-	// for _, ip := range ingressInfo.StaticNodeIps {
-	// 	iptablesClient := i.ipv4Client
-	// 	networks := []string{ingressInfo.Network.String()}
-	// 	for _, egressNet := range ingressInfo.EgressRanges {
-	// 		networks = append(networks, egressNet.String())
-	// 	}
-	// 	if ip.To4() == nil {
-	// 		networks = []string{ingressInfo.Network6.String()}
-	// 		for _, egressNet := range ingressInfo.EgressRanges6 {
-	// 			networks = append(networks, egressNet.String())
-	// 		}
-	// 		iptablesClient = i.ipv6Client
-	// 	}
-	// 	ruleSpec := []string{"-s", ip.String(), "-d", strings.Join(networks, ","), "-j", netmakerFilterChain}
-	// 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-	// 	// to avoid duplicate iface route rule,delete if exists
-	// 	iptablesClient.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	// 	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-	// 	if err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	// 	} else {
-	// 		ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
-	// 			table: defaultIpTable,
-	// 			chain: iptableFWDChain,
-	// 			rule:  ruleSpec,
-	// 		})
-	// 	}
-	// 	// to avoid duplicate iface route rule,delete if exists
-	// 	iptablesClient.DeleteIfExists(defaultIpTable, iptableINChain, ruleSpec...)
-	// 	err = iptablesClient.Insert(defaultIpTable, iptableINChain, 1, ruleSpec...)
-	// 	if err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	// 	} else {
-	// 		ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
-	// 			table: defaultIpTable,
-	// 			chain: iptableINChain,
-	// 			rule:  ruleSpec,
-	// 		})
-	// 	}
-	// }
 	for _, rule := range ingressInfo.Rules {
 		if !rule.Allow {
 			continue
