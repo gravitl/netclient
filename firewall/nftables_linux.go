@@ -88,6 +88,49 @@ var (
 		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableINChain},
+				Exprs: []expr.Any{
+					// Match on input interface (-i netmaker)
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME, // Input interface name
+						Register: 1,                   // Store in register 1
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,                                // Equals operation
+						Register: 1,                                           // Compare register 1
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"), // Interface name "netmaker" (null-terminated string)
+					},
+					// Match on conntrack state (-m conntrack --ctstate RELATED,ESTABLISHED)
+					&expr.Ct{
+						Key:      expr.CtKeySTATE,
+						Register: 1,
+					},
+					&expr.Bitwise{
+						SourceRegister: 1,                              // Use register 1 from Ct expression
+						DestRegister:   1,                              // Output to same register
+						Len:            4,                              // State length
+						Mask:           []byte{0x06, 0x00, 0x00, 0x00}, // Mask for RELATED (2) and ESTABLISHED (4)
+						Xor:            []byte{0x00, 0x00, 0x00, 0x00}, // No XOR
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpNeq, // Check if the bitwise result is not zero
+						Register: 1,
+						Data:     []byte{0x00, 0x00, 0x00, 0x00},
+					},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-m", "conntrack",
+					"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+					"--comment", netmakerSignature, "-j", "ACCEPT")), // Add comment
+			},
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
+				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableINChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableFWDChain},
 				Exprs: []expr.Any{
 					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
@@ -200,6 +243,7 @@ func (n *nftablesManager) CreateChains() error {
 	n.deleteChain(defaultIpTable, netmakerFilterChain)
 	n.deleteChain(defaultNatTable, netmakerNatChain)
 	//defaultDropPolicy := nftables.ChainPolicyDrop
+	defaultAcceptPolicy := nftables.ChainPolicyAccept
 	defaultForwardPolicy := new(nftables.ChainPolicy)
 	*defaultForwardPolicy = nftables.ChainPolicyAccept
 
@@ -272,8 +316,9 @@ func (n *nftablesManager) CreateChains() error {
 	}
 	n.conn.AddChain(aclInChain)
 	n.conn.AddChain(&nftables.Chain{
-		Name:  aclOutputRulesChain,
-		Table: filterTable,
+		Name:   aclOutputRulesChain,
+		Table:  filterTable,
+		Policy: &defaultAcceptPolicy,
 	})
 	natChain := &nftables.Chain{
 		Name:  netmakerNatChain,
