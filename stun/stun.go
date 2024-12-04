@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	nmmodels "github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
@@ -82,6 +83,16 @@ func DoesIPExistLocally(ip net.IP) bool {
 
 // HolePunch - performs udp hole punching on the given port
 func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType string) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		server = &config.Server{}
+		server.Stun = true
+		SetDefaultStunServers()
+	}
+	if !server.Stun {
+		return
+	}
+
 	for _, stunServer := range StunServers {
 		stunServer := stunServer
 		var err error
