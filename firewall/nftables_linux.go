@@ -199,7 +199,7 @@ func (n *nftablesManager) CreateChains() error {
 
 	n.deleteChain(defaultIpTable, netmakerFilterChain)
 	n.deleteChain(defaultNatTable, netmakerNatChain)
-
+	//defaultDropPolicy := nftables.ChainPolicyDrop
 	defaultForwardPolicy := new(nftables.ChainPolicy)
 	*defaultForwardPolicy = nftables.ChainPolicyAccept
 
@@ -265,10 +265,12 @@ func (n *nftablesManager) CreateChains() error {
 		Table: filterTable,
 	}
 	n.conn.AddChain(filterChain)
-	n.conn.AddChain(&nftables.Chain{
+
+	aclInChain := &nftables.Chain{
 		Name:  aclInputRulesChain,
 		Table: filterTable,
-	})
+	}
+	n.conn.AddChain(aclInChain)
 	n.conn.AddChain(&nftables.Chain{
 		Name:  aclOutputRulesChain,
 		Table: filterTable,
@@ -925,4 +927,34 @@ func (n *nftablesManager) DeleteAclRule(server, aclID string) {
 
 }
 
-func (n *nftablesManager) ChangeACLTarget(target string) {}
+func (n *nftablesManager) ChangeACLTarget(target string) {
+
+	v := &expr.Verdict{
+		Kind: expr.VerdictAccept,
+	}
+	if target == targetDrop {
+		v = &expr.Verdict{
+			Kind: expr.VerdictDrop,
+		}
+	}
+	r := &nftables.Rule{
+		Table: filterTable,
+		Chain: &nftables.Chain{Name: aclInputRulesChain},
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Counter{},
+			v,
+		},
+		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", target)),
+	}
+	n.conn.ReplaceRule(r)
+	// Apply the changes
+	if err := n.conn.Flush(); err != nil {
+		log.Fatalf("Error flushing changes: %v\n", err)
+	}
+}
