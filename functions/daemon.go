@@ -153,6 +153,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	updateConfig := false
 
+	config.SetServerCtx()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
@@ -222,8 +223,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 	}
-
-	config.SetServerCtx()
 
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
 	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
