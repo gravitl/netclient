@@ -272,10 +272,18 @@ func (n *nftablesManager) CreateChains() error {
 
 	// n.deleteChain(defaultNatTable, netmakerNatChain)
 	//defaultDropPolicy := nftables.ChainPolicyDrop
-	//defaultAcceptPolicy := nftables.ChainPolicyAccept
+	defaultAcceptPolicy := new(nftables.ChainPolicy)
+	*defaultAcceptPolicy = nftables.ChainPolicyAccept
 	defaultForwardPolicy := new(nftables.ChainPolicy)
 	*defaultForwardPolicy = nftables.ChainPolicyAccept
-
+	n.conn.AddChain(&nftables.Chain{
+		Name:     iptableINChain,
+		Table:    filterTable,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+		Policy:   defaultAcceptPolicy,
+	})
 	forwardChain := &nftables.Chain{
 		Name:     iptableFWDChain,
 		Table:    filterTable,
@@ -285,14 +293,6 @@ func (n *nftablesManager) CreateChains() error {
 		Policy:   defaultForwardPolicy,
 	}
 	n.conn.AddChain(forwardChain)
-
-	n.conn.AddChain(&nftables.Chain{
-		Name:     iptableINChain,
-		Table:    filterTable,
-		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookInput,
-		Priority: nftables.ChainPriorityFilter,
-	})
 
 	n.conn.AddChain(&nftables.Chain{
 		Name:     "OUTPUT",
@@ -587,6 +587,8 @@ func (n *nftablesManager) SaveRules(server, tableName string, rules ruletable) {
 		n.ingRules[server] = rules
 	case egressTable:
 		n.engressRules[server] = rules
+	case aclTable:
+		n.aclRules[server] = rules
 	}
 }
 
@@ -865,6 +867,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		if !rule.Allow {
 			continue
 		}
+		fmt.Printf("=====>\n\n INg RULE: %+v\n\n", rule)
 		ruleSpec := []string{"-s", rule.SrcIP.String()}
 		if rule.AllowedProtocol.String() != "" {
 			ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
@@ -904,7 +907,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Data:     rule.DstIP.IP.To4(), // IPv4 destination address
 				},
 			}
-			if rule.AllowedProtocol.String() != "" {
+			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(rule.AllowedProtocol, true)...)
 			}
 			if len(rule.AllowedPorts) > 0 {
@@ -948,7 +951,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Data:     rule.DstIP.IP.To16(), // IPv6 destination address
 				},
 			}
-			if rule.AllowedProtocol.String() != "" {
+			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(rule.AllowedProtocol, false)...)
 			}
 			if len(rule.AllowedPorts) > 0 {
@@ -1070,7 +1073,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 			e := []expr.Any{}
 			e = append(e, n.GetSrcIpsExpr(aclRule.IPList, true)...)
-			if aclRule.AllowedProtocol.String() != "" {
+			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(aclRule.AllowedProtocol, true)...)
 			}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -1120,7 +1123,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 			e := []expr.Any{}
 			e = append(e, n.GetSrcIpsExpr(aclRule.IPList, false)...)
-			if aclRule.AllowedProtocol.String() != "" {
+			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(aclRule.AllowedProtocol, false)...)
 			}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -1196,7 +1199,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 		e := []expr.Any{}
 		e = append(e, n.GetSrcIpsExpr(aclRule.IPList, true)...)
-		if aclRule.AllowedProtocol.String() != "" {
+		if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 			e = append(e, n.getExprForProto(aclRule.AllowedProtocol, true)...)
 		}
 		if len(aclRule.AllowedPorts) > 0 {
@@ -1246,7 +1249,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 		e := []expr.Any{}
 		e = append(e, n.GetSrcIpsExpr(aclRule.IPList, false)...)
-		if aclRule.AllowedProtocol.String() != "" {
+		if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 			e = append(e, n.getExprForProto(aclRule.AllowedProtocol, false)...)
 		}
 		if len(aclRule.AllowedPorts) > 0 {
