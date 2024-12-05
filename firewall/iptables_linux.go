@@ -455,7 +455,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					continue
 				}
 				ruleSpec := []string{"-s", rule.SrcIP.String()}
-				if rule.AllowedProtocol.String() != "" {
+				if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
@@ -466,7 +466,7 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 
 		} else {
 			ruleSpec := []string{"-s", rule.SrcIP.String()}
-			if rule.AllowedProtocol.String() != "" {
+			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 			}
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -524,7 +524,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						continue
 					}
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-					if aclRule.AllowedProtocol.String() != "" {
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
@@ -535,7 +535,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				if aclRule.AllowedProtocol.String() != "" {
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -572,7 +572,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						continue
 					}
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-					if aclRule.AllowedProtocol.String() != "" {
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
@@ -583,7 +583,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-				if aclRule.AllowedProtocol.String() != "" {
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
