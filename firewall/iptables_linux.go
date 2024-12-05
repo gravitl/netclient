@@ -74,6 +74,20 @@ var (
 			chain: iptableINChain,
 		},
 		{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
+				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			rule: []string{"-o", ncutils.GetInterfaceName(), "-m", "conntrack",
+				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
 				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
