@@ -54,6 +54,14 @@ var (
 
 	// filter table netmaker jump rules
 	filterNmJumpRules = []ruleInfo{
+		//iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+		{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
+				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableINChain,
+		},
 		{
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
 				"-m", "comment", "--comment", netmakerSignature},
@@ -77,14 +85,6 @@ var (
 			rule:  []string{"-m", "comment", "--comment", netmakerSignature, "-j", "ACCEPT"},
 			table: defaultIpTable,
 			chain: aclOutputRulesChain,
-		},
-		//iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-		{
-			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
-				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
-				"--comment", netmakerSignature, "-j", "ACCEPT"},
-			table: defaultIpTable,
-			chain: iptableINChain,
 		},
 	}
 	// nat table nm jump rules
