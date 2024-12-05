@@ -17,7 +17,6 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	} else {
 		fwCrtl.ChangeACLTarget(targetDrop)
 	}
-	return
 	aclRules := fwUpdate.AclRules
 	ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
 	fmt.Printf("======> ACL RULES: %+v\n, Curr Rule table: %+v\n", fwUpdate.AclRules, ruleTable)
