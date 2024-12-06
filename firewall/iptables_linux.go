@@ -69,6 +69,20 @@ var (
 			chain: iptableINChain,
 		},
 		{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
+				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			rule: []string{"-o", ncutils.GetInterfaceName(), "-m", "conntrack",
+				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
 				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
@@ -455,6 +469,9 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					continue
 				}
 				ruleSpec := []string{"-s", rule.SrcIP.String()}
+				if rule.DstIP.IP != nil {
+					ruleSpec = append(ruleSpec, "-d", rule.DstIP.String())
+				}
 				if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 				}
@@ -466,6 +483,9 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 
 		} else {
 			ruleSpec := []string{"-s", rule.SrcIP.String()}
+			if rule.DstIP.IP != nil {
+				ruleSpec = append(ruleSpec, "-d", rule.DstIP.String())
+			}
 			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 			}
@@ -528,6 +548,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
+					ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 					rulesSpec = append(rulesSpec, ruleSpec)
@@ -538,6 +559,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
+				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
@@ -576,6 +598,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
+					ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 					rulesSpec = append(rulesSpec, ruleSpec)
@@ -586,6 +609,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
+				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
@@ -650,6 +674,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
+				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
@@ -660,6 +685,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
+			ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 			rulesSpec = append(rulesSpec, ruleSpec)
@@ -697,6 +723,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
+				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				rulesSpec = append(rulesSpec, ruleSpec)
 			}
@@ -706,6 +733,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
+			ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			rulesSpec = append(rulesSpec, ruleSpec)
 		}
