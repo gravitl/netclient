@@ -153,6 +153,20 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	updateConfig := false
 
+	config.SetServerCtx()
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		server = &config.Server{}
+		server.Stun = true
+		server.StunServers = ""
+	}
+
+	if server.Stun && server.StunServers != "" {
+		stun.LoadStunServers(server.StunServers)
+	} else {
+		stun.SetDefaultStunServers()
+	}
+
 	if config.Netclient().Host.OS == "linux" {
 		dns.InitDNSConfig()
 		updateConfig = true
@@ -210,8 +224,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 
-	config.SetServerCtx()
-
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
 	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
 		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
@@ -247,7 +259,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
-	server := config.GetServer(config.CurrServer)
+	server = config.GetServer(config.CurrServer)
 	if server == nil {
 		return cancel
 	}
@@ -582,8 +594,19 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
-
-	pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		server = &config.Server{}
+		server.Stun = true
+		stun.SetDefaultStunServers()
+	}
+	if server.Stun {
+		pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
+	} else {
+		pubIP, _ = GetPublicIP(uint(proto))
+		pubPort = config.Netclient().ListenPort
+		natType = "public"
+	}
 	if pubIP == nil || pubIP.IsUnspecified() { // if stun has failed fallback to ip service to get publicIP
 		publicIP, err := GetPublicIP(uint(proto))
 		if err != nil {
