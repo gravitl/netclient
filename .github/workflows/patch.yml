@@ -67,22 +67,22 @@ jobs:
           VERSION: ${{ inputs.version }}
           CGO_ENABLED: 0
         run: |
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
           
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
-          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
           
-          GOOS=linux GOARCH=arm GOARM=5 go build -ldflags="-s -w" -o builds/netclient-linux-armv5
-          GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o builds/netclient-linux-armv6
-          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o builds/netclient-linux-armv7
-          
-          GOOS=linux GOARCH=mips GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-hardfloat
-          GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-softfloat
-          GOOS=linux GOARCH=mipsle GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-hardfloat
-          GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-softfloat
-          
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-windows-amd64.exe
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -ldflags="-s -w" -o builds/netclient-linux-armv5
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o builds/netclient-linux-armv6
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o builds/netclient-linux-armv7
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-hardfloat
+          CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-softfloat
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-hardfloat
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-softfloat
+
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-windows-amd64.exe
 
       - name: Verify Builds
         run: |
