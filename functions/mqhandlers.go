@@ -252,10 +252,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	}
 
+	saveServerConfig := false
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
-		config.UpdateServer(serverName, *server)
-		_ = config.WriteServerConfig()
+		saveServerConfig = true
 		if peerUpdate.ManageDNS {
 			dns.GetDNSServerInstance().Start()
 		} else {
@@ -264,6 +264,27 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
 		dns.SetupDNSConfig()
+	}
+
+	reloadStun := false
+	if peerUpdate.Stun != server.Stun {
+		server.Stun = peerUpdate.Stun
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if peerUpdate.StunServers != server.StunServers {
+		server.StunServers = peerUpdate.StunServers
+		saveServerConfig = true
+		reloadStun = true
+	}
+
+	if reloadStun {
+		daemon.Restart()
+	}
+
+	if saveServerConfig {
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
