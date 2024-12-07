@@ -88,7 +88,7 @@ var (
 			chain: iptableFWDChain,
 		},
 		{
-			rule: []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+			rule: []string{"-i", ncutils.GetInterfaceName(), "!", "-o", "netmaker", "-j", targetAccept,
 				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
@@ -189,23 +189,23 @@ func (i *iptablesManager) ForwardRule() error {
 	// Set the policy To accept on forward chain
 	iptablesClient.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
 
-	ruleSpec := []string{"-i", "netmaker", "-j", aclInputRulesChain}
+	// ruleSpec := []string{"-i", "netmaker", "-j", aclInputRulesChain}
+	// ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+	// ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	// if err == nil && !ok {
+	// 	if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
+	// 	}
+	// }
+	// ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	// if err == nil && !ok {
+	// 	if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
+	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
+	// 	}
+	// }
+	ruleSpec := []string{"-o", "netmaker", "-j", aclOutputRulesChain}
 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	if err == nil && !ok {
-		if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-		}
-	}
-	ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	if err == nil && !ok {
-		if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-		}
-	}
-	ruleSpec = []string{"-o", "netmaker", "-j", aclOutputRulesChain}
-	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-	ok, err = i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
 	if err == nil && !ok {
 		if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
