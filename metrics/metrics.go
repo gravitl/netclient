@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"time"
 
@@ -141,6 +142,14 @@ func PeerConnStatus(address string, port, counter int) (connected bool, latency 
 	if address == "" || port == 0 {
 		return
 	}
+
+	//ipv6 address adding []
+	parseHost := net.ParseIP(address)
+	if parseHost.To16() != nil {
+		// ipv6
+		address = fmt.Sprintf("[%s]", address)
+	}
+
 	pinger := tcp_ping.NewTCPing()
 	pinger.SetTarget(&tcp_ping.Target{
 		Protocol: tcp_ping.TCP,
