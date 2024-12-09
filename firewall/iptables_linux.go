@@ -638,7 +638,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
-					ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 					rulesSpec = append(rulesSpec, ruleSpec)
@@ -649,7 +649,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
-				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
@@ -688,7 +688,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
-					ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 					rulesSpec = append(rulesSpec, ruleSpec)
@@ -699,7 +699,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
-				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
@@ -764,7 +764,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
-				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				rulesSpec = append(rulesSpec, ruleSpec)
@@ -775,7 +775,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
-			ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+			//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 			rulesSpec = append(rulesSpec, ruleSpec)
@@ -813,7 +813,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
-				ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				rulesSpec = append(rulesSpec, ruleSpec)
 			}
@@ -823,7 +823,7 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
-			ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+			//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			rulesSpec = append(rulesSpec, ruleSpec)
 		}
