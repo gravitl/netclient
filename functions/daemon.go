@@ -1,9 +1,14 @@
 package functions
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -341,7 +346,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Second * 10)
+	opts.SetKeepAlive(time.Second * 15)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
@@ -485,7 +490,26 @@ func setDNSSubscriptions(client mqtt.Client, node *config.Node) {
 	slog.Info("subscribed to DNS sync for node", "node", node.ID, "network", node.Network)
 }
 
-// should only ever use node client configs
+func unzipPayload(data []byte) (resData []byte, err error) {
+	b := bytes.NewBuffer(data)
+
+	var r io.Reader
+	r, err = gzip.NewReader(b)
+	if err != nil {
+		return
+	}
+
+	var resB bytes.Buffer
+	_, err = resB.ReadFrom(r)
+	if err != nil {
+		return
+	}
+
+	resData = resB.Bytes()
+
+	return
+}
+
 func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
 		return nil, fmt.Errorf("received invalid message from broker %v", msg)
@@ -506,6 +530,32 @@ func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)
+}
+
+func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
+	// Create AES block cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create GCM (Galois/Counter Mode) cipher
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	// Separate nonce and ciphertext
+	nonceSize := aesGCM.NonceSize()
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+
+	// Decrypt the data
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
 }
 
 func read(network, which string) string {
