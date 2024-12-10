@@ -270,7 +270,6 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			logger.Log(1, "TCP 443 ERR: ", tcpErr.Error())
 		}
 		if tcpErr == nil && udpErr == nil {
-			logger.Log(1, "#### ====> PORT: 443")
 			return 443, nil
 		}
 	}
