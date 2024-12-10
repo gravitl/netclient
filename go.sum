@@ -36,8 +36,8 @@ github.com/gabriel-vasile/mimetype v1.4.3 h1:in2uUcidCuFcDKtdcBxlR0rJ1+fsokWf+uq
 github.com/gabriel-vasile/mimetype v1.4.3/go.mod h1:d8uq/6HKRL6CGdk+aubisF/M5GcPfT7nKyLpA0lbSSk=
 github.com/glendc/go-external-ip v0.1.0 h1:iX3xQ2Q26atAmLTbd++nUce2P5ht5P4uD4V7caSY/xg=
 github.com/glendc/go-external-ip v0.1.0/go.mod h1:CNx312s2FLAJoWNdJWZ2Fpf5O4oLsMFwuYviHjS4uJE=
-github.com/go-ping/ping v1.1.0 h1:3MCGhVX4fyEUuhsfwPrsEdQw6xspHkv5zHsiSoDFZYw=
-github.com/go-ping/ping v1.1.0/go.mod h1:xIFjORFzTxqIV/tDVGO4eDy/bLuSyawEeojSm3GfRGk=
+github.com/go-ping/ping v1.2.0 h1:vsJ8slZBZAXNCK4dPcI2PEE9eM9n9RbXbGouVQ/Y4yQ=
+github.com/go-ping/ping v1.2.0/go.mod h1:xIFjORFzTxqIV/tDVGO4eDy/bLuSyawEeojSm3GfRGk=
 github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=
 github.com/go-playground/assert/v2 v2.2.0/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
 github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=
