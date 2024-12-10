@@ -1,4 +1,4 @@
-# Netclient v0.26.0
+# Netclient v0.30.0
 
 ## Whats New ✨
 - Managed DNS System (Linux)
