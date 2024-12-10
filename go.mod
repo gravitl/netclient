@@ -9,7 +9,7 @@ require (
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/glendc/go-external-ip v0.1.0
-	github.com/go-ping/ping v1.1.0
+	github.com/go-ping/ping v1.2.0
 	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/google/nftables v0.2.0
 	github.com/google/uuid v1.6.0
