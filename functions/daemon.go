@@ -299,6 +299,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		dns.GetDNSServerInstance().Stop()
 	}
+	go func() {
+		time.Sleep(time.Second * 45)
+		callPublishMetrics(true)
+	}()
 
 	return cancel
 }
