@@ -584,6 +584,7 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 	} else {
 		firewall.RemoveIngressRoutingRules(server)
 	}
+	firewall.ProcessAclRules(server, payload)
 
 }
 
