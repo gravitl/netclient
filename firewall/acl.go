@@ -34,7 +34,10 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 		} else {
 			// check if there is a update
 			ruleCfg := ruleTable[aclRule.ID]
-			localAclRule := ruleCfg.extraInfo.(models.AclRule)
+			var localAclRule models.AclRule
+			if ruleCfg.extraInfo != nil {
+				localAclRule = ruleCfg.extraInfo.(models.AclRule)
+			}
 			if (len(localAclRule.IPList) != len(aclRule.IPList)) ||
 				(!reflect.DeepEqual(localAclRule.IPList, aclRule.IPList)) ||
 				(len(localAclRule.IP6List) != len(aclRule.IP6List)) ||

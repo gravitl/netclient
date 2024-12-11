@@ -637,6 +637,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
+					if strings.Contains(port, "-") {
+						port = strings.ReplaceAll(port, "-", ":")
+					}
 					ruleSpec = append(ruleSpec, "--dport", port)
 					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -686,6 +689,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if strings.Contains(port, "-") {
+						port = strings.ReplaceAll(port, "-", ":")
 					}
 					ruleSpec = append(ruleSpec, "--dport", port)
 					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
@@ -763,6 +769,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
+				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -811,6 +820,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")

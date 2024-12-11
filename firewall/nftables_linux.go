@@ -947,7 +947,7 @@ func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
 			endPortBytes := make([]byte, 2)
 			binary.BigEndian.PutUint16(startPortBytes, startPort)
 			binary.BigEndian.PutUint16(endPortBytes, endPort)
-			e = append(e, &expr.Range{
+			e = append(e, ipTransPortHeader, &expr.Range{
 				Op:       expr.CmpOpEq,
 				Register: 1,
 				FromData: startPortBytes,
@@ -961,14 +961,13 @@ func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
 			dport := uint16(portInt)
 			dPortBytes := make([]byte, 2)
 			binary.BigEndian.PutUint16(dPortBytes, dport)
-			e = append(e, &expr.Cmp{
+			e = append(e, ipTransPortHeader, &expr.Cmp{
 				Register: 1,
 				Op:       expr.CmpOpEq,
 				Data:     dPortBytes, // Port in network byte order
 			})
 		}
 	}
-	e = append(e, ipTransPortHeader)
 
 	return e
 }
@@ -1113,32 +1112,21 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 func (n *nftablesManager) GetSrcIpsExpr(ips []net.IPNet, isIpv4 bool) []expr.Any {
 	var e []expr.Any
 	if isIpv4 {
-		e = append(e, &expr.Payload{
-			DestRegister: 1,
-			Base:         expr.PayloadBaseNetworkHeader,
-			Offset:       12, // Source IP offset in IPv4 header
-			Len:          4,  // IPv4 address length
-		})
 
 		for _, ip := range ips {
-			// Match first source IP
-			/*
-				// Match source IPs
-
-				&expr.Cmp{
-					Op: expr.CmpOpEq,
-					Register: 1,
-					Data: []byte{
-						100, 64, 0, 1,     // 100.64.0.1
-						100, 64, 255, 254, // 100.64.255.254
-					},
+			// Match source IP
+			e = append(e,
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseNetworkHeader,
+					Offset:       12, // Source IP offset in IPv4 header
+					Len:          4,  // IPv4 address length
 				},
-			*/
-			e = append(e, &expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     ip.IP.To4(),
-			})
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     ip.IP.To4(),
+				})
 		}
 
 	} else {
@@ -1149,13 +1137,6 @@ func (n *nftablesManager) GetSrcIpsExpr(ips []net.IPNet, isIpv4 bool) []expr.Any
 					Base:         expr.PayloadBaseNetworkHeader,
 					Offset:       8,  // Source IP offset in IPv6 header
 					Len:          16, // IPv6 address length
-				},
-				&expr.Bitwise{
-					SourceRegister: 1,
-					DestRegister:   1,
-					Len:            16,
-					Mask:           ip.Mask,          // Match for /64 subnet
-					Xor:            make([]byte, 16), // IPv6 zero address
 				},
 				&expr.Cmp{
 					Register: 1,
@@ -1196,7 +1177,6 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 				ruleSpec = append(ruleSpec, "--dport",
 					strings.Join(aclRule.AllowedPorts, ","))
 			}
-			ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 			n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
@@ -1248,7 +1228,6 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 				ruleSpec = append(ruleSpec, "--dport",
 					strings.Join(aclRule.AllowedPorts, ","))
 			}
-			ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 			n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
@@ -1285,15 +1264,15 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			}
 
-			if len(rules) > 0 {
-				rCfg := rulesCfg{
-					rulesMap: map[string][]ruleInfo{
-						aclRule.ID: rules,
-					},
-					extraInfo: aclRule,
-				}
-				ruleTable[aclRule.ID] = rCfg
+		}
+		if len(rules) > 0 {
+			rCfg := rulesCfg{
+				rulesMap: map[string][]ruleInfo{
+					aclRule.ID: rules,
+				},
+				extraInfo: aclRule,
 			}
+			ruleTable[aclRule.ID] = rCfg
 		}
 	}
 }
@@ -1325,7 +1304,6 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 			ruleSpec = append(ruleSpec, "--dport",
 				strings.Join(aclRule.AllowedPorts, ","))
 		}
-		ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 		ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
@@ -1377,7 +1355,6 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 			ruleSpec = append(ruleSpec, "--dport",
 				strings.Join(aclRule.AllowedPorts, ","))
 		}
-		ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 		ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
@@ -1412,16 +1389,6 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				rule:   ruleSpec,
 			})
 
-		}
-
-		if len(rules) > 0 {
-			rCfg := rulesCfg{
-				rulesMap: map[string][]ruleInfo{
-					aclRule.ID: rules,
-				},
-				extraInfo: aclRule,
-			}
-			ruleTable[aclRule.ID] = rCfg
 		}
 	}
 
@@ -1539,7 +1506,6 @@ func (n *nftablesManager) ruleExists(r *nftables.Rule) bool {
 		return false
 	}
 	for _, rule := range rules {
-		fmt.Printf("======> RULE: %+v\n", rule)
 		if rulesEqual(r, rule) {
 			return true
 		}
