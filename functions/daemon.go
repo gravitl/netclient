@@ -264,6 +264,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
+	config.SetServerCtx()
 	server = config.GetServer(config.CurrServer)
 	if server == nil {
 		return cancel
