@@ -258,7 +258,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 		if udpErr == nil {
 			defer udpConn.Close()
 		} else {
-			fmt.Println("UDP 443 ERR: ", udpErr)
+			logger.Log(1, "UDP 443 ERR: ", udpErr.Error())
 		}
 		tcpAddr := net.TCPAddr{
 			Port: 443,
@@ -267,10 +267,9 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 		if tcpErr == nil {
 			defer tcpConn.Close()
 		} else {
-			fmt.Println("TCP 443 ERR: ", tcpErr)
+			logger.Log(1, "TCP 443 ERR: ", tcpErr.Error())
 		}
 		if tcpErr == nil && udpErr == nil {
-			fmt.Println("#### ====> PORT: 443")
 			return 443, nil
 		}
 	}

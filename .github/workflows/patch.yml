@@ -22,16 +22,16 @@ jobs:
         with:
           ref: ${{ inputs.version }}
       - name: Setup QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Login to DockerHub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -67,22 +67,22 @@ jobs:
           VERSION: ${{ inputs.version }}
           CGO_ENABLED: 0
         run: |
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
           
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
-          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
           
-          GOOS=linux GOARCH=arm GOARM=5 go build -ldflags="-s -w" -o builds/netclient-linux-armv5
-          GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o builds/netclient-linux-armv6
-          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o builds/netclient-linux-armv7
-          
-          GOOS=linux GOARCH=mips GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-hardfloat
-          GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-softfloat
-          GOOS=linux GOARCH=mipsle GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-hardfloat
-          GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-softfloat
-          
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-windows-amd64.exe
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -ldflags="-s -w" -o builds/netclient-linux-armv5
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o builds/netclient-linux-armv6
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o builds/netclient-linux-armv7
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-hardfloat
+          CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mips-softfloat
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-hardfloat
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-softfloat
+
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-windows-amd64.exe
 
       - name: Verify Builds
         run: |
@@ -136,30 +136,30 @@ jobs:
           done
 
     packages:
-    needs: [build-and-patch]
-    runs-on: ubuntu-latest
-    steps:
-      - name: setup ssh
-        run: |
-          mkdir -p ~/.ssh/
-          echo "$SSH_KEY" > ~/.ssh/id_devops
-          chmod 600 ~/.ssh/id_devops
-          cat >>~/.ssh/config <<END
-          Host *.clustercat.com
-            User root
-            IdentityFile ~/.ssh/id_devops
-            StrictHostKeyChecking no
-          END
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: set version
-        run: |
-            VERSION=$(echo ${{ inputs.version }} | tr -cd '[:digit:].')
-            echo "VERSION=${VERSION}" >> $GITHUB_ENV
-            echo ${VERSION}
-      - name: apt/rpm
-        run: |
-          ssh fileserver.clustercat.com "cd packages; ./apt_builder.sh; ./rpm_builder.sh"
-        env:
-          LC_VERSION: ${{ env.VERSION }}
-          LC_REVISION: 0
+      needs: [build-and-patch]
+      runs-on: ubuntu-latest
+      steps:
+        - name: setup ssh
+          run: |
+            mkdir -p ~/.ssh/
+            echo "$SSH_KEY" > ~/.ssh/id_devops
+            chmod 600 ~/.ssh/id_devops
+            cat >>~/.ssh/config <<END
+            Host *.clustercat.com
+              User root
+              IdentityFile ~/.ssh/id_devops
+              StrictHostKeyChecking no
+            END
+          env:
+            SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        - name: set version
+          run: |
+              VERSION=$(echo ${{ inputs.version }} | tr -cd '[:digit:].')
+              echo "VERSION=${VERSION}" >> $GITHUB_ENV
+              echo ${VERSION}
+        - name: apt/rpm
+          run: |
+            ssh fileserver.clustercat.com "cd packages; ./apt_builder.sh; ./rpm_builder.sh"
+          env:
+            LC_VERSION: ${{ env.VERSION }}
+            LC_REVISION: 0
