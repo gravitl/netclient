@@ -110,6 +110,30 @@ var (
 			chain: iptableINChain,
 		},
 		{
+
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableINChain},
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					&expr.Counter{},
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: aclInputRulesChain,
+					},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain)),
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain},
+			table: defaultIpTable,
+			chain: iptableINChain,
+		},
+		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableFWDChain},
@@ -202,72 +226,80 @@ var (
 			chain: iptableFWDChain,
 		},
 		{
-
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableINChain},
-				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					&expr.Counter{},
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclInputRulesChain,
-					},
-				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain)),
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain},
-			table: defaultIpTable,
-			chain: iptableINChain,
-		},
-		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableFWDChain},
 				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
 						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
-					&expr.Counter{},
+
+					// Match output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Jump to NETMAKER-ACL-IN chain
 					&expr.Verdict{
 						Kind:  expr.VerdictJump,
 						Chain: aclInputRulesChain,
 					},
 				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain)),
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+					"-m", "comment", "--comment", netmakerSignature)),
 			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", aclInputRulesChain},
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
+
 		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableFWDChain},
 				Exprs: []expr.Any{
-					&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
 						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
-					&expr.Counter{},
+
+					// Match NOT output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpNeq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					// Accept the packet
 					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclOutputRulesChain,
+						Kind: expr.VerdictAccept,
 					},
 				},
-				UserData: []byte(genRuleKey("-o", ncutils.GetInterfaceName(), "-j", aclOutputRulesChain)),
 			},
-			rule:  []string{"-o", ncutils.GetInterfaceName(), "-j", aclOutputRulesChain},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclOutputRulesChain},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
@@ -1176,8 +1208,6 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			if len(aclRule.AllowedPorts) > 0 {
 				e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
 			}
-			// Match destination type LOCAL
-			e = append(e, n.getLocalExpr()...)
 
 			e = append(e, // Accept the packet
 				&expr.Verdict{
@@ -1230,8 +1260,6 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			if len(aclRule.AllowedPorts) > 0 {
 				e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
 			}
-			// Match destination type LOCAL
-			e = append(e, n.getLocalExpr()...)
 
 			e = append(e, // Accept the packet
 				&expr.Verdict{
@@ -1309,8 +1337,6 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 		if len(aclRule.AllowedPorts) > 0 {
 			e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
 		}
-		// Match destination type LOCAL
-		e = append(e, n.getLocalExpr()...)
 
 		e = append(e, // Accept the packet
 			&expr.Verdict{
@@ -1363,8 +1389,6 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 		if len(aclRule.AllowedPorts) > 0 {
 			e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
 		}
-		// Match destination type LOCAL
-		e = append(e, n.getLocalExpr()...)
 
 		e = append(e, // Accept the packet
 			&expr.Verdict{
@@ -1533,47 +1557,4 @@ func rulesEqual(rule1, rule2 *nftables.Rule) bool {
 	}
 
 	return false
-}
-
-// AddLocalRule is a wrapper to match packets with LOCAL destination type (IPv4 and IPv6).
-func (n *nftablesManager) getLocalExpr() (e []expr.Any) {
-	return
-	localIPs, err := GetLocalIPs()
-	if err != nil {
-		return
-	}
-
-	for _, localIP := range localIPs {
-		var base expr.PayloadBase
-		var offsetDst, lenIP uint32
-		if localIP.To4() != nil {
-			// IPv4-specific parameters
-			base = expr.PayloadBaseNetworkHeader
-			offsetDst = 16 // Destination IP in IPv4 header
-			lenIP = 4      // IPv4 address length
-		} else {
-			// IPv6-specific parameters
-			base = expr.PayloadBaseNetworkHeader
-			offsetDst = 24 // Destination IP in IPv6 header
-			lenIP = 16     // IPv6 address length
-		}
-
-		e = append(e, []expr.Any{
-
-			// Match destination IP (local IP)
-			&expr.Payload{
-				DestRegister: 1,
-				Base:         base,
-				Offset:       offsetDst,
-				Len:          lenIP,
-			},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     localIP,
-			},
-		}...)
-	}
-
-	return nil
 }
