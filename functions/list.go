@@ -12,7 +12,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type output struct {
@@ -40,9 +39,14 @@ func List(net string, long bool) {
 		if node.Network != net && net != "" {
 			continue
 		}
+		nodeGet, err := GetNodePeers(node)
+		if err != nil {
+			logger.Log(1, "failed to get peers for node: ", node.ID.String(), " Err: ", err.Error())
+			continue
+		}
 		found = true
 		output := output{
-			Network:   node.Network,
+			Network:   nodeGet.Node.NetworkName,
 			Connected: node.Connected,
 			NodeID:    node.ID.String(),
 			Peers:     []peerOut{},
@@ -54,11 +58,7 @@ func List(net string, long bool) {
 			output.Ipv6Addr = node.Address6.String()
 		}
 		if long {
-			peers, err := GetNodePeers(node)
-			if err != nil {
-				logger.Log(1, "failed to get peers for node: ", node.ID.String(), " Err: ", err.Error())
-			}
-			for _, peer := range peers {
+			for _, peer := range nodeGet.Peers {
 				p := peerOut{
 					PublicKey: peer.PublicKey.String(),
 				}
@@ -86,19 +86,19 @@ func List(net string, long bool) {
 }
 
 // GetNodePeers returns the peers for a given node
-func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
+func GetNodePeers(node config.Node) (models.NodeGet, error) {
 
 	server := config.GetServer(node.Server)
 	if server == nil {
-		return []wgtypes.PeerConfig{}, errors.New("server config not found")
+		return models.NodeGet{}, errors.New("server config not found")
 	}
 	host := config.Netclient()
 	if host == nil {
-		return nil, fmt.Errorf("no configured host found")
+		return models.NodeGet{}, fmt.Errorf("no configured host found")
 	}
 	token, err := auth.Authenticate(server, host)
 	if err != nil {
-		return nil, err
+		return models.NodeGet{}, err
 	}
 	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
 		URL:           "https://" + server.API,
@@ -113,7 +113,7 @@ func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "error getting node", strconv.Itoa(errData.Code), errData.Message)
 		}
-		return nil, err
+		return models.NodeGet{}, err
 	}
-	return nodeGet.Peers, nil
+	return nodeGet, nil
 }
