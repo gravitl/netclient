@@ -394,7 +394,10 @@ func (n *nftablesManager) CreateChains() error {
 		return err
 	}
 
-	// n.deleteChain(defaultNatTable, netmakerNatChain)
+	n.deleteChain(defaultIpTable, netmakerFilterChain)
+	n.deleteChain(defaultNatTable, netmakerNatChain)
+	n.deleteChain(defaultIpTable, aclInputRulesChain)
+	n.deleteChain(defaultIpTable, aclOutputRulesChain)
 	//defaultDropPolicy := nftables.ChainPolicyDrop
 	defaultAcceptPolicy := new(nftables.ChainPolicy)
 	*defaultAcceptPolicy = nftables.ChainPolicyAccept
