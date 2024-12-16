@@ -1,7 +1,6 @@
 package firewall
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/gravitl/netmaker/models"
@@ -19,14 +18,10 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 
 	aclRules := fwUpdate.AclRules
 	ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
-	fmt.Printf("======> ACL RULES: %+v\n, Curr Rule table: %+v\n", fwUpdate.AclRules, ruleTable)
 	if len(ruleTable) == 0 && len(aclRules) > 0 {
 		fwCrtl.AddAclRules(server, aclRules)
-		ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
-		fmt.Printf("======> AFTER ACL RULES: Curr Rule table: %+v\n", ruleTable)
 		return
 	}
-	fmt.Println("## CHECKING New RULES==>")
 	// add new acl rules
 	for _, aclRule := range aclRules {
 		if _, ok := ruleTable[aclRule.ID]; !ok {
