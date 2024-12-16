@@ -257,11 +257,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
 		if peerUpdate.ManageDNS {
-			nodes := config.GetNodes()
-			for _, node := range nodes {
-				node := node
-				setDNSSubscriptions(client, &node)
-			}
 			dns.GetDNSServerInstance().Start()
 		} else {
 			dns.GetDNSServerInstance().Stop()
@@ -378,9 +373,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 		setSubscriptions(client, &nodeCfg)
-		if server.ManageDNS {
-			setDNSSubscriptions(client, &nodeCfg)
-		}
+		setDNSSubscriptions(client, &nodeCfg)
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
