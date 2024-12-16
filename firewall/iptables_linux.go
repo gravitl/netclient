@@ -523,6 +523,9 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
+				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
