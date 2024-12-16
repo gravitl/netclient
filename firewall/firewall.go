@@ -81,6 +81,7 @@ func Init() (func(), error) {
 	if err != nil {
 		return func() {}, err
 	}
+	fwCrtl.FlushAll()
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err
 	}

@@ -146,7 +146,7 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 }
 
 func (i *iptablesManager) ChangeACLTarget(target string) {
-	fmt.Println("===> ACL TARGET ", target)
+
 	ruleSpec := aclInChainDropRule.rule
 	table := aclInChainDropRule.table
 	chain := aclInChainDropRule.chain
@@ -156,7 +156,7 @@ func (i *iptablesManager) ChangeACLTarget(target string) {
 	if ok4 && ok6 {
 		return
 	}
-	fmt.Println("===>CHANGING ACL TARGET ", target)
+	slog.Debug("setting acl input chain target to", "target", target)
 	if target == targetAccept {
 
 		// remove any DROP rule
@@ -247,13 +247,6 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 func (i *iptablesManager) CreateChains() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
-	// remove jump rules
-	i.removeJumpRules()
-	i.cleanup(defaultIpTable, netmakerFilterChain)
-	i.cleanup(defaultNatTable, netmakerNatChain)
-	i.clearNetmakerRules(defaultIpTable, iptableINChain)
-	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
-	//errMSGFormat := "iptables: failed creating %s chain %s,error: %v"
 
 	err := createChain(i.ipv4Client, defaultIpTable, netmakerFilterChain)
 	if err != nil {
@@ -727,7 +720,6 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			}
 		}
 		if len(rules) > 0 {
-			fmt.Printf("====> IN ADDACLRULES: %+v\n", rules)
 			rCfg := rulesCfg{
 				rulesMap: map[string][]ruleInfo{
 					aclRule.ID: rules,
@@ -737,7 +729,6 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			ruleTable[aclRule.ID] = rCfg
 		}
 	}
-	fmt.Printf("===> AFTER ADDACLRULES: %+v\n", ruleTable)
 }
 
 func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
