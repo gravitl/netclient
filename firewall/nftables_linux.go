@@ -381,20 +381,13 @@ func (n *nftablesManager) AddDropRules(dropRules []ruleInfo) {
 func (n *nftablesManager) CreateChains() error {
 	n.mux.Lock()
 	defer n.mux.Unlock()
-	// remove jump rules
-	n.removeJumpRules()
-	n.conn.FlushTable(filterTable)
-	n.conn.FlushTable(natTable)
-	n.conn.Flush()
 	n.conn.AddTable(filterTable)
 	n.conn.AddTable(natTable)
 
 	if err := n.conn.Flush(); err != nil {
-		fmt.Println("-==> HERE ERRROR: ", err)
 		return err
 	}
 
-	// n.deleteChain(defaultNatTable, netmakerNatChain)
 	//defaultDropPolicy := nftables.ChainPolicyDrop
 	defaultAcceptPolicy := new(nftables.ChainPolicy)
 	*defaultAcceptPolicy = nftables.ChainPolicyAccept
@@ -473,7 +466,6 @@ func (n *nftablesManager) CreateChains() error {
 	n.conn.AddChain(natChain)
 
 	if err := n.conn.Flush(); err != nil {
-		fmt.Println("===============> ERRORRRRR: ", err)
 		return err
 	}
 	// add jump rules
@@ -815,6 +807,7 @@ func (n *nftablesManager) getRule(tableName, chainName, ruleKey string) (*nftabl
 	return nil, errors.New("No such rule exists: " + ruleKey)
 }
 
+//lint:ignore U1000 might be useful in future
 func (n *nftablesManager) deleteChain(table, chain string) {
 	chainObj, err := n.getChain(table, chain)
 	if err != nil {
@@ -851,6 +844,7 @@ func (n *nftablesManager) addJumpRules() {
 	n.AddDropRules(nfDropRules)
 }
 
+//lint:ignore U1000 might be useful in future
 func (n *nftablesManager) removeJumpRules() {
 	for _, rule := range nfJumpRules {
 		r := rule.nfRule.(*nftables.Rule)
@@ -990,7 +984,6 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		if !rule.Allow {
 			continue
 		}
-		fmt.Printf("=====>\n\n INg RULE: %+v\n\n", rule)
 		ruleSpec := []string{"-s", rule.SrcIP.String()}
 		if rule.AllowedProtocol.String() != "" {
 			ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
@@ -1423,7 +1416,6 @@ func (n *nftablesManager) DeleteAclRule(server, aclID string) {
 
 func (n *nftablesManager) ChangeACLTarget(target string) {
 	// check if rule exists with current target
-	fmt.Println("===> ACL TARGET ", target)
 	v := &expr.Verdict{
 		Kind: expr.VerdictAccept,
 	}
@@ -1451,7 +1443,7 @@ func (n *nftablesManager) ChangeACLTarget(target string) {
 	if n.ruleExists(newRule) {
 		return
 	}
-	fmt.Println("===>CHANGING ACL TARGET ", target)
+	slog.Debug("setting acl input chain target to", "target", target)
 	// delete old target and insert new rule
 	oldVerdict := &expr.Verdict{
 		Kind: expr.VerdictAccept,
