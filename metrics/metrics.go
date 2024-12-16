@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/exp/slog"
-
+	//lint:ignore SA1019 Reason: will be switching to a alternative package
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
