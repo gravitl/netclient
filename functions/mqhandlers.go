@@ -257,6 +257,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
 		if peerUpdate.ManageDNS {
+			nodes := config.GetNodes()
+			for _, node := range nodes {
+				node := node
+				setDNSSubscriptions(client, &node)
+			}
 			dns.GetDNSServerInstance().Start()
 		} else {
 			dns.GetDNSServerInstance().Stop()
