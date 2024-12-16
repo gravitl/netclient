@@ -844,6 +844,7 @@ func (n *nftablesManager) addJumpRules() {
 	n.AddDropRules(nfDropRules)
 }
 
+//lint:ignore U1000 might be useful in future
 func (n *nftablesManager) removeJumpRules() {
 	for _, rule := range nfJumpRules {
 		r := rule.nfRule.(*nftables.Rule)
