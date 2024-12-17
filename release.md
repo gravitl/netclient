@@ -1,11 +1,13 @@
 # Netclient v0.30.0
 
 ## Whats New ✨
-- Managed DNS System (Linux)
-- New ACLs System
+- Advanced ACL Rules - port, protocol and traffic direction
+- Reduced Firewall Requirements To One Single Port (443 udp/tcp)
+- Option to Turn off STUN or specify custom stun servers
 
 ## What's Fixed/Improved 🛠
-- Metrics Data
+- Ipv6 Metrics Data
+- Optimised MQ message size
 
 ## Known Issues 🐞
 
