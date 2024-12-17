@@ -2,6 +2,7 @@ package dns
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 
@@ -49,7 +50,13 @@ func syncDNSJsonFile() error {
 		dnsConfig.DNSSearch = "."
 	}
 
-	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		slog.Error("error getting current server", "error")
+		return errors.New("error getting current server")
+	}
+
+	defaultDomain := server.DefaultDomain
 	if defaultDomain != "" {
 		dnsConfig.DefaultDomain = defaultDomain
 	}

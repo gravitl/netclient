@@ -44,7 +44,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
+	if server == nil {
+		return
+	}
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
 		slog.Warn("error decrypting message", "warn", err)
