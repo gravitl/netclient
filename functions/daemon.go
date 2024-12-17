@@ -355,9 +355,7 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			node := node
 			setSubscriptions(client, &node)
-			if server.ManageDNS {
-				setDNSSubscriptions(client, &node)
-			}
+			setDNSSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
@@ -418,9 +416,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			for _, node := range nodes {
 				node := node
 				setSubscriptions(client, &node)
-				if server.ManageDNS {
-					setDNSSubscriptions(client, &node)
-				}
+				setDNSSubscriptions(client, &node)
 			}
 			setHostSubscription(client, server.Name)
 		}
