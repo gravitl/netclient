@@ -344,7 +344,7 @@ func checkConfig() {
 	}
 	if netclient.ListenPort == 0 {
 		logger.Log(0, "setting listenport")
-		port, err := ncutils.GetFreePort(config.DefaultListenPort)
+		port, err := ncutils.GetFreePort(config.DefaultListenPort, netclient.ListenPort, true)
 		if err != nil {
 			logger.Log(0, "error getting free port", err.Error())
 		} else {

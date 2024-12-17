@@ -1,9 +1,14 @@
 package functions
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -153,13 +158,27 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	updateConfig := false
 
+	config.SetServerCtx()
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		server = &config.Server{}
+		server.Stun = true
+		server.StunServers = ""
+	}
+
+	if server.Stun && server.StunServers != "" {
+		stun.LoadStunServers(server.StunServers)
+	} else {
+		stun.SetDefaultStunServers()
+	}
+
 	if config.Netclient().Host.OS == "linux" {
 		dns.InitDNSConfig()
 		updateConfig = true
 	}
 
 	if !config.Netclient().IsStaticPort {
-		if freeport, err := ncutils.GetFreePort(config.Netclient().ListenPort); err != nil {
+		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, config.Netclient().ListenPort, false); err != nil {
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != config.Netclient().ListenPort {
 			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
@@ -210,8 +229,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 
-	config.SetServerCtx()
-
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
 	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
 		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
@@ -247,7 +264,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
-	server := config.GetServer(config.CurrServer)
+	server = config.GetServer(config.CurrServer)
 	if server == nil {
 		return cancel
 	}
@@ -271,13 +288,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
 	go Checkin(ctx, wg)
-	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 4)
-	wg.Add(1)
-	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 6)
+	networking.InitialiseIfaceDetection(ctx, wg)
 	if server.IsPro {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
+		networking.InitialiseMetricsThread(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
@@ -289,6 +304,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		dns.GetDNSServerInstance().Stop()
 	}
+	go func() {
+		time.Sleep(time.Second * 45)
+		callPublishMetrics(true)
+	}()
 
 	return cancel
 }
@@ -327,7 +346,7 @@ func setupMQTT(server *config.Server) error {
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Second << 2)
-	opts.SetKeepAlive(time.Second * 10)
+	opts.SetKeepAlive(time.Second * 15)
 	opts.SetWriteTimeout(time.Minute)
 	opts.SetCleanSession(true)
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
@@ -336,9 +355,7 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			node := node
 			setSubscriptions(client, &node)
-			if server.ManageDNS {
-				setDNSSubscriptions(client, &node)
-			}
+			setDNSSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
@@ -399,9 +416,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			for _, node := range nodes {
 				node := node
 				setSubscriptions(client, &node)
-				if server.ManageDNS {
-					setDNSSubscriptions(client, &node)
-				}
+				setDNSSubscriptions(client, &node)
 			}
 			setHostSubscription(client, server.Name)
 		}
@@ -471,7 +486,26 @@ func setDNSSubscriptions(client mqtt.Client, node *config.Node) {
 	slog.Info("subscribed to DNS sync for node", "node", node.ID, "network", node.Network)
 }
 
-// should only ever use node client configs
+func unzipPayload(data []byte) (resData []byte, err error) {
+	b := bytes.NewBuffer(data)
+
+	var r io.Reader
+	r, err = gzip.NewReader(b)
+	if err != nil {
+		return
+	}
+
+	var resB bytes.Buffer
+	_, err = resB.ReadFrom(r)
+	if err != nil {
+		return
+	}
+
+	resData = resB.Bytes()
+
+	return
+}
+
 func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 	if len(msg) <= 24 { // make sure message is of appropriate length
 		return nil, fmt.Errorf("received invalid message from broker %v", msg)
@@ -492,6 +526,32 @@ func decryptMsg(serverName string, msg []byte) ([]byte, error) {
 		return nil, err
 	}
 	return DeChunk(msg, serverPubKey, diskKey)
+}
+
+func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
+	// Create AES block cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create GCM (Galois/Counter Mode) cipher
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	// Separate nonce and ciphertext
+	nonceSize := aesGCM.NonceSize()
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+
+	// Decrypt the data
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
 }
 
 func read(network, which string) string {
@@ -580,8 +640,19 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
-
-	pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		server = &config.Server{}
+		server.Stun = true
+		stun.SetDefaultStunServers()
+	}
+	if server.Stun {
+		pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
+	} else {
+		pubIP, _ = GetPublicIP(uint(proto))
+		pubPort = config.Netclient().ListenPort
+		natType = "public"
+	}
 	if pubIP == nil || pubIP.IsUnspecified() { // if stun has failed fallback to ip service to get publicIP
 		publicIP, err := GetPublicIP(uint(proto))
 		if err != nil {
