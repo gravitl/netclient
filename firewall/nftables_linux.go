@@ -944,7 +944,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 			continue
 		}
 		ruleSpec := []string{"-s", rule.SrcIP.String()}
-		if rule.AllowedProtocol.String() != "" {
+		if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 			ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 		}
 		if len(rule.AllowedPorts) > 0 {
@@ -1117,12 +1117,133 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			}
 		}
 		if len(aclRule.IPList) > 0 {
-			allowedIps := []string{}
 			for _, ip := range aclRule.IPList {
-				allowedIps = append(allowedIps, ip.String())
+
+				ruleSpec := []string{"-s", ip.String()}
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if len(aclRule.AllowedPorts) > 0 {
+					ruleSpec = append(ruleSpec, "--dport",
+						strings.Join(aclRule.AllowedPorts, ","))
+				}
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
+				e := []expr.Any{}
+				e = append(e, n.GetSrcIpsExpr([]net.IPNet{ip}, true)...)
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					e = append(e, n.getExprForProto(aclRule.AllowedProtocol, true)...)
+				}
+				if len(aclRule.AllowedPorts) > 0 {
+					e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
+				}
+
+				e = append(e, // Accept the packet
+					&expr.Verdict{
+						Kind: expr.VerdictAccept, // ACCEPT verdict
+					})
+				nfRule := &nftables.Rule{
+					Table:    filterTable,
+					Chain:    &nftables.Chain{Name: aclInputRulesChain},
+					Exprs:    e,
+					UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+				}
+				n.conn.InsertRule(nfRule)
+				if err := n.conn.Flush(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					rules = append(rules, ruleInfo{
+						isIpv4: true,
+						nfRule: nfRule,
+						table:  defaultIpTable,
+						chain:  aclInputRulesChain,
+						rule:   ruleSpec,
+					})
+
+				}
 			}
-			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-			if aclRule.AllowedProtocol.String() != "" {
+
+		}
+
+		if len(aclRule.IP6List) > 0 {
+			for _, ip := range aclRule.IP6List {
+				ruleSpec := []string{"-s", ip.String()}
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if len(aclRule.AllowedPorts) > 0 {
+					ruleSpec = append(ruleSpec, "--dport",
+						strings.Join(aclRule.AllowedPorts, ","))
+				}
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
+				e := []expr.Any{}
+				e = append(e, n.GetSrcIpsExpr([]net.IPNet{ip}, false)...)
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					e = append(e, n.getExprForProto(aclRule.AllowedProtocol, false)...)
+				}
+				if len(aclRule.AllowedPorts) > 0 {
+					e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
+				}
+
+				e = append(e, // Accept the packet
+					&expr.Verdict{
+						Kind: expr.VerdictAccept, // ACCEPT verdict
+					})
+				nfRule := &nftables.Rule{
+					Table:    filterTable,
+					Chain:    &nftables.Chain{Name: aclInputRulesChain},
+					Exprs:    e,
+					UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+				}
+				n.conn.InsertRule(nfRule)
+				if err := n.conn.Flush(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					rules = append(rules, ruleInfo{
+						isIpv4: false,
+						nfRule: nfRule,
+						table:  defaultIpTable,
+						chain:  aclInputRulesChain,
+						rule:   ruleSpec,
+					})
+
+				}
+			}
+		}
+		if len(rules) > 0 {
+			rCfg := rulesCfg{
+				rulesMap: map[string][]ruleInfo{
+					aclRule.ID: rules,
+				},
+				extraInfo: aclRule,
+			}
+			ruleTable[aclRule.ID] = rCfg
+		}
+	}
+}
+
+func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
+	ruleTable := n.FetchRuleTable(server, aclTable)
+	defer n.SaveRules(server, aclTable, ruleTable)
+	n.mux.Lock()
+	defer n.mux.Unlock()
+	ruleTable[aclRule.ID] = rulesCfg{
+		rulesMap: make(map[string][]ruleInfo),
+	}
+	rules := []ruleInfo{}
+	if _, ok := ruleTable[aclRule.ID]; !ok {
+		ruleTable[aclRule.ID] = rulesCfg{
+			rulesMap: make(map[string][]ruleInfo),
+		}
+	}
+	if len(aclRule.IPList) > 0 {
+		for _, ip := range aclRule.IPList {
+
+			ruleSpec := []string{"-s", ip.String()}
+			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -1133,7 +1254,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 			n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 			e := []expr.Any{}
-			e = append(e, n.GetSrcIpsExpr(aclRule.IPList, true)...)
+			e = append(e, n.GetSrcIpsExpr([]net.IPNet{ip}, true)...)
 			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(aclRule.AllowedProtocol, true)...)
 			}
@@ -1164,16 +1285,15 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 				})
 
 			}
-
 		}
 
-		if len(aclRule.IP6List) > 0 {
-			allowedIps := []string{}
-			for _, ip := range aclRule.IP6List {
-				allowedIps = append(allowedIps, ip.String())
-			}
-			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-			if aclRule.AllowedProtocol.String() != "" {
+	}
+
+	if len(aclRule.IP6List) > 0 {
+		for _, ip := range aclRule.IP6List {
+
+			ruleSpec := []string{"-s", ip.String()}
+			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -1184,7 +1304,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 			n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 			e := []expr.Any{}
-			e = append(e, n.GetSrcIpsExpr(aclRule.IPList, false)...)
+			e = append(e, n.GetSrcIpsExpr([]net.IPNet{ip}, false)...)
 			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(aclRule.AllowedProtocol, false)...)
 			}
@@ -1215,132 +1335,6 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 				})
 
 			}
-
-		}
-		if len(rules) > 0 {
-			rCfg := rulesCfg{
-				rulesMap: map[string][]ruleInfo{
-					aclRule.ID: rules,
-				},
-				extraInfo: aclRule,
-			}
-			ruleTable[aclRule.ID] = rCfg
-		}
-	}
-}
-
-func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
-	ruleTable := n.FetchRuleTable(server, aclTable)
-	defer n.SaveRules(server, aclTable, ruleTable)
-	n.mux.Lock()
-	defer n.mux.Unlock()
-	ruleTable[aclRule.ID] = rulesCfg{
-		rulesMap: make(map[string][]ruleInfo),
-	}
-	rules := []ruleInfo{}
-	if _, ok := ruleTable[aclRule.ID]; !ok {
-		ruleTable[aclRule.ID] = rulesCfg{
-			rulesMap: make(map[string][]ruleInfo),
-		}
-	}
-	if len(aclRule.IPList) > 0 {
-		allowedIps := []string{}
-		for _, ip := range aclRule.IPList {
-			allowedIps = append(allowedIps, ip.String())
-		}
-		ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-		if aclRule.AllowedProtocol.String() != "" {
-			ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
-		}
-		if len(aclRule.AllowedPorts) > 0 {
-			ruleSpec = append(ruleSpec, "--dport",
-				strings.Join(aclRule.AllowedPorts, ","))
-		}
-		ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
-		e := []expr.Any{}
-		e = append(e, n.GetSrcIpsExpr(aclRule.IPList, true)...)
-		if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
-			e = append(e, n.getExprForProto(aclRule.AllowedProtocol, true)...)
-		}
-		if len(aclRule.AllowedPorts) > 0 {
-			e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
-		}
-
-		e = append(e, // Accept the packet
-			&expr.Verdict{
-				Kind: expr.VerdictAccept, // ACCEPT verdict
-			})
-		nfRule := &nftables.Rule{
-			Table:    filterTable,
-			Chain:    &nftables.Chain{Name: aclInputRulesChain},
-			Exprs:    e,
-			UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
-		}
-		n.conn.InsertRule(nfRule)
-		if err := n.conn.Flush(); err != nil {
-			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			rules = append(rules, ruleInfo{
-				isIpv4: true,
-				nfRule: nfRule,
-				table:  defaultIpTable,
-				chain:  aclInputRulesChain,
-				rule:   ruleSpec,
-			})
-
-		}
-
-	}
-
-	if len(aclRule.IP6List) > 0 {
-		allowedIps := []string{}
-		for _, ip := range aclRule.IP6List {
-			allowedIps = append(allowedIps, ip.String())
-		}
-		ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
-		if aclRule.AllowedProtocol.String() != "" {
-			ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
-		}
-		if len(aclRule.AllowedPorts) > 0 {
-			ruleSpec = append(ruleSpec, "--dport",
-				strings.Join(aclRule.AllowedPorts, ","))
-		}
-		ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
-		e := []expr.Any{}
-		e = append(e, n.GetSrcIpsExpr(aclRule.IPList, false)...)
-		if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
-			e = append(e, n.getExprForProto(aclRule.AllowedProtocol, false)...)
-		}
-		if len(aclRule.AllowedPorts) > 0 {
-			e = append(e, n.getExprForPort(aclRule.AllowedPorts)...)
-		}
-
-		e = append(e, // Accept the packet
-			&expr.Verdict{
-				Kind: expr.VerdictAccept, // ACCEPT verdict
-			})
-		nfRule := &nftables.Rule{
-			Table:    filterTable,
-			Chain:    &nftables.Chain{Name: aclInputRulesChain},
-			Exprs:    e,
-			UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
-		}
-		n.conn.InsertRule(nfRule)
-		if err := n.conn.Flush(); err != nil {
-			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-		} else {
-			rules = append(rules, ruleInfo{
-				isIpv4: false,
-				nfRule: nfRule,
-				table:  defaultIpTable,
-				chain:  aclInputRulesChain,
-				rule:   ruleSpec,
-			})
-
 		}
 	}
 
