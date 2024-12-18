@@ -307,7 +307,7 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err := i.ipv4Client.List(defaultIpTable, iptableFWDChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv4Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
@@ -318,8 +318,31 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err = i.ipv6Client.List(defaultIpTable, iptableFWDChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv6Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
+				}
+			}
+		}
+	}
+
+	rules, err = i.ipv4Client.List(defaultIpTable, iptableINChain)
+	if err == nil {
+		for _, rule := range rules {
+			if containsComment(rule, netmakerSignature) {
+				err := i.ipv4Client.Delete(defaultIpTable, iptableINChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
+				}
+			}
+		}
+	}
+	rules, err = i.ipv6Client.List(defaultIpTable, iptableINChain)
+	if err == nil {
+		for _, rule := range rules {
+			if containsComment(rule, netmakerSignature) {
+				err := i.ipv6Client.Delete(defaultIpTable, iptableINChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
@@ -329,7 +352,7 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err = i.ipv4Client.List(defaultNatTable, nattablePRTChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv4Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
@@ -340,7 +363,7 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err = i.ipv6Client.List(defaultNatTable, nattablePRTChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv6Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
