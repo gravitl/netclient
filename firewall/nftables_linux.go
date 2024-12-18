@@ -241,6 +241,42 @@ var (
 						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
 
+					// Match NOT output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpNeq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					// Accept the packet
+					&expr.Verdict{
+						Kind: expr.VerdictAccept,
+					},
+				},
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", targetAccept},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableFWDChain},
+				Exprs: []expr.Any{
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
 					// Match output interface "netmaker"
 					&expr.Meta{
 						Key:      expr.MetaKeyOIFNAME,
@@ -263,43 +299,6 @@ var (
 			},
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
 				"-m", "comment", "--comment", netmakerSignature},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableFWDChain},
-				Exprs: []expr.Any{
-					// Match input interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyIIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Match NOT output interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpNeq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					// Accept the packet
-					&expr.Verdict{
-						Kind: expr.VerdictAccept,
-					},
-				},
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclOutputRulesChain},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
@@ -475,48 +474,8 @@ func (n *nftablesManager) CreateChains() error {
 
 // nftables.ForwardRule - forward netmaker traffic (not implemented)
 func (n *nftablesManager) ForwardRule() error {
-	if err := n.CreateChains(); err != nil {
-		return err
-	}
-	n.conn.AddRule(&nftables.Rule{
-		Table: filterTable,
-		Chain: &nftables.Chain{Name: iptableINChain},
 
-		Exprs: []expr.Any{
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-			},
-			&expr.Verdict{
-				Kind:  expr.VerdictJump,
-				Chain: aclInputRulesChain,
-			},
-		},
-	})
-	n.conn.AddRule(&nftables.Rule{
-		Table: filterTable,
-		Chain: &nftables.Chain{Name: iptableFWDChain},
-		Exprs: []expr.Any{
-			// Match packets going out via the "netmaker" interface
-			&expr.Meta{
-				Key:      expr.MetaKeyOIFNAME, // Output interface name
-				Register: 1,
-			},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-			},
-			// Jump to the "aclRules" chain
-			&expr.Verdict{
-				Kind:  expr.VerdictJump,
-				Chain: aclOutputRulesChain,
-			},
-		},
-	})
-	return n.conn.Flush()
+	return nil
 }
 
 // nftables.CleanRoutingRules cleans existing nftable resources that we created by the agent
