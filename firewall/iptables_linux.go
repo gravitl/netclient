@@ -291,18 +291,6 @@ func (i *iptablesManager) addJumpRules() {
 
 }
 
-// checks if rule has been added by netmaker
-func addedByNetmaker(ruleString string) bool {
-	rule := strings.Fields(ruleString)
-	for i, flag := range rule {
-		if flag == "--comment" && len(rule)-1 > i {
-			if rule[i+1] == netmakerSignature {
-				return true
-			}
-		}
-	}
-	return false
-}
 func (i *iptablesManager) removeJumpRules() {
 	rules, err := i.ipv4Client.List(defaultIpTable, iptableFWDChain)
 	if err == nil {
