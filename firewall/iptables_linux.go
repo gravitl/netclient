@@ -152,7 +152,7 @@ func (i *iptablesManager) ChangeACLTarget(target string) {
 	chain := aclInChainDropRule.chain
 	ruleSpec[len(ruleSpec)-1] = target
 	ok4, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
-	ok6, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
+	ok6, _ := i.ipv6Client.Exists(table, chain, ruleSpec...)
 	if ok4 && ok6 {
 		return
 	}
@@ -707,7 +707,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 				} else {
 					rules = append(rules, ruleInfo{
-						isIpv4: true,
+						isIpv4: false,
 						table:  defaultIpTable,
 						chain:  aclInputRulesChain,
 						rule:   ruleSpec,
@@ -833,9 +833,10 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 			} else {
 				rules = append(rules, ruleInfo{
-					table: defaultIpTable,
-					chain: aclInputRulesChain,
-					rule:  ruleSpec,
+					isIpv4: false,
+					table:  defaultIpTable,
+					chain:  aclInputRulesChain,
+					rule:   ruleSpec,
 				})
 			}
 		}
