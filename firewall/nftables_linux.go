@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -372,7 +371,7 @@ func (n *nftablesManager) AddDropRules(dropRules []ruleInfo) {
 	}
 	// Apply the changes
 	if err := n.conn.Flush(); err != nil {
-		log.Fatalf("Failed to apply changes: %v", err)
+		slog.Error("Failed to apply changes: %v", err)
 	}
 }
 
@@ -1074,6 +1073,13 @@ func (n *nftablesManager) GetSrcIpsExpr(ips []net.IPNet, isIpv4 bool) []expr.Any
 					Offset:       12, // Source IP offset in IPv4 header
 					Len:          4,  // IPv4 address length
 				},
+				&expr.Bitwise{
+					SourceRegister: 1,
+					DestRegister:   1,
+					Len:            4,
+					Mask:           ip.Mask,
+					Xor:            []byte{0, 0, 0, 0},
+				},
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
@@ -1090,15 +1096,37 @@ func (n *nftablesManager) GetSrcIpsExpr(ips []net.IPNet, isIpv4 bool) []expr.Any
 					Offset:       8,  // Source IP offset in IPv6 header
 					Len:          16, // IPv6 address length
 				},
+				&expr.Bitwise{
+					SourceRegister: 1,
+					DestRegister:   1,
+					Len:            16,      // Length of the IPv6 address
+					Mask:           ip.Mask, // Mask for /16
+					Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
 				&expr.Cmp{
-					Register: 1,
 					Op:       expr.CmpOpEq,
+					Register: 1,
 					Data:     ip.IP.To16(), // Replace with subnet prefix
 				},
 			)
 		}
 	}
 	return e
+}
+
+// xorAddress computes the XOR value between an IP address and a mask
+func xorAddress(ip net.IPNet) []byte {
+
+	// Create a new slice for the XOR result
+	xorResult := make([]byte, len(ip.IP))
+
+	// Perform XOR between the address and the mask
+	for range ip.IP {
+		xorResult = append(xorResult, 0)
+	}
+
+	// Return the XOR result as an IP object
+	return xorResult
 }
 
 func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.AclRule) {
@@ -1396,7 +1424,7 @@ func (n *nftablesManager) ChangeACLTarget(target string) {
 	if n.ruleExists(newRule) {
 		return
 	}
-	slog.Debug("setting acl input chain target to", "target", target)
+	slog.Info("setting acl input chain target to", "target", target)
 	// delete old target and insert new rule
 	oldVerdict := &expr.Verdict{
 		Kind: expr.VerdictAccept,
@@ -1425,7 +1453,7 @@ func (n *nftablesManager) ChangeACLTarget(target string) {
 	}
 	rules, err := n.conn.GetRules(newRule.Table, newRule.Chain)
 	if err != nil {
-		log.Fatalf("Error fetching rules: %v", err)
+		slog.Error("Error fetching rules: %v", err.Error())
 	}
 	for _, rI := range rules {
 		if rulesEqual(rI, oldRule) {
