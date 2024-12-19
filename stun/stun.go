@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
@@ -94,12 +95,12 @@ func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType 
 	}
 
 	for _, stunServer := range StunServers {
-		stunServer := stunServer
 		var err error
 		if proto == 4 {
 			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp4")
 			if err != nil {
 				slog.Warn("callHolePunch udp4 error", err.Error())
+				continue
 			}
 		} else {
 			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp6")
@@ -152,14 +153,14 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 
 	privIp := net.ParseIP(lIP)
 	defer func() {
-		if !privIp.Equal(publicIP) {
+		if publicIP != nil && privIp != nil && !privIp.Equal(publicIP) {
 			natType = nmmodels.NAT_Types.BehindNAT
 		} else {
 			natType = nmmodels.NAT_Types.Public
 		}
 	}()
 	defer conn.Close()
-	c, err := stun.NewClient(conn)
+	c, err := stun.NewClient(conn, stun.WithTimeoutRate(time.Second*1))
 	if err != nil {
 		logger.Log(1, "failed to create stun client: ", err.Error())
 		return
@@ -168,9 +169,11 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 	// Building binding request with random transaction id.
 	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 	// Sending request to STUN server, waiting for response message.
+	var err1 error
 	err = c.Do(message, func(res stun.Event) {
 		if res.Error != nil {
 			logger.Log(1, "0:stun error: ", res.Error.Error())
+			err1 = res.Error
 			return
 		}
 		// Decoding XOR-MAPPED-ADDRESS attribute from message.
@@ -184,6 +187,10 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 	})
 	if err != nil {
 		logger.Log(1, "2:stun error: ", err.Error())
+	}
+	if err1 != nil {
+		logger.Log(3, "2:stun error: ", err1.Error())
+		return nil, 0, "", err1
 	}
 	return
 }
