@@ -95,19 +95,21 @@ func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType 
 	}
 
 	for _, stunServer := range StunServers {
-		var err error
+		var err4 error
+		var err6 error
 		if proto == 4 {
-			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp4")
-			if err != nil {
-				slog.Warn("callHolePunch udp4 error", err.Error())
-				continue
+			publicIP, publicPort, natType, err4 = callHolePunch(stunServer, portToStun, "udp4")
+			if err4 != nil {
+				slog.Warn("callHolePunch udp4 error", err4.Error())
 			}
 		} else {
-			publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, "udp6")
-			if err != nil {
-				slog.Warn("callHolePunch udp6 error", err.Error())
-				continue
+			publicIP, publicPort, natType, err6 = callHolePunch(stunServer, portToStun, "udp6")
+			if err6 != nil {
+				slog.Warn("callHolePunch udp6 error", err6.Error())
 			}
+		}
+		if err4 != nil && err6 != nil {
+			continue
 		}
 		break
 	}
