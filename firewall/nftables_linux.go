@@ -1114,21 +1114,6 @@ func (n *nftablesManager) GetSrcIpsExpr(ips []net.IPNet, isIpv4 bool) []expr.Any
 	return e
 }
 
-// xorAddress computes the XOR value between an IP address and a mask
-func xorAddress(ip net.IPNet) []byte {
-
-	// Create a new slice for the XOR result
-	xorResult := make([]byte, len(ip.IP))
-
-	// Perform XOR between the address and the mask
-	for range ip.IP {
-		xorResult = append(xorResult, 0)
-	}
-
-	// Return the XOR result as an IP object
-	return xorResult
-}
-
 func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.AclRule) {
 	ruleTable := n.FetchRuleTable(server, aclTable)
 	defer n.SaveRules(server, aclTable, ruleTable)
