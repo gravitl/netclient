@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	nmmodels "github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
@@ -25,6 +26,29 @@ var (
 type StunServer struct {
 	Domain string `json:"domain" yaml:"domain"`
 	Port   int    `json:"port" yaml:"port"`
+}
+
+// LoadStunServers - load customized stun servers
+func LoadStunServers(list string) {
+	l1 := strings.Split(list, ",")
+	stunServers := []StunServer{}
+	for _, v := range l1 {
+		l2 := strings.Split(v, ":")
+		port, _ := strconv.Atoi(l2[1])
+		sS := StunServer{Domain: l2[0], Port: port}
+		stunServers = append(stunServers, sS)
+	}
+
+	StunServers = stunServers
+}
+
+func SetDefaultStunServers() {
+	StunServers = []StunServer{
+		{Domain: "stun1.l.google.com", Port: 19302},
+		{Domain: "stun2.l.google.com", Port: 19302},
+		{Domain: "stun3.l.google.com", Port: 19302},
+		{Domain: "stun4.l.google.com", Port: 19302},
+	}
 }
 
 // IsPublicIP indicates whether IP is public or not.
@@ -59,6 +83,16 @@ func DoesIPExistLocally(ip net.IP) bool {
 
 // HolePunch - performs udp hole punching on the given port
 func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType string) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		server = &config.Server{}
+		server.Stun = true
+		SetDefaultStunServers()
+	}
+	if !server.Stun {
+		return
+	}
+
 	for _, stunServer := range StunServers {
 		stunServer := stunServer
 		var err error

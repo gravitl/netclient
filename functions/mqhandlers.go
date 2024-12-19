@@ -13,6 +13,7 @@ import (
 
 	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -44,11 +45,22 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
 	server := config.Servers[node.Server]
-	data, err := decryptMsg(server.Name, msg.Payload())
+	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
-		slog.Error("error decrypting message", "error", err)
-		return
+		slog.Warn("error decrypting message", "warn", err)
+		data, err = decryptMsg(server.Name, msg.Payload())
+		if err != nil {
+			slog.Error("error decrypting message", "error", err)
+			return
+		}
+	} else {
+		data, err = unzipPayload(data)
+		if err != nil {
+			slog.Error("error unzipping message", "error", err)
+			return
+		}
 	}
+
 	serverNode := models.Node{}
 	if err = json.Unmarshal([]byte(data), &serverNode); err != nil {
 		slog.Error("error unmarshalling node update data", "error", err)
@@ -148,11 +160,22 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	slog.Info("processing peer update for server", "server", serverName)
-	data, err := decryptMsg(serverName, msg.Payload())
+	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
-		slog.Error("error decrypting message", "error", err)
-		return
+		slog.Warn("error decrypting message", "warn", err)
+		data, err = decryptMsg(server.Name, msg.Payload())
+		if err != nil {
+			slog.Error("error decrypting message", "error", err)
+			return
+		}
+	} else {
+		data, err = unzipPayload(data)
+		if err != nil {
+			slog.Error("error unzipping message", "error", err)
+			return
+		}
 	}
+
 	err = json.Unmarshal([]byte(data), &peerUpdate)
 	if err != nil {
 		slog.Error("error unmarshalling peer data", "error", err)
@@ -229,10 +252,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	}
 
+	saveServerConfig := false
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
-		config.UpdateServer(serverName, *server)
-		_ = config.WriteServerConfig()
+		saveServerConfig = true
 		if peerUpdate.ManageDNS {
 			dns.GetDNSServerInstance().Start()
 		} else {
@@ -241,6 +264,27 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
 		dns.SetupDNSConfig()
+	}
+
+	reloadStun := false
+	if peerUpdate.Stun != server.Stun {
+		server.Stun = peerUpdate.Stun
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if peerUpdate.StunServers != server.StunServers {
+		server.StunServers = peerUpdate.StunServers
+		saveServerConfig = true
+		reloadStun = true
+	}
+
+	if reloadStun {
+		daemon.Restart()
+	}
+
+	if saveServerConfig {
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
@@ -260,10 +304,20 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	if len(msg.Payload()) == 0 {
 		return
 	}
-	data, err := decryptMsg(serverName, msg.Payload())
+	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
-		slog.Error("error decrypting message", "error", err)
-		return
+		slog.Warn("error decrypting message", "warn", err)
+		data, err = decryptMsg(server.Name, msg.Payload())
+		if err != nil {
+			slog.Error("error decrypting message", "error", err)
+			return
+		}
+	} else {
+		data, err = unzipPayload(data)
+		if err != nil {
+			slog.Error("error unzipping message", "error", err)
+			return
+		}
 	}
 	err = json.Unmarshal([]byte(data), &hostUpdate)
 	if err != nil {
@@ -319,9 +373,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 		setSubscriptions(client, &nodeCfg)
-		if server.ManageDNS {
-			setDNSSubscriptions(client, &nodeCfg)
-		}
+		setDNSSubscriptions(client, &nodeCfg)
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -530,6 +582,7 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 	} else {
 		firewall.RemoveIngressRoutingRules(server)
 	}
+	firewall.ProcessAclRules(server, payload)
 
 }
 
@@ -585,6 +638,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
+			auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
