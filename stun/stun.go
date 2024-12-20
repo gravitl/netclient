@@ -191,7 +191,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		logger.Log(1, "2:stun error: ", err.Error())
 	}
 	if err1 != nil {
-		logger.Log(3, "2:stun error: ", err1.Error())
+		logger.Log(3, "3:stun error: ", err1.Error())
 		return nil, 0, natType, err1
 	}
 	return
