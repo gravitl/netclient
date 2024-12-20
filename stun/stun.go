@@ -108,7 +108,7 @@ func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType 
 				slog.Warn("callHolePunch udp6 error", err6.Error())
 			}
 		}
-		if err4 != nil && err6 != nil {
+		if err4 != nil || err6 != nil {
 			continue
 		}
 		break
@@ -162,7 +162,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		}
 	}()
 	defer conn.Close()
-	c, err := stun.NewClient(conn, stun.WithTimeoutRate(time.Second*1))
+	c, err := stun.NewClient(conn, stun.WithTimeoutRate(time.Second*5))
 	if err != nil {
 		logger.Log(1, "failed to create stun client: ", err.Error())
 		return
