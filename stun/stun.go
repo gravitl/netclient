@@ -131,7 +131,7 @@ func callHolePunch(stunServer StunServer, portToStun int, network string) (publi
 	publicIP, publicPort, natType, err = doStunTransaction(l, s)
 	if err != nil {
 		logger.Log(3, "stun transaction failed: ", stunServer.Domain, err.Error())
-		return nil, 0, "", err
+		return nil, 0, natType, err
 	}
 
 	return
@@ -192,7 +192,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 	}
 	if err1 != nil {
 		logger.Log(3, "2:stun error: ", err1.Error())
-		return nil, 0, "", err1
+		return nil, 0, natType, err1
 	}
 	return
 }
