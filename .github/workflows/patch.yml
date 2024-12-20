@@ -135,7 +135,7 @@ jobs:
             scp "$file" "root@fileserver.clustercat.com:$UPLOAD_PATH/"
           done
 
-    packages:
+  packages:
       needs: [build-and-patch]
       runs-on: ubuntu-latest
       steps:
