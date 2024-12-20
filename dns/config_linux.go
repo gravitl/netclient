@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -188,9 +187,6 @@ func setupResolvectl() (err error) {
 	}
 
 	domains := ""
-	for _, v := range config.GetNodes() {
-		domains = domains + " " + v.Network
-	}
 	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
 	if defaultDomain != "" {
 		domains = domains + " " + defaultDomain
@@ -333,17 +329,7 @@ func getNSAndDomains() (string, string, error) {
 		return "", "", errors.New("no network joint")
 	}
 
-	dStrings := []string{}
-	for _, v := range config.GetNodes() {
-		dStrings = append(dStrings, v.Network)
-	}
-	sort.Strings(dStrings)
-
 	domains := "search"
-	for _, v := range dStrings {
-		domains = domains + " " + v
-	}
-
 	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
 	if defaultDomain != "" {
 		domains = domains + " " + defaultDomain
@@ -370,10 +356,6 @@ func getDomains() (string, error) {
 	}
 
 	domains := "search"
-	for _, v := range dnsConfig.Domains {
-		domains = domains + " " + v
-	}
-
 	defaultDomain := dnsConfig.DefaultDomain
 	if defaultDomain != "" {
 		domains = domains + " " + defaultDomain
