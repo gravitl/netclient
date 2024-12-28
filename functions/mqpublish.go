@@ -81,23 +81,23 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
 			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
 				restart := false
-				ip4, _, _ := holePunchWgPort(4, 0)
+				ip4, _ := GetPublicIP(4)
 				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
-					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					slog.Debug("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
 					restart = true
 				} else if ip4 == nil && config.HostPublicIP != nil {
-					slog.Warn("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					slog.Debug("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = nil
 					restart = true
 				}
-				ip6, _, _ := holePunchWgPort(6, 0)
+				ip6, _ := GetPublicIP(6)
 				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
-					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					slog.Debug("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
 					restart = true
 				} else if ip6 == nil && config.HostPublicIP6 != nil {
-					slog.Warn("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					slog.Debug("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = nil
 					restart = true
 				}
@@ -106,6 +106,12 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 						slog.Warn("failed to update host settings", err.Error())
 					}
 					logger.Log(0, "restarting netclient due to network changes...")
+					if ip4 != nil {
+						logger.Log(0, "new IPv4 detected: ", ip4.String())
+					}
+					if ip6 != nil {
+						logger.Log(0, "new IPv6 detected: ", ip6.String())
+					}
 					daemon.HardRestart()
 				}
 			}

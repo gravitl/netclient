@@ -5,7 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
@@ -143,7 +142,6 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		logger.Log(1, "failed to dial: ", err.Error())
 		return
 	}
-
 	re := conn.LocalAddr().String()
 	lIP := re[0:strings.LastIndex(re, ":")]
 	if strings.ContainsAny(lIP, "[") {
@@ -162,7 +160,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		}
 	}()
 	defer conn.Close()
-	c, err := stun.NewClient(conn, stun.WithTimeoutRate(time.Second*5))
+	c, err := stun.NewClient(conn)
 	if err != nil {
 		logger.Log(1, "failed to create stun client: ", err.Error())
 		return
