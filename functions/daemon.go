@@ -227,6 +227,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			config.Netclient().EndpointIPv6 = nil
 			updateConfig = true
 		}
+
 	}
 
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
@@ -647,7 +648,10 @@ func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType 
 		stun.SetDefaultStunServers()
 	}
 	_, ipErr := GetPublicIP(uint(proto))
-	if server.Stun && ipErr == nil {
+	if ipErr != nil {
+		return
+	}
+	if server.Stun {
 		pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
 	} else {
 		pubIP, _ = GetPublicIP(uint(proto))

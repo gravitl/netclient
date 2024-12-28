@@ -5,7 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
@@ -138,7 +137,6 @@ func callHolePunch(stunServer StunServer, portToStun int, network string) (publi
 }
 
 func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort int, natType string, err error) {
-	logger.Log(0, "#### ===> ADDR Performing Stun Transaction for: ", lAddr.String(), " --> ", rAddr.String())
 	conn, err := net.DialUDP("udp", lAddr, rAddr)
 	if err != nil {
 		logger.Log(1, "failed to dial: ", err.Error())
@@ -163,7 +161,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		}
 	}()
 	defer conn.Close()
-	c, err := stun.NewClient(conn, stun.WithTimeoutRate(time.Second*5))
+	c, err := stun.NewClient(conn)
 	if err != nil {
 		logger.Log(1, "failed to create stun client: ", err.Error())
 		return
