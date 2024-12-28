@@ -83,7 +83,7 @@ func DoesIPExistLocally(ip net.IP) bool {
 }
 
 // HolePunch - performs udp hole punching on the given port
-func HolePunch(ip net.IP, portToStun, proto int) (publicIP net.IP, publicPort int, natType string) {
+func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType string) {
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
@@ -98,12 +98,12 @@ func HolePunch(ip net.IP, portToStun, proto int) (publicIP net.IP, publicPort in
 		var err4 error
 		var err6 error
 		if proto == 4 {
-			publicIP, publicPort, natType, err4 = callHolePunch(stunServer, ip, portToStun, "udp4")
+			publicIP, publicPort, natType, err4 = callHolePunch(stunServer, portToStun, "udp4")
 			if err4 != nil {
 				slog.Warn("callHolePunch udp4 error", err4.Error())
 			}
 		} else {
-			publicIP, publicPort, natType, err6 = callHolePunch(stunServer, ip, portToStun, "udp6")
+			publicIP, publicPort, natType, err6 = callHolePunch(stunServer, portToStun, "udp6")
 			if err6 != nil {
 				slog.Warn("callHolePunch udp6 error", err6.Error())
 			}
@@ -117,14 +117,14 @@ func HolePunch(ip net.IP, portToStun, proto int) (publicIP net.IP, publicPort in
 	return
 }
 
-func callHolePunch(stunServer StunServer, ip net.IP, portToStun int, network string) (publicIP net.IP, publicPort int, natType string, err error) {
+func callHolePunch(stunServer StunServer, portToStun int, network string) (publicIP net.IP, publicPort int, natType string, err error) {
 	s, err := net.ResolveUDPAddr(network, fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
 	if err != nil {
 		logger.Log(1, "failed to resolve udp addr: ", network, err.Error())
 		return nil, 0, "", err
 	}
 	l := &net.UDPAddr{
-		IP:   ip,
+		IP:   net.ParseIP(""),
 		Port: portToStun,
 	}
 	slog.Debug(fmt.Sprintf("hole punching port %d via stun server %s:%d", portToStun, stunServer.Domain, stunServer.Port))
