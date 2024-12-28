@@ -142,7 +142,6 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		logger.Log(1, "failed to dial: ", err.Error())
 		return
 	}
-	logger.Log(0, "#### ===> Performing Stun Transaction for: ", conn.LocalAddr().String(), " --> ", conn.RemoteAddr().String())
 	re := conn.LocalAddr().String()
 	lIP := re[0:strings.LastIndex(re, ":")]
 	if strings.ContainsAny(lIP, "[") {
