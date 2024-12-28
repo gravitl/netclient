@@ -646,8 +646,9 @@ func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType 
 		server.Stun = true
 		stun.SetDefaultStunServers()
 	}
-	if server.Stun {
-		pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
+	publicIP, ipErr := GetPublicIP(uint(proto))
+	if server.Stun && ipErr == nil {
+		pubIP, pubPort, natType = stun.HolePunch(publicIP, portToStun, proto)
 	} else {
 		pubIP, _ = GetPublicIP(uint(proto))
 		pubPort = config.Netclient().ListenPort
