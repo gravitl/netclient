@@ -305,7 +305,6 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
 		if udpErr == nil {
 			udpConn.Close()
-
 			var tcpErr error
 			var tcpConn *net.TCPListener
 			ifaces, err := GetInterfaces()
@@ -353,7 +352,6 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			}
 		}
 	}
-
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
 	}
