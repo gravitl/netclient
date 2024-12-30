@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -324,7 +325,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 						if tcpErr == nil {
 							tcpConn.Close()
 						} else {
-							logger.Log(1, "TCP 443 ERR: ", tcpErr.Error())
+							slog.Debug("Tcp4 listen err ", "addr", tcpConn.Addr().String(), "error", tcpErr.Error())
 							break
 						}
 					} else {
@@ -340,7 +341,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 						if tcpErr == nil {
 							tcpConn.Close()
 						} else {
-							logger.Log(1, "TCP 443 ERR: ", tcpErr.Error())
+							slog.Debug("Tcp6 listen err ", "addr", tcpConn.Addr().String(), "error", tcpErr.Error())
 							break
 						}
 					}
