@@ -14,7 +14,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -30,7 +29,7 @@ func Register(token string) error {
 		logger.FatalLog("could not read enrollment token")
 	}
 	host := config.Netclient()
-	ip, err := networking.GetInterfaces()
+	ip, err := ncutils.GetInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
 	} else {
@@ -45,7 +44,7 @@ func Register(token string) error {
 	} else if defaultInterface != ncutils.GetInterfaceName() {
 		host.DefaultInterface = defaultInterface
 	}
-	shouldUpdateHost, err := doubleCheck(host, serverData.Server)
+	shouldUpdateHost, err := doubleCheck(host)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
 	}
@@ -74,7 +73,7 @@ func Register(token string) error {
 	return nil
 }
 
-func doubleCheck(host *config.Config, apiServer string) (shouldUpdate bool, err error) {
+func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 	var shouldUpdateHost bool
 
 	if len(config.CurrServer) == 0 { // should indicate a first join

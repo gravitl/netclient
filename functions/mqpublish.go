@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
@@ -384,7 +383,7 @@ func UpdateHostSettings(fallback bool) error {
 		publishMsg = true
 	}
 
-	ip, err := networking.GetInterfaces()
+	ip, err := ncutils.GetInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces during check-in", err.Error())
 	} else {
