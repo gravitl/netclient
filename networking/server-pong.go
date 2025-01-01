@@ -38,7 +38,7 @@ func InitialiseMetricsThread(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func InitialiseIfaceDetection(ctx context.Context, wg *sync.WaitGroup) {
-	ifaces, err := GetInterfaces()
+	ifaces, err := ncutils.GetInterfaces()
 	if err != nil {
 		return
 	}

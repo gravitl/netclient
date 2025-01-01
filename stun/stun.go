@@ -51,14 +51,6 @@ func SetDefaultStunServers() {
 	}
 }
 
-// IsPublicIP indicates whether IP is public or not.
-func IsPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return false
-	}
-	return true
-}
-
 // DoesIPExistLocally - checks if the IP address exists on a local interface
 func DoesIPExistLocally(ip net.IP) bool {
 	ifaces, err := net.Interfaces()
