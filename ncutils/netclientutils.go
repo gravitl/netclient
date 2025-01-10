@@ -324,7 +324,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 						if tcpErr == nil {
 							tcpConn.Close()
 						} else {
-							slog.Debug("Tcp4 listen err ", "addr", tcpConn.Addr().String(), "error", tcpErr.Error())
+							slog.Debug("Tcp4 listen err ", "error", tcpErr.Error())
 							break
 						}
 					} else {
@@ -340,7 +340,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 						if tcpErr == nil {
 							tcpConn.Close()
 						} else {
-							slog.Debug("Tcp6 listen err ", "addr", tcpConn.Addr().String(), "error", tcpErr.Error())
+							slog.Debug("Tcp6 listen err ", "error", tcpErr.Error())
 							break
 						}
 					}
