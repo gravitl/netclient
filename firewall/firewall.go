@@ -17,6 +17,7 @@ type rulesCfg struct {
 
 type ruleInfo struct {
 	rule   []string
+	isIpv4 bool
 	nfRule any
 	table  string
 	chain  string
@@ -33,6 +34,8 @@ const (
 
 const (
 	staticNodeRules = "static-node"
+	targetAccept    = "ACCEPT"
+	targetDrop      = "DROP"
 )
 
 type firewallController interface {
@@ -42,10 +45,18 @@ type firewallController interface {
 	ForwardRule() error
 	// Add DROP Rules
 	AddDropRules([]ruleInfo)
+	// ChangeACLTarget - deletes if any current target and adds rule with new target
+	ChangeACLTarget(target string)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw
 	InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error
+	// AddAclRules - inserts all rules related to acl policy
+	AddAclRules(server string, aclRules map[string]models.AclRule)
+	// UpsertAclRules - update a acl policy rules
+	UpsertAclRule(server string, aclRule models.AclRule)
+	// DeleteAclRule - cleanup all the rules associated with a acl policy
+	DeleteAclRule(server, aclID string)
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer
@@ -70,6 +81,7 @@ func Init() (func(), error) {
 	if err != nil {
 		return func() {}, err
 	}
+	fwCrtl.FlushAll()
 	if err := fwCrtl.CreateChains(); err != nil {
 		return fwCrtl.FlushAll, err
 	}

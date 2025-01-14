@@ -9,12 +9,12 @@ require (
 	github.com/devilcove/httpclient v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/glendc/go-external-ip v0.1.0
-	github.com/go-ping/ping v1.1.0
-	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/go-ping/ping v1.2.0
+	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/google/nftables v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.26.0
+	github.com/gravitl/netmaker v0.30.0
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
@@ -25,13 +25,13 @@ require (
 	github.com/sasha-s/go-deadlock v0.3.5
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
-	golang.org/x/crypto v0.28.0
+	golang.org/x/crypto v0.30.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/net v0.30.0
-	golang.org/x/sys v0.26.0
-	golang.org/x/term v0.25.0
+	golang.org/x/net v0.32.0
+	golang.org/x/sys v0.28.0
+	golang.org/x/term v0.27.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
@@ -53,7 +53,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.22.1 // indirect
+	github.com/go-playground/validator/v10 v10.23.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
@@ -94,8 +94,8 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/mod v0.18.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/tools v0.22.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -35,13 +36,13 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 	} // end validation
 
 	host := config.Netclient()
-	ip, err := getInterfaces()
+	ip, err := ncutils.GetInterfaces()
 	if err != nil {
 		logger.Log(0, "failed to retrieve local interfaces", err.Error())
 	} else {
 		// just in case getInterfaces() returned nil, nil
 		if ip != nil {
-			host.Interfaces = *ip
+			host.Interfaces = ip
 		}
 	}
 	defaultInterface, err := getDefaultInterface()
@@ -50,7 +51,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 	} else {
 		host.DefaultInterface = defaultInterface
 	}
-	shouldUpdateHost, err := doubleCheck(host, registerData.API)
+	shouldUpdateHost, err := doubleCheck(host)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
 	}

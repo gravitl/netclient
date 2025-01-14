@@ -1,11 +1,13 @@
 package metrics
 
 import (
+	"fmt"
+	"net"
 	"strconv"
 	"time"
 
 	"golang.org/x/exp/slog"
-
+	//lint:ignore SA1019 Reason: will be switching to a alternative package
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -139,6 +141,14 @@ func PeerConnStatus(address string, port, counter int) (connected bool, latency 
 	if address == "" || port == 0 {
 		return
 	}
+
+	//ipv6 address adding []
+	parseHost := net.ParseIP(address)
+	if parseHost.To16() != nil {
+		// ipv6
+		address = fmt.Sprintf("[%s]", address)
+	}
+
 	pinger := tcp_ping.NewTCPing()
 	pinger.SetTarget(&tcp_ping.Target{
 		Protocol: tcp_ping.TCP,

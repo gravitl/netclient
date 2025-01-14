@@ -2,7 +2,6 @@ package firewall
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 
 	"github.com/gravitl/netmaker/models"
@@ -13,7 +12,6 @@ func ProcessIngressUpdate(server string, ingressUpdate map[string]models.Ingress
 	if fwCrtl == nil {
 		return errors.New("firewall is not initialized yet")
 	}
-	fmt.Printf("INGRESS---UPDTE: %+v\n", ingressUpdate)
 	ruleTable := fwCrtl.FetchRuleTable(server, ingressTable)
 	for nodeID := range ruleTable {
 		if _, ok := ingressUpdate[nodeID]; !ok {
