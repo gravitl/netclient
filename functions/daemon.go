@@ -171,51 +171,51 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		stun.SetDefaultStunServers()
 	}
-
-	if config.Netclient().Host.OS == "linux" {
+	netclientCfg := config.Netclient()
+	if netclientCfg.Host.OS == "linux" {
 		dns.InitDNSConfig()
 		updateConfig = true
 	}
 
-	if !config.Netclient().IsStaticPort {
-		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, config.Netclient().ListenPort, false); err != nil {
+	if !netclientCfg.IsStaticPort {
+		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())
-		} else if freeport != config.Netclient().ListenPort {
-			slog.Info("port has changed", "old port", config.Netclient().ListenPort, "new port", freeport)
-			config.Netclient().ListenPort = freeport
+		} else if freeport != netclientCfg.ListenPort {
+			slog.Info("port has changed", "old port", netclientCfg.ListenPort, "new port", freeport)
+			netclientCfg.ListenPort = freeport
 			updateConfig = true
 		}
 
-		if config.Netclient().WgPublicListenPort == 0 {
-			config.Netclient().WgPublicListenPort = config.WgPublicListenPort
+		if netclientCfg.WgPublicListenPort == 0 {
+			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
 
 	} else {
-		config.Netclient().WgPublicListenPort = config.Netclient().ListenPort
+		netclientCfg.WgPublicListenPort = netclientCfg.ListenPort
 		updateConfig = true
 	}
 
-	if !config.Netclient().IsStatic {
+	if !netclientCfg.IsStatic {
 		// IPV4
-		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, config.Netclient().ListenPort)
+		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, netclientCfg.ListenPort)
 		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
-			config.Netclient().EndpointIP = config.HostPublicIP
+			netclientCfg.EndpointIP = config.HostPublicIP
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
-			config.Netclient().EndpointIP = nil
+			netclientCfg.EndpointIP = nil
 			updateConfig = true
 		}
-		if config.Netclient().NatType == "" {
-			config.Netclient().NatType = config.HostNatType
+		if netclientCfg.NatType == "" {
+			netclientCfg.NatType = config.HostNatType
 			updateConfig = true
 		}
 		// IPV6
-		publicIP6, wgport, natType := holePunchWgPort(6, config.Netclient().ListenPort)
+		publicIP6, wgport, natType := holePunchWgPort(6, netclientCfg.ListenPort)
 		if publicIP6 != nil && !publicIP6.IsUnspecified() {
-			config.Netclient().EndpointIPv6 = publicIP6
+			netclientCfg.EndpointIPv6 = publicIP6
 			config.HostPublicIP6 = publicIP6
 			if config.HostPublicIP == nil {
 				config.WgPublicListenPort = wgport
@@ -224,18 +224,20 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
-			config.Netclient().EndpointIPv6 = nil
+			netclientCfg.EndpointIPv6 = nil
 			updateConfig = true
 		}
+
 	}
 
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
-	if err == nil && originalDefaultGwIP != nil && (config.Netclient().CurrGwNmIP == nil || !config.Netclient().CurrGwNmIP.Equal(originalDefaultGwIP)) {
-		config.Netclient().OriginalDefaultGatewayIp = originalDefaultGwIP
+	if err == nil && originalDefaultGwIP != nil && (netclientCfg.CurrGwNmIP == nil || !netclientCfg.CurrGwNmIP.Equal(originalDefaultGwIP)) {
+		netclientCfg.OriginalDefaultGatewayIp = originalDefaultGwIP
 		updateConfig = true
 	}
 
 	if updateConfig {
+		config.UpdateNetclient(*netclientCfg)
 		if err := config.WriteNetclientConfig(); err != nil {
 			slog.Warn("error writing endpoint/port netclient config file", "error", err)
 		}
@@ -245,7 +247,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if pullErr != nil {
 		slog.Error("fail to pull config from server", "error", pullErr.Error())
 	}
-	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
 	}
@@ -645,6 +647,10 @@ func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType 
 		server = &config.Server{}
 		server.Stun = true
 		stun.SetDefaultStunServers()
+	}
+	_, ipErr := GetPublicIP(uint(proto))
+	if ipErr != nil {
+		return
 	}
 	if server.Stun {
 		pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)

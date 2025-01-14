@@ -2,6 +2,7 @@ package ncutils
 
 import (
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 
@@ -40,11 +41,11 @@ func IsBridgeNetwork(ifaceName string) bool {
 		return false
 	}
 	if strings.ToLower(l.Type()) == "bridge" {
-		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", ifaceName))
+		slog.Debug(fmt.Sprintf("Interface is a bridge network: %+v", ifaceName))
 		return true
 	}
 	if _, ok := l.(*netlink.Bridge); ok {
-		logger.Log(1, fmt.Sprintf("Interface is a bridge network: %+v", ifaceName))
+		slog.Debug(fmt.Sprintf("Interface is a bridge network: %+v", ifaceName))
 		return true
 	}
 	return false
