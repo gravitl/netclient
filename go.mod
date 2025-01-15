@@ -2,6 +2,8 @@ module github.com/gravitl/netclient
 
 go 1.23
 
+replace github.com/gravitl/netmaker => ../netmaker
+
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.8
