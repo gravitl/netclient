@@ -946,6 +946,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 			ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 		}
+		ruleSpec = append(ruleSpec, "-d", rule.DstIP.String())
 		if len(rule.AllowedPorts) > 0 {
 			ruleSpec = append(ruleSpec, "--dport",
 				strings.Join(rule.AllowedPorts, ","))
