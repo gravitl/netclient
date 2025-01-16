@@ -2,7 +2,7 @@ module github.com/gravitl/netclient
 
 go 1.23
 
-replace github.com/gravitl/netmaker => ../netmaker
+replace github.com/gravitl/netmaker => github.com/gravitl/netmaker v0.30.1-0.20250115070619-e94295bcd301
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
