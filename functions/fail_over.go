@@ -149,21 +149,20 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							continue
 						}
 						// signal peer
-						if Mqclient != nil && Mqclient.IsConnectionOpen() {
-							err = SignalPeer(s)
-							if err != nil {
-								logger.Log(2, "failed to signal peer: ", err.Error())
-							} else {
-								if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
-									if cnt.(int) <= 3 {
-										cnt := cnt.(int) + 1
-										signalThrottleCache.Store(peer.HostID, cnt)
-									}
-								} else {
-									signalThrottleCache.Store(peer.HostID, 1)
-								}
 
+						err = SignalPeer(s)
+						if err != nil {
+							logger.Log(2, "failed to signal peer: ", err.Error())
+						} else {
+							if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
+								if cnt.(int) <= 3 {
+									cnt := cnt.(int) + 1
+									signalThrottleCache.Store(peer.HostID, cnt)
+								}
+							} else {
+								signalThrottleCache.Store(peer.HostID, 1)
 							}
+
 						}
 
 					}
@@ -244,6 +243,37 @@ func getPeerInfo(node config.Node) (models.PeerMap, error) {
 	return response.PeerIDs, nil
 }
 
+func signalFallBack(serverName, nodeID, peerID string) error {
+	server := config.GetServer(serverName)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	host := config.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         fmt.Sprintf("/api/v1/node/%s/register_ack/peer/%s", nodeID, peerID),
+		Method:        http.MethodPost,
+		Data:          []byte{},
+		Authorization: "Bearer " + token,
+		ErrorResponse: models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Debug("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+		}
+		return err
+	}
+	return nil
+}
+
 // failOverMe - signals the server to failOver ME
 func failOverMe(serverName, nodeID, peernodeID string) error {
 	server := config.GetServer(serverName)
@@ -278,7 +308,10 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 
 // SignalPeer - signals the peer with host's turn relay endpoint
 func SignalPeer(signal models.Signal) error {
-	return publishPeerSignal(config.CurrServer, signal)
+	if Mqclient != nil && Mqclient.IsConnectionOpen() {
+		return publishPeerSignal(config.CurrServer, signal)
+	}
+	return signalFallBack(signal.Server, signal.FromNodeID, signal.ToNodeID)
 }
 
 // isPeerConnected - get peer connection status by checking last handshake time
