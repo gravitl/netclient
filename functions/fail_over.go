@@ -308,9 +308,9 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 
 // SignalPeer - signals the peer with host's turn relay endpoint
 func SignalPeer(signal models.Signal) error {
-	if Mqclient != nil && Mqclient.IsConnectionOpen() {
-		return publishPeerSignal(config.CurrServer, signal)
-	}
+	// if Mqclient != nil && Mqclient.IsConnectionOpen() {
+	// 	return publishPeerSignal(config.CurrServer, signal)
+	// }
 	return signalFallBack(signal.Server, signal.FromNodeID, signal.ToNodeID)
 }
 
