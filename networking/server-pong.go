@@ -42,16 +42,17 @@ func InitialiseIfaceDetection(ctx context.Context, wg *sync.WaitGroup) {
 	if err != nil {
 		return
 	}
+	port := config.GetServer(config.CurrServer).MetricsPort
 	for _, iface := range ifaces {
 		if iface.Address.IP == nil {
 			continue
 		}
 		if iface.Address.IP.To4() != nil {
 			wg.Add(1)
-			go startTcpServer(ctx, wg, iface.Address.IP.String(), config.Netclient().ListenPort, 4)
+			go startTcpServer(ctx, wg, iface.Address.IP.String(), port, 4)
 		} else {
 			wg.Add(1)
-			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), config.Netclient().ListenPort, 6)
+			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), port, 6)
 		}
 	}
 }
