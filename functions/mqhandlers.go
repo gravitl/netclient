@@ -477,6 +477,10 @@ func resetInterfaceFunc() {
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
 	currentCidrs := getAllAllowedIPs(peers[:])
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for idx := range peers {
 		peerPubKey := peers[idx].PublicKey.String()
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
@@ -516,7 +520,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 							peerPubKey,
 							peerInfo.ListenPort,
 						)
-					}(peerIP.String(), peerPubKey, peerInfo.ListenPort)
+					}(peerIP.String(), peerPubKey, metricPort)
 
 				}
 			}

@@ -90,6 +90,10 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
 	peerConnTicker = time.NewTicker(peerConnectionCheckInterval)
 	defer peerConnTicker.Stop()
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -128,7 +132,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if err != nil || connected {
 							continue
 						}
-						connected, _ = metrics.PeerConnStatus(peer.Address, peer.ListenPort, 2)
+						connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, 2)
 						if connected {
 							// peer is connected,so continue
 							continue
