@@ -522,8 +522,9 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 							peerIP,
 							peerPubKey,
 							listenPort,
+							metricPort,
 						)
-					}(peerIP.String(), peerPubKey, metricPort)
+					}(peerIP.String(), peerPubKey, peerInfo.ListenPort)
 
 				}
 			}
