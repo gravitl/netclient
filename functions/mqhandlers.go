@@ -208,6 +208,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
+	if peerUpdate.MetricsPort != server.MetricsPort {
+		daemon.Restart()
+	}
 
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -518,7 +521,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 						networking.FindBestEndpoint(
 							peerIP,
 							peerPubKey,
-							peerInfo.ListenPort,
+							listenPort,
 						)
 					}(peerIP.String(), peerPubKey, metricPort)
 
