@@ -145,6 +145,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		slog.Warn("error reading netclient config file", "error", err)
 	}
+
 	config.UpdateNetclient(*config.Netclient())
 	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
@@ -154,7 +155,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var err error
 	config.FwClose, err = firewall.Init()
 	if err != nil {
-		logger.Log(0, "failed to intialize firewall: ", err.Error())
+		slog.Info("failed to intialize firewall: ", "error", err.Error())
 	}
 	updateConfig := false
 

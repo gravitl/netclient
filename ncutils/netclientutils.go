@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -694,4 +695,29 @@ func InterfaceExists(ifaceName string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func SetVerbosity(logLevel int) {
+	var level slog.Level
+	switch logLevel {
+
+	case 0:
+		level = slog.LevelError
+	case 1:
+		level = slog.LevelInfo
+	case 2:
+		level = slog.LevelWarn
+	case 3:
+		level = slog.LevelDebug
+
+	default:
+		level = slog.LevelError
+	}
+	// Create the logger with the chosen level
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
 }

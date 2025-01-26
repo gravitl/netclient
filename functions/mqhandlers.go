@@ -209,6 +209,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 	}
 	if peerUpdate.MetricsPort != server.MetricsPort {
+		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
 		daemon.Restart()
 	}
 
@@ -701,7 +702,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-
+	if pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
+		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		daemon.Restart()
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
