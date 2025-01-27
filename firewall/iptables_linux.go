@@ -265,7 +265,17 @@ func (i *iptablesManager) CreateChains() error {
 }
 
 func (i *iptablesManager) addJumpRules() {
-
+	// add metrics rule
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		port := server.MetricsPort
+		filterNmJumpRules = append(filterNmJumpRules, ruleInfo{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-p", "tcp", "--dport", fmt.Sprint(port), "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: iptableINChain,
+		})
+	}
 	for _, rule := range filterNmJumpRules {
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
 		if err != nil {
