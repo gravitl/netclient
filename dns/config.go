@@ -31,7 +31,10 @@ var dnsJsonMutex = sync.Mutex{}
 func syncDNSJsonFile() error {
 	dnsJsonMutex.Lock()
 	defer dnsJsonMutex.Unlock()
-
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return nil
+	}
 	//if dns.json existed, delete it at first
 	_, err := os.Stat(dnsConfigPath)
 	if err == nil {
@@ -49,7 +52,7 @@ func syncDNSJsonFile() error {
 		dnsConfig.DNSSearch = "."
 	}
 
-	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	defaultDomain := server.DefaultDomain
 	if defaultDomain != "" {
 		dnsConfig.DefaultDomain = defaultDomain
 	}
