@@ -288,6 +288,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
+	if server.IsPro {
+		go func() {
+			time.Sleep(time.Second * 15)
+			callPublishMetrics(true)
+		}()
+	}
+
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
