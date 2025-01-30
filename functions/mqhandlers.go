@@ -363,6 +363,17 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
+	case models.ForceUpgrade:
+		clearRetainedMsg(client, msg.Topic())
+		slog.Info("force upgrading client to server's version", "version", server.Version)
+		upgMutex.Lock()
+		if err := UseVersion(server.Version, false); err != nil {
+			slog.Error("error upgrading client to server's version", "error", err)
+		} else {
+			slog.Info("upgraded client to server's version, restarting", "version", server.Version)
+			daemon.HardRestart()
+		}
+		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
