@@ -9,6 +9,8 @@ import (
 
 // SetEgressRoutes - sets the egress route for the gateway
 func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) error {
+	fwMutex.Lock()
+	defer fwMutex.Unlock()
 	if fwCrtl == nil {
 		return errors.New("firewall is not initialized yet")
 	}

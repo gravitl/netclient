@@ -7,6 +7,8 @@ import (
 )
 
 func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
+	fwMutex.Lock()
+	defer fwMutex.Unlock()
 	if fwCrtl == nil {
 		return
 	}
