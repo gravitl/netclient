@@ -146,17 +146,17 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 }
 
 func (i *iptablesManager) ChangeACLTarget(target string) {
-	fmt.Println("===> ACL TARGET ", target)
+
 	ruleSpec := aclInChainDropRule.rule
 	table := aclInChainDropRule.table
 	chain := aclInChainDropRule.chain
 	ruleSpec[len(ruleSpec)-1] = target
 	ok4, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
-	ok6, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
+	ok6, _ := i.ipv6Client.Exists(table, chain, ruleSpec...)
 	if ok4 && ok6 {
 		return
 	}
-	fmt.Println("===>CHANGING ACL TARGET ", target)
+	slog.Debug("setting acl input chain target to", "target", target)
 	if target == targetAccept {
 
 		// remove any DROP rule
@@ -185,38 +185,9 @@ func (i *iptablesManager) ForwardRule() error {
 	defer i.mux.Unlock()
 	logger.Log(0, "adding forwarding rule")
 
-	iptablesClient := i.ipv4Client
 	// Set the policy To accept on forward chain
-	iptablesClient.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
-
-	// ruleSpec := []string{"-i", "netmaker", "-j", aclInputRulesChain}
-	// ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-	// ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	// if err == nil && !ok {
-	// 	if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-	// 	}
-	// }
-	// ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	// if err == nil && !ok {
-	// 	if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-	// 	}
-	// }
-	// ruleSpec := []string{"-o", "netmaker", "-j", aclOutputRulesChain}
-	// ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-	// ok, err := i.ipv4Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	// if err == nil && !ok {
-	// 	if err := i.ipv4Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-	// 	}
-	// }
-	// ok, err = i.ipv6Client.Exists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	// if err == nil && !ok {
-	// 	if err := i.ipv6Client.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...); err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v Err: %v", ruleSpec, err.Error()))
-	// 	}
-	// }
+	i.ipv4Client.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
+	i.ipv6Client.ChangePolicy(defaultIpTable, iptableFWDChain, "ACCEPT")
 	return nil
 }
 
@@ -247,13 +218,6 @@ func (i *iptablesManager) CleanRoutingRules(server, ruleTableName string) {
 func (i *iptablesManager) CreateChains() error {
 	i.mux.Lock()
 	defer i.mux.Unlock()
-	// remove jump rules
-	i.removeJumpRules()
-	i.cleanup(defaultIpTable, netmakerFilterChain)
-	i.cleanup(defaultNatTable, netmakerNatChain)
-	i.clearNetmakerRules(defaultIpTable, iptableINChain)
-	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
-	//errMSGFormat := "iptables: failed creating %s chain %s,error: %v"
 
 	err := createChain(i.ipv4Client, defaultIpTable, netmakerFilterChain)
 	if err != nil {
@@ -327,23 +291,11 @@ func (i *iptablesManager) addJumpRules() {
 
 }
 
-// checks if rule has been added by netmaker
-func addedByNetmaker(ruleString string) bool {
-	rule := strings.Fields(ruleString)
-	for i, flag := range rule {
-		if flag == "--comment" && len(rule)-1 > i {
-			if rule[i+1] == netmakerSignature {
-				return true
-			}
-		}
-	}
-	return false
-}
 func (i *iptablesManager) removeJumpRules() {
 	rules, err := i.ipv4Client.List(defaultIpTable, iptableFWDChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv4Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
@@ -354,8 +306,31 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err = i.ipv6Client.List(defaultIpTable, iptableFWDChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv6Client.Delete(defaultIpTable, iptableFWDChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
+				}
+			}
+		}
+	}
+
+	rules, err = i.ipv4Client.List(defaultIpTable, iptableINChain)
+	if err == nil {
+		for _, rule := range rules {
+			if containsComment(rule, netmakerSignature) {
+				err := i.ipv4Client.Delete(defaultIpTable, iptableINChain, strings.Fields(rule)[2:]...)
+				if err != nil {
+					logger.Log(1, "failed to delete rule: ", rule, err.Error())
+				}
+			}
+		}
+	}
+	rules, err = i.ipv6Client.List(defaultIpTable, iptableINChain)
+	if err == nil {
+		for _, rule := range rules {
+			if containsComment(rule, netmakerSignature) {
+				err := i.ipv6Client.Delete(defaultIpTable, iptableINChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
 				}
@@ -365,7 +340,7 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err = i.ipv4Client.List(defaultNatTable, nattablePRTChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv4Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
@@ -376,7 +351,7 @@ func (i *iptablesManager) removeJumpRules() {
 	rules, err = i.ipv6Client.List(defaultNatTable, nattablePRTChain)
 	if err == nil {
 		for _, rule := range rules {
-			if addedByNetmaker(rule) {
+			if containsComment(rule, netmakerSignature) {
 				err := i.ipv6Client.Delete(defaultNatTable, nattablePRTChain, strings.Fields(rule)[2:]...)
 				if err != nil {
 					logger.Log(1, "failed to delete rule: ", rule, err.Error())
@@ -530,6 +505,9 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", rule.AllowedProtocol.String())
 				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
+				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -637,6 +615,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
+					if strings.Contains(port, "-") {
+						port = strings.ReplaceAll(port, "-", ":")
+					}
 					ruleSpec = append(ruleSpec, "--dport", port)
 					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -687,6 +668,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
+					if strings.Contains(port, "-") {
+						port = strings.ReplaceAll(port, "-", ":")
+					}
 					ruleSpec = append(ruleSpec, "--dport", port)
 					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -711,7 +695,7 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 				} else {
 					rules = append(rules, ruleInfo{
-						isIpv4: true,
+						isIpv4: false,
 						table:  defaultIpTable,
 						chain:  aclInputRulesChain,
 						rule:   ruleSpec,
@@ -721,7 +705,6 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			}
 		}
 		if len(rules) > 0 {
-			fmt.Printf("====> IN ADDACLRULES: %+v\n", rules)
 			rCfg := rulesCfg{
 				rulesMap: map[string][]ruleInfo{
 					aclRule.ID: rules,
@@ -731,7 +714,6 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 			ruleTable[aclRule.ID] = rCfg
 		}
 	}
-	fmt.Printf("===> AFTER ADDACLRULES: %+v\n", ruleTable)
 }
 
 func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
@@ -762,6 +744,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
 				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
@@ -812,6 +797,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
+				}
 				ruleSpec = append(ruleSpec, "--dport", port)
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -833,9 +821,10 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 			} else {
 				rules = append(rules, ruleInfo{
-					table: defaultIpTable,
-					chain: aclInputRulesChain,
-					rule:  ruleSpec,
+					isIpv4: false,
+					table:  defaultIpTable,
+					chain:  aclInputRulesChain,
+					rule:   ruleSpec,
 				})
 			}
 		}

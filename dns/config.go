@@ -2,9 +2,7 @@ package dns
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
-	"sort"
 	"sync"
 
 	"github.com/gravitl/netclient/config"
@@ -23,9 +21,8 @@ var (
 )
 
 type DNSConfig struct {
-	Domains       []string `json:"domains"`
-	DefaultDomain string   `json:"default_domain"`
-	DNSSearch     string   `json:"dns_search"`
+	DefaultDomain string `json:"default_domain"`
+	DNSSearch     string `json:"dns_search"`
 }
 
 var dnsJsonMutex = sync.Mutex{}
@@ -34,7 +31,10 @@ var dnsJsonMutex = sync.Mutex{}
 func syncDNSJsonFile() error {
 	dnsJsonMutex.Lock()
 	defer dnsJsonMutex.Unlock()
-
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return nil
+	}
 	//if dns.json existed, delete it at first
 	_, err := os.Stat(dnsConfigPath)
 	if err == nil {
@@ -52,23 +52,10 @@ func syncDNSJsonFile() error {
 		dnsConfig.DNSSearch = "."
 	}
 
-	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		slog.Error("error getting current server", "error")
-		return errors.New("error getting current server")
-	}
-
 	defaultDomain := server.DefaultDomain
 	if defaultDomain != "" {
 		dnsConfig.DefaultDomain = defaultDomain
 	}
-
-	domains := []string{}
-	for _, v := range config.GetNodes() {
-		domains = append(domains, v.Network)
-	}
-	sort.Strings(domains)
-	dnsConfig.Domains = domains
 
 	//write the DNSconfig to dns.json
 	f, err := os.OpenFile(dnsConfigPath, os.O_CREATE|os.O_WRONLY, 0700)

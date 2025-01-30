@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -247,6 +248,53 @@ func GetNetworkIPMask(networkstring string) (string, string, error) {
 	return ipstring, maskstring, err
 }
 
+// IsPublicIP indicates whether IP is public or not.
+func IsPublicIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
+		return false
+	}
+	return true
+}
+
+func GetInterfaces() ([]models.Iface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	var data = []models.Iface{}
+	var link models.Iface
+	for _, iface := range ifaces {
+		iface := iface
+		if iface.Flags&net.FlagUp == 0 || // interface down
+			iface.Flags&net.FlagLoopback != 0 || // loopback interface
+			iface.Flags&net.FlagPointToPoint != 0 || // avoid direct connections
+			iface.Name == GetInterfaceName() || strings.Contains(iface.Name, "netmaker") || // avoid netmaker
+			IsBridgeNetwork(iface.Name) || // avoid bridges
+			strings.Contains(iface.Name, "docker") {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			ip, cidr, err := net.ParseCIDR(addr.String())
+			if err != nil {
+				continue
+			}
+			if ip.IsLoopback() || // no need to send loopbacks
+				IsPublicIP(ip) { // no need to send public IPs
+				continue
+			}
+			link.Name = iface.Name
+			link.Address = *cidr
+			link.Address.IP = ip
+			data = append(data, link)
+		}
+	}
+	return data, nil
+}
+
 // GetFreePort - gets free port of machine
 func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 	if init || currListenPort == 443 {
@@ -256,24 +304,54 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 		}
 		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
 		if udpErr == nil {
-			defer udpConn.Close()
-		} else {
-			logger.Log(1, "UDP 443 ERR: ", udpErr.Error())
-		}
-		tcpAddr := net.TCPAddr{
-			Port: 443,
-		}
-		tcpConn, tcpErr := net.ListenTCP("tcp", &tcpAddr)
-		if tcpErr == nil {
-			defer tcpConn.Close()
-		} else {
-			logger.Log(1, "TCP 443 ERR: ", tcpErr.Error())
-		}
-		if tcpErr == nil && udpErr == nil {
-			return 443, nil
+			udpConn.Close()
+			var tcpErr error
+			var tcpConn *net.TCPListener
+			ifaces, err := GetInterfaces()
+			if err == nil {
+				for _, iface := range ifaces {
+					if iface.Address.IP == nil {
+						continue
+					}
+					if iface.Address.IP.To4() != nil {
+						tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", iface.Address.IP.String(), 443))
+						if err != nil {
+							logger.Log(0, "failed to resolve iface detection address -", err.Error())
+							tcpErr = err
+							break
+						}
+						tcpConn, tcpErr = net.ListenTCP("tcp4", tcpAddr)
+						if tcpErr == nil {
+							tcpConn.Close()
+						} else {
+							slog.Debug("Tcp4 listen err ", "error", tcpErr.Error())
+							break
+						}
+					} else {
+
+						tcpAddr, err := net.ResolveTCPAddr("tcp6", fmt.Sprintf("[%s]:%d",
+							fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), 443))
+						if err != nil {
+							logger.Log(0, "failed to resolve iface detection address -", err.Error())
+							tcpErr = err
+							break
+						}
+						tcpConn, tcpErr = net.ListenTCP("tcp6", tcpAddr)
+						if tcpErr == nil {
+							tcpConn.Close()
+						} else {
+							slog.Debug("Tcp6 listen err ", "error", tcpErr.Error())
+							break
+						}
+					}
+
+				}
+				if tcpErr == nil {
+					return 443, nil
+				}
+			}
 		}
 	}
-
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
 	}

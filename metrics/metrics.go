@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/exp/slog"
-
+	//lint:ignore SA1019 Reason: will be switching to a alternative package
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -78,7 +78,6 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 				newMetric.Uptime = 1 * int64(mi)
 			}
 		}
-		fmt.Printf("=====> %+v\n", newMetric)
 		newMetric.TotalTime = 1 * int64(mi)
 		metrics.Connectivity[id] = newMetric
 	}
