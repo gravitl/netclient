@@ -34,10 +34,6 @@ func GetDNSServerInstance() *DNSServer {
 func (dnsServer *DNSServer) Start() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return
-	}
 	if dnsServer.AddrStr != "" {
 		return
 	}
