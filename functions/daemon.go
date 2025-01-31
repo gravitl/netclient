@@ -362,8 +362,14 @@ func setupMQTT(server *config.Server) error {
 			setDNSSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
+		time.Sleep(time.Second * 5)
 		checkin()
-		Pull(false)
+		response, resetInterface, replacePeers, err := Pull(false)
+		if err != nil {
+			slog.Error("pull failed", "error", err)
+		} else {
+			mqFallbackPull(response, resetInterface, replacePeers)
+		}
 	})
 	opts.SetOrderMatters(false)
 	opts.SetResumeSubs(true)
