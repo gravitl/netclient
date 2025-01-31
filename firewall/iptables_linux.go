@@ -273,7 +273,7 @@ func (i *iptablesManager) addJumpRules() {
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-p", "tcp", "--dport", fmt.Sprint(port), "-m", "comment",
 				"--comment", netmakerSignature, "-j", "ACCEPT"},
 			table: defaultIpTable,
-			chain: iptableINChain,
+			chain: aclInputRulesChain,
 		})
 	}
 	for _, rule := range filterNmJumpRules {
