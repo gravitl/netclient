@@ -55,6 +55,7 @@ func (nc *NCIface) Create() error {
 		}
 		return nil
 	} else if isTunModuleLoaded() {
+		fmt.Println("CREATING USING USERSPACE WIREGUARD")
 		slog.Info("Kernel WireGuard not detected. Proceeding with userspace WireGuard for iface creation.")
 		if err := nc.createUserSpaceWG(); err != nil {
 			return err
