@@ -226,14 +226,18 @@ func callPublishMetrics(fallback bool) {
 			node := node
 			if node.Connected {
 				slog.Debug("collecting metrics for", "network", node.Network)
-				go publishMetrics(&node, fallback)
+				metricsPort := server.MetricsPort
+				if metricsPort == 0 {
+					metricsPort = 51821
+				}
+				go publishMetrics(&node, metricsPort, fallback)
 			}
 		}
 	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
-func publishMetrics(node *config.Node, fallback bool) {
+func publishMetrics(node *config.Node, metricPort int, fallback bool) {
 	server := config.GetServer(node.Server)
 	if server == nil {
 		return
@@ -263,7 +267,7 @@ func publishMetrics(node *config.Node, fallback bool) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs, metricPort)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 		return

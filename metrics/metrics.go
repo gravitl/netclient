@@ -18,7 +18,7 @@ import (
 )
 
 // Collect - collects metrics
-func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
+func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Metrics, error) {
 	mi := 15
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
@@ -48,7 +48,6 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		}
 		id := peerMap[currPeer.PublicKey.String()].ID
 		address := peerMap[currPeer.PublicKey.String()].Address
-		port := peerMap[currPeer.PublicKey.String()].ListenPort
 		isExtClient := peerMap[currPeer.PublicKey.String()].IsExtClient
 		if id == "" || address == "" {
 			logger.Log(0, "attempted to parse metrics for invalid peer from server", id, address)
@@ -64,7 +63,7 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		if isExtClient {
 			newMetric.Connected, newMetric.Latency = extPeerConnStatus(address)
 		} else {
-			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, port, 4)
+			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, metricPort, 4)
 		}
 		if newMetric.Connected {
 			newMetric.Uptime = 1 * int64(mi)

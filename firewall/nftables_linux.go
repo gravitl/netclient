@@ -790,11 +790,33 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 }
 
 func (n *nftablesManager) addJumpRules() {
+
 	for _, rule := range nfFilterJumpRules {
 		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
 	}
 	for _, rule := range nfNatJumpRules {
 		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
+	}
+	// add metrics rule
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		var portNum uint16 = uint16(server.MetricsPort)
+
+		// Convert to Little Endian bytes
+		portB := make([]byte, 2) // Size of uint16 is 2 bytes
+		binary.LittleEndian.PutUint16(portB, portNum)
+		rule := &nftables.Rule{
+			Table: filterTable,
+			Chain: &nftables.Chain{Name: aclInputRulesChain},
+			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                        // Match incoming interface
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte("netmaker\x00")},                   // Match interface name
+				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2}, // Match TCP destination port
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: portB},                                    // Port little-endian format
+				&expr.Verdict{Kind: expr.VerdictAccept},                                                  // Accept packet
+			},
+		}
+		n.conn.InsertRule(rule)
 	}
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add jump rules, Err: %s", err.Error()))

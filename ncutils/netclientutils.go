@@ -305,51 +305,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
 		if udpErr == nil {
 			udpConn.Close()
-			var tcpErr error
-			var tcpConn *net.TCPListener
-			ifaces, err := GetInterfaces()
-			if err == nil {
-				for _, iface := range ifaces {
-					if iface.Address.IP == nil {
-						continue
-					}
-					if iface.Address.IP.To4() != nil {
-						tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", iface.Address.IP.String(), 443))
-						if err != nil {
-							logger.Log(0, "failed to resolve iface detection address -", err.Error())
-							tcpErr = err
-							break
-						}
-						tcpConn, tcpErr = net.ListenTCP("tcp4", tcpAddr)
-						if tcpErr == nil {
-							tcpConn.Close()
-						} else {
-							slog.Debug("Tcp4 listen err ", "error", tcpErr.Error())
-							break
-						}
-					} else {
-
-						tcpAddr, err := net.ResolveTCPAddr("tcp6", fmt.Sprintf("[%s]:%d",
-							fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), 443))
-						if err != nil {
-							logger.Log(0, "failed to resolve iface detection address -", err.Error())
-							tcpErr = err
-							break
-						}
-						tcpConn, tcpErr = net.ListenTCP("tcp6", tcpAddr)
-						if tcpErr == nil {
-							tcpConn.Close()
-						} else {
-							slog.Debug("Tcp6 listen err ", "error", tcpErr.Error())
-							break
-						}
-					}
-
-				}
-				if tcpErr == nil {
-					return 443, nil
-				}
-			}
+			return 443, nil
 		}
 	}
 	if rangestart == 0 {
@@ -364,14 +320,6 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			continue
 		}
 		udpConn.Close()
-		tcpAddr := net.TCPAddr{
-			Port: x,
-		}
-		tcpConn, tcpErr := net.ListenTCP("tcp", &tcpAddr)
-		if tcpErr != nil {
-			continue
-		}
-		tcpConn.Close()
 		return x, nil
 	}
 	return rangestart, errors.New("no free ports")
@@ -747,4 +695,29 @@ func InterfaceExists(ifaceName string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func SetVerbosity(logLevel int) {
+	var level slog.Level
+	switch logLevel {
+
+	case 0:
+		level = slog.LevelError
+	case 1:
+		level = slog.LevelInfo
+	case 2:
+		level = slog.LevelWarn
+	case 3:
+		level = slog.LevelDebug
+
+	default:
+		level = slog.LevelError
+	}
+	// Create the logger with the chosen level
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
 }

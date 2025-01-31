@@ -19,6 +19,10 @@ func InitialiseMetricsThread(ctx context.Context, wg *sync.WaitGroup) {
 	if len(nodeMap) == 0 {
 		return
 	}
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for _, node := range nodeMap {
 		if node.Address.IP == nil && node.Address6.IP == nil {
 			continue
@@ -26,12 +30,12 @@ func InitialiseMetricsThread(ctx context.Context, wg *sync.WaitGroup) {
 		if node.Address.IP != nil {
 			addr4 := node.Address.IP.String()
 			wg.Add(1)
-			go startTcpServer(ctx, wg, addr4, config.Netclient().ListenPort, 4)
+			go startTcpServer(ctx, wg, addr4, metricPort, 4)
 		}
 		if node.Address6.IP != nil {
 			addr6 := node.Address6.IP.String()
 			wg.Add(1)
-			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", addr6, ncutils.GetInterfaceName()), config.Netclient().ListenPort, 6)
+			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", addr6, ncutils.GetInterfaceName()), metricPort, 6)
 		}
 
 	}
@@ -42,16 +46,20 @@ func InitialiseIfaceDetection(ctx context.Context, wg *sync.WaitGroup) {
 	if err != nil {
 		return
 	}
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for _, iface := range ifaces {
 		if iface.Address.IP == nil {
 			continue
 		}
 		if iface.Address.IP.To4() != nil {
 			wg.Add(1)
-			go startTcpServer(ctx, wg, iface.Address.IP.String(), config.Netclient().ListenPort, 4)
+			go startTcpServer(ctx, wg, iface.Address.IP.String(), metricPort, 4)
 		} else {
 			wg.Add(1)
-			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), config.Netclient().ListenPort, 6)
+			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), metricPort, 6)
 		}
 	}
 }
