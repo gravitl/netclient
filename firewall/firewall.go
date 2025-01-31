@@ -1,12 +1,15 @@
 package firewall
 
 import (
+	"sync"
+
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
 var (
-	fwCrtl firewallController
+	fwCrtl  firewallController
+	fwMutex = &sync.Mutex{}
 )
 
 type rulesCfg struct {

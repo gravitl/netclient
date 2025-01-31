@@ -9,6 +9,8 @@ import (
 )
 
 func ProcessIngressUpdate(server string, ingressUpdate map[string]models.IngressInfo) error {
+	fwMutex.Lock()
+	defer fwMutex.Unlock()
 	if fwCrtl == nil {
 		return errors.New("firewall is not initialized yet")
 	}
