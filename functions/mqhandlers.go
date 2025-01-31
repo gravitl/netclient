@@ -44,7 +44,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
+	if server == nil {
+		return
+	}
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
 		slog.Warn("error decrypting message", "warn", err)
@@ -292,6 +295,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
+	if server.IsPro {
+		go func() {
+			time.Sleep(time.Second * 15)
+			callPublishMetrics(true)
+		}()
+	}
+
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -354,6 +364,17 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("error upgrading client to server's version", "error", err)
 		} else {
 			slog.Info("upgraded client to server's version, restarting", "version", sv)
+			daemon.HardRestart()
+		}
+		upgMutex.Unlock()
+	case models.ForceUpgrade:
+		clearRetainedMsg(client, msg.Topic())
+		slog.Info("force upgrading client to server's version", "version", server.Version)
+		upgMutex.Lock()
+		if err := UseVersion(server.Version, false); err != nil {
+			slog.Error("error upgrading client to server's version", "error", err)
+		} else {
+			slog.Info("upgraded client to server's version, restarting", "version", server.Version)
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
