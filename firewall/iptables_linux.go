@@ -296,11 +296,11 @@ func (i *iptablesManager) addJumpRules() {
 			table: defaultIpTable,
 			chain: aclInputRulesChain,
 		}
-		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
+		err := i.ipv4Client.Insert(rule.table, rule.chain, rule.rule...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
-		err = i.ipv6Client.Append(rule.table, rule.chain, rule.rule...)
+		err = i.ipv6Client.Insert(rule.table, rule.chain, rule.rule...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
