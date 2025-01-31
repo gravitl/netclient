@@ -265,17 +265,7 @@ func (i *iptablesManager) CreateChains() error {
 }
 
 func (i *iptablesManager) addJumpRules() {
-	// add metrics rule
-	server := config.GetServer(config.CurrServer)
-	if server != nil {
-		port := server.MetricsPort
-		filterNmJumpRules = append(filterNmJumpRules, ruleInfo{
-			rule: []string{"-i", ncutils.GetInterfaceName(), "-p", "tcp", "--dport", fmt.Sprint(port), "-m", "comment",
-				"--comment", netmakerSignature, "-j", "ACCEPT"},
-			table: defaultIpTable,
-			chain: aclInputRulesChain,
-		})
-	}
+
 	for _, rule := range filterNmJumpRules {
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
 		if err != nil {
@@ -287,6 +277,25 @@ func (i *iptablesManager) addJumpRules() {
 		}
 	}
 	for _, rule := range natNmJumpRules {
+		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		}
+		err = i.ipv6Client.Append(rule.table, rule.chain, rule.rule...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		}
+	}
+	// add metrics rule
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		port := server.MetricsPort
+		rule := ruleInfo{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-p", "tcp", "--dport", fmt.Sprint(port), "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: aclInputRulesChain,
+		}
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
