@@ -363,6 +363,7 @@ func setupMQTT(server *config.Server) error {
 		}
 		setHostSubscription(client, server.Name)
 		checkin()
+		Pull(false)
 	})
 	opts.SetOrderMatters(false)
 	opts.SetResumeSubs(true)
