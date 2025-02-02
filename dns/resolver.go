@@ -114,7 +114,7 @@ func (d *DNSResolver) RegisterA(record dnsRecord) error {
 
 	d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)] = r
 
-	slog.Info("registering A record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
+	//slog.Debug("registering A record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
 
 	return nil
 }
@@ -130,7 +130,7 @@ func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 
 	d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)] = r
 
-	slog.Info("registering AAAA record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
+	//slog.Debug("registering AAAA record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
 
 	return nil
 }
