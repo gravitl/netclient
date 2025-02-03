@@ -653,7 +653,7 @@ func UpdateKeys() error {
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
 	defer func() {
 		utils.TraceCaller()
-		slog.Info("holePunchWgPort", "proto", proto, "PortToStun", portToStun, "PubIP", pubIP.String(), "PubPort", pubPort, "NatType", natType)
+		fmt.Println("holePunchWgPort", "proto", proto, "PortToStun", portToStun, "PubIP", pubIP.String(), "PubPort", pubPort, "NatType", natType)
 	}()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
