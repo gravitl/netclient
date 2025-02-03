@@ -81,6 +81,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
 				restart := false
 				ip4, _ := GetPublicIP(4)
+				ip6, _ := GetPublicIP(6)
+				if ip4 == nil && ip6 == nil {
+					continue
+				}
 				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
 					fmt.Println("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
@@ -90,7 +94,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					config.HostPublicIP = nil
 					restart = true
 				}
-				ip6, _ := GetPublicIP(6)
+
 				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					fmt.Println("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
