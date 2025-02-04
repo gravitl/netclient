@@ -250,7 +250,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
-	if peerUpdate.EndpointDetection {
+	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	} else {
 
