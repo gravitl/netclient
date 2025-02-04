@@ -81,22 +81,26 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
 				restart := false
 				ip4, _ := GetPublicIP(4)
+				ip6, _ := GetPublicIP(6)
+				if ip4 == nil && ip6 == nil {
+					continue
+				}
 				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
-					slog.Debug("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
 					restart = true
 				} else if ip4 == nil && config.HostPublicIP != nil {
-					slog.Debug("IP CHECKIN", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = nil
 					restart = true
 				}
-				ip6, _ := GetPublicIP(6)
+
 				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
-					slog.Debug("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
 					restart = true
 				} else if ip6 == nil && config.HostPublicIP6 != nil {
-					slog.Debug("IP CHECKIN", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = nil
 					restart = true
 				}
@@ -226,14 +230,18 @@ func callPublishMetrics(fallback bool) {
 			node := node
 			if node.Connected {
 				slog.Debug("collecting metrics for", "network", node.Network)
-				go publishMetrics(&node, fallback)
+				metricsPort := server.MetricsPort
+				if metricsPort == 0 {
+					metricsPort = 51821
+				}
+				go publishMetrics(&node, metricsPort, fallback)
 			}
 		}
 	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
-func publishMetrics(node *config.Node, fallback bool) {
+func publishMetrics(node *config.Node, metricPort int, fallback bool) {
 	server := config.GetServer(node.Server)
 	if server == nil {
 		return
@@ -263,7 +271,7 @@ func publishMetrics(node *config.Node, fallback bool) {
 	}
 	nodeGET := response
 
-	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs, metricPort)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 		return

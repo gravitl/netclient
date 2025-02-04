@@ -211,6 +211,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
+	if peerUpdate.MetricsPort != server.MetricsPort {
+		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
+		daemon.Restart()
+	}
 
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -498,6 +502,10 @@ func resetInterfaceFunc() {
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
 	currentCidrs := getAllAllowedIPs(peers[:])
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for idx := range peers {
 		peerPubKey := peers[idx].PublicKey.String()
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
@@ -535,7 +543,8 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 						networking.FindBestEndpoint(
 							peerIP,
 							peerPubKey,
-							peerInfo.ListenPort,
+							listenPort,
+							metricPort,
 						)
 					}(peerIP.String(), peerPubKey, peerInfo.ListenPort)
 
@@ -714,7 +723,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-
+	if pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
+		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		daemon.Restart()
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {

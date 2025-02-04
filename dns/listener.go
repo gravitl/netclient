@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -32,6 +33,9 @@ func GetDNSServerInstance() *DNSServer {
 
 // Start the DNS listener
 func (dnsServer *DNSServer) Start() {
+	if runtime.GOOS != "linux" {
+		return
+	}
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
 	if dnsServer.AddrStr != "" {
@@ -103,6 +107,9 @@ func (dnsServer *DNSServer) Start() {
 
 // Stop the DNS listener
 func (dnsServer *DNSServer) Stop() {
+	if runtime.GOOS != "linux" {
+		return
+	}
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
 	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {

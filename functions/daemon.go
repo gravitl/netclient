@@ -31,6 +31,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -145,6 +146,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		slog.Warn("error reading netclient config file", "error", err)
 	}
+
 	config.UpdateNetclient(*config.Netclient())
 	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
@@ -154,7 +156,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var err error
 	config.FwClose, err = firewall.Init()
 	if err != nil {
-		logger.Log(0, "failed to intialize firewall: ", err.Error())
+		slog.Info("failed to intialize firewall: ", "error", err.Error())
 	}
 	updateConfig := false
 
@@ -360,7 +362,14 @@ func setupMQTT(server *config.Server) error {
 			setDNSSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
+		time.Sleep(time.Second * 5)
 		checkin()
+		response, resetInterface, replacePeers, err := Pull(false)
+		if err != nil {
+			slog.Error("pull failed", "error", err)
+		} else {
+			mqFallbackPull(response, resetInterface, replacePeers)
+		}
 	})
 	opts.SetOrderMatters(false)
 	opts.SetResumeSubs(true)
@@ -642,6 +651,10 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
+	defer func() {
+		utils.TraceCaller()
+		slog.Debug("holePunchWgPort", "proto", proto, "PortToStun", portToStun, "PubIP", pubIP.String(), "PubPort", pubPort, "NatType", natType)
+	}()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
