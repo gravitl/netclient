@@ -80,8 +80,8 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
 			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
 				restart := false
-				ip4, _ := GetPublicIP(4)
-				ip6, _ := GetPublicIP(6)
+				ip4, _, _ := holePunchWgPort(4, 0)
+				ip6, _, _ := holePunchWgPort(6, 0)
 				if ip4 == nil && ip6 == nil {
 					continue
 				}
