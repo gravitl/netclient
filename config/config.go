@@ -136,15 +136,15 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
 	// don't update any public ports coming from server,overwrite the values
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
-	// if !host.IsStatic {
-	// 	// don't update nil endpoint
-	// 	if host.EndpointIP == nil {
-	// 		host.EndpointIP = hostCfg.EndpointIP
-	// 	}
-	// 	if host.EndpointIPv6 == nil {
-	// 		host.EndpointIPv6 = hostCfg.EndpointIPv6
-	// 	}
-	// }
+	if !host.IsStatic {
+		// don't update nil endpoint
+		if host.EndpointIP == nil {
+			host.EndpointIP = hostCfg.EndpointIP
+		}
+		if host.EndpointIPv6 == nil {
+			host.EndpointIPv6 = hostCfg.EndpointIPv6
+		}
+	}
 
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
