@@ -85,7 +85,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				if ip4 == nil && ip6 == nil {
 					continue
 				}
-				if ip4 != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
+				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
 					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
 					restart = true
@@ -95,7 +95,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					restart = true
 				}
 
-				if ip6 != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
 					restart = true
