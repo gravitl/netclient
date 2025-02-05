@@ -106,7 +106,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				}
 				if restart {
 					if err := UpdateHostSettings(true); err != nil {
-						slog.Error("failed to update host settings", err.Error())
+						slog.Warn("failed to update host settings", err.Error())
 					}
 					logger.Log(0, "restarting netclient due to network changes...")
 					if ip4 != nil {
