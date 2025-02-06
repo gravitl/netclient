@@ -110,14 +110,14 @@ func extPeerConnStatus(address string) (bool, int64) {
 	slog.Debug("[metrics] checking external peer connectivity", "address", address)
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
-		slog.Warn("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
+		slog.Debug("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
 	} else {
 		pinger.SetPrivileged(true)
 		pinger.Count = 3
 		pinger.Timeout = time.Second * 2
 		err = pinger.Run()
 		if err != nil {
-			slog.Error("failed ping for metrics on peer address", "address", address, "err", err)
+			slog.Debug("failed ping for metrics on peer address", "address", address, "err", err)
 		} else {
 			pingStats := pinger.Statistics()
 			if pingStats.PacketsRecv > 0 {
