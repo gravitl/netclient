@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -217,29 +216,8 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 	}
 	return nil
 }
-func TraceCaller() {
-	// Skip 1 frame to get the caller of this function
-	pc, file, line, ok := runtime.Caller(2)
-	if !ok {
-		slog.Debug("Unable to get caller information")
-		return
-	}
-	tracePc, _, _, ok := runtime.Caller(1)
-	if !ok {
-		slog.Debug("Unable to get caller information")
-		return
-	}
-	traceFuncName := runtime.FuncForPC(tracePc).Name()
-	// Get function name from the program counter (pc)
-	funcName := runtime.FuncForPC(pc).Name()
-
-	// Print trace details
-	slog.Debug("## TRACE -> Called from function: ", "tracing-func", traceFuncName, "caller-func-name", funcName)
-	slog.Debug("## TRACE -> Caller File Info", "file", file, "line-no", line)
-}
 
 func callPublishMetrics(fallback bool) {
-	TraceCaller()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		slog.Warn("server config is nil")

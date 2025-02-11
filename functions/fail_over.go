@@ -245,7 +245,7 @@ func getPeerInfo() (models.HostPeerInfo, error) {
 			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
 			return models.HostPeerInfo{}, err
 		}
-		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		slog.Error("failed to read peer info resp", "error", err.Error())
 		return models.HostPeerInfo{}, err
 	}
 
