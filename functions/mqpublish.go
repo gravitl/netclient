@@ -247,27 +247,8 @@ func callPublishMetrics(fallback bool) {
 	}
 
 	if server.IsPro {
-		token, err := auth.Authenticate(server, config.Netclient())
+		response, err := getPeerInfo()
 		if err != nil {
-			logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
-			return
-		}
-		url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
-		endpoint := httpclient.JSONEndpoint[models.HostPeerInfo, models.ErrorResponse]{
-			URL:           url,
-			Method:        http.MethodGet,
-			Authorization: "Bearer " + token,
-			Data:          nil,
-			Response:      models.HostPeerInfo{},
-			ErrorResponse: models.ErrorResponse{},
-		}
-		response, errData, err := endpoint.GetJSON(models.HostPeerInfo{}, models.ErrorResponse{})
-		if err != nil {
-			if errors.Is(err, httpclient.ErrStatus) {
-				logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-				return
-			}
-			logger.Log(1, "failed to read from server during metrics publish", err.Error())
 			return
 		}
 		serverNodes := config.GetNodes()

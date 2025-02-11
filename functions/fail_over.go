@@ -105,6 +105,11 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				if len(nodes) == 0 {
 					return
 				}
+				peerInfo, err := getPeerInfo()
+				if err != nil {
+					slog.Error("failed to get peer Info", "error", err)
+					return
+				}
 				for _, node := range nodes {
 					if node.Server != config.CurrServer {
 						continue
@@ -112,9 +117,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if !failOverExists(node) {
 						continue
 					}
-					peers, err := getPeerInfo(node)
-					if err != nil {
-						slog.Error("failed to get peer Info", "error", err)
+					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
+					if !ok {
 						continue
 					}
 					for pubKey, peer := range peers {
@@ -216,36 +220,36 @@ func failOverExists(node config.Node) bool {
 	return true
 }
 
-func getPeerInfo(node config.Node) (models.PeerMap, error) {
-	server := config.GetServer(node.Server)
+func getPeerInfo() (models.HostPeerInfo, error) {
+	server := config.GetServer(config.CurrServer)
 	if server == nil {
-		return nil, errors.New("server is nil")
+		return models.HostPeerInfo{}, errors.New("server is nil")
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
-		return nil, err
+		return models.HostPeerInfo{}, err
 	}
-	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
-	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
+	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
+	endpoint := httpclient.JSONEndpoint[models.HostPeerInfo, models.ErrorResponse]{
 		URL:           url,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Data:          nil,
-		Response:      models.NodeGet{},
+		Response:      models.HostPeerInfo{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(models.HostPeerInfo{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-			return nil, err
+			return models.HostPeerInfo{}, err
 		}
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
-		return nil, err
+		return models.HostPeerInfo{}, err
 	}
 
-	return response.PeerIDs, nil
+	return response, nil
 }
 
 // failOverMe - signals the server to failOver ME
