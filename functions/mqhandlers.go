@@ -150,6 +150,7 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	fmt.Println("\n <==========> ###### HOST PEER UPDATE ###### <================> \n")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(config.GetNodes()) == 0 {
@@ -432,8 +433,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		UpdateKeys()
 		writeToDisk = false
 	case models.RequestPull:
-		clearRetainedMsg(client, msg.Topic())
-		Pull(true)
+		clearMsg = true
+		restartDaemon = true
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())

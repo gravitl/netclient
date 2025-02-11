@@ -20,6 +20,7 @@ var pMutex = sync.Mutex{} // used to mutex functions for pull
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(restart bool) (models.HostPull, bool, bool, error) {
+	TraceCaller()
 	pMutex.Lock()
 	defer pMutex.Unlock()
 	resetInterface := false
