@@ -14,7 +14,7 @@ require (
 	github.com/google/nftables v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.30.1-0.20250211120216-adc90e3e8f1e
+	github.com/gravitl/netmaker v0.30.1-0.20250211201553-925bd16dca77
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0

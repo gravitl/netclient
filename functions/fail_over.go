@@ -2,6 +2,7 @@ package functions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -221,6 +222,7 @@ func failOverExists(node config.Node) bool {
 }
 
 func getPeerInfo() (models.HostPeerInfo, error) {
+
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return models.HostPeerInfo{}, errors.New("server is nil")
@@ -231,15 +233,15 @@ func getPeerInfo() (models.HostPeerInfo, error) {
 		return models.HostPeerInfo{}, err
 	}
 	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
-	endpoint := httpclient.JSONEndpoint[models.HostPeerInfo, models.ErrorResponse]{
+	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
 		URL:           url,
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Data:          nil,
-		Response:      models.HostPeerInfo{},
+		Response:      models.SuccessResponse{},
 		ErrorResponse: models.ErrorResponse{},
 	}
-	response, errData, err := endpoint.GetJSON(models.HostPeerInfo{}, models.ErrorResponse{})
+	response, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
 			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
@@ -248,8 +250,13 @@ func getPeerInfo() (models.HostPeerInfo, error) {
 		slog.Error("failed to read peer info resp", "error", err.Error())
 		return models.HostPeerInfo{}, err
 	}
-
-	return response, nil
+	peerInfo := models.HostPeerInfo{}
+	data, _ := json.Marshal(response.Response)
+	err = json.Unmarshal(data, &peerInfo)
+	if err != nil {
+		return models.HostPeerInfo{}, err
+	}
+	return peerInfo, nil
 }
 
 // failOverMe - signals the server to failOver ME
