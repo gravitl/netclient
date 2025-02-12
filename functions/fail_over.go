@@ -142,6 +142,9 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							// peer is connected,so continue
 							continue
 						}
+						if checkFailOverCtxForPeer(config.CurrServer, node.ID.String(), peer.ID) != nil {
+							continue
+						}
 						s := models.Signal{
 							Server:         config.CurrServer,
 							FromHostID:     config.Netclient().ID.String(),
@@ -257,6 +260,37 @@ func getPeerInfo() (models.HostPeerInfo, error) {
 		return models.HostPeerInfo{}, err
 	}
 	return peerInfo, nil
+}
+
+func checkFailOverCtxForPeer(serverName, nodeID, peernodeID string) error {
+	server := config.GetServer(serverName)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	host := config.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         fmt.Sprintf("/api/v1/node/%s/failover_check", nodeID),
+		Method:        http.MethodGet,
+		Data:          models.FailOverMeReq{NodeID: peernodeID},
+		Authorization: "Bearer " + token,
+		ErrorResponse: models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Debug("error asking to check failover ctx", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+		}
+		return err
+	}
+	return nil
 }
 
 // failOverMe - signals the server to failOver ME
