@@ -432,8 +432,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		UpdateKeys()
 		writeToDisk = false
 	case models.RequestPull:
-		clearRetainedMsg(client, msg.Topic())
-		Pull(true)
+		clearMsg = true
+		restartDaemon = true
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
