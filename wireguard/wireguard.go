@@ -110,6 +110,28 @@ func EndpointDetectedAlready(peerPubKey string) bool {
 	return false
 }
 
+func GetPeersFromDevice(ifaceName string) (map[string]wgtypes.Peer, error) {
+	peerMap := make(map[string]wgtypes.Peer)
+	wg, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = wg.Close()
+		if err != nil {
+			logger.Log(0, "got error while closing wgctl: ", err.Error())
+		}
+	}()
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return nil, err
+	}
+	for _, peer := range wgDevice.Peers {
+		peerMap[peer.PublicKey.String()] = peer
+	}
+	return peerMap, nil
+}
+
 // GetPeer - gets the peerinfo from the wg interface
 func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 	wg, err := wgctrl.New()

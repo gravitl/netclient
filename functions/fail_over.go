@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var (
@@ -76,7 +77,6 @@ func handlePeerFailOver(signal models.Signal) error {
 	} else {
 		signalThrottleCache.Delete(signal.FromHostID)
 	}
-
 	err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
 	if err != nil {
 		slog.Debug("failed to signal server to relay me", "error", err)
@@ -122,18 +122,23 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if !ok {
 						continue
 					}
+					devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+					if err != nil {
+						slog.Debug("failed to get peers from device: ", "error", err)
+						continue
+					}
 					for pubKey, peer := range peers {
 						if peer.IsExtClient {
 							continue
 						}
-						if !isPeerExist(pubKey) {
+						if _, ok := devicePeerMap[pubKey]; !ok {
 							continue
 						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
 						// check if there is handshake on interface
-						connected, err := isPeerConnected(pubKey)
+						connected, err := isPeerConnected(devicePeerMap[pubKey])
 						if err != nil || connected {
 							continue
 						}
@@ -331,11 +336,7 @@ func SignalPeer(signal models.Signal) error {
 }
 
 // isPeerConnected - get peer connection status by checking last handshake time
-func isPeerConnected(peerKey string) (connected bool, err error) {
-	peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
-	if err != nil {
-		return
-	}
+func isPeerConnected(peer wgtypes.Peer) (connected bool, err error) {
 	if !peer.LastHandshakeTime.IsZero() && !(time.Since(peer.LastHandshakeTime) > LastHandShakeThreshold) {
 		connected = true
 	}
