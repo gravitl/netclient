@@ -295,12 +295,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
-	if server.IsPro {
-		go func() {
-			time.Sleep(time.Second * 15)
-			callPublishMetrics(true)
-		}()
-	}
+	// if server.IsPro {
+	// 	go func() {
+	// 		time.Sleep(time.Second * 15)
+	// 		callPublishMetrics(true)
+	// 	}()
+	// }
 
 }
 
