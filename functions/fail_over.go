@@ -111,6 +111,11 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					slog.Error("failed to get peer Info", "error", err)
 					return
 				}
+				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+				if err != nil {
+					slog.Debug("failed to get peers from device: ", "error", err)
+					return
+				}
 				for _, node := range nodes {
 					if node.Server != config.CurrServer {
 						continue
@@ -122,11 +127,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if !ok {
 						continue
 					}
-					devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
-					if err != nil {
-						slog.Debug("failed to get peers from device: ", "error", err)
-						continue
-					}
+
 					for pubKey, peer := range peers {
 						if peer.IsExtClient {
 							continue
