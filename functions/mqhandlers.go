@@ -295,12 +295,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
-	if server.IsPro {
-		go func() {
-			time.Sleep(time.Second * 15)
-			callPublishMetrics(true)
-		}()
-	}
+	// if server.IsPro {
+	// 	go func() {
+	// 		time.Sleep(time.Second * 15)
+	// 		callPublishMetrics(true)
+	// 	}()
+	// }
 
 }
 
@@ -432,12 +432,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		UpdateKeys()
 		writeToDisk = false
 	case models.RequestPull:
-		clearRetainedMsg(client, msg.Topic())
-		Pull(true)
+		clearMsg = true
+		restartDaemon = true
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		response, resetInterface, replacePeers, err := Pull(false)
+		response, resetInterface, replacePeers, err := Pull(false, false)
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
@@ -669,7 +669,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
 			auth.CleanJwtToken()
-			response, resetInterface, replacePeers, err := Pull(false)
+			response, resetInterface, replacePeers, err := Pull(false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {
