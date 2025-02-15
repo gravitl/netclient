@@ -3,6 +3,7 @@ package firewall
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 
@@ -462,46 +463,34 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		}
 	}
 	ingressGwRoutes := []ruleInfo{}
-	// for _, ip := range ingressInfo.StaticNodeIps {
-	// 	iptablesClient := i.ipv4Client
-	// 	networks := []string{ingressInfo.Network.String()}
-	// 	for _, egressNet := range ingressInfo.EgressRanges {
-	// 		networks = append(networks, egressNet.String())
-	// 	}
-	// 	if ip.To4() == nil {
-	// 		networks = []string{ingressInfo.Network6.String()}
-	// 		for _, egressNet := range ingressInfo.EgressRanges6 {
-	// 			networks = append(networks, egressNet.String())
-	// 		}
-	// 		iptablesClient = i.ipv6Client
-	// 	}
-	// 	ruleSpec := []string{"-s", ip.String(), "-d", strings.Join(networks, ","), "-j", netmakerFilterChain}
-	// 	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-	// 	// to avoid duplicate iface route rule,delete if exists
-	// 	iptablesClient.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
-	// 	err := iptablesClient.Insert(defaultIpTable, iptableFWDChain, 1, ruleSpec...)
-	// 	if err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	// 	} else {
-	// 		ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
-	// 			table: defaultIpTable,
-	// 			chain: iptableFWDChain,
-	// 			rule:  ruleSpec,
-	// 		})
-	// 	}
-	// 	// to avoid duplicate iface route rule,delete if exists
-	// 	iptablesClient.DeleteIfExists(defaultIpTable, iptableINChain, ruleSpec...)
-	// 	err = iptablesClient.Insert(defaultIpTable, iptableINChain, 1, ruleSpec...)
-	// 	if err != nil {
-	// 		logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
-	// 	} else {
-	// 		ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
-	// 			table: defaultIpTable,
-	// 			chain: iptableINChain,
-	// 			rule:  ruleSpec,
-	// 		})
-	// 	}
-	// }
+
+	for _, ip := range ingressInfo.StaticNodeIps {
+
+		iptablesClient := i.ipv4Client
+		v4 := true
+		if ip.To4() == nil {
+			iptablesClient = i.ipv6Client
+			v4 = false
+		}
+		cnt := i.getLastRuleCnt(defaultIpTable, aclInputRulesChain, v4)
+		cnt--
+		if cnt <= 0 {
+			cnt = 1
+		}
+		ruleSpec := []string{"-s", ip.String(), "-j", targetDrop}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		err := iptablesClient.InsertUnique(defaultIpTable, aclInputRulesChain,
+			cnt, ruleSpec...)
+		if err != nil {
+			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: aclInputRulesChain,
+				rule:  ruleSpec,
+			})
+		}
+	}
 	for _, rule := range ingressInfo.Rules {
 		if !rule.Allow {
 			continue
@@ -601,6 +590,30 @@ func (i *iptablesManager) AddEgressRoutingRule(server string, egressInfo models.
 	}
 
 	return nil
+}
+
+func (i *iptablesManager) getLastRuleCnt(table, chain string, v4 bool) int {
+	// Get current rules
+	var rules []string
+	var err error
+	if v4 {
+		rules, err = i.ipv4Client.List(table, chain)
+		if err != nil {
+			log.Fatalf("Failed to list iptables rules: %v", err)
+		}
+	} else {
+		rules, err = i.ipv6Client.List(table, chain)
+		if err != nil {
+			log.Fatalf("Failed to list iptables rules: %v", err)
+		}
+	}
+
+	// Determine last but one position
+	lastRuleNum := len(rules) - 1 // Subtract 1 because first line is the header
+	if lastRuleNum < 2 {
+		return 1
+	}
+	return lastRuleNum
 }
 
 func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.AclRule) {
