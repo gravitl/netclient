@@ -490,6 +490,25 @@ func (i *iptablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				rule:  ruleSpec,
 			})
 		}
+		cnt = i.getLastRuleCnt(defaultIpTable, aclInputRulesChain, v4)
+		cnt--
+		if cnt <= 0 {
+			cnt = 1
+		}
+		ruleSpec = []string{"-d", ip.String(), "-j", targetDrop}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		err = iptablesClient.InsertUnique(defaultIpTable, aclInputRulesChain,
+			cnt, ruleSpec...)
+		if err != nil {
+			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				table: defaultIpTable,
+				chain: aclInputRulesChain,
+				rule:  ruleSpec,
+			})
+		}
+
 	}
 	for _, rule := range ingressInfo.Rules {
 		if !rule.Allow {

@@ -973,8 +973,12 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		ruleSpec := []string{"-s", ip.String(), "-j", targetDrop}
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		n.deleteRule(defaultIpTable, iptableINChain, genRuleKey(ruleSpec...))
+		druleSpec := []string{"-d", ip.String(), "-j", targetDrop}
+		druleSpec = appendNetmakerCommentToRule(ruleSpec)
+		n.deleteRule(defaultIpTable, iptableINChain, genRuleKey(druleSpec...))
 		// to avoid duplicate iface route rule,delete if exists
 		rule := &nftables.Rule{}
+		drule := &nftables.Rule{}
 		if ip.To4() != nil {
 			rule = &nftables.Rule{
 				Table: filterTable,
@@ -998,6 +1002,28 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					},
 				},
 				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+			}
+			drule = &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclInputRulesChain},
+				Exprs: []expr.Any{
+					// Match destination IP address
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       16, // IPv4 destination address starts at offset 16
+						Len:          4,  // IPv4 addresses are 4 bytes
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ip.To4(),
+					},
+					// Drop the packet
+					&expr.Verdict{
+						Kind: expr.VerdictDrop,
+					},
+				},
 			}
 		} else {
 			rule = &nftables.Rule{
@@ -1024,9 +1050,40 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				},
 				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
 			}
+			drule = &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclInputRulesChain},
+				Exprs: []expr.Any{
+					// Match destination IPv6 address
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       24, // IPv6 destination address starts at offset 24
+						Len:          16, // IPv6 addresses are 16 bytes
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ip.To16(),
+					},
+					// Drop the packet
+					&expr.Verdict{
+						Kind: expr.VerdictDrop,
+					},
+				},
+			}
+
 		}
-		rule.Position = n.getRuleCnt(rule.Table, rule.Chain)
+		rule.Position = n.getRuleCnt(rule.Table, rule.Chain) - 1
+		if rule.Position < 1 {
+			rule.Position = 0
+		}
 		n.conn.InsertRule(rule)
+		drule.Position = rule.Position - 1
+		if drule.Position < 1 {
+			drule.Position = 0
+		}
+		n.conn.InsertRule(drule)
 		if err := n.conn.Flush(); err != nil {
 			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
 		} else {
