@@ -946,6 +946,15 @@ func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
 	return e
 }
 
+func (n *nftablesManager) getRuleCnt(table *nftables.Table, chain *nftables.Chain) (cnt uint64) {
+	// Fetch existing rules
+	rules, err := n.conn.GetRules(table, chain)
+	if err != nil {
+		return
+	}
+	return uint64(len(rules))
+}
+
 func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error {
 	ruleTable := n.FetchRuleTable(server, ingressTable)
 	defer n.SaveRules(server, ingressTable, ruleTable)
@@ -960,6 +969,75 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		}
 	}
 	ingressGwRoutes := []ruleInfo{}
+	for _, ip := range ingressInfo.StaticNodeIps {
+		ruleSpec := []string{"-s", ip.String(), "-j", targetDrop}
+		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+		n.deleteRule(defaultIpTable, iptableINChain, genRuleKey(ruleSpec...))
+		// to avoid duplicate iface route rule,delete if exists
+		rule := &nftables.Rule{}
+		if ip.To4() != nil {
+			rule = &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclInputRulesChain},
+				Exprs: []expr.Any{
+					// Match packets from source IP 100.59.157.250/32
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       12, // Source IP offset
+						Len:          4,  // IPv4 address size
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ip.To4(),
+					},
+					// Jump to the netmakerfilter chain
+					&expr.Verdict{
+						Kind: expr.VerdictDrop,
+					},
+				},
+				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+			}
+		} else {
+			rule = &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclInputRulesChain},
+				Exprs: []expr.Any{
+					// Match packets from source IP 2001:db8::1/128
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       8,  // IPv6 Source IP offset
+						Len:          16, // IPv6 address length
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     ip.To16(), // IPv6 source address
+					},
+
+					// Jump to the netmakerfilter chain
+					&expr.Verdict{
+						Kind: expr.VerdictDrop,
+					},
+				},
+				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
+			}
+		}
+		rule.Position = n.getRuleCnt(rule.Table, rule.Chain)
+		n.conn.InsertRule(rule)
+		if err := n.conn.Flush(); err != nil {
+			logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+		} else {
+			ingressGwRoutes = append(ingressGwRoutes, ruleInfo{
+				nfRule: rule,
+				table:  defaultIpTable,
+				chain:  aclInputRulesChain,
+				rule:   ruleSpec,
+			})
+		}
+	}
 	for _, rule := range ingressInfo.Rules {
 		if !rule.Allow {
 			continue
