@@ -974,7 +974,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		n.deleteRule(defaultIpTable, iptableINChain, genRuleKey(ruleSpec...))
 		druleSpec := []string{"-d", ip.String(), "-j", targetDrop}
-		druleSpec = appendNetmakerCommentToRule(ruleSpec)
+		druleSpec = appendNetmakerCommentToRule(druleSpec)
 		n.deleteRule(defaultIpTable, iptableINChain, genRuleKey(druleSpec...))
 		// to avoid duplicate iface route rule,delete if exists
 		rule := &nftables.Rule{}
@@ -1024,6 +1024,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 						Kind: expr.VerdictDrop,
 					},
 				},
+				UserData: []byte(genRuleKey(druleSpec...)),
 			}
 		} else {
 			rule = &nftables.Rule{
@@ -1071,6 +1072,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 						Kind: expr.VerdictDrop,
 					},
 				},
+				UserData: []byte(genRuleKey(druleSpec...)),
 			}
 
 		}
