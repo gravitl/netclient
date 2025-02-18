@@ -49,7 +49,9 @@ type firewallController interface {
 	// Add DROP Rules
 	AddDropRules([]ruleInfo)
 	// ChangeACLTarget - deletes if any current target and adds rule with new target
-	ChangeACLTarget(target string)
+	ChangeACLInTarget(target string)
+	// ChangeACLFwdTarget - deletes if any current target and adds rule with new target
+	ChangeACLFwdTarget(target string)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw

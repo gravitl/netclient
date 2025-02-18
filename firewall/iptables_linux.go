@@ -29,6 +29,7 @@ const (
 	nattablePRTChain    = "POSTROUTING"
 	netmakerSignature   = "NETMAKER"
 	aclInputRulesChain  = "NETMAKER-ACL-IN"
+	aclFwdRulesChain    = "NETMAKER-ACL-FWD"
 	aclOutputRulesChain = "NETMAKER-ACL-OUT"
 )
 
@@ -48,6 +49,12 @@ var (
 		table: defaultIpTable,
 		chain: aclInputRulesChain,
 	}
+	aclFwdChainDropRule = ruleInfo{
+		rule: []string{"-i", ncutils.GetInterfaceName(), "-m",
+			"comment", "--comment", netmakerSignature, "-j", "DROP"},
+		table: defaultIpTable,
+		chain: aclFwdRulesChain,
+	}
 	dropRules = []ruleInfo{
 		{
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "comment",
@@ -56,6 +63,7 @@ var (
 			chain: netmakerFilterChain,
 		},
 		aclInChainDropRule,
+		aclFwdChainDropRule,
 	}
 
 	// filter table netmaker jump rules
@@ -89,7 +97,7 @@ var (
 			chain: iptableFWDChain,
 		},
 		{
-			rule: []string{"-i", ncutils.GetInterfaceName(), "!", "-o", "netmaker", "-j", targetAccept,
+			rule: []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain,
 				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
@@ -100,7 +108,6 @@ var (
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
-
 		{
 			rule:  []string{"-m", "comment", "--comment", netmakerSignature, "-j", "ACCEPT"},
 			table: defaultIpTable,
@@ -146,11 +153,45 @@ func createChain(iptables *iptables.IPTables, table, newChain string) error {
 	return nil
 }
 
-func (i *iptablesManager) ChangeACLTarget(target string) {
+func (i *iptablesManager) ChangeACLInTarget(target string) {
 
 	ruleSpec := aclInChainDropRule.rule
 	table := aclInChainDropRule.table
 	chain := aclInChainDropRule.chain
+	ruleSpec[len(ruleSpec)-1] = target
+	ok4, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
+	ok6, _ := i.ipv6Client.Exists(table, chain, ruleSpec...)
+	if ok4 && ok6 {
+		return
+	}
+	slog.Debug("setting acl input chain target to", "target", target)
+	if target == targetAccept {
+
+		// remove any DROP rule
+		ruleSpec[len(ruleSpec)-1] = targetDrop
+		i.ipv4Client.DeleteIfExists(table, chain, ruleSpec...)
+		i.ipv6Client.DeleteIfExists(table, chain, ruleSpec...)
+		// Add ACCEPT RULE
+		ruleSpec[len(ruleSpec)-1] = targetAccept
+		i.ipv4Client.Append(table, chain, ruleSpec...)
+		i.ipv6Client.Append(table, chain, ruleSpec...)
+	} else {
+		// remove any ACCEPT rule
+		ruleSpec[len(ruleSpec)-1] = targetAccept
+		i.ipv4Client.DeleteIfExists(table, chain, ruleSpec...)
+		i.ipv6Client.DeleteIfExists(table, chain, ruleSpec...)
+		// Add DROP RULE
+		ruleSpec[len(ruleSpec)-1] = targetDrop
+		i.ipv4Client.Append(table, chain, ruleSpec...)
+		i.ipv6Client.Append(table, chain, ruleSpec...)
+	}
+}
+
+func (i *iptablesManager) ChangeACLFwdTarget(target string) {
+
+	ruleSpec := aclFwdChainDropRule.rule
+	table := aclFwdChainDropRule.table
+	chain := aclFwdChainDropRule.chain
 	ruleSpec[len(ruleSpec)-1] = target
 	ok4, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
 	ok6, _ := i.ipv6Client.Exists(table, chain, ruleSpec...)
@@ -235,6 +276,11 @@ func (i *iptablesManager) CreateChains() error {
 		logger.Log(1, "failed to create netmaker chain: ", err.Error())
 		return err
 	}
+	err = createChain(i.ipv4Client, defaultIpTable, aclFwdRulesChain)
+	if err != nil {
+		logger.Log(1, "failed to create netmaker chain: ", err.Error())
+		return err
+	}
 	err = createChain(i.ipv4Client, defaultIpTable, aclOutputRulesChain)
 	if err != nil {
 		logger.Log(1, "failed to create netmaker chain: ", err.Error())
@@ -251,6 +297,11 @@ func (i *iptablesManager) CreateChains() error {
 		return err
 	}
 	err = createChain(i.ipv6Client, defaultIpTable, aclInputRulesChain)
+	if err != nil {
+		logger.Log(1, "failed to create netmaker chain: ", err.Error())
+		return err
+	}
+	err = createChain(i.ipv6Client, defaultIpTable, aclFwdRulesChain)
 	if err != nil {
 		logger.Log(1, "failed to create netmaker chain: ", err.Error())
 		return err
@@ -1089,6 +1140,7 @@ func (i *iptablesManager) FlushAll() {
 	i.clearNetmakerRules(defaultIpTable, iptableINChain)
 	i.clearNetmakerRules(defaultIpTable, iptableFWDChain)
 	i.cleanup(defaultIpTable, aclInputRulesChain)
+	i.cleanup(defaultIpTable, aclFwdRulesChain)
 	i.cleanup(defaultIpTable, aclOutputRulesChain)
 	i.cleanup(defaultIpTable, netmakerFilterChain)
 	i.cleanup(defaultNatTable, netmakerNatChain)

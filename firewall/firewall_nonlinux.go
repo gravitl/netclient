@@ -24,8 +24,8 @@ func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey, extPeerAd
 func (unimplementedFirewall) RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error {
 	return nil
 }
-func (unimplementedFirewall) ChangeACLTarget(target string) {}
-
+func (unimplementedFirewall) ChangeACLInTarget(target string)  {}
+func (unimplementedFirewall) ChangeACLFwdTarget(target string) {}
 func (unimplementedFirewall) RemoveRoutingRules(server, tableName, peerKey string) error {
 	return nil
 }

@@ -1539,8 +1539,85 @@ func (n *nftablesManager) DeleteAclRule(server, aclID string) {
 	n.conn.Flush()
 	delete(ruleTable, aclID)
 }
+func (n *nftablesManager) ChangeACLFwdTarget(target string) {
+	// check if rule exists with current target
+	v := &expr.Verdict{
+		Kind: expr.VerdictAccept,
+	}
+	if target == targetDrop {
+		v = &expr.Verdict{
+			Kind: expr.VerdictDrop,
+		}
+	}
 
-func (n *nftablesManager) ChangeACLTarget(target string) {
+	newRule := &nftables.Rule{
+		Table: filterTable,
+		Chain: &nftables.Chain{Name: aclFwdRulesChain},
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Counter{},
+			v,
+		},
+		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", target)),
+	}
+	if n.ruleExists(newRule) {
+		return
+	}
+	slog.Info("setting acl input chain target to", "target", target)
+	// delete old target and insert new rule
+	oldVerdict := &expr.Verdict{
+		Kind: expr.VerdictAccept,
+	}
+	oldTarget := targetAccept
+	if target == targetAccept {
+		oldVerdict = &expr.Verdict{
+			Kind: expr.VerdictDrop,
+		}
+		oldTarget = targetDrop
+	}
+	oldRule := &nftables.Rule{
+		Table: filterTable,
+		Chain: &nftables.Chain{Name: aclFwdRulesChain},
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+			},
+			&expr.Counter{},
+			oldVerdict,
+		},
+		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", oldTarget)),
+	}
+	rules, err := n.conn.GetRules(newRule.Table, newRule.Chain)
+	if err != nil {
+		slog.Error("Error fetching rules: %v", err.Error())
+	}
+	for _, rI := range rules {
+		if rulesEqual(rI, oldRule) {
+			logger.Log(0, "DELETING OLD TARGET ", oldTarget)
+			err = n.conn.DelRule(rI)
+			if err != nil {
+				logger.Log(0, "failed to delete old target ", err.Error())
+			}
+			break
+		}
+	}
+
+	n.conn.InsertRule(newRule)
+	// Apply the changes
+	if err := n.conn.Flush(); err != nil {
+		logger.Log(0, "Error Changing ACL TArget: %v\n", err.Error())
+	}
+}
+
+func (n *nftablesManager) ChangeACLInTarget(target string) {
 	// check if rule exists with current target
 	v := &expr.Verdict{
 		Kind: expr.VerdictAccept,

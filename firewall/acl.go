@@ -13,9 +13,11 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 		return
 	}
 	if fwUpdate.AllowAll {
-		fwCrtl.ChangeACLTarget(targetAccept)
+		fwCrtl.ChangeACLInTarget(targetAccept)
+		fwCrtl.ChangeACLFwdTarget(targetAccept)
 	} else {
-		fwCrtl.ChangeACLTarget(targetDrop)
+		fwCrtl.ChangeACLInTarget(targetDrop)
+		fwCrtl.ChangeACLFwdTarget(targetDrop)
 	}
 
 	aclRules := fwUpdate.AclRules
@@ -42,7 +44,8 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 				(len(localAclRule.AllowedPorts) != len(aclRule.AllowedPorts)) ||
 				(!reflect.DeepEqual(localAclRule.AllowedPorts, aclRule.AllowedPorts)) ||
 				(aclRule.AllowedProtocol != localAclRule.AllowedProtocol) ||
-				(localAclRule.Direction) != aclRule.Direction {
+				(localAclRule.Direction != aclRule.Direction) ||
+				(len(localAclRule.EgressRanges) != len(aclRule.EgressRanges)) {
 				fwCrtl.DeleteAclRule(server, aclRule.ID)
 				fwCrtl.UpsertAclRule(server, aclRule)
 			}
