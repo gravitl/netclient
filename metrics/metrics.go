@@ -57,7 +57,7 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 		var newMetric = models.Metric{
 			NodeName: peerMap[currPeer.PublicKey.String()].Name,
 		}
-		slog.Debug("collecting metrics for peer", "address", address)
+		//slog.Debug("collecting metrics for peer", "address", address)
 		newMetric.TotalReceived = currPeer.ReceiveBytes
 		newMetric.TotalSent = currPeer.TransmitBytes
 		if isExtClient {
