@@ -39,15 +39,13 @@ func (nc *NCIface) ApplyAddrs() error {
 
 		}
 		if address.Network.IP.To4() != nil {
-			cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String(),
-				"-priority", fmt.Sprintf("%d", address.Metric))
+			cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
 				slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
 				continue
 			}
 		} else {
-			cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String(),
-				"-priority", fmt.Sprintf("%d", address.Metric))
+			cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
 				slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
 				continue
@@ -68,15 +66,13 @@ func RemoveRoutes(addrs []ifaceAddress) {
 		}
 
 		if addr.Network.IP.To4() != nil {
-			cmd := exec.Command("route", "delete", "-net", "-inet", addr.Network.String(), addr.IP.String(),
-				"-priority", fmt.Sprintf("%d", addr.Metric))
+			cmd := exec.Command("route", "delete", "-net", "-inet", addr.Network.String(), addr.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
 				slog.Error("failed to delete route with", "command", cmd.String(), "error", string(out))
 				continue
 			}
 		} else {
-			cmd := exec.Command("route", "delete", "-net", "-inet6", addr.Network.String(), addr.IP.String(),
-				"-priority", fmt.Sprintf("%d", addr.Metric))
+			cmd := exec.Command("route", "delete", "-net", "-inet6", addr.Network.String(), addr.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
 				slog.Error("failed to delete route with", "command", cmd.String(), "error", string(out))
 				continue
