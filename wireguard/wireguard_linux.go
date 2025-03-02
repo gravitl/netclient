@@ -171,7 +171,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 			Gw:        addr.GwIP,
 			Src:       addr.IP,
 			Dst:       &addr.Network,
-			Priority:  EgressRouteMetric,
+			Priority:  int(addr.Metric),
 		}); err != nil {
 			slog.Warn("error removing route", "error", err.Error())
 		}
