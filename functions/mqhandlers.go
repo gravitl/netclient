@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -260,6 +261,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	saveServerConfig := false
+	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
+		server.NameServers = peerUpdate.NameServers
+		saveServerConfig = true
+	}
+
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
