@@ -19,7 +19,7 @@ import (
 var pMutex = sync.Mutex{} // used to mutex functions for pull
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(restart bool) (models.HostPull, bool, bool, error) {
+func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
 	resetInterface := false
@@ -35,7 +35,7 @@ func Pull(restart bool) (models.HostPull, bool, bool, error) {
 	}
 	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
 		URL:           "https://" + server.API,
-		Route:         "/api/v1/host",
+		Route:         fmt.Sprintf("/api/v1/host?reset_failovered=%v", resetIfFailedOvered),
 		Method:        http.MethodGet,
 		Authorization: "Bearer " + token,
 		Response:      models.HostPull{},
