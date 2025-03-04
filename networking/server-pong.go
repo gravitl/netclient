@@ -8,13 +8,12 @@ import (
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func InitialiseMetricsThread(ctx context.Context, wg *sync.WaitGroup) {
+func InitialiseIfaceMetricsServer(ctx context.Context, wg *sync.WaitGroup) {
 	nodeMap := config.GetNodes()
 	if len(nodeMap) == 0 {
 		return
@@ -54,72 +53,6 @@ func startIfaceDetection(ctx context.Context, wg *sync.WaitGroup, port, protocal
 		return
 	}
 	logger.Log(0, "initialized endpoint detection on port", fmt.Sprintf("%d", port))
-	go func(ctx context.Context, listener *net.TCPListener) {
-		<-ctx.Done()
-		logger.Log(0, "closed endpoint detection")
-		l.Close()
-	}(ctx, l)
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			logger.Log(1, "failed to accept connection", err.Error())
-			return
-		}
-		go handleRequest(conn) // handle connection
-	}
-}
-
-func InitialiseIfaceDetection(ctx context.Context, wg *sync.WaitGroup) {
-	ifaces, err := ncutils.GetInterfaces()
-	if err != nil {
-		return
-	}
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
-	}
-	for _, iface := range ifaces {
-		if iface.Address.IP == nil {
-			continue
-		}
-		if iface.Address.IP.To4() != nil {
-			wg.Add(1)
-			go startTcpServer(ctx, wg, iface.Address.IP.String(), metricPort, 4)
-		} else {
-			wg.Add(1)
-			go startTcpServer(ctx, wg, fmt.Sprintf("%s%%%s", iface.Address.IP.String(), iface.Name), metricPort, 6)
-		}
-	}
-}
-
-// startIfaceDetection - starts server to listen for best endpoints between netclients
-func startTcpServer(ctx context.Context, wg *sync.WaitGroup, addr string, port, protocol int) {
-	defer wg.Done()
-	var tcpAddr *net.TCPAddr
-	var err error
-	if protocol == 4 {
-		tcpAddr, err = net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", addr, port))
-		if err != nil {
-			logger.Log(0, "failed to resolve iface detection address -", err.Error())
-			return
-		}
-	} else {
-		tcpAddr, err = net.ResolveTCPAddr("tcp6", fmt.Sprintf("[%s]:%d", addr, port))
-		if err != nil {
-			logger.Log(0, "failed to resolve iface detection address -", err.Error())
-			return
-		}
-	}
-	network := "tcp4"
-	if protocol == 6 {
-		network = "tcp6"
-	}
-	l, err := net.ListenTCP(network, tcpAddr)
-	if err != nil {
-		logger.Log(0, "failed to start iface detection -", err.Error())
-		return
-	}
-	logger.Log(0, "initialized endpoint detection on", tcpAddr.String())
 	go func(ctx context.Context, listener *net.TCPListener) {
 		<-ctx.Done()
 		logger.Log(0, "closed endpoint detection")
