@@ -82,6 +82,7 @@ type ifaceAddress struct {
 	IP       net.IP
 	Network  net.IPNet
 	AddRoute bool
+	Metric   uint32
 }
 
 // Close closes a netclient interface
@@ -122,20 +123,22 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	defer wgMutex.Unlock()
 	addrs := []ifaceAddress{}
 	for _, egressRoute := range egressRoutes {
-		for _, egressRange := range egressRoute.EgressRanges {
-			egressRangeIPNet := config.ToIPNet(egressRange)
+		for _, egressRange := range egressRoute.EgressRangesWithMetric {
+			egressRangeIPNet := config.ToIPNet(egressRange.Network)
 			if egressRangeIPNet.IP != nil {
 				if egressRangeIPNet.IP.To4() != nil {
 					addrs = append(addrs, ifaceAddress{
 						GwIP:    egressRoute.EgressGwAddr.IP,
 						IP:      egressRoute.NodeAddr.IP,
 						Network: egressRangeIPNet,
+						Metric:  egressRange.RouteMetric,
 					})
 				} else if egressRoute.NodeAddr6.IP != nil {
 					addrs = append(addrs, ifaceAddress{
 						GwIP:    egressRoute.EgressGwAddr6.IP,
 						IP:      egressRoute.NodeAddr6.IP,
 						Network: egressRangeIPNet,
+						Metric:  egressRange.RouteMetric,
 					})
 				}
 
@@ -186,7 +189,8 @@ func checkEgressRoutes(addrs, addrs1 []ifaceAddress) bool {
 	sort.Slice(addrs1, func(i, j int) bool { return addrs1[i].IP.String() < addrs1[j].IP.String() })
 
 	for i := range addrs {
-		if addrs[i].IP.String() != addrs1[i].IP.String() || addrs[i].Network.String() != addrs1[i].Network.String() {
+		if addrs[i].IP.String() != addrs1[i].IP.String() ||
+			addrs[i].Network.String() != addrs1[i].Network.String() || addrs[i].Metric != addrs1[i].Metric {
 			return false
 		}
 	}

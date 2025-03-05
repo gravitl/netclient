@@ -290,6 +290,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 		reloadStun = true
 	}
+	if peerUpdate.ServerConfig.IsPro && !server.IsPro {
+		server.IsPro = true
+		saveServerConfig = true
+	}
 
 	if reloadStun {
 		daemon.Restart()
