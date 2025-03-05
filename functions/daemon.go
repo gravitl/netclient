@@ -173,7 +173,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		stun.SetDefaultStunServers()
 	}
 	netclientCfg := config.Netclient()
-	if netclientCfg.Host.OS == "linux" {
+	if netclientCfg.Host.OS == "linux" || netclientCfg.Host.OS == "windows" {
 		dns.InitDNSConfig()
 		updateConfig = true
 	}

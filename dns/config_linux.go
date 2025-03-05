@@ -92,13 +92,11 @@ func RestoreDNSConfig() (err error) {
 }
 
 func buildAddConfigContentUplink() ([]string, error) {
-
-	dnsIp := GetDNSServerInstance().AddrStr
-	if dnsIp == "" {
-		return []string{}, errors.New("no listener is running")
+	dnsIp, err := getDnsIp()
+	if err != nil {
+		return err
 	}
 
-	dnsIp = getIpFromServerString(dnsIp)
 	ns := "DNS=" + dnsIp
 
 	f, err := os.Open(resolvUplinkPath)
@@ -171,15 +169,10 @@ func setupResolveUplink() (err error) {
 
 func setupResolvectl() (err error) {
 
-	dnsIp := GetDNSServerInstance().AddrStr
-	if dnsIp == "" {
-		return errors.New("no listener is running")
+	dnsIp, err := getDnsIp()
+	if err != nil {
+		return err
 	}
-	if len(config.GetNodes()) == 0 {
-		return errors.New("no network joint")
-	}
-
-	dnsIp = getIpFromServerString(dnsIp)
 
 	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl dns netmaker %s", dnsIp), false)
 	if err != nil {
@@ -204,21 +197,6 @@ func setupResolvectl() (err error) {
 	}
 
 	return nil
-}
-
-func getIpFromServerString(addrStr string) string {
-	s := ""
-	s = addrStr[0:strings.LastIndex(addrStr, ":")]
-
-	if strings.Contains(s, "[") {
-		s = strings.ReplaceAll(s, "[", "")
-	}
-
-	if strings.Contains(s, "]") {
-		s = strings.ReplaceAll(s, "]", "")
-	}
-
-	return s
 }
 
 func backupResolveconfFile(src, dst string) error {
