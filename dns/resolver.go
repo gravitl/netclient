@@ -151,13 +151,13 @@ func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
 	r, ok := d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), q.Qtype)]
 	if !ok {
 		if q.Qtype == dns.TypeA {
-			r, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeAAAA)]
+			_, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeAAAA)]
 			if ok {
 				// aware but no ipv6 address
 				return nil, ErrNoQTypeRecord
 			}
 		} else if q.Qtype == dns.TypeAAAA {
-			r, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeA)]
+			_, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeA)]
 			if ok {
 				// aware but no ipv4 address
 				return nil, ErrNoQTypeRecord
