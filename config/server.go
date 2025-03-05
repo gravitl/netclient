@@ -29,10 +29,11 @@ const ServerLockfile = "netclient-servers.lck"
 // Server represents a server configuration
 type Server struct {
 	models.ServerConfig
-	Name      string          `json:"name" yaml:"name"`
-	MQID      uuid.UUID       `json:"mqid" yaml:"mqid"`
-	Nodes     map[string]bool `json:"nodes" yaml:"nodes"`
-	AccessKey string          `json:"accesskey" yaml:"accesskey"`
+	Name        string          `json:"name" yaml:"name"`
+	MQID        uuid.UUID       `json:"mqid" yaml:"mqid"`
+	Nodes       map[string]bool `json:"nodes" yaml:"nodes"`
+	AccessKey   string          `json:"accesskey" yaml:"accesskey"`
+	NameServers []string        `json:"name_servers"`
 }
 
 // OldNetmakerServerConfig - pre v0.18.0 server configuration
