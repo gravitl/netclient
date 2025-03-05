@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"errors"
 	"net"
 	"strings"
 	"sync"
@@ -15,6 +16,11 @@ const (
 )
 
 var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
+
+var (
+	ErrNXDomain      = errors.New("non existent domain")
+	ErrNoQTypeRecord = errors.New("domain exists but no record matching the question type")
+)
 
 type DNSResolver struct {
 	DnsEntriesCacheStore map[string]dns.RR
@@ -54,10 +60,8 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
 
-	resp := GetDNSResolverInstance().Lookup(r)
-	if resp != nil {
-		reply.Answer = append(reply.Answer, resp)
-	} else {
+	resp, err := GetDNSResolverInstance().Lookup(r)
+	if err != nil && errors.Is(err, ErrNXDomain) {
 		nslist := config.Netclient().NameServers
 		if config.Netclient().CurrGwNmIP != nil {
 			nslist = []string{}
@@ -97,7 +101,11 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	err := w.WriteMsg(reply)
+	if resp != nil {
+		reply.Answer = append(reply.Answer, resp)
+	}
+
+	err = w.WriteMsg(reply)
 	if err != nil {
 		slog.Error("write DNS response message error: ", "error", err.Error())
 	}
@@ -136,14 +144,28 @@ func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 }
 
 // Lookup DNS entry in local directory
-func (d *DNSResolver) Lookup(m *dns.Msg) dns.RR {
+func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
 	dnsMapMutex.Lock()
 	defer dnsMapMutex.Unlock()
 	q := m.Question[0]
 	r, ok := d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), q.Qtype)]
 	if !ok {
-		return nil
+		if q.Qtype == dns.TypeA {
+			r, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeAAAA)]
+			if ok {
+				// aware but no ipv6 address
+				return nil, ErrNoQTypeRecord
+			}
+		} else if q.Qtype == dns.TypeAAAA {
+			r, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeA)]
+			if ok {
+				// aware but no ipv4 address
+				return nil, ErrNoQTypeRecord
+			}
+		}
+
+		return nil, ErrNXDomain
 	}
 
-	return r
+	return r, nil
 }
