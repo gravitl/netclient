@@ -94,7 +94,7 @@ func RestoreDNSConfig() (err error) {
 func buildAddConfigContentUplink() ([]string, error) {
 	dnsIp, err := getDnsIp()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ns := "DNS=" + dnsIp
