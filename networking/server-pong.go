@@ -29,14 +29,14 @@ func InitialiseIfaceMetricsServer(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // startIfaceDetection - starts server to listen for best endpoints between netclients
-func startIfaceDetection(ctx context.Context, wg *sync.WaitGroup, port, protocal int) {
+func startIfaceDetection(ctx context.Context, wg *sync.WaitGroup, port, protocol int) {
 	defer wg.Done()
 	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
 		logger.Log(0, "failed to resolve iface detection address -", err.Error())
 		return
 	}
-	if protocal == 6 {
+	if protocol == 6 {
 		tcpAddr, err = net.ResolveTCPAddr("tcp6", fmt.Sprintf("[::]:%d", port))
 		if err != nil {
 			logger.Log(0, "failed to resolve iface detection address -", err.Error())
@@ -44,7 +44,7 @@ func startIfaceDetection(ctx context.Context, wg *sync.WaitGroup, port, protocal
 		}
 	}
 	network := "tcp4"
-	if protocal == 6 {
+	if protocol == 6 {
 		network = "tcp6"
 	}
 	l, err := net.ListenTCP(network, tcpAddr)
