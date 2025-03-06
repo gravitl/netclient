@@ -541,10 +541,10 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 					fmt.Println("===> 2 checking for peer ", peers[idx].AllowedIPs)
 					continue
 				}
-				if !networking.IpBelongsToInterface(peerIP) {
-					fmt.Println("===> 3 checking for peer ", peers[idx].AllowedIPs)
-					continue
-				}
+				// if !networking.IpBelongsToInterface(peerIP) {
+				// 	fmt.Println("===> 3 checking for peer ", peers[idx].AllowedIPs)
+				// 	continue
+				// }
 				if peerIP.IsPrivate() {
 					go func(peerIP, peerPubKey string, listenPort int) {
 						networking.FindBestEndpoint(
