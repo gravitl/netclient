@@ -522,7 +522,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 				// peer is a static host shouldn't disturb the configuration set by the user
 				continue
 			}
-			fmt.Println("===> checking for peer ", peers[idx].AllowedIPs, peerInfo.Interfaces)
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
@@ -531,20 +530,14 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 				}
 				// check to skip bridge network
 				if ncutils.IsBridgeNetwork(peerIface.Name) {
-					fmt.Println("===> 1 checking for peer ", peers[idx].AllowedIPs)
 					continue
 				}
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
 					isAddressInPeers(peerIP, currentCidrs) {
-					fmt.Println("===> 2 checking for peer ", peers[idx].AllowedIPs)
 					continue
 				}
-				// if !networking.IpBelongsToInterface(peerIP) {
-				// 	fmt.Println("===> 3 checking for peer ", peers[idx].AllowedIPs)
-				// 	continue
-				// }
 				if peerIP.IsPrivate() {
 					go func(peerIP, peerPubKey string, listenPort int) {
 						networking.FindBestEndpoint(
