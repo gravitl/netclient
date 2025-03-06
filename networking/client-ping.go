@@ -14,6 +14,11 @@ func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int
 
 	connected, _ := metrics.PeerConnStatus(peerIp, metricsPort, 2)
 	if connected {
+		parsePeerIp := net.ParseIP(peerIp)
+		if parsePeerIp.To16() != nil {
+			// ipv6
+			peerIp = fmt.Sprintf("[%s]", peerIp)
+		}
 		peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerIp, peerListenPort))
 		if err != nil {
 			slog.Error("failed to parse peer udp addr", "peeraddr", fmt.Sprintf("%s:%d", peerIp, peerListenPort), "err", err.Error())

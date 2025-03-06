@@ -548,9 +548,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
-				if !networking.IpBelongsToInterface(peerIP) {
-					continue
-				}
 				if peerIP.IsPrivate() {
 					go func(peerIP, peerPubKey string, listenPort int) {
 						networking.FindBestEndpoint(
