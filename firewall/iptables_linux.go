@@ -198,7 +198,7 @@ func (i *iptablesManager) ChangeACLFwdTarget(target string) {
 	if ok4 && ok6 {
 		return
 	}
-	slog.Debug("setting acl input chain target to", "target", target)
+	slog.Debug("setting acl forward chain target to", "target", target)
 	if target == targetAccept {
 
 		// remove any DROP rule

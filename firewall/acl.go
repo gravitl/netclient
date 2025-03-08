@@ -14,10 +14,10 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	}
 	if fwUpdate.AllowAll {
 		fwCrtl.ChangeACLInTarget(targetAccept)
-		fwCrtl.ChangeACLFwdTarget(targetAccept)
+		//fwCrtl.ChangeACLFwdTarget(targetAccept)
 	} else {
 		fwCrtl.ChangeACLInTarget(targetDrop)
-		fwCrtl.ChangeACLFwdTarget(targetDrop)
+		//fwCrtl.ChangeACLFwdTarget(targetDrop)
 	}
 
 	aclRules := fwUpdate.AclRules
