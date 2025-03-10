@@ -6,7 +6,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows/registry"
-	"strings"
 	"sync"
 )
 
@@ -48,80 +47,10 @@ func SetupDNSConfig() error {
 	}
 	defer key.Close()
 
-	err = key.SetStringValue("NameServer", dnsIp)
-	if err != nil {
-		return err
-	}
-
-	_, err = ncutils.RunCmd(
-		fmt.Sprintf(
-			"Set-DnsClientNrptRule -Namespace \"%s\" -NameServers \"%s\"",
-			config.GetServer(config.CurrServer).DefaultDomain,
-			dnsIp,
-		),
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return key.SetStringValue("NameServer", dnsIp)
 }
 
 func RestoreDNSConfig() error {
-	output, err := ncutils.RunCmd(
-		"Get-DnsClientNrptRule | Select-Object Name, @{Name='Namespace';Expression={$_.Namespace -join ';'}}, @{Name='NameServers';Expression={$_.NameServers -join ';'}} | ConvertTo-Csv -NoTypeInformation | Select-Object -Skip 1",
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	dnsIp, err := getDnsIp()
-	if err != nil {
-		return err
-	}
-
-	lines := strings.Split(output, "\r\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		if len(line) == 0 {
-			continue
-		}
-
-		parts := strings.Split(output, ",")
-
-		if len(parts) != 3 {
-			continue
-		}
-
-		name := strings.TrimSpace(parts[0])
-
-		namespace := strings.TrimSpace(parts[1])
-		namespace = strings.Trim(namespace, "\"")
-
-		nameserver := strings.TrimSpace(parts[2])
-		nameserver = strings.Trim(nameserver, "\"")
-
-		if namespace != config.GetServer(config.CurrServer).DefaultDomain &&
-			nameserver != dnsIp {
-			continue
-		}
-
-		_, err = ncutils.RunCmd(
-			fmt.Sprintf(
-				"Remove-DnsClientNrptRule -Name %s -Force",
-				name,
-			),
-			false,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

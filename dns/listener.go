@@ -98,7 +98,7 @@ func (dnsServer *DNSServer) Start() {
 	if config.Netclient().Host.OS == "linux" || config.Netclient().Host.OS == "windows" {
 		err := SetupDNSConfig()
 		if err != nil {
-			slog.Error("setup DNS conig failed", "error", err.Error())
+			slog.Error("setup DNS config failed", "error", err.Error())
 		}
 	}
 
