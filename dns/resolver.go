@@ -59,6 +59,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionAvailable = true
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
+	reply.Authoritative = true
 
 	resp, err := GetDNSResolverInstance().Lookup(r)
 	if err != nil && errors.Is(err, ErrNXDomain) {
