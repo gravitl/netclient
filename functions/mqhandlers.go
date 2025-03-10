@@ -269,8 +269,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		}
 	}
-	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
-		dns.SetupDNSConfig()
+
+	if server.ManageDNS {
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
+			dns.SetupDNSConfig()
+		}
 	}
 
 	reloadStun := false
@@ -492,8 +496,10 @@ func resetInterfaceFunc() {
 		if dns.GetDNSServerInstance().AddrStr == "" {
 			dns.GetDNSServerInstance().Start()
 		}
-		//Setup resolveconf for Linux
-		if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+
+		//Setup DNS for Linux and Windows
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
 			dns.SetupDNSConfig()
 		}
 	}

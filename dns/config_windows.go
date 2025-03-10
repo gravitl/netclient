@@ -21,6 +21,9 @@ func FlushLocalDnsCache() error {
 }
 
 func SetupDNSConfig() error {
+	dnsConfigMutex.Lock()
+	defer dnsConfigMutex.Unlock()
+
 	// ignore if dns manager is not Windows Registry
 	if config.Netclient().DNSManagerType != DNS_MANAGER_WINDOWS_REGISTRY {
 		return nil
