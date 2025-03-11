@@ -6,6 +6,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows/registry"
+	"net/netip"
 	"sync"
 )
 
@@ -34,6 +35,11 @@ func SetupDNSConfig() error {
 		return err
 	}
 
+	ip, err := netip.ParseAddr(dnsIp)
+	if err != nil {
+		return err
+	}
+
 	guid := config.Netclient().Host.ID.String()
 	if guid == "" {
 		guid = config.DefaultHostID
@@ -41,7 +47,12 @@ func SetupDNSConfig() error {
 
 	guid = "{" + guid + "}"
 
-	keyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\%s`, guid)
+	keyPath := ""
+	if ip.Is6() {
+		keyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\%s`, guid)
+	} else {
+		keyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\%s`, guid)
+	}
 
 	// open registry key with permissions to set value
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.QUERY_VALUE|registry.SET_VALUE)
