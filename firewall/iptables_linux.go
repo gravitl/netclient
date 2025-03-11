@@ -964,6 +964,308 @@ func (i *iptablesManager) DeleteAclRule(server, aclID string) {
 
 }
 
+func (i *iptablesManager) AddAclEgressRules(server string, aclRules map[string]models.AclRule) {
+	ruleTable := i.FetchRuleTable(server, egressTable)
+	defer i.SaveRules(server, egressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	if ruleTable == nil {
+		ruleTable = make(ruletable)
+	}
+	for _, aclRule := range aclRules {
+		rules := []ruleInfo{}
+		if _, ok := ruleTable[aclRule.ID]; !ok {
+			ruleTable[aclRule.ID] = rulesCfg{
+				rulesMap: make(map[string][]ruleInfo),
+			}
+		}
+		if len(aclRule.IPList) > 0 {
+			allowedIps := []string{}
+			for _, ip := range aclRule.IPList {
+				allowedIps = append(allowedIps, ip.String())
+			}
+			rulesSpec := [][]string{}
+			if len(aclRule.AllowedPorts) > 0 {
+
+				for _, port := range aclRule.AllowedPorts {
+					if port == "" {
+						continue
+					}
+					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if strings.Contains(port, "-") {
+						port = strings.ReplaceAll(port, "-", ":")
+					}
+					if aclRule.Dst.IP != nil {
+						ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
+					}
+					ruleSpec = append(ruleSpec, "--dport", port)
+					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					rulesSpec = append(rulesSpec, ruleSpec)
+				}
+
+			} else {
+				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if aclRule.Dst.IP != nil {
+					ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
+				}
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
+
+			for _, ruleSpec := range rulesSpec {
+				err := i.ipv4Client.Insert(defaultIpTable, aclFwdRulesChain, 1, ruleSpec...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					rules = append(rules, ruleInfo{
+						isIpv4: true,
+						table:  defaultIpTable,
+						chain:  aclFwdRulesChain,
+						rule:   ruleSpec,
+					})
+
+				}
+			}
+		}
+
+		if len(aclRule.IP6List) > 0 {
+			allowedIps := []string{}
+			for _, ip := range aclRule.IP6List {
+				allowedIps = append(allowedIps, ip.String())
+			}
+			rulesSpec := [][]string{}
+			if len(aclRule.AllowedPorts) > 0 {
+
+				for _, port := range aclRule.AllowedPorts {
+					if port == "" {
+						continue
+					}
+					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if strings.Contains(port, "-") {
+						port = strings.ReplaceAll(port, "-", ":")
+					}
+					if aclRule.Dst6.IP != nil {
+						ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
+					}
+					ruleSpec = append(ruleSpec, "--dport", port)
+					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					rulesSpec = append(rulesSpec, ruleSpec)
+				}
+
+			} else {
+				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if aclRule.Dst6.IP != nil {
+					ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
+				}
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
+
+			for _, ruleSpec := range rulesSpec {
+				err := i.ipv6Client.Insert(defaultIpTable, aclFwdRulesChain, 1, ruleSpec...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					rules = append(rules, ruleInfo{
+						isIpv4: false,
+						table:  defaultIpTable,
+						chain:  aclFwdRulesChain,
+						rule:   ruleSpec,
+					})
+
+				}
+			}
+		}
+		if len(rules) > 0 {
+			rCfg := rulesCfg{
+				rulesMap: map[string][]ruleInfo{
+					aclRule.ID: rules,
+				},
+				extraInfo: aclRule,
+			}
+			ruleTable[aclRule.ID] = rCfg
+		}
+	}
+}
+
+func (i *iptablesManager) UpsertAclEgressRule(server string, aclRule models.AclRule) {
+	ruleTable := i.FetchRuleTable(server, egressTable)
+	defer i.SaveRules(server, egressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	ruleTable[aclRule.ID] = rulesCfg{
+		rulesMap: make(map[string][]ruleInfo),
+	}
+	rules := []ruleInfo{}
+	if _, ok := ruleTable[aclRule.ID]; !ok {
+		ruleTable[aclRule.ID] = rulesCfg{
+			rulesMap: make(map[string][]ruleInfo),
+		}
+	}
+	if len(aclRule.IPList) > 0 {
+		allowedIps := []string{}
+		for _, ip := range aclRule.IPList {
+			allowedIps = append(allowedIps, ip.String())
+		}
+		rulesSpec := [][]string{}
+		if len(aclRule.AllowedPorts) > 0 {
+			for _, port := range aclRule.AllowedPorts {
+				if port == "" {
+					continue
+				}
+				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if aclRule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
+				}
+				if aclRule.Dst.IP != nil {
+					ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
+				}
+				ruleSpec = append(ruleSpec, "--dport", port)
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
+
+		} else {
+			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+			if aclRule.AllowedProtocol.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+			}
+			if aclRule.Dst.IP != nil {
+				ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
+			}
+			//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+			rulesSpec = append(rulesSpec, ruleSpec)
+		}
+		for _, ruleSpec := range rulesSpec {
+			err := i.ipv4Client.Insert(defaultIpTable, aclFwdRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				rules = append(rules, ruleInfo{
+					isIpv4: true,
+					table:  defaultIpTable,
+					chain:  aclFwdRulesChain,
+					rule:   ruleSpec,
+				})
+
+			}
+		}
+
+	}
+	if len(aclRule.IP6List) > 0 {
+		allowedIps := []string{}
+		for _, ip := range aclRule.IP6List {
+			allowedIps = append(allowedIps, ip.String())
+		}
+		rulesSpec := [][]string{}
+		if len(aclRule.AllowedPorts) > 0 {
+
+			for _, port := range aclRule.AllowedPorts {
+				if port == "" {
+					continue
+				}
+				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if aclRule.AllowedProtocol.String() != "" {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if aclRule.Dst6.IP != nil {
+					ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
+				}
+				if strings.Contains(port, "-") {
+					port = strings.ReplaceAll(port, "-", ":")
+				}
+				ruleSpec = append(ruleSpec, "--dport", port)
+				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+				rulesSpec = append(rulesSpec, ruleSpec)
+			}
+
+		} else {
+			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+			if aclRule.AllowedProtocol.String() != "" {
+				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+			}
+			if aclRule.Dst6.IP != nil {
+				ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
+			}
+			//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
+			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
+			rulesSpec = append(rulesSpec, ruleSpec)
+		}
+		for _, ruleSpec := range rulesSpec {
+			err := i.ipv6Client.Insert(defaultIpTable, aclFwdRulesChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				rules = append(rules, ruleInfo{
+					isIpv4: false,
+					table:  defaultIpTable,
+					chain:  aclFwdRulesChain,
+					rule:   ruleSpec,
+				})
+			}
+		}
+	}
+	if len(rules) > 0 {
+		rCfg := rulesCfg{
+			rulesMap: map[string][]ruleInfo{
+				aclRule.ID: rules,
+			},
+			extraInfo: aclRule,
+		}
+		ruleTable[aclRule.ID] = rCfg
+	}
+
+}
+
+func (i *iptablesManager) DeleteAclEgressRule(server, aclID string) {
+	ruleTable := i.FetchRuleTable(server, egressTable)
+	defer i.SaveRules(server, egressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	rulesCfg, ok := ruleTable[aclID]
+	if !ok {
+		return
+	}
+	rules := rulesCfg.rulesMap[aclID]
+	for _, rule := range rules {
+		if rule.isIpv4 {
+			i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+		} else {
+			i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+		}
+	}
+	delete(ruleTable, aclID)
+
+}
+
 func (i *iptablesManager) cleanup(table, chain string) {
 
 	err := i.ipv4Client.ClearAndDeleteChain(table, chain)
