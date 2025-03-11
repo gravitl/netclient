@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -259,6 +260,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	saveServerConfig := false
+	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
+		server.NameServers = peerUpdate.NameServers
+		saveServerConfig = true
+	}
+
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
@@ -282,6 +288,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.StunServers = peerUpdate.StunServers
 		saveServerConfig = true
 		reloadStun = true
+	}
+	if peerUpdate.ServerConfig.IsPro && !server.IsPro {
+		server.IsPro = true
+		saveServerConfig = true
 	}
 
 	if reloadStun {
@@ -535,9 +545,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
 					isAddressInPeers(peerIP, currentCidrs) {
-					continue
-				}
-				if !networking.IpBelongsToInterface(peerIP) {
 					continue
 				}
 				if peerIP.IsPrivate() {

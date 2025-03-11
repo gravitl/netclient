@@ -69,7 +69,10 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			nslist = append(nslist, "2001:4860:4860::8888")
 			nslist = append(nslist, "2001:4860:4860::8844")
 		}
-
+		server := config.GetServer(config.CurrServer)
+		if server != nil {
+			nslist = append(nslist, server.NameServers...)
+		}
 		gotResult := false
 		client := &dns.Client{}
 		for _, v := range nslist {
