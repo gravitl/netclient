@@ -63,9 +63,10 @@ type firewallController interface {
 	// DeleteAclRule - cleanup all the rules associated with a acl policy
 	DeleteAclRule(server, aclID string)
 
-	AddAclEgressRules(server string, aclRules map[string]models.AclRule)
-	DeleteAclEgressRule(server, aclID string)
-	UpsertAclEgressRule(server string, aclRule models.AclRule)
+	AddAclEgressRules(server string, egressInfo models.EgressInfo)
+	DeleteAclEgressRule(server, nodeID, aclID string)
+	UpsertAclEgressRule(server, nodeID string, aclRule models.AclRule)
+	DeleteAllAclEgressRules(server, egressID string)
 
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error

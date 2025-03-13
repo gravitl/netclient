@@ -964,7 +964,7 @@ func (i *iptablesManager) DeleteAclRule(server, aclID string) {
 
 }
 
-func (i *iptablesManager) AddAclEgressRules(server string, aclRules map[string]models.AclRule) {
+func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.EgressInfo) {
 	ruleTable := i.FetchRuleTable(server, egressTable)
 	defer i.SaveRules(server, egressTable, ruleTable)
 	i.mux.Lock()
@@ -972,13 +972,12 @@ func (i *iptablesManager) AddAclEgressRules(server string, aclRules map[string]m
 	if ruleTable == nil {
 		ruleTable = make(ruletable)
 	}
+	aclRules := egressInfo.EgressFwRules
+	rCfg := rulesCfg{
+		rulesMap: make(map[string][]ruleInfo),
+	}
 	for _, aclRule := range aclRules {
 		rules := []ruleInfo{}
-		if _, ok := ruleTable[aclRule.ID]; !ok {
-			ruleTable[aclRule.ID] = rulesCfg{
-				rulesMap: make(map[string][]ruleInfo),
-			}
-		}
 		if len(aclRule.IPList) > 0 {
 			allowedIps := []string{}
 			for _, ip := range aclRule.IPList {
@@ -1097,31 +1096,24 @@ func (i *iptablesManager) AddAclEgressRules(server string, aclRules map[string]m
 			}
 		}
 		if len(rules) > 0 {
-			rCfg := rulesCfg{
-				rulesMap: map[string][]ruleInfo{
-					aclRule.ID: rules,
-				},
-				extraInfo: aclRule,
-			}
-			ruleTable[aclRule.ID] = rCfg
+			rCfg.rulesMap[aclRule.ID] = rules
+
+		} else {
+			delete(aclRules, aclRule.ID)
 		}
 	}
+	rCfg.extraInfo = aclRules
+	ruleTable[fmt.Sprintf("acl#%s", egressInfo.EgressID)] = rCfg
 }
 
-func (i *iptablesManager) UpsertAclEgressRule(server string, aclRule models.AclRule) {
+func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule models.AclRule) {
 	ruleTable := i.FetchRuleTable(server, egressTable)
 	defer i.SaveRules(server, egressTable, ruleTable)
 	i.mux.Lock()
 	defer i.mux.Unlock()
-	ruleTable[aclRule.ID] = rulesCfg{
-		rulesMap: make(map[string][]ruleInfo),
-	}
+	rCfg := ruleTable[egressID]
+	extraInfo := rCfg.extraInfo.(map[string]models.AclRule)
 	rules := []ruleInfo{}
-	if _, ok := ruleTable[aclRule.ID]; !ok {
-		ruleTable[aclRule.ID] = rulesCfg{
-			rulesMap: make(map[string][]ruleInfo),
-		}
-	}
 	if len(aclRule.IPList) > 0 {
 		allowedIps := []string{}
 		for _, ip := range aclRule.IPList {
@@ -1234,23 +1226,40 @@ func (i *iptablesManager) UpsertAclEgressRule(server string, aclRule models.AclR
 		}
 	}
 	if len(rules) > 0 {
-		rCfg := rulesCfg{
-			rulesMap: map[string][]ruleInfo{
-				aclRule.ID: rules,
-			},
-			extraInfo: aclRule,
-		}
-		ruleTable[aclRule.ID] = rCfg
+		rCfg.rulesMap[aclRule.ID] = rules
+		extraInfo[aclRule.ID] = aclRule
+		rCfg.extraInfo = extraInfo
+		ruleTable[egressID] = rCfg
 	}
-
 }
 
-func (i *iptablesManager) DeleteAclEgressRule(server, aclID string) {
+func (i *iptablesManager) DeleteAllAclEgressRules(server, egressID string) {
 	ruleTable := i.FetchRuleTable(server, egressTable)
 	defer i.SaveRules(server, egressTable, ruleTable)
 	i.mux.Lock()
 	defer i.mux.Unlock()
-	rulesCfg, ok := ruleTable[aclID]
+	rulesCfg, ok := ruleTable[egressID]
+	if !ok {
+		return
+	}
+	for _, rules := range rulesCfg.rulesMap {
+		for _, rule := range rules {
+			if rule.isIpv4 {
+				i.ipv4Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			} else {
+				i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
+			}
+		}
+	}
+	delete(ruleTable, egressID)
+}
+
+func (i *iptablesManager) DeleteAclEgressRule(server, egressID, aclID string) {
+	ruleTable := i.FetchRuleTable(server, egressTable)
+	defer i.SaveRules(server, egressTable, ruleTable)
+	i.mux.Lock()
+	defer i.mux.Unlock()
+	rulesCfg, ok := ruleTable[egressID]
 	if !ok {
 		return
 	}
@@ -1262,8 +1271,8 @@ func (i *iptablesManager) DeleteAclEgressRule(server, aclID string) {
 			i.ipv6Client.DeleteIfExists(rule.table, rule.chain, rule.rule...)
 		}
 	}
-	delete(ruleTable, aclID)
-
+	delete(rulesCfg.rulesMap, aclID)
+	ruleTable[egressID] = rulesCfg
 }
 
 func (i *iptablesManager) cleanup(table, chain string) {

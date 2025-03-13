@@ -1617,9 +1617,10 @@ func (n *nftablesManager) ChangeACLFwdTarget(target string) {
 	}
 }
 
-func (n *nftablesManager) AddAclEgressRules(server string, aclRules map[string]models.AclRule) {}
-func (n *nftablesManager) DeleteAclEgressRule(server, aclID string)                            {}
-func (n *nftablesManager) UpsertAclEgressRule(server string, aclRule models.AclRule)           {}
+func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.EgressInfo)     {}
+func (n *nftablesManager) DeleteAclEgressRule(server, nodeID, aclID string)                  {}
+func (n *nftablesManager) UpsertAclEgressRule(server, nodeID string, aclRule models.AclRule) {}
+func (n *nftablesManager) DeleteAllAclEgressRules(server, egressID string)                   {}
 
 func (n *nftablesManager) ChangeACLInTarget(target string) {
 	// check if rule exists with current target
