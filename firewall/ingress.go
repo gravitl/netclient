@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/gravitl/netmaker/models"
@@ -9,6 +10,7 @@ import (
 )
 
 func ProcessIngressUpdate(server string, ingressUpdate map[string]models.IngressInfo) error {
+	fmt.Println("==========> PROCESSING INGRESSING UPDATE")
 	fwMutex.Lock()
 	defer fwMutex.Unlock()
 	if fwCrtl == nil {
@@ -26,6 +28,7 @@ func ProcessIngressUpdate(server string, ingressUpdate map[string]models.Ingress
 		if !ok {
 			// set up rules for the ingress GW on first time creation
 			fwCrtl.InsertIngressRoutingRules(server, ingressInfo)
+			fmt.Println("==========> PROCESSING INGRESSING UPDATE 1")
 			slog.Info("setting ingress routes", "network", nodeID)
 			continue
 		} else {
@@ -38,6 +41,7 @@ func ProcessIngressUpdate(server string, ingressUpdate map[string]models.Ingress
 				fwCrtl.RemoveRoutingRules(server, ingressTable, nodeID)
 				// set up rules for the ingress GW on first time creation
 				fwCrtl.InsertIngressRoutingRules(server, ingressInfo)
+				fmt.Println("==========> PROCESSING INGRESSING UPDATE 2")
 			}
 		}
 	}

@@ -1,12 +1,14 @@
 package firewall
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/gravitl/netmaker/models"
 )
 
 func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
+	fmt.Println("================> PROCESSING ACL RULES")
 	fwMutex.Lock()
 	defer fwMutex.Unlock()
 	if fwCrtl == nil {
@@ -23,12 +25,14 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	aclRules := fwUpdate.AclRules
 	ruleTable := fwCrtl.FetchRuleTable(server, aclTable)
 	if len(ruleTable) == 0 && len(aclRules) > 0 {
+		fmt.Println("================> PROCESSING ACL RULES   1")
 		fwCrtl.AddAclRules(server, aclRules)
 		return
 	}
 	// add new acl rules
 	for _, aclRule := range aclRules {
 		if _, ok := ruleTable[aclRule.ID]; !ok {
+			fmt.Println("================> PROCESSING ACL RULES   2")
 			fwCrtl.UpsertAclRule(server, aclRule)
 		} else {
 			// check if there is a update
@@ -47,6 +51,7 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 				(localAclRule.Direction != aclRule.Direction) {
 				fwCrtl.DeleteAclRule(server, aclRule.ID)
 				fwCrtl.UpsertAclRule(server, aclRule)
+				fmt.Println("================> PROCESSING ACL RULES   3")
 			}
 		}
 	}
@@ -54,6 +59,7 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	for aclID := range ruleTable {
 		if _, ok := aclRules[aclID]; !ok {
 			fwCrtl.DeleteAclRule(server, aclID)
+			fmt.Println("================> PROCESSING ACL RULES   4")
 		}
 	}
 }
