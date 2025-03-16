@@ -1220,7 +1220,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 	ruleTable[ingressInfo.IngressID] = ingressRules
 	return nil
 }
-func (n *nftablesManager) GetIpExpr(srcIP, dstIP net.IPNet) []expr.Any {
+func (n *nftablesManager) GetIpExpr(srcIP net.IPNet, dstIPs []net.IPNet) []expr.Any {
 	var e []expr.Any
 	if srcIP.IP.To4() != nil {
 
@@ -1244,27 +1244,29 @@ func (n *nftablesManager) GetIpExpr(srcIP, dstIP net.IPNet) []expr.Any {
 				Register: 1,
 				Data:     srcIP.IP.To4(),
 			})
-		if dstIP.IP != nil {
-			e = append(e,
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       16, // Destination IP offset in IPv4 header
-					Len:          4,  // IPv4 address length
-				},
-				&expr.Bitwise{
-					SourceRegister: 1,
-					DestRegister:   1,
-					Len:            4,
-					Mask:           dstIP.Mask, // Destination IP netmask
-					Xor:            []byte{0, 0, 0, 0},
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     dstIP.IP.To4(), // Destination IP address
-				},
-			)
+		for _, dstIP := range dstIPs {
+			if dstIP.IP.To4() != nil {
+				e = append(e,
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       16, // Destination IP offset in IPv4 header
+						Len:          4,  // IPv4 address length
+					},
+					&expr.Bitwise{
+						SourceRegister: 1,
+						DestRegister:   1,
+						Len:            4,
+						Mask:           dstIP.Mask, // Destination IP netmask
+						Xor:            []byte{0, 0, 0, 0},
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     dstIP.IP.To4(), // Destination IP address
+					},
+				)
+			}
 		}
 
 	} else {
@@ -1289,27 +1291,30 @@ func (n *nftablesManager) GetIpExpr(srcIP, dstIP net.IPNet) []expr.Any {
 				Data:     srcIP.IP.To16(), // Replace with subnet prefix
 			},
 		)
-		if dstIP.IP != nil {
-			e = append(e,
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       24, // IPv6 destination address offset
-					Len:          16, // IPv6 address length
-				},
-				&expr.Bitwise{
-					SourceRegister: 1,
-					DestRegister:   1,
-					Len:            16,
-					Mask:           dstIP.Mask,       // net.IPMask with 16 bytes (CIDR mask)
-					Xor:            make([]byte, 16), // 16 zero bytes
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     dstIP.IP, // Must be 16 bytes (IPv6 address)
-				})
+		for _, dstIP := range dstIPs {
+			if dstIP.IP.To16() != nil {
+				e = append(e,
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       24, // IPv6 destination address offset
+						Len:          16, // IPv6 address length
+					},
+					&expr.Bitwise{
+						SourceRegister: 1,
+						DestRegister:   1,
+						Len:            16,
+						Mask:           dstIP.Mask,       // net.IPMask with 16 bytes (CIDR mask)
+						Xor:            make([]byte, 16), // 16 zero bytes
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     dstIP.IP, // Must be 16 bytes (IPv6 address)
+					})
+			}
 		}
+
 	}
 	return e
 }
@@ -1676,7 +1681,15 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 				rulesMap: make(map[string][]ruleInfo),
 			}
 		}
+
 		if len(aclRule.IPList) > 0 {
+			allowedDstIps := []string{}
+			for _, ip := range aclRule.Dst {
+				if ip.IP == nil {
+					continue
+				}
+				allowedDstIps = append(allowedDstIps, ip.String())
+			}
 			for _, ip := range aclRule.IPList {
 
 				ruleSpec := []string{"-s", ip.String()}
@@ -1687,9 +1700,7 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 					ruleSpec = append(ruleSpec, "--dport",
 						strings.Join(aclRule.AllowedPorts, ","))
 				}
-				if aclRule.Dst.IP != nil {
-					ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
-				}
+				ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
@@ -1730,6 +1741,13 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 		}
 
 		if len(aclRule.IP6List) > 0 {
+			allowedDstIps := []string{}
+			for _, ip := range aclRule.Dst6 {
+				if ip.IP == nil {
+					continue
+				}
+				allowedDstIps = append(allowedDstIps, ip.String())
+			}
 			for _, ip := range aclRule.IP6List {
 				ruleSpec := []string{"-s", ip.String()}
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
@@ -1739,9 +1757,7 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 					ruleSpec = append(ruleSpec, "--dport",
 						strings.Join(aclRule.AllowedPorts, ","))
 				}
-				if aclRule.Dst6.IP != nil {
-					ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
-				}
+				ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))

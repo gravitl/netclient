@@ -42,8 +42,8 @@ func processEgressFwRules(server string, egressUpdate map[string]models.EgressIn
 					(!reflect.DeepEqual(localAclRule.AllowedPorts, aclRule.AllowedPorts)) ||
 					(aclRule.AllowedProtocol != localAclRule.AllowedProtocol) ||
 					(localAclRule.Direction != aclRule.Direction) ||
-					(localAclRule.Dst.String() != aclRule.Dst.String()) ||
-					(localAclRule.Dst6.String() != aclRule.Dst6.String()) {
+					(!reflect.DeepEqual(localAclRule.Dst, aclRule.Dst)) ||
+					(len(localAclRule.Dst6) != len(aclRule.Dst6)) {
 					fwCrtl.DeleteAclEgressRule(server, egressAclID, aclRule.ID)
 					fwCrtl.UpsertAclEgressRule(server, egressAclID, aclRule)
 					fmt.Println("#############=============> PROCESSING EGRESSING RULES 2")

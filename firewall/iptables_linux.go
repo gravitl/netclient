@@ -981,7 +981,17 @@ func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 		if len(aclRule.IPList) > 0 {
 			allowedIps := []string{}
 			for _, ip := range aclRule.IPList {
+				if ip.IP == nil {
+					continue
+				}
 				allowedIps = append(allowedIps, ip.String())
+			}
+			allowedDstIps := []string{}
+			for _, ip := range aclRule.Dst {
+				if ip.IP == nil {
+					continue
+				}
+				allowedDstIps = append(allowedDstIps, ip.String())
 			}
 			rulesSpec := [][]string{}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -997,9 +1007,9 @@ func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 					if strings.Contains(port, "-") {
 						port = strings.ReplaceAll(port, "-", ":")
 					}
-					if aclRule.Dst.IP != nil {
-						ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
-					}
+
+					ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
+
 					ruleSpec = append(ruleSpec, "--dport", port)
 					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -1012,9 +1022,8 @@ func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
-				if aclRule.Dst.IP != nil {
-					ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
-				}
+
+				ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -1040,7 +1049,17 @@ func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 		if len(aclRule.IP6List) > 0 {
 			allowedIps := []string{}
 			for _, ip := range aclRule.IP6List {
+				if ip.IP == nil {
+					continue
+				}
 				allowedIps = append(allowedIps, ip.String())
+			}
+			allowedDstIps := []string{}
+			for _, ip := range aclRule.Dst6 {
+				if ip.IP == nil {
+					continue
+				}
+				allowedDstIps = append(allowedDstIps, ip.String())
 			}
 			rulesSpec := [][]string{}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -1056,9 +1075,7 @@ func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 					if strings.Contains(port, "-") {
 						port = strings.ReplaceAll(port, "-", ":")
 					}
-					if aclRule.Dst6.IP != nil {
-						ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
-					}
+					ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 					ruleSpec = append(ruleSpec, "--dport", port)
 					//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -1071,9 +1088,7 @@ func (i *iptablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
-				if aclRule.Dst6.IP != nil {
-					ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
-				}
+				ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -1117,7 +1132,17 @@ func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 	if len(aclRule.IPList) > 0 {
 		allowedIps := []string{}
 		for _, ip := range aclRule.IPList {
+			if ip.IP == nil {
+				continue
+			}
 			allowedIps = append(allowedIps, ip.String())
+		}
+		allowedDstIps := []string{}
+		for _, ip := range aclRule.Dst {
+			if ip.IP == nil {
+				continue
+			}
+			allowedDstIps = append(allowedDstIps, ip.String())
 		}
 		rulesSpec := [][]string{}
 		if len(aclRule.AllowedPorts) > 0 {
@@ -1132,9 +1157,7 @@ func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 				if strings.Contains(port, "-") {
 					port = strings.ReplaceAll(port, "-", ":")
 				}
-				if aclRule.Dst.IP != nil {
-					ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
-				}
+				ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 				ruleSpec = append(ruleSpec, "--dport", port)
 				//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
@@ -1147,9 +1170,7 @@ func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
-			if aclRule.Dst.IP != nil {
-				ruleSpec = append(ruleSpec, "-d", aclRule.Dst.String())
-			}
+			ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 			//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -1176,6 +1197,13 @@ func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 		for _, ip := range aclRule.IP6List {
 			allowedIps = append(allowedIps, ip.String())
 		}
+		allowedDstIps := []string{}
+		for _, ip := range aclRule.Dst6 {
+			if ip.IP == nil {
+				continue
+			}
+			allowedDstIps = append(allowedDstIps, ip.String())
+		}
 		rulesSpec := [][]string{}
 		if len(aclRule.AllowedPorts) > 0 {
 
@@ -1187,9 +1215,7 @@ func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
-				if aclRule.Dst6.IP != nil {
-					ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
-				}
+				ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 				if strings.Contains(port, "-") {
 					port = strings.ReplaceAll(port, "-", ":")
 				}
@@ -1204,9 +1230,7 @@ func (i *iptablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
-			if aclRule.Dst6.IP != nil {
-				ruleSpec = append(ruleSpec, "-d", aclRule.Dst6.String())
-			}
+			ruleSpec = append(ruleSpec, "-d", strings.Join(allowedDstIps, ","))
 			//ruleSpec = append(ruleSpec, "-m", "addrtype", "--dst-type", "LOCAL")
 			ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 			rulesSpec = append(rulesSpec, ruleSpec)
