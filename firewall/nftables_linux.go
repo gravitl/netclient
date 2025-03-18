@@ -1787,13 +1787,6 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 		}
 
 		if len(aclRule.IP6List) > 0 {
-			allowedDstIps := []string{}
-			for _, ip := range aclRule.Dst6 {
-				if ip.IP == nil {
-					continue
-				}
-				allowedDstIps = append(allowedDstIps, ip.String())
-			}
 			for _, ip := range aclRule.IP6List {
 
 				if len(aclRule.Dst6) > 0 {
