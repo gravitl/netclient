@@ -11,7 +11,6 @@ import (
 )
 
 func processEgressFwRules(server string, egressUpdate map[string]models.EgressInfo) {
-	fmt.Println("#############=============> PROCESSING EGRESSING RULES")
 	ruleTable := fwCrtl.FetchRuleTable(server, egressTable)
 	for _, egressInfoI := range egressUpdate {
 		aclRules := egressInfoI.EgressFwRules
@@ -31,7 +30,6 @@ func processEgressFwRules(server string, egressUpdate map[string]models.EgressIn
 		for _, aclRule := range aclRules {
 			if _, ok := ruleTable[egressAclID].rulesMap[aclRule.ID]; !ok {
 				fwCrtl.UpsertAclEgressRule(server, egressAclID, aclRule)
-				fmt.Println("#############=============> PROCESSING EGRESSING RULES 1")
 			} else {
 				localAclRule := localAclRules[aclRule.ID]
 				if (len(localAclRule.IPList) != len(aclRule.IPList)) ||
@@ -46,7 +44,6 @@ func processEgressFwRules(server string, egressUpdate map[string]models.EgressIn
 					(len(localAclRule.Dst6) != len(aclRule.Dst6)) {
 					fwCrtl.DeleteAclEgressRule(server, egressAclID, aclRule.ID)
 					fwCrtl.UpsertAclEgressRule(server, egressAclID, aclRule)
-					fmt.Println("#############=============> PROCESSING EGRESSING RULES 2")
 				}
 			}
 		}
@@ -54,7 +51,6 @@ func processEgressFwRules(server string, egressUpdate map[string]models.EgressIn
 		for aclID := range egressRules.rulesMap {
 			if _, ok := aclRules[aclID]; !ok {
 				fwCrtl.DeleteAclEgressRule(server, egressAclID, aclID)
-				fmt.Println("#############=============> PROCESSING EGRESSING RULES 3")
 			}
 		}
 	}
@@ -66,7 +62,6 @@ func processEgressFwRules(server string, egressUpdate map[string]models.EgressIn
 		id := strings.Split(egressID, "#")[1]
 		if _, ok := egressUpdate[id]; !ok {
 			fwCrtl.DeleteAllAclEgressRules(server, egressID)
-			fmt.Println("#############=============> PROCESSING EGRESSING RULES 4")
 		}
 	}
 
