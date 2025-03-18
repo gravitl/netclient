@@ -29,11 +29,9 @@ func (nc *NCIface) Create() error {
 	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
 	if err != nil {
 		slog.Info("creating Windows tunnel")
-		//{0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6} is a fixed string, for creating the unique GUID. It's meaningless
-		//unique GUID here to make sure only one network profile created
 		idString := config.Netclient().Host.ID.String()
 		if idString == "" {
-			idString = "0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6"
+			idString = config.DefaultHostID
 		}
 		windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
 		if err != nil {

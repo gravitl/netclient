@@ -49,6 +49,13 @@ const (
 	Initd
 )
 
+const (
+	// DefaultHostID {0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6} is a fixed string,
+	// for creating the unique GUID. It's a meaningless unique GUID here to
+	// make sure only one network profile is created.
+	DefaultHostID = "0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6"
+)
+
 // Initype - the type of init system in use
 type InitType int
 
