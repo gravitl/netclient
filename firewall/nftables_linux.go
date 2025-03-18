@@ -1687,25 +1687,18 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 		}
 
 		if len(aclRule.IPList) > 0 {
-			allowedDstIps := []string{}
-			for _, ip := range aclRule.Dst {
-				if ip.IP == nil {
-					continue
-				}
-				allowedDstIps = append(allowedDstIps, ip.String())
-			}
 			for _, ip := range aclRule.IPList {
 
-				ruleSpec := []string{"-s", ip.String()}
-				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
-					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
-				}
-				if len(aclRule.AllowedPorts) > 0 {
-					ruleSpec = append(ruleSpec, "--dport",
-						strings.Join(aclRule.AllowedPorts, ","))
-				}
 				if len(aclRule.Dst) > 0 {
 					for _, dstI := range aclRule.Dst {
+						ruleSpec := []string{"-s", ip.String()}
+						if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+							ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+						}
+						if len(aclRule.AllowedPorts) > 0 {
+							ruleSpec = append(ruleSpec, "--dport",
+								strings.Join(aclRule.AllowedPorts, ","))
+						}
 						ruleSpec = append(ruleSpec, "-d", dstI.String())
 						ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 						ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -1744,6 +1737,14 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 						}
 					}
 				} else {
+					ruleSpec := []string{"-s", ip.String()}
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if len(aclRule.AllowedPorts) > 0 {
+						ruleSpec = append(ruleSpec, "--dport",
+							strings.Join(aclRule.AllowedPorts, ","))
+					}
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 					n.deleteRule(defaultIpTable, aclFwdRulesChain, genRuleKey(ruleSpec...))
@@ -1794,16 +1795,17 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 				allowedDstIps = append(allowedDstIps, ip.String())
 			}
 			for _, ip := range aclRule.IP6List {
-				ruleSpec := []string{"-s", ip.String()}
-				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
-					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
-				}
-				if len(aclRule.AllowedPorts) > 0 {
-					ruleSpec = append(ruleSpec, "--dport",
-						strings.Join(aclRule.AllowedPorts, ","))
-				}
+
 				if len(aclRule.Dst6) > 0 {
 					for _, dstI := range aclRule.Dst6 {
+						ruleSpec := []string{"-s", ip.String()}
+						if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+							ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+						}
+						if len(aclRule.AllowedPorts) > 0 {
+							ruleSpec = append(ruleSpec, "--dport",
+								strings.Join(aclRule.AllowedPorts, ","))
+						}
 						ruleSpec = append(ruleSpec, "-d", dstI.String())
 						ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 						ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -1841,6 +1843,14 @@ func (n *nftablesManager) AddAclEgressRules(server string, egressInfo models.Egr
 						}
 					}
 				} else {
+					ruleSpec := []string{"-s", ip.String()}
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if len(aclRule.AllowedPorts) > 0 {
+						ruleSpec = append(ruleSpec, "--dport",
+							strings.Join(aclRule.AllowedPorts, ","))
+					}
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 					n.deleteRule(defaultIpTable, aclFwdRulesChain, genRuleKey(ruleSpec...))
@@ -1901,17 +1911,16 @@ func (n *nftablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 	if len(aclRule.IPList) > 0 {
 		for _, ip := range aclRule.IPList {
 
-			ruleSpec := []string{"-s", ip.String()}
-			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
-				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
-			}
-			if len(aclRule.AllowedPorts) > 0 {
-				ruleSpec = append(ruleSpec, "--dport",
-					strings.Join(aclRule.AllowedPorts, ","))
-			}
-
 			if len(aclRule.Dst) > 0 {
 				for _, dstI := range aclRule.Dst {
+					ruleSpec := []string{"-s", ip.String()}
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if len(aclRule.AllowedPorts) > 0 {
+						ruleSpec = append(ruleSpec, "--dport",
+							strings.Join(aclRule.AllowedPorts, ","))
+					}
 					ruleSpec = append(ruleSpec, "-d", dstI.String())
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -1950,6 +1959,14 @@ func (n *nftablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 					}
 				}
 			} else {
+				ruleSpec := []string{"-s", ip.String()}
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if len(aclRule.AllowedPorts) > 0 {
+					ruleSpec = append(ruleSpec, "--dport",
+						strings.Join(aclRule.AllowedPorts, ","))
+				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				n.deleteRule(defaultIpTable, aclFwdRulesChain, genRuleKey(ruleSpec...))
@@ -1994,16 +2011,16 @@ func (n *nftablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 	if len(aclRule.IP6List) > 0 {
 		for _, ip := range aclRule.IP6List {
 
-			ruleSpec := []string{"-s", ip.String()}
-			if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
-				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
-			}
-			if len(aclRule.AllowedPorts) > 0 {
-				ruleSpec = append(ruleSpec, "--dport",
-					strings.Join(aclRule.AllowedPorts, ","))
-			}
 			if len(aclRule.Dst6) > 0 {
 				for _, dstI := range aclRule.Dst6 {
+					ruleSpec := []string{"-s", ip.String()}
+					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+					}
+					if len(aclRule.AllowedPorts) > 0 {
+						ruleSpec = append(ruleSpec, "--dport",
+							strings.Join(aclRule.AllowedPorts, ","))
+					}
 					ruleSpec = append(ruleSpec, "-d", dstI.String())
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
@@ -2042,6 +2059,14 @@ func (n *nftablesManager) UpsertAclEgressRule(server, egressID string, aclRule m
 					}
 				}
 			} else {
+				ruleSpec := []string{"-s", ip.String()}
+				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
+					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
+				}
+				if len(aclRule.AllowedPorts) > 0 {
+					ruleSpec = append(ruleSpec, "--dport",
+						strings.Join(aclRule.AllowedPorts, ","))
+				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				n.deleteRule(defaultIpTable, aclFwdRulesChain, genRuleKey(ruleSpec...))
