@@ -24,8 +24,8 @@ func (unimplementedFirewall) AddIngressRoutingRule(server, extPeerKey, extPeerAd
 func (unimplementedFirewall) RefreshEgressRangesOnIngressGw(server string, ingressUpdate models.IngressInfo) error {
 	return nil
 }
-func (unimplementedFirewall) ChangeACLTarget(target string) {}
-
+func (unimplementedFirewall) ChangeACLInTarget(target string)  {}
+func (unimplementedFirewall) ChangeACLFwdTarget(target string) {}
 func (unimplementedFirewall) RemoveRoutingRules(server, tableName, peerKey string) error {
 	return nil
 }
@@ -68,7 +68,11 @@ func (unimplementedFirewall) DeleteAclRule(server string, aclID string) {
 func (unimplementedFirewall) RestrictUserToUserComms(server string, ingressInfo models.IngressInfo) error {
 	return nil
 }
-func (unimplementedFirewall) AddDropRules([]ruleInfo) {}
+func (unimplementedFirewall) AddAclEgressRules(server string, egressInfo models.EgressInfo)     {}
+func (unimplementedFirewall) DeleteAclEgressRule(server, nodeID, aclID string)                  {}
+func (unimplementedFirewall) UpsertAclEgressRule(server, nodeID string, aclRule models.AclRule) {}
+func (unimplementedFirewall) DeleteAllAclEgressRules(server, egressID string)                   {}
+func (unimplementedFirewall) AddDropRules([]ruleInfo)                                           {}
 
 // newFirewall returns an unimplemented Firewall manager
 func newFirewall() (firewallController, error) {
