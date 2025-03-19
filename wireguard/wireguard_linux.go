@@ -187,19 +187,23 @@ func SetRoutes(addrs []ifaceAddress) error {
 	}
 
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || addr.GwIP == nil {
+		fmt.Println("ADDING===> 1", addr)
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
+		fmt.Println("ADDING===> ", addr)
 		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-		if err := netlink.RouteAdd(&netlink.Route{
+		r := &netlink.Route{
 			LinkIndex: l.Attrs().Index,
-			Gw:        addr.GwIP,
 			Src:       addr.IP,
+			Gw:        addr.GwIP,
 			Dst:       &addr.Network,
 			Priority:  EgressRouteMetric,
-		}); err != nil && !strings.Contains(err.Error(), "file exists") {
-			slog.Warn("error adding route", "error", err.Error())
+			Scope:     netlink.SCOPE_LINK,
+		}
+		if err := netlink.RouteAdd(r); err != nil && !strings.Contains(err.Error(), "file exists") {
+			fmt.Println("error adding route", "error", err.Error())
 		}
 	}
 	return nil
