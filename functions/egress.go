@@ -106,52 +106,57 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 				// 	continue
 				// }
 				// check connectivity to egress gws
-				isEgressGwRangeReachable := false
-				allGwsUnReachable := true
-				for _, egressRouteI := range egressRoutingInfo {
-					//fmt.Printf("======> CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
+				// check if egress range is on current  peer
+				_, ipnet, cidrErr := net.ParseCIDR(egressRange)
+				if cidrErr != nil {
+					continue
+				}
+				/*	isEgressGwRangeReachable := false
+					allGwsUnReachable := true
+						for _, egressRouteI := range egressRoutingInfo {
+							//fmt.Printf("======> CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
+							devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
+							if !ok {
+								continue
+							}
+							//fmt.Printf("======> 2 CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
+							var connected bool
+							if egressRouteI.EgressGwAddr.IP != nil {
+								connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 2)
+							} else {
+								connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr6.IP.String(), metricPort, 2)
+
+							}
+							if connected {
+								allGwsUnReachable = false
+								// check if egress range is on curr gw peer
+								_, ipnet, cidrErr := net.ParseCIDR(egressRange)
+								if cidrErr == nil {
+									for _, allowedIP := range devicePeer.AllowedIPs {
+										if allowedIP.String() == ipnet.String() {
+											isEgressGwRangeReachable = true
+											break
+										}
+									}
+								}
+
+							}
+
+						}
+						if isEgressGwRangeReachable {
+							continue
+						}
+						if allGwsUnReachable {
+							continue
+						} */
+				fmt.Println("======> CHECKING FOR EGRESS RANGE: ", egressRange)
+				for i, egressRouteI := range egressRoutingInfo {
+					fmt.Printf("======> CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
 					devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
 					if !ok {
 						continue
 					}
-					//fmt.Printf("======> 2 CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
-					var connected bool
-					if egressRouteI.EgressGwAddr.IP != nil {
-						connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 2)
-					} else {
-						connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr6.IP.String(), metricPort, 2)
-
-					}
-					if connected {
-						allGwsUnReachable = false
-						// check if egress range is on curr gw peer
-						_, ipnet, cidrErr := net.ParseCIDR(egressRange)
-						if cidrErr == nil {
-							for _, allowedIP := range devicePeer.AllowedIPs {
-								if allowedIP.String() == ipnet.String() {
-									isEgressGwRangeReachable = true
-									break
-								}
-							}
-						}
-
-					}
-
-				}
-				if isEgressGwRangeReachable {
-					continue
-				}
-				if allGwsUnReachable {
-					continue
-				}
-				fmt.Println("======> CHECKING FOR EGRESS RANGE: ", egressRange)
-				for i, egressRouteI := range egressRoutingInfo {
-					fmt.Printf("======> CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
-					_, ok := devicePeerMap[egressRouteI.PeerKey]
-					if !ok {
-						continue
-					}
-					fmt.Printf("======> 2 CHECKING FOR EGRESS RANGE ROUTEI: %+v\n", egressRouteI)
+					fmt.Printf("======> 2 CHECKING FOR EGRESS RANGE ROUTEI: %+v,  DEVICE PEER: %+v\n", egressRouteI, devicePeer)
 					var connected bool
 					if egressRouteI.EgressGwAddr.IP != nil {
 						connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 2)
@@ -160,46 +165,30 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 
 					}
 					fmt.Printf("======> 3 CHECKING FOR EGRESS RANGE ROUTEI: %+v, Conected: %v, Index: %d \n", egressRouteI, connected, i)
+
 					if connected {
 						// peer is connected,so continue
-						break
-					} else {
-						if i == len(egressRoutingInfo)-1 {
-							break
+						exists := false
+						for _, allowedIP := range devicePeer.AllowedIPs {
+							if allowedIP.String() == ipnet.String() {
+								exists = true
+								break
+							}
 						}
-						// set the route to next peer available
-						egressFailOverRoute := egressRoutingInfo[i+1]
-						var connected bool
-						if egressRouteI.EgressGwAddr.IP != nil {
-							connected, _ = metrics.PeerConnStatus(egressFailOverRoute.EgressGwAddr.IP.String(), metricPort, 2)
-						} else {
-							connected, _ = metrics.PeerConnStatus(egressFailOverRoute.EgressGwAddr6.IP.String(), metricPort, 2)
-
-						}
-						if !connected {
-							continue
-						}
-						failOverPeer, ok := devicePeerMap[egressFailOverRoute.PeerKey]
-						if !ok {
-							continue
-						}
-						fmt.Printf("======> 4 SETTING FAILOVER EGRESS RANGE ROUTEI: %+v, DevicePeer: %+v \n",
-							egressFailOverRoute, failOverPeer)
-						_, ipnet, cidrErr := net.ParseCIDR(egressRange)
-						if cidrErr == nil {
-							failOverPeer.AllowedIPs = append(failOverPeer.AllowedIPs, *ipnet)
+						if !exists {
+							devicePeer.AllowedIPs = append(devicePeer.AllowedIPs, *ipnet)
+							fmt.Printf("======> 4 SETTING FAILOVER EGRESS RANGE ROUTEI: %+v, DevicePeer: %+v \n",
+								egressRouteI, devicePeer)
 							wireguard.UpdatePeer(&wgtypes.PeerConfig{
-								PublicKey:         failOverPeer.PublicKey,
-								AllowedIPs:        failOverPeer.AllowedIPs,
+								PublicKey:         devicePeer.PublicKey,
+								AllowedIPs:        devicePeer.AllowedIPs,
 								ReplaceAllowedIPs: true,
 								UpdateOnly:        true,
 							})
 						}
-
+						break
 					}
-
 				}
-
 			}
 			fmt.Println("\n=======> EGRESS FAILOVER END================> \n")
 
