@@ -125,37 +125,30 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRanges {
 			egressRangeIPNet := config.ToIPNet(egressRange)
-			if egressRangeIPNet.IP != nil {
+			if egressRangeIPNet.IP == nil {
+				continue
+			}
+			if len(config.GetNodes()) == 1 {
+				addrs = append(addrs, ifaceAddress{
+					Network: egressRangeIPNet,
+				})
+			} else {
 				if egressRangeIPNet.IP.To4() != nil {
-					if len(config.GetNodes()) == 1 {
-						addrs = append(addrs, ifaceAddress{
-							//GwIP:    egressRoute.EgressGwAddr.IP,
-							//IP:      egressRoute.NodeAddr.IP,
-							Network: egressRangeIPNet,
-						})
-					} else {
-						addrs = append(addrs, ifaceAddress{
-							GwIP:    egressRoute.EgressGwAddr.IP,
-							IP:      egressRoute.NodeAddr.IP,
-							Network: egressRangeIPNet,
-						})
-					}
+
+					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr.IP,
+						IP:      egressRoute.NodeAddr.IP,
+						Network: egressRangeIPNet,
+					})
 
 				}
 				if egressRoute.NodeAddr6.IP != nil {
-					if len(config.GetNodes()) == 1 {
-						addrs = append(addrs, ifaceAddress{
-							//GwIP:    egressRoute.EgressGwAddr6.IP,
-							//IP:      egressRoute.NodeAddr6.IP,
-							Network: egressRangeIPNet,
-						})
-					} else {
-						addrs = append(addrs, ifaceAddress{
-							GwIP:    egressRoute.EgressGwAddr6.IP,
-							IP:      egressRoute.NodeAddr6.IP,
-							Network: egressRangeIPNet,
-						})
-					}
+
+					addrs = append(addrs, ifaceAddress{
+						GwIP:    egressRoute.EgressGwAddr6.IP,
+						IP:      egressRoute.NodeAddr6.IP,
+						Network: egressRangeIPNet,
+					})
 
 				}
 
