@@ -185,8 +185,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if server.IsPro && peerConnTicker != nil {
-		peerConnTicker.Reset(peerConnectionCheckInterval)
+	if server.IsPro {
+		if peerConnTicker != nil {
+			peerConnTicker.Reset(peerConnectionCheckInterval)
+		}
+		if haEgressTicker != nil {
+			haEgressTicker.Reset(haEgressCheckInterval)
+		}
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -248,8 +253,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+		setEgressRoutes(peerUpdate.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		setEgressRoutes([]models.EgressNetworkRoutes{})
 	}
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
@@ -773,8 +780,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+		setEgressRoutes(pullResponse.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		setEgressRoutes([]models.EgressNetworkRoutes{})
 	}
 	if pullResponse.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
