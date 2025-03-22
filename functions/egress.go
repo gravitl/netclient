@@ -39,6 +39,9 @@ func setEgressRoutes(egressRoutesInfo []models.EgressNetworkRoutes) {
 
 func sortRouteMetricByAscending(items []egressPeer) []egressPeer {
 	sort.Slice(items, func(i, j int) bool {
+		if items[i].Metric == items[j].Metric {
+			return items[i].PeerKey < items[j].PeerKey
+		}
 		return items[i].Metric < items[j].Metric
 	})
 	return items
