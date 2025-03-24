@@ -86,6 +86,10 @@ github.com/gravitl/netmaker v0.30.1-0.20250310074257-38e5b58ac814 h1:Dih/88eSiot
 github.com/gravitl/netmaker v0.30.1-0.20250310074257-38e5b58ac814/go.mod h1:y33Q8aqgPLpijbuejEI3km44Fic07dYB3jiJbmvEzLA=
 github.com/gravitl/netmaker v0.30.1-0.20250315122235-ee788ec4463f h1:CsBKZvkx/nLPQx7Gd2d01uVx7zE47rJavvj7iqa6MZ8=
 github.com/gravitl/netmaker v0.30.1-0.20250315122235-ee788ec4463f/go.mod h1:y33Q8aqgPLpijbuejEI3km44Fic07dYB3jiJbmvEzLA=
+github.com/gravitl/netmaker v0.30.1-0.20250319072708-5584c99276a4 h1:SsTl6eZDtrrawy7Lns/jhhGnNATzvLijCwep3Hm4lv8=
+github.com/gravitl/netmaker v0.30.1-0.20250319072708-5584c99276a4/go.mod h1:y33Q8aqgPLpijbuejEI3km44Fic07dYB3jiJbmvEzLA=
+github.com/gravitl/netmaker v0.30.1-0.20250322062237-aeb6ebe610a8 h1:kkwBwc1Ba9nZwT/vcbmgh8wbpqtLhM72GnNO37kR6pE=
+github.com/gravitl/netmaker v0.30.1-0.20250322062237-aeb6ebe610a8/go.mod h1:y33Q8aqgPLpijbuejEI3km44Fic07dYB3jiJbmvEzLA=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/guumaster/hostctl v1.1.4 h1:4zb9wEurBlz/hQiXFz9feHHfunf7oj+9serAH8ohGuM=
