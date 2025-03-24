@@ -2,7 +2,6 @@ package functions
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sort"
 	"sync"
@@ -93,7 +92,6 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 				continue
 			}
 			egressPeerInfo := getHAEgressDataForProcessing()
-			fmt.Printf("Egress Peers Info:  %+v\n", egressPeerInfo)
 			if len(egressPeerInfo) == 0 {
 				continue
 			}
