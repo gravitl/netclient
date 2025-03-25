@@ -1,13 +1,16 @@
-# Netclient v0.30.0
+# Netclient v0.90.0
 
 ## Whats New ✨
-- Advanced ACL Rules - port, protocol and traffic direction
-- Reduced Firewall Requirements To One Single Port (443 udp/tcp)
-- Option to Turn off STUN or specify custom stun servers
+- ACL Rules for Egress Ranges
+- High Availability for Egress Routes
+- Added Support for Additional Nameservers.
 
 ## What's Fixed/Improved 🛠
-- Ipv6 Metrics Data
-- Optimised MQ message size
+- Optimised Metrics Collection.
+- IPv6 DNS Entries.
+- FailOver connection improvements.
+- Optimized Failover peer signaling.
+- Improved Connectivity Status Indicator with real-time troubleshooting help.
 
 ## Known Issues 🐞
 
