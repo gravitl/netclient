@@ -49,7 +49,9 @@ type firewallController interface {
 	// Add DROP Rules
 	AddDropRules([]ruleInfo)
 	// ChangeACLTarget - deletes if any current target and adds rule with new target
-	ChangeACLTarget(target string)
+	ChangeACLInTarget(target string)
+	// ChangeACLFwdTarget - deletes if any current target and adds rule with new target
+	ChangeACLFwdTarget(target string)
 	// InsertEgressRoutingRules - adds a egress routing rules for egressGw
 	InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error
 	// InsertIngressRoutingRules - inserts fw rules on ingress gw
@@ -60,6 +62,12 @@ type firewallController interface {
 	UpsertAclRule(server string, aclRule models.AclRule)
 	// DeleteAclRule - cleanup all the rules associated with a acl policy
 	DeleteAclRule(server, aclID string)
+
+	AddAclEgressRules(server string, egressInfo models.EgressInfo)
+	DeleteAclEgressRule(server, nodeID, aclID string)
+	UpsertAclEgressRule(server, nodeID string, aclRule models.AclRule)
+	DeleteAllAclEgressRules(server, egressID string)
+
 	// RemoveRoutingRules removes all routing rules firewall rules of a peer
 	RemoveRoutingRules(server, tableName, peerKey string) error
 	// DeleteRoutingRule removes rules related to a peer

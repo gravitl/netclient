@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -32,6 +33,9 @@ func GetDNSServerInstance() *DNSServer {
 
 // Start the DNS listener
 func (dnsServer *DNSServer) Start() {
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		return
+	}
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
 	if dnsServer.AddrStr != "" {
@@ -91,10 +95,10 @@ func (dnsServer *DNSServer) Start() {
 	}
 
 	//Setup DNS config for Linux
-	if config.Netclient().Host.OS == "linux" {
+	if config.Netclient().Host.OS == "linux" || config.Netclient().Host.OS == "windows" {
 		err := SetupDNSConfig()
 		if err != nil {
-			slog.Error("setup DNS conig failed", "error", err.Error())
+			slog.Error("setup DNS config failed", "error", err.Error())
 		}
 	}
 
@@ -103,6 +107,9 @@ func (dnsServer *DNSServer) Start() {
 
 // Stop the DNS listener
 func (dnsServer *DNSServer) Stop() {
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		return
+	}
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
 	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
@@ -110,7 +117,7 @@ func (dnsServer *DNSServer) Stop() {
 	}
 
 	//restore DNS config for Linux
-	if config.Netclient().Host.OS == "linux" {
+	if config.Netclient().Host.OS == "linux" || config.Netclient().Host.OS == "windows" {
 		err := RestoreDNSConfig()
 		if err != nil {
 			slog.Warn("Restore DNS conig failed", "error", err.Error())

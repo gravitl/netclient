@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -44,7 +45,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	network := parseNetworkFromTopic(msg.Topic())
 	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
-	server := config.Servers[node.Server]
+	server := config.GetServer(node.Server)
+	if server == nil {
+		return
+	}
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
 		slog.Warn("error decrypting message", "warn", err)
@@ -181,8 +185,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if server.IsPro && peerConnTicker != nil {
-		peerConnTicker.Reset(peerConnectionCheckInterval)
+	if server.IsPro {
+		if peerConnTicker != nil {
+			peerConnTicker.Reset(peerConnectionCheckInterval)
+		}
+		if haEgressTicker != nil {
+			haEgressTicker.Reset(haEgressCheckInterval)
+		}
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -207,6 +216,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("updating server version", "server", serverName, "version", peerUpdate.ServerVersion)
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
+	}
+	if peerUpdate.MetricsPort != server.MetricsPort {
+		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
+		daemon.Restart()
 	}
 
 	//get the current default gateway
@@ -240,19 +253,25 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+		setEgressRoutes(peerUpdate.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		setEgressRoutes([]models.EgressNetworkRoutes{})
 	}
-	if peerUpdate.EndpointDetection {
+	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	} else {
-
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 
 	}
 
 	saveServerConfig := false
+	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
+		server.NameServers = peerUpdate.NameServers
+		saveServerConfig = true
+	}
+
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
@@ -262,8 +281,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		}
 	}
-	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
-		dns.SetupDNSConfig()
+
+	if server.ManageDNS {
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
+			dns.SetupDNSConfig()
+		}
 	}
 
 	reloadStun := false
@@ -277,6 +300,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 		reloadStun = true
 	}
+	if peerUpdate.ServerConfig.IsPro && !server.IsPro {
+		server.IsPro = true
+		saveServerConfig = true
+	}
 
 	if reloadStun {
 		daemon.Restart()
@@ -288,6 +315,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
+	// if server.IsPro {
+	// 	go func() {
+	// 		time.Sleep(time.Second * 15)
+	// 		callPublishMetrics(true)
+	// 	}()
+	// }
+
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -353,6 +387,17 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
+	case models.ForceUpgrade:
+		clearRetainedMsg(client, msg.Topic())
+		slog.Info("force upgrading client to server's version", "version", server.Version)
+		upgMutex.Lock()
+		if err := UseVersion(server.Version, false); err != nil {
+			slog.Error("error upgrading client to server's version", "error", err)
+		} else {
+			slog.Info("upgraded client to server's version, restarting", "version", server.Version)
+			daemon.HardRestart()
+		}
+		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
@@ -407,12 +452,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		UpdateKeys()
 		writeToDisk = false
 	case models.RequestPull:
-		clearRetainedMsg(client, msg.Topic())
-		Pull(true)
+		clearMsg = true
+		restartDaemon = true
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		response, resetInterface, replacePeers, err := Pull(false)
+		response, resetInterface, replacePeers, err := Pull(false, false)
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
@@ -467,8 +512,10 @@ func resetInterfaceFunc() {
 		if dns.GetDNSServerInstance().AddrStr == "" {
 			dns.GetDNSServerInstance().Start()
 		}
-		//Setup resolveconf for Linux
-		if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+
+		//Setup DNS for Linux and Windows
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
 			dns.SetupDNSConfig()
 		}
 	}
@@ -477,6 +524,10 @@ func resetInterfaceFunc() {
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
 	currentCidrs := getAllAllowedIPs(peers[:])
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for idx := range peers {
 		peerPubKey := peers[idx].PublicKey.String()
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
@@ -514,7 +565,8 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 						networking.FindBestEndpoint(
 							peerIP,
 							peerPubKey,
-							peerInfo.ListenPort,
+							listenPort,
+							metricPort,
 						)
 					}(peerIP.String(), peerPubKey, peerInfo.ListenPort)
 
@@ -639,7 +691,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
 			auth.CleanJwtToken()
-			response, resetInterface, replacePeers, err := Pull(false)
+			response, resetInterface, replacePeers, err := Pull(false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {
@@ -693,7 +745,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-
+	if pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
+		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		daemon.Restart()
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
@@ -725,8 +780,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+		setEgressRoutes(pullResponse.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		setEgressRoutes([]models.EgressNetworkRoutes{})
 	}
 	if pullResponse.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)

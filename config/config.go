@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -46,6 +47,13 @@ const (
 	Runit
 	OpenRC
 	Initd
+)
+
+const (
+	// DefaultHostID {0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6} is a fixed string,
+	// for creating the unique GUID. It's a meaningless unique GUID here to
+	// make sure only one network profile is created.
+	DefaultHostID = "0EF230F0-2EAD-4370-B0F9-AFC2D2A039E6"
 )
 
 // Initype - the type of init system in use
@@ -100,9 +108,10 @@ func UpdateNetclient(c Config) {
 	netclientCfgMutex.Lock()
 	defer netclientCfgMutex.Unlock()
 	if c.Verbosity != logger.Verbosity {
-		logger.Log(3, "Logging verbosity updated to", strconv.Itoa(logger.Verbosity))
+		slog.Info("Logging verbosity updated to", "verbosity", strconv.Itoa(logger.Verbosity))
 	}
 	logger.Verbosity = c.Verbosity
+	ncutils.SetVerbosity(c.Verbosity)
 	netclient = c
 }
 
@@ -134,6 +143,16 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	host.TrafficKeyPublic = hostCfg.TrafficKeyPublic
 	// don't update any public ports coming from server,overwrite the values
 	host.WgPublicListenPort = hostCfg.WgPublicListenPort
+	if !host.IsStatic {
+		// don't update nil endpoint
+		if host.EndpointIP == nil {
+			host.EndpointIP = hostCfg.EndpointIP
+		}
+		if host.EndpointIPv6 == nil {
+			host.EndpointIPv6 = hostCfg.EndpointIPv6
+		}
+	}
+
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
@@ -210,16 +229,16 @@ func ReadNetclientConfig() (*Config, error) {
 	if _, err := os.Stat(file); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
-				logger.Log(0, "error creating netclient config directory", err.Error())
+				slog.Info("error creating netclient config directory", "error", err.Error())
 			}
 			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
+				slog.Info("error setting permissions on netclient config directory", "error", err.Error())
 			}
 			err = WriteNetclientConfig()
 			if err != nil {
 				logger.FatalLog("failed to initialize netclient config", err.Error())
 			}
-		} else if err != nil {
+		} else {
 			return nil, err
 		}
 	}

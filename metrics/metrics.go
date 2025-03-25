@@ -18,7 +18,7 @@ import (
 )
 
 // Collect - collects metrics
-func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
+func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Metrics, error) {
 	mi := 15
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
@@ -48,7 +48,6 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		}
 		id := peerMap[currPeer.PublicKey.String()].ID
 		address := peerMap[currPeer.PublicKey.String()].Address
-		port := peerMap[currPeer.PublicKey.String()].ListenPort
 		isExtClient := peerMap[currPeer.PublicKey.String()].IsExtClient
 		if id == "" || address == "" {
 			logger.Log(0, "attempted to parse metrics for invalid peer from server", id, address)
@@ -58,13 +57,13 @@ func Collect(network string, peerMap models.PeerMap) (*models.Metrics, error) {
 		var newMetric = models.Metric{
 			NodeName: peerMap[currPeer.PublicKey.String()].Name,
 		}
-		slog.Debug("collecting metrics for peer", "address", address)
+		//slog.Debug("collecting metrics for peer", "address", address)
 		newMetric.TotalReceived = currPeer.ReceiveBytes
 		newMetric.TotalSent = currPeer.TransmitBytes
 		if isExtClient {
 			newMetric.Connected, newMetric.Latency = extPeerConnStatus(address)
 		} else {
-			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, port, 4)
+			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, metricPort, 4)
 		}
 		if newMetric.Connected {
 			newMetric.Uptime = 1 * int64(mi)
@@ -111,14 +110,14 @@ func extPeerConnStatus(address string) (bool, int64) {
 	slog.Debug("[metrics] checking external peer connectivity", "address", address)
 	pinger, err := ping.NewPinger(address)
 	if err != nil {
-		slog.Warn("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
+		slog.Debug("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
 	} else {
 		pinger.SetPrivileged(true)
 		pinger.Count = 3
 		pinger.Timeout = time.Second * 2
 		err = pinger.Run()
 		if err != nil {
-			slog.Error("failed ping for metrics on peer address", "address", address, "err", err)
+			slog.Debug("failed ping for metrics on peer address", "address", address, "err", err)
 		} else {
 			pingStats := pinger.Statistics()
 			if pingStats.PacketsRecv > 0 {

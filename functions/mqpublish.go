@@ -225,49 +225,32 @@ func callPublishMetrics(fallback bool) {
 	}
 
 	if server.IsPro {
+		response, err := getPeerInfo()
+		if err != nil {
+			return
+		}
 		serverNodes := config.GetNodes()
 		for _, node := range serverNodes {
 			node := node
 			if node.Connected {
 				slog.Debug("collecting metrics for", "network", node.Network)
-				go publishMetrics(&node, fallback)
+				metricsPort := server.MetricsPort
+				if metricsPort == 0 {
+					metricsPort = 51821
+				}
+				if _, ok := response.NetworkPeerIDs[models.NetworkID(node.Network)]; !ok {
+					continue
+				}
+				go publishMetrics(&node, metricsPort, response.NetworkPeerIDs[models.NetworkID(node.Network)], fallback)
 			}
 		}
 	}
 }
 
 // publishMetrics - publishes the metrics of a given nodecfg
-func publishMetrics(node *config.Node, fallback bool) {
-	server := config.GetServer(node.Server)
-	if server == nil {
-		return
-	}
-	token, err := auth.Authenticate(server, config.Netclient())
-	if err != nil {
-		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
-		return
-	}
-	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID)
-	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
-		URL:           url,
-		Method:        http.MethodGet,
-		Authorization: "Bearer " + token,
-		Data:          nil,
-		Response:      models.NodeGet{},
-		ErrorResponse: models.ErrorResponse{},
-	}
-	response, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-			return
-		}
-		logger.Log(1, "failed to read from server during metrics publish", err.Error())
-		return
-	}
-	nodeGET := response
+func publishMetrics(node *config.Node, metricPort int, peerInfo models.PeerMap, fallback bool) {
 
-	metrics, err := metrics.Collect(nodeGET.Node.Network, nodeGET.PeerIDs)
+	metrics, err := metrics.Collect(node.Network, peerInfo, metricPort)
 	if err != nil {
 		logger.Log(0, "failed metric collection for node", config.Netclient().Name, err.Error())
 		return
@@ -281,7 +264,9 @@ func publishMetrics(node *config.Node, fallback bool) {
 		return
 	}
 	if fallback {
-		hostServerUpdate(models.HostUpdate{Action: models.UpdateMetrics, Node: nodeGET.Node, NewMetrics: *metrics})
+		hostServerUpdate(models.HostUpdate{Action: models.UpdateMetrics, Node: models.Node{
+			CommonNode: node.CommonNode,
+		}, NewMetrics: *metrics})
 		return
 	}
 	if err = publish(node.Server, fmt.Sprintf("metrics/%s/%s", node.Server, node.ID), data, 1); err != nil {
