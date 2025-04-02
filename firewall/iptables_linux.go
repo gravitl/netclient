@@ -27,6 +27,7 @@ const (
 	iptableFWDChain     = "FORWARD"
 	iptableINChain      = "INPUT"
 	nattablePRTChain    = "POSTROUTING"
+	nattablePREChain    = "PREROUTING"
 	netmakerSignature   = "NETMAKER"
 	aclInputRulesChain  = "NETMAKER-ACL-IN"
 	aclFwdRulesChain    = "NETMAKER-ACL-FWD"
@@ -444,8 +445,9 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		rulesMap: make(map[string][]ruleInfo),
 	}
 	egressGwRoutes := []ruleInfo{}
-	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
+	for _, egressGwRangeI := range egressInfo.EgressGWCfg.RangesWithMetric {
 		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+			egressGwRange := egressGwRangeI.Network
 			iptablesClient := i.ipv4Client
 			source := egressInfo.Network.String()
 			if !isAddrIpv4(egressGwRange) {
@@ -470,6 +472,25 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:  ruleSpec,
 					})
 				}
+				// add NAT rule for virtualNAt transform
+				//  iptables -t nat -A PREROUTING -d 10.200.0.0/20 -j NETMAP --to 10.104.0.0/20
+				if egressGwRangeI.VirtualNATNetwork != "" {
+					ruleSpec = []string{"-d", egressGwRangeI.VirtualNATNetwork, "-j", "NETMAP", "--to", egressGwRange}
+					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					// to avoid duplicate iface route rule,delete if exists
+					iptablesClient.DeleteIfExists(defaultNatTable, nattablePREChain, ruleSpec...)
+					err = iptablesClient.Insert(defaultNatTable, nattablePREChain, 1, ruleSpec...)
+					if err != nil {
+						logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+					} else {
+						egressGwRoutes = append(egressGwRoutes, ruleInfo{
+							table: defaultNatTable,
+							chain: nattablePREChain,
+							rule:  ruleSpec,
+						})
+					}
+				}
+
 			}
 		}
 	}

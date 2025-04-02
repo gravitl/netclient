@@ -78,11 +78,13 @@ func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
-	GwIP     net.IP
-	IP       net.IP
-	Network  net.IPNet
-	AddRoute bool
-	Metric   uint32
+	GwIP          net.IP
+	IP            net.IP
+	Network       net.IPNet
+	AddRoute      bool
+	Metric        uint32
+	EgressNetwork net.IPNet
+	VirtualNATNet net.IPNet
 }
 
 // Close closes a netclient interface
@@ -118,6 +120,19 @@ func RemoveEgressRoutes() {
 	cache.EgressRouteCache = sync.Map{}
 }
 
+func GetEgressRoutes() []ifaceAddress {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	routes := []ifaceAddress{}
+	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+		routes, ok = addrs1.([]ifaceAddress)
+		if !ok {
+			return []ifaceAddress{}
+		}
+	}
+	return routes
+}
+
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
@@ -125,20 +140,27 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
+			if egressRange.VirtualNATNetwork != "" {
+				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNATNetwork)
+			}
 			if egressRangeIPNet.IP != nil {
 				if egressRangeIPNet.IP.To4() != nil {
 					addrs = append(addrs, ifaceAddress{
-						GwIP:    egressRoute.EgressGwAddr.IP,
-						IP:      egressRoute.NodeAddr.IP,
-						Network: egressRangeIPNet,
-						Metric:  egressRange.RouteMetric,
+						GwIP:          egressRoute.EgressGwAddr.IP,
+						IP:            egressRoute.NodeAddr.IP,
+						Network:       egressRangeIPNet,
+						Metric:        egressRange.RouteMetric,
+						EgressNetwork: config.ToIPNet(egressRange.Network),
+						VirtualNATNet: config.ToIPNet(egressRange.VirtualNATNetwork),
 					})
 				} else if egressRoute.NodeAddr6.IP != nil {
 					addrs = append(addrs, ifaceAddress{
-						GwIP:    egressRoute.EgressGwAddr6.IP,
-						IP:      egressRoute.NodeAddr6.IP,
-						Network: egressRangeIPNet,
-						Metric:  egressRange.RouteMetric,
+						GwIP:          egressRoute.EgressGwAddr6.IP,
+						IP:            egressRoute.NodeAddr6.IP,
+						Network:       egressRangeIPNet,
+						Metric:        egressRange.RouteMetric,
+						EgressNetwork: config.ToIPNet(egressRange.Network),
+						VirtualNATNet: config.ToIPNet(egressRange.VirtualNATNetwork),
 					})
 				}
 

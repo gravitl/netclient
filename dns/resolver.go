@@ -2,11 +2,14 @@ package dns
 
 import (
 	"errors"
+	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"sync"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
 )
@@ -108,11 +111,102 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if resp != nil {
 		reply.Answer = append(reply.Answer, resp)
 	}
-
+	dnsMasq(reply)
 	err = w.WriteMsg(reply)
 	if err != nil {
 		slog.Error("write DNS response message error: ", "error", err.Error())
 	}
+}
+
+func dnsMasq(reply *dns.Msg) {
+	addrs := wireguard.GetEgressRoutes()
+	var newAnswers []dns.RR
+	fmt.Printf("ADDRS: %+v\n", addrs)
+	fmt.Printf("Reply: %+v\n", reply.Answer)
+	for _, ans := range reply.Answer {
+		for _, addr := range addrs {
+			switch v := ans.(type) {
+			case *dns.A: // IPv4 Address
+				if addr.EgressNetwork.IP.To4() != nil && addr.EgressNetwork.Contains(v.A) {
+					translatedIp, err := netmapTranslate(v.A, addr.EgressNetwork.String(), addr.VirtualNATNet.String())
+					if err == nil {
+						fmt.Printf("Rewriting DNS response: %s → %s\n", v.A, translatedIp)
+						newRR, _ := dns.NewRR(fmt.Sprintf("%s A %s", v.Header().Name, translatedIp))
+						newAnswers = append(newAnswers, newRR)
+					} else {
+						newAnswers = append(newAnswers, ans)
+					}
+					break
+				}
+
+			case *dns.AAAA: // IPv6 Address
+				if addr.EgressNetwork.IP.To4() == nil && addr.EgressNetwork.Contains(v.AAAA) {
+					translatedIp, err := netmapTranslate(v.AAAA, addr.EgressNetwork.String(), addr.VirtualNATNet.String())
+					if err == nil {
+						fmt.Printf("Rewriting DNS response: %s → %s\n", v.AAAA, translatedIp)
+						newRR, _ := dns.NewRR(fmt.Sprintf("%s A %s", v.Header().Name, translatedIp))
+						newAnswers = append(newAnswers, newRR)
+					} else {
+						newAnswers = append(newAnswers, ans)
+					}
+					break
+				}
+			}
+		}
+
+	}
+	fmt.Printf("New Answers: %+v\n", newAnswers)
+	reply.Answer = newAnswers
+
+}
+
+// netmapTranslate translates an IP address from one subnet to another
+func netmapTranslate(ip net.IP, srcCIDR, dstCIDR string) (net.IP, error) {
+	_, srcNet, err := net.ParseCIDR(srcCIDR)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source CIDR: %w", err)
+	}
+
+	_, dstNet, err := net.ParseCIDR(dstCIDR)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination CIDR: %w", err)
+	}
+
+	// Ensure IP belongs to the source subnet
+	if !srcNet.Contains(ip) {
+		return nil, fmt.Errorf("IP %s not in source CIDR %s", ip, srcCIDR)
+	}
+
+	// Convert IPs to big.Int
+	ipInt := ipToBigInt(ip)
+	srcBase := ipToBigInt(srcNet.IP)
+	dstBase := ipToBigInt(dstNet.IP)
+
+	// Compute offset and apply it to the destination base
+	offset := new(big.Int).Sub(ipInt, srcBase)
+	translatedIP := new(big.Int).Add(dstBase, offset)
+
+	return bigIntToIP(translatedIP, ip), nil
+}
+
+// ipToBigInt converts an IP address to a big integer
+func ipToBigInt(ip net.IP) *big.Int {
+	return new(big.Int).SetBytes(ip.To16()) // Always use IPv6 representation
+}
+
+// bigIntToIP correctly converts a big integer back to an IP address
+func bigIntToIP(bi *big.Int, originalIP net.IP) net.IP {
+	ipBytes := bi.Bytes()
+
+	// Ensure correct length (IPv4 = 4 bytes, IPv6 = 16 bytes)
+	if len(originalIP) == net.IPv4len && len(ipBytes) > 4 {
+		ipBytes = ipBytes[len(ipBytes)-4:] // Extract last 4 bytes for IPv4
+	} else if len(ipBytes) < len(originalIP) {
+		padding := make([]byte, len(originalIP)-len(ipBytes))
+		ipBytes = append(padding, ipBytes...)
+	}
+
+	return net.IP(ipBytes)
 }
 
 // Register A record
