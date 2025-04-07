@@ -155,7 +155,7 @@ func dnsMasq(reply *dns.Msg) {
 		}
 
 	}
-	fmt.Printf("New Answers: %+v\n", newAnswers)
+	//fmt.Printf("New Answers: %+v\n", newAnswers)
 	reply.Answer = newAnswers
 
 }
@@ -266,4 +266,51 @@ func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
 	}
 
 	return r, nil
+}
+
+// resolveDNS queries a domain using a specific nameserver
+func ResolveDNS(domain string, nslist []string) ([]net.IP, error) {
+	var ips []net.IP
+	client := new(dns.Client)
+	for _, nameserver := range nslist {
+		if len(ips) > 0 {
+			break
+		}
+		msg := new(dns.Msg)
+
+		// Set question for A and AAAA records
+		msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+		msg.RecursionDesired = true
+
+		// Send query to the nameserver
+		response, _, err := client.Exchange(msg, net.JoinHostPort(nameserver, "53"))
+		if err != nil {
+			continue
+		}
+
+		// Process A record responses
+		for _, ans := range response.Answer {
+			if a, ok := ans.(*dns.A); ok {
+				ips = append(ips, a.A)
+			}
+		}
+
+		// Query AAAA records for IPv6
+		msg.SetQuestion(dns.Fqdn(domain), dns.TypeAAAA)
+		response, _, err = client.Exchange(msg, net.JoinHostPort(nameserver, "53"))
+		if err == nil {
+			for _, ans := range response.Answer {
+				if aaaa, ok := ans.(*dns.AAAA); ok {
+					ips = append(ips, aaaa.AAAA)
+				}
+			}
+		}
+
+	}
+
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no A or AAAA records found for %s", domain)
+	}
+
+	return ips, nil
 }

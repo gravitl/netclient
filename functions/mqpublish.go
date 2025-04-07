@@ -357,7 +357,6 @@ func UpdateHostSettings(fallback bool) error {
 			}
 		}
 	}
-
 	if config.WgPublicListenPort != 0 && config.Netclient().WgPublicListenPort != config.WgPublicListenPort {
 		if !config.Netclient().IsStaticPort {
 			config.Netclient().WgPublicListenPort = config.WgPublicListenPort

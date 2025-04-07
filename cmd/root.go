@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
@@ -73,6 +74,7 @@ func initConfig() {
 		os.Exit(1)
 	}
 	nc.Close()
+	dns.InitDNSConfig()
 }
 
 func migrateConfigFile() error {

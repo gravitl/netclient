@@ -630,7 +630,7 @@ func InitDNSConfig() {
 						nslist = append(nslist, ll...)
 					}
 
-					break
+					//	break
 				}
 			}
 		}

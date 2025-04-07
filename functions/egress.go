@@ -2,12 +2,14 @@ package functions
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
@@ -152,4 +154,30 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 
 		}
 	}
+}
+
+func DiscoverEgressIPs() {
+	fmt.Println("DISCOVER IPS")
+	egressServices := config.Netclient().EgressServices
+	nsList := config.Netclient().NameServers
+	if len(egressServices) > 0 {
+		for externalService := range egressServices {
+			fmt.Println("Discovering IP for external service: ", externalService)
+			ips, err := dns.ResolveDNS(externalService, nsList)
+			if err == nil {
+				egressServices[externalService] = []models.EgressIPNat{}
+				for _, ip := range ips {
+					egressServices[externalService] = append(egressServices[externalService], models.EgressIPNat{
+						EgressIP: ip,
+					})
+				}
+
+			} else {
+				fmt.Println("failed to resolve external service: ", externalService, err.Error())
+			}
+		}
+	}
+	config.Netclient().EgressServices = egressServices
+	config.WriteNetclientConfig()
+	hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
 }

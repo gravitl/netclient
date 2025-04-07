@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -32,6 +33,7 @@ var registerFlags = struct {
 	StaticPort  string
 	Static      string
 	Interface   string
+	Dns         string
 	Name        string
 }{
 	Server:      "server",
@@ -45,6 +47,7 @@ var registerFlags = struct {
 	StaticPort:  "static-port",
 	Static:      "static-endpoint",
 	Name:        "name",
+	Dns:         "dns",
 	Interface:   "interface",
 }
 
@@ -126,6 +129,20 @@ func setHostFields(cmd *cobra.Command) {
 		fmt.Println("error: static endpoint is enabled, please specify valid endpoint ip with -e option")
 		os.Exit(1)
 	}
+	if dnsServers, err := cmd.Flags().GetString(registerFlags.Dns); err == nil && dnsServers != "" {
+		dnsServersLi := strings.Split(dnsServers, ",")
+		for _, dnsServerI := range dnsServersLi {
+			nsIP := net.ParseIP(dnsServerI)
+			if nsIP != nil {
+				if config.Netclient().EgressServices == nil {
+					config.Netclient().EgressServices = make(map[string][]models.EgressIPNat)
+				}
+				config.Netclient().EgressServices["DNS"] = append(config.Netclient().EgressServices["DNS"], models.EgressIPNat{
+					EgressIP: nsIP,
+				})
+			}
+		}
+	}
 }
 func validateIface(iface string) bool {
 	if iface == "" {
@@ -206,5 +223,6 @@ func init() {
 	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	registerCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
+	registerCmd.Flags().StringP(registerFlags.Dns, "d", "", "sets dns nameserver to resolve queries via this host")
 	rootCmd.AddCommand(registerCmd)
 }

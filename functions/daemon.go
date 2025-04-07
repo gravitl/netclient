@@ -286,7 +286,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			}
 		}
 	}
-
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
@@ -308,6 +307,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		dns.GetDNSServerInstance().Stop()
 	}
+	go DiscoverEgressIPs()
 	go func() {
 		time.Sleep(time.Second * 45)
 		callPublishMetrics(true)

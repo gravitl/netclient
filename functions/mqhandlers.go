@@ -429,14 +429,19 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.DeleteClientNodes()
 		restartDaemon = true
 	case models.UpdateHost:
+		fmt.Printf("Updating HOST: %+v\n", hostUpdate.Host)
 		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)
 		if sendHostUpdate {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				slog.Error("could not publish host update", err.Error())
 			}
 		}
+		writeToDisk = true
+	case models.DiscoverEgressIps:
+		go DiscoverEgressIPs()
+		config.UpdateHost(&hostUpdate.Host)
+		writeToDisk = true
 		clearMsg = true
-		writeToDisk = false
 	case models.RequestAck:
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
