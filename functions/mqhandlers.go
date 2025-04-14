@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -221,7 +222,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
 		daemon.Restart()
 	}
+	if peerUpdate.MetricInterval != server.MetricInterval {
+		i, err := strconv.Atoi(server.MetricInterval)
+		if err == nil {
+			metricTicker.Reset(time.Minute * time.Duration(i))
+		}
 
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
