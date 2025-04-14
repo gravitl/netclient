@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -212,6 +213,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			upgMutex.Unlock()
 		}
 	}
+	saveServerConfig := false
 	if peerUpdate.ServerVersion != server.Version {
 		slog.Info("updating server version", "server", serverName, "version", peerUpdate.ServerVersion)
 		server.Version = peerUpdate.ServerVersion
@@ -221,7 +223,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
 		daemon.Restart()
 	}
+	if peerUpdate.DefaultDomain != server.DefaultDomain {
+		slog.Info("Dns default domain has changed", "from", server.DefaultDomain, "to", peerUpdate.DefaultDomain)
+		dns.SetupDNSConfig()
+	}
+	if peerUpdate.MetricInterval != server.MetricInterval {
+		i, err := strconv.Atoi(peerUpdate.MetricInterval)
+		if err == nil {
+			metricTicker.Reset(time.Minute * time.Duration(i))
+		}
+		server.MetricInterval = peerUpdate.MetricInterval
 
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
@@ -266,7 +279,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	}
 
-	saveServerConfig := false
 	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
 		server.NameServers = peerUpdate.NameServers
 		saveServerConfig = true
