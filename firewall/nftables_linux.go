@@ -530,14 +530,14 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		isIpv4:   isIpv4,
 		rulesMap: make(map[string][]ruleInfo),
 	}
-	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
+		if egressGwRange.Nat {
 
 			source := egressInfo.Network.String()
-			if !isAddrIpv4(egressGwRange) {
+			if !isAddrIpv4(egressGwRange.Network) {
 				source = egressInfo.Network6.String()
 			}
-			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange)); err != nil {
+			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
 				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
