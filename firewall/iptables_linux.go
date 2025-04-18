@@ -441,7 +441,8 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	defer i.mux.Unlock()
 	// add jump Rules for egress GW
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		rulesMap: make(map[string][]ruleInfo),
+		rulesMap:  make(map[string][]ruleInfo),
+		extraInfo: egressInfo.EgressGWCfg,
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
