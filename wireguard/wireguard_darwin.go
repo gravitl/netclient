@@ -1,11 +1,14 @@
 package wireguard
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
@@ -141,10 +144,65 @@ func DeleteOldInterface(iface string) {
 }
 
 // GetDefaultGatewayIp - get current default gateway
-func GetDefaultGatewayIp() (ip net.IP, err error) { return }
+func GetDefaultGatewayIp() (ip net.IP, err error) {
+	cmd := exec.Command("route", "-n", "get", "default")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
 
-// RestoreDefaultGateway - restore the old default gateway
-func RestoreInternetGw() (err error) { return }
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "gateway:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				gwIP := net.ParseIP(fields[1])
+				if gwIP == nil {
+					return nil, errors.New("failed to parse gateway IP")
+				}
+				return gwIP, nil
+			}
+		}
+	}
 
-// SetDefaultGateway - set a new default gateway
-func SetInternetGw(ip net.IP) (err error) { return }
+	return nil, errors.New("gateway not found")
+}
+
+// SetInternetGw - set a new default gateway
+func SetInternetGw(ip net.IP) (err error) {
+	if ip == nil {
+		return errors.New("IP cannot be nil")
+	}
+
+	// Delete existing default route
+	err = exec.Command("sudo", "route", "delete", "default").Run()
+	if err != nil {
+		return fmt.Errorf("failed to delete default route: %v", err)
+	}
+
+	// Add new default route
+	err = exec.Command("sudo", "route", "add", "default", ip.String()).Run()
+	if err != nil {
+		return fmt.Errorf("failed to add new default route: %v", err)
+	}
+
+	return nil
+}
+
+// RestoreInternetGw - restore the old default gateway
+func RestoreInternetGw() (err error) {
+
+	// Delete current default route
+	err = exec.Command("sudo", "route", "delete", "default").Run()
+	if err != nil {
+		return fmt.Errorf("failed to delete current default route: %v", err)
+	}
+
+	// Restore old default route
+	err = exec.Command("sudo", "route", "add", "default", config.Netclient().OriginalDefaultGatewayIp.String()).Run()
+	if err != nil {
+		return fmt.Errorf("failed to restore old gateway: %v", err)
+	}
+	return nil
+}
