@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -200,7 +201,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("error checking version less than", "error", err)
 			return
 		}
-		if vlt && config.Netclient().Host.AutoUpdate {
+		if vlt && peerUpdate.Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			upgMutex.Lock()
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
@@ -212,6 +213,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			upgMutex.Unlock()
 		}
 	}
+	saveServerConfig := false
 	if peerUpdate.ServerVersion != server.Version {
 		slog.Info("updating server version", "server", serverName, "version", peerUpdate.ServerVersion)
 		server.Version = peerUpdate.ServerVersion
@@ -221,7 +223,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
 		daemon.Restart()
 	}
+	if peerUpdate.DefaultDomain != server.DefaultDomain {
+		slog.Info("Dns default domain has changed", "from", server.DefaultDomain, "to", peerUpdate.DefaultDomain)
+		dns.SetupDNSConfig()
+	}
+	if peerUpdate.MetricInterval != server.MetricInterval {
+		i, err := strconv.Atoi(peerUpdate.MetricInterval)
+		if err == nil {
+			metricTicker.Reset(time.Minute * time.Duration(i))
+		}
+		server.MetricInterval = peerUpdate.MetricInterval
 
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
@@ -249,6 +262,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
+	if !peerUpdate.ServerConfig.EndpointDetection {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
@@ -260,13 +277,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
-	} else {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
-
 	}
 
-	saveServerConfig := false
 	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
 		server.NameServers = peerUpdate.NameServers
 		saveServerConfig = true
