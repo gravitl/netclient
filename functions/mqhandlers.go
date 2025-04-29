@@ -201,7 +201,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("error checking version less than", "error", err)
 			return
 		}
-		if vlt && config.Netclient().Host.AutoUpdate {
+		if vlt && peerUpdate.Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			upgMutex.Lock()
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
