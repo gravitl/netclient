@@ -527,8 +527,9 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		egressGwRoutes = []ruleInfo{}
 	)
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		isIpv4:   isIpv4,
-		rulesMap: make(map[string][]ruleInfo),
+		isIpv4:    isIpv4,
+		rulesMap:  make(map[string][]ruleInfo),
+		extraInfo: egressInfo.EgressGWCfg,
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
 		if egressGwRange.Nat {
