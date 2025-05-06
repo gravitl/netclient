@@ -82,11 +82,18 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 		}
 	}
 	for egressNodeID, egressInfo := range egressUpdate {
-		if _, ok := ruleTable[egressNodeID]; !ok {
+		if existingRules, ok := ruleTable[egressNodeID]; !ok {
 			// set up rules for the GW on first time creation
 			slog.Info("setting egress routes", "node", egressNodeID)
 			fwCrtl.InsertEgressRoutingRules(server, egressInfo)
 			continue
+		} else {
+			egressGatewayReq := existingRules.extraInfo.(models.EgressGatewayRequest)
+			if !isEgressRangeEqual(egressGatewayReq.RangesWithMetric, egressInfo.EgressGWCfg.RangesWithMetric) {
+				// egress GW is deleted, flush out all rules
+				fwCrtl.RemoveRoutingRules(server, egressTable, egressNodeID)
+				fwCrtl.InsertEgressRoutingRules(server, egressInfo)
+			}
 		}
 	}
 	processEgressFwRules(server, egressUpdate)
@@ -99,4 +106,27 @@ func DeleteEgressGwRoutes(server string) {
 		return
 	}
 	fwCrtl.CleanRoutingRules(server, egressTable)
+}
+
+func key(e models.EgressRangeMetric) string {
+	return fmt.Sprintf("%s|%t", e.Network, e.Nat)
+}
+
+func isEgressRangeEqual(a, b []models.EgressRangeMetric) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	counts := make(map[string]int)
+	for _, e := range a {
+		counts[key(e)]++
+	}
+	for _, e := range b {
+		k := key(e)
+		if counts[k] == 0 {
+			return false
+		}
+		counts[k]--
+	}
+	return true
 }

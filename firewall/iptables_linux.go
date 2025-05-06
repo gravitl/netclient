@@ -441,18 +441,19 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	defer i.mux.Unlock()
 	// add jump Rules for egress GW
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		rulesMap: make(map[string][]ruleInfo),
+		rulesMap:  make(map[string][]ruleInfo),
+		extraInfo: egressInfo.EgressGWCfg,
 	}
 	egressGwRoutes := []ruleInfo{}
-	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
+		if egressGwRange.Nat {
 			iptablesClient := i.ipv4Client
 			source := egressInfo.Network.String()
-			if !isAddrIpv4(egressGwRange) {
+			if !isAddrIpv4(egressGwRange.Network) {
 				iptablesClient = i.ipv6Client
 				source = egressInfo.Network6.String()
 			}
-			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
+			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
