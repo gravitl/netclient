@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/miekg/dns"
@@ -79,22 +80,22 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			nslist = append(nslist, server.NameServers...)
 		}
 		gotResult := false
-		client := &dns.Client{}
+		client := &dns.Client{Timeout: 3 * time.Second}
 		for _, v := range nslist {
 			if strings.Contains(v, ":") {
 				v = "[" + v + "]"
 			}
-			resp, _, err := client.Exchange(r, v+":53")
-			if err != nil {
+			upstreamResp, _, err := client.Exchange(r, v+":53")
+			if err != nil || upstreamResp == nil || len(upstreamResp.Answer) == 0 {
 				continue
 			}
 
-			if resp.Rcode != dns.RcodeSuccess {
+			if upstreamResp.Rcode != dns.RcodeSuccess {
 				continue
 			}
 
-			if len(resp.Answer) > 0 {
-				reply.Answer = append(reply.Answer, resp.Answer...)
+			if len(upstreamResp.Answer) > 0 {
+				reply.Answer = append(reply.Answer, upstreamResp.Answer...)
 				gotResult = true
 				break
 			}
@@ -103,9 +104,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		if !gotResult {
 			reply.Rcode = dns.RcodeNameError
 		}
-	}
-
-	if resp != nil {
+	} else if err == nil && resp != nil {
 		reply.Answer = append(reply.Answer, resp)
 	}
 
