@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
@@ -47,6 +50,12 @@ var (
 	Mqclient     mqtt.Client
 	messageCache = new(sync.Map)
 )
+
+func init() {
+	go func() {
+		log.Println(http.ListenAndServe("127.0.0.1:6060", nil))
+	}()
+}
 
 type cachedMessage struct {
 	Message  string

@@ -21,6 +21,7 @@ var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
 var (
 	ErrNXDomain      = errors.New("non existent domain")
 	ErrNoQTypeRecord = errors.New("domain exists but no record matching the question type")
+	dnsUDPConnPool   = newUDPConnPool()
 )
 
 type DNSResolver struct {
@@ -61,7 +62,6 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
 	reply.Authoritative = true
-
 	resp, err := GetDNSResolverInstance().Lookup(r)
 	if err != nil && errors.Is(err, ErrNXDomain) {
 		nslist := config.Netclient().NameServers
@@ -80,12 +80,12 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			nslist = append(nslist, server.NameServers...)
 		}
 		gotResult := false
-		client := &dns.Client{Timeout: 3 * time.Second}
 		for _, v := range nslist {
 			if strings.Contains(v, ":") {
 				v = "[" + v + "]"
 			}
-			upstreamResp, _, err := client.Exchange(r, v+":53")
+			upstreamResp, err := exchangeDNSQueryWithPool(r, v)
+			//upstreamResp, _, err := client.Exchange(r, v+":53")
 			if err != nil || upstreamResp == nil || len(upstreamResp.Answer) == 0 {
 				continue
 			}
@@ -171,4 +171,27 @@ func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
 	}
 
 	return r, nil
+}
+
+func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
+	// Normalize IPv6 if needed
+	if strings.Contains(ns, ":") && !strings.HasPrefix(ns, "[") {
+		ns = "[" + ns + "]"
+	}
+	serverAddr := ns + ":53"
+
+	conn, err := dnsUDPConnPool.get(serverAddr)
+	if err != nil {
+		return nil, err
+	}
+	defer dnsUDPConnPool.put(serverAddr, conn)
+
+	dnsConn := &dns.Conn{
+		Conn:    conn,
+		UDPSize: dns.DefaultMsgSize,
+	}
+
+	client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
+	resp, _, err := client.ExchangeWithConn(r, dnsConn)
+	return resp, err
 }
