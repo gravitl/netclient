@@ -13,7 +13,7 @@ require (
 	github.com/glendc/go-external-ip v0.1.0
 	github.com/go-ping/ping v1.2.0
 	github.com/golang-jwt/jwt/v4 v4.5.1
-	github.com/google/nftables v0.2.0
+	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/gravitl/netmaker v0.90.1-0.20250504114129-8e60ef15e9dd
@@ -69,14 +69,13 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/josharian/native v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/mdlayher/genetlink v1.2.0 // indirect
-	github.com/mdlayher/netlink v1.7.2 // indirect
+	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
