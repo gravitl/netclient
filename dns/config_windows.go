@@ -7,6 +7,7 @@ import (
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows/registry"
 	"net/netip"
+	"strings"
 	"sync"
 )
 
@@ -61,7 +62,39 @@ func SetupDNSConfig() error {
 	}
 	defer key.Close()
 
-	return key.SetStringValue("NameServer", dnsIp)
+	err = key.SetStringValue("NameServer", dnsIp)
+	if err != nil {
+		return err
+	}
+
+	var domains []string
+	if config.GetServer(config.CurrServer).DefaultDomain != "" {
+		domains = append(domains, config.GetServer(config.CurrServer).DefaultDomain)
+	}
+
+	if config.Netclient().DNSSearch != "" {
+		domains = append(domains, config.Netclient().DNSSearch)
+	}
+
+	err = key.SetStringValue("SearchList", strings.Join(domains, ","))
+	if err != nil {
+		return err
+	}
+
+	globalKeyPath := ""
+	if ip.Is6() {
+		globalKeyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters`)
+	} else {
+		globalKeyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`)
+	}
+
+	globalKey, err := registry.OpenKey(registry.LOCAL_MACHINE, globalKeyPath, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer globalKey.Close()
+
+	return globalKey.SetStringValue("SearchList", strings.Join(domains, ","))
 }
 
 func RestoreDNSConfig() error {
