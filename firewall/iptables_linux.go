@@ -319,14 +319,26 @@ func (i *iptablesManager) CreateChains() error {
 func (i *iptablesManager) addJumpRules() {
 
 	for _, rule := range filterNmJumpRules {
-		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		if rule.chain == iptableFWDChain {
+			err := i.ipv4Client.InsertUnique(rule.table, rule.chain, 1, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
+			err = i.ipv6Client.InsertUnique(rule.table, rule.chain, 1, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
+		} else {
+			err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
+			err = i.ipv6Client.Append(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
 		}
-		err = i.ipv6Client.Append(rule.table, rule.chain, rule.rule...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
-		}
+
 	}
 	for _, rule := range natNmJumpRules {
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
