@@ -11,8 +11,9 @@ import (
 
 // FindBestEndpoint - requests against a given addr and port
 func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int) {
-
+	fmt.Println("=====> hereee 8  CHECKING FOR ", peerIp, peerPubKey, peerListenPort, metricsPort)
 	connected, _ := metrics.PeerConnStatus(peerIp, metricsPort, 2)
+	fmt.Println("=====> hereee 9  CHECKING FOR ", peerIp, peerPubKey, peerListenPort, metricsPort, connected)
 	if connected {
 		parsePeerIp := net.ParseIP(peerIp)
 		if parsePeerIp.To16() != nil {
