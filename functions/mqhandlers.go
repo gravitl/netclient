@@ -596,6 +596,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 			}
 		}
 	}
+	_ = wireguard.SetPeers(false)
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
