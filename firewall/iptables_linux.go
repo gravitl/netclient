@@ -319,14 +319,26 @@ func (i *iptablesManager) CreateChains() error {
 func (i *iptablesManager) addJumpRules() {
 
 	for _, rule := range filterNmJumpRules {
-		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		if rule.chain == iptableFWDChain {
+			err := i.ipv4Client.InsertUnique(rule.table, rule.chain, 1, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
+			err = i.ipv6Client.InsertUnique(rule.table, rule.chain, 1, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
+		} else {
+			err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
+			err = i.ipv6Client.Append(rule.table, rule.chain, rule.rule...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+			}
 		}
-		err = i.ipv6Client.Append(rule.table, rule.chain, rule.rule...)
-		if err != nil {
-			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
-		}
+
 	}
 	for _, rule := range natNmJumpRules {
 		err := i.ipv4Client.Append(rule.table, rule.chain, rule.rule...)
@@ -441,18 +453,19 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	defer i.mux.Unlock()
 	// add jump Rules for egress GW
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		rulesMap: make(map[string][]ruleInfo),
+		rulesMap:  make(map[string][]ruleInfo),
+		extraInfo: egressInfo.EgressGWCfg,
 	}
 	egressGwRoutes := []ruleInfo{}
-	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
+		if egressGwRange.Nat {
 			iptablesClient := i.ipv4Client
 			source := egressInfo.Network.String()
-			if !isAddrIpv4(egressGwRange) {
+			if !isAddrIpv4(egressGwRange.Network) {
 				iptablesClient = i.ipv6Client
 				source = egressInfo.Network6.String()
 			}
-			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange))
+			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
