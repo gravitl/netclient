@@ -16,4 +16,5 @@ var version = "v0.90.0"
 func main() {
 	config.SetVersion(version)
 	cmd.Execute()
+
 }
