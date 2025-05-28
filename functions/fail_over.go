@@ -44,7 +44,20 @@ func processPeerSignal(signal models.Signal) {
 		if !isPeerExist(signal.FromHostPubKey) {
 			return
 		}
-		err := handlePeerFailOver(signal)
+		devicePeer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
+		if err != nil {
+			return
+		}
+		if devicePeer.TransmitBytes == 0 {
+			// new peer, wait for handshake signals
+			return
+		}
+		// check if there is handshake on interface
+		connected, err := isPeerConnected(devicePeer)
+		if err != nil || connected {
+			return
+		}
+		err = handlePeerFailOver(signal)
 		if err != nil {
 			logger.Log(2, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
 		}
@@ -132,14 +145,19 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if peer.IsExtClient {
 							continue
 						}
-						if _, ok := devicePeerMap[pubKey]; !ok {
+						devicePeer, ok := devicePeerMap[pubKey]
+						if !ok {
 							continue
 						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
+						if devicePeer.TransmitBytes == 0 {
+							// new peer, wait for handshake signals
+							continue
+						}
 						// check if there is handshake on interface
-						connected, err := isPeerConnected(devicePeerMap[pubKey])
+						connected, err := isPeerConnected(devicePeer)
 						if err != nil || connected {
 							continue
 						}
