@@ -12,6 +12,11 @@ import (
 )
 
 func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
+	parsePeerIp := net.ParseIP(peerIp)
+	if parsePeerIp.To16() != nil {
+		// ipv6
+		peerIp = fmt.Sprintf("[%s]", peerIp)
+	}
 	addr := fmt.Sprintf("%s:%d", peerIp, metricsPort)
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 	if err != nil {
