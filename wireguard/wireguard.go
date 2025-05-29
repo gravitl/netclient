@@ -41,7 +41,8 @@ func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers(replace bool) error {
-
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	peers := config.Netclient().HostPeers
 	for i := range peers {
 		peer := peers[i]
