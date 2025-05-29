@@ -110,7 +110,7 @@ func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 }
 
 func sendSuccess(c net.Conn) error {
-	_, err := c.Write([]byte(messages.Success)) // send success and then adjust locally to save time
+	_, err := c.Write([]byte(config.Netclient().PublicKey.String())) // send success and then adjust locally to save time
 	if err != nil {
 		return err
 	}

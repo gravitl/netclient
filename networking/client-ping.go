@@ -1,18 +1,49 @@
 package networking
 
 import (
+	"bufio"
 	"fmt"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/cache"
-	"github.com/gravitl/netclient/metrics"
 	"golang.org/x/exp/slog"
 )
 
+func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
+	parsePeerIp := net.ParseIP(peerIp)
+	if parsePeerIp.To16() != nil {
+		// ipv6
+		peerIp = fmt.Sprintf("[%s]", peerIp)
+	}
+	addr := fmt.Sprintf("%s:%d", peerIp, metricsPort)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	message, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil && err.Error() != "EOF" {
+		return false
+	}
+	parts := strings.Split(strings.TrimSpace(message), "|")
+	if len(parts) == 0 {
+		return false
+	}
+
+	if parts[0] == messages.Success || parts[0] == peerPubKey {
+		return true
+	}
+
+	return false
+
+}
+
 // FindBestEndpoint - requests against a given addr and port
 func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int) {
-
-	connected, _ := metrics.PeerConnStatus(peerIp, metricsPort, 2)
+	connected := tryLocalConnect(peerIp, peerPubKey, metricsPort)
 	if connected {
 		parsePeerIp := net.ParseIP(peerIp)
 		if parsePeerIp.To16() != nil {
