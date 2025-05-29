@@ -137,6 +137,84 @@ var (
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableFWDChain},
 				Exprs: []expr.Any{
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Match NOT output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpNeq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					// Accept the packet
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: aclFwdRulesChain,
+					},
+				},
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableFWDChain},
+				Exprs: []expr.Any{
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Match output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Jump to NETMAKER-ACL-IN chain
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: aclInputRulesChain,
+					},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+					"-m", "comment", "--comment", netmakerSignature)),
+			},
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+				"-m", "comment", "--comment", netmakerSignature},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableFWDChain},
+				Exprs: []expr.Any{
 					// Match on input interface (-i netmaker)
 					&expr.Meta{
 						Key:      expr.MetaKeyIIFNAME, // Input interface name
@@ -227,84 +305,6 @@ var (
 		{
 			nfRule: &nftables.Rule{
 				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableFWDChain},
-				Exprs: []expr.Any{
-					// Match input interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyIIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Match NOT output interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpNeq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					// Accept the packet
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclFwdRulesChain,
-					},
-				},
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableFWDChain},
-				Exprs: []expr.Any{
-					// Match input interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyIIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Match output interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Jump to NETMAKER-ACL-IN chain
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclInputRulesChain,
-					},
-				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
-					"-m", "comment", "--comment", netmakerSignature)),
-			},
-			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
-				"-m", "comment", "--comment", netmakerSignature},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
 				Chain: &nftables.Chain{Name: aclOutputRulesChain},
 				Exprs: []expr.Any{
 					&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
@@ -368,7 +368,7 @@ func (n *nftablesManager) AddDropRules(dropRules []ruleInfo) {
 
 	// Add a rule that matches packets on the 'netmaker' interface and drops them
 	for _, dropRule := range dropRules {
-		n.conn.AddRule(dropRule.nfRule.(*nftables.Rule))
+		n.conn.AddRule(dropRule.nfRule)
 	}
 	// Apply the changes
 	if err := n.conn.Flush(); err != nil {
@@ -800,10 +800,14 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 func (n *nftablesManager) addJumpRules() {
 
 	for _, rule := range nfFilterJumpRules {
-		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
+		if rule.nfRule.Chain.Name == iptableFWDChain {
+			rule.nfRule.Position = 0
+			n.conn.InsertRule(rule.nfRule)
+		}
+		n.conn.AddRule(rule.nfRule)
 	}
 	for _, rule := range nfNatJumpRules {
-		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
+		n.conn.AddRule(rule.nfRule)
 	}
 	// add metrics rule
 	server := config.GetServer(config.CurrServer)
@@ -835,7 +839,7 @@ func (n *nftablesManager) addJumpRules() {
 //lint:ignore U1000 might be useful in future
 func (n *nftablesManager) removeJumpRules() {
 	for _, rule := range nfJumpRules {
-		r := rule.nfRule.(*nftables.Rule)
+		r := rule.nfRule
 		if err := n.deleteRule(r.Table.Name, r.Chain.Name, string(r.UserData)); err != nil {
 			logger.Log(0, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
