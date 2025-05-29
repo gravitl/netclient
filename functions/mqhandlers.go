@@ -542,47 +542,37 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 	}
 	for idx := range peers {
 		peerPubKey := peers[idx].PublicKey.String()
-		fmt.Println("======>CHECKING  PEER: ", peerPubKey)
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
-			fmt.Println("=====> hereee 1")
 			continue
 		}
-		fmt.Println("=====> hereee 2")
 		// check if endpoint detection to be skipped for the peer
 		if retryCnt, ok := cache.SkipEndpointCache.Load(peerPubKey); ok {
 			if retryCnt.(int) > 3 {
 				continue
 			}
 		}
-		fmt.Println("=====> hereee 3")
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
-			fmt.Println("=====> hereee 4")
 			if peerInfo.IsStatic {
 				// peer is a static host shouldn't disturb the configuration set by the user
 				continue
 			}
-			fmt.Println("=====> hereee 5")
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
 				if peerIP == nil {
 					continue
 				}
-				fmt.Println("peerIFace: ", peerIface, peerIP)
 				// check to skip bridge network
 				if ncutils.IsBridgeNetwork(peerIface.Name) {
 					continue
 				}
-				fmt.Println("=====> hereee 6")
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
-				fmt.Println("=====> hereee 7")
 				if peerIP.IsPrivate() {
-					fmt.Println("=====> hereee 8")
 					go func(peerIP, peerPubKey string, listenPort int) {
 						networking.FindBestEndpoint(
 							peerIP,
