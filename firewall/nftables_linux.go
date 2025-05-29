@@ -368,7 +368,7 @@ func (n *nftablesManager) AddDropRules(dropRules []ruleInfo) {
 
 	// Add a rule that matches packets on the 'netmaker' interface and drops them
 	for _, dropRule := range dropRules {
-		n.conn.AddRule(dropRule.nfRule)
+		n.conn.AddRule(dropRule.nfRule.(*nftables.Rule))
 	}
 	// Apply the changes
 	if err := n.conn.Flush(); err != nil {
@@ -800,14 +800,15 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 func (n *nftablesManager) addJumpRules() {
 
 	for _, rule := range nfFilterJumpRules {
-		if rule.nfRule.Chain.Name == iptableFWDChain {
-			rule.nfRule.Position = 0
-			n.conn.InsertRule(rule.nfRule)
+		nfRule := rule.nfRule.(*nftables.Rule)
+		if nfRule.Chain.Name == iptableFWDChain {
+			nfRule.Position = 0
+			n.conn.InsertRule(nfRule)
 		}
-		n.conn.AddRule(rule.nfRule)
+		n.conn.AddRule(nfRule)
 	}
 	for _, rule := range nfNatJumpRules {
-		n.conn.AddRule(rule.nfRule)
+		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
 	}
 	// add metrics rule
 	server := config.GetServer(config.CurrServer)
@@ -839,7 +840,7 @@ func (n *nftablesManager) addJumpRules() {
 //lint:ignore U1000 might be useful in future
 func (n *nftablesManager) removeJumpRules() {
 	for _, rule := range nfJumpRules {
-		r := rule.nfRule
+		r := rule.nfRule.(*nftables.Rule)
 		if err := n.deleteRule(r.Table.Name, r.Chain.Name, string(r.UserData)); err != nil {
 			logger.Log(0, fmt.Sprintf("failed to rm rule: %v, Err: %v ", rule.rule, err.Error()))
 		}

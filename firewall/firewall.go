@@ -3,7 +3,6 @@ package firewall
 import (
 	"sync"
 
-	"github.com/google/nftables"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -22,7 +21,7 @@ type rulesCfg struct {
 type ruleInfo struct {
 	rule   []string
 	isIpv4 bool
-	nfRule *nftables.Rule
+	nfRule any
 	table  string
 	chain  string
 }
