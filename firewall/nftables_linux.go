@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"golang.org/x/exp/slog"
+	"golang.org/x/sys/unix"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
@@ -830,6 +831,50 @@ func (n *nftablesManager) addJumpRules() {
 			},
 		}
 		n.conn.InsertRule(rule)
+		n.conn.InsertRule(&nftables.Rule{
+			Table: filterTable,
+			Chain: &nftables.Chain{Name: aclInputRulesChain},
+			Exprs: []expr.Any{
+				// [ meta load iifname => reg 1 ]
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+				// [ cmp eq reg 1 netmaker ]
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte("netmaker\x00"),
+				},
+				// [ payload load 1b @ network header + 9 => reg 1 ]  (proto)
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseNetworkHeader,
+					Offset:       9, // Protocol field in IPv4
+					Len:          1,
+				},
+				// [ cmp eq reg 1 0x11 ]  (UDP)
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte{unix.IPPROTO_UDP},
+				},
+				// [ payload load 2b @ transport header + 2 => reg 1 ] (dport)
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseTransportHeader,
+					Offset:       2,
+					Len:          2,
+				},
+				// [ cmp eq reg 1 53 ]
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte{0x00, 0x35}, // 53 in big-endian
+				},
+				// [ verdict accept ]
+				&expr.Verdict{
+					Kind: expr.VerdictAccept,
+				},
+			},
+		})
 	}
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add jump rules, Err: %s", err.Error()))

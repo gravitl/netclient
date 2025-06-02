@@ -108,7 +108,6 @@ var (
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
-
 		{
 			rule:  []string{"-m", "comment", "--comment", netmakerSignature, "-j", "ACCEPT"},
 			table: defaultIpTable,
@@ -362,6 +361,20 @@ func (i *iptablesManager) addJumpRules() {
 			chain: aclInputRulesChain,
 		}
 		err := i.ipv4Client.Insert(rule.table, rule.chain, 1, rule.rule...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		}
+		err = i.ipv6Client.Insert(rule.table, rule.chain, 1, rule.rule...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		}
+		rule = ruleInfo{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-p", "udp", "--dport", "53", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: aclInputRulesChain,
+		}
+		err = i.ipv4Client.Insert(rule.table, rule.chain, 1, rule.rule...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
