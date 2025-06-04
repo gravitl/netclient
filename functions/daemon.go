@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
@@ -173,10 +174,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		stun.SetDefaultStunServers()
 	}
 	netclientCfg := config.Netclient()
-	if netclientCfg.Host.OS == "linux" {
-		dns.InitDNSConfig()
-		updateConfig = true
-	}
+	//if netclientCfg.Host.OS == "linux" || netclientCfg.Host.OS == "windows" {
+	dns.InitDNSConfig()
+	updateConfig = true
+	//}
 
 	if !netclientCfg.IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
@@ -291,11 +292,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
 	go Checkin(ctx, wg)
-	networking.InitialiseIfaceDetection(ctx, wg)
+	networking.InitialiseIfaceMetricsServer(ctx, wg)
 	if server.IsPro {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
-		networking.InitialiseMetricsThread(ctx, wg)
+		wg.Add(1)
+		go startEgressHAFailOverThread(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)

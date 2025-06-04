@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -184,8 +186,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if server.IsPro && peerConnTicker != nil {
-		peerConnTicker.Reset(peerConnectionCheckInterval)
+	if server.IsPro {
+		if peerConnTicker != nil {
+			peerConnTicker.Reset(peerConnectionCheckInterval)
+		}
+		if haEgressTicker != nil {
+			haEgressTicker.Reset(haEgressCheckInterval)
+		}
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -194,7 +201,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("error checking version less than", "error", err)
 			return
 		}
-		if vlt && config.Netclient().Host.AutoUpdate {
+		if vlt && peerUpdate.Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			upgMutex.Lock()
 			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
@@ -206,6 +213,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			upgMutex.Unlock()
 		}
 	}
+	saveServerConfig := false
 	if peerUpdate.ServerVersion != server.Version {
 		slog.Info("updating server version", "server", serverName, "version", peerUpdate.ServerVersion)
 		server.Version = peerUpdate.ServerVersion
@@ -215,7 +223,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
 		daemon.Restart()
 	}
+	if peerUpdate.DefaultDomain != server.DefaultDomain {
+		slog.Info("Dns default domain has changed", "from", server.DefaultDomain, "to", peerUpdate.DefaultDomain)
+		dns.SetupDNSConfig()
+	}
+	if peerUpdate.MetricInterval != server.MetricInterval {
+		i, err := strconv.Atoi(peerUpdate.MetricInterval)
+		if err == nil {
+			metricTicker.Reset(time.Minute * time.Duration(i))
+		}
+		server.MetricInterval = peerUpdate.MetricInterval
 
+	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
 	if err != nil {
@@ -243,23 +262,28 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 	}
+	if !peerUpdate.ServerConfig.EndpointDetection {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+		setEgressRoutes(peerUpdate.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		setEgressRoutes([]models.EgressNetworkRoutes{})
 	}
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
-	} else {
-
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
-
 	}
 
-	saveServerConfig := false
+	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
+		server.NameServers = peerUpdate.NameServers
+		saveServerConfig = true
+	}
+
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
@@ -269,8 +293,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		}
 	}
-	if server.ManageDNS && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
-		dns.SetupDNSConfig()
+
+	if server.ManageDNS {
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" || config.Netclient().Host.OS == "darwin" {
+			dns.SetupDNSConfig()
+		}
 	}
 
 	reloadStun := false
@@ -283,6 +311,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.StunServers = peerUpdate.StunServers
 		saveServerConfig = true
 		reloadStun = true
+	}
+	if peerUpdate.ServerConfig.IsPro && !server.IsPro {
+		server.IsPro = true
+		saveServerConfig = true
 	}
 
 	if reloadStun {
@@ -492,8 +524,10 @@ func resetInterfaceFunc() {
 		if dns.GetDNSServerInstance().AddrStr == "" {
 			dns.GetDNSServerInstance().Start()
 		}
-		//Setup resolveconf for Linux
-		if config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB {
+
+		//Setup DNS for Linux and Windows
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
 			dns.SetupDNSConfig()
 		}
 	}
@@ -538,9 +572,6 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 					isAddressInPeers(peerIP, currentCidrs) {
 					continue
 				}
-				if !networking.IpBelongsToInterface(peerIP) {
-					continue
-				}
 				if peerIP.IsPrivate() {
 					go func(peerIP, peerPubKey string, listenPort int) {
 						networking.FindBestEndpoint(
@@ -555,6 +586,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 			}
 		}
 	}
+	_ = wireguard.SetPeers(false)
 }
 
 func deleteHostCfg(client mqtt.Client, server string) {
@@ -761,8 +793,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+		setEgressRoutes(pullResponse.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		setEgressRoutes([]models.EgressNetworkRoutes{})
 	}
 	if pullResponse.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
