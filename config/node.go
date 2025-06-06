@@ -177,7 +177,7 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.Action = netmakerNode.Action
 	node.IsEgressGateway = nodeGet.Node.IsEgressGateway
 	node.IsIngressGateway = nodeGet.Node.IsIngressGateway
-	node.DNSOn = nodeGet.Node.DNSOn
+	//node.DNSOn = nodeGet.Node.DNSOn
 	// node.Peers = nodeGet.Peers
 	// add items not provided by server
 	return &node
@@ -223,7 +223,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
 	netmakerNode.IsStatic = FormatBool(host.IsStatic)
-	netmakerNode.DNSOn = FormatBool(node.DNSOn)
+	//netmakerNode.DNSOn = FormatBool(node.DNSOn)
 
 	return &netmakerNode
 }
