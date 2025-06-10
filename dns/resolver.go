@@ -1,9 +1,11 @@
 package dns
 
 import (
+	"errors"
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/miekg/dns"
@@ -15,6 +17,12 @@ const (
 )
 
 var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
+
+var (
+	ErrNXDomain      = errors.New("non existent domain")
+	ErrNoQTypeRecord = errors.New("domain exists but no record matching the question type")
+	dnsUDPConnPool   = newUDPConnPool()
+)
 
 type DNSResolver struct {
 	DnsEntriesCacheStore map[string]dns.RR
@@ -53,11 +61,9 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionAvailable = true
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
-
-	resp := GetDNSResolverInstance().Lookup(r)
-	if resp != nil {
-		reply.Answer = append(reply.Answer, resp)
-	} else {
+	reply.Authoritative = true
+	resp, err := GetDNSResolverInstance().Lookup(r)
+	if err != nil && errors.Is(err, ErrNXDomain) {
 		nslist := config.Netclient().NameServers
 		if config.Netclient().CurrGwNmIP != nil {
 			nslist = []string{}
@@ -69,24 +75,27 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			nslist = append(nslist, "2001:4860:4860::8888")
 			nslist = append(nslist, "2001:4860:4860::8844")
 		}
-
+		server := config.GetServer(config.CurrServer)
+		if server != nil {
+			nslist = append(nslist, server.NameServers...)
+		}
 		gotResult := false
-		client := &dns.Client{}
 		for _, v := range nslist {
 			if strings.Contains(v, ":") {
 				v = "[" + v + "]"
 			}
-			resp, _, err := client.Exchange(r, v+":53")
-			if err != nil {
+			upstreamResp, err := exchangeDNSQueryWithPool(r, v)
+			//upstreamResp, _, err := client.Exchange(r, v+":53")
+			if err != nil || upstreamResp == nil || len(upstreamResp.Answer) == 0 {
 				continue
 			}
 
-			if resp.Rcode != dns.RcodeSuccess {
+			if upstreamResp.Rcode != dns.RcodeSuccess {
 				continue
 			}
 
-			if len(resp.Answer) > 0 {
-				reply.Answer = append(reply.Answer, resp.Answer...)
+			if len(upstreamResp.Answer) > 0 {
+				reply.Answer = append(reply.Answer, upstreamResp.Answer...)
 				gotResult = true
 				break
 			}
@@ -95,9 +104,11 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		if !gotResult {
 			reply.Rcode = dns.RcodeNameError
 		}
+	} else if err == nil && resp != nil {
+		reply.Answer = append(reply.Answer, resp)
 	}
 
-	err := w.WriteMsg(reply)
+	err = w.WriteMsg(reply)
 	if err != nil {
 		slog.Error("write DNS response message error: ", "error", err.Error())
 	}
@@ -114,7 +125,7 @@ func (d *DNSResolver) RegisterA(record dnsRecord) error {
 
 	d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)] = r
 
-	slog.Info("registering A record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
+	slog.Debug("registering A record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
 
 	return nil
 }
@@ -130,20 +141,57 @@ func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 
 	d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)] = r
 
-	slog.Info("registering AAAA record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
+	slog.Debug("registering AAAA record successfully", "Info", d.DnsEntriesCacheStore[buildDNSEntryKey(record.Name, record.Type)])
 
 	return nil
 }
 
 // Lookup DNS entry in local directory
-func (d *DNSResolver) Lookup(m *dns.Msg) dns.RR {
+func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
 	dnsMapMutex.Lock()
 	defer dnsMapMutex.Unlock()
 	q := m.Question[0]
 	r, ok := d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), q.Qtype)]
 	if !ok {
-		return nil
+		if q.Qtype == dns.TypeA {
+			_, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeAAAA)]
+			if ok {
+				// aware but no ipv6 address
+				return nil, ErrNoQTypeRecord
+			}
+		} else if q.Qtype == dns.TypeAAAA {
+			_, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeA)]
+			if ok {
+				// aware but no ipv4 address
+				return nil, ErrNoQTypeRecord
+			}
+		}
+
+		return nil, ErrNXDomain
 	}
 
-	return r
+	return r, nil
+}
+
+func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
+	// Normalize IPv6 if needed
+	if strings.Contains(ns, ":") && !strings.HasPrefix(ns, "[") {
+		ns = "[" + ns + "]"
+	}
+	serverAddr := ns + ":53"
+
+	conn, err := dnsUDPConnPool.get(serverAddr)
+	if err != nil {
+		return nil, err
+	}
+	defer dnsUDPConnPool.put(serverAddr, conn)
+
+	dnsConn := &dns.Conn{
+		Conn:    conn,
+		UDPSize: dns.DefaultMsgSize,
+	}
+
+	client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
+	resp, _, err := client.ExchangeWithConn(r, dnsConn)
+	return resp, err
 }

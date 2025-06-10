@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
@@ -145,6 +146,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		slog.Warn("error reading netclient config file", "error", err)
 	}
+
 	config.UpdateNetclient(*config.Netclient())
 	ncutils.SetInterfaceName(config.Netclient().Interface)
 	if err := config.ReadServerConf(); err != nil {
@@ -154,7 +156,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var err error
 	config.FwClose, err = firewall.Init()
 	if err != nil {
-		logger.Log(0, "failed to intialize firewall: ", err.Error())
+		slog.Info("failed to intialize firewall: ", "error", err.Error())
 	}
 	updateConfig := false
 
@@ -172,7 +174,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		stun.SetDefaultStunServers()
 	}
 	netclientCfg := config.Netclient()
-	if netclientCfg.Host.OS == "linux" {
+	if netclientCfg.Host.OS == "linux" || netclientCfg.Host.OS == "windows" {
 		dns.InitDNSConfig()
 		updateConfig = true
 	}
@@ -243,7 +245,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 	slog.Info("configuring netmaker wireguard interface")
-	pullresp, _, _, pullErr := Pull(false)
+	pullresp, _, _, pullErr := Pull(false, true)
 	if pullErr != nil {
 		slog.Error("fail to pull config from server", "error", pullErr.Error())
 	}
@@ -290,11 +292,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
 	go Checkin(ctx, wg)
-	networking.InitialiseIfaceDetection(ctx, wg)
+	networking.InitialiseIfaceMetricsServer(ctx, wg)
 	if server.IsPro {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
-		networking.InitialiseMetricsThread(ctx, wg)
+		wg.Add(1)
+		go startEgressHAFailOverThread(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
@@ -360,6 +363,7 @@ func setupMQTT(server *config.Server) error {
 			setDNSSubscriptions(client, &node)
 		}
 		setHostSubscription(client, server.Name)
+		time.Sleep(time.Second * 3)
 		checkin()
 	})
 	opts.SetOrderMatters(false)
@@ -642,6 +646,10 @@ func UpdateKeys() error {
 }
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
+	defer func() {
+		//ncutils.TraceCaller()
+		slog.Debug("holePunchWgPort", "proto", proto, "PortToStun", portToStun, "PubIP", pubIP.String(), "PubPort", pubPort, "NatType", natType)
+	}()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}

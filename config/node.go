@@ -2,7 +2,6 @@
 package config
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net"
 	"os"
@@ -178,7 +177,7 @@ func ConvertNode(nodeGet *models.NodeGet) *Node {
 	node.Action = netmakerNode.Action
 	node.IsEgressGateway = nodeGet.Node.IsEgressGateway
 	node.IsIngressGateway = nodeGet.Node.IsIngressGateway
-	node.DNSOn = nodeGet.Node.DNSOn
+	//node.DNSOn = nodeGet.Node.DNSOn
 	// node.Peers = nodeGet.Peers
 	// add items not provided by server
 	return &node
@@ -224,7 +223,7 @@ func ConvertToNetmakerNode(node *Node, server *Server, host *Config) *models.Leg
 	netmakerNode.IsEgressGateway = FormatBool(node.IsEgressGateway)
 	netmakerNode.IsIngressGateway = FormatBool(node.IsIngressGateway)
 	netmakerNode.IsStatic = FormatBool(host.IsStatic)
-	netmakerNode.DNSOn = FormatBool(node.DNSOn)
+	//netmakerNode.DNSOn = FormatBool(node.DNSOn)
 
 	return &netmakerNode
 }
@@ -242,21 +241,6 @@ func ToIPNet(cidr string) net.IPNet {
 func ToUDPAddr(address string) *net.UDPAddr {
 	addr, _ := net.ResolveUDPAddr("udp", address)
 	return addr
-}
-
-// ParseAccessToken - decodes base64 encoded access token
-func ParseAccessToken(token string) (*models.AccessToken, error) {
-	tokenbytes, err := base64.StdEncoding.DecodeString(token)
-	if err != nil {
-		logger.Log(0, "error decoding token", err.Error())
-		return nil, err
-	}
-	var accesstoken models.AccessToken
-	if err := json.Unmarshal(tokenbytes, &accesstoken); err != nil {
-		logger.Log(0, "error decoding token", err.Error())
-		return nil, err
-	}
-	return &accesstoken, nil
 }
 
 // FormatBool converts a boolean to a [yes|no] string

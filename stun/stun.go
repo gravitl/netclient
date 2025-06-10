@@ -34,12 +34,17 @@ func LoadStunServers(list string) {
 	stunServers := []StunServer{}
 	for _, v := range l1 {
 		l2 := strings.Split(v, ":")
+		if len(l2) < 2 {
+			continue
+		}
 		port, _ := strconv.Atoi(l2[1])
 		sS := StunServer{Domain: l2[0], Port: port}
 		stunServers = append(stunServers, sS)
 	}
+	if len(stunServers) > 0 {
+		StunServers = stunServers
+	}
 
-	StunServers = stunServers
 }
 
 func SetDefaultStunServers() {

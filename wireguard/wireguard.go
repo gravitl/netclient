@@ -41,7 +41,8 @@ func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers(replace bool) error {
-
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	peers := config.Netclient().HostPeers
 	for i := range peers {
 		peer := peers[i]
@@ -108,6 +109,28 @@ func EndpointDetectedAlready(peerPubKey string) bool {
 		return true
 	}
 	return false
+}
+
+func GetPeersFromDevice(ifaceName string) (map[string]wgtypes.Peer, error) {
+	peerMap := make(map[string]wgtypes.Peer)
+	wg, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = wg.Close()
+		if err != nil {
+			logger.Log(0, "got error while closing wgctl: ", err.Error())
+		}
+	}()
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return nil, err
+	}
+	for _, peer := range wgDevice.Peers {
+		peerMap[peer.PublicKey.String()] = peer
+	}
+	return peerMap, nil
 }
 
 // GetPeer - gets the peerinfo from the wg interface
