@@ -125,7 +125,6 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	addrs := []ifaceAddress{}
-	fmt.Printf("===> Egress Routes: %+v\n", egressRoutes)
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
@@ -175,7 +174,6 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			}
 		}
 	} else {
-		fmt.Printf("ROUTES: %+v\n", addrs)
 		err := SetRoutes(addrs)
 		if err == nil {
 			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
