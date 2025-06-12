@@ -62,7 +62,6 @@ func SetupDNSConfig() (err error) {
 		err = setupResolvectl()
 	} else if isUplinkSupported() {
 		err = setupResolveUplink()
-	} else if isResolveconfSupported() {
 	} else {
 		err = setupResolveconf()
 	}

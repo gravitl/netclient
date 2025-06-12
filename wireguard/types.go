@@ -129,20 +129,32 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
 			if egressRangeIPNet.IP != nil {
+				if len(config.GetNodes()) == 1 {
+					addrs = append(addrs, ifaceAddress{
+						Network: egressRangeIPNet,
+						Metric:  egressRange.RouteMetric,
+					})
+					continue
+				}
 				if egressRangeIPNet.IP.To4() != nil {
+
 					addrs = append(addrs, ifaceAddress{
 						GwIP:    egressRoute.EgressGwAddr.IP,
 						IP:      egressRoute.NodeAddr.IP,
 						Network: egressRangeIPNet,
 						Metric:  egressRange.RouteMetric,
 					})
-				} else if egressRoute.NodeAddr6.IP != nil {
+
+				}
+				if egressRoute.NodeAddr6.IP != nil {
+
 					addrs = append(addrs, ifaceAddress{
 						GwIP:    egressRoute.EgressGwAddr6.IP,
 						IP:      egressRoute.NodeAddr6.IP,
 						Network: egressRangeIPNet,
 						Metric:  egressRange.RouteMetric,
 					})
+
 				}
 
 			}
