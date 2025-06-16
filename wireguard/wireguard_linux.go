@@ -19,8 +19,6 @@ import (
 
 const (
 	RouteTableName    = 111
-	IPv4Network       = "0.0.0.0/0"
-	IPv6Network       = "::/0"
 	EgressRouteMetric = 256
 )
 
@@ -161,10 +159,10 @@ func RemoveRoutes(addrs []ifaceAddress) {
 	}
 
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || addr.GwIP == nil {
-			continue
-		}
+		// if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+		// 	addr.Network.String() == IPv6Network || addr.GwIP == nil {
+		// 	continue
+		// }
 		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
 		if err := netlink.RouteDel(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
@@ -187,8 +185,8 @@ func SetRoutes(addrs []ifaceAddress) error {
 	}
 
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || addr.GwIP == nil {
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
 		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
