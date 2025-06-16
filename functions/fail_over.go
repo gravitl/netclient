@@ -148,10 +148,6 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
-						if devicePeer.TransmitBytes == 0 {
-							// new peer, wait for handshake signals
-							continue
-						}
 						// check if there is handshake on interface
 						connected, err := isPeerConnected(devicePeer)
 						if err != nil || connected {
