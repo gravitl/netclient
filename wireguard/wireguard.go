@@ -13,6 +13,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+const (
+	IPv4Network = "0.0.0.0/0"
+	IPv6Network = "::/0"
+)
+
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
 func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 	hostPeers := config.Netclient().HostPeers

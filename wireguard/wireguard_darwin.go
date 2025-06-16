@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
@@ -60,8 +61,8 @@ func (nc *NCIface) ApplyAddrs() error {
 // RemoveRoutes - remove routes to the interface
 func RemoveRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
-			addr.Network.String() == "::/0" {
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
 
@@ -85,11 +86,10 @@ func RemoveRoutes(addrs []ifaceAddress) {
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) error {
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
-			addr.Network.String() == "::/0" {
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
-
 		if addr.Network.IP.To4() != nil {
 			cmd := exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
 			if out, err := cmd.CombinedOutput(); err != nil {
