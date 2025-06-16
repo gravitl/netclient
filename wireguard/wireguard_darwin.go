@@ -61,8 +61,8 @@ func (nc *NCIface) ApplyAddrs() error {
 // RemoveRoutes - remove routes to the interface
 func RemoveRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == "0.0.0.0/0" ||
-			addr.Network.String() == "::/0" {
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
 
