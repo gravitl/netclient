@@ -198,9 +198,8 @@ func GetMacAddr() ([]net.HardwareAddr, error) {
 	}
 	var as []net.HardwareAddr
 	for _, ifa := range ifas {
-		a := ifa.HardwareAddr
-		if a != nil {
-			as = append(as, a)
+		if len(ifa.HardwareAddr) > 0 && ifa.Flags&net.FlagLoopback == 0 {
+			as = append(as, ifa.HardwareAddr)
 		}
 	}
 	return as, nil
