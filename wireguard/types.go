@@ -36,6 +36,9 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	}
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
+		if !node.Connected {
+			continue
+		}
 		if node.Address.IP != nil {
 			addrs = append(addrs, ifaceAddress{
 				IP:      node.Address.IP,

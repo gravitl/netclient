@@ -35,8 +35,8 @@ var (
 func processPeerSignal(signal models.Signal) {
 
 	// process recieved new signal from peer
-	// if signal is older than 10s ignore it,wait for a fresh signal from peer
-	if time.Now().Unix()-signal.TimeStamp > 5 {
+	// if signal is older than 3s ignore it,wait for a fresh signal from peer
+	if time.Now().Unix()-signal.TimeStamp > 3 {
 		return
 	}
 	switch signal.Action {
@@ -46,10 +46,6 @@ func processPeerSignal(signal models.Signal) {
 		}
 		devicePeer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
 		if err != nil {
-			return
-		}
-		if devicePeer.TransmitBytes == 0 {
-			// new peer, wait for handshake signals
 			return
 		}
 		// check if there is handshake on interface

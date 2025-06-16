@@ -83,6 +83,18 @@ var (
 			chain: iptableINChain,
 		},
 		{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain,
+				"-m", "comment", "--comment", netmakerSignature},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+				"-m", "comment", "--comment", netmakerSignature},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "conntrack",
 				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
 				"--comment", netmakerSignature, "-j", "ACCEPT"},
@@ -93,18 +105,6 @@ var (
 			rule: []string{"-o", ncutils.GetInterfaceName(), "-m", "conntrack",
 				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
 				"--comment", netmakerSignature, "-j", "ACCEPT"},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
-			rule: []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain,
-				"-m", "comment", "--comment", netmakerSignature},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
-			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
-				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
@@ -361,6 +361,20 @@ func (i *iptablesManager) addJumpRules() {
 			chain: aclInputRulesChain,
 		}
 		err := i.ipv4Client.Insert(rule.table, rule.chain, 1, rule.rule...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		}
+		err = i.ipv6Client.Insert(rule.table, rule.chain, 1, rule.rule...)
+		if err != nil {
+			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
+		}
+		rule = ruleInfo{
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-p", "udp", "--dport", "53", "-m", "comment",
+				"--comment", netmakerSignature, "-j", "ACCEPT"},
+			table: defaultIpTable,
+			chain: aclInputRulesChain,
+		}
+		err = i.ipv4Client.Insert(rule.table, rule.chain, 1, rule.rule...)
 		if err != nil {
 			logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", rule.rule, err.Error()))
 		}
