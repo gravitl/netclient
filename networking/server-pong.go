@@ -93,7 +93,7 @@ func SetPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 	currentServerPeers := config.Netclient().HostPeers
 	for i := range currentServerPeers {
 		currPeer := currentServerPeers[i]
-		if currPeer.PublicKey.String() == peerPubKey { // filter for current peer to overwrite endpoint
+		if !currPeer.Remove && currPeer.PublicKey.String() == peerPubKey { // filter for current peer to overwrite endpoint
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", value.Endpoint.String())
 			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 				PublicKey:                   currPeer.PublicKey,
