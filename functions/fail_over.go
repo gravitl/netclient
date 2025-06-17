@@ -12,9 +12,11 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -144,6 +146,11 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						devicePeer, ok := devicePeerMap[pubKey]
 						if !ok {
 							continue
+						}
+						// check if local endpoint is present
+						localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey)
+						if ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
+							networking.SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
 						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue

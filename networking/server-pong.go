@@ -79,7 +79,7 @@ func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Endpoint: endpoint,
 	}
-	err := setPeerEndpoint(peerPubKey, newIfaceValue)
+	err := SetPeerEndpoint(peerPubKey, newIfaceValue)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 	return nil
 }
 
-func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
+func SetPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 
 	currentServerPeers := config.Netclient().HostPeers
 	for i := range currentServerPeers {
