@@ -49,42 +49,42 @@ func (dnsServer *DNSServer) Start() {
 	for _, v := range config.GetNodes() {
 		node := v
 		if v.Connected {
-
-			lIp := ""
-			if node.Address6.IP != nil {
-				lIp = "[" + node.Address6.IP.String() + "]:53"
-			}
+			lAddr := []string{}
 			if node.Address.IP != nil {
-				lIp = node.Address.IP.String() + ":53"
+				lAddr = append(lAddr, node.Address.IP.String()+":53")
+			}
+			if node.Address6.IP != nil {
+				lAddr = append(lAddr, "["+node.Address6.IP.String()+"]:53")
 			}
 
-			if lIp == "" {
+			if len(lAddr) == 0 {
 				continue
 			}
+			for _, lIp := range lAddr {
+				dns.HandleFunc(".", handleDNSRequest)
+				srv := &dns.Server{
+					Net:       "udp",
+					Addr:      lIp,
+					UDPSize:   65535,
+					ReusePort: true,
+					ReuseAddr: true,
+				}
 
-			dns.HandleFunc(".", handleDNSRequest)
+				dnsServer.AddrStr = lIp
+				dnsServer.AddrList = append(dnsServer.AddrList, lIp)
+				dnsServer.DnsServer = append(dnsServer.DnsServer, srv)
 
-			srv := &dns.Server{
-				Net:       "udp",
-				Addr:      lIp,
-				UDPSize:   65535,
-				ReusePort: true,
-				ReuseAddr: true,
+				go func(dnsServer *DNSServer) {
+					err := srv.ListenAndServe()
+					if err != nil {
+						slog.Error("error in starting dns server", "error", lIp, err.Error())
+						dnsServer.AddrStr = ""
+						dnsServer.AddrList = slices.Delete(dnsServer.AddrList, len(dnsServer.AddrList)-1, len(dnsServer.AddrList))
+						dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, len(dnsServer.DnsServer)-1, len(dnsServer.DnsServer))
+					}
+				}(dnsServer)
 			}
 
-			dnsServer.AddrStr = lIp
-			dnsServer.AddrList = append(dnsServer.AddrList, lIp)
-			dnsServer.DnsServer = append(dnsServer.DnsServer, srv)
-
-			go func(dnsServer *DNSServer) {
-				err := srv.ListenAndServe()
-				if err != nil {
-					slog.Error("error in starting dns server", "error", lIp, err.Error())
-					dnsServer.AddrStr = ""
-					dnsServer.AddrList = slices.Delete(dnsServer.AddrList, len(dnsServer.AddrList)-1, len(dnsServer.AddrList))
-					dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, len(dnsServer.DnsServer)-1, len(dnsServer.DnsServer))
-				}
-			}(dnsServer)
 		}
 	}
 
