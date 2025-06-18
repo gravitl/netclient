@@ -13,6 +13,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+const (
+	IPv4Network = "0.0.0.0/0"
+	IPv6Network = "::/0"
+)
+
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
 func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 	hostPeers := config.Netclient().HostPeers
@@ -101,6 +106,17 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 		return ok
 	}
 	return false
+}
+
+func GetBetterEndpoint(peerKey string) (*net.UDPAddr, bool) {
+	if endpoint, ok := cache.EndpointCache.Load(peerKey); ok && endpoint != nil {
+		var cacheEndpoint cache.EndpointCacheValue
+		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
+		if ok {
+			return cacheEndpoint.Endpoint, ok
+		}
+	}
+	return nil, false
 }
 
 // EndpointDetectedAlready - checks if better endpoint has been detected already

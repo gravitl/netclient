@@ -311,7 +311,7 @@ func checkConfig() {
 		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
-	if netclient.MacAddress == nil {
+	if netclient.MacAddress == nil || netclient.MacAddress.String() == "" {
 		logger.Log(0, "setting macAddress")
 		mac, err := ncutils.GetMacAddr()
 		if err != nil {
