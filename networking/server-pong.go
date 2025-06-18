@@ -79,7 +79,7 @@ func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Endpoint: endpoint,
 	}
-	err := setPeerEndpoint(peerPubKey, newIfaceValue)
+	err := SetPeerEndpoint(peerPubKey, newIfaceValue)
 	if err != nil {
 		return err
 	}
@@ -88,12 +88,12 @@ func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 	return nil
 }
 
-func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
+func SetPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 
 	currentServerPeers := config.Netclient().HostPeers
 	for i := range currentServerPeers {
 		currPeer := currentServerPeers[i]
-		if currPeer.PublicKey.String() == peerPubKey { // filter for current peer to overwrite endpoint
+		if !currPeer.Remove && currPeer.PublicKey.String() == peerPubKey { // filter for current peer to overwrite endpoint
 			logger.Log(0, "determined new endpoint for peer", currPeer.PublicKey.String(), "-", value.Endpoint.String())
 			return wireguard.UpdatePeer(&wgtypes.PeerConfig{
 				PublicKey:                   currPeer.PublicKey,
@@ -110,7 +110,7 @@ func setPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
 }
 
 func sendSuccess(c net.Conn) error {
-	_, err := c.Write([]byte(messages.Success)) // send success and then adjust locally to save time
+	_, err := c.Write([]byte(config.Netclient().PublicKey.String())) // send success and then adjust locally to save time
 	if err != nil {
 		return err
 	}

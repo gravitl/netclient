@@ -36,6 +36,9 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	}
 	addrs := []ifaceAddress{}
 	for _, node := range nodes {
+		if !node.Connected {
+			continue
+		}
 		if node.Address.IP != nil {
 			addrs = append(addrs, ifaceAddress{
 				IP:      node.Address.IP,
@@ -122,18 +125,27 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	addrs := []ifaceAddress{}
+
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
 			if egressRangeIPNet.IP != nil {
-				if egressRangeIPNet.IP.To4() != nil {
+				if len(config.GetNodes()) == 1 {
+					addrs = append(addrs, ifaceAddress{
+						Network: egressRangeIPNet,
+						Metric:  egressRange.RouteMetric,
+					})
+					continue
+				}
+				if egressRangeIPNet.IP.To4() != nil && egressRoute.NodeAddr.IP != nil {
 					addrs = append(addrs, ifaceAddress{
 						GwIP:    egressRoute.EgressGwAddr.IP,
 						IP:      egressRoute.NodeAddr.IP,
 						Network: egressRangeIPNet,
 						Metric:  egressRange.RouteMetric,
 					})
-				} else if egressRoute.NodeAddr6.IP != nil {
+				}
+				if egressRangeIPNet.IP.To4() == nil && egressRoute.NodeAddr6.IP != nil {
 					addrs = append(addrs, ifaceAddress{
 						GwIP:    egressRoute.EgressGwAddr6.IP,
 						IP:      egressRoute.NodeAddr6.IP,

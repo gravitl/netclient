@@ -12,9 +12,11 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -35,8 +37,8 @@ var (
 func processPeerSignal(signal models.Signal) {
 
 	// process recieved new signal from peer
-	// if signal is older than 10s ignore it,wait for a fresh signal from peer
-	if time.Now().Unix()-signal.TimeStamp > 5 {
+	// if signal is older than 3s ignore it,wait for a fresh signal from peer
+	if time.Now().Unix()-signal.TimeStamp > 3 {
 		return
 	}
 	switch signal.Action {
@@ -44,7 +46,16 @@ func processPeerSignal(signal models.Signal) {
 		if !isPeerExist(signal.FromHostPubKey) {
 			return
 		}
-		err := handlePeerFailOver(signal)
+		devicePeer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), signal.FromHostPubKey)
+		if err != nil {
+			return
+		}
+		// check if there is handshake on interface
+		connected, err := isPeerConnected(devicePeer)
+		if err != nil || connected {
+			return
+		}
+		err = handlePeerFailOver(signal)
 		if err != nil {
 			logger.Log(2, fmt.Sprintf("Failed to perform action [%s]: %+v, Err: %v", signal.Action, signal.FromHostPubKey, err.Error()))
 		}
@@ -132,14 +143,20 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if peer.IsExtClient {
 							continue
 						}
-						if _, ok := devicePeerMap[pubKey]; !ok {
+						devicePeer, ok := devicePeerMap[pubKey]
+						if !ok {
 							continue
+						}
+						// check if local endpoint is present
+						localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey)
+						if ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
+							networking.SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
 						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 							continue
 						}
 						// check if there is handshake on interface
-						connected, err := isPeerConnected(devicePeerMap[pubKey])
+						connected, err := isPeerConnected(devicePeer)
 						if err != nil || connected {
 							continue
 						}

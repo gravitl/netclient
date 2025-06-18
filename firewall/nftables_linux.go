@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"golang.org/x/exp/slog"
+	"golang.org/x/sys/unix"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
@@ -137,6 +138,84 @@ var (
 				Table: filterTable,
 				Chain: &nftables.Chain{Name: iptableFWDChain},
 				Exprs: []expr.Any{
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Match NOT output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpNeq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+					// Accept the packet
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: aclFwdRulesChain,
+					},
+				},
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableFWDChain},
+				Exprs: []expr.Any{
+					// Match input interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyIIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Match output interface "netmaker"
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+					},
+
+					// Jump to NETMAKER-ACL-IN chain
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: aclInputRulesChain,
+					},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+					"-m", "comment", "--comment", netmakerSignature)),
+			},
+			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
+				"-m", "comment", "--comment", netmakerSignature},
+			table: defaultIpTable,
+			chain: iptableFWDChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: iptableFWDChain},
+				Exprs: []expr.Any{
 					// Match on input interface (-i netmaker)
 					&expr.Meta{
 						Key:      expr.MetaKeyIIFNAME, // Input interface name
@@ -221,84 +300,6 @@ var (
 			rule: []string{"-o", ncutils.GetInterfaceName(), "-m", "conntrack",
 				"--ctstate", "ESTABLISHED,RELATED", "-m", "comment",
 				"--comment", netmakerSignature, "-j", "ACCEPT"},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableFWDChain},
-				Exprs: []expr.Any{
-					// Match input interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyIIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Match NOT output interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpNeq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-					// Accept the packet
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclFwdRulesChain,
-					},
-				},
-			},
-			rule:  []string{"-i", ncutils.GetInterfaceName(), "!", "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain},
-			table: defaultIpTable,
-			chain: iptableFWDChain,
-		},
-		{
-			nfRule: &nftables.Rule{
-				Table: filterTable,
-				Chain: &nftables.Chain{Name: iptableFWDChain},
-				Exprs: []expr.Any{
-					// Match input interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyIIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Match output interface "netmaker"
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-					},
-
-					// Jump to NETMAKER-ACL-IN chain
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: aclInputRulesChain,
-					},
-				},
-				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
-					"-m", "comment", "--comment", netmakerSignature)),
-			},
-			rule: []string{"-i", ncutils.GetInterfaceName(), "-o", ncutils.GetInterfaceName(), "-j", aclInputRulesChain,
-				"-m", "comment", "--comment", netmakerSignature},
 			table: defaultIpTable,
 			chain: iptableFWDChain,
 		},
@@ -527,17 +528,18 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		egressGwRoutes = []ruleInfo{}
 	)
 	ruleTable[egressInfo.EgressID] = rulesCfg{
-		isIpv4:   isIpv4,
-		rulesMap: make(map[string][]ruleInfo),
+		isIpv4:    isIpv4,
+		rulesMap:  make(map[string][]ruleInfo),
+		extraInfo: egressInfo.EgressGWCfg,
 	}
-	for _, egressGwRange := range egressInfo.EgressGWCfg.Ranges {
-		if egressInfo.EgressGWCfg.NatEnabled == "yes" {
+	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
+		if egressGwRange.Nat {
 
 			source := egressInfo.Network.String()
-			if !isAddrIpv4(egressGwRange) {
+			if !isAddrIpv4(egressGwRange.Network) {
 				source = egressInfo.Network6.String()
 			}
-			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange)); err != nil {
+			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
 				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
@@ -799,7 +801,12 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 func (n *nftablesManager) addJumpRules() {
 
 	for _, rule := range nfFilterJumpRules {
-		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
+		nfRule := rule.nfRule.(*nftables.Rule)
+		if nfRule.Chain.Name == iptableFWDChain {
+			nfRule.Position = 0
+			n.conn.InsertRule(nfRule)
+		}
+		n.conn.AddRule(nfRule)
 	}
 	for _, rule := range nfNatJumpRules {
 		n.conn.AddRule(rule.nfRule.(*nftables.Rule))
@@ -824,6 +831,50 @@ func (n *nftablesManager) addJumpRules() {
 			},
 		}
 		n.conn.InsertRule(rule)
+		n.conn.InsertRule(&nftables.Rule{
+			Table: filterTable,
+			Chain: &nftables.Chain{Name: aclInputRulesChain},
+			Exprs: []expr.Any{
+				// [ meta load iifname => reg 1 ]
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+				// [ cmp eq reg 1 netmaker ]
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte("netmaker\x00"),
+				},
+				// [ payload load 1b @ network header + 9 => reg 1 ]  (proto)
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseNetworkHeader,
+					Offset:       9, // Protocol field in IPv4
+					Len:          1,
+				},
+				// [ cmp eq reg 1 0x11 ]  (UDP)
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte{unix.IPPROTO_UDP},
+				},
+				// [ payload load 2b @ transport header + 2 => reg 1 ] (dport)
+				&expr.Payload{
+					DestRegister: 1,
+					Base:         expr.PayloadBaseTransportHeader,
+					Offset:       2,
+					Len:          2,
+				},
+				// [ cmp eq reg 1 53 ]
+				&expr.Cmp{
+					Op:       expr.CmpOpEq,
+					Register: 1,
+					Data:     []byte{0x00, 0x35}, // 53 in big-endian
+				},
+				// [ verdict accept ]
+				&expr.Verdict{
+					Kind: expr.VerdictAccept,
+				},
+			},
+		})
 	}
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, fmt.Sprintf("failed to add jump rules, Err: %s", err.Error()))

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
