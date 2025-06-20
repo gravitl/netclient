@@ -16,11 +16,6 @@ import (
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
-const (
-	IPv4Network = "0.0.0.0/0"
-	IPv6Network = "::/0"
-)
-
 // NCIface.Create - makes a new Wireguard interface and sets given addresses
 func (nc *NCIface) Create() error {
 	wgMutex.Lock()
@@ -74,8 +69,8 @@ func (nc *NCIface) ApplyAddrs() error {
 // RemoveRoutes - remove routes to the interface
 func RemoveRoutes(addrs []ifaceAddress) {
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || addr.GwIP == nil {
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {
@@ -101,8 +96,8 @@ func RemoveRoutes(addrs []ifaceAddress) {
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) error {
 	for _, addr := range addrs {
-		if addr.IP == nil || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || addr.GwIP == nil {
+		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {

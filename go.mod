@@ -2,21 +2,19 @@ module github.com/gravitl/netclient
 
 go 1.23.0
 
-toolchain go1.23.1
-
 require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c-robinson/iplib v1.0.8
 	github.com/coreos/go-iptables v0.8.0
 	github.com/devilcove/httpclient v0.6.0
-	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/glendc/go-external-ip v0.1.0
 	github.com/go-ping/ping v1.2.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v0.90.1-0.20250504114129-8e60ef15e9dd
+	github.com/gravitl/netmaker v0.99.0
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
@@ -59,9 +57,10 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -72,7 +71,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
-	github.com/mattn/go-sqlite3 v1.14.24 // indirect
+	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/mdlayher/genetlink v1.2.0 // indirect
 	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
@@ -82,7 +81,7 @@ require (
 	github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/posthog/posthog-go v1.2.24 // indirect
+	github.com/posthog/posthog-go v1.5.5 // indirect
 	github.com/rivo/uniseg v0.4.6 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rqlite/gorqlite v0.0.0-20240122221808-a8a425b1a6aa // indirect
@@ -101,6 +100,7 @@ require (
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.32.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -108,5 +108,5 @@ require (
 	gorm.io/driver/mysql v1.5.6 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/driver/sqlite v1.5.7 // indirect
-	gorm.io/gorm v1.25.12 // indirect
+	gorm.io/gorm v1.30.0 // indirect
 )

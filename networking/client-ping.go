@@ -13,30 +13,36 @@ import (
 
 func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
 	parsePeerIp := net.ParseIP(peerIp)
-	if parsePeerIp.To16() != nil {
+	if parsePeerIp.To4() == nil {
 		// ipv6
 		peerIp = fmt.Sprintf("[%s]", peerIp)
 	}
-	addr := fmt.Sprintf("%s:%d", peerIp, metricsPort)
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-	if err != nil {
-		return false
+	var conn net.Conn
+	defer func() {
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+	var err error
+	for i := 0; i < 5; i++ {
+		addr := fmt.Sprintf("%s:%d", peerIp, metricsPort)
+		conn, err = net.DialTimeout("tcp", addr, 3*time.Second)
+		if err != nil {
+			continue
+		}
+		message, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil && err.Error() != "EOF" {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(message), "|")
+		if len(parts) == 0 {
+			continue
+		}
+		if parts[0] == messages.Success || parts[0] == peerPubKey {
+			return true
+		}
+		time.Sleep(time.Second * 5)
 	}
-	defer conn.Close()
-
-	message, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil && err.Error() != "EOF" {
-		return false
-	}
-	parts := strings.Split(strings.TrimSpace(message), "|")
-	if len(parts) == 0 {
-		return false
-	}
-
-	if parts[0] == messages.Success || parts[0] == peerPubKey {
-		return true
-	}
-
 	return false
 
 }
