@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -141,10 +142,85 @@ func DeleteOldInterface(iface string) {
 }
 
 // GetDefaultGatewayIp - get current default gateway
-func GetDefaultGatewayIp() (ip net.IP, err error) { return }
+func GetDefaultGatewayIp() (net.IP, error) {
+	out, err := exec.Command("route", "-n", "get", "default").Output()
+	if err != nil {
+		return nil, err
+	}
+	// parse out from the following format
+	//	route to: default
+	//	destination: default
+	//	mask: default
+	//	gateway: 192.168.1.1
+	//	interface: en0
+	//	flags: <UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>
+	//	recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu     expire
+	// 0         0         0         0         0         0      1500         0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "gateway") {
+			fields := strings.Fields(line)
+			if len(fields) > 1 {
+				ip := net.ParseIP(fields[1])
+				if ip != nil {
+					return ip, nil
+				}
+			}
+		}
+	}
+	return nil, fmt.Errorf("could not find gateway")
+}
 
-// RestoreDefaultGateway - restore the old default gateway
-func RestoreInternetGw() (err error) { return }
+// RestoreInternetGw - restore the old default gateway
+func RestoreInternetGw() error {
+	logger.Log(0, "restoring internet gateway")
+	og, err := GetOriginalDefaulGw()
+	if err != nil {
+		return err
+	}
+	if og == nil {
+		logger.Log(0, "no original gateway found, skipping restore")
+		return nil
+	}
+	logger.Log(0, "deleting default gateway")
+	cmd := exec.Command("route", "delete", "default")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Log(0, "failed to delete default gateway", "error", string(out))
+		// continue, as it may not exist
+	}
+	logger.Log(0, "adding new default gateway", "gateway", og.String())
+	cmd = exec.Command("route", "add", "default", og.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add default gateway %s: %s", og.String(), string(out))
+	}
+	// clear original gateway
+	nc := config.Netclient()
+	nc.OriginalDefaultGatewayIp = nil
+	config.UpdateNetclient(*nc)
+	return config.WriteNetclientConfig()
+}
 
-// SetDefaultGateway - set a new default gateway
-func SetInternetGw(ip net.IP) (err error) { return }
+// SetInternetGw - set a new default gateway
+func SetInternetGw(ip net.IP) error {
+	og, err := GetDefaultGatewayIp()
+	if err == nil {
+		logger.Log(0, "saving original gateway", "gateway", og.String())
+		nc := config.Netclient()
+		nc.OriginalDefaultGatewayIp = og
+		config.UpdateNetclient(*nc)
+		if err := config.WriteNetclientConfig(); err != nil {
+			logger.Log(0, "failed to save original gateway", "error", err.Error())
+		}
+	}
+	logger.Log(0, "deleting default gateway")
+	cmd := exec.Command("route", "delete", "default")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Log(0, "failed to delete default gateway", "error", string(out))
+		// continue, as it may not exist
+	}
+	logger.Log(0, "setting new default gateway", "ip", ip.String())
+	cmd = exec.Command("route", "add", "default", ip.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add default gateway %s: %s", ip.String(), string(out))
+	}
+	return nil
+}
