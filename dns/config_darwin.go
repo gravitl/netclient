@@ -2,11 +2,12 @@ package dns
 
 import (
 	"fmt"
+	"os"
+	"sync"
+
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
-	"os"
-	"sync"
 )
 
 var dnsConfigMutex sync.Mutex
@@ -40,14 +41,6 @@ func SetupDNSConfig() error {
 		return err
 	}
 
-	_, err = ncutils.RunCmd(
-		fmt.Sprintf("networksetup -setdnsservers netmaker %s", dnsIp),
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
 	domain := config.GetServer(config.CurrServer).DefaultDomain
 
 	err = os.MkdirAll("/etc/resolver/", os.FileMode(0755))
@@ -57,7 +50,6 @@ func SetupDNSConfig() error {
 
 	contents := fmt.Sprintf(`
 nameserver %s
-search %s
 `, dnsIp)
 
 	file, err := os.Create("/etc/resolver/" + domain)
@@ -77,7 +69,7 @@ search %s
 		return err
 	}
 
-	return nil
+	return FlushLocalDnsCache()
 }
 
 func RestoreDNSConfig() error {
@@ -86,7 +78,8 @@ func RestoreDNSConfig() error {
 
 	domain := config.GetServer(config.CurrServer).DefaultDomain
 
-	return os.Remove("/etc/resolver/" + domain)
+	_ = os.Remove("/etc/resolver/" + domain)
+	return FlushLocalDnsCache()
 }
 
 func InitDNSConfig() {
