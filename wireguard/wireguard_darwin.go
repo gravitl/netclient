@@ -85,19 +85,32 @@ func RemoveRoutes(addrs []ifaceAddress) {
 
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) error {
+	var cmd *exec.Cmd
 	for _, addr := range addrs {
 		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
 			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
 			continue
 		}
+		if addr.Network.IP == nil {
+			continue
+		}
 		if addr.Network.IP.To4() != nil {
-			cmd := exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
+			if addr.IP == nil {
+				cmd = exec.Command("route", "add", "-net", "-interface", addr.Network.String(), ncutils.GetInterfaceName())
+			} else {
+				cmd = exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
+			}
+
 			if out, err := cmd.CombinedOutput(); err != nil {
 				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
 				continue
 			}
 		} else {
-			cmd := exec.Command("route", "add", "-net", "-inet6", addr.Network.String(), addr.IP.String())
+			if addr.IP == nil {
+				cmd = exec.Command("route", "add", "-net", "-interface", addr.Network.String(), ncutils.GetInterfaceName())
+			} else {
+				cmd = exec.Command("route", "add", "-net", "-inet6", addr.Network.String(), addr.IP.String())
+			}
 			if out, err := cmd.CombinedOutput(); err != nil {
 				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
 				continue
