@@ -133,6 +133,7 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 				if len(config.GetNodes()) == 1 {
 					addrs = append(addrs, ifaceAddress{
 						Network: egressRangeIPNet,
+						GwIP:    egressRoute.EgressGwAddr.IP,
 						Metric:  egressRange.RouteMetric,
 					})
 					continue
