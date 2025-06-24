@@ -3,8 +3,10 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/google/uuid"
@@ -88,38 +90,71 @@ func ReadServerConf() error {
 // WriteServerConfig writes server map to disk
 func WriteServerConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
-	file := GetNetclientPath() + "servers.json"
-	if _, err := os.Stat(file); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
-				return err
-			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "Error setting permissions on "+GetNetclientPath(), err.Error())
-			}
-		} else if err != nil {
-			return err
+	configDir := GetNetclientPath()
+	file := filepath.Join(configDir, "servers.json")
+	tmpFile := file + ".tmp"
+	backupFile := file + ".bak"
+
+	// Ensure config directory exists
+	if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create config directory: %w", err)
 		}
+		if err := os.Chmod(configDir, 0775); err != nil {
+			// Not fatal
+			logger.Log(0, "Error setting permissions on "+configDir, err.Error())
+		}
+	} else if err != nil {
+		return fmt.Errorf("error checking config directory: %w", err)
 	}
+
+	// Acquire lock
 	if err := Lock(lockfile); err != nil {
-		return err
+		return fmt.Errorf("failed to obtain lockfile: %w", err)
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
+
+	// Create and write to temp file
+	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create temp config file: %w", err)
 	}
 	defer f.Close()
+
 	serverMutex.Lock()
 	serversI := Servers
 	serverMutex.Unlock()
+
 	j := json.NewEncoder(f)
 	j.SetIndent("", "    ")
-	err = j.Encode(serversI)
-	if err != nil {
-		return err
+	if err := j.Encode(serversI); err != nil {
+		return fmt.Errorf("failed to encode server config: %w", err)
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync server config to disk: %w", err)
+	}
+
+	// Optional: remove previous backup
+	_ = os.Remove(backupFile)
+
+	// Create backup if original exists
+	if _, err := os.Stat(file); err == nil {
+		if err := os.Rename(file, backupFile); err != nil {
+			return fmt.Errorf("failed to backup existing server config: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("error checking existing server config: %w", err)
+	}
+
+	// Windows-safe rename
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(file)
+	}
+	if err := os.Rename(tmpFile, file); err != nil {
+		return fmt.Errorf("failed to rename temp server config: %w", err)
+	}
+
+	return nil
 }
 
 // SaveServer updates the server map with current server struct and writes map to disk
