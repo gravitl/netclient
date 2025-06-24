@@ -484,6 +484,9 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
 				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
+				if len(config.GetNodes()) == 1 {
+					ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+				}
 				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 				// to avoid duplicate iface route rule,delete if exists
 				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
