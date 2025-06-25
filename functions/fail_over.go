@@ -96,6 +96,64 @@ func handlePeerFailOver(signal models.Signal) error {
 	return nil
 }
 
+func checkPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
+	defer waitg.Done()
+	peerConnTicker = time.NewTicker(peerConnectionCheckInterval)
+	defer peerConnTicker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("exiting peer connection watcher")
+			return
+		case <-peerConnTicker.C:
+			go func() {
+				nodes := config.GetNodes()
+				if len(nodes) == 0 {
+					return
+				}
+				peerInfo, err := getPeerInfo()
+				if err != nil {
+					slog.Error("failed to get peer Info", "error", err)
+					return
+				}
+				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+				if err != nil {
+					slog.Debug("failed to get peers from device: ", "error", err)
+					return
+				}
+				for _, node := range nodes {
+					if node.Server != config.CurrServer {
+						continue
+					}
+					if !failOverExists(node) {
+						continue
+					}
+					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
+					if !ok {
+						continue
+					}
+
+					for pubKey, peer := range peers {
+						if peer.IsExtClient {
+							continue
+						}
+						devicePeer, ok := devicePeerMap[pubKey]
+						if !ok {
+							continue
+						}
+						// check if local endpoint is present
+						localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey)
+						if ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
+							networking.SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
+						}
+					}
+				}
+			}()
+
+		}
+	}
+}
+
 // watchPeerConnections - periodically watches peer connections.
 // if connection is bad, host will signal peers to use turn
 func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
