@@ -3,6 +3,7 @@ package wireguard
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"sort"
 	"sync"
 
@@ -131,11 +132,28 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
 			if egressRangeIPNet.IP != nil {
 				if len(config.GetNodes()) == 1 {
-					addrs = append(addrs, ifaceAddress{
-						Network: egressRangeIPNet,
-						GwIP:    egressRoute.EgressGwAddr.IP,
-						Metric:  egressRange.RouteMetric,
-					})
+					if runtime.GOOS == "linux" {
+						addrs = append(addrs, ifaceAddress{
+							Network: egressRangeIPNet,
+							Metric:  egressRange.RouteMetric,
+						})
+					} else {
+						if egressRoute.EgressGwAddr.IP != nil {
+							addrs = append(addrs, ifaceAddress{
+								Network: egressRangeIPNet,
+								GwIP:    egressRoute.EgressGwAddr.IP,
+								Metric:  egressRange.RouteMetric,
+							})
+						}
+						if egressRoute.EgressGwAddr6.IP != nil {
+							addrs = append(addrs, ifaceAddress{
+								Network: egressRangeIPNet,
+								GwIP:    egressRoute.EgressGwAddr6.IP,
+								Metric:  egressRange.RouteMetric,
+							})
+						}
+					}
+
 					continue
 				}
 				if egressRangeIPNet.IP.To4() != nil && egressRoute.NodeAddr.IP != nil {

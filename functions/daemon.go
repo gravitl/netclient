@@ -298,6 +298,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		go watchPeerConnections(ctx, wg)
 		wg.Add(1)
 		go startEgressHAFailOverThread(ctx, wg)
+	} else {
+		wg.Add(1)
+		go checkPeerEndpoints(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
