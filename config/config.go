@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -259,40 +260,75 @@ func ReadNetclientConfig() (*Config, error) {
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk
+
 func WriteNetclientConfig() error {
 	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
-	file := GetNetclientPath() + "netclient.json"
-	if _, err := os.Stat(file); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
-				logger.Log(0, "error creating netclient config directory", err.Error())
-			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "error setting permissions on netclient config directory", err.Error())
-			}
-		} else if err != nil {
-			return err
+	configDir := GetNetclientPath()
+	file := filepath.Join(configDir, "netclient.json")
+	tmpFile := file + ".tmp"
+	backupFile := file + ".bak"
+
+	// Ensure config directory exists
+	if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create config directory: %w", err)
 		}
+		if err := os.Chmod(configDir, 0775); err != nil {
+			return fmt.Errorf("failed to chmod config directory: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("error checking config directory: %w", err)
 	}
+
+	// Acquire lock
 	if lerr := Lock(lockfile); lerr != nil {
-		return errors.New("failed to obtain lockfile " + lerr.Error())
+		return fmt.Errorf("failed to obtain lockfile: %w", lerr)
 	}
 	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
+
+	// Open temp file
+	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create temp config file: %w", err)
 	}
 	defer f.Close()
+
+	// Get config safely
 	netclientCfgMutex.Lock()
 	netclientI := netclient
 	netclientCfgMutex.Unlock()
+
+	// Write JSON
 	j := json.NewEncoder(f)
-	j.SetIndent("", "    ")
-	err = j.Encode(netclientI)
-	if err != nil {
-		return err
+	j.SetIndent("", "   ")
+	if err := j.Encode(netclientI); err != nil {
+		return fmt.Errorf("failed to encode config: %w", err)
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync config to disk: %w", err)
+	}
+
+	// Optional: remove existing backup
+	_ = os.Remove(backupFile)
+
+	// Backup current config if it exists
+	if _, err := os.Stat(file); err == nil {
+		if err := os.Rename(file, backupFile); err != nil {
+			return fmt.Errorf("failed to backup existing config: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("error checking existing config: %w", err)
+	}
+
+	// Windows-safe rename of temp to final
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(file) // Must remove existing file before rename
+	}
+	if err := os.Rename(tmpFile, file); err != nil {
+		return fmt.Errorf("failed to move temp config into place: %w", err)
+	}
+
+	return nil
 }
 
 // GetNetclientPath - returns path to netclient config directory
