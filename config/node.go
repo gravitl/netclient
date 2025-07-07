@@ -3,11 +3,13 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -151,39 +153,51 @@ func WriteNodeConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp nodes file: %w", err)
 	}
-	defer f.Close()
 
 	// Get nodes list safely
 	nodeMutex.Lock()
 	nodesI := Nodes
 	nodeMutex.Unlock()
 
+	if nodesI == nil {
+		f.Close()
+		return errors.New("nodes config is nil")
+	}
+
 	// Write JSON
 	j := json.NewEncoder(f)
 	j.SetIndent("", "    ")
 	if err := j.Encode(nodesI); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to encode nodes config: %w", err)
 	}
 	if err := f.Sync(); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to sync nodes config: %w", err)
 	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 
-	// Optional: remove existing backup
+	// Optional delay to release file handle on Windows
+	if runtime.GOOS == "windows" {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.Remove(file) // remove old file to avoid rename issue
+	}
+
+	// Remove previous backup if it exists
 	_ = os.Remove(backupFile)
 
-	// Backup current config if it exists
+	// Backup existing config
 	if _, err := os.Stat(file); err == nil {
 		if err := os.Rename(file, backupFile); err != nil {
 			return fmt.Errorf("failed to backup existing nodes config: %w", err)
 		}
-	} else if !os.IsNotExist(err) {
+	} else if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("error checking existing nodes config: %w", err)
 	}
 
-	// Windows-safe rename
-	if runtime.GOOS == "windows" {
-		_ = os.Remove(file)
-	}
+	// Rename temp -> final
 	if err := os.Rename(tmpFile, file); err != nil {
 		return fmt.Errorf("failed to rename temp nodes config: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/logger"
@@ -101,7 +102,6 @@ func WriteServerConfig() error {
 			return fmt.Errorf("failed to create config directory: %w", err)
 		}
 		if err := os.Chmod(configDir, 0775); err != nil {
-			// Not fatal
 			logger.Log(0, "Error setting permissions on "+configDir, err.Error())
 		}
 	} else if err != nil {
@@ -119,7 +119,6 @@ func WriteServerConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp config file: %w", err)
 	}
-	defer f.Close()
 
 	serverMutex.Lock()
 	serversI := Servers
@@ -128,16 +127,27 @@ func WriteServerConfig() error {
 	j := json.NewEncoder(f)
 	j.SetIndent("", "    ")
 	if err := j.Encode(serversI); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to encode server config: %w", err)
 	}
 	if err := f.Sync(); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to sync server config to disk: %w", err)
 	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 
-	// Optional: remove previous backup
+	// Optional delay to release file lock on Windows
+	if runtime.GOOS == "windows" {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.Remove(file) // Avoid rename conflict
+	}
+
+	// Remove previous backup
 	_ = os.Remove(backupFile)
 
-	// Create backup if original exists
+	// Backup existing config if it exists
 	if _, err := os.Stat(file); err == nil {
 		if err := os.Rename(file, backupFile); err != nil {
 			return fmt.Errorf("failed to backup existing server config: %w", err)
@@ -146,10 +156,7 @@ func WriteServerConfig() error {
 		return fmt.Errorf("error checking existing server config: %w", err)
 	}
 
-	// Windows-safe rename
-	if runtime.GOOS == "windows" {
-		_ = os.Remove(file)
-	}
+	// Rename temp -> final
 	if err := os.Rename(tmpFile, file); err != nil {
 		return fmt.Errorf("failed to rename temp server config: %w", err)
 	}

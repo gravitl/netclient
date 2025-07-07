@@ -291,7 +291,6 @@ func WriteNetclientConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp config file: %w", err)
 	}
-	defer f.Close()
 
 	// Get config safely
 	netclientCfgMutex.Lock()
@@ -302,16 +301,27 @@ func WriteNetclientConfig() error {
 	j := json.NewEncoder(f)
 	j.SetIndent("", "   ")
 	if err := j.Encode(netclientI); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to encode config: %w", err)
 	}
 	if err := f.Sync(); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to sync config to disk: %w", err)
 	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 
-	// Optional: remove existing backup
+	// Optional delay for Windows to release file handles
+	if runtime.GOOS == "windows" {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.Remove(file)
+	}
+
+	// Remove previous backup if it exists
 	_ = os.Remove(backupFile)
 
-	// Backup current config if it exists
+	// Backup existing config
 	if _, err := os.Stat(file); err == nil {
 		if err := os.Rename(file, backupFile); err != nil {
 			return fmt.Errorf("failed to backup existing config: %w", err)
@@ -320,10 +330,7 @@ func WriteNetclientConfig() error {
 		return fmt.Errorf("error checking existing config: %w", err)
 	}
 
-	// Windows-safe rename of temp to final
-	if runtime.GOOS == "windows" {
-		_ = os.Remove(file) // Must remove existing file before rename
-	}
+	// Rename temp -> final
 	if err := os.Rename(tmpFile, file); err != nil {
 		return fmt.Errorf("failed to move temp config into place: %w", err)
 	}
