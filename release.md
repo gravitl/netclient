@@ -1,25 +1,25 @@
-# Netclient v0.99.0
+# Netclient v1.0.0
 
 ## Whats New ✨
 
-- ACLs on Community Edition (Beta): The new version of Access Control Lists is now available in CE as a beta feature.
+- Gateways Unified: Internet Gateways are now merged into the general Gateway feature and available in Community Edition.
 
-- Auto Sync Server Settings: Automatically propagate server configuration changes across nodes.
-
-- DNS Search Domains on Windows: DNS search domains configuration for Windows clients.
+- Site-to-Site over IPv6: IPv4 site-to-site communication over IPv6 Netmaker overlay tunnels.
 
 ## 🛠 Improvements & Fixes
 
-- Optimized DNS Query Handling: Faster and more efficient internal name resolution.
+- Auto-Sync DNS Configs: Multi-network DNS configurations now sync automatically between server and clients.
 
-- Improved Failover Handling: Enhanced stability and signaling for NAT traversal peer connections.
+- Stability Fixes: Improved connection reliability for nodes using Internet Gateways.
 
-- User Egress Policies: More granular control over user-level outbound traffic policies.
-
-- LAN/Private Routing Enhancements: Better detection and handling of local/private endpoint routes during peer communication.
-
-- Stale Route Cleanup on Node Disconnect: Automatically removes outdated interface routes when nodes disconnect.
+- LAN/Private Routing Enhancements: Smarter detection and handling of local/private routes, improving peer-to-peer communication in complex network environments.
 
 ## Known Issues 🐞
+
+- Inaccurate uptime info in metrics involving ipv4-only and ipv6-only traffic
+
+- netclients cannot auto-upgrade on ipv6-only machines.
+
+- Need to optimize multi-network netclient join with enrollment key
 
 - Stale Peer On The Interface, When Forced Removed From Multiple Networks At Once.
