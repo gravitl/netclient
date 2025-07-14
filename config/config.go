@@ -260,82 +260,15 @@ func ReadNetclientConfig() (*Config, error) {
 }
 
 // WriteNetclientConfiig writes the in memory host configuration to disk
-
 func WriteNetclientConfig() error {
-	lockfile := filepath.Join(os.TempDir(), ConfigLockfile)
-	configDir := GetNetclientPath()
-	file := filepath.Join(configDir, "netclient.json")
-	tmpFile := file + ".tmp"
-	backupFile := file + ".bak"
-
-	// Ensure config directory exists
-	if _, err := os.Stat(configDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create config directory: %w", err)
-		}
-		if err := os.Chmod(configDir, 0775); err != nil {
-			return fmt.Errorf("failed to chmod config directory: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("error checking config directory: %w", err)
-	}
-
-	// Acquire lock
-	if lerr := Lock(lockfile); lerr != nil {
-		return fmt.Errorf("failed to obtain lockfile: %w", lerr)
-	}
-	defer Unlock(lockfile)
-
-	// Open temp file
-	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
-	if err != nil {
-		return fmt.Errorf("failed to create temp config file: %w", err)
-	}
-
-	// Get config safely
 	netclientCfgMutex.Lock()
-	netclientI := netclient
-	netclientCfgMutex.Unlock()
-
-	// Write JSON
-	j := json.NewEncoder(f)
-	j.SetIndent("", "   ")
-	if err := j.Encode(netclientI); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to encode config: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to sync config to disk: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-
-	// Optional delay for Windows to release file handles
-	if runtime.GOOS == "windows" {
-		time.Sleep(50 * time.Millisecond)
-		_ = os.Remove(file)
-	}
-
-	// Remove previous backup if it exists
-	_ = os.Remove(backupFile)
-
-	// Backup existing config
-	if _, err := os.Stat(file); err == nil {
-		if err := os.Rename(file, backupFile); err != nil {
-			return fmt.Errorf("failed to backup existing config: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("error checking existing config: %w", err)
-	}
-
-	// Rename temp -> final
-	if err := os.Rename(tmpFile, file); err != nil {
-		return fmt.Errorf("failed to move temp config into place: %w", err)
-	}
-
-	return nil
+	defer netclientCfgMutex.Unlock()
+	return WriteJSONAtomic(
+		filepath.Join(GetNetclientPath(), "netclient.json"),
+		netclient,
+		filepath.Join(os.TempDir(), ConfigLockfile),
+		0700,
+	)
 }
 
 // GetNetclientPath - returns path to netclient config directory
@@ -558,4 +491,73 @@ func FirewallHasChanged() bool {
 		return false
 	}
 	return true
+}
+
+func WriteJSONAtomic(filePath string, data any, lockfile string, perm os.FileMode) error {
+	tmpFile := filePath + ".tmp"
+	backupFile := filePath + ".bak"
+
+	// Ensure parent directory exists
+	configDir := filepath.Dir(filePath)
+	if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create config directory: %w", err)
+		}
+		if err := os.Chmod(configDir, 0775); err != nil {
+			logger.Log(0, "error setting permissions on "+configDir, err.Error())
+		}
+	} else if err != nil {
+		return fmt.Errorf("error checking config directory: %w", err)
+	}
+
+	// Acquire lock
+	if err := Lock(lockfile); err != nil {
+		return fmt.Errorf("failed to obtain lockfile: %w", err)
+	}
+	defer Unlock(lockfile)
+
+	// Write to temp file
+	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if err != nil {
+		return fmt.Errorf("failed to create temp config file: %w", err)
+	}
+
+	j := json.NewEncoder(f)
+	j.SetIndent("", "    ")
+	if err := j.Encode(data); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to sync file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// Remove old backup if it exists
+	_ = os.Remove(backupFile)
+
+	// Backup existing file
+	if _, err := os.Stat(filePath); err == nil {
+		if err := os.Rename(filePath, backupFile); err != nil {
+			return fmt.Errorf("failed to backup file: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("error checking existing file: %w", err)
+	}
+
+	// Windows-specific rename handling
+	if runtime.GOOS == "windows" {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.Remove(filePath)
+	}
+
+	// Rename temp → final
+	if err := os.Rename(tmpFile, filePath); err != nil {
+		return fmt.Errorf("failed to rename temp file to final: %w", err)
+	}
+
+	return nil
 }

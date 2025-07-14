@@ -3,16 +3,11 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
-	"time"
 
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
 )
@@ -123,86 +118,14 @@ func (node *Node) PrimaryAddress() net.IPNet {
 
 // WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
-	configDir := GetNetclientPath()
-	file := filepath.Join(configDir, "nodes.json")
-	tmpFile := file + ".tmp"
-	backupFile := file + ".bak"
-
-	// Ensure config directory exists
-	if _, err := os.Stat(configDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create config directory: %w", err)
-		}
-		if err := os.Chmod(configDir, 0775); err != nil {
-			// Just log, not fatal
-			logger.Log(0, "error setting permissions on "+configDir, err.Error())
-		}
-	} else if err != nil {
-		return fmt.Errorf("error checking config directory: %w", err)
-	}
-
-	// Acquire lock
-	if err := Lock(lockfile); err != nil {
-		return fmt.Errorf("failed to obtain lockfile: %w", err)
-	}
-	defer Unlock(lockfile)
-
-	// Open temp file
-	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
-	if err != nil {
-		return fmt.Errorf("failed to create temp nodes file: %w", err)
-	}
-
-	// Get nodes list safely
 	nodeMutex.Lock()
-	nodesI := Nodes
-	nodeMutex.Unlock()
-
-	if nodesI == nil {
-		f.Close()
-		return errors.New("nodes config is nil")
-	}
-
-	// Write JSON
-	j := json.NewEncoder(f)
-	j.SetIndent("", "    ")
-	if err := j.Encode(nodesI); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to encode nodes config: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to sync nodes config: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-
-	// Optional delay to release file handle on Windows
-	if runtime.GOOS == "windows" {
-		time.Sleep(50 * time.Millisecond)
-		_ = os.Remove(file) // remove old file to avoid rename issue
-	}
-
-	// Remove previous backup if it exists
-	_ = os.Remove(backupFile)
-
-	// Backup existing config
-	if _, err := os.Stat(file); err == nil {
-		if err := os.Rename(file, backupFile); err != nil {
-			return fmt.Errorf("failed to backup existing nodes config: %w", err)
-		}
-	} else if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("error checking existing nodes config: %w", err)
-	}
-
-	// Rename temp -> final
-	if err := os.Rename(tmpFile, file); err != nil {
-		return fmt.Errorf("failed to rename temp nodes config: %w", err)
-	}
-
-	return nil
+	defer nodeMutex.Unlock()
+	return WriteJSONAtomic(
+		filepath.Join(GetNetclientPath(), "nodes.json"),
+		Nodes,
+		filepath.Join(os.TempDir(), NodeLockfile),
+		0700,
+	)
 }
 
 // ConvertNode accepts a netmaker node struct and converts to the structs used by netclient
