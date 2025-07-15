@@ -297,7 +297,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		wg.Add(1)
 		go watchPeerConnections(ctx, wg)
 		wg.Add(1)
-		go startEgressHAFailOverThread(ctx, wg)
+		go wireguard.StartEgressHAFailOverThread(ctx, wg)
 	} else {
 		wg.Add(1)
 		go checkPeerEndpoints(ctx, wg)

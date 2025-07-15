@@ -75,7 +75,7 @@ func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
 	return
 }
 
-func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
+func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
 	HaEgressTicker = time.NewTicker(time.Second * 5)
 	defer HaEgressTicker.Stop()
