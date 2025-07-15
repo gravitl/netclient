@@ -321,6 +321,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		daemon.Restart()
 	}
 
+	peerInfo = &peerUpdate.HostPeerInfo
+
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()

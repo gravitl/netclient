@@ -33,6 +33,8 @@ var (
 	signalThrottleCache    = sync.Map{}
 )
 
+var peerInfo *models.HostPeerInfo
+
 // processPeerSignal - processes the peer signals for any updates from peers
 func processPeerSignal(signal models.Signal) {
 
@@ -306,6 +308,9 @@ func failOverExists(node config.Node) bool {
 }
 
 func getPeerInfo() (models.HostPeerInfo, error) {
+	if peerInfo != nil {
+		return *peerInfo, nil
+	}
 
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
