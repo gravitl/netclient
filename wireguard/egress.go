@@ -1,4 +1,4 @@
-package functions
+package wireguard
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/wireguard"
+
+	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -27,10 +28,11 @@ type egressPeer struct {
 // Egress HA watch Thread
 var egressRoutes = []models.EgressNetworkRoutes{}
 var egressRoutesCacheMutex = &sync.Mutex{}
-var haEgressTicker *time.Ticker
-var haEgressCheckInterval = time.Second * 5
+var HaEgressTicker *time.Ticker
+var HaEgressCheckInterval = time.Second * 5
+var haEgressPeerCache = make(map[string][]net.IPNet)
 
-func setEgressRoutes(egressRoutesInfo []models.EgressNetworkRoutes) {
+func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
 	egressRoutesCacheMutex.Lock()
 	defer egressRoutesCacheMutex.Unlock()
 	egressRoutes = egressRoutesInfo
@@ -75,8 +77,8 @@ func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
 
 func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	haEgressTicker = time.NewTicker(time.Second * 5)
-	defer haEgressTicker.Stop()
+	HaEgressTicker = time.NewTicker(time.Second * 5)
+	defer HaEgressTicker.Stop()
 	metricPort := config.GetServer(config.CurrServer).MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
@@ -86,7 +88,7 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 		case <-ctx.Done():
 			slog.Info("exiting startEgressHAFailOverThread")
 			return
-		case <-haEgressTicker.C:
+		case <-HaEgressTicker.C:
 			nodes := config.GetNodes()
 			if len(nodes) == 0 {
 				continue
@@ -104,7 +106,7 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			if !shouldCheck {
 				continue
 			}
-			devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+			devicePeerMap, err := GetPeersFromDevice(ncutils.GetInterfaceName())
 			if err != nil {
 				slog.Debug("failed to get peers from device: ", "error", err)
 				continue
@@ -133,17 +135,24 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 						for _, allowedIP := range devicePeer.AllowedIPs {
 							if allowedIP.String() == ipnet.String() {
 								exists = true
+								egressRoutesCacheMutex.Lock()
+								haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
+								egressRoutesCacheMutex.Unlock()
 								break
 							}
 						}
 						if !exists {
 							devicePeer.AllowedIPs = append(devicePeer.AllowedIPs, *ipnet)
-							wireguard.UpdatePeer(&wgtypes.PeerConfig{
+							devicePeer.AllowedIPs = logic.UniqueIPNetList(devicePeer.AllowedIPs)
+							UpdatePeer(&wgtypes.PeerConfig{
 								PublicKey:         devicePeer.PublicKey,
 								AllowedIPs:        devicePeer.AllowedIPs,
-								ReplaceAllowedIPs: true,
+								ReplaceAllowedIPs: false,
 								UpdateOnly:        true,
 							})
+							egressRoutesCacheMutex.Lock()
+							haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
+							egressRoutesCacheMutex.Unlock()
 						}
 						break
 					}
@@ -152,4 +161,15 @@ func startEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 
 		}
 	}
+}
+
+func checkIfEgressHAPeer(peer *wgtypes.PeerConfig) bool {
+	egressRoutesCacheMutex.Lock()
+	defer egressRoutesCacheMutex.Unlock()
+	egressList, ok := haEgressPeerCache[peer.PublicKey.String()]
+	if ok {
+		peer.AllowedIPs = append(peer.AllowedIPs, egressList...)
+		peer.AllowedIPs = logic.UniqueIPNetList(peer.AllowedIPs)
+	}
+	return ok
 }
