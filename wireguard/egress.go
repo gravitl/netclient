@@ -38,6 +38,13 @@ func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
 	egressRoutes = egressRoutesInfo
 }
 
+func resetHAEgressCache() {
+	egressRoutesCacheMutex.Lock()
+	defer egressRoutesCacheMutex.Unlock()
+	egressRoutes = []models.EgressNetworkRoutes{}
+	haEgressPeerCache = make(map[string][]net.IPNet)
+}
+
 func sortRouteMetricByAscending(items []egressPeer) []egressPeer {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Metric == items[j].Metric {
@@ -87,6 +94,7 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 		select {
 		case <-ctx.Done():
 			slog.Info("exiting startEgressHAFailOverThread")
+			resetHAEgressCache()
 			return
 		case <-HaEgressTicker.C:
 			nodes := config.GetNodes()
@@ -112,11 +120,11 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 				continue
 			}
 			for egressRange, egressRoutingInfo := range egressPeerInfo {
-
 				_, ipnet, cidrErr := net.ParseCIDR(egressRange)
 				if cidrErr != nil {
 					continue
 				}
+				var haActiveRoutingPeer string
 				for _, egressRouteI := range egressRoutingInfo {
 					devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
 					if !ok {
@@ -154,7 +162,16 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 							haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
 							egressRoutesCacheMutex.Unlock()
 						}
+						haActiveRoutingPeer = devicePeer.PublicKey.String()
 						break
+					}
+				}
+				// remove other peers in ha cache
+				for _, egressRouteI := range egressRoutingInfo {
+					if egressRouteI.PeerKey != haActiveRoutingPeer {
+						egressRoutesCacheMutex.Lock()
+						delete(haEgressPeerCache, egressRouteI.PeerKey)
+						egressRoutesCacheMutex.Unlock()
 					}
 				}
 			}

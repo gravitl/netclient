@@ -259,6 +259,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wireguard.SetPeers(true)
 	if len(pullresp.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+		wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
