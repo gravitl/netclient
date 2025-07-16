@@ -85,7 +85,7 @@ func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
 
 func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	HaEgressTicker = time.NewTicker(time.Second * 5)
+	HaEgressTicker = time.NewTicker(time.Second * 3)
 	defer HaEgressTicker.Stop()
 	metricPort := config.GetServer(config.CurrServer).MetricsPort
 	if metricPort == 0 {
@@ -138,10 +138,13 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 						}
 						var connected bool
 						if egressRouteI.EgressGwAddr.IP != nil {
-							connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 2)
-						} else {
+							// trigger a handshake
+							connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 1)
+							if !connected {
+								connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 4)
+							}
+						} else if egressRouteI.EgressGwAddr6.IP != nil {
 							connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr6.IP.String(), metricPort, 2)
-
 						}
 						fmt.Printf("\nchecking Peer Info, egress routeI: Peer: %+v, %+v\n", egressRouteI.EgressGwAddr.IP, connected)
 						if connected {
