@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sort"
 	"sync"
@@ -97,6 +98,7 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			resetHAEgressCache()
 			return
 		case <-HaEgressTicker.C:
+			fmt.Println("### EGRESSS HA THREAD")
 			nodes := config.GetNodes()
 			if len(nodes) == 0 {
 				continue
@@ -119,65 +121,99 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 				slog.Debug("failed to get peers from device: ", "error", err)
 				continue
 			}
-			for egressRange, egressRoutingInfo := range egressPeerInfo {
-				_, ipnet, cidrErr := net.ParseCIDR(egressRange)
-				if cidrErr != nil {
-					continue
-				}
-				var haActiveRoutingPeer string
-				for _, egressRouteI := range egressRoutingInfo {
-					devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
-					if !ok {
-						continue
-					}
-					var connected bool
-					if egressRouteI.EgressGwAddr.IP != nil {
-						connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 2)
-					} else {
-						connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr6.IP.String(), metricPort, 2)
 
+			for egressRange, egressRoutingInfo := range egressPeerInfo {
+				go func(egressRange string, egressRoutingInfo []egressPeer) {
+					_, ipnet, cidrErr := net.ParseCIDR(egressRange)
+					if cidrErr != nil {
+						return
 					}
-					if connected {
-						// peer is connected,so continue
-						exists := false
-						for _, allowedIP := range devicePeer.AllowedIPs {
-							if allowedIP.String() == ipnet.String() {
-								exists = true
-								egressRoutesCacheMutex.Lock()
-								haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
-								egressRoutesCacheMutex.Unlock()
-								break
-							}
+					fmt.Printf("\nCHECKING EGRESS RANGE INFO: %s, INFO:  %+v\n", ipnet.String(), egressRoutingInfo)
+					var haActiveRoutingPeer string
+					for _, egressRouteI := range egressRoutingInfo {
+						fmt.Printf("checking Peer Info, egress routeI: Peer: %+v\n", egressRouteI.EgressGwAddr.IP)
+						devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
+						if !ok {
+							continue
 						}
-						if !exists {
-							devicePeer.AllowedIPs = append(devicePeer.AllowedIPs, *ipnet)
-							devicePeer.AllowedIPs = logic.UniqueIPNetList(devicePeer.AllowedIPs)
-							UpdatePeer(&wgtypes.PeerConfig{
-								PublicKey:         devicePeer.PublicKey,
-								AllowedIPs:        devicePeer.AllowedIPs,
-								ReplaceAllowedIPs: false,
-								UpdateOnly:        true,
-							})
+						var connected bool
+						if egressRouteI.EgressGwAddr.IP != nil {
+							connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr.IP.String(), metricPort, 2)
+						} else {
+							connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr6.IP.String(), metricPort, 2)
+
+						}
+						fmt.Printf("\nchecking Peer Info, egress routeI: Peer: %+v, %+v\n", egressRouteI.EgressGwAddr.IP, connected)
+						if connected {
+							// peer is connected,so continue
+							exists := false
+							for _, allowedIP := range devicePeer.AllowedIPs {
+								if allowedIP.String() == ipnet.String() {
+									exists = true
+									egressRoutesCacheMutex.Lock()
+									haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
+									egressRoutesCacheMutex.Unlock()
+									fmt.Println("====> HERE 1")
+									break
+								}
+							}
+							if !exists {
+								peer, err := GetPeer(ncutils.GetInterfaceName(), devicePeer.PublicKey.String())
+								if err == nil {
+									peer.AllowedIPs = append(peer.AllowedIPs, *ipnet)
+									peer.AllowedIPs = logic.UniqueIPNetList(peer.AllowedIPs)
+									fmt.Printf("\nupdating Peer Info, egress routeI: Peer: %+v, IPs: %+v\n", egressRouteI.EgressGwAddr.IP, peer.AllowedIPs)
+									UpdatePeer(&wgtypes.PeerConfig{
+										PublicKey:         peer.PublicKey,
+										AllowedIPs:        peer.AllowedIPs,
+										ReplaceAllowedIPs: false,
+										UpdateOnly:        true,
+									})
+									egressRoutesCacheMutex.Lock()
+									haEgressPeerCache[peer.PublicKey.String()] = peer.AllowedIPs
+									egressRoutesCacheMutex.Unlock()
+									fmt.Println("====> HERE 2")
+								}
+
+							}
+							haActiveRoutingPeer = devicePeer.PublicKey.String()
+							break
+						}
+					}
+					// remove other peers in ha cache
+					for _, egressRouteI := range egressRoutingInfo {
+						if egressRouteI.PeerKey != haActiveRoutingPeer {
+							peer, err := GetPeer(ncutils.GetInterfaceName(), egressRouteI.PeerKey)
+							if err == nil {
+								fmt.Printf("\n Removing Peer Info, egress routeI: Peer: %+v\n", egressRouteI.EgressGwAddr.IP)
+								UpdatePeer(&wgtypes.PeerConfig{
+									PublicKey:         peer.PublicKey,
+									AllowedIPs:        removeIP(peer.AllowedIPs, *ipnet),
+									ReplaceAllowedIPs: false,
+									UpdateOnly:        true,
+								})
+							}
 							egressRoutesCacheMutex.Lock()
-							haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
+							delete(haEgressPeerCache, egressRouteI.PeerKey)
 							egressRoutesCacheMutex.Unlock()
 						}
-						haActiveRoutingPeer = devicePeer.PublicKey.String()
-						break
 					}
-				}
-				// remove other peers in ha cache
-				for _, egressRouteI := range egressRoutingInfo {
-					if egressRouteI.PeerKey != haActiveRoutingPeer {
-						egressRoutesCacheMutex.Lock()
-						delete(haEgressPeerCache, egressRouteI.PeerKey)
-						egressRoutesCacheMutex.Unlock()
-					}
-				}
+				}(egressRange, egressRoutingInfo)
+
 			}
 
 		}
 	}
+}
+
+func removeIP(slice []net.IPNet, item net.IPNet) []net.IPNet {
+	result := make([]net.IPNet, 0, len(slice))
+	for _, v := range slice {
+		if v.String() != item.String() {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 func checkIfEgressHAPeer(peer *wgtypes.PeerConfig) bool {
