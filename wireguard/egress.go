@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sort"
 	"sync"
@@ -98,7 +97,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			resetHAEgressCache()
 			return
 		case <-HaEgressTicker.C:
-			fmt.Println("### EGRESSS HA THREAD")
 			nodes := config.GetNodes()
 			if len(nodes) == 0 {
 				continue
@@ -128,10 +126,8 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 					if cidrErr != nil {
 						return
 					}
-					fmt.Printf("\nCHECKING EGRESS RANGE INFO: %s, INFO:  %+v\n", ipnet.String(), egressRoutingInfo)
 					var haActiveRoutingPeer string
 					for _, egressRouteI := range egressRoutingInfo {
-						fmt.Printf("checking Peer Info, egress routeI: Peer: %+v\n", egressRouteI.EgressGwAddr.IP)
 						devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
 						if !ok {
 							continue
@@ -146,7 +142,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 						} else if egressRouteI.EgressGwAddr6.IP != nil {
 							connected, _ = metrics.PeerConnStatus(egressRouteI.EgressGwAddr6.IP.String(), metricPort, 2)
 						}
-						fmt.Printf("\nchecking Peer Info, egress routeI: Peer: %+v, %+v\n", egressRouteI.EgressGwAddr.IP, connected)
 						if connected {
 							// peer is connected,so continue
 							exists := false
@@ -156,7 +151,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 									egressRoutesCacheMutex.Lock()
 									haEgressPeerCache[devicePeer.PublicKey.String()] = devicePeer.AllowedIPs
 									egressRoutesCacheMutex.Unlock()
-									fmt.Println("====> HERE 1")
 									break
 								}
 							}
@@ -165,7 +159,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 								if err == nil {
 									peer.AllowedIPs = append(peer.AllowedIPs, *ipnet)
 									peer.AllowedIPs = logic.UniqueIPNetList(peer.AllowedIPs)
-									fmt.Printf("\nupdating Peer Info, egress routeI: Peer: %+v, IPs: %+v\n", egressRouteI.EgressGwAddr.IP, peer.AllowedIPs)
 									UpdatePeer(&wgtypes.PeerConfig{
 										PublicKey:         peer.PublicKey,
 										AllowedIPs:        peer.AllowedIPs,
@@ -175,7 +168,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 									egressRoutesCacheMutex.Lock()
 									haEgressPeerCache[peer.PublicKey.String()] = peer.AllowedIPs
 									egressRoutesCacheMutex.Unlock()
-									fmt.Println("====> HERE 2")
 								}
 
 							}
@@ -188,7 +180,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 						if egressRouteI.PeerKey != haActiveRoutingPeer {
 							peer, err := GetPeer(ncutils.GetInterfaceName(), egressRouteI.PeerKey)
 							if err == nil {
-								fmt.Printf("\n Removing Peer Info, egress routeI: Peer: %+v\n", egressRouteI.EgressGwAddr.IP)
 								UpdatePeer(&wgtypes.PeerConfig{
 									PublicKey:         peer.PublicKey,
 									AllowedIPs:        removeIP(peer.AllowedIPs, *ipnet),
