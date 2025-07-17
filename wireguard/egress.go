@@ -84,7 +84,11 @@ func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
 
 func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
+<<<<<<< HEAD
 	HaEgressTicker = time.NewTicker(HaEgressCheckInterval)
+=======
+	HaEgressTicker = time.NewTicker(time.Second * 2)
+>>>>>>> 2c8cb1574f231bc908e0a5f923d93d3d0bb4903e
 	defer HaEgressTicker.Stop()
 	metricPort := config.GetServer(config.CurrServer).MetricsPort
 	if metricPort == 0 {
