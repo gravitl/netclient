@@ -29,7 +29,7 @@ type egressPeer struct {
 var egressRoutes = []models.EgressNetworkRoutes{}
 var egressRoutesCacheMutex = &sync.Mutex{}
 var HaEgressTicker *time.Ticker
-var HaEgressCheckInterval = time.Second * 5
+var HaEgressCheckInterval = time.Second * 2
 var haEgressPeerCache = make(map[string][]net.IPNet)
 
 func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
@@ -84,7 +84,7 @@ func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
 
 func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	HaEgressTicker = time.NewTicker(time.Second * 2)
+	HaEgressTicker = time.NewTicker(HaEgressCheckInterval)
 	defer HaEgressTicker.Stop()
 	metricPort := config.GetServer(config.CurrServer).MetricsPort
 	if metricPort == 0 {
