@@ -57,7 +57,13 @@ func SetPeers(replace bool) error {
 		if !peer.Remove && checkForBetterEndpoint(&peer) {
 			peers[i] = peer
 		}
+		// set egress routes on correct peer
+		if checkIfEgressHAPeer(&peer) {
+			peers[i] = peer
+		}
+
 	}
+
 	GetInterface().Config.Peers = peers
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
