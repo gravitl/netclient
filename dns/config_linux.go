@@ -371,15 +371,19 @@ func buildDeleteConfigContentUplink() ([]string, error) {
 	dnsIp = getIpFromServerString(dnsIp)
 	ns := "DNS=" + dnsIp
 
-	lNo := 21
+	var lNo int
+	var found bool
 	for i, line := range lines {
 		if strings.Contains(line, ns) {
 			lNo = i
+			found = true
 			break
 		}
 	}
 
-	lines = slices.Delete(lines, lNo, lNo+1)
+	if found {
+		lines = slices.Delete(lines, lNo, lNo+1)
+	}
 
 	return lines, nil
 }
@@ -406,16 +410,20 @@ func buildDeleteConfigContent() ([]string, error) {
 		return []string{}, err
 	}
 
-	lNo := 100
+	var lNo int
+	var found bool
 	for i, line := range lines {
 		if strings.Contains(line, domains) {
 			lNo = i
+			found = true
 			break
 		}
 	}
 
-	lines = slices.Delete(lines, lNo, lNo+1)
-	lines = slices.Delete(lines, lNo, lNo+1)
+	if found {
+		lines = slices.Delete(lines, lNo, lNo+1)
+		lines = slices.Delete(lines, lNo, lNo+1)
+	}
 
 	return lines, nil
 }
@@ -492,15 +500,19 @@ func buildDeleteConfigUplink() ([]string, error) {
 	dnsIp = getIpFromServerString(dnsIp)
 	ns := "nameserver " + dnsIp
 
-	lNo := 100
+	var lNo int
+	var found bool
 	for i, line := range lines {
 		if strings.Contains(line, ns) {
 			lNo = i
+			found = true
 			break
 		}
 	}
 
-	lines = slices.Delete(lines, lNo, lNo+1)
+	if found {
+		lines = slices.Delete(lines, lNo, lNo+1)
+	}
 
 	return lines, nil
 }
