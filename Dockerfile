@@ -21,7 +21,6 @@ RUN apk add --no-cache --update \
         openrc \
         iptables \
         ip6tables \
-        iptables-nft \
         nftables \
     && mkdir -p /run/openrc \
     && touch /run/openrc/softlevel
