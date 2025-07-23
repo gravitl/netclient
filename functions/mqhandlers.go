@@ -190,8 +190,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		if peerConnTicker != nil {
 			peerConnTicker.Reset(peerConnectionCheckInterval)
 		}
-		if haEgressTicker != nil {
-			haEgressTicker.Reset(haEgressCheckInterval)
+		if wireguard.HaEgressTicker != nil {
+			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
 		}
 	}
 	if peerUpdate.ServerVersion != config.Version {
@@ -270,10 +270,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
-		setEgressRoutes(peerUpdate.EgressRoutes)
+		wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
-		setEgressRoutes([]models.EgressNetworkRoutes{})
+		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
@@ -792,10 +792,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	_ = wireguard.SetPeers(replacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
-		setEgressRoutes(pullResponse.EgressRoutes)
+		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
-		setEgressRoutes([]models.EgressNetworkRoutes{})
+		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
 	if pullResponse.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
