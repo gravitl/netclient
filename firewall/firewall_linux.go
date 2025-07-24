@@ -26,7 +26,7 @@ func newFirewall() (firewallController, error) {
 	var manager firewallController
 
 	if config.Netclient().FirewallInUse == models.FIREWALL_IPTABLES {
-		logger.Log(0, "iptables is supported")
+		logger.Log(0, "using iptables to manage firewall rules...")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		ipv6Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		manager = &iptablesManager{
@@ -38,7 +38,7 @@ func newFirewall() (firewallController, error) {
 		}
 		return manager, nil
 	}
-	logger.Log(0, "iptables is not supported, using nftables")
+	logger.Log(0, "using nftables to manage firewall rules...")
 	if config.Netclient().FirewallInUse == models.FIREWALL_NFTABLES {
 		logger.Log(0, "nftables is supported")
 		manager = &nftablesManager{

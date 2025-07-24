@@ -3,14 +3,14 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
-    ip rule delete pref 3000
-    ip rule delete pref 2500
-    ip rule delete pref 2000
+    ip rule delete pref 3000 2>/dev/null || true
+    ip rule delete pref 2500 2>/dev/null || true
+    ip rule delete pref 2000 2>/dev/null || true
     echo "deleting interface" $net
     if [ "${IFACE_NAME}" == "" ];then
         IFACE_NAME="netmaker"
     fi
-    ip link del $IFACE_NAME
+    ip link del $IFACE_NAME 2>/dev/null || true
 }
 
 
