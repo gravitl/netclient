@@ -74,7 +74,7 @@ if [ "${IFACE_NAME}" != "" ];then
     IFACE_CMD="-I ${IFACE_NAME}"
 fi
 
-FIREWALL=""
+FIREWALL_CMD=""
 if [ "${FIREWALL}" != "" ];then
    FIREWALL_CMD="-f ${FIREWALL}"
 fi
