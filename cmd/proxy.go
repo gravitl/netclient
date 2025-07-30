@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/proxy"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
@@ -34,6 +35,7 @@ Designed for bypassing firewall restrictions where UDP is blocked. Supports fire
 	timeout        time.Duration
 	firewallBypass bool
 	udpOverTCP     bool
+	showStatus     bool
 	bufferSize     int
 )
 
@@ -51,6 +53,7 @@ func init() {
 	proxyCmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "Connection timeout")
 	proxyCmd.Flags().BoolVar(&firewallBypass, "firewall-bypass", false, "Enable firewall bypass mode (optimized for UDP-over-TCP)")
 	proxyCmd.Flags().BoolVar(&udpOverTCP, "udp-over-tcp", false, "Enable UDP-over-TCP tunneling")
+	proxyCmd.Flags().BoolVar(&showStatus, "status", false, "Show status of active TCP proxies")
 
 	proxyCmd.Flags().IntVar(&bufferSize, "buffer-size", 4096, "Buffer size for packet handling")
 
@@ -85,6 +88,11 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	// Use firewall bypass mode if specified
 	if firewallBypass {
 		return runFirewallBypassProxy()
+	}
+
+	// Show status if requested
+	if showStatus {
+		return showProxyStatus()
 	}
 
 	// Default to firewall bypass mode
@@ -165,4 +173,28 @@ func runFirewallBypassProxy() error {
 			slog.Debug("tunnel status", "active_connections", activeConn)
 		}
 	}
+}
+
+// showProxyStatus displays the status of active TCP proxies
+func showProxyStatus() error {
+	failoverProxy := functions.GetFailoverTCPProxy()
+	activeProxies := failoverProxy.GetActiveProxies()
+
+	if len(activeProxies) == 0 {
+		fmt.Println("No active TCP proxies")
+		return nil
+	}
+
+	fmt.Println("Active TCP Proxies:")
+	fmt.Println("===================")
+	for peerKey, proxyInfo := range activeProxies {
+		info := proxyInfo.(map[string]interface{})
+		fmt.Printf("Peer: %s\n", peerKey)
+		fmt.Printf("  Local Port: %v\n", info["local_port"])
+		fmt.Printf("  Remote Addr: %v\n", info["remote_addr"])
+		fmt.Printf("  Active Connections: %v\n", info["active_connections"])
+		fmt.Println()
+	}
+
+	return nil
 }

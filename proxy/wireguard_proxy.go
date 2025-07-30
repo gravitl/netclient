@@ -149,6 +149,11 @@ func (wg *WireGuardProxy) GetWireGuardInterfaceInfo() map[string]interface{} {
 	return info
 }
 
+// GetConfig returns the proxy configuration
+func (wg *WireGuardProxy) GetConfig() *WireGuardProxyConfig {
+	return wg.config
+}
+
 // CreateTLSConfig creates a TLS configuration for the proxy
 func CreateTLSConfig(certFile, keyFile string, skipVerify bool) (*tls.Config, error) {
 	if certFile == "" || keyFile == "" {

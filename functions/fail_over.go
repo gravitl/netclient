@@ -88,7 +88,16 @@ func handlePeerFailOver(signal models.Signal) error {
 	} else {
 		signalThrottleCache.Delete(signal.FromHostID)
 	}
-	err := failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
+
+	// Start TCP proxy for this peer if UDP fails
+	failoverProxy := GetFailoverTCPProxy()
+	peerEndpoint := fmt.Sprintf("%s:%d", signal.Server, 51820) // Default WireGuard port
+	err := failoverProxy.StartTCPProxyForPeer(signal.FromHostPubKey, peerEndpoint)
+	if err != nil {
+		slog.Warn("failed to start TCP proxy for peer", "peer", signal.FromHostPubKey, "error", err)
+	}
+
+	err = failOverMe(signal.Server, signal.ToNodeID, signal.FromNodeID)
 	if err != nil {
 		slog.Debug("failed to signal server to relay me", "error", err)
 	}
@@ -216,6 +225,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						// check if there is handshake on interface
 						connected, err := isPeerConnected(devicePeer)
 						if err != nil || connected {
+							// UDP connection is working, stop TCP proxy if it exists
+							StopTCPProxyForPeer(pubKey)
 							continue
 						}
 						connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, 2)
@@ -417,4 +428,13 @@ func isPeerConnected(peer wgtypes.Peer) (connected bool, err error) {
 		connected = true
 	}
 	return
+}
+
+// StopTCPProxyForPeer stops the TCP proxy for a peer when UDP connection is restored
+func StopTCPProxyForPeer(peerKey string) {
+	failoverProxy := GetFailoverTCPProxy()
+	if failoverProxy.IsPeerUsingTCPProxy(peerKey) {
+		failoverProxy.StopTCPProxyForPeer(peerKey)
+		slog.Info("stopped TCP proxy for peer due to UDP connection restoration", "peer", peerKey)
+	}
 }
