@@ -46,7 +46,7 @@ func init() {
 	proxyCmd.Flags().StringVar(&certFile, "cert", "", "Certificate file for TLS (auto-generated if not provided)")
 	proxyCmd.Flags().StringVar(&keyFile, "key", "", "Private key file for TLS (auto-generated if not provided)")
 	proxyCmd.Flags().BoolVar(&skipVerify, "skip-verify", false, "Skip TLS certificate verification")
-	proxyCmd.Flags().BoolVar(&autoCert, "auto-cert", false, "Automatically generate and manage TLS certificates")
+	// proxyCmd.Flags().BoolVar(&autoCert, "auto-cert", false, "Automatically generate and manage TLS certificates")
 	proxyCmd.Flags().BoolVar(&bindToWG, "bind-wg", false, "Bind to WireGuard interface IP instead of all interfaces")
 	proxyCmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "Connection timeout")
 	proxyCmd.Flags().BoolVar(&firewallBypass, "firewall-bypass", false, "Enable firewall bypass mode (optimized for UDP-over-TCP)")
