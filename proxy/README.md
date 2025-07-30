@@ -1,13 +1,13 @@
 # WireGuard TCP Proxy
 
-This package provides TCP proxy functionality with TLS support that can work with WireGuard interfaces. It allows you to proxy traffic from a local WireGuard interface to remote endpoints. **The primary use case is bypassing firewall restrictions where UDP (WireGuard's default protocol) is blocked by tunneling UDP traffic over TCP.**
+This package provides TCP proxy functionality specifically designed for WireGuard firewall bypass scenarios. It allows you to tunnel WireGuard UDP traffic over TCP when UDP is blocked by firewalls. **The primary use case is bypassing firewall restrictions where UDP (WireGuard's default protocol) is blocked by tunneling UDP traffic over TCP.**
 
 ## Features
 
-- **TCP Proxy**: Forward TCP connections from local to remote endpoints
-- **UDP-over-TCP Tunneling**: Tunnel UDP traffic over TCP to bypass firewall restrictions
+- **UDP-over-TCP Tunneling**: Tunnel WireGuard UDP traffic over TCP to bypass firewall restrictions
 - **TLS Support**: Optional TLS encryption for secure connections
 - **Firewall Bypass**: Specialized mode for environments where UDP is blocked
+- **Failover Integration**: Coordinates with WireGuard's automatic failover system
 - **WireGuard Integration**: Bind to WireGuard interface IP addresses
 - **Graceful Shutdown**: Proper cleanup of connections and resources
 - **Connection Monitoring**: Track active connections and proxy status
@@ -19,20 +19,17 @@ This package provides TCP proxy functionality with TLS support that can work wit
 The proxy functionality is available as a subcommand of the netclient CLI:
 
 ```bash
-# Basic TCP proxy
-netclient proxy --port 8080 --remote example.com:80
-
-# Firewall bypass mode (UDP-over-TCP)
-netclient proxy --port 8080 --remote example.com:80 --firewall-bypass
+# Firewall bypass mode (default - UDP-over-TCP)
+netclient proxy --port 8080 --remote wireguard-server:51820
 
 # TLS-enabled firewall bypass
-netclient proxy --port 8443 --remote example.com:443 --firewall-bypass --tls --cert cert.pem --key key.pem
+netclient proxy --port 8443 --remote wireguard-server:51820 --tls --cert cert.pem --key key.pem
 
 # Bind to WireGuard interface IP
-netclient proxy --port 8080 --remote example.com:80 --bind-wg
+netclient proxy --port 8080 --remote wireguard-server:51820 --bind-wg
 
 # With custom timeout and buffer size
-netclient proxy --port 8080 --remote example.com:80 --timeout 60s --buffer-size 8192
+netclient proxy --port 8080 --remote wireguard-server:51820 --timeout 60s --buffer-size 8192
 ```
 
 ### Programmatic Usage
@@ -49,13 +46,15 @@ import (
 )
 
 func main() {
-    // Create proxy configuration
+    // Create firewall bypass proxy configuration
     config := &proxy.WireGuardProxyConfig{
         LocalPort:  8080,
-        RemoteAddr: "example.com:80",
+        RemoteAddr: "wireguard-server:51820",
         UseTLS:     false,
-        Timeout:    30 * time.Second,
+        Timeout:    60 * time.Second,
         BindToWG:   true,
+        UDPOverTCP: true,  // Enable UDP-over-TCP tunneling
+        BufferSize: 8192,  // Larger buffer for UDP packets
     }
     
     // Create and start proxy
@@ -117,8 +116,10 @@ Auto-generated certificates are:
 
 The proxy consists of two main components:
 
-1. **Proxy**: Generic TCP proxy that handles connection forwarding
+1. **Proxy**: TCP proxy optimized for UDP-over-TCP tunneling
 2. **WireGuardProxy**: WireGuard-specific wrapper that integrates with WireGuard interfaces
+
+The automatic failover system is handled separately by `functions/fail_over.go`.
 
 ### Connection Flow
 
@@ -134,6 +135,15 @@ When `BindToWG` is enabled, the proxy will:
 2. Bind to the first available IPv4 address (fallback to IPv6)
 3. Only accept connections on the WireGuard interface IP
 
+### Automatic Failover Integration
+
+WireGuard's automatic failover system works alongside the manual proxy:
+1. **Automatic Failover**: WireGuard automatically switches to TCP relay when UDP fails (handled by `functions/fail_over.go`)
+2. **Manual Firewall Bypass**: User can manually set up TCP proxy for WireGuard traffic when needed
+3. **Coordinated Operation**: Both systems can work together for optimal connectivity
+
+**Note**: The failover system is automatic and doesn't require manual intervention. The proxy provides manual control when needed.
+
 ## Security Considerations
 
 - Use TLS for sensitive traffic
@@ -145,30 +155,17 @@ When `BindToWG` is enabled, the proxy will:
 
 ### Firewall Bypass (UDP-over-TCP)
 ```bash
-# Bypass UDP firewall restrictions
-netclient proxy --port 8080 --remote wireguard-server:51820 --firewall-bypass
+# Bypass UDP firewall restrictions (default mode)
+netclient proxy --port 8080 --remote wireguard-server:51820
 
 # With TLS encryption
-netclient proxy --port 8443 --remote wireguard-server:51820 --firewall-bypass --tls --cert cert.pem --key key.pem
+netclient proxy --port 8443 --remote wireguard-server:51820 --tls --cert cert.pem --key key.pem
+
+# With custom settings
+netclient proxy --port 8080 --remote wireguard-server:51820 --timeout 60s --buffer-size 8192
 ```
 
-### HTTP Proxy
-```bash
-# Proxy HTTP traffic through WireGuard
-netclient proxy --port 8080 --remote web-server:80 --bind-wg
-```
 
-### HTTPS Proxy with TLS
-```bash
-# Proxy HTTPS with TLS termination
-netclient proxy --port 8443 --remote web-server:443 --tls --cert cert.pem --key key.pem
-```
-
-### Database Proxy
-```bash
-# Proxy database connections
-netclient proxy --port 5432 --remote db-server:5432 --bind-wg
-```
 
 ## Firewall Bypass Use Case
 

@@ -16,9 +16,9 @@ import (
 var (
 	proxyCmd = &cobra.Command{
 		Use:   "proxy",
-		Short: "Start a TCP proxy with TLS support",
-		Long: `Start a TCP proxy that can forward traffic from local WireGuard interface to remote endpoints.
-Supports both plain TCP and TLS connections. Ideal for bypassing firewall restrictions where UDP is blocked.`,
+		Short: "Start a TCP proxy for WireGuard firewall bypass",
+		Long: `Start a TCP proxy that can forward WireGuard traffic from local interface to remote endpoints.
+Designed for bypassing firewall restrictions where UDP is blocked. Supports firewall bypass and failover integration modes.`,
 		RunE: runProxy,
 	}
 
@@ -46,11 +46,12 @@ func init() {
 	proxyCmd.Flags().StringVar(&certFile, "cert", "", "Certificate file for TLS (auto-generated if not provided)")
 	proxyCmd.Flags().StringVar(&keyFile, "key", "", "Private key file for TLS (auto-generated if not provided)")
 	proxyCmd.Flags().BoolVar(&skipVerify, "skip-verify", false, "Skip TLS certificate verification")
-	// proxyCmd.Flags().BoolVar(&autoCert, "auto-cert", false, "Automatically generate and manage TLS certificates")
+	// proxyCmd.Flags().BoolVar(&autoCert, "auto-cert", false, "Automatically generate and manage TLS certificates") // TODO: add this back when cert manager is implemented.
 	proxyCmd.Flags().BoolVar(&bindToWG, "bind-wg", false, "Bind to WireGuard interface IP instead of all interfaces")
 	proxyCmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "Connection timeout")
 	proxyCmd.Flags().BoolVar(&firewallBypass, "firewall-bypass", false, "Enable firewall bypass mode (optimized for UDP-over-TCP)")
 	proxyCmd.Flags().BoolVar(&udpOverTCP, "udp-over-tcp", false, "Enable UDP-over-TCP tunneling")
+
 	proxyCmd.Flags().IntVar(&bufferSize, "buffer-size", 4096, "Buffer size for packet handling")
 
 	proxyCmd.MarkFlagRequired("remote")
@@ -86,76 +87,8 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		return runFirewallBypassProxy()
 	}
 
-	// Create WireGuard proxy configuration
-	config := &proxy.WireGuardProxyConfig{
-		LocalPort:  localPort,
-		RemoteAddr: remoteAddr,
-		UseTLS:     useTLS,
-		Timeout:    timeout,
-		BindToWG:   bindToWG,
-	}
-
-	// Setup TLS if enabled
-	if useTLS {
-		var tlsConfig *tls.Config
-		var err error
-
-		if skipVerify {
-			tlsConfig = proxy.CreateClientTLSConfig(true)
-		} else {
-			tlsConfig, err = proxy.CreateTLSConfig(certFile, keyFile, false)
-			if err != nil {
-				return fmt.Errorf("failed to create TLS config: %w", err)
-			}
-		}
-
-		config.TLSConfig = tlsConfig
-	}
-
-	// Create and start proxy
-	wgProxy := proxy.NewWireGuardProxy(config)
-
-	// Get WireGuard interface info for logging
-	ifaceInfo := wgProxy.GetWireGuardInterfaceInfo()
-	if ifaceInfo != nil {
-		slog.Info("WireGuard interface info",
-			"name", ifaceInfo["name"],
-			"mtu", ifaceInfo["mtu"],
-			"addresses", ifaceInfo["addresses"])
-	}
-
-	// Start the proxy
-	if err := wgProxy.Start(); err != nil {
-		return fmt.Errorf("failed to start proxy: %w", err)
-	}
-
-	// Setup signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Monitor proxy status
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	slog.Info("proxy running",
-		"local_port", localPort,
-		"remote", remoteAddr,
-		"tls", useTLS,
-		"bind_to_wg", bindToWG,
-		"firewall_bypass", firewallBypass,
-		"udp_over_tcp", udpOverTCP)
-
-	for {
-		select {
-		case <-sigChan:
-			slog.Info("received shutdown signal, stopping proxy...")
-			wgProxy.Stop()
-			return nil
-		case <-ticker.C:
-			activeConn := wgProxy.GetActiveConnections()
-			slog.Debug("proxy status", "active_connections", activeConn)
-		}
-	}
+	// Default to firewall bypass mode
+	return runFirewallBypassProxy()
 }
 
 // runFirewallBypassProxy runs the proxy in firewall bypass mode
