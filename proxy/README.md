@@ -88,9 +88,30 @@ For TLS-enabled proxies, you can create TLS configurations:
 // Server TLS config (for listening)
 tlsConfig, err := proxy.CreateTLSConfig("cert.pem", "key.pem", false)
 
+// Auto-generated TLS config
+autoTLSConfig, err := proxy.CreateAutoTLSConfig("localhost")
+
 // Client TLS config (for connecting)
 clientTLSConfig := proxy.CreateClientTLSConfig(true) // skipVerify = true
 ```
+
+### Automatic Certificate Management
+
+The proxy supports automatic certificate generation and management:
+
+```bash
+# Use auto-generated certificates
+netclient proxy --port 8443 --remote example.com:443 --tls --auto-cert
+
+# Use custom certificates
+netclient proxy --port 8443 --remote example.com:443 --tls --cert cert.pem --key key.pem
+```
+
+Auto-generated certificates are:
+- Self-signed with 1-year validity
+- Stored in temporary directory
+- Automatically reused if already generated
+- Include localhost and 127.0.0.1 in SAN
 
 ## Architecture
 

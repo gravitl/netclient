@@ -29,6 +29,7 @@ Supports both plain TCP and TLS connections. Ideal for bypassing firewall restri
 	certFile       string
 	keyFile        string
 	skipVerify     bool
+	autoCert       bool
 	bindToWG       bool
 	timeout        time.Duration
 	firewallBypass bool
@@ -42,9 +43,10 @@ func init() {
 	proxyCmd.Flags().IntVarP(&localPort, "port", "p", 8080, "Local port to listen on")
 	proxyCmd.Flags().StringVarP(&remoteAddr, "remote", "r", "", "Remote address to proxy to (required)")
 	proxyCmd.Flags().BoolVarP(&useTLS, "tls", "t", false, "Enable TLS for the proxy")
-	proxyCmd.Flags().StringVar(&certFile, "cert", "", "Certificate file for TLS (required if TLS is enabled)")
-	proxyCmd.Flags().StringVar(&keyFile, "key", "", "Private key file for TLS (required if TLS is enabled)")
+	proxyCmd.Flags().StringVar(&certFile, "cert", "", "Certificate file for TLS (auto-generated if not provided)")
+	proxyCmd.Flags().StringVar(&keyFile, "key", "", "Private key file for TLS (auto-generated if not provided)")
 	proxyCmd.Flags().BoolVar(&skipVerify, "skip-verify", false, "Skip TLS certificate verification")
+	proxyCmd.Flags().BoolVar(&autoCert, "auto-cert", false, "Automatically generate and manage TLS certificates")
 	proxyCmd.Flags().BoolVar(&bindToWG, "bind-wg", false, "Bind to WireGuard interface IP instead of all interfaces")
 	proxyCmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "Connection timeout")
 	proxyCmd.Flags().BoolVar(&firewallBypass, "firewall-bypass", false, "Enable firewall bypass mode (optimized for UDP-over-TCP)")
@@ -55,10 +57,27 @@ func init() {
 }
 
 func runProxy(cmd *cobra.Command, args []string) error {
-	// Validate TLS configuration
+	// Handle TLS configuration
 	if useTLS {
-		if certFile == "" || keyFile == "" {
-			return fmt.Errorf("certificate and key files are required when TLS is enabled")
+		if autoCert {
+			// Auto-generate certificates
+			tlsConfig, err := proxy.CreateAutoTLSConfig("localhost")
+			if err != nil {
+				return fmt.Errorf("failed to create auto TLS config: %w", err)
+			}
+			// Use the auto-generated config directly
+			config := &proxy.WireGuardProxyConfig{
+				LocalPort:  localPort,
+				RemoteAddr: remoteAddr,
+				UseTLS:     useTLS,
+				TLSConfig:  tlsConfig,
+				Timeout:    timeout,
+				BindToWG:   bindToWG,
+			}
+			// Continue with the normal flow using the auto-generated config
+			config.TLSConfig = tlsConfig
+		} else if certFile == "" || keyFile == "" {
+			return fmt.Errorf("certificate and key files are required when TLS is enabled (or use --auto-cert)")
 		}
 	}
 
