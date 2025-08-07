@@ -229,6 +229,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							StopTCPProxyForPeer(pubKey)
 							continue
 						}
+						fmt.Printf("====> CHECKING PEER CONN: %+v\n", devicePeer)
 						connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, 2)
 						if connected {
 							// peer is connected,so continue

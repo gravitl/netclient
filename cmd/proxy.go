@@ -8,7 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/proxy"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
@@ -101,8 +100,11 @@ func runProxy(cmd *cobra.Command, args []string) error {
 
 // runFirewallBypassProxy runs the proxy in firewall bypass mode
 func runFirewallBypassProxy() error {
-	// Create firewall bypass tunnel
-	tunnel := proxy.CreateFirewallBypassTunnel(localPort, remoteAddr, useTLS)
+	// Get common proxy manager
+	proxyManager := proxy.GetProxyManager()
+
+	// Create firewall bypass configuration
+	config := proxyManager.CreateFirewallBypassConfig(localPort, remoteAddr, useTLS)
 
 	// Setup TLS if enabled
 	if useTLS {
@@ -118,35 +120,26 @@ func runFirewallBypassProxy() error {
 			}
 		}
 
-		// Update tunnel config with TLS
-		tunnelConfig := &proxy.WireGuardTCPTunnelConfig{
-			LocalPort:  localPort,
-			RemoteAddr: remoteAddr,
-			UseTLS:     useTLS,
-			TLSConfig:  tlsConfig,
-			Timeout:    timeout,
-			BindToWG:   bindToWG,
-			UDPOverTCP: true,
-			BufferSize: bufferSize,
-		}
-		tunnel = proxy.NewWireGuardTCPTunnel(tunnelConfig)
+		// Update config with TLS
+		config.TLSConfig = tlsConfig
+		config.Timeout = timeout
+		config.BindToWG = bindToWG
+		config.BufferSize = bufferSize
 	}
 
-	// Get tunnel info for logging
-	tunnelInfo := tunnel.GetTunnelInfo()
-	if tunnelInfo != nil {
-		slog.Info("firewall bypass tunnel info",
-			"local_port", tunnelInfo["local_port"],
-			"remote_addr", tunnelInfo["remote_addr"],
-			"use_tls", tunnelInfo["use_tls"],
-			"udp_over_tcp", tunnelInfo["udp_over_tcp"],
-			"wg_interface", tunnelInfo["wg_interface"])
+	// Start the proxy using common manager
+	proxyID := fmt.Sprintf("manual_%d", localPort)
+	if err := proxyManager.StartProxy(proxyID, config); err != nil {
+		return fmt.Errorf("failed to start firewall bypass proxy: %w", err)
 	}
 
-	// Start the tunnel
-	if err := tunnel.Start(); err != nil {
-		return fmt.Errorf("failed to start firewall bypass tunnel: %w", err)
-	}
+	// Get proxy info for logging
+	slog.Info("firewall bypass UDP-over-TCP proxy info",
+		"local_port", config.LocalPort,
+		"remote_addr", config.RemoteAddr,
+		"use_tls", config.UseTLS,
+		"bind_to_wg", config.BindToWG,
+		"buffer_size", config.BufferSize)
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -156,7 +149,7 @@ func runFirewallBypassProxy() error {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	slog.Info("firewall bypass tunnel running",
+	slog.Info("firewall bypass UDP-over-TCP proxy running",
 		"local_port", localPort,
 		"remote", remoteAddr,
 		"tls", useTLS,
@@ -165,20 +158,22 @@ func runFirewallBypassProxy() error {
 	for {
 		select {
 		case <-sigChan:
-			slog.Info("received shutdown signal, stopping tunnel...")
-			tunnel.Stop()
+			slog.Info("received shutdown signal, stopping proxy...")
+			proxyManager.StopProxy(proxyID)
 			return nil
 		case <-ticker.C:
-			activeConn := tunnel.GetActiveConnections()
-			slog.Debug("tunnel status", "active_connections", activeConn)
+			if proxy, exists := proxyManager.GetProxy(proxyID); exists {
+				activeConn := proxy.GetActiveConnections()
+				slog.Debug("proxy status", "active_connections", activeConn)
+			}
 		}
 	}
 }
 
 // showProxyStatus displays the status of active TCP proxies
 func showProxyStatus() error {
-	failoverProxy := functions.GetFailoverTCPProxy()
-	activeProxies := failoverProxy.GetActiveProxies()
+	proxyManager := proxy.GetProxyManager()
+	activeProxies := proxyManager.GetActiveProxies()
 
 	if len(activeProxies) == 0 {
 		fmt.Println("No active TCP proxies")
@@ -187,12 +182,14 @@ func showProxyStatus() error {
 
 	fmt.Println("Active TCP Proxies:")
 	fmt.Println("===================")
-	for peerKey, proxyInfo := range activeProxies {
+	for proxyID, proxyInfo := range activeProxies {
 		info := proxyInfo.(map[string]interface{})
-		fmt.Printf("Peer: %s\n", peerKey)
+		fmt.Printf("Proxy ID: %s\n", proxyID)
 		fmt.Printf("  Local Port: %v\n", info["local_port"])
 		fmt.Printf("  Remote Addr: %v\n", info["remote_addr"])
 		fmt.Printf("  Active Connections: %v\n", info["active_connections"])
+		fmt.Printf("  TLS: %v\n", info["use_tls"])
+		fmt.Printf("  Bind to WG: %v\n", info["bind_to_wg"])
 		fmt.Println()
 	}
 
