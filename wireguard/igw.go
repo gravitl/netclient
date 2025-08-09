@@ -113,6 +113,9 @@ func checkIGWStatus(igwStatus *igwStatus) {
 
 			logger.Log(0, "setting default routes on host")
 			err = setDefaultRoutesOnHost(igwStatus.peerNetworkIP)
+			if err != nil {
+				logger.Log(0, "failed to set default routes on host: %v", err.Error())
+			}
 		}
 	} else {
 		logger.Log(0, "internet gateway detected down", igwStatus.igw.Endpoint.String())
