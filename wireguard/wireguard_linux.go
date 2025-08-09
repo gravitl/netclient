@@ -15,6 +15,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/unix"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const (
@@ -334,11 +335,19 @@ func getSourceIpv6(gw net.IP) (src net.IP) {
 }
 
 // SetInternetGw - set a new default gateway and add rules to activate it
-func SetInternetGw(gwIp net.IP) (err error) {
-	if ipv4 := gwIp.To4(); ipv4 != nil {
-		return setInternetGwV4(gwIp)
+func SetInternetGw(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+	defer func() {
+		startIGWMonitor(igwPeerCfg, peerNetworkIP)
+	}()
+
+	return setDefaultRoutesOnHost(peerNetworkIP)
+}
+
+func setDefaultRoutesOnHost(peerNetworkIP net.IP) error {
+	if ipv4 := peerNetworkIP.To4(); ipv4 != nil {
+		return setInternetGwV4(peerNetworkIP)
 	} else {
-		return setInternetGwV6(gwIp)
+		return setInternetGwV6(peerNetworkIP)
 	}
 }
 
@@ -494,6 +503,14 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 
 // RestoreInternetGw - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func RestoreInternetGw() (err error) {
+	defer func() {
+		stopIGWMonitor()
+	}()
+
+	return resetDefaultRoutesOnHost()
+}
+
+func resetDefaultRoutesOnHost() error {
 	if ipv4 := config.Netclient().CurrGwNmIP.To4(); ipv4 != nil {
 		return restoreInternetGwV4()
 	} else {

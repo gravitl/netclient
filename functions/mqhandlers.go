@@ -246,7 +246,22 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
 		if !peerUpdate.DefaultGwIp.Equal(ip) {
-			err := wireguard.SetInternetGw(peerUpdate.DefaultGwIp)
+			var igwPeerCfg wgtypes.PeerConfig
+			for _, peer := range peerUpdate.Peers {
+				for _, peerIP := range peer.AllowedIPs {
+					if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
+						igwPeerCfg = peer
+						break
+					}
+				}
+			}
+
+			if igwPeerCfg.Endpoint.IP.String() != peerUpdate.DefaultGwIp.String() {
+				// ideally, this shouldn't happen.
+				slog.Warn("conflict detected: default gw ip is different peer's endpoint ip with default routes in allowed ips")
+			}
+
+			err := wireguard.SetInternetGw(igwPeerCfg, peerUpdate.DefaultGwIp)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
@@ -772,7 +787,22 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if pullResponse.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
 		if !pullResponse.DefaultGwIp.Equal(ip) {
-			err := wireguard.SetInternetGw(pullResponse.DefaultGwIp)
+			var igwPeerCfg wgtypes.PeerConfig
+			for _, peer := range pullResponse.Peers {
+				for _, peerIP := range peer.AllowedIPs {
+					if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
+						igwPeerCfg = peer
+						break
+					}
+				}
+			}
+
+			if igwPeerCfg.Endpoint.IP.String() != pullResponse.DefaultGwIp.String() {
+				// ideally, this shouldn't happen.
+				slog.Warn("conflict detected: default gw ip is different peer's endpoint ip with default routes in allowed ips")
+			}
+
+			err := wireguard.SetInternetGw(igwPeerCfg, pullResponse.DefaultGwIp)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return

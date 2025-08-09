@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
@@ -254,11 +255,19 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 }
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's ip address
-func SetInternetGw(gwIp net.IP) (err error) {
-	if ipv4 := gwIp.To4(); ipv4 != nil {
-		return setInternetGwV4(gwIp)
+func SetInternetGw(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+	defer func() {
+		startIGWMonitor(igwPeerCfg, peerNetworkIP)
+	}()
+
+	return setDefaultRoutesOnHost(peerNetworkIP)
+}
+
+func setDefaultRoutesOnHost(peerNetworkIP net.IP) error {
+	if ipv4 := peerNetworkIP.To4(); ipv4 != nil {
+		return setInternetGwV4(peerNetworkIP)
 	} else {
-		return setInternetGwV6(gwIp)
+		return setInternetGwV6(peerNetworkIP)
 	}
 }
 
@@ -340,6 +349,14 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's ip address
 func RestoreInternetGw() (err error) {
+	defer func() {
+		stopIGWMonitor()
+	}()
+
+	return resetDefaultRoutesOnHost()
+}
+
+func resetDefaultRoutesOnHost() error {
 	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
 		return restoreInternetGwV4()
 	} else {

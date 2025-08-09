@@ -170,5 +170,9 @@ func GetDefaultGatewayIp() (ip net.IP, err error) { return }
 // RestoreDefaultGateway - restore the old default gateway
 func RestoreInternetGw() (err error) { return }
 
+func resetDefaultRoutesOnHost() error { return nil }
+
 // SetDefaultGateway - set a new default gateway
-func SetInternetGw(ip net.IP) (err error) { return }
+func SetInternetGw(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) { return }
+
+func setDefaultRoutesOnHost(peerNetworkIP net.IP) error { return nil }

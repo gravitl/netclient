@@ -281,7 +281,22 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		gwIP, err := wireguard.GetDefaultGatewayIp()
 		if err == nil {
 			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
-				err = wireguard.SetInternetGw(pullresp.DefaultGwIp)
+				var igwPeerCfg wgtypes.PeerConfig
+				for _, peer := range pullresp.Peers {
+					for _, peerIP := range peer.AllowedIPs {
+						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
+							igwPeerCfg = peer
+							break
+						}
+					}
+				}
+
+				if igwPeerCfg.Endpoint.IP.String() != pullresp.DefaultGwIp.String() {
+					// ideally, this shouldn't happen.
+					slog.Warn("conflict detected: default gw ip is different peer's endpoint ip with default routes in allowed ips")
+				}
+
+				err = wireguard.SetInternetGw(igwPeerCfg, pullresp.DefaultGwIp)
 				if err != nil {
 					slog.Warn("failed to set inet gw", "error", err)
 				}
