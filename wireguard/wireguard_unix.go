@@ -4,8 +4,10 @@
 package wireguard
 
 import (
+	"errors"
 	"net"
 	"sync"
+	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"golang.org/x/exp/slog"
@@ -84,4 +86,9 @@ func (nc *NCIface) closeUserspaceWg() error {
 	slog.Debug("Closed userspace WireGuard interface", "interface", nc.Name)
 
 	return nil
+}
+
+func isEconnRefused(err error) bool {
+	var errno syscall.Errno
+	return errors.As(err, &errno) && errors.Is(errno, syscall.ECONNREFUSED)
 }

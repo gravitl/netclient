@@ -2,15 +2,12 @@ package wireguard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"syscall"
 	"time"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -208,16 +205,9 @@ func isHostReachable(ip net.IP, port int) bool {
 	address := fmt.Sprintf("%s:%d", ip.String(), port)
 	conn, err := net.DialTimeout("tcp", address, IGWDialTimeout)
 	if err != nil {
-		var errno syscall.Errno
-		if errors.As(err, &errno) && errors.Is(errno, syscall.ECONNREFUSED) {
+		if isEconnRefused(err) {
 			// if the internet gateway responded with ECONNREFUSED, it means
 			// that it is reachable
-			return true
-		}
-
-		// windows returns a different error code for ECONNREFUSED
-		var winerrno windows.Errno
-		if errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED) {
 			return true
 		}
 	} else {

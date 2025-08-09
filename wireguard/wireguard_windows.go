@@ -434,3 +434,8 @@ func DeleteOldInterface(iface string) {
 		logger.Log(1, err.Error())
 	}
 }
+
+func isEconnRefused(err error) bool {
+	var winerrno windows.Errno
+	return errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED)
+}
