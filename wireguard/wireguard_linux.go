@@ -367,7 +367,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V6, &gwRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) > 0 {
-		err = RestoreInternetGw()
+		err = resetDefaultRoutesOnHost()
 		if err != nil {
 			slog.Error("remove table "+fmt.Sprintf("%d", RouteTableName)+" failed", "error", err.Error())
 			return err
@@ -393,7 +393,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
 		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
-		RestoreInternetGw()
+		resetDefaultRoutesOnHost()
 		return err
 	}
 	//second rule :ip rule add table main suppress_prefixlength 0
@@ -405,7 +405,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	sRule.Priority = 2500
 	if err := netlink.RuleAdd(sRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", sRule.String(), "error", err.Error())
-		RestoreInternetGw()
+		resetDefaultRoutesOnHost()
 		return err
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
@@ -422,7 +422,7 @@ func setInternetGwV6(gwIp net.IP) (err error) {
 	mRule.Priority = 2000
 	if err := netlink.RuleAdd(mRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", mRule.String(), "error", err.Error())
-		RestoreInternetGw()
+		resetDefaultRoutesOnHost()
 		return err
 	}
 	config.Netclient().CurrGwNmIP = gwIp
@@ -439,7 +439,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V4, &gwRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) > 0 {
-		err = RestoreInternetGw()
+		err = resetDefaultRoutesOnHost()
 		if err != nil {
 			slog.Error("remove table "+fmt.Sprintf("%d", RouteTableName)+" failed", "error", err.Error())
 			return err
@@ -464,7 +464,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
 		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
-		RestoreInternetGw()
+		resetDefaultRoutesOnHost()
 		return err
 	}
 	//second rule :ip rule add table main suppress_prefixlength 0
@@ -475,7 +475,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 	sRule.Priority = 2500
 	if err := netlink.RuleAdd(sRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", sRule.String(), "error", err.Error())
-		RestoreInternetGw()
+		resetDefaultRoutesOnHost()
 		return err
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
@@ -494,7 +494,7 @@ func setInternetGwV4(gwIp net.IP) (err error) {
 	mRule.Priority = 2000
 	if err := netlink.RuleAdd(mRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", mRule.String(), "error", err.Error())
-		RestoreInternetGw()
+		resetDefaultRoutesOnHost()
 		return err
 	}
 	config.Netclient().CurrGwNmIP = gwIp
