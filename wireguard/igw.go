@@ -71,15 +71,15 @@ func startIGWMonitor(igw wgtypes.PeerConfig, peerNetworkIP net.IP) {
 	}
 
 	go func(igwStatus *igwStatus) {
-		logger.Log(0, "starting health monitor for internet gateway endpoint", igw.Endpoint.String())
+		logger.Log(0, "starting health monitor for internet gateway")
 
 		for {
 			select {
 			case <-igwStatus.ctx.Done():
-				logger.Log(0, "exiting health monitor for internet gateway endpoint", igw.Endpoint.String())
+				logger.Log(0, "exiting health monitor for internet gateway")
 				return
 			case <-igwStatus.ticker.C:
-				logger.Log(0, "checking health of internet gateway endpoint", igw.Endpoint.String())
+				logger.Log(0, "checking health of internet gateway...")
 				checkIGWStatus(igwStatus)
 			}
 		}
@@ -95,20 +95,20 @@ func stopIGWMonitor() {
 func checkIGWStatus(igwStatus *igwStatus) {
 	reachable := isHostReachable(igwStatus.igw.Endpoint.IP, igwStatus.igw.Endpoint.Port)
 	if reachable {
-		logger.Log(0, "internet gateway detected up", igwStatus.igw.Endpoint.String())
+		logger.Log(0, "internet gateway detected up")
 
 		igwStatus.successCount++
 		igwStatus.failureCount = 0
 
 		if !igwStatus.isHealthy && igwStatus.successCount >= IGWRecoveryThreshold {
-			logger.Log(0, "setting internet gateway healthy", igwStatus.igw.Endpoint.String())
+			logger.Log(0, "setting internet gateway healthy")
 			igwStatus.isHealthy = true
 
-			logger.Log(0, "restoring default routes for internet gateway endpoint", igwStatus.igw.Endpoint.String())
+			logger.Log(0, "restoring default routes for internet gateway")
 			// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
 			err := restoreDefaultRoutesOnIGWPeer(igwStatus.igw, igwStatus.isIPv4, igwStatus.isIPv6)
 			if err != nil {
-				logger.Log(0, "failed to restore default routes for internet gateway endpoint %s: %v", igwStatus.igw.Endpoint.String(), err.Error())
+				logger.Log(0, "failed to restore default routes for internet gateway: %v", err.Error())
 			}
 
 			logger.Log(0, "setting default routes on host")
@@ -118,20 +118,20 @@ func checkIGWStatus(igwStatus *igwStatus) {
 			}
 		}
 	} else {
-		logger.Log(0, "internet gateway detected down", igwStatus.igw.Endpoint.String())
+		logger.Log(0, "internet gateway detected down")
 
 		igwStatus.failureCount++
 		igwStatus.successCount = 0
 
 		if igwStatus.isHealthy && igwStatus.failureCount >= IGWFailureThreshold {
-			logger.Log(0, "setting internet gateway unhealthy", igwStatus.igw.Endpoint.String())
+			logger.Log(0, "setting internet gateway unhealthy")
 			igwStatus.isHealthy = false
 
-			logger.Log(0, "removing default routes for internet gateway endpoint", igwStatus.igw.Endpoint.String())
+			logger.Log(0, "removing default routes for internet gateway")
 			// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
 			err := removeDefaultRoutesOnIGWPeer(igwStatus.igw)
 			if err != nil {
-				logger.Log(0, "failed to remove default routes for internet gateway endpoint %s: %v", igwStatus.igw.Endpoint.String(), err.Error())
+				logger.Log(0, "failed to remove default routes for internet gateway: %v", err.Error())
 			}
 
 			logger.Log(0, "resetting default routes on host")
