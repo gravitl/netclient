@@ -79,7 +79,7 @@ func startIGWMonitor(igw wgtypes.PeerConfig, peerNetworkIP net.IP) {
 				logger.Log(0, "exiting health monitor for internet gateway")
 				return
 			case <-igwStatus.ticker.C:
-				logger.Log(0, "checking health of internet gateway...")
+				logger.Log(2, "checking health of internet gateway...")
 				checkIGWStatus(igwStatus)
 			}
 		}
@@ -95,46 +95,46 @@ func stopIGWMonitor() {
 func checkIGWStatus(igwStatus *igwStatus) {
 	reachable := isHostReachable(igwStatus.igw.Endpoint.IP, igwStatus.igw.Endpoint.Port)
 	if reachable {
-		logger.Log(0, "internet gateway detected up")
+		logger.Log(2, "internet gateway detected up")
 
 		igwStatus.successCount++
 		igwStatus.failureCount = 0
 
 		if !igwStatus.isHealthy && igwStatus.successCount >= IGWRecoveryThreshold {
-			logger.Log(0, "setting internet gateway healthy")
+			logger.Log(2, "setting internet gateway healthy")
 			igwStatus.isHealthy = true
 
-			logger.Log(0, "restoring default routes for internet gateway")
+			logger.Log(2, "restoring default routes for internet gateway")
 			// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
 			err := restoreDefaultRoutesOnIGWPeer(igwStatus.igw, igwStatus.isIPv4, igwStatus.isIPv6)
 			if err != nil {
 				logger.Log(0, "failed to restore default routes for internet gateway: %v", err.Error())
 			}
 
-			logger.Log(0, "setting default routes on host")
-			err = setDefaultRoutesOnHost(igwStatus.peerNetworkIP)
+			logger.Log(2, "setting default routes on host")
+			err = setDefaultRoutesOnHost(igwStatus.igw, igwStatus.peerNetworkIP)
 			if err != nil {
 				logger.Log(0, "failed to set default routes on host: %v", err.Error())
 			}
 		}
 	} else {
-		logger.Log(0, "internet gateway detected down")
+		logger.Log(2, "internet gateway detected down")
 
 		igwStatus.failureCount++
 		igwStatus.successCount = 0
 
 		if igwStatus.isHealthy && igwStatus.failureCount >= IGWFailureThreshold {
-			logger.Log(0, "setting internet gateway unhealthy")
+			logger.Log(2, "setting internet gateway unhealthy")
 			igwStatus.isHealthy = false
 
-			logger.Log(0, "removing default routes for internet gateway")
+			logger.Log(2, "removing default routes for internet gateway")
 			// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
 			err := removeDefaultRoutesOnIGWPeer(igwStatus.igw)
 			if err != nil {
 				logger.Log(0, "failed to remove default routes for internet gateway: %v", err.Error())
 			}
 
-			logger.Log(0, "resetting default routes on host")
+			logger.Log(2, "resetting default routes on host")
 			err = resetDefaultRoutesOnHost()
 			if err != nil {
 				logger.Log(0, "failed to reset default routes on host: %v", err.Error())
