@@ -207,17 +207,17 @@ func SetRoutesFromCache() {
 	if gwIp != nil {
 		RestoreInternetGw()
 
-		var igwPeerCfg wgtypes.PeerConfig
+		var igw wgtypes.PeerConfig
 		for _, peer := range config.Netclient().HostPeers {
 			for _, peerIP := range peer.AllowedIPs {
 				if peerIP.String() == IPv4Network || peerIP.String() == IPv6Network {
-					igwPeerCfg = peer
+					igw = peer
 					break
 				}
 			}
 		}
 
-		SetInternetGw(igwPeerCfg, gwIp)
+		SetInternetGw(igw.PublicKey.String(), gwIp)
 	}
 }
 

@@ -25,20 +25,18 @@ const (
 )
 
 type igwStatus struct {
-	igw           wgtypes.PeerConfig
-	peerNetworkIP net.IP
-	ctx           context.Context
-	ticker        *time.Ticker
-	isIPv4        bool
-	isIPv6        bool
-	isHealthy     bool
-	successCount  int
-	failureCount  int
+	networkIP    net.IP
+	publicKey    string
+	ctx          context.Context
+	ticker       *time.Ticker
+	isHealthy    bool
+	successCount int
+	failureCount int
 }
 
 var igwMonitorCancelFunc context.CancelFunc
 
-func startIGWMonitor(igw wgtypes.PeerConfig, peerNetworkIP net.IP) {
+func startIGWMonitor(publicKey string, networkIP net.IP) {
 	// ideally, it should never happen that we have multiple
 	// internet gateways, but just in case it happens, we need to
 	// stop the monitor for the other internet gateway.
@@ -49,25 +47,12 @@ func startIGWMonitor(igw wgtypes.PeerConfig, peerNetworkIP net.IP) {
 	var ctx context.Context
 	ctx, igwMonitorCancelFunc = context.WithCancel(context.Background())
 
-	var isIPv4, isIPv6 bool
-	for _, allowedIP := range igw.AllowedIPs {
-		if allowedIP.String() == IPv4Network {
-			isIPv4 = true
-		}
-
-		if allowedIP.String() == IPv6Network {
-			isIPv6 = true
-		}
-	}
-
 	status := &igwStatus{
-		igw:           igw,
-		peerNetworkIP: peerNetworkIP,
-		ctx:           ctx,
-		ticker:        time.NewTicker(IGWMonitorInterval),
-		isIPv4:        isIPv4,
-		isIPv6:        isIPv6,
-		isHealthy:     true, // Assume healthy initially
+		networkIP: networkIP,
+		publicKey: publicKey,
+		ctx:       ctx,
+		ticker:    time.NewTicker(IGWMonitorInterval),
+		isHealthy: true, // Assume healthy initially
 	}
 
 	go func(igwStatus *igwStatus) {
@@ -93,7 +78,13 @@ func stopIGWMonitor() {
 }
 
 func checkIGWStatus(igwStatus *igwStatus) {
-	reachable := isHostReachable(igwStatus.igw.Endpoint.IP, igwStatus.igw.Endpoint.Port)
+	igw, err := GetPeer(ncutils.GetInterfaceName(), igwStatus.publicKey)
+	if err != nil {
+		logger.Log(0, "failed to get internet gateway peer: %v", err.Error())
+		return
+	}
+
+	reachable := isHostReachable(igw.Endpoint.IP, igw.Endpoint.Port)
 	if reachable {
 		logger.Log(2, "internet gateway detected up")
 
@@ -106,13 +97,13 @@ func checkIGWStatus(igwStatus *igwStatus) {
 
 			logger.Log(2, "restoring default routes for internet gateway")
 			// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
-			err := restoreDefaultRoutesOnIGWPeer(igwStatus.igw, igwStatus.isIPv4, igwStatus.isIPv6)
+			err := restoreDefaultRoutesOnIGWPeer(igw, igwStatus.networkIP)
 			if err != nil {
 				logger.Log(0, "failed to restore default routes for internet gateway: %v", err.Error())
 			}
 
 			logger.Log(2, "setting default routes on host")
-			err = setDefaultRoutesOnHost(igwStatus.igw, igwStatus.peerNetworkIP)
+			err = setDefaultRoutesOnHost(igwStatus.publicKey, igwStatus.networkIP)
 			if err != nil {
 				logger.Log(0, "failed to set default routes on host: %v", err.Error())
 			}
@@ -129,7 +120,7 @@ func checkIGWStatus(igwStatus *igwStatus) {
 
 			logger.Log(2, "removing default routes for internet gateway")
 			// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
-			err := removeDefaultRoutesOnIGWPeer(igwStatus.igw)
+			err := removeDefaultRoutesOnIGWPeer(igw)
 			if err != nil {
 				logger.Log(0, "failed to remove default routes for internet gateway: %v", err.Error())
 			}
@@ -143,39 +134,11 @@ func checkIGWStatus(igwStatus *igwStatus) {
 	}
 }
 
-// removeDefaultRoutesOnIGWPeer removes default routes (0.0.0.0/0,::/0)
-// from the internet gateway peer.
-func removeDefaultRoutesOnIGWPeer(igw wgtypes.PeerConfig) error {
-	peer, err := GetPeer(ncutils.GetInterfaceName(), igw.PublicKey.String())
-	if err != nil {
-		return fmt.Errorf("failed to get peer: %w", err)
-	}
-
-	newAllowedIPs := make([]net.IPNet, 0)
-	for _, allowedIP := range peer.AllowedIPs {
-		if allowedIP.String() != IPv4Network && allowedIP.String() != IPv6Network {
-			newAllowedIPs = append(newAllowedIPs, allowedIP)
-		}
-	}
-
-	return UpdatePeer(&wgtypes.PeerConfig{
-		PublicKey:         peer.PublicKey,
-		AllowedIPs:        newAllowedIPs,
-		ReplaceAllowedIPs: true,
-		UpdateOnly:        true,
-	})
-}
-
 // restoreDefaultRoutesOnIGWPeer restores default routes (0.0.0.0/0,::/0)
 // to the internet gateway peer.
-func restoreDefaultRoutesOnIGWPeer(igw wgtypes.PeerConfig, isIPv4, isIPV6 bool) error {
-	peer, err := GetPeer(ncutils.GetInterfaceName(), igw.PublicKey.String())
-	if err != nil {
-		return fmt.Errorf("failed to get peer: %w", err)
-	}
-
+func restoreDefaultRoutesOnIGWPeer(igw wgtypes.Peer, networkIP net.IP) error {
 	var ipv4Present, ipv6Present bool
-	newAllowedIPs := peer.AllowedIPs
+	newAllowedIPs := igw.AllowedIPs
 	for _, allowedIP := range newAllowedIPs {
 		if allowedIP.String() == IPv4Network {
 			ipv4Present = true
@@ -185,6 +148,9 @@ func restoreDefaultRoutesOnIGWPeer(igw wgtypes.PeerConfig, isIPv4, isIPV6 bool) 
 			ipv6Present = true
 		}
 	}
+
+	isIPv4 := networkIP.To4() != nil
+	isIPV6 := networkIP.To4() == nil
 
 	if isIPv4 && !ipv4Present {
 		_, ipv4Net, _ := net.ParseCIDR(IPv4Network)
@@ -197,7 +163,25 @@ func restoreDefaultRoutesOnIGWPeer(igw wgtypes.PeerConfig, isIPv4, isIPV6 bool) 
 	}
 
 	return UpdatePeer(&wgtypes.PeerConfig{
-		PublicKey:         peer.PublicKey,
+		PublicKey:         igw.PublicKey,
+		AllowedIPs:        newAllowedIPs,
+		ReplaceAllowedIPs: true,
+		UpdateOnly:        true,
+	})
+}
+
+// removeDefaultRoutesOnIGWPeer removes default routes (0.0.0.0/0,::/0)
+// from the internet gateway peer.
+func removeDefaultRoutesOnIGWPeer(igw wgtypes.Peer) error {
+	newAllowedIPs := make([]net.IPNet, 0)
+	for _, allowedIP := range igw.AllowedIPs {
+		if allowedIP.String() != IPv4Network && allowedIP.String() != IPv6Network {
+			newAllowedIPs = append(newAllowedIPs, allowedIP)
+		}
+	}
+
+	return UpdatePeer(&wgtypes.PeerConfig{
+		PublicKey:         igw.PublicKey,
 		AllowedIPs:        newAllowedIPs,
 		ReplaceAllowedIPs: true,
 		UpdateOnly:        true,

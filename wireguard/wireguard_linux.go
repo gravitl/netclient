@@ -15,7 +15,6 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/unix"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const (
@@ -335,24 +334,24 @@ func getSourceIpv6(gw net.IP) (src net.IP) {
 }
 
 // SetInternetGw - set a new default gateway and add rules to activate it
-func SetInternetGw(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
 	defer func() {
-		startIGWMonitor(igwPeerCfg, peerNetworkIP)
+		startIGWMonitor(publicKey, networkIP)
 	}()
 
-	return setDefaultRoutesOnHost(igwPeerCfg, peerNetworkIP)
+	return setDefaultRoutesOnHost(publicKey, networkIP)
 }
 
-func setDefaultRoutesOnHost(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) error {
-	if ipv4 := peerNetworkIP.To4(); ipv4 != nil {
-		return setInternetGwV4(igwPeerCfg, peerNetworkIP)
+func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
+	if ipv4 := networkIP.To4(); ipv4 != nil {
+		return setInternetGwV4(publicKey, networkIP)
 	} else {
-		return setInternetGwV6(igwPeerCfg, peerNetworkIP)
+		return setInternetGwV6(publicKey, networkIP)
 	}
 }
 
 // setInternetGwV6 - set a new default gateway and add rules to activate it
-func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, gwIp net.IP) (err error) {
+func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
 		ipv6, err := GetDefaultGatewayV6()
 		if err == nil && ipv6.Gw != nil {
@@ -360,9 +359,9 @@ func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, gwIp net.IP) (err error) {
 		}
 	}
 
-	srcIp := getSourceIpv6(gwIp)
+	srcIp := getSourceIpv6(networkIP)
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: gwIp, Table: RouteTableName, Priority: 1}
+	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: networkIP, Table: RouteTableName, Priority: 1}
 
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V6, &gwRoute, netlink.RT_FILTER_TABLE)
@@ -426,32 +425,35 @@ func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, gwIp net.IP) (err error) {
 		return err
 	}
 
-	// lookup route to the internet gateway using the main table.
-	_, destination, err := net.ParseCIDR(igwPeerCfg.Endpoint.IP.String() + "/128")
-	if err != nil {
-		return err
+	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+	if err == nil {
+		// lookup route to the internet gateway using the main table.
+		_, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/128")
+		if err != nil {
+			return err
+		}
+
+		gwRule := netlink.NewRule()
+		gwRule.Family = syscall.AF_INET6
+		gwRule.Dst = destination
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if err := netlink.RuleAdd(gwRule); err != nil {
+			slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
+			resetDefaultRoutesOnHost()
+			return err
+		}
 	}
 
-	gwRule := netlink.NewRule()
-	gwRule.Family = syscall.AF_INET6
-	gwRule.Dst = destination
-	gwRule.Table = unix.RT_TABLE_MAIN
-	gwRule.Priority = 2999
-	if err := netlink.RuleAdd(gwRule); err != nil {
-		slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
-		return err
-	}
-
-	config.Netclient().CurrGwNmIP = gwIp
+	config.Netclient().CurrGwNmIP = networkIP
 	return config.WriteNetclientConfig()
 }
 
 // setInternetGwV4 - set a new default gateway and add rules to activate it
-func setInternetGwV4(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
-	defaultRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: peerNetworkIP, Table: RouteTableName, Priority: 1}
+	defaultRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: networkIP, Table: RouteTableName, Priority: 1}
 
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V4, &defaultRoute, netlink.RT_FILTER_TABLE)
@@ -515,23 +517,26 @@ func setInternetGwV4(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 		return err
 	}
 
-	// lookup route to the internet gateway using the main table.
-	_, destination, err := net.ParseCIDR(igwPeerCfg.Endpoint.IP.String() + "/32")
-	if err != nil {
-		return err
+	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+	if err == nil {
+		// lookup route to the internet gateway using the main table.
+		_, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/32")
+		if err != nil {
+			return err
+		}
+
+		gwRule := netlink.NewRule()
+		gwRule.Dst = destination
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if err := netlink.RuleAdd(gwRule); err != nil {
+			slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
+			resetDefaultRoutesOnHost()
+			return err
+		}
 	}
 
-	gwRule := netlink.NewRule()
-	gwRule.Dst = destination
-	gwRule.Table = unix.RT_TABLE_MAIN
-	gwRule.Priority = 2999
-	if err := netlink.RuleAdd(gwRule); err != nil {
-		slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
-		return err
-	}
-
-	config.Netclient().CurrGwNmIP = peerNetworkIP
+	config.Netclient().CurrGwNmIP = networkIP
 	return config.WriteNetclientConfig()
 }
 

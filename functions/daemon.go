@@ -281,17 +281,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		gwIP, err := wireguard.GetDefaultGatewayIp()
 		if err == nil {
 			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
-				var igwPeerCfg wgtypes.PeerConfig
+				var igw wgtypes.PeerConfig
 				for _, peer := range pullresp.Peers {
 					for _, peerIP := range peer.AllowedIPs {
 						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-							igwPeerCfg = peer
+							igw = peer
 							break
 						}
 					}
 				}
 
-				err = wireguard.SetInternetGw(igwPeerCfg, pullresp.DefaultGwIp)
+				err = wireguard.SetInternetGw(igw.PublicKey.String(), pullresp.DefaultGwIp)
 				if err != nil {
 					slog.Warn("failed to set inet gw", "error", err)
 				}

@@ -173,6 +173,6 @@ func RestoreInternetGw() (err error) { return }
 func resetDefaultRoutesOnHost() error { return nil }
 
 // SetDefaultGateway - set a new default gateway
-func SetInternetGw(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) { return }
+func SetInternetGw(publicKey string, networkIP net.IP) (err error) { return }
 
-func setDefaultRoutesOnHost(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) error { return nil }
+func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error { return nil }

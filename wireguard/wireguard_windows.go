@@ -13,7 +13,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
@@ -257,24 +256,24 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 }
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's ip address
-func SetInternetGw(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
 	defer func() {
-		startIGWMonitor(igwPeerCfg, peerNetworkIP)
+		startIGWMonitor(publicKey, networkIP)
 	}()
 
-	return setDefaultRoutesOnHost(igwPeerCfg, peerNetworkIP)
+	return setDefaultRoutesOnHost(publicKey, networkIP)
 }
 
-func setDefaultRoutesOnHost(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) error {
-	if ipv4 := peerNetworkIP.To4(); ipv4 != nil {
-		return setInternetGwV4(igwPeerCfg, peerNetworkIP)
+func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
+	if ipv4 := networkIP.To4(); ipv4 != nil {
+		return setInternetGwV4(publicKey, networkIP)
 	} else {
-		return setInternetGwV6(igwPeerCfg, peerNetworkIP)
+		return setInternetGwV6(publicKey, networkIP)
 	}
 }
 
 // setInternetGwV6 - set a new default gateway and the route to Internet Gw's ip address
-func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 
 	//get current default gateway route
 	gwRoute, err := getDefaultGateway()
@@ -284,7 +283,7 @@ func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 		//if default gateway metric is 0, then reset it to 50
 		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
 		metric := strings.TrimSpace(gwRoute[2])
-		if metric == "0" && ipString != peerNetworkIP.String() {
+		if metric == "0" && ipString != networkIP.String() {
 			//set the original gateway metric to 50
 			setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPv6Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 
@@ -296,16 +295,19 @@ func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 			}
 		}
 
-		destination := igwPeerCfg.Endpoint.IP.String() + "/128"
-		gwRouteCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-		_, err = ncutils.RunCmd(gwRouteCmd, true)
-		if err != nil {
-			slog.Error("Failed to add route to gateway", "error", err.Error())
+		igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+		if err == nil {
+			destination := igw.Endpoint.IP.String() + "/128"
+			gwRouteCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+			_, err = ncutils.RunCmd(gwRouteCmd, true)
+			if err != nil {
+				slog.Error("Failed to add route to gateway", "error", err.Error())
+			}
 		}
 	}
 
 	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName(), peerNetworkIP.String())
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName(), networkIP.String())
 
 	_, err = ncutils.RunCmd(addGwCmd, true)
 	if err != nil {
@@ -313,12 +315,12 @@ func setInternetGwV6(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 		return err
 	}
 
-	config.Netclient().CurrGwNmIP = peerNetworkIP
+	config.Netclient().CurrGwNmIP = networkIP
 	return nil
 }
 
 // setInternetGwV4 - set a new default gateway and the route to Internet Gw's ip address
-func setInternetGwV4(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err error) {
+func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 
 	//get current default gateway route
 	gwRoute, err := getDefaultGateway()
@@ -328,7 +330,7 @@ func setInternetGwV4(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 		//if default gateway metric is 0, then reset it to 50
 		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
 		metric := strings.TrimSpace(gwRoute[2])
-		if metric == "0" && ipString != peerNetworkIP.String() {
+		if metric == "0" && ipString != networkIP.String() {
 			//set the original gateway metric to 50
 			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPv4Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 
@@ -340,17 +342,20 @@ func setInternetGwV4(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 			}
 		}
 
-		destination := igwPeerCfg.Endpoint.IP.String() + "/32"
-		gwRouteCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-		slog.Info(gwRouteCmd)
-		_, err = ncutils.RunCmd(gwRouteCmd, true)
-		if err != nil {
-			slog.Error("Failed to add route to gateway", "error", err.Error())
+		igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+		if err == nil {
+			destination := igw.Endpoint.IP.String() + "/32"
+			gwRouteCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+			slog.Info(gwRouteCmd)
+			_, err = ncutils.RunCmd(gwRouteCmd, true)
+			if err != nil {
+				slog.Error("Failed to add route to gateway", "error", err.Error())
+			}
 		}
 	}
 
 	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, ncutils.GetInterfaceName(), peerNetworkIP.String())
+	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, ncutils.GetInterfaceName(), networkIP.String())
 
 	_, err = ncutils.RunCmd(addGwCmd, true)
 	if err != nil {
@@ -358,7 +363,7 @@ func setInternetGwV4(igwPeerCfg wgtypes.PeerConfig, peerNetworkIP net.IP) (err e
 		return err
 	}
 
-	config.Netclient().CurrGwNmIP = peerNetworkIP
+	config.Netclient().CurrGwNmIP = networkIP
 
 	return nil
 }
