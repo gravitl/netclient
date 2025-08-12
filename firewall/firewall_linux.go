@@ -3,12 +3,13 @@ package firewall
 import (
 	"errors"
 	"net"
-	"os/exec"
 	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/nftables"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"github.com/vishvananda/netlink"
 )
 
@@ -24,8 +25,8 @@ func newFirewall() (firewallController, error) {
 
 	var manager firewallController
 
-	if isIptablesSupported() {
-		logger.Log(0, "iptables is supported")
+	if config.Netclient().FirewallInUse == models.FIREWALL_IPTABLES {
+		logger.Log(0, "using iptables to manage firewall rules...")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		ipv6Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		manager = &iptablesManager{
@@ -37,8 +38,8 @@ func newFirewall() (firewallController, error) {
 		}
 		return manager, nil
 	}
-	logger.Log(0, "iptables is not supported, using nftables")
-	if isNftablesSupported() {
+	logger.Log(0, "using nftables to manage firewall rules...")
+	if config.Netclient().FirewallInUse == models.FIREWALL_NFTABLES {
 		logger.Log(0, "nftables is supported")
 		manager = &nftablesManager{
 			conn:         &nftables.Conn{},
@@ -50,12 +51,6 @@ func newFirewall() (firewallController, error) {
 	}
 
 	return manager, errors.New("firewall support not found")
-}
-
-func isIptablesSupported() bool {
-	_, err4 := exec.LookPath("iptables")
-	_, err6 := exec.LookPath("ip6tables")
-	return (err4 == nil && err6 == nil)
 }
 
 func getInterfaceName(dst net.IPNet) (string, error) {
@@ -87,9 +82,4 @@ func getInterfaceName(dst net.IPNet) (string, error) {
 		}
 	}
 	return "", errors.New("interface not found for: " + dst.String())
-}
-
-func isNftablesSupported() bool {
-	_, err := exec.LookPath("nft")
-	return err == nil
 }
