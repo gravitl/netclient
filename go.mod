@@ -20,7 +20,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
-	github.com/miekg/dns v1.1.67
+	github.com/miekg/dns v1.1.68
 	github.com/minio/selfupdate v0.6.0
 	github.com/sasha-s/go-deadlock v0.3.5
 	github.com/spf13/cobra v1.9.1
