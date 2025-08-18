@@ -428,10 +428,12 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
 	if err == nil {
 		// lookup route to the internet gateway using the main table.
-		_, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/128")
+		destinationIP, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/128")
 		if err != nil {
 			return err
 		}
+
+		destination.IP = destinationIP
 
 		gwRule := netlink.NewRule()
 		gwRule.Family = syscall.AF_INET6
@@ -520,10 +522,12 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
 	if err == nil {
 		// lookup route to the internet gateway using the main table.
-		_, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/32")
+		destinationIP, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/32")
 		if err != nil {
 			return err
 		}
+
+		destination.IP = destinationIP
 
 		gwRule := netlink.NewRule()
 		gwRule.Dst = destination
