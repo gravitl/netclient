@@ -84,7 +84,7 @@ func checkIGWStatus(igwStatus *igwStatus) {
 		return
 	}
 
-	reachable := isHostReachable(igw.Endpoint.IP, igw.Endpoint.Port)
+	reachable := isHostReachable(igwStatus.networkIP, igw.Endpoint.Port)
 	if reachable {
 		logger.Log(2, "internet gateway detected up")
 
