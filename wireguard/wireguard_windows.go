@@ -257,11 +257,12 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 
 // SetInternetGw - set a new default gateway and the route to Internet Gw's ip address
 func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
-	defer func() {
-		startIGWMonitor(publicKey, networkIP)
-	}()
+	err = setDefaultRoutesOnHost(publicKey, networkIP)
+	if err == nil {
+		go startIGWMonitor(publicKey, networkIP)
+	}
 
-	return setDefaultRoutesOnHost(publicKey, networkIP)
+	return err
 }
 
 func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
@@ -370,11 +371,12 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's ip address
 func RestoreInternetGw() (err error) {
-	defer func() {
-		stopIGWMonitor()
-	}()
+	err = resetDefaultRoutesOnHost()
+	if err == nil {
+		go stopIGWMonitor()
+	}
 
-	return resetDefaultRoutesOnHost()
+	return err
 }
 
 func resetDefaultRoutesOnHost() error {

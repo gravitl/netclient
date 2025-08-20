@@ -335,11 +335,12 @@ func getSourceIpv6(gw net.IP) (src net.IP) {
 
 // SetInternetGw - set a new default gateway and add rules to activate it
 func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
-	defer func() {
-		startIGWMonitor(publicKey, networkIP)
-	}()
+	err = setDefaultRoutesOnHost(publicKey, networkIP)
+	if err == nil {
+		go startIGWMonitor(publicKey, networkIP)
+	}
 
-	return setDefaultRoutesOnHost(publicKey, networkIP)
+	return err
 }
 
 func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
@@ -546,11 +547,12 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 
 // RestoreInternetGw - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func RestoreInternetGw() (err error) {
-	defer func() {
-		stopIGWMonitor()
-	}()
+	err = resetDefaultRoutesOnHost()
+	if err == nil {
+		go stopIGWMonitor()
+	}
 
-	return resetDefaultRoutesOnHost()
+	return err
 }
 
 func resetDefaultRoutesOnHost() error {
