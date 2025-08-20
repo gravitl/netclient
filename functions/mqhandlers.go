@@ -256,7 +256,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				}
 			}
 
-			err := wireguard.SetInternetGw(igw.PublicKey.String(), peerUpdate.DefaultGwIp)
+			_ = wireguard.RestoreInternetGw()
+
+			err = wireguard.SetInternetGw(igw.PublicKey.String(), peerUpdate.DefaultGwIp)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
 				return
@@ -791,6 +793,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 					}
 				}
 			}
+
+			_ = wireguard.RestoreInternetGw()
 
 			err := wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
 			if err != nil {

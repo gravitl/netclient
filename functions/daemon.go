@@ -291,6 +291,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 					}
 				}
 
+				// unlikely that the gwIP is netmaker IP, but still
+				// reset the igw.
+				_ = wireguard.RestoreInternetGw()
+
 				err = wireguard.SetInternetGw(igw.PublicKey.String(), pullresp.DefaultGwIp)
 				if err != nil {
 					slog.Warn("failed to set inet gw", "error", err)

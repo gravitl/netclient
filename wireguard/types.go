@@ -205,8 +205,6 @@ func SetRoutesFromCache() {
 	//inetGW route
 	gwIp := config.Netclient().CurrGwNmIP
 	if gwIp != nil {
-		RestoreInternetGw()
-
 		var igw wgtypes.PeerConfig
 		for _, peer := range config.Netclient().HostPeers {
 			for _, peerIP := range peer.AllowedIPs {
@@ -216,6 +214,8 @@ func SetRoutesFromCache() {
 				}
 			}
 		}
+
+		_ = RestoreInternetGw()
 
 		SetInternetGw(igw.PublicKey.String(), gwIp)
 	}
