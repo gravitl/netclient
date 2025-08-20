@@ -61,7 +61,7 @@ func startIGWMonitor(publicKey string, networkIP net.IP) {
 		for {
 			select {
 			case <-igwStatus.ctx.Done():
-				logger.Log(0, "exiting health monitor for internet gateway")
+				logger.Log(0, "stopping health monitor for internet gateway")
 				return
 			case <-igwStatus.ticker.C:
 				logger.Log(2, "checking health of internet gateway...")
@@ -80,7 +80,7 @@ func stopIGWMonitor() {
 func checkIGWStatus(igwStatus *igwStatus) {
 	igw, err := GetPeer(ncutils.GetInterfaceName(), igwStatus.publicKey)
 	if err != nil {
-		logger.Log(0, "failed to get internet gateway peer: %v", err.Error())
+		logger.Log(0, "failed to get internet gateway peer:", err.Error())
 		return
 	}
 
@@ -99,13 +99,13 @@ func checkIGWStatus(igwStatus *igwStatus) {
 			// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
 			err := restoreDefaultRoutesOnIGWPeer(igw, igwStatus.networkIP)
 			if err != nil {
-				logger.Log(0, "failed to restore default routes for internet gateway: %v", err.Error())
+				logger.Log(0, "failed to restore default routes for internet gateway:", err.Error())
 			}
 
 			logger.Log(2, "setting default routes on host")
 			err = setDefaultRoutesOnHost(igwStatus.publicKey, igwStatus.networkIP)
 			if err != nil {
-				logger.Log(0, "failed to set default routes on host: %v", err.Error())
+				logger.Log(0, "failed to set default routes on host:", err.Error())
 			}
 		}
 	} else {
@@ -122,13 +122,13 @@ func checkIGWStatus(igwStatus *igwStatus) {
 			// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
 			err := removeDefaultRoutesOnIGWPeer(igw)
 			if err != nil {
-				logger.Log(0, "failed to remove default routes for internet gateway: %v", err.Error())
+				logger.Log(0, "failed to remove default routes for internet gateway:", err.Error())
 			}
 
 			logger.Log(2, "resetting default routes on host")
 			err = resetDefaultRoutesOnHost()
 			if err != nil {
-				logger.Log(0, "failed to reset default routes on host: %v", err.Error())
+				logger.Log(0, "failed to reset default routes on host:", err.Error())
 			}
 		}
 	}
