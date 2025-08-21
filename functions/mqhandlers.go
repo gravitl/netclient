@@ -838,8 +838,7 @@ func processEgressDomain(domainI models.EgressDomain) {
 	// Resolve domain to IP addresses
 	ips, err := resolveDomainToIPs(domainI.Domain)
 	if err != nil {
-		slog.Error("failed to resolve domain for egress update", "domain", domainI.Domain, "error", err.Error())
-		return
+		slog.Error("failed to resolve egress domain", "domain", domainI.Domain, "error", err)
 	}
 	if len(ips) == 0 {
 		return
@@ -876,17 +875,14 @@ func processEgressDomain(domainI models.EgressDomain) {
 	})
 }
 
-// resolveDomainToIPs resolves a domain name to IP addresses
+// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
 func resolveDomainToIPs(domain string) ([]string, error) {
 	if domain == "" {
 		return nil, fmt.Errorf("domain cannot be empty")
 	}
 
-	ips, err := net.LookupIP(domain)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
-	}
-
+	// Use the existing DNS infrastructure to resolve the domain
+	ips := dns.FindDnsAns(domain)
 	if len(ips) == 0 {
 		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
 	}
