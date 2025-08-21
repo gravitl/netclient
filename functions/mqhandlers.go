@@ -884,7 +884,14 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 	// Use the existing DNS infrastructure to resolve the domain
 	ips := dns.FindDnsAns(domain)
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+		lookUpIPs, err := net.LookupIP(domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
+		}
+		if len(lookUpIPs) == 0 {
+			return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+		}
+		ips = lookUpIPs
 	}
 
 	// Filter out any invalid IPs and return unique IPs
