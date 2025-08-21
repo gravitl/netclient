@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -24,6 +25,16 @@ const (
 	IGWFailureThreshold = 3
 )
 
+var (
+	igwMonitor *IGWMonitor
+	once       sync.Once
+)
+
+type IGWMonitor struct {
+	status     *igwStatus
+	cancelFunc context.CancelFunc
+}
+
 type igwStatus struct {
 	networkIP    net.IP
 	publicKey    string
@@ -34,20 +45,26 @@ type igwStatus struct {
 	failureCount int
 }
 
-var igwMonitorCancelFunc context.CancelFunc
+func GetIGWMonitor() *IGWMonitor {
+	once.Do(func() {
+		igwMonitor = &IGWMonitor{}
+	})
+	return igwMonitor
+}
 
-func startIGWMonitor(publicKey string, networkIP net.IP) {
+// Monitor starts the monitor.
+func (m *IGWMonitor) Monitor(publicKey string, networkIP net.IP) {
 	// ideally, it should never happen that we have multiple
 	// internet gateways, but just in case it happens, we need to
 	// stop the monitor for the other internet gateway.
-	if igwMonitorCancelFunc != nil {
-		igwMonitorCancelFunc()
+	if m.cancelFunc != nil {
+		m.cancelFunc()
 	}
 
 	var ctx context.Context
-	ctx, igwMonitorCancelFunc = context.WithCancel(context.Background())
+	ctx, m.cancelFunc = context.WithCancel(context.Background())
 
-	status := &igwStatus{
+	m.status = &igwStatus{
 		networkIP: networkIP,
 		publicKey: publicKey,
 		ctx:       ctx,
@@ -55,55 +72,61 @@ func startIGWMonitor(publicKey string, networkIP net.IP) {
 		isHealthy: true, // Assume healthy initially
 	}
 
-	go func(igwStatus *igwStatus) {
+	go func(m *IGWMonitor) {
 		logger.Log(0, "starting health monitor for internet gateway")
 
 		for {
 			select {
-			case <-igwStatus.ctx.Done():
+			case <-m.status.ctx.Done():
 				logger.Log(0, "stopping health monitor for internet gateway")
 				return
-			case <-igwStatus.ticker.C:
+			case <-m.status.ticker.C:
 				logger.Log(2, "checking health of internet gateway...")
-				checkIGWStatus(igwStatus)
+				m.updateStatus()
 			}
 		}
-	}(status)
+	}(m)
 }
 
-func stopIGWMonitor() {
-	if igwMonitorCancelFunc != nil {
-		igwMonitorCancelFunc()
+// Stop stops the monitor.
+func (m *IGWMonitor) Stop() {
+	if m.cancelFunc != nil {
+		m.cancelFunc()
 	}
 }
 
-func checkIGWStatus(igwStatus *igwStatus) {
-	igw, err := GetPeer(ncutils.GetInterfaceName(), igwStatus.publicKey)
+// updateStatus checks if the internet gateway is reachable
+// and updates its status. If the internet gateway is reachable,
+// it will set it to healthy. If the internet gateway is not
+// reachable, it will set it to unhealthy. It will set and
+// reset default routes on host accordingly.
+func (m *IGWMonitor) updateStatus() {
+	igw, err := GetPeer(ncutils.GetInterfaceName(), m.status.publicKey)
 	if err != nil {
 		logger.Log(0, "failed to get internet gateway peer:", err.Error())
 		return
 	}
 
-	reachable := isHostReachable(igwStatus.networkIP, igw.Endpoint.Port)
+	reachable := isHostReachable(m.status.networkIP, igw.Endpoint.Port)
 	if reachable {
 		logger.Log(2, "internet gateway detected up")
 
-		igwStatus.successCount++
-		igwStatus.failureCount = 0
+		m.status.successCount++
+		m.status.failureCount = 0
 
-		if !igwStatus.isHealthy && igwStatus.successCount >= IGWRecoveryThreshold {
+		if !m.status.isHealthy && m.status.successCount >= IGWRecoveryThreshold {
 			logger.Log(2, "setting internet gateway healthy")
-			igwStatus.isHealthy = true
+			m.status.isHealthy = true
 
 			logger.Log(2, "restoring default routes for internet gateway")
 			// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
-			err := restoreDefaultRoutesOnIGWPeer(igw, igwStatus.networkIP)
+			err := restoreDefaultRoutesOnIGWPeer(igw, m.status.networkIP)
 			if err != nil {
 				logger.Log(0, "failed to restore default routes for internet gateway:", err.Error())
 			}
 
 			logger.Log(2, "setting default routes on host")
-			err = setDefaultRoutesOnHost(igwStatus.publicKey, igwStatus.networkIP)
+			err = setDefaultRoutesOnHost(m.status.publicKey, m.status.networkIP)
 			if err != nil {
 				logger.Log(0, "failed to set default routes on host:", err.Error())
 			}
@@ -111,12 +134,12 @@ func checkIGWStatus(igwStatus *igwStatus) {
 	} else {
 		logger.Log(2, "internet gateway detected down")
 
-		igwStatus.failureCount++
-		igwStatus.successCount = 0
+		m.status.failureCount++
+		m.status.successCount = 0
 
-		if igwStatus.isHealthy && igwStatus.failureCount >= IGWFailureThreshold {
+		if m.status.isHealthy && m.status.failureCount >= IGWFailureThreshold {
 			logger.Log(2, "setting internet gateway unhealthy")
-			igwStatus.isHealthy = false
+			m.status.isHealthy = false
 
 			logger.Log(2, "removing default routes for internet gateway")
 			// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
@@ -132,6 +155,16 @@ func checkIGWStatus(igwStatus *igwStatus) {
 			}
 		}
 	}
+}
+
+// IsCurrentIGW returns true if the node represented by the networkIP is
+// the current internet gateway.
+func (m *IGWMonitor) IsCurrentIGW(networkIP net.IP) bool {
+	if m.status == nil {
+		return false
+	}
+
+	return m.status.networkIP.Equal(networkIP)
 }
 
 // restoreDefaultRoutesOnIGWPeer restores default routes (0.0.0.0/0,::/0)

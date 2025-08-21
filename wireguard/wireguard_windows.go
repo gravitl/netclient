@@ -259,7 +259,7 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
 	err = setDefaultRoutesOnHost(publicKey, networkIP)
 	if err == nil {
-		go startIGWMonitor(publicKey, networkIP)
+		GetIGWMonitor().Monitor(publicKey, networkIP)
 	}
 
 	return err
@@ -373,7 +373,7 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 func RestoreInternetGw() (err error) {
 	err = resetDefaultRoutesOnHost()
 	if err == nil {
-		go stopIGWMonitor()
+		GetIGWMonitor().Stop()
 	}
 
 	return err

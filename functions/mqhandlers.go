@@ -534,7 +534,7 @@ func resetInterfaceFunc() {
 	}
 	if server.ManageDNS {
 		// if dns.GetDNSServerInstance().AddrStr == "" {
-		// 	dns.GetDNSServerInstance().Start()
+		// 	dns.GetDNSServerInstance().Monitor()
 		// }
 
 		//Setup DNS for Linux and Windows
