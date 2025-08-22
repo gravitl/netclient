@@ -284,6 +284,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 	}
 
+	if len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
+		server.DnsNameservers = peerUpdate.DnsNameservers
+		saveServerConfig = true
+	}
+
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true

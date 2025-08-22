@@ -2,12 +2,14 @@ package dns
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
 )
@@ -55,63 +57,74 @@ func isInternetGW() bool {
 
 // ServeDNS handles a DNS request
 func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
-	slog.Info("receiving DNS query request", "Info", r.Question[0])
 	reply := &dns.Msg{}
 	reply.SetReply(r)
 	reply.RecursionAvailable = true
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
 	reply.Authoritative = true
-	resp, err := GetDNSResolverInstance().Lookup(r)
-	if err != nil && errors.Is(err, ErrNXDomain) {
-		nslist := config.Netclient().NameServers
-		if config.Netclient().CurrGwNmIP != nil {
-			nslist = []string{}
-			nslist = append(nslist, config.Netclient().CurrGwNmIP.String())
-		} else if isInternetGW() {
-			nslist = []string{}
-			nslist = append(nslist, "8.8.8.8")
-			nslist = append(nslist, "8.8.4.4")
-			nslist = append(nslist, "2001:4860:4860::8888")
-			nslist = append(nslist, "2001:4860:4860::8844")
-		}
-		server := config.GetServer(config.CurrServer)
-		if server != nil {
-			nslist = append(nslist, server.NameServers...)
-		}
-		gotResult := false
-		for _, v := range nslist {
-			if strings.Contains(v, ":") {
-				v = "[" + v + "]"
+
+	domain := strings.TrimSuffix(r.Question[0].Name, ".")
+
+	logger.Log(4, fmt.Sprintf("handling dns request for domain %s", domain))
+
+	if config.Netclient().CurrGwNmIP != nil {
+		resp, err := exchangeDNSQueryWithPool(r, config.Netclient().CurrGwNmIP.String())
+		if err != nil {
+			if errors.Is(err, ErrNXDomain) {
+				reply.Rcode = dns.RcodeNameError
+			} else {
+				reply.Rcode = dns.RcodeServerFailure
 			}
-			upstreamResp, err := exchangeDNSQueryWithPool(r, v)
-			//upstreamResp, _, err := client.Exchange(r, v+":53")
-			if err != nil || upstreamResp == nil || len(upstreamResp.Answer) == 0 {
-				continue
+		} else {
+			reply.Answer = append(reply.Answer, resp.Answer...)
+		}
+	} else {
+		var foundDomainMatch bool
+		for _, nameserver := range config.GetServer(config.CurrServer).DnsNameservers {
+			matchDomain := nameserver.MatchDomain
+			if !strings.HasPrefix(nameserver.MatchDomain, ".") {
+				matchDomain = "." + nameserver.MatchDomain
 			}
 
-			if upstreamResp.Rcode != dns.RcodeSuccess {
-				continue
-			}
+			if strings.HasSuffix(domain, matchDomain) {
+				foundDomainMatch = true
 
-			if len(upstreamResp.Answer) > 0 {
-				reply.Answer = append(reply.Answer, upstreamResp.Answer...)
-				gotResult = true
-				break
+				for _, ns := range nameserver.IPs {
+					logger.Log(4, fmt.Sprintf("forwarding request to nameserver %s for domain %s", ns, matchDomain))
+					resp, err := exchangeDNSQueryWithPool(r, ns)
+					if err != nil || resp == nil || len(resp.Answer) == 0 {
+						continue
+					}
+
+					if resp.Rcode != dns.RcodeSuccess {
+						continue
+					}
+
+					if len(resp.Answer) > 0 {
+						reply.Answer = append(reply.Answer, resp.Answer...)
+						break
+					}
+				}
 			}
 		}
 
-		if !gotResult {
-			reply.Rcode = dns.RcodeNameError
+		if !foundDomainMatch {
+			logger.Log(4, fmt.Sprintf("resolving %s locally", domain))
+			resp, err := GetDNSResolverInstance().Lookup(r)
+			if err != nil {
+				if errors.Is(err, ErrNXDomain) {
+					reply.Rcode = dns.RcodeNameError
+				} else {
+					reply.Rcode = dns.RcodeServerFailure
+				}
+			} else {
+				reply.Answer = append(reply.Answer, resp)
+			}
 		}
-	} else if err == nil && resp != nil {
-		reply.Answer = append(reply.Answer, resp)
 	}
 
-	err = w.WriteMsg(reply)
-	if err != nil {
-		slog.Error("write DNS response message error: ", "error", err.Error())
-	}
+	_ = w.WriteMsg(reply)
 }
 
 // Register A record
