@@ -59,7 +59,7 @@ func isInternetGW() bool {
 
 	for _, node := range config.GetNodes() {
 		if node.Server != server.Name {
-			return false
+			continue
 		}
 
 		if node.Address.IP.Equal(defaultGatewayIP) {
