@@ -62,7 +62,6 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionAvailable = true
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
-	reply.Authoritative = true
 
 	domain := strings.TrimSuffix(r.Question[0].Name, ".")
 
@@ -119,6 +118,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 					reply.Rcode = dns.RcodeServerFailure
 				}
 			} else {
+				reply.Authoritative = true
 				reply.Answer = append(reply.Answer, resp)
 			}
 		}
