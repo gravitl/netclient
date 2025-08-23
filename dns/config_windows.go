@@ -2,13 +2,14 @@ package dns
 
 import (
 	"fmt"
+	"net/netip"
+	"strings"
+	"sync"
+
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows/registry"
-	"net/netip"
-	"strings"
-	"sync"
 )
 
 var dnsConfigMutex sync.Mutex
@@ -68,8 +69,17 @@ func SetupDNSConfig() error {
 	}
 
 	var domains []string
-	if config.GetServer(config.CurrServer).DefaultDomain != "" {
-		domains = append(domains, config.GetServer(config.CurrServer).DefaultDomain)
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		if server.DefaultDomain != "" {
+			domains = append(domains, server.DefaultDomain)
+		}
+
+		for _, ns := range server.DnsNameservers {
+			if ns.MatchDomain != "." {
+				domains = append(domains, ns.MatchDomain)
+			}
+		}
 	}
 
 	if config.Netclient().DNSSearch != "" {

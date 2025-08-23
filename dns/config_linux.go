@@ -182,7 +182,16 @@ func setupResolvectl() (err error) {
 	domains := ""
 	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
 	if defaultDomain != "" {
-		domains = domains + " " + defaultDomain
+		domains = defaultDomain
+	}
+
+	server := config.GetServer(config.CurrServer)
+	if server != nil {
+		for _, ns := range server.DnsNameservers {
+			if ns.MatchDomain != "." {
+				domains = domains + " " + ns.MatchDomain
+			}
+		}
 	}
 
 	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl domain netmaker %s", domains), false)
@@ -308,10 +317,24 @@ func getNSAndDomains() (string, string, error) {
 	}
 
 	domains := "search"
-	defaultDomain := config.GetServer(config.CurrServer).DefaultDomain
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return "", "", errors.New("failed to get server config")
+	}
+
+	defaultDomain := server.DefaultDomain
 	if defaultDomain != "" {
 		domains = domains + " " + defaultDomain
 	}
+
+	for _, ns := range server.DnsNameservers {
+		if ns.MatchDomain == "." {
+			continue
+		}
+
+		domains = domains + " " + ns.MatchDomain
+	}
+
 	if config.Netclient().DNSSearch != "" {
 		domains = domains + " " + config.Netclient().DNSSearch
 	} else {

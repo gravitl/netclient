@@ -223,8 +223,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
 		daemon.Restart()
 	}
-	if peerUpdate.DefaultDomain != server.DefaultDomain {
-		slog.Info("Dns default domain has changed", "from", server.DefaultDomain, "to", peerUpdate.DefaultDomain)
+	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
+		slog.Info("DNS Default Domain or Nameservers have changed ")
 		dns.SetupDNSConfig()
 	}
 	if peerUpdate.MetricInterval != server.MetricInterval {
