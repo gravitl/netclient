@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
@@ -46,8 +47,22 @@ func GetDNSResolverInstance() *DNSResolver {
 }
 
 func isInternetGW() bool {
-	for _, v := range config.GetNodes() {
-		if v.IsIngressGateway {
+	defaultGatewayIP, err := wireguard.GetDefaultGatewayIp()
+	if err != nil {
+		return false
+	}
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return false
+	}
+
+	for _, node := range config.GetNodes() {
+		if node.Server != server.Name {
+			return false
+		}
+
+		if node.Address.IP.Equal(defaultGatewayIP) {
 			return true
 		}
 	}
