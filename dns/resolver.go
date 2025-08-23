@@ -127,7 +127,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 
 		if !foundDomainMatch {
-			logger.Log(4, fmt.Sprintf("resolving dns query %s internally", r.Question[0].Name))
+			logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
 
 			resp, err := GetDNSResolverInstance().Lookup(r)
 			if err != nil {
