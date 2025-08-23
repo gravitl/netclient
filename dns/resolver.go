@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
 )
@@ -88,26 +89,19 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		)
 
 		resp, err := exchangeDNSQueryWithPool(r, config.Netclient().CurrGwNmIP.String())
-		if err != nil {
-			if errors.Is(err, ErrNXDomain) {
-				reply.Rcode = dns.RcodeNameError
-			} else {
-				reply.Rcode = dns.RcodeServerFailure
-			}
-		} else {
+		if err == nil {
 			reply.Answer = append(reply.Answer, resp.Answer...)
 		}
 	} else {
-		var foundDomainMatch bool
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
 
-		for _, nameserver := range config.GetServer(config.CurrServer).DnsNameservers {
-			matchDomain := canonicalizeDomainForMatching(nameserver.MatchDomain)
+		bestMatchNameservers := findBestMatch(query, config.GetServer(config.CurrServer).DnsNameservers)
 
-			if strings.HasSuffix(query, matchDomain) {
-				foundDomainMatch = true
+		// if the best match nameserver is not a match-all nameserver, forward the query to it.
+		if len(bestMatchNameservers) > 0 && bestMatchNameservers[0].MatchDomain != "." {
+			for _, nameserver := range bestMatchNameservers {
 				for _, ns := range nameserver.IPs {
-					logger.Log(4, fmt.Sprintf("found domain match %s, forwarding dns query %s to nameserver %s", nameserver.MatchDomain, r.Question[0].Name, ns))
+					logger.Log(4, fmt.Sprintf("found best match %s, forwarding dns query %s to nameserver %s", nameserver.MatchDomain, r.Question[0].Name, ns))
 
 					resp, err := exchangeDNSQueryWithPool(r, ns)
 					if err != nil || resp == nil || len(resp.Answer) == 0 {
@@ -126,23 +120,44 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		}
 
-		if !foundDomainMatch {
+		if len(reply.Answer) == 0 {
+			// if the best match nameserver couldn't resolve the query, try to resolve it with local records.
 			logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
 
 			resp, err := GetDNSResolverInstance().Lookup(r)
-			if err != nil {
-				if errors.Is(err, ErrNXDomain) {
-					reply.Rcode = dns.RcodeNameError
-				} else {
-					reply.Rcode = dns.RcodeServerFailure
-				}
-			} else {
+			if err == nil {
 				reply.Authoritative = true
 				reply.Answer = append(reply.Answer, resp)
 			}
 		}
 
-		if reply.Rcode != dns.RcodeSuccess {
+		if len(reply.Answer) == 0 {
+			// if the best match nameserver is a match-all nameserver, we can now forward the query to it.
+			if len(bestMatchNameservers) > 0 && bestMatchNameservers[0].MatchDomain == "." {
+				for _, nameserver := range bestMatchNameservers {
+					for _, ns := range nameserver.IPs {
+						logger.Log(4, fmt.Sprintf("forwarding dns query %s to match-all nameserver %s", r.Question[0].Name, ns))
+
+						resp, err := exchangeDNSQueryWithPool(r, ns)
+						if err != nil || resp == nil || len(resp.Answer) == 0 {
+							continue
+						}
+
+						if resp.Rcode != dns.RcodeSuccess {
+							continue
+						}
+
+						if len(resp.Answer) > 0 {
+							reply.Answer = append(reply.Answer, resp.Answer...)
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if len(reply.Answer) == 0 {
+			// if nothing worked, fallback to the old system.
 			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with new system, falling back to old system", r.Question[0].Name))
 
 			reply = &dns.Msg{}
@@ -269,6 +284,28 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 	client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
 	resp, _, err := client.ExchangeWithConn(r, dnsConn)
 	return resp, err
+}
+
+func findBestMatch(domain string, nameservers []models.Nameserver) []models.Nameserver {
+	var bestMatch []models.Nameserver
+	bestScore := -1
+
+	for _, nameserver := range nameservers {
+		matchDomain := canonicalizeDomainForMatching(nameserver.MatchDomain)
+
+		if strings.HasSuffix(domain, matchDomain) {
+			currScore := strings.Count(matchDomain, ".")
+
+			if currScore > bestScore {
+				bestMatch = []models.Nameserver{nameserver}
+				bestScore = currScore
+			} else if currScore == bestScore {
+				bestMatch = append(bestMatch, nameserver)
+			}
+		}
+	}
+
+	return bestMatch
 }
 
 func canonicalizeDomainForMatching(domain string) string {
