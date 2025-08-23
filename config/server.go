@@ -3,7 +3,6 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,7 +113,6 @@ func WriteServerConfig() error {
 	defer f.Close()
 	serverMutex.Lock()
 	serversI := Servers
-	fmt.Println(serversI[CurrServer].DnsNameservers)
 	serverMutex.Unlock()
 	j := json.NewEncoder(f)
 	j.SetIndent("", "    ")
