@@ -78,11 +78,15 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
 
-	domain := strings.TrimSuffix(r.Question[0].Name, ".")
-
-	logger.Log(4, fmt.Sprintf("handling dns request for domain %s", domain))
+	logger.Log(4, fmt.Sprintf("resolving dns query %s", r.Question[0].Name))
 
 	if config.Netclient().CurrGwNmIP != nil {
+		logger.Log(4, fmt.Sprintf(
+			"connected to gw, forwarding dns query %s to gw %s",
+			r.Question[0].Name,
+			config.Netclient().CurrGwNmIP.String()),
+		)
+
 		resp, err := exchangeDNSQueryWithPool(r, config.Netclient().CurrGwNmIP.String())
 		if err != nil {
 			if errors.Is(err, ErrNXDomain) {
@@ -95,17 +99,16 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	} else {
 		var foundDomainMatch bool
+		query := canonicalizeDomainForMatching(r.Question[0].Name)
+
 		for _, nameserver := range config.GetServer(config.CurrServer).DnsNameservers {
-			matchDomain := nameserver.MatchDomain
-			if !strings.HasPrefix(nameserver.MatchDomain, ".") {
-				matchDomain = "." + nameserver.MatchDomain
-			}
+			matchDomain := canonicalizeDomainForMatching(nameserver.MatchDomain)
 
-			if strings.HasSuffix(domain, matchDomain) {
+			if strings.HasSuffix(query, matchDomain) {
 				foundDomainMatch = true
-
 				for _, ns := range nameserver.IPs {
-					logger.Log(4, fmt.Sprintf("forwarding request to nameserver %s for domain %s", ns, matchDomain))
+					logger.Log(4, fmt.Sprintf("found domain match %s, forwarding dns query %s to nameserver %s", nameserver.MatchDomain, r.Question[0].Name, ns))
+
 					resp, err := exchangeDNSQueryWithPool(r, ns)
 					if err != nil || resp == nil || len(resp.Answer) == 0 {
 						continue
@@ -124,7 +127,8 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 
 		if !foundDomainMatch {
-			logger.Log(4, fmt.Sprintf("resolving %s locally", domain))
+			logger.Log(4, fmt.Sprintf("resolving dns query %s internally", r.Question[0].Name))
+
 			resp, err := GetDNSResolverInstance().Lookup(r)
 			if err != nil {
 				if errors.Is(err, ErrNXDomain) {
@@ -135,6 +139,49 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			} else {
 				reply.Authoritative = true
 				reply.Answer = append(reply.Answer, resp)
+			}
+		}
+
+		if reply.Rcode != dns.RcodeSuccess {
+			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with new system, falling back to old system", r.Question[0].Name))
+
+			reply = &dns.Msg{}
+			reply.SetReply(r)
+			reply.RecursionAvailable = true
+			reply.RecursionDesired = true
+			reply.Rcode = dns.RcodeSuccess
+
+			fallbackNameservers := config.Netclient().NameServers
+			server := config.GetServer(config.CurrServer)
+			if server != nil {
+				fallbackNameservers = append(fallbackNameservers, server.NameServers...)
+			}
+
+			if isInternetGW() {
+				fallbackNameservers = append(fallbackNameservers, []string{
+					"8.8.8.8",
+					"8.8.4.4",
+					"2001:4860:4860::8888",
+					"2001:4860:4860::8844",
+				}...)
+			}
+
+			for _, ns := range fallbackNameservers {
+				logger.Log(4, fmt.Sprintf("forwarding dns query %s to fallback nameserver %s", r.Question[0].Name, ns))
+
+				resp, err := exchangeDNSQueryWithPool(r, ns)
+				if err != nil || resp == nil || len(resp.Answer) == 0 {
+					continue
+				}
+
+				if resp.Rcode != dns.RcodeSuccess {
+					continue
+				}
+
+				if len(resp.Answer) > 0 {
+					reply.Answer = append(reply.Answer, resp.Answer...)
+					break
+				}
 			}
 		}
 	}
@@ -222,4 +269,16 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 	client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
 	resp, _, err := client.ExchangeWithConn(r, dnsConn)
 	return resp, err
+}
+
+func canonicalizeDomainForMatching(domain string) string {
+	if !strings.HasPrefix(domain, ".") {
+		domain = "." + domain
+	}
+
+	if !strings.HasSuffix(domain, ".") {
+		domain = domain + "."
+	}
+
+	return domain
 }
