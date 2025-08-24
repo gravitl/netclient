@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
@@ -48,27 +47,8 @@ func GetDNSResolverInstance() *DNSResolver {
 }
 
 func isInternetGW() bool {
-	defaultGatewayIP, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		return false
-	}
-
-	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return false
-	}
-
-	for _, node := range config.GetNodes() {
-		if node.Server != server.Name {
-			continue
-		}
-
-		if node.Address.IP.Equal(defaultGatewayIP) {
-			return true
-		}
-	}
-
-	return false
+	// TODO: let netclient know if it's an igw.
+	return true
 }
 
 // ServeDNS handles a DNS request
