@@ -246,10 +246,24 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
 		if !peerUpdate.DefaultGwIp.Equal(ip) {
-			err := wireguard.SetInternetGw(peerUpdate.DefaultGwIp)
-			if err != nil {
-				slog.Error("error setting default gateway", "error", err.Error())
-				return
+			if !wireguard.GetIGWMonitor().IsCurrentIGW(ip) {
+				var igw wgtypes.PeerConfig
+				for _, peer := range peerUpdate.Peers {
+					for _, peerIP := range peer.AllowedIPs {
+						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
+							igw = peer
+							break
+						}
+					}
+				}
+
+				_ = wireguard.RestoreInternetGw()
+
+				err = wireguard.SetInternetGw(igw.PublicKey.String(), peerUpdate.DefaultGwIp)
+				if err != nil {
+					slog.Error("error setting default gateway", "error", err.Error())
+					return
+				}
 			}
 		}
 	} else {
@@ -522,7 +536,7 @@ func resetInterfaceFunc() {
 	}
 	if server.ManageDNS {
 		// if dns.GetDNSServerInstance().AddrStr == "" {
-		// 	dns.GetDNSServerInstance().Start()
+		// 	dns.GetDNSServerInstance().Monitor()
 		// }
 
 		//Setup DNS for Linux and Windows
@@ -772,10 +786,24 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if pullResponse.ChangeDefaultGw {
 		//only update if the current gateway ip is not the same as desired
 		if !pullResponse.DefaultGwIp.Equal(ip) {
-			err := wireguard.SetInternetGw(pullResponse.DefaultGwIp)
-			if err != nil {
-				slog.Error("error setting default gateway", "error", err.Error())
-				return
+			if !wireguard.GetIGWMonitor().IsCurrentIGW(ip) {
+				var igw wgtypes.PeerConfig
+				for _, peer := range pullResponse.Peers {
+					for _, peerIP := range peer.AllowedIPs {
+						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
+							igw = peer
+							break
+						}
+					}
+				}
+
+				_ = wireguard.RestoreInternetGw()
+
+				err := wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
+				if err != nil {
+					slog.Error("error setting default gateway", "error", err.Error())
+					return
+				}
 			}
 		}
 	} else {
