@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
+	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -45,14 +47,8 @@ const (
 )
 
 var (
-	Mqclient     mqtt.Client
-	messageCache = new(sync.Map)
+	Mqclient mqtt.Client
 )
-
-type cachedMessage struct {
-	Message  string
-	LastSeen time.Time
-}
 
 // Daemon runs netclient daemon
 func Daemon() {
@@ -317,6 +313,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		time.Sleep(time.Second * 45)
 		callPublishMetrics(true)
 	}()
+	go func() {
+		fmt.Println("========> pprof on 127.0.0.1:6060")
+		if err := http.ListenAndServe("127.0.0.1:6060", nil); err != nil {
+			log.Fatal(err)
+		}
+		select {}
+	}()
 
 	return cancel
 }
@@ -562,30 +565,6 @@ func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
 	}
 
 	return plaintext, nil
-}
-
-func read(network, which string) string {
-	val, isok := messageCache.Load(fmt.Sprintf("%s%s", network, which))
-	if isok {
-		var readMessage = val.(cachedMessage) // fetch current cached message
-		if readMessage.LastSeen.IsZero() {
-			return ""
-		}
-		if time.Now().After(readMessage.LastSeen.Add(time.Hour * 24)) { // check if message has been there over a minute
-			messageCache.Delete(fmt.Sprintf("%s%s", network, which)) // remove old message if expired
-			return ""
-		}
-		return readMessage.Message // return current message if not expired
-	}
-	return ""
-}
-
-func insert(network, which, cache string) {
-	var newMessage = cachedMessage{
-		Message:  cache,
-		LastSeen: time.Now(),
-	}
-	messageCache.Store(fmt.Sprintf("%s%s", network, which), newMessage)
 }
 
 // on a delete usually, pass in the nodecfg to unsubscribe client broker communications

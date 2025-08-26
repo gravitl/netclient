@@ -6,6 +6,8 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package main
 
 import (
+	_ "net/http/pprof" // registers /debug/pprof/*
+
 	"github.com/gravitl/netclient/cmd"
 	"github.com/gravitl/netclient/config"
 )

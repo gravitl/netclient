@@ -75,13 +75,6 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	newNode := config.Node{}
 	newNode.CommonNode = serverNode.CommonNode
 
-	// see if cache hit, if so skip
-	var currentMessage = read(newNode.Network, lastNodeUpdate)
-	if currentMessage == string(data) {
-		slog.Info("cache hit on node update ... skipping")
-		return
-	}
-	insert(newNode.Network, lastNodeUpdate, string(data)) // store new message in cache
 	slog.Info("received node update", "node", newNode.ID, "network", newNode.Network)
 	// check if interface needs to delta
 	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
@@ -142,7 +135,7 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling DNS data", "error", err)
 		return
 	}
-
+	fmt.Printf("====> DNS ENTRIES: %s,  %+v", network, dnsEntries)
 	if len(dnsEntries) > 0 {
 		err = dns.SyncDNS(network, dnsEntries)
 		if err != nil {
