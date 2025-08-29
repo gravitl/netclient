@@ -3,14 +3,14 @@
 sh -c rc-status
 #Define cleanup
 cleanup() {
-    ip rule delete pref 3000
-    ip rule delete pref 2500
-    ip rule delete pref 2000
+    ip rule delete pref 3000 2>/dev/null || true
+    ip rule delete pref 2500 2>/dev/null || true
+    ip rule delete pref 2000 2>/dev/null || true
     echo "deleting interface" $net
     if [ "${IFACE_NAME}" == "" ];then
         IFACE_NAME="netmaker"
     fi
-    ip link del $IFACE_NAME
+    ip link del $IFACE_NAME 2>/dev/null || true
 }
 
 
@@ -74,7 +74,12 @@ if [ "${IFACE_NAME}" != "" ];then
     IFACE_CMD="-I ${IFACE_NAME}"
 fi
 
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $STATIC_PORT_CMD $IFACE_CMD $ENDPOINT6_CMD
+FIREWALL_CMD=""
+if [ "${FIREWALL}" != "" ];then
+   FIREWALL_CMD="-f ${FIREWALL}"
+fi
+
+netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $STATIC_PORT_CMD $IFACE_CMD $ENDPOINT6_CMD $FIREWALL_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 tail -f /var/log/netclient.log &

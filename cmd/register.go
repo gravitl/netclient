@@ -15,11 +15,13 @@ import (
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
 var registerFlags = struct {
+	Firewall    string
 	Server      string
 	User        string
 	Token       string
@@ -46,6 +48,7 @@ var registerFlags = struct {
 	Static:      "static-endpoint",
 	Name:        "name",
 	Interface:   "interface",
+	Firewall:    "firewall",
 }
 
 // registerCmd represents the register command
@@ -125,6 +128,24 @@ func setHostFields(cmd *cobra.Command) {
 		fmt.Println("endpoint from command: ", endpointIP)
 		fmt.Println("error: static endpoint is enabled, please specify valid endpoint ip with -e option")
 		os.Exit(1)
+	}
+	if firewall, err := cmd.Flags().GetString(registerFlags.Firewall); err == nil {
+		if ncutils.IsLinux() && (firewall == models.FIREWALL_IPTABLES || firewall == models.FIREWALL_NFTABLES) {
+			// check if firewall is present
+			if firewall == models.FIREWALL_IPTABLES {
+				if !ncutils.IsIPTablesPresent() {
+					fmt.Println("iptables is not present")
+					os.Exit(1)
+				}
+			}
+			if firewall == models.FIREWALL_NFTABLES {
+				if !ncutils.IsNFTablesPresent() {
+					fmt.Println("nftables is not present")
+					os.Exit(1)
+				}
+			}
+			config.Netclient().FirewallInUse = firewall
+		}
 	}
 }
 func validateIface(iface string) bool {
@@ -206,5 +227,6 @@ func init() {
 	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	registerCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
+	registerCmd.Flags().StringP(registerFlags.Firewall, "f", "", "selects firewall to use on host")
 	rootCmd.AddCommand(registerCmd)
 }
