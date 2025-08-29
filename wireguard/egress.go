@@ -31,6 +31,33 @@ var egressRoutesCacheMutex = &sync.Mutex{}
 var HaEgressTicker *time.Ticker
 var HaEgressCheckInterval = time.Second * 2
 var haEgressPeerCache = make(map[string][]net.IPNet)
+var egressDomainCache = []models.EgressDomain{}
+var egressDomainAnswers = make(map[string][]string)
+var egressDomainCacheMutex = &sync.Mutex{}
+
+func SetEgressDomains(egressDomains []models.EgressDomain) {
+	egressDomainCacheMutex.Lock()
+	defer egressDomainCacheMutex.Unlock()
+	egressDomainCache = egressDomains
+}
+
+func GetEgressDomains() []models.EgressDomain {
+	egressDomainCacheMutex.Lock()
+	defer egressDomainCacheMutex.Unlock()
+	return egressDomainCache
+}
+
+func SetDomainAnsInCache(egressDomain models.EgressDomain, ips []string) {
+	egressDomainCacheMutex.Lock()
+	defer egressDomainCacheMutex.Unlock()
+	egressDomainAnswers[egressDomain.ID] = ips
+}
+
+func GetDomainAnsFromCache(egressDomain models.EgressDomain) (ips []string) {
+	egressDomainCacheMutex.Lock()
+	defer egressDomainCacheMutex.Unlock()
+	return egressDomainAnswers[egressDomain.ID]
+}
 
 func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
 	egressRoutesCacheMutex.Lock()

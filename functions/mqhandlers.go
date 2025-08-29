@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -292,6 +293,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
+	if len(peerUpdate.EgressWithDomains) > 0 {
+		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
+	}
+	go CheckEgressDomainUpdates()
 
 	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
 		server.NameServers = peerUpdate.NameServers
@@ -495,6 +500,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			mqFallbackPull(response, resetInterface, replacePeers)
 		}
 		writeToDisk = false
+	case models.EgressUpdate:
+
+		slog.Info("processing egress update", "domain", hostUpdate.EgressDomain.Domain)
+		go processEgressDomain(hostUpdate.EgressDomain)
+
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -571,10 +581,10 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 			}
 		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
-			if peerInfo.IsStatic {
-				// peer is a static host shouldn't disturb the configuration set by the user
-				continue
-			}
+			// if peerInfo.IsStatic {
+			// 	// peer is a static host shouldn't disturb the configuration set by the user
+			// 	continue
+			// }
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
@@ -836,9 +846,99 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
+	if len(pullResponse.EgressWithDomains) > 0 {
+		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
+	}
+	go CheckEgressDomainUpdates()
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if resetInterface {
 		resetInterfaceFunc()
 	}
+}
+
+func CheckEgressDomainUpdates() {
+	egressDomains := wireguard.GetEgressDomains()
+	for _, domainI := range egressDomains {
+		processEgressDomain(domainI)
+	}
+
+}
+
+func processEgressDomain(domainI models.EgressDomain) {
+	slog.Info("processing egress update", "domain", domainI.Domain)
+
+	// Resolve domain to IP addresses
+	ips, err := resolveDomainToIPs(domainI.Domain)
+	if err != nil {
+		slog.Error("failed to resolve egress domain", "domain", domainI.Domain, "error", err)
+	}
+	if len(ips) == 0 {
+		return
+	}
+	// Add resolved IPs to the host update
+	if domainI.Node.EgressGatewayRanges == nil {
+		domainI.Node.EgressGatewayRanges = []string{}
+	}
+
+	for _, ip := range ips {
+		// Add as /32 for IPv4 or /128 for IPv6
+		if net.ParseIP(ip).To4() != nil {
+			domainI.Node.EgressGatewayRanges = append(domainI.Node.EgressGatewayRanges, ip+"/32")
+		} else {
+			domainI.Node.EgressGatewayRanges = append(domainI.Node.EgressGatewayRanges, ip+"/128")
+		}
+	}
+	if currentIps := wireguard.GetDomainAnsFromCache(domainI); len(currentIps) > 0 {
+		slices.Sort(currentIps)
+		slices.Sort(ips)
+		if slices.Equal(currentIps, ips) {
+			return
+		}
+	}
+
+	slog.Info("resolved domain for egress update", "domain", domainI.Domain, "ips", ips)
+
+	// Send the updated host info back to server
+	hostServerUpdate(models.HostUpdate{
+		Action:       models.EgressUpdate,
+		Host:         domainI.Host,
+		Node:         domainI.Node,
+		EgressDomain: domainI,
+	})
+}
+
+// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
+func resolveDomainToIPs(domain string) ([]string, error) {
+	if domain == "" {
+		return nil, fmt.Errorf("domain cannot be empty")
+	}
+
+	// Use the existing DNS infrastructure to resolve the domain
+	ips := dns.FindDnsAns(domain)
+	if len(ips) == 0 {
+		lookUpIPs, err := net.LookupIP(domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
+		}
+		if len(lookUpIPs) == 0 {
+			return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+		}
+		ips = lookUpIPs
+	}
+
+	// Filter out any invalid IPs and return unique IPs
+	uniqueIPs := make(map[string]string)
+	for _, ip := range ips {
+		if ip != nil {
+			uniqueIPs[ip.String()] = ip.String()
+		}
+	}
+
+	result := make([]string, 0, len(uniqueIPs))
+	for _, ip := range uniqueIPs {
+		result = append(result, ip)
+	}
+
+	return result, nil
 }

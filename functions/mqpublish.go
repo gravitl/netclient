@@ -416,6 +416,7 @@ func UpdateHostSettings(fallback bool) error {
 			}
 		}
 	}
+	go CheckEgressDomainUpdates()
 	if restartDaemon {
 		if err := daemon.Restart(); err != nil {
 			slog.Error("failed to restart daemon", "error", err)
