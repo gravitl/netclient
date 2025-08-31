@@ -15,7 +15,7 @@ import (
 
 const ExecDir = "/sbin/"
 
-func install() error {
+func install(onprem bool) error {
 	slog.Info("installing netclient binary")
 	binarypath, err := os.Executable()
 	if err != nil {
@@ -33,7 +33,7 @@ func install() error {
 	slog.Info("install netclient service file")
 	switch config.Netclient().InitType {
 	case config.Systemd:
-		return setupSystemDDaemon()
+		return setupSystemDDaemon(onprem)
 	case config.SysVInit:
 		return setupSysVint()
 	case config.OpenRC:

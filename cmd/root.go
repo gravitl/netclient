@@ -6,11 +6,14 @@ package cmd
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 
+	"github.com/devilcove/httpclient"
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -55,6 +58,10 @@ func init() {
 	rootCmd.PersistentFlags().IntP("verbosity", "v", 0, "set logging verbosity 0-4")
 	viper.BindPFlags(rootCmd.Flags())
 
+	// nodehisft on-prem
+	httpclient.Client.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 }
@@ -96,7 +103,8 @@ func InitConfig(viper *viper.Viper) {
 	config.ReadNodeConfig()
 	config.ReadServerConf()
 	config.SetServerCtx()
-	checkConfig()
+
+	checkConfig(true)
 	//check netclient dirs exist
 	if _, err := os.Stat(config.GetNetclientPath()); err != nil {
 		if os.IsNotExist(err) {
@@ -147,7 +155,7 @@ func setupLogging(flags *viper.Viper) {
 }
 
 // checkConfig - verifies and updates configuration settings
-func checkConfig() {
+func checkConfig(onprem bool) {
 	fail := false
 	saveRequired := false
 	netclient := config.Netclient()
@@ -227,9 +235,16 @@ func checkConfig() {
 			saveRequired = true
 		}
 	}
+	if onprem {
+		netclient.MTU = config.DefaultMTUOnPrem
+	}
+
 	if netclient.MTU == 0 {
 		logger.Log(0, "setting MTU")
 		netclient.MTU = config.DefaultMTU
+		if onprem {
+			netclient.MTU = config.DefaultMTUOnPrem
+		}
 	}
 
 	if len(netclient.TrafficKeyPrivate) == 0 {

@@ -21,7 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
+var (
 	// LinuxAppDataPath - linux path
 	LinuxAppDataPath = "/etc/netclient/"
 	// MacAppDataPath - mac path
@@ -37,7 +37,8 @@ const (
 	// DefaultListenPort default port for wireguard
 	DefaultListenPort = 51821
 	// DefaultMTU default MTU for wireguard
-	DefaultMTU = 1420
+	DefaultMTU       = 1420
+	DefaultMTUOnPrem = 1320
 )
 
 const (

@@ -1,7 +1,10 @@
 package daemon
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"html/template"
 	"os"
 
 	"github.com/gravitl/netclient/ncutils"
@@ -9,10 +12,8 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// setupSystemDDaemon - sets system daemon for supported machines
-func setupSystemDDaemon() error {
-	systemservice := `[Unit]
-Description=Netclient Daemon
+var systemdTemplate = `[Unit]
+Description=Nodeshift Netclient Daemon
 Documentation=https://docs.netmaker.org https://k8s.netmaker.org
 After=network-online.target
 Wants=network-online.target
@@ -21,7 +22,11 @@ Wants=network-online.target
 User=root
 Type=simple
 ExecStartPre=/bin/sleep 17
+{{- if .OnPrem }}
+ExecStart=/sbin/netclient daemon --onprem
+{{- else }}
 ExecStart=/sbin/netclient daemon
+{{- end }}
 Restart=on-failure
 RestartSec=15s
 
@@ -29,7 +34,23 @@ RestartSec=15s
 WantedBy=multi-user.target
 `
 
-	servicebytes := []byte(systemservice)
+type UnitData struct {
+	OnPrem bool
+}
+
+// setupSystemDDaemon - sets system daemon for supported machines
+func setupSystemDDaemon(onprem bool) error {
+	tmpl, err := template.New("unit").Parse(systemdTemplate)
+	if err != nil {
+		return fmt.Errorf("error parsing systemd template: %w", err)
+	}
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, UnitData{OnPrem: onprem})
+	if err != nil {
+		return fmt.Errorf("error executing systemd template: %w", err)
+	}
+
+	servicebytes := []byte(buf.Bytes())
 
 	if !ncutils.FileExists("/etc/systemd/system/netclient.service") {
 		err := os.WriteFile("/etc/systemd/system/netclient.service", servicebytes, 0644)

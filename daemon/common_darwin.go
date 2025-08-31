@@ -15,7 +15,7 @@ const MacServiceName = "com.gravitl.netclient"
 const MacExecDir = "/usr/local/bin/"
 
 // install- Creates a daemon service from the netclient under LaunchAgents for MacOS
-func install() error {
+func install(onprem bool) error {
 	stop()
 	binarypath, err := os.Executable()
 	if err != nil {

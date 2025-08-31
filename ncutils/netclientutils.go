@@ -12,7 +12,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -123,71 +122,71 @@ func IsEmptyRecord(err error) bool {
 }
 
 // GetPublicIP - gets public ip
-func GetPublicIP(api string) (net.IP, error) {
+// func GetPublicIP(api string) (net.IP, error) {
 
-	iplist := []string{"https://ifconfig.me", "https://api.ipify.org", "https://ipinfo.io/ip"}
+// 	iplist := []string{"https://ifconfig.me", "https://api.ipify.org", "https://ipinfo.io/ip"}
 
-	if api != "" {
-		api = "https://" + api + "/api/getip"
-		iplist = append([]string{api}, iplist...)
-	}
+// 	if api != "" {
+// 		api = "https://" + api + "/api/getip"
+// 		iplist = append([]string{api}, iplist...)
+// 	}
 
-	endpoint := ""
-	var err error
-	for _, ipserver := range iplist {
-		client := &http.Client{
-			Timeout: time.Second * 10,
-		}
-		resp, err := client.Get(ipserver)
-		if err != nil {
-			continue
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				continue
-			}
-			endpoint = string(bodyBytes)
-			break
-		}
-	}
-	if err == nil && endpoint == "" {
-		err = errors.New("public address not found")
-	}
-	return net.ParseIP(endpoint), err
-}
+// 	endpoint := ""
+// 	var err error
+// 	for _, ipserver := range iplist {
+// 		client := &http.Client{
+// 			Timeout: time.Second * 10,
+// 		}
+// 		resp, err := client.Get(ipserver)
+// 		if err != nil {
+// 			continue
+// 		}
+// 		defer resp.Body.Close()
+// 		if resp.StatusCode == http.StatusOK {
+// 			bodyBytes, err := io.ReadAll(resp.Body)
+// 			if err != nil {
+// 				continue
+// 			}
+// 			endpoint = string(bodyBytes)
+// 			break
+// 		}
+// 	}
+// 	if err == nil && endpoint == "" {
+// 		err = errors.New("public address not found")
+// 	}
+// 	return net.ParseIP(endpoint), err
+// }
 
 // GetPublicIPv6 - gets public ipv6 address
-func GetPublicIPv6() (net.IP, error) {
+// func GetPublicIPv6() (net.IP, error) {
 
-	iplist := []string{"https://ifconfig.me"}
+// 	iplist := []string{"https://ifconfig.me"}
 
-	endpoint := ""
-	var err error
-	for _, ipserver := range iplist {
-		client := &http.Client{
-			Timeout: time.Second * 10,
-		}
-		resp, err := client.Get(ipserver)
-		if err != nil {
-			continue
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				continue
-			}
-			endpoint = string(bodyBytes)
-			break
-		}
-	}
-	if err == nil && endpoint == "" {
-		err = errors.New("public ipv6 address not found")
-	}
-	return net.ParseIP(endpoint), err
-}
+// 	endpoint := ""
+// 	var err error
+// 	for _, ipserver := range iplist {
+// 		client := &http.Client{
+// 			Timeout: time.Second * 10,
+// 		}
+// 		resp, err := client.Get(ipserver)
+// 		if err != nil {
+// 			continue
+// 		}
+// 		defer resp.Body.Close()
+// 		if resp.StatusCode == http.StatusOK {
+// 			bodyBytes, err := io.ReadAll(resp.Body)
+// 			if err != nil {
+// 				continue
+// 			}
+// 			endpoint = string(bodyBytes)
+// 			break
+// 		}
+// 	}
+// 	if err == nil && endpoint == "" {
+// 		err = errors.New("public ipv6 address not found")
+// 	}
+// 	return net.ParseIP(endpoint), err
+// }
 
 // GetMacAddr - get's mac address
 func GetMacAddr() ([]net.HardwareAddr, error) {

@@ -25,6 +25,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -48,7 +49,7 @@ type cachedMessage struct {
 }
 
 // Daemon runs netclient daemon
-func Daemon() {
+func Daemon(onprem bool) {
 	slog.Info("starting netclient daemon", "version", config.Version)
 	daemon.RemoveAllLockFiles()
 	go deleteAllDNS()
@@ -70,7 +71,7 @@ func Daemon() {
 	if err != nil {
 		logger.Log(0, "failed to intialize firewall: ", err.Error())
 	}
-	cancel := startGoRoutines(&wg)
+	cancel := startGoRoutines(&wg, onprem)
 
 	for {
 		select {
@@ -92,7 +93,7 @@ func Daemon() {
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
-			cancel = startGoRoutines(&wg)
+			cancel = startGoRoutines(&wg, onprem)
 		}
 	}
 }
@@ -137,7 +138,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 }
 
 // startGoRoutines starts the daemon goroutines
-func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
+func startGoRoutines(wg *sync.WaitGroup, onprem bool) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := config.ReadNetclientConfig(); err != nil {
 		slog.Warn("error reading netclient config file", "error", err)
@@ -170,7 +171,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	if !config.Netclient().IsStatic {
 		// IPV4
-		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, config.Netclient().ListenPort)
+		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, config.Netclient().ListenPort, onprem)
 		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			config.Netclient().EndpointIP = config.HostPublicIP
@@ -185,7 +186,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 		// IPV6
-		publicIP6, wgport, natType := holePunchWgPort(6, config.Netclient().ListenPort)
+		publicIP6, wgport, natType := holePunchWgPort(6, config.Netclient().ListenPort, onprem)
 		if publicIP6 != nil && !publicIP6.IsUnspecified() {
 			config.Netclient().EndpointIPv6 = publicIP6
 			config.HostPublicIP6 = publicIP6
@@ -261,7 +262,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
-	go Checkin(ctx, wg)
+	go Checkin(ctx, wg, onprem)
 	wg.Add(1)
 	go networking.StartIfaceDetection(ctx, wg, config.Netclient().ListenPort, 4)
 	wg.Add(1)
@@ -533,11 +534,23 @@ func UpdateKeys() error {
 	return nil
 }
 
-func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
+func holePunchWgPort(proto, portToStun int, onprem bool) (pubIP net.IP, pubPort int, natType string) {
+
+	if onprem {
+		publicIP, err := GetPublicIP(uint(proto), onprem)
+		if err != nil {
+			slog.Warn("failed to get publicIP onprem", "error", err)
+			return
+		}
+		pubIP = publicIP
+		pubPort = portToStun
+
+		return
+	}
 
 	pubIP, pubPort, natType = stun.HolePunch(portToStun, proto)
 	if pubIP == nil || pubIP.IsUnspecified() { // if stun has failed fallback to ip service to get publicIP
-		publicIP, err := GetPublicIP(uint(proto))
+		publicIP, err := GetPublicIP(uint(proto), onprem)
 		if err != nil {
 			slog.Warn("failed to get publicIP", "error", err)
 			return
@@ -548,19 +561,87 @@ func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType 
 	return
 }
 
-func GetPublicIP(proto uint) (net.IP, error) {
-	// Create the default consensus,
-	// using the default configuration and no logger.
-	consensus := externalip.NewConsensus(&externalip.ConsensusConfig{
-		Timeout: time.Second * 10,
-	}, nil)
-	consensus.AddVoter(externalip.NewHTTPSource("https://icanhazip.com/"), 3)
-	consensus.AddVoter(externalip.NewHTTPSource("https://ifconfig.me/ip"), 3)
-	consensus.AddVoter(externalip.NewHTTPSource("https://myexternalip.com/raw"), 3)
-	// By default Ipv4 or Ipv6 is returned,
-	// use the function below to limit yourself to IPv4,
-	// or pass in `6` instead to limit yourself to IPv6.
-	consensus.UseIPProtocol(proto)
-	// Get your IP,
-	return consensus.ExternalIP()
+func GetPublicIP(proto uint, onprem bool) (net.IP, error) {
+	if !onprem {
+		// Create the default consensus,
+		// using the default configuration and no logger.
+		consensus := externalip.NewConsensus(&externalip.ConsensusConfig{
+			Timeout: time.Second * 10,
+		}, nil)
+		consensus.AddVoter(externalip.NewHTTPSource("https://icanhazip.com/"), 3)
+		consensus.AddVoter(externalip.NewHTTPSource("https://ifconfig.me/ip"), 3)
+		consensus.AddVoter(externalip.NewHTTPSource("https://myexternalip.com/raw"), 3)
+		// By default Ipv4 or Ipv6 is returned,
+		// use the function below to limit yourself to IPv4,
+		// or pass in `6` instead to limit yourself to IPv6.
+		consensus.UseIPProtocol(proto)
+		// Get your IP,
+		return consensus.ExternalIP()
+	}
+
+	dst := net.ParseIP("155.10.10.10")
+
+	routes, err := netlink.RouteGet(dst)
+	if err != nil || len(routes) == 0 {
+		slog.Error("failed to get IP by using RouteGet, fallback to route list", "error", err)
+		return getPublicUsingRouteList(proto)
+	}
+
+	return routes[0].Src, nil
+}
+
+func getPublicUsingRouteList(proto uint) (net.IP, error) {
+	family := syscall.AF_INET
+	if proto == 6 {
+		family = syscall.AF_INET6
+	}
+
+	routes, err := netlink.RouteList(nil, family)
+	if err != nil {
+		return nil, err
+	}
+
+	var best *netlink.Route
+	for i := range routes {
+		r := &routes[i]
+		if r.Dst == nil {
+			if best == nil || r.Priority < best.Priority {
+				best = r
+			}
+		}
+	}
+	if best == nil {
+		return nil, fmt.Errorf("no default route found")
+	}
+
+	if best.Src != nil {
+		return best.Src, nil
+	}
+
+	link, err := netlink.LinkByIndex(best.LinkIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	addrs, err := netlink.AddrList(link, family)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, a := range addrs {
+		if proto == 4 {
+			if ip4 := a.IP.To4(); ip4 != nil {
+				return ip4, nil
+			}
+
+			continue
+		}
+
+		if ip6 := a.IP.To16(); ip6 != nil && ip6.To4() == nil {
+			return ip6, nil
+		}
+
+	}
+
+	return nil, fmt.Errorf("no suitable address found")
 }

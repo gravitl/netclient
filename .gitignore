@@ -17,3 +17,5 @@ launch.json
 backup/*
 dist/*
 /.idea
+/bin
+/bin/*
