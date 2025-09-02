@@ -65,6 +65,8 @@ func initConfig() {
 	InitConfig(flags)
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
+	port := 0
+	nc.Config.ListenPort = &port
 	if runtime.GOOS == "darwin" {
 		nc.Name = "utun70"
 	}
