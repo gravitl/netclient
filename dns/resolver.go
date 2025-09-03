@@ -185,24 +185,21 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 func FindDnsAns(domain string) []net.IP {
-
-	nslist := config.Netclient().NameServers
+	nslist := []string{}
+	if config.Netclient().CurrGwNmIP != nil {
+		nslist = append(nslist, config.Netclient().CurrGwNmIP.String())
+	} else {
+		query := canonicalizeDomainForMatching(domain)
+		matchNsList := findBestMatch(query, config.GetServer(config.CurrServer).DnsNameservers)
+		for i := len(matchNsList) - 1; i >= 0; i-- {
+			nslist = append(nslist, matchNsList[i].IPs...)
+		}
+	}
 	nslist = append(nslist, "8.8.8.8")
 	nslist = append(nslist, "8.8.4.4")
 	nslist = append(nslist, "1.1.1.1")
 	nslist = append(nslist, "2001:4860:4860::8888")
 	nslist = append(nslist, "2001:4860:4860::8844")
-	//add curr nodeIPs to the list
-	nodes := config.GetNodes()
-	for _, node := range nodes {
-		if node.Address.IP != nil {
-			nslist = append(nslist, node.Address.IP.String())
-		}
-		if node.Address6.IP != nil {
-			nslist = append(nslist, node.Address6.IP.String())
-		}
-
-	}
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
 		nslist = append(nslist, server.NameServers...)
