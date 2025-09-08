@@ -1736,7 +1736,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 
 	if len(aclRule.IP6List) > 0 {
 		for _, ip := range aclRule.IP6List {
-			if len(aclRule.IP6List) > 0 {
+			if len(aclRule.Dst6) > 0 {
 				for _, dstI := range aclRule.Dst6 {
 					if dstI.IP == nil {
 						continue
