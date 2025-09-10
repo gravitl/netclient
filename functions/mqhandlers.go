@@ -858,29 +858,67 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 }
 
 func CheckEgressDomainUpdates() {
+	slog.Debug("checking egress domain updates")
+
 	egressDomains := wireguard.GetEgressDomains()
-	for _, domainI := range egressDomains {
-		processEgressDomain(domainI)
+	if len(egressDomains) == 0 {
+		slog.Debug("no egress domains to process")
+		return
 	}
 
+	slog.Info("processing egress domains", "count", len(egressDomains))
+	for _, domainI := range egressDomains {
+		slog.Debug("checking egress domain", "domain", domainI.Domain)
+		processEgressDomain(domainI)
+	}
 }
 
 func processEgressDomain(domainI models.EgressDomain) {
-	slog.Info("processing egress update", "domain", domainI.Domain)
+	slog.Info("processing egress domain", "domain", domainI.Domain)
 
 	// Resolve domain to IP addresses
 	ips, err := resolveDomainToIPs(domainI.Domain)
 	if err != nil {
 		slog.Error("failed to resolve egress domain", "domain", domainI.Domain, "error", err)
-	}
-	if len(ips) == 0 {
 		return
 	}
-	// Add resolved IPs to the host update
-	if domainI.Node.EgressGatewayRanges == nil {
-		domainI.Node.EgressGatewayRanges = []string{}
+	if len(ips) == 0 {
+		slog.Warn("no IP addresses resolved for domain", "domain", domainI.Domain)
+		return
 	}
 
+	// Get current cached IPs for this domain
+	currentIps := wireguard.GetDomainAnsFromCache(domainI)
+	slog.Debug("domain resolution check", "domain", domainI.Domain, "domain_id", domainI.ID, "cached_ips", currentIps, "resolved_ips", ips)
+
+	// Check if there are any changes
+	hasChanges := false
+	if len(currentIps) == 0 {
+		// First time processing this domain or cache miss
+		hasChanges = true
+		slog.Info("first time processing domain or cache miss", "domain", domainI.Domain, "ips", ips)
+	} else {
+		// Compare current and new IPs
+		slices.Sort(currentIps)
+		slices.Sort(ips)
+		if !slices.Equal(currentIps, ips) {
+			hasChanges = true
+			slog.Info("domain IPs changed", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+		} else {
+			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
+		}
+	}
+
+	// Only proceed if there are changes
+	if !hasChanges {
+		slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
+		return
+	}
+
+	// Update the cache with new IPs only after confirming changes
+	wireguard.SetDomainAnsInCache(domainI, ips)
+	// Clear existing ranges and add new ones
+	domainI.Node.EgressGatewayRanges = []string{}
 	for _, ip := range ips {
 		// Add as /32 for IPv4 or /128 for IPv6
 		if net.ParseIP(ip).To4() != nil {
@@ -889,15 +927,8 @@ func processEgressDomain(domainI models.EgressDomain) {
 			domainI.Node.EgressGatewayRanges = append(domainI.Node.EgressGatewayRanges, ip+"/128")
 		}
 	}
-	if currentIps := wireguard.GetDomainAnsFromCache(domainI); len(currentIps) > 0 {
-		slices.Sort(currentIps)
-		slices.Sort(ips)
-		if slices.Equal(currentIps, ips) {
-			return
-		}
-	}
 
-	slog.Info("resolved domain for egress update", "domain", domainI.Domain, "ips", ips)
+	slog.Info("sending egress domain update to server", "domain", domainI.Domain, "ips", ips, "ranges", domainI.Node.EgressGatewayRanges)
 
 	// Send the updated host info back to server
 	hostServerUpdate(models.HostUpdate{
