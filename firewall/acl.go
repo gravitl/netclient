@@ -41,6 +41,10 @@ func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 				(!reflect.DeepEqual(localAclRule.IPList, aclRule.IPList)) ||
 				(len(localAclRule.IP6List) != len(aclRule.IP6List)) ||
 				(!reflect.DeepEqual(localAclRule.IP6List, aclRule.IP6List)) ||
+				(len(localAclRule.Dst) != len(aclRule.Dst)) ||
+				(!reflect.DeepEqual(localAclRule.Dst, aclRule.Dst)) ||
+				(len(localAclRule.Dst6) != len(aclRule.Dst6)) ||
+				(!reflect.DeepEqual(localAclRule.Dst6, aclRule.Dst6)) ||
 				(len(localAclRule.AllowedPorts) != len(aclRule.AllowedPorts)) ||
 				(!reflect.DeepEqual(localAclRule.AllowedPorts, aclRule.AllowedPorts)) ||
 				(aclRule.AllowedProtocol != localAclRule.AllowedProtocol) ||
