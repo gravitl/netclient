@@ -163,10 +163,7 @@ func hostServerUpdate(hu models.HostUpdate) error {
 }
 
 func checkin() {
-	if err := PublishHostUpdate(config.CurrServer, models.HostMqAction(models.CheckIn)); err != nil {
-		logger.Log(0, "error publishing checkin", err.Error())
-		return
-	}
+	hostServerUpdate(models.HostUpdate{Action: models.CheckIn})
 }
 
 // PublishNodeUpdate -- pushes node to broker
