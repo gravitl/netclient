@@ -22,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
@@ -893,9 +894,12 @@ func processEgressDomain(domainI models.EgressDomain) {
 
 	// Check if there are any changes
 	hasChanges := false
+	shouldUpdateCache := false
+
 	if len(currentIps) == 0 {
 		// First time processing this domain or cache miss
 		hasChanges = true
+		shouldUpdateCache = true
 		slog.Info("first time processing domain or cache miss", "domain", domainI.Domain, "ips", ips)
 	} else {
 		// Compare current and new IPs
@@ -904,18 +908,31 @@ func processEgressDomain(domainI models.EgressDomain) {
 		if !slices.Equal(currentIps, ips) {
 			hasChanges = true
 			slog.Info("domain IPs changed", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+
+			// Check if old IPs are still reachable before updating cache
+			oldIPsReachable := checkIPConnectivity(currentIps)
+			if !oldIPsReachable {
+				shouldUpdateCache = true
+				slog.Info("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+			} else {
+				slog.Info("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
+			}
 		} else {
 			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
 		}
 	}
 
-	// Only proceed if there are changes
-	if !hasChanges {
-		slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
+	// Only proceed if there are changes and we should update the cache
+	if !hasChanges || !shouldUpdateCache {
+		if !hasChanges {
+			slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
+		} else {
+			slog.Debug("skipping server update - old IPs are still reachable", "domain", domainI.Domain)
+		}
 		return
 	}
 
-	// Update the cache with new IPs only after confirming changes
+	// Update the cache with new IPs only after confirming changes and connectivity check
 	wireguard.SetDomainAnsInCache(domainI, ips)
 	// Clear existing ranges and add new ones
 	domainI.Node.EgressGatewayRanges = []string{}
@@ -937,6 +954,57 @@ func processEgressDomain(domainI models.EgressDomain) {
 		Node:         domainI.Node,
 		EgressDomain: domainI,
 	})
+}
+
+// checkIPConnectivity checks if all of the given IP addresses are reachable
+func checkIPConnectivity(ips []string) bool {
+	if len(ips) == 0 {
+		return false
+	}
+
+	// Check connectivity for each IP - ALL must be reachable
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			slog.Debug("invalid IP address", "ip", ipStr)
+			return false
+		}
+
+		ipReachable := false
+
+		// Use a simple TCP connection test to check reachability
+		// Try common ports that might be open (80, 443, 22)
+		ports := []int{80, 443, 22}
+		for _, port := range ports {
+			address := fmt.Sprintf("%s:%d", ipStr, port)
+			conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+			if err == nil {
+				conn.Close()
+				slog.Debug("IP is reachable", "ip", ipStr, "port", port)
+				ipReachable = true
+				break
+			}
+		}
+
+		// If TCP connection fails, try ICMP ping for external IPs
+		if !ipReachable {
+			// Use the existing ping functionality from metrics package
+			connected, _ := metrics.ExtPeerConnStatus(ipStr)
+			if connected {
+				slog.Debug("IP is reachable via ping", "ip", ipStr)
+				ipReachable = true
+			}
+		}
+
+		// If this IP is not reachable, fail the entire check
+		if !ipReachable {
+			slog.Debug("IP is not reachable", "ip", ipStr)
+			return false
+		}
+	}
+
+	slog.Debug("all IPs are reachable", "ips", ips)
+	return true
 }
 
 // resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
