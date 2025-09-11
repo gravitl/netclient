@@ -1,18 +1,23 @@
-# Netclient v1.0.0
+# Netclient v1.1.0
 
-## Whats New ✨
+## What’s New ✨ 
 
-- Gateways Unified: Internet Gateways are now merged into the general Gateway feature and available in Community Edition.
+- Egress Domain-Based Routing – Route traffic based on domain names, not just network CIDRs.
 
-- Site-to-Site over IPv6: IPv4 site-to-site communication over IPv6 Netmaker overlay tunnels.
+- DNS Nameservers with Match Domain Functionality – Fine-grained DNS resolution control per domain.
 
-## 🛠 Improvements & Fixes
+- Device Approval Workflow – Require admin approval before devices can join a network.
 
-- Auto-Sync DNS Configs: Multi-network DNS configurations now sync automatically between server and clients.
 
-- Stability Fixes: Improved connection reliability for nodes using Internet Gateways.
+## Improvements & Fixes 🛠 
 
-- LAN/Private Routing Enhancements: Smarter detection and handling of local/private routes, improving peer-to-peer communication in complex network environments.
+- Access Control Lists (ACLs): Enhanced functionality and flexibility.
+
+- Stability Enhancements: More reliable connections for nodes using Internet Gateways.
+
+- DNS: Linux DNS Config Fixes
+
+- Egress HA: Optimised Egress HA routing.
 
 ## Known Issues 🐞
 
