@@ -23,7 +23,7 @@ require (
 	github.com/miekg/dns v1.1.68
 	github.com/minio/selfupdate v0.6.0
 	github.com/sasha-s/go-deadlock v0.3.5
-	github.com/spf13/cobra v1.9.1
+	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.11.0
 	github.com/vishvananda/netlink v1.3.1
@@ -95,7 +95,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/txn2/txeh v1.5.5 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
