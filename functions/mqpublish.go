@@ -163,10 +163,7 @@ func hostServerUpdate(hu models.HostUpdate) error {
 }
 
 func checkin() {
-	if err := PublishHostUpdate(config.CurrServer, models.HostMqAction(models.CheckIn)); err != nil {
-		logger.Log(0, "error publishing checkin", err.Error())
-		return
-	}
+	hostServerUpdate(models.HostUpdate{Action: models.CheckIn})
 }
 
 // PublishNodeUpdate -- pushes node to broker
@@ -416,6 +413,7 @@ func UpdateHostSettings(fallback bool) error {
 			}
 		}
 	}
+	go CheckEgressDomainUpdates()
 	if restartDaemon {
 		if err := daemon.Restart(); err != nil {
 			slog.Error("failed to restart daemon", "error", err)

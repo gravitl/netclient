@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
 )
@@ -119,39 +118,14 @@ func (node *Node) PrimaryAddress() net.IPNet {
 
 // WriteNodeConfig writes the node map to disk
 func WriteNodeConfig() error {
-	lockfile := filepath.Join(os.TempDir(), NodeLockfile)
-	file := GetNetclientPath() + "nodes.json"
-	if _, err := os.Stat(file); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
-				return err
-			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "error setting permissions on "+GetNetclientPath(), err.Error())
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-	if err := Lock(lockfile); err != nil {
-		return err
-	}
-	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 	nodeMutex.Lock()
-	nodesI := Nodes
-	nodeMutex.Unlock()
-	j := json.NewEncoder(f)
-	j.SetIndent("", "    ")
-	err = j.Encode(nodesI)
-	if err != nil {
-		return err
-	}
-	return f.Sync()
+	defer nodeMutex.Unlock()
+	return WriteJSONAtomic(
+		filepath.Join(GetNetclientPath(), "nodes.json"),
+		Nodes,
+		filepath.Join(os.TempDir(), NodeLockfile),
+		0700,
+	)
 }
 
 // ConvertNode accepts a netmaker node struct and converts to the structs used by netclient

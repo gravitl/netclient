@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
 )
@@ -88,39 +87,14 @@ func ReadServerConf() error {
 
 // WriteServerConfig writes server map to disk
 func WriteServerConfig() error {
-	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
-	file := GetNetclientPath() + "servers.json"
-	if _, err := os.Stat(file); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(GetNetclientPath(), os.ModePerm); err != nil {
-				return err
-			}
-			if err := os.Chmod(GetNetclientPath(), 0775); err != nil {
-				logger.Log(0, "Error setting permissions on "+GetNetclientPath(), err.Error())
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-	if err := Lock(lockfile); err != nil {
-		return err
-	}
-	defer Unlock(lockfile)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0700)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 	serverMutex.Lock()
-	serversI := Servers
-	serverMutex.Unlock()
-	j := json.NewEncoder(f)
-	j.SetIndent("", "    ")
-	err = j.Encode(serversI)
-	if err != nil {
-		return err
-	}
-	return f.Sync()
+	defer serverMutex.Unlock()
+	return WriteJSONAtomic(
+		filepath.Join(GetNetclientPath(), "servers.json"),
+		Servers,
+		filepath.Join(os.TempDir(), ServerLockfile),
+		0700,
+	)
 }
 
 // SaveServer updates the server map with current server struct and writes map to disk

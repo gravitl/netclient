@@ -25,6 +25,11 @@ const (
 	resolvconfUplinkPath  = "/run/systemd/resolve/resolv.conf"
 )
 
+const (
+	configStartMarker = "# NETMAKER DNS CONFIG START"
+	configEndMarker   = "# NETMAKER DNS CONFIG END"
+)
+
 func isStubSupported() bool {
 	return config.Netclient().DNSManagerType == DNS_MANAGER_STUB
 }
@@ -63,6 +68,7 @@ func SetupDNSConfig() (err error) {
 	} else if isUplinkSupported() {
 		err = setupResolveUplink()
 	} else if isResolveconfSupported() {
+		err = setupResolveconf()
 	} else {
 		err = setupResolveconf()
 	}
@@ -82,6 +88,7 @@ func RestoreDNSConfig() (err error) {
 	} else if isUplinkSupported() {
 		err = restoreResolveUplink()
 	} else if isResolveconfSupported() {
+		err = restoreResolveconf()
 	} else {
 		err = restoreResolveconf()
 	}
@@ -257,15 +264,36 @@ func buildAddConfigContent() ([]string, error) {
 	}
 	lines := strings.Split(string(rawBytes), "\n")
 	lNo := 0
+	var foundMarkers bool
 	for i, line := range lines {
+		// If we found the start marker, we need to replace the content.
+		if strings.HasPrefix(line, configStartMarker) {
+			lNo = i
+			foundMarkers = true
+			break
+		}
+
 		if strings.HasPrefix(line, "nameserver") {
 			lNo = i
 			break
 		}
 	}
 
-	lines = slices.Insert(lines, lNo, ns)
-	lines = slices.Insert(lines, lNo, domains)
+	if foundMarkers && len(lines) > lNo+2 {
+		lines[lNo+1] = domains
+		lines[lNo+2] = ns
+	} else {
+		// Yes, we add the end marker first, then the config, and then the start marker.
+		// We always insert at lNo index, so at the end the config will be:
+		// lNo: 	configStartMarker
+		// lNo+1: 	search <domain>
+		// lNo+2: 	nameserver <nameserver>
+		// lNo+3: 	configEndMarker
+		lines = slices.Insert(lines, lNo, configEndMarker)
+		lines = slices.Insert(lines, lNo, ns)
+		lines = slices.Insert(lines, lNo, domains)
+		lines = slices.Insert(lines, lNo, configStartMarker)
+	}
 
 	return lines, nil
 }
@@ -394,15 +422,19 @@ func buildDeleteConfigContentUplink() ([]string, error) {
 	dnsIp = getIpFromServerString(dnsIp)
 	ns := "DNS=" + dnsIp
 
-	lNo := 21
+	var lNo int
+	var found bool
 	for i, line := range lines {
 		if strings.Contains(line, ns) {
 			lNo = i
+			found = true
 			break
 		}
 	}
 
-	lines = slices.Delete(lines, lNo, lNo+1)
+	if found {
+		lines = slices.Delete(lines, lNo, lNo+1)
+	}
 
 	return lines, nil
 }
@@ -429,16 +461,31 @@ func buildDeleteConfigContent() ([]string, error) {
 		return []string{}, err
 	}
 
-	lNo := 100
+	var lNo int
+	var found bool
+	var foundMarkers bool
 	for i, line := range lines {
+		if strings.Contains(line, configStartMarker) {
+			lNo = i
+			found = true
+			foundMarkers = true
+			break
+		}
 		if strings.Contains(line, domains) {
 			lNo = i
+			found = true
 			break
 		}
 	}
 
-	lines = slices.Delete(lines, lNo, lNo+1)
-	lines = slices.Delete(lines, lNo, lNo+1)
+	if found {
+		if foundMarkers && len(lines) > lNo+3 {
+			lines = slices.Delete(lines, lNo, lNo+4)
+		} else {
+			lines = slices.Delete(lines, lNo, lNo+1)
+			lines = slices.Delete(lines, lNo, lNo+1)
+		}
+	}
 
 	return lines, nil
 }
@@ -515,15 +562,19 @@ func buildDeleteConfigUplink() ([]string, error) {
 	dnsIp = getIpFromServerString(dnsIp)
 	ns := "nameserver " + dnsIp
 
-	lNo := 100
+	var lNo int
+	var found bool
 	for i, line := range lines {
 		if strings.Contains(line, ns) {
 			lNo = i
+			found = true
 			break
 		}
 	}
 
-	lines = slices.Delete(lines, lNo, lNo+1)
+	if found {
+		lines = slices.Delete(lines, lNo, lNo+1)
+	}
 
 	return lines, nil
 }

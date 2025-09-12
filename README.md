@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/gravitl/netmaker/releases">
-    <img src="https://img.shields.io/badge/Version-1.0.0-informational?style=flat-square" />
+    <img src="https://img.shields.io/badge/Version-1.1.0-informational?style=flat-square" />
   </a>
   <a href="https://hub.docker.com/r/gravitl/netclient/tags">
     <img src="https://img.shields.io/docker/pulls/gravitl/netclient?label=downloads" />
@@ -23,11 +23,11 @@ This is the client for Netmaker networks. To learn more about Netmaker, [see her
 
 ## Installation
 
-[https://docs.netmaker.io/docs/netclient#installation
-](https://docs.netmaker.io/docs/netclient#installation)
+[https://docs.netmaker.io/docs/client-installation/netclient#installation](https://docs.netmaker.io/docs/client-installation/netclient#installation)
+
 ## Usage
 
-[https://docs.netmaker.org/netclient.html#joining-a-network](https://docs.netmaker.io/docs/netclient#joining-a-network)
+[https://docs.netmaker.io/docs/client-installation/netclient#managing-netclient__joining-a-network](https://docs.netmaker.io/docs/client-installation/netclient#managing-netclient__joining-a-network)
 
 ## Join a network
 
