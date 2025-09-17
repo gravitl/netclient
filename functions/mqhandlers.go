@@ -221,8 +221,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	if peerUpdate.MetricsPort != server.MetricsPort {
+	if peerUpdate.MetricsPort != 0 && peerUpdate.MetricsPort != server.MetricsPort {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
+		server.MetricsPort = peerUpdate.MetricsPort
+		config.WriteServerConfig()
 		daemon.Restart()
 	}
 	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
@@ -787,8 +789,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-	if pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
+	if pullResponse.ServerConfig.MetricsPort != 0 && pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
+		config.WriteServerConfig()
 		daemon.Restart()
 	}
 	//get the current default gateway
