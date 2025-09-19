@@ -23,7 +23,6 @@ const (
 	resolvconfFileBkpPath          = "/etc/netclient/resolv.conf.nm.bkp"
 	uplinkResolvedConfOverrideDir  = "/etc/systemd/resolved.conf.d"
 	uplinkResolvedConfOverrideFile = "netmaker.conf"
-	resolvUplinkPath               = "/etc/systemd/resolved.conf"
 	resolvconfUplinkPath           = "/run/systemd/resolve/resolv.conf"
 )
 
@@ -364,59 +363,6 @@ func getDomains() (string, error) {
 	return domains, nil
 }
 
-func buildDeleteConfigContentUplink() ([]string, error) {
-
-	//get nameserver
-	dnsIp := GetDNSServerInstance().AddrStr
-	if dnsIp == "" {
-		return []string{}, errors.New("no listener is running")
-	}
-
-	f, err := os.Open(resolvUplinkPath)
-	if err != nil {
-		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
-		return []string{}, err
-	}
-	defer f.Close()
-
-	rawBytes, err := io.ReadAll(f)
-	if err != nil {
-		slog.Error("error reading file", "error", resolvUplinkPath, err.Error())
-		return []string{}, err
-	}
-	lines := strings.Split(string(rawBytes), "\n")
-
-	dnsIp = getIpFromServerString(dnsIp)
-	ns := "DNS=" + dnsIp
-
-	var lNo int
-	var found bool
-	var foundMarkers bool
-	for i, line := range lines {
-		if strings.Contains(line, configStartMarker) {
-			lNo = i
-			found = true
-			foundMarkers = true
-			break
-		}
-		if strings.Contains(line, ns) {
-			lNo = i
-			found = true
-			break
-		}
-	}
-
-	if found {
-		if foundMarkers && len(lines) > lNo+2 {
-			lines = slices.Delete(lines, lNo, lNo+3)
-		} else {
-			lines = slices.Delete(lines, lNo, lNo+1)
-		}
-	}
-
-	return lines, nil
-}
-
 func buildDeleteConfigContent() ([]string, error) {
 	f, err := os.Open(resolvconfFilePath)
 	if err != nil {
@@ -484,27 +430,6 @@ func restoreResolveUplink() error {
 		return err
 	}
 
-	return nil
-}
-
-func writeConfigUplink(lines []string) error {
-
-	f, err := os.OpenFile(resolvUplinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
-	if err != nil {
-		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
-		return err
-	}
-	defer f.Close()
-
-	for _, v := range lines {
-		if v != "" {
-			_, err = fmt.Fprintln(f, v)
-			if err != nil {
-				slog.Error("error writing file", "error", resolvUplinkPath, err.Error())
-				return err
-			}
-		}
-	}
 	return nil
 }
 
