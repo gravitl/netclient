@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -18,11 +19,12 @@ import (
 var dnsConfigMutex = sync.Mutex{} // used to mutex functions of the DNS
 
 const (
-	resolvconfFilePath    = "/etc/resolv.conf"
-	resolvconfFileBkpPath = "/etc/netclient/resolv.conf.nm.bkp"
-	resolvUplinkPath      = "/etc/systemd/resolved.conf"
-	resolvUplinkBkpPath   = "/etc/netclient/resolved.conf.nm.bkp"
-	resolvconfUplinkPath  = "/run/systemd/resolve/resolv.conf"
+	resolvconfFilePath             = "/etc/resolv.conf"
+	resolvconfFileBkpPath          = "/etc/netclient/resolv.conf.nm.bkp"
+	uplinkResolvedConfOverrideDir  = "/etc/systemd/resolved.conf.d"
+	uplinkResolvedConfOverrideFile = "netmaker.conf"
+	resolvUplinkPath               = "/etc/systemd/resolved.conf"
+	resolvconfUplinkPath           = "/run/systemd/resolve/resolv.conf"
 )
 
 const (
@@ -98,71 +100,27 @@ func RestoreDNSConfig() (err error) {
 	return err
 }
 
-func buildAddConfigContentUplink() ([]string, error) {
-	dnsIp, err := getDnsIp()
-	if err != nil {
-		return nil, err
-	}
-
-	ns := "DNS=" + dnsIp
-
-	f, err := os.Open(resolvUplinkPath)
-	if err != nil {
-		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
-		return []string{}, err
-	}
-	defer f.Close()
-
-	rawBytes, err := io.ReadAll(f)
-	if err != nil {
-		slog.Error("error reading file", "error", resolvUplinkPath, err.Error())
-		return []string{}, err
-	}
-	lines := strings.Split(string(rawBytes), "\n")
-	lNo := 21
-	for i, line := range lines {
-		if strings.HasPrefix(line, "#DNS=") {
-			lNo = i
-			break
-		}
-	}
-
-	lines = slices.Insert(lines, lNo, ns)
-
-	return lines, nil
-}
-
 func setupResolveUplink() (err error) {
-
-	// backup /etc/systemd/resolved.conf
-	err = backupResolveconfFile(resolvUplinkPath, resolvUplinkBkpPath)
+	err = os.MkdirAll(uplinkResolvedConfOverrideDir, 0755)
 	if err != nil {
-		slog.Error("could not backup ", resolvUplinkPath, "error", err.Error())
+		slog.Error("error ensuring resolved.conf override directory exists", "error", err.Error())
 		return err
 	}
 
-	// add nameserver
-	lines, err := buildAddConfigContentUplink()
+	dnsIP, err := getDnsIp()
 	if err != nil {
-		slog.Error("could not build config content", "error", err.Error())
+		slog.Error("error getting dns ip", "error", err.Error())
 		return err
 	}
 
-	f, err := os.OpenFile(resolvUplinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
-	if err != nil {
-		slog.Error("error opending file", "error", resolvUplinkPath, err.Error())
-		return err
-	}
-	defer f.Close()
+	content := fmt.Sprintf(`[Resolve]
+DNS=%s
+`, dnsIP)
 
-	for _, v := range lines {
-		if v != "" {
-			_, err = fmt.Fprintln(f, v)
-			if err != nil {
-				slog.Error("error writing file", "error", resolvUplinkPath, err.Error())
-				return err
-			}
-		}
+	err = os.WriteFile(filepath.Join(uplinkResolvedConfOverrideDir, uplinkResolvedConfOverrideFile), []byte(content), 0644)
+	if err != nil {
+		slog.Error("error writing resolved config override file (netmaker.conf)", "error", err.Error())
+		return err
 	}
 
 	_, err = ncutils.RunCmd("systemctl restart systemd-resolved", false)
@@ -283,16 +241,25 @@ func buildAddConfigContent() ([]string, error) {
 		lines[lNo+1] = domains
 		lines[lNo+2] = ns
 	} else {
-		// Yes, we add the end marker first, then the config, and then the start marker.
-		// We always insert at lNo index, so at the end the config will be:
+		// We insert at lNo index, so at the end the config will be:
+		// 0:		unmodified
+		// 1:		unmodified
+		// 2:		unmodified
+		// ...
+		// lNo-1:	unmodified
 		// lNo: 	configStartMarker
 		// lNo+1: 	search <domain>
 		// lNo+2: 	nameserver <nameserver>
 		// lNo+3: 	configEndMarker
-		lines = slices.Insert(lines, lNo, configEndMarker)
-		lines = slices.Insert(lines, lNo, ns)
-		lines = slices.Insert(lines, lNo, domains)
-		lines = slices.Insert(lines, lNo, configStartMarker)
+		// lNo+4:	value at lNo
+		// lNo+5: 	value at lNo+1
+		// ...
+		lines = slices.Insert(lines, lNo, []string{
+			configStartMarker,
+			ns,
+			domains,
+			configEndMarker,
+		}...)
 	}
 
 	return lines, nil
@@ -424,7 +391,14 @@ func buildDeleteConfigContentUplink() ([]string, error) {
 
 	var lNo int
 	var found bool
+	var foundMarkers bool
 	for i, line := range lines {
+		if strings.Contains(line, configStartMarker) {
+			lNo = i
+			found = true
+			foundMarkers = true
+			break
+		}
 		if strings.Contains(line, ns) {
 			lNo = i
 			found = true
@@ -433,7 +407,11 @@ func buildDeleteConfigContentUplink() ([]string, error) {
 	}
 
 	if found {
-		lines = slices.Delete(lines, lNo, lNo+1)
+		if foundMarkers && len(lines) > lNo+2 {
+			lines = slices.Delete(lines, lNo, lNo+3)
+		} else {
+			lines = slices.Delete(lines, lNo, lNo+1)
+		}
 	}
 
 	return lines, nil
@@ -491,16 +469,9 @@ func buildDeleteConfigContent() ([]string, error) {
 }
 
 func restoreResolveUplink() error {
-
-	lines, err := buildDeleteConfigContentUplink()
+	err := os.Remove(filepath.Join(uplinkResolvedConfOverrideDir, uplinkResolvedConfOverrideFile))
 	if err != nil {
-		slog.Warn("could not build config content", "error", err.Error())
-		return err
-	}
-
-	err = writeConfigUplink(lines)
-	if err != nil {
-		slog.Warn("could not write config content", "error", err.Error())
+		slog.Warn("error deleting resolved config override file", "error", err.Error())
 		return err
 	}
 	time.Sleep(1 * time.Second)
