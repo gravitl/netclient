@@ -1,6 +1,6 @@
 module github.com/gravitl/netclient
 
-go 1.23.0
+go 1.24.0
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
@@ -30,8 +30,8 @@ require (
 	golang.org/x/crypto v0.41.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.43.0
-	golang.org/x/sys v0.35.0
-	golang.org/x/term v0.34.0
+	golang.org/x/sys v0.36.0
+	golang.org/x/term v0.35.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
