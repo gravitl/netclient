@@ -21,7 +21,7 @@ var dnsConfigMutex = sync.Mutex{} // used to mutex functions of the DNS
 const (
 	resolvconfFilePath             = "/etc/resolv.conf"
 	resolvconfFileBkpPath          = "/etc/netclient/resolv.conf.nm.bkp"
-	uplinkResolvedConfOverrideDir  = "/etc/systemd/resolved.conf.d"
+	uplinkResolvedConfOverrideDir  = "/run/systemd/resolved.conf.d"
 	uplinkResolvedConfOverrideFile = "netmaker.conf"
 	resolvconfUplinkPath           = "/run/systemd/resolve/resolv.conf"
 )
