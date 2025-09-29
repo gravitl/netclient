@@ -168,37 +168,20 @@ func checkin() {
 
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
-	server := config.GetServer(node.Server)
-	if server == nil || server.Name == "" {
-		return errors.New("no server for " + node.Network)
-	}
-	data, err := json.Marshal(node)
-	if err != nil {
-		return err
-	}
-	if err = publish(node.Server, fmt.Sprintf("update/%s/%s", node.Server, node.ID), data, 1); err != nil {
-		return err
-	}
-
+	hostServerUpdate(models.HostUpdate{
+		Action: models.UpdateNode,
+		Node:   models.Node{CommonNode: node.CommonNode},
+	})
 	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
 	return nil
 }
 
 // publishPeerSignal - publishes peer signal
-func publishPeerSignal(server string, signal models.Signal) error {
-	hostCfg := config.Netclient()
-	hostUpdate := models.HostUpdate{
+func publishPeerSignal(signal models.Signal) error {
+	hostServerUpdate(models.HostUpdate{
 		Action: models.SignalHost,
-		Host:   hostCfg.Host,
 		Signal: signal,
-	}
-	data, err := json.Marshal(hostUpdate)
-	if err != nil {
-		return err
-	}
-	if err = publish(server, fmt.Sprintf("host/serverupdate/%s/%s", server, hostCfg.ID.String()), data, 1); err != nil {
-		return err
-	}
+	})
 	return nil
 }
 

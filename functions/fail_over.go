@@ -242,21 +242,19 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							continue
 						}
 						// signal peer
-						if Mqclient != nil && Mqclient.IsConnectionOpen() {
-							err = SignalPeer(s)
-							if err != nil {
-								logger.Log(2, "failed to signal peer: ", err.Error())
-							} else {
-								if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
-									if cnt.(int) <= 3 {
-										cnt := cnt.(int) + 1
-										signalThrottleCache.Store(peer.HostID, cnt)
-									}
-								} else {
-									signalThrottleCache.Store(peer.HostID, 1)
+						err = SignalPeer(s)
+						if err != nil {
+							logger.Log(2, "failed to signal peer: ", err.Error())
+						} else {
+							if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
+								if cnt.(int) <= 3 {
+									cnt := cnt.(int) + 1
+									signalThrottleCache.Store(peer.HostID, cnt)
 								}
-
+							} else {
+								signalThrottleCache.Store(peer.HostID, 1)
 							}
+
 						}
 
 					}
@@ -408,7 +406,7 @@ func failOverMe(serverName, nodeID, peernodeID string) error {
 
 // SignalPeer - signals the peer with host's turn relay endpoint
 func SignalPeer(signal models.Signal) error {
-	return publishPeerSignal(config.CurrServer, signal)
+	return publishPeerSignal(signal)
 }
 
 // isPeerConnected - get peer connection status by checking last handshake time
