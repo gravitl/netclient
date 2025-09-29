@@ -506,7 +506,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	case models.EgressUpdate:
 
 		slog.Info("processing egress update", "domain", hostUpdate.EgressDomain.Domain)
-		go processEgressDomain(hostUpdate.EgressDomain)
+		go processEgressDomain(hostUpdate.EgressDomain, true)
 
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
@@ -874,11 +874,11 @@ func CheckEgressDomainUpdates() {
 	slog.Info("processing egress domains", "count", len(egressDomains))
 	for _, domainI := range egressDomains {
 		slog.Debug("checking egress domain", "domain", domainI.Domain)
-		processEgressDomain(domainI)
+		processEgressDomain(domainI, false)
 	}
 }
 
-func processEgressDomain(domainI models.EgressDomain) {
+func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("processing egress domain", "domain", domainI.Domain)
 
 	// Resolve domain to IP addresses
@@ -925,17 +925,17 @@ func processEgressDomain(domainI models.EgressDomain) {
 			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
 		}
 	}
-
-	// Only proceed if there are changes and we should update the cache
-	if !hasChanges || !shouldUpdateCache {
-		if !hasChanges {
-			slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
-		} else {
-			slog.Debug("skipping server update - old IPs are still reachable", "domain", domainI.Domain)
+	if !forceUpdate {
+		// Only proceed if there are changes and we should update the cache
+		if !hasChanges || !shouldUpdateCache {
+			if !hasChanges {
+				slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
+			} else {
+				slog.Debug("skipping server update - old IPs are still reachable", "domain", domainI.Domain)
+			}
+			return
 		}
-		return
 	}
-
 	// Update the cache with new IPs only after confirming changes and connectivity check
 	wireguard.SetDomainAnsInCache(domainI, ips)
 	// Clear existing ranges and add new ones
