@@ -12,17 +12,9 @@ import (
 func Push(restart bool) error {
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
-		if err := setupMQTTSingleton(server, true); err == nil {
-			if err := PublishHostUpdate(server.Server, models.UpdateHost); err != nil {
-				return err
-			}
-			Mqclient.Disconnect(250)
-		} else {
-			if err := hostServerUpdate(models.HostUpdate{Action: models.UpdateHost}); err != nil {
-				return err
-			}
+		if err := hostServerUpdate(models.HostUpdate{Action: models.UpdateHost}); err != nil {
+			return err
 		}
-
 	}
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err

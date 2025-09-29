@@ -128,6 +128,35 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
+// hostUpdateWithServer - used to send host updates to server via restful api
+func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
+	host := config.Netclient()
+	if host == nil {
+		return fmt.Errorf("no configured host found")
+	}
+	token, err := auth.Authenticate(server, host)
+	if err != nil {
+		return err
+	}
+	hu.Host = host.Host
+	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
+		URL:           "https://" + server.API,
+		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
+		Method:        http.MethodPut,
+		Data:          hu,
+		Authorization: "Bearer " + token,
+		ErrorResponse: models.ErrorResponse{},
+	}
+	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	if err != nil {
+		if errors.Is(err, httpclient.ErrStatus) {
+			slog.Error("error sending host update to server", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+		}
+		return err
+	}
+	return nil
+}
+
 // hostServerUpdate - used to send host updates to server via restful api
 func hostServerUpdate(hu models.HostUpdate) error {
 
