@@ -354,12 +354,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
-	// if server.IsPro {
-	// 	go func() {
-	// 		time.Sleep(time.Second * 15)
-	// 		callPublishMetrics(true)
-	// 	}()
-	// }
 
 }
 
@@ -819,7 +813,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 				_ = wireguard.RestoreInternetGw()
 
-				err := wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
+				err = wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
 				if err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					return
@@ -828,7 +822,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
+		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
 			err = wireguard.RestoreInternetGw()
 			if err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
@@ -836,8 +830,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			}
 		}
 	}
+	if !pullResponse.ServerConfig.EndpointDetection {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+	}
 	config.UpdateHostPeers(pullResponse.Peers)
-	_ = wireguard.SetPeers(replacePeers)
+	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
@@ -845,21 +843,67 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		wireguard.RemoveEgressRoutes()
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
-	if pullResponse.EndpointDetection {
+	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
-	} else {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
 	}
 	if len(pullResponse.EgressWithDomains) > 0 {
 		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
-	handleFwUpdate(serverName, &pullResponse.FwUpdate)
-
-	if resetInterface {
-		resetInterfaceFunc()
+	var saveServerConfig bool
+	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
+		server.NameServers = pullResponse.NameServers
+		saveServerConfig = true
 	}
+
+	if len(server.DnsNameservers) != len(pullResponse.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, pullResponse.DnsNameservers) {
+		server.DnsNameservers = pullResponse.DnsNameservers
+		saveServerConfig = true
+	}
+
+	if pullResponse.ServerConfig.ManageDNS != server.ManageDNS {
+		server.ManageDNS = pullResponse.ServerConfig.ManageDNS
+		saveServerConfig = true
+		if pullResponse.ServerConfig.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		} else {
+			dns.GetDNSServerInstance().Stop()
+		}
+	}
+
+	if server.ManageDNS {
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
+			dns.SetupDNSConfig()
+		}
+	}
+
+	reloadStun := false
+	if pullResponse.ServerConfig.Stun != server.Stun {
+		server.Stun = pullResponse.ServerConfig.Stun
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if pullResponse.ServerConfig.StunServers != server.StunServers {
+		server.StunServers = pullResponse.ServerConfig.StunServers
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if pullResponse.ServerConfig.IsPro && !server.IsPro {
+		server.IsPro = true
+		saveServerConfig = true
+	}
+
+	if reloadStun {
+		daemon.Restart()
+	}
+
+	if saveServerConfig {
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
+	}
+
+	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 }
 
 func CheckEgressDomainUpdates() {
