@@ -45,6 +45,9 @@ var upgMutex = sync.Mutex{} // used to mutex functions of upgrade
 
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	network := parseNetworkFromTopic(msg.Topic())
 	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
@@ -134,7 +137,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // DNSSync -- mqtt message handler for host/dns/sync/<network id> topic
 func DNSSync(client mqtt.Client, msg mqtt.Message) {
-
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	network := parseServerFromTopic(msg.Topic())
 
 	var dnsEntries []models.DNSEntry
@@ -156,6 +161,9 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
 	var err error
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	if len(config.GetNodes()) == 0 {
 		slog.Info("skipping unwanted peer update, no nodes exist")
 		return
