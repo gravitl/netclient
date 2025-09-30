@@ -73,8 +73,32 @@ func resetHAEgressCache() {
 }
 
 func sortRouteMetricByAscending(items []egressPeer) []egressPeer {
+	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Metric == items[j].Metric {
+			// sort by latency
+			if items[i].EgressGwAddr.IP != nil && items[j].EgressGwAddr.IP != nil {
+				// trigger a handshake
+				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr.IP.String(), metricPort, 3)
+				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr.IP.String(), metricPort, 3)
+				if latencyI < latencyJ {
+					return true
+				} else {
+					return false
+				}
+
+			} else if items[i].EgressGwAddr6.IP != nil && items[j].EgressGwAddr6.IP != nil {
+				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr6.IP.String(), metricPort, 3)
+				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr6.IP.String(), metricPort, 3)
+				if latencyI < latencyJ {
+					return true
+				} else {
+					return false
+				}
+			}
 			return items[i].PeerKey < items[j].PeerKey
 		}
 		return items[i].Metric < items[j].Metric
