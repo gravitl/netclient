@@ -24,7 +24,7 @@ func Uninstall() ([]error, error) {
 
 	for _, v := range config.Servers {
 		v := v
-		hostUpdateWithServer(&v, models.HostUpdate{Action: models.CheckIn})
+		hostUpdateWithServer(&v, models.HostUpdate{Action: models.DeleteHost})
 	}
 
 	if err = daemon.CleanUp(); err != nil {
