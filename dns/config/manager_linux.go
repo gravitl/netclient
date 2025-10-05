@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type resolvconfFlavor int
@@ -47,9 +48,8 @@ func getResolvconfFlavor() (resolvconfFlavor, error) {
 			return unknown, err
 		}
 
-		if target == "/run/systemd/resolve/stub-resolv.conf" {
-			return systemd, nil
-		} else if target == "/run/systemd/resolve/resolv.conf" {
+		if strings.HasSuffix(target, "/run/systemd/resolve/stub-resolv.conf") ||
+			strings.HasSuffix(target, "/run/systemd/resolve/resolv.conf") {
 			return systemd, nil
 		}
 	}
