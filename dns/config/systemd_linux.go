@@ -46,18 +46,23 @@ func (s *systemdManager) Configure(config Config) error {
 		if err != nil {
 			return err
 		}
+
+		err = exec.Command("resolvectl", "default-route", config.Interface, "no").Run()
+		if err != nil {
+			return err
+		}
 	}
 
 	return s.flushChanges()
 }
 
 func (s *systemdManager) resetConfig(ifaceName string) error {
-	err := exec.Command("resolvectl", "dns", ifaceName, "''").Run()
+	err := exec.Command("resolvectl", "dns", ifaceName, "").Run()
 	if err != nil {
 		return err
 	}
 
-	return exec.Command("resolvectl", "domain", ifaceName, "''").Run()
+	return exec.Command("resolvectl", "domain", ifaceName, "").Run()
 }
 
 func (s *systemdManager) flushChanges() error {
