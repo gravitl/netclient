@@ -1,75 +1,48 @@
 package config
 
 import (
-	"os"
+	"fmt"
 	"os/exec"
-	"path/filepath"
 	"strings"
-
-	"gopkg.in/ini.v1"
-)
-
-const (
-	systemdOverrideConfDir  = "/run/systemd/resolved.conf.d"
-	systemdOverrideConfFile = "netmaker.conf"
 )
 
 type systemdManager struct{}
 
 func newSystemdManager() (*systemdManager, error) {
-	err := os.MkdirAll(systemdOverrideConfDir, 0755)
-	if err != nil {
-		return nil, err
-	}
-
 	return &systemdManager{}, nil
 }
 
 func (s *systemdManager) Configure(config Config) error {
+	if config.Interface == "" {
+		return fmt.Errorf("interface is required")
+	}
+
 	if len(config.Nameservers) == 0 {
-		err := s.resetConfig()
+		err := s.resetConfig(config.Interface)
 		if err != nil {
 			return err
 		}
 	} else {
-		systemdConfigPath := filepath.Join(systemdOverrideConfDir, systemdOverrideConfFile)
-		systemdConfig := ini.Empty()
-
-		resolveSection, err := systemdConfig.NewSection("Resolve")
-		if err != nil {
-			return err
-		}
-
 		dns := make([]string, len(config.Nameservers))
-
 		for i, ip := range config.Nameservers {
 			dns[i] = ip.String()
 		}
 
-		_, err = resolveSection.NewKey("DNS", strings.Join(dns, " "))
-		if err != nil {
-			return err
-		}
-
 		searchDomains := make([]string, len(config.SearchDomains))
-
 		for i, domain := range config.SearchDomains {
 			if domain == "." {
 				searchDomains[i] = "~."
+			} else {
+				searchDomains[i] = domain
 			}
 		}
 
-		_, err = resolveSection.NewKey("Domains", strings.Join(searchDomains, " "))
+		err := exec.Command("resolvectl", "dns", config.Interface, strings.Join(dns, " ")).Run()
 		if err != nil {
 			return err
 		}
 
-		configFile, err := os.Create(systemdConfigPath)
-		if err != nil {
-			return err
-		}
-
-		_, err = systemdConfig.WriteTo(configFile)
+		err = exec.Command("resolvectl", "domain", config.Interface, strings.Join(searchDomains, " ")).Run()
 		if err != nil {
 			return err
 		}
@@ -78,8 +51,13 @@ func (s *systemdManager) Configure(config Config) error {
 	return s.flushChanges()
 }
 
-func (s *systemdManager) resetConfig() error {
-	return os.Remove(filepath.Join(systemdOverrideConfDir, systemdOverrideConfFile))
+func (s *systemdManager) resetConfig(ifaceName string) error {
+	err := exec.Command("resolvectl", "dns", ifaceName, "''").Run()
+	if err != nil {
+		return err
+	}
+
+	return exec.Command("resolvectl", "domain", ifaceName, "''").Run()
 }
 
 func (s *systemdManager) flushChanges() error {
@@ -87,5 +65,5 @@ func (s *systemdManager) flushChanges() error {
 }
 
 func (s *systemdManager) SupportsInterfaceSpecificConfig() bool {
-	return false
+	return true
 }
