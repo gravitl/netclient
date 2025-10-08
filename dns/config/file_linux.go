@@ -74,6 +74,24 @@ func (f *fileManager) writeConfig(nameservers []net.IP, searchDomains []string) 
 
 	writeConfig(confBytes, nameservers, searchDomains)
 
+	oldConf, err := os.Open(resolvconfBackupFile)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = oldConf.Close()
+	}()
+
+	scanner := bufio.NewScanner(oldConf)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		confBytes.WriteString(line + "\n")
+	}
+
 	_, err = conf.Write(confBytes.Bytes())
 	return err
 }
