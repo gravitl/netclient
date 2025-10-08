@@ -58,7 +58,7 @@ func SetPeers(replace bool) error {
 			peers[i] = peer
 		}
 		// set egress routes on correct peer
-		if checkIfEgressHAPeer(&peer) {
+		if !peer.Remove && checkIfEgressHAPeer(&peer) {
 			peers[i] = peer
 		}
 

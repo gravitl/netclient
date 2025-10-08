@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
@@ -43,6 +45,9 @@ var upgMutex = sync.Mutex{} // used to mutex functions of upgrade
 
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	network := parseNetworkFromTopic(msg.Topic())
 	slog.Info("processing node update for network", "network", network)
 	node := config.GetNode(network)
@@ -132,7 +137,9 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // DNSSync -- mqtt message handler for host/dns/sync/<network id> topic
 func DNSSync(client mqtt.Client, msg mqtt.Message) {
-
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	network := parseServerFromTopic(msg.Topic())
 
 	var dnsEntries []models.DNSEntry
@@ -154,6 +161,9 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	var peerUpdate models.HostPeerUpdate
 	var err error
+	if len(msg.Payload()) == 0 {
+		return
+	}
 	if len(config.GetNodes()) == 0 {
 		slog.Info("skipping unwanted peer update, no nodes exist")
 		return
@@ -219,13 +229,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.Version = peerUpdate.ServerVersion
 		config.WriteServerConfig()
 	}
-	if peerUpdate.MetricsPort != server.MetricsPort {
+	if peerUpdate.MetricsPort != 0 && peerUpdate.MetricsPort != server.MetricsPort {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
+		server.MetricsPort = peerUpdate.MetricsPort
+		config.WriteServerConfig()
 		daemon.Restart()
-	}
-	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
-		slog.Info("DNS Default Domain or Nameservers have changed ")
-		dns.SetupDNSConfig()
 	}
 	if peerUpdate.MetricInterval != server.MetricInterval {
 		i, err := strconv.Atoi(peerUpdate.MetricInterval)
@@ -292,31 +300,40 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
-
-	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
-		server.NameServers = peerUpdate.NameServers
-		saveServerConfig = true
+	if len(peerUpdate.EgressWithDomains) > 0 {
+		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
 	}
+	go CheckEgressDomainUpdates()
 
-	if len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
-		server.DnsNameservers = peerUpdate.DnsNameservers
-		saveServerConfig = true
-	}
-
-	if peerUpdate.ManageDNS != server.ManageDNS {
-		server.ManageDNS = peerUpdate.ManageDNS
-		saveServerConfig = true
-		if peerUpdate.ManageDNS {
-			dns.GetDNSServerInstance().Start()
-		} else {
-			dns.GetDNSServerInstance().Stop()
-		}
-	}
-
+	var dnsOp string
+	const start string = "start"
+	const stop string = "stop"
+	const update string = "update"
 	if server.ManageDNS {
-		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
-			config.Netclient().Host.OS == "windows" {
-			dns.SetupDNSConfig()
+		if !peerUpdate.ManageDNS {
+			server.ManageDNS = false
+			server.DefaultDomain = ""
+			server.NameServers = nil
+			server.DnsNameservers = nil
+			saveServerConfig = true
+			dnsOp = stop
+		} else if server.DefaultDomain != peerUpdate.DefaultDomain ||
+			len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) ||
+			!reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
+			server.DefaultDomain = peerUpdate.DefaultDomain
+			server.NameServers = peerUpdate.NameServers
+			server.DnsNameservers = peerUpdate.DnsNameservers
+			saveServerConfig = true
+			dnsOp = update
+		}
+	} else {
+		if peerUpdate.ManageDNS {
+			server.ManageDNS = true
+			server.DefaultDomain = peerUpdate.DefaultDomain
+			server.NameServers = peerUpdate.NameServers
+			server.DnsNameservers = peerUpdate.DnsNameservers
+			saveServerConfig = true
+			dnsOp = start
 		}
 	}
 
@@ -336,22 +353,24 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 	}
 
-	if reloadStun {
-		daemon.Restart()
-	}
-
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
+		switch dnsOp {
+		case start:
+			dns.GetDNSServerInstance().Start()
+		case stop:
+			dns.GetDNSServerInstance().Stop()
+		case update:
+			_ = dns.SetupDNSConfig()
+		}
+	}
+
+	if reloadStun {
+		_ = daemon.Restart()
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
-	// if server.IsPro {
-	// 	go func() {
-	// 		time.Sleep(time.Second * 15)
-	// 		callPublishMetrics(true)
-	// 	}()
-	// }
 
 }
 
@@ -495,6 +514,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			mqFallbackPull(response, resetInterface, replacePeers)
 		}
 		writeToDisk = false
+	case models.EgressUpdate:
+
+		slog.Info("processing egress update", "domain", hostUpdate.EgressDomain.Domain)
+		go processEgressDomain(hostUpdate.EgressDomain, true)
+
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -571,10 +595,10 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 			}
 		}
 		if peerInfo, ok := peerInfo[peerPubKey]; ok {
-			if peerInfo.IsStatic {
-				// peer is a static host shouldn't disturb the configuration set by the user
-				continue
-			}
+			// if peerInfo.IsStatic {
+			// 	// peer is a static host shouldn't disturb the configuration set by the user
+			// 	continue
+			// }
 			for i := range peerInfo.Interfaces {
 				peerIface := peerInfo.Interfaces[i]
 				peerIP := peerIface.Address.IP
@@ -776,8 +800,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.Version = pullResponse.ServerConfig.Version
 		config.WriteServerConfig()
 	}
-	if pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
+	if pullResponse.ServerConfig.MetricsPort != 0 && pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
 		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
+		config.WriteServerConfig()
 		daemon.Restart()
 	}
 	//get the current default gateway
@@ -804,7 +830,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 				_ = wireguard.RestoreInternetGw()
 
-				err := wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
+				err = wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
 				if err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					return
@@ -813,7 +839,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	} else {
 		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
+		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
 			err = wireguard.RestoreInternetGw()
 			if err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
@@ -821,8 +847,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			}
 		}
 	}
+	if !pullResponse.ServerConfig.EndpointDetection {
+		cache.EndpointCache = sync.Map{}
+		cache.SkipEndpointCache = sync.Map{}
+	}
 	config.UpdateHostPeers(pullResponse.Peers)
-	_ = wireguard.SetPeers(replacePeers)
+	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
@@ -830,15 +860,249 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		wireguard.RemoveEgressRoutes()
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
-	if pullResponse.EndpointDetection {
+	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
-	} else {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
 	}
-	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+	if len(pullResponse.EgressWithDomains) > 0 {
+		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
+	}
+	go CheckEgressDomainUpdates()
+	var saveServerConfig bool
+	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
+		server.NameServers = pullResponse.NameServers
+		saveServerConfig = true
+	}
 
-	if resetInterface {
-		resetInterfaceFunc()
+	if len(server.DnsNameservers) != len(pullResponse.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, pullResponse.DnsNameservers) {
+		server.DnsNameservers = pullResponse.DnsNameservers
+		saveServerConfig = true
 	}
+
+	if pullResponse.ServerConfig.ManageDNS != server.ManageDNS {
+		server.ManageDNS = pullResponse.ServerConfig.ManageDNS
+		saveServerConfig = true
+		if pullResponse.ServerConfig.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		} else {
+			dns.GetDNSServerInstance().Stop()
+		}
+	}
+
+	if server.ManageDNS {
+		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
+			config.Netclient().Host.OS == "windows" {
+			dns.SetupDNSConfig()
+		}
+	}
+
+	reloadStun := false
+	if pullResponse.ServerConfig.Stun != server.Stun {
+		server.Stun = pullResponse.ServerConfig.Stun
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if pullResponse.ServerConfig.StunServers != server.StunServers {
+		server.StunServers = pullResponse.ServerConfig.StunServers
+		saveServerConfig = true
+		reloadStun = true
+	}
+	if pullResponse.ServerConfig.IsPro && !server.IsPro {
+		server.IsPro = true
+		saveServerConfig = true
+	}
+
+	if reloadStun {
+		daemon.Restart()
+	}
+
+	if saveServerConfig {
+		config.UpdateServer(serverName, *server)
+		_ = config.WriteServerConfig()
+	}
+
+	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+}
+
+func CheckEgressDomainUpdates() {
+	slog.Debug("checking egress domain updates")
+
+	egressDomains := wireguard.GetEgressDomains()
+	if len(egressDomains) == 0 {
+		slog.Debug("no egress domains to process")
+		return
+	}
+
+	slog.Info("processing egress domains", "count", len(egressDomains))
+	for _, domainI := range egressDomains {
+		slog.Debug("checking egress domain", "domain", domainI.Domain)
+		processEgressDomain(domainI, false)
+	}
+}
+
+func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
+	slog.Info("processing egress domain", "domain", domainI.Domain)
+
+	// Resolve domain to IP addresses
+	ips, err := resolveDomainToIPs(domainI.Domain)
+	if err != nil {
+		slog.Error("failed to resolve egress domain", "domain", domainI.Domain, "error", err)
+		return
+	}
+	if len(ips) == 0 {
+		slog.Warn("no IP addresses resolved for domain", "domain", domainI.Domain)
+		return
+	}
+
+	// Get current cached IPs for this domain
+	currentIps := wireguard.GetDomainAnsFromCache(domainI)
+	slog.Debug("domain resolution check", "domain", domainI.Domain, "domain_id", domainI.ID, "cached_ips", currentIps, "resolved_ips", ips)
+
+	// Check if there are any changes
+	hasChanges := false
+	shouldUpdateCache := false
+
+	if len(currentIps) == 0 {
+		// First time processing this domain or cache miss
+		hasChanges = true
+		shouldUpdateCache = true
+		slog.Info("first time processing domain or cache miss", "domain", domainI.Domain, "ips", ips)
+	} else {
+		// Compare current and new IPs
+		slices.Sort(currentIps)
+		slices.Sort(ips)
+		if !slices.Equal(currentIps, ips) {
+			hasChanges = true
+			slog.Info("domain IPs changed", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+
+			// Check if old IPs are still reachable before updating cache
+			oldIPsReachable := checkIPConnectivity(currentIps)
+			if !oldIPsReachable {
+				shouldUpdateCache = true
+				slog.Info("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+			} else {
+				slog.Info("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
+			}
+		} else {
+			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
+		}
+	}
+	if !forceUpdate {
+		// Only proceed if there are changes and we should update the cache
+		if !hasChanges || !shouldUpdateCache {
+			if !hasChanges {
+				slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
+			} else {
+				slog.Debug("skipping server update - old IPs are still reachable", "domain", domainI.Domain)
+			}
+			return
+		}
+	}
+	// Update the cache with new IPs only after confirming changes and connectivity check
+	wireguard.SetDomainAnsInCache(domainI, ips)
+	// Clear existing ranges and add new ones
+	domainI.Node.EgressGatewayRanges = []string{}
+	for _, ip := range ips {
+		// Add as /32 for IPv4 or /128 for IPv6
+		if net.ParseIP(ip).To4() != nil {
+			domainI.Node.EgressGatewayRanges = append(domainI.Node.EgressGatewayRanges, ip+"/32")
+		} else {
+			domainI.Node.EgressGatewayRanges = append(domainI.Node.EgressGatewayRanges, ip+"/128")
+		}
+	}
+
+	slog.Info("sending egress domain update to server", "domain", domainI.Domain, "ips", ips, "ranges", domainI.Node.EgressGatewayRanges)
+
+	// Send the updated host info back to server
+	hostServerUpdate(models.HostUpdate{
+		Action:       models.EgressUpdate,
+		Host:         domainI.Host,
+		Node:         domainI.Node,
+		EgressDomain: domainI,
+	})
+}
+
+// checkIPConnectivity checks if all of the given IP addresses are reachable
+func checkIPConnectivity(ips []string) bool {
+	if len(ips) == 0 {
+		return false
+	}
+
+	// Check connectivity for each IP - ALL must be reachable
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			slog.Debug("invalid IP address", "ip", ipStr)
+			return false
+		}
+
+		ipReachable := false
+
+		// Use a simple TCP connection test to check reachability
+		// Try common ports that might be open (80, 443, 22)
+		ports := []int{80, 443, 22}
+		for _, port := range ports {
+			address := fmt.Sprintf("%s:%d", ipStr, port)
+			conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+			if err == nil {
+				conn.Close()
+				slog.Debug("IP is reachable", "ip", ipStr, "port", port)
+				ipReachable = true
+				break
+			}
+		}
+
+		// If TCP connection fails, try ICMP ping for external IPs
+		if !ipReachable {
+			// Use the existing ping functionality from metrics package
+			connected, _ := metrics.ExtPeerConnStatus(ipStr)
+			if connected {
+				slog.Debug("IP is reachable via ping", "ip", ipStr)
+				ipReachable = true
+			}
+		}
+
+		// If this IP is not reachable, fail the entire check
+		if !ipReachable {
+			slog.Debug("IP is not reachable", "ip", ipStr)
+			return false
+		}
+	}
+
+	slog.Debug("all IPs are reachable", "ips", ips)
+	return true
+}
+
+// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
+func resolveDomainToIPs(domain string) ([]string, error) {
+	if domain == "" {
+		return nil, fmt.Errorf("domain cannot be empty")
+	}
+
+	// Use the existing DNS infrastructure to resolve the domain
+	ips := dns.FindDnsAns(domain)
+	if len(ips) == 0 {
+		lookUpIPs, err := net.LookupIP(domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
+		}
+		if len(lookUpIPs) == 0 {
+			return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+		}
+		ips = lookUpIPs
+	}
+
+	// Filter out any invalid IPs and return unique IPs
+	uniqueIPs := make(map[string]string)
+	for _, ip := range ips {
+		if ip != nil {
+			uniqueIPs[ip.String()] = ip.String()
+		}
+	}
+
+	result := make([]string, 0, len(uniqueIPs))
+	for _, ip := range uniqueIPs {
+		result = append(result, ip)
+	}
+
+	return result, nil
 }

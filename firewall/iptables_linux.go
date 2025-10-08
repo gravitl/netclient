@@ -733,9 +733,16 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 		}
 		if len(aclRule.IPList) > 0 {
 			allowedIps := []string{}
+			dstAllowedIps := []string{}
 			for _, ip := range aclRule.IPList {
 				allowedIps = append(allowedIps, ip.String())
 			}
+			if len(aclRule.Dst) > 0 {
+				for _, ip := range aclRule.Dst {
+					dstAllowedIps = append(dstAllowedIps, ip.String())
+				}
+			}
+
 			rulesSpec := [][]string{}
 			if len(aclRule.AllowedPorts) > 0 {
 
@@ -744,6 +751,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						continue
 					}
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+					if len(dstAllowedIps) > 0 {
+						ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+					}
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
@@ -759,6 +769,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if len(dstAllowedIps) > 0 {
+					ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+				}
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
@@ -786,8 +799,14 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 		if len(aclRule.IP6List) > 0 {
 			allowedIps := []string{}
+			dstAllowedIps := []string{}
 			for _, ip := range aclRule.IP6List {
 				allowedIps = append(allowedIps, ip.String())
+			}
+			if len(aclRule.Dst6) > 0 {
+				for _, ip := range aclRule.Dst6 {
+					dstAllowedIps = append(dstAllowedIps, ip.String())
+				}
 			}
 			rulesSpec := [][]string{}
 			if len(aclRule.AllowedPorts) > 0 {
@@ -797,6 +816,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 						continue
 					}
 					ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+					if len(dstAllowedIps) > 0 {
+						ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+					}
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}
@@ -812,6 +834,9 @@ func (i *iptablesManager) AddAclRules(server string, aclRules map[string]models.
 
 			} else {
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if len(dstAllowedIps) > 0 {
+					ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+				}
 				if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
@@ -864,8 +889,14 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 	}
 	if len(aclRule.IPList) > 0 {
 		allowedIps := []string{}
+		dstAllowedIps := []string{}
 		for _, ip := range aclRule.IPList {
 			allowedIps = append(allowedIps, ip.String())
+		}
+		if len(aclRule.Dst) > 0 {
+			for _, ip := range aclRule.Dst {
+				dstAllowedIps = append(dstAllowedIps, ip.String())
+			}
 		}
 		rulesSpec := [][]string{}
 		if len(aclRule.AllowedPorts) > 0 {
@@ -874,6 +905,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					continue
 				}
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if len(dstAllowedIps) > 0 {
+					ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+				}
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
@@ -889,6 +923,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 
 		} else {
 			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+			if len(dstAllowedIps) > 0 {
+				ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+			}
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
@@ -915,8 +952,14 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 	}
 	if len(aclRule.IP6List) > 0 {
 		allowedIps := []string{}
+		dstAllowedIps := []string{}
 		for _, ip := range aclRule.IP6List {
 			allowedIps = append(allowedIps, ip.String())
+		}
+		if len(aclRule.Dst6) > 0 {
+			for _, ip := range aclRule.Dst6 {
+				dstAllowedIps = append(dstAllowedIps, ip.String())
+			}
 		}
 		rulesSpec := [][]string{}
 		if len(aclRule.AllowedPorts) > 0 {
@@ -926,6 +969,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					continue
 				}
 				ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+				if len(dstAllowedIps) > 0 {
+					ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+				}
 				if aclRule.AllowedProtocol.String() != "" {
 					ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 				}
@@ -940,6 +986,9 @@ func (i *iptablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 
 		} else {
 			ruleSpec := []string{"-s", strings.Join(allowedIps, ",")}
+			if len(dstAllowedIps) > 0 {
+				ruleSpec = append(ruleSpec, "-d", strings.Join(dstAllowedIps, ","))
+			}
 			if aclRule.AllowedProtocol.String() != "" {
 				ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 			}
