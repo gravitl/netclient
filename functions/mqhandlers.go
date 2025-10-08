@@ -305,9 +305,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	go CheckEgressDomainUpdates()
 
-	var startDNS bool
-	var stopDNS bool
-	var updateDNS bool
+	var dnsOp string
+	const start string = "start"
+	const stop string = "stop"
+	const update string = "update"
 	if server.ManageDNS {
 		if !peerUpdate.ManageDNS {
 			server.ManageDNS = false
@@ -315,7 +316,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			server.NameServers = nil
 			server.DnsNameservers = nil
 			saveServerConfig = true
-			stopDNS = true
+			dnsOp = stop
 		} else if server.DefaultDomain != peerUpdate.DefaultDomain ||
 			len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) ||
 			!reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
@@ -323,7 +324,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			server.NameServers = peerUpdate.NameServers
 			server.DnsNameservers = peerUpdate.DnsNameservers
 			saveServerConfig = true
-			updateDNS = true
+			dnsOp = update
 		}
 	} else {
 		if peerUpdate.ManageDNS {
@@ -332,7 +333,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			server.NameServers = peerUpdate.NameServers
 			server.DnsNameservers = peerUpdate.DnsNameservers
 			saveServerConfig = true
-			startDNS = true
+			dnsOp = start
 		}
 	}
 
@@ -355,19 +356,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
-		if startDNS {
+		switch dnsOp {
+		case start:
 			dns.GetDNSServerInstance().Start()
-		}
-		if stopDNS {
+		case stop:
 			dns.GetDNSServerInstance().Stop()
-		}
-		if updateDNS {
+		case update:
 			_ = dns.SetupDNSConfig()
 		}
 	}
 
 	if reloadStun {
-		daemon.Restart()
+		_ = daemon.Restart()
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
