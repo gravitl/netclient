@@ -356,7 +356,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
 		if startDNS {
-			dns.GetDNSServerInstance().Stop()
+			dns.GetDNSServerInstance().Start()
 		}
 		if stopDNS {
 			dns.GetDNSServerInstance().Stop()
