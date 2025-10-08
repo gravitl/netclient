@@ -24,16 +24,7 @@ func Uninstall() ([]error, error) {
 
 	for _, v := range config.Servers {
 		v := v
-		if err = setupMQTTSingleton(&v, true); err != nil {
-			logger.Log(0, "failed to connect to server on uninstall", v.Name)
-			allfaults = append(allfaults, err)
-			continue
-		}
-		if err = PublishHostUpdate(v.Name, models.DeleteHost); err != nil {
-			logger.Log(0, "failed to notify server", v.Name, "of host removal")
-			allfaults = append(allfaults, err)
-		}
-		Mqclient.Disconnect(250)
+		hostUpdateWithServer(&v, models.HostUpdate{Action: models.DeleteHost})
 	}
 
 	if err = daemon.CleanUp(); err != nil {
