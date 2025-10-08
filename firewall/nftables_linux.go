@@ -652,6 +652,78 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:   ruleSpec,
 					})
 				}
+
+				// Add Docker-specific rule if egress interface is a Docker network
+				if isDockerInterface(egressRangeIface) {
+					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
+					// Check if DOCKER-USER chain exists in filter table
+					dockerUserChain := &nftables.Chain{
+						Name:  "DOCKER-USER",
+						Table: filterTable,
+					}
+					chains, err := n.conn.ListChains()
+					dockerChainExists := false
+					if err == nil {
+						for _, ch := range chains {
+							if ch.Name == "DOCKER-USER" && ch.Table.Name == filterTable.Name {
+								dockerUserChain = ch
+								dockerChainExists = true
+								break
+							}
+						}
+					}
+
+					if dockerChainExists {
+						// Build nftables expressions for the Docker rule
+						dockerExp := []expr.Any{
+							// Match incoming interface (netmaker interface)
+							&expr.Meta{
+								Key:      expr.MetaKeyIIFNAME,
+								Register: 1,
+							},
+							&expr.Cmp{
+								Op:       expr.CmpOpEq,
+								Register: 1,
+								Data:     []byte(ncutils.GetInterfaceName()),
+							},
+							// Match outgoing interface (docker interface)
+							&expr.Meta{
+								Key:      expr.MetaKeyOIFNAME,
+								Register: 1,
+							},
+							&expr.Cmp{
+								Op:       expr.CmpOpEq,
+								Register: 1,
+								Data:     []byte(egressRangeIface),
+							},
+							// Jump to Netmaker ACL IN chain
+							&expr.Verdict{
+								Kind:  expr.VerdictJump,
+								Chain: aclInputRulesChain,
+							},
+						}
+
+						n.deleteRule(defaultIpTable, "DOCKER-USER", genRuleKey(dockerRuleSpec...))
+						dockerRule := &nftables.Rule{
+							Table:    filterTable,
+							Chain:    dockerUserChain,
+							UserData: []byte(genRuleKey(dockerRuleSpec...)),
+							Exprs:    dockerExp,
+						}
+						n.conn.InsertRule(dockerRule)
+						if err := n.conn.Flush(); err != nil {
+							logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
+						} else {
+							egressGwRoutes = append(egressGwRoutes, ruleInfo{
+								nfRule: dockerRule,
+								table:  defaultIpTable,
+								chain:  "DOCKER-USER",
+								rule:   dockerRuleSpec,
+							})
+							logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
+						}
+					}
+				}
 			}
 		}
 	}

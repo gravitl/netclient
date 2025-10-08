@@ -500,6 +500,29 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:  ruleSpec,
 					})
 				}
+
+				// Add Docker-specific rule if egress interface is a Docker network
+				if isDockerInterface(egressRangeIface) {
+					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
+					dockerRuleSpec = appendNetmakerCommentToRule(dockerRuleSpec)
+					// Check if DOCKER-USER chain exists, only add rule if it does
+					exists, err := iptablesClient.ChainExists(defaultIpTable, "DOCKER-USER")
+					if err == nil && exists {
+						// Delete if exists to avoid duplicates
+						iptablesClient.DeleteIfExists(defaultIpTable, "DOCKER-USER", dockerRuleSpec...)
+						err := iptablesClient.Insert(defaultIpTable, "DOCKER-USER", 1, dockerRuleSpec...)
+						if err != nil {
+							logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
+						} else {
+							egressGwRoutes = append(egressGwRoutes, ruleInfo{
+								table: defaultIpTable,
+								chain: "DOCKER-USER",
+								rule:  dockerRuleSpec,
+							})
+							logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
+						}
+					}
+				}
 			}
 		}
 	}
