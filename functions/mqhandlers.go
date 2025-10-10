@@ -565,6 +565,7 @@ func resetInterfaceFunc() {
 			dns.GetDNSServerInstance().Start()
 		}
 	}
+	wireguard.EgressResetCh <- struct{}{}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint

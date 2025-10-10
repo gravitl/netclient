@@ -29,6 +29,7 @@ type egressPeer struct {
 var egressRoutes = []models.EgressNetworkRoutes{}
 var egressRoutesCacheMutex = &sync.Mutex{}
 var HaEgressTicker *time.Ticker
+var EgressResetCh = make(chan struct{}, 2)
 var HaEgressCheckInterval = time.Second * 2
 var haEgressPeerCache = make(map[string][]net.IPNet)
 var egressDomainCache = []models.EgressDomain{}
@@ -141,14 +142,16 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	if metricPort == 0 {
 		metricPort = 51821
 	}
+	nodes := config.GetNodes()
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("exiting startEgressHAFailOverThread")
 			resetHAEgressCache()
 			return
+		case <-EgressResetCh:
+			nodes = config.GetNodes()
 		case <-HaEgressTicker.C:
-			nodes := config.GetNodes()
 			if len(nodes) == 0 {
 				continue
 			}
@@ -249,6 +252,10 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 
 		}
 	}
+}
+
+func StopEgressHAFailOverThread(ctx context.Context) {
+
 }
 
 func removeIP(slice []net.IPNet, item net.IPNet) []net.IPNet {
