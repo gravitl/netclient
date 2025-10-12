@@ -157,8 +157,10 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			}
 			egressPeerInfo := getHAEgressDataForProcessing()
 			if len(egressPeerInfo) == 0 {
+				//fmt.Println("===> SKIPPING Egress PEERINFO")
 				continue
 			}
+			//fmt.Printf("HA Egress Ticker: %+v\n", egressPeerInfo)
 			shouldCheck := false
 			for _, egressPeers := range egressPeerInfo {
 				if len(egressPeers) > 1 {
@@ -249,13 +251,8 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 				}(egressRange, egressRoutingInfo)
 
 			}
-
 		}
 	}
-}
-
-func StopEgressHAFailOverThread(ctx context.Context) {
-
 }
 
 func removeIP(slice []net.IPNet, item net.IPNet) []net.IPNet {
@@ -269,10 +266,30 @@ func removeIP(slice []net.IPNet, item net.IPNet) []net.IPNet {
 }
 
 func checkIfEgressHAPeer(peer *wgtypes.PeerConfig) bool {
+	data := getHAEgressDataForProcessing()
 	egressRoutesCacheMutex.Lock()
 	defer egressRoutesCacheMutex.Unlock()
+
 	egressList, ok := haEgressPeerCache[peer.PublicKey.String()]
 	if ok {
+		//fmt.Printf("===> Found HA Egress Peer: %s, Data: %+v\n", peer.PublicKey.String(), data)
+		// check if peer exists
+		exists := false
+		for _, egressPeers := range data {
+			for _, egressPeerI := range egressPeers {
+				if egressPeerI.PeerKey == peer.PublicKey.String() {
+					exists = true
+					break
+				}
+			}
+			if exists {
+				break
+			}
+		}
+		if !exists {
+			delete(haEgressPeerCache, peer.PublicKey.String())
+			return false
+		}
 		peer.AllowedIPs = append(peer.AllowedIPs, egressList...)
 		peer.AllowedIPs = logic.UniqueIPNetList(peer.AllowedIPs)
 	}
