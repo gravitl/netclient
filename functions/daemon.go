@@ -174,10 +174,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		stun.SetDefaultStunServers()
 	}
 	netclientCfg := config.Netclient()
-	if netclientCfg.Host.OS == "linux" || netclientCfg.Host.OS == "windows" {
-		dns.InitDNSConfig()
-		updateConfig = true
-	}
 
 	if !netclientCfg.IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {

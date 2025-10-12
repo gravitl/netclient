@@ -18,7 +18,7 @@ const (
 	unknown
 )
 
-func NewManager() (Manager, error) {
+func NewManager(opts ...ManagerOption) (Manager, error) {
 	flavor, err := getResolvconfFlavor()
 	if err != nil {
 		return nil, err
@@ -26,13 +26,13 @@ func NewManager() (Manager, error) {
 
 	switch flavor {
 	case systemd:
-		return newSystemdManager()
+		return newSystemdManager(opts...)
 	case resolvconf:
-		return newResolvconfManager()
+		return newResolvconfManager(opts...)
 	case openresolv:
-		return newOpenresolvManager()
+		return newOpenresolvManager(opts...)
 	default:
-		return newFileManager()
+		return newFileManager(opts...)
 	}
 }
 

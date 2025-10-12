@@ -362,7 +362,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		case stop:
 			dns.GetDNSServerInstance().Stop()
 		case update:
-			_ = dns.SetupDNSConfig()
+			if dns.GetDNSServerInstance().AddrStr != "" {
+				_ = dns.Configure()
+			}
 		}
 	}
 
@@ -868,30 +870,35 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	go CheckEgressDomainUpdates()
 	var saveServerConfig bool
-	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
-		server.NameServers = pullResponse.NameServers
-		saveServerConfig = true
-	}
-
-	if len(server.DnsNameservers) != len(pullResponse.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, pullResponse.DnsNameservers) {
-		server.DnsNameservers = pullResponse.DnsNameservers
-		saveServerConfig = true
-	}
-
-	if pullResponse.ServerConfig.ManageDNS != server.ManageDNS {
-		server.ManageDNS = pullResponse.ServerConfig.ManageDNS
-		saveServerConfig = true
-		if pullResponse.ServerConfig.ManageDNS {
-			dns.GetDNSServerInstance().Start()
-		} else {
-			dns.GetDNSServerInstance().Stop()
-		}
-	}
-
+	var dnsOp string
+	const start string = "start"
+	const stop string = "stop"
+	const update string = "update"
 	if server.ManageDNS {
-		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
-			config.Netclient().Host.OS == "windows" {
-			dns.SetupDNSConfig()
+		if !pullResponse.ServerConfig.ManageDNS {
+			server.ManageDNS = false
+			server.DefaultDomain = ""
+			server.NameServers = nil
+			server.DnsNameservers = nil
+			saveServerConfig = true
+			dnsOp = stop
+		} else if server.DefaultDomain != pullResponse.ServerConfig.DefaultDomain ||
+			len(server.DnsNameservers) != len(pullResponse.DnsNameservers) ||
+			!reflect.DeepEqual(server.DnsNameservers, pullResponse.DnsNameservers) {
+			server.DefaultDomain = pullResponse.ServerConfig.DefaultDomain
+			server.NameServers = pullResponse.NameServers
+			server.DnsNameservers = pullResponse.DnsNameservers
+			saveServerConfig = true
+			dnsOp = update
+		}
+	} else {
+		if pullResponse.ServerConfig.ManageDNS {
+			server.ManageDNS = true
+			server.DefaultDomain = pullResponse.ServerConfig.DefaultDomain
+			server.NameServers = pullResponse.NameServers
+			server.DnsNameservers = pullResponse.DnsNameservers
+			saveServerConfig = true
+			dnsOp = start
 		}
 	}
 
@@ -911,13 +918,23 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		saveServerConfig = true
 	}
 
-	if reloadStun {
-		daemon.Restart()
-	}
-
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
+		switch dnsOp {
+		case start:
+			dns.GetDNSServerInstance().Start()
+		case stop:
+			dns.GetDNSServerInstance().Stop()
+		case update:
+			if dns.GetDNSServerInstance().AddrStr != "" {
+				_ = dns.Configure()
+			}
+		}
+	}
+
+	if reloadStun {
+		_ = daemon.Restart()
 	}
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)

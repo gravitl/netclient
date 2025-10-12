@@ -8,6 +8,11 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
+
+	dnscache "github.com/gravitl/netclient/dns/cache"
+	dnsconfig "github.com/gravitl/netclient/dns/config"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
 )
@@ -24,6 +29,14 @@ var dnsServer *DNSServer
 
 func init() {
 	dnsServer = &DNSServer{}
+
+	var err error
+	configManager, err = dnsconfig.NewManager(dnsconfig.CleanupResidualInterfaceConfigs(ncutils.GetInterfaceName()))
+	if err != nil {
+		panic(err)
+	}
+
+	cacheManager = dnscache.NewManager()
 }
 
 // GetInstance
@@ -94,11 +107,10 @@ func (dnsServer *DNSServer) Start() {
 		return
 	}
 
-	//Setup DNS config for Linux
 	if config.Netclient().Host.OS == "linux" || config.Netclient().Host.OS == "windows" {
-		err := SetupDNSConfig()
+		err := Configure()
 		if err != nil {
-			slog.Error("setup DNS config failed", "error", err.Error())
+			logger.Log(0, "error configuring dns settings:", err.Error())
 		}
 	}
 
@@ -107,21 +119,17 @@ func (dnsServer *DNSServer) Start() {
 
 // Stop the DNS listener
 func (dnsServer *DNSServer) Stop() {
-	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
-		return
-	}
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
 	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
 		return
 	}
 
-	//restore DNS config for Linux
-	if config.Netclient().Host.OS == "linux" || config.Netclient().Host.OS == "windows" {
-		err := RestoreDNSConfig()
-		if err != nil {
-			slog.Warn("Restore DNS conig failed", "error", err.Error())
-		}
+	err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
+		Remove: true,
+	})
+	if err != nil {
+		logger.Log(0, "error resetting dns config:", err.Error())
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -130,7 +138,7 @@ func (dnsServer *DNSServer) Stop() {
 	for _, v := range dnsServer.DnsServer {
 		err := v.ShutdownContext(ctx)
 		if err != nil {
-			slog.Error("could not shutdown DNS server", "error", err.Error())
+			logger.Log(0, "error shutting down dns server:", err.Error())
 		}
 	}
 

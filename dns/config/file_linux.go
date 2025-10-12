@@ -15,19 +15,46 @@ const (
 	resolvconfBackupFile = "/etc/netmaker-resolv.backup.conf"
 )
 
-type fileManager struct{}
-
-func newFileManager() (*fileManager, error) {
-	return &fileManager{}, nil
+type fileManager struct {
+	configs map[string]Config
 }
 
-func (f *fileManager) Configure(config Config) error {
-	if len(config.Nameservers) == 0 {
+func newFileManager(opts ...ManagerOption) (*fileManager, error) {
+	f := &fileManager{
+		configs: make(map[string]Config),
+	}
+	var options ManagerOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	if options.cleanupResidual && f.ownedByUs() {
+		err := f.resetConfig()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return f, nil
+}
+
+func (f *fileManager) Configure(iface string, config Config) error {
+	if iface == "" {
+		return fmt.Errorf("interface name is required")
+	}
+
+	if config.Remove {
 		if !f.ownedByUs() {
 			return nil
 		}
 
-		return f.resetConfig()
+		err := f.resetConfig()
+		if err != nil {
+			return err
+		}
+
+		delete(f.configs, iface)
+		return nil
 	}
 
 	if !f.ownedByUs() {
@@ -37,7 +64,15 @@ func (f *fileManager) Configure(config Config) error {
 		}
 	}
 
-	return f.writeConfig(config.Nameservers, config.SearchDomains)
+	var nameservers []net.IP
+	var searchDomains []string
+	f.configs[iface] = config
+	for _, config := range f.configs {
+		nameservers = append(nameservers, config.Nameservers...)
+		searchDomains = append(searchDomains, config.SearchDomains...)
+	}
+
+	return f.writeConfig(nameservers, searchDomains)
 }
 
 func (f *fileManager) ownedByUs() bool {
@@ -98,10 +133,6 @@ func (f *fileManager) writeConfig(nameservers []net.IP, searchDomains []string) 
 
 func (f *fileManager) resetConfig() error {
 	return os.Rename(resolvconfBackupFile, resolvconfFile)
-}
-
-func (f *fileManager) SupportsInterfaceSpecificConfig() bool {
-	return false
 }
 
 func writeConfig(confBytes io.StringWriter, nameservers []net.IP, searchDomains []string) {

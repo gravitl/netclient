@@ -3,51 +3,72 @@ package config
 import (
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 type systemdManager struct{}
 
-func newSystemdManager() (*systemdManager, error) {
-	return &systemdManager{}, nil
-}
-
-func (s *systemdManager) Configure(config Config) error {
-	if config.Interface == "" {
-		return fmt.Errorf("interface is required")
+func newSystemdManager(opts ...ManagerOption) (*systemdManager, error) {
+	s := &systemdManager{}
+	var options ManagerOptions
+	for _, opt := range opts {
+		opt(&options)
 	}
 
-	if len(config.Nameservers) == 0 {
-		err := s.resetConfig(config.Interface)
+	if options.cleanupResidual {
+		for _, iface := range options.residualInterfaces {
+			err := s.resetConfig(iface)
+			if err != nil {
+				// TODO: suppress iface does not exist
+				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
+			}
+		}
+	}
+
+	return s, nil
+}
+
+func (s *systemdManager) Configure(iface string, config Config) error {
+	if iface == "" {
+		return fmt.Errorf("interface name is required")
+	}
+
+	if config.Remove {
+		err := s.resetConfig(iface)
 		if err != nil {
 			return err
 		}
 	} else {
-		dns := make([]string, len(config.Nameservers))
+		nameservers := make([]string, len(config.Nameservers))
 		for i, ip := range config.Nameservers {
-			dns[i] = ip.String()
+			nameservers[i] = ip.String()
 		}
 
 		searchDomains := make([]string, len(config.SearchDomains))
 		for i, domain := range config.SearchDomains {
-			if domain == "." {
-				searchDomains[i] = "~."
-			} else {
+			if domain != "." {
 				searchDomains[i] = domain
 			}
 		}
 
-		err := exec.Command("resolvectl", "dns", config.Interface, strings.Join(dns, " ")).Run()
+		if !config.SplitDNS {
+			searchDomains = append(searchDomains, "~.")
+		}
+
+		args := []string{"dns", iface}
+		args = append(args, nameservers...)
+		err := exec.Command("resolvectl", args...).Run()
 		if err != nil {
 			return err
 		}
 
-		err = exec.Command("resolvectl", "domain", config.Interface, strings.Join(searchDomains, " ")).Run()
+		args = []string{"domain", iface}
+		args = append(args, searchDomains...)
+		err = exec.Command("resolvectl", args...).Run()
 		if err != nil {
 			return err
 		}
 
-		err = exec.Command("resolvectl", "default-route", config.Interface, "no").Run()
+		err = exec.Command("resolvectl", "default-route", iface, "no").Run()
 		if err != nil {
 			return err
 		}
@@ -56,19 +77,15 @@ func (s *systemdManager) Configure(config Config) error {
 	return s.flushChanges()
 }
 
-func (s *systemdManager) resetConfig(ifaceName string) error {
-	err := exec.Command("resolvectl", "dns", ifaceName, "").Run()
+func (s *systemdManager) resetConfig(iface string) error {
+	err := exec.Command("resolvectl", "dns", iface, "").Run()
 	if err != nil {
 		return err
 	}
 
-	return exec.Command("resolvectl", "domain", ifaceName, "").Run()
+	return exec.Command("resolvectl", "domain", iface, "").Run()
 }
 
 func (s *systemdManager) flushChanges() error {
 	return exec.Command("systemctl", "restart", "systemd-resolved.service").Run()
-}
-
-func (s *systemdManager) SupportsInterfaceSpecificConfig() bool {
-	return true
 }
