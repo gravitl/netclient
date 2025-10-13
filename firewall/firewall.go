@@ -19,11 +19,12 @@ type rulesCfg struct {
 }
 
 type ruleInfo struct {
-	rule   []string
-	isIpv4 bool
-	nfRule any
-	table  string
-	chain  string
+	rule         []string
+	isIpv4       bool
+	nfRule       any
+	table        string
+	chain        string
+	isDockerRule bool // indicates if rule is in Docker's 'ip' family table instead of 'inet'
 }
 type ruletable map[string]rulesCfg
 

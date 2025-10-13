@@ -496,7 +496,15 @@ func (n *nftablesManager) CleanRoutingRules(server, ruleTableName string) {
 	for _, rulesCfg := range ruleTable {
 		for _, rules := range rulesCfg.rulesMap {
 			for _, rule := range rules {
-				if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
+				var err error
+				if rule.isDockerRule {
+					// Docker rules are in 'ip' family table
+					err = n.deleteDockerRule(rule.chain, genRuleKey(rule.rule...))
+				} else {
+					// Regular rules are in 'inet' family table
+					err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
+				}
+				if err != nil {
 					logger.Log(0, "Error cleaning up rule: ", err.Error())
 				}
 			}
@@ -741,10 +749,11 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 							logger.Log(0, fmt.Sprintf("ERROR: failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
 						} else {
 							egressGwRoutes = append(egressGwRoutes, ruleInfo{
-								nfRule: dockerRule,
-								table:  defaultIpTable,
-								chain:  "DOCKER-USER",
-								rule:   dockerRuleSpec,
+								nfRule:       dockerRule,
+								table:        defaultIpTable,
+								chain:        "DOCKER-USER",
+								rule:         dockerRuleSpec,
+								isDockerRule: true, // Mark as Docker rule so cleanup knows to delete from 'ip' family
 							})
 							logger.Log(0, fmt.Sprintf("SUCCESS: added Docker network rule for interface: %s", egressRangeIface))
 						}
@@ -805,9 +814,20 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	}
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
-			if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
-				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
-					rule.table, rule.rule, peerKey, err))
+			var err error
+			if rule.isDockerRule {
+				// Docker rules are in 'ip' family table, use special delete function
+				err = n.deleteDockerRule(rule.chain, genRuleKey(rule.rule...))
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to delete Docker rule [%v] for %s: %v", rule.rule, peerKey, err))
+				}
+			} else {
+				// Regular rules are in 'inet' family table
+				err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
+				if err != nil {
+					slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
+						rule.table, rule.rule, peerKey, err))
+				}
 			}
 		}
 	}
@@ -826,7 +846,15 @@ func (n *nftablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 	}
 	if rules, ok := rulesTable[srcPeerKey].rulesMap[dstPeerKey]; ok {
 		for _, rule := range rules {
-			if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
+			var err error
+			if rule.isDockerRule {
+				// Docker rules are in 'ip' family table
+				err = n.deleteDockerRule(rule.chain, genRuleKey(rule.rule...))
+			} else {
+				// Regular rules are in 'inet' family table
+				err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
+			}
+			if err != nil {
 				return fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
 					rule.table, rule.rule, srcPeerKey, err)
 			}
@@ -842,6 +870,29 @@ func (n *nftablesManager) FlushAll() {
 	n.mux.Lock()
 	defer n.mux.Unlock()
 	logger.Log(0, "flushing netmaker rules...")
+
+	// Clean up any Docker USER rules we added (in 'ip' family table)
+	chains, err := n.conn.ListChains()
+	if err == nil {
+		for _, ch := range chains {
+			if ch.Name == "DOCKER-USER" && ch.Table.Family == nftables.TableFamilyIPv4 {
+				rules, err := n.conn.GetRules(ipFilterTable, ch)
+				if err == nil {
+					for _, rule := range rules {
+						ruleKey := string(rule.UserData)
+						// Delete rules that match our signature (netmaker interface rules)
+						if strings.Contains(ruleKey, ncutils.GetInterfaceName()) && strings.Contains(ruleKey, "ACCEPT") {
+							n.conn.DelRule(rule)
+							logger.Log(0, fmt.Sprintf("Removed Docker USER rule: %s", ruleKey))
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Flush our inet tables
 	n.conn.FlushTable(filterTable)
 	n.conn.FlushTable(natTable)
 	if err := n.conn.Flush(); err != nil {
@@ -915,6 +966,23 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 		return err
 	}
 	return n.conn.Flush()
+}
+
+// deleteDockerRule deletes a rule from the Docker's 'ip' family filter table
+func (n *nftablesManager) deleteDockerRule(chainName, ruleKey string) error {
+	rules, err := n.conn.GetRules(ipFilterTable, &nftables.Chain{Name: chainName, Table: ipFilterTable})
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if string(rule.UserData) == ruleKey {
+			if err := n.conn.DelRule(rule); err != nil {
+				return err
+			}
+			return n.conn.Flush()
+		}
+	}
+	return fmt.Errorf("Docker rule not found: %s in chain %s", ruleKey, chainName)
 }
 
 func (n *nftablesManager) addJumpRules() {
