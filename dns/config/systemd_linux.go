@@ -68,7 +68,12 @@ func (s *systemdManager) Configure(iface string, config Config) error {
 			return err
 		}
 
-		err = exec.Command("resolvectl", "default-route", iface, "no").Run()
+		defaultRoute := "yes"
+		if config.SplitDNS {
+			defaultRoute = "no"
+		}
+
+		err = exec.Command("resolvectl", "default-route", iface, defaultRoute).Run()
 		if err != nil {
 			return err
 		}
