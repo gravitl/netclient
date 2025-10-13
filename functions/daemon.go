@@ -175,6 +175,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	netclientCfg := config.Netclient()
 
+	err = dns.Init()
+	if err != nil {
+		logger.FatalLog("error initializing dns manager:", err.Error())
+	}
+
 	if !netclientCfg.IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())

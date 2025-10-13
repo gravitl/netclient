@@ -29,14 +29,13 @@ var dnsServer *DNSServer
 
 func init() {
 	dnsServer = &DNSServer{}
+	cacheManager = dnscache.NewManager()
+}
 
+func Init() error {
 	var err error
 	configManager, err = dnsconfig.NewManager(dnsconfig.CleanupResidualInterfaceConfigs(ncutils.GetInterfaceName()))
-	if err != nil {
-		panic(err)
-	}
-
-	cacheManager = dnscache.NewManager()
+	return err
 }
 
 // GetInstance
