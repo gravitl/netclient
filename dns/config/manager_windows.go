@@ -89,9 +89,11 @@ func (w *windowsManager) setRegistry(nameservers []net.IP, searchDomains []strin
 	skipIpv4 := true
 	skipIpv6 := true
 	for _, ns := range nameservers {
-		if ns.To4() == nil {
+		if ns.To4() != nil {
 			skipIpv4 = false
-		} else {
+		}
+
+		if ns.To16() != nil {
 			skipIpv6 = false
 		}
 	}
@@ -122,10 +124,11 @@ func (w *windowsManager) setRegistrySearchList(searchDomains []string, ipv6 bool
 		_ = searchListKey.Close()
 	}()
 
-	searchList, _, err := searchListKey.GetStringsValue("SearchList")
+	searchListStr, _, err := searchListKey.GetStringValue("SearchList")
+	searchListStr = strings.TrimSpace(searchListStr)
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
-			err = searchListKey.SetStringsValue("SearchList", searchDomains)
+			err = searchListKey.SetStringValue("SearchList", strings.Join(searchDomains, ","))
 			if err != nil {
 				return err
 			}
@@ -133,10 +136,10 @@ func (w *windowsManager) setRegistrySearchList(searchDomains []string, ipv6 bool
 			return err
 		}
 	} else {
-		_, _, err = searchListKey.GetStringsValue("PreNetmakerSearchList")
+		_, _, err = searchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if errors.Is(err, registry.ErrNotExist) {
-				err = searchListKey.SetStringsValue("PreNetmakerSearchList", searchDomains)
+				err = searchListKey.SetStringValue("PreNetmakerSearchList", searchListStr)
 				if err != nil {
 					return err
 				}
@@ -145,8 +148,11 @@ func (w *windowsManager) setRegistrySearchList(searchDomains []string, ipv6 bool
 			}
 		}
 
-		searchList = append(searchDomains, searchList...)
-		err = searchListKey.SetStringsValue("SearchList", searchList)
+		if len(searchListStr) > 0 {
+			searchDomains = append(searchDomains, strings.Split(searchListStr, ",")...)
+		}
+
+		err = searchListKey.SetStringValue("SearchList", strings.Join(searchDomains, ","))
 		if err != nil {
 			return err
 		}
@@ -222,13 +228,13 @@ func (w *windowsManager) resetRegistry() error {
 	}()
 
 	if !skipGlobal {
-		searchList, _, err := globalSearchListKey.GetStringsValue("PreNetmakerSearchList")
+		searchList, _, err := globalSearchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if !errors.Is(err, registry.ErrNotExist) {
 				return err
 			}
 		} else {
-			err = globalSearchListKey.SetStringsValue("SearchList", searchList)
+			err = globalSearchListKey.SetStringValue("SearchList", searchList)
 			if err != nil {
 				return err
 			}
@@ -238,13 +244,13 @@ func (w *windowsManager) resetRegistry() error {
 	}
 
 	if !skipIpv4 {
-		searchList, _, err := ipv4SearchListKey.GetStringsValue("PreNetmakerSearchList")
+		searchList, _, err := ipv4SearchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if !errors.Is(err, registry.ErrNotExist) {
 				return err
 			}
 		} else {
-			err = ipv4SearchListKey.SetStringsValue("SearchList", searchList)
+			err = ipv4SearchListKey.SetStringValue("SearchList", searchList)
 			if err != nil {
 				return err
 			}
@@ -254,13 +260,13 @@ func (w *windowsManager) resetRegistry() error {
 	}
 
 	if !skipIpv6 {
-		searchList, _, err := ipv6SearchListKey.GetStringsValue("PreNetmakerSearchList")
+		searchList, _, err := ipv6SearchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if !errors.Is(err, registry.ErrNotExist) {
 				return err
 			}
 		} else {
-			err = ipv6SearchListKey.SetStringsValue("SearchList", searchList)
+			err = ipv6SearchListKey.SetStringValue("SearchList", searchList)
 			if err != nil {
 				return err
 			}
@@ -279,7 +285,7 @@ func (w *windowsManager) getSearchListRegistryKey(ipv6 bool) (registry.Key, erro
 			return 0, err
 		}
 	} else {
-		_, _, err = key.GetStringsValue("SearchList")
+		_, _, err = key.GetStringValue("SearchList")
 		if err != nil {
 			_ = key.Close()
 			if !errors.Is(err, registry.ErrNotExist) {
