@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 type openresolvManager struct{}
@@ -19,7 +20,6 @@ func newOpenresolvManager(opts ...ManagerOption) (*openresolvManager, error) {
 		for _, iface := range options.residualInterfaces {
 			err := o.resetConfig(iface)
 			if err != nil {
-				// TODO: suppress iface does not exist
 				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
 			}
 		}
@@ -47,5 +47,15 @@ func (o *openresolvManager) Configure(iface string, config Config) error {
 }
 
 func (o *openresolvManager) resetConfig(iface string) error {
-	return exec.Command("resolvconf", "-d", iface).Run()
+	out, err := exec.Command("resolvconf", "-d", iface).CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(out))
+		if out == fmt.Sprintf("No resolv.conf for interface %s", iface) {
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }

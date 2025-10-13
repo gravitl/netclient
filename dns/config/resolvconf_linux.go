@@ -30,7 +30,6 @@ func newResolvconfManager(opts ...ManagerOption) (*resolvconfManager, error) {
 		for _, iface := range options.residualInterfaces {
 			err := r.resetConfig(iface)
 			if err != nil {
-				// TODO: suppress iface does not exist
 				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
 			}
 
