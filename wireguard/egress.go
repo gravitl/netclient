@@ -71,6 +71,9 @@ func resetHAEgressCache() {
 	defer egressRoutesCacheMutex.Unlock()
 	egressRoutes = []models.EgressNetworkRoutes{}
 	haEgressPeerCache = make(map[string][]net.IPNet)
+	egressDomainCacheMutex.Lock()
+	egressDomainCache = []models.EgressDomain{}
+	egressDomainCacheMutex.Unlock()
 }
 
 func sortRouteMetricByAscending(items []egressPeer) []egressPeer {

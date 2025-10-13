@@ -35,8 +35,10 @@ func init() {
 }
 
 var (
-	filterTable = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyINet}
-	natTable    = &nftables.Table{Name: defaultNatTable, Family: nftables.TableFamilyINet}
+	filterTable    = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyINet}
+	natTable       = &nftables.Table{Name: defaultNatTable, Family: nftables.TableFamilyINet}
+	ipFilterTable  = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyIPv4}
+	ip6FilterTable = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyIPv6}
 
 	nfJumpRules []ruleInfo
 	// filter table netmaker jump rules
@@ -534,7 +536,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
 		if egressGwRange.Nat {
-
+			logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
 			source := egressInfo.Network.String()
 			if !isAddrIpv4(egressGwRange.Network) {
 				source = egressInfo.Network6.String()
@@ -542,6 +544,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
+				logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
 				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 				// to avoid duplicate iface route rule,delete if exists
 				var exp []expr.Any
@@ -655,26 +658,36 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 
 				// Add Docker-specific rule if egress interface is a Docker network
 				if isDockerInterface(egressRangeIface) {
-					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
-					// Check if DOCKER-USER chain exists in filter table
+					logger.Log(0, fmt.Sprintf("Detected Docker interface: %s", egressRangeIface))
+					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", "ACCEPT"}
+					// Check if DOCKER-USER chain exists in IPv4 filter table (Docker uses 'ip' family, not 'inet')
 					dockerUserChain := &nftables.Chain{
 						Name:  "DOCKER-USER",
-						Table: filterTable,
+						Table: ipFilterTable,
 					}
 					chains, err := n.conn.ListChains()
 					dockerChainExists := false
-					if err == nil {
+					if err != nil {
+						logger.Log(0, fmt.Sprintf("Failed to list chains: %v", err))
+					} else {
 						for _, ch := range chains {
-							if ch.Name == "DOCKER-USER" && ch.Table.Name == filterTable.Name {
+							if ch.Name == "DOCKER-USER" && ch.Table.Name == ipFilterTable.Name && ch.Table.Family == nftables.TableFamilyIPv4 {
 								dockerUserChain = ch
 								dockerChainExists = true
+								logger.Log(0, "Found DOCKER-USER chain in ip filter table")
 								break
 							}
+						}
+						if !dockerChainExists {
+							logger.Log(0, "DOCKER-USER chain not found in ip filter table")
 						}
 					}
 
 					if dockerChainExists {
 						// Build nftables expressions for the Docker rule
+						// Note: We can't jump to NETMAKER-ACL-IN chain here because it's in the 'inet' family
+						// and DOCKER-USER is in the 'ip' family. Instead, we accept the traffic here,
+						// and it will be filtered by the FORWARD chain rules in the inet table anyway.
 						dockerExp := []expr.Any{
 							// Match incoming interface (netmaker interface)
 							&expr.Meta{
@@ -684,7 +697,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 							&expr.Cmp{
 								Op:       expr.CmpOpEq,
 								Register: 1,
-								Data:     []byte(ncutils.GetInterfaceName()),
+								Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 							},
 							// Match outgoing interface (docker interface)
 							&expr.Meta{
@@ -694,25 +707,38 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 							&expr.Cmp{
 								Op:       expr.CmpOpEq,
 								Register: 1,
-								Data:     []byte(egressRangeIface),
+								Data:     []byte(egressRangeIface + "\x00"),
 							},
-							// Jump to Netmaker ACL IN chain
+							// Accept the traffic (ACL filtering happens in inet FORWARD chain)
+							&expr.Counter{},
 							&expr.Verdict{
-								Kind:  expr.VerdictJump,
-								Chain: aclInputRulesChain,
+								Kind: expr.VerdictAccept,
 							},
 						}
 
-						n.deleteRule(defaultIpTable, "DOCKER-USER", genRuleKey(dockerRuleSpec...))
+						// Note: Can't use deleteRule here as it searches in 'inet' family, but DOCKER-USER is in 'ip' family
+						// Check if rule already exists
+						existingRules, err := n.conn.GetRules(ipFilterTable, dockerUserChain)
+						if err == nil {
+							for _, rule := range existingRules {
+								if string(rule.UserData) == genRuleKey(dockerRuleSpec...) {
+									n.conn.DelRule(rule)
+									break
+								}
+							}
+						}
+
 						dockerRule := &nftables.Rule{
-							Table:    filterTable,
+							Table:    ipFilterTable,
 							Chain:    dockerUserChain,
 							UserData: []byte(genRuleKey(dockerRuleSpec...)),
 							Exprs:    dockerExp,
+							Position: 0, // Insert at the beginning, before Docker's RETURN rule
 						}
+						logger.Log(0, fmt.Sprintf("Inserting Docker rule: %v", dockerRuleSpec))
 						n.conn.InsertRule(dockerRule)
 						if err := n.conn.Flush(); err != nil {
-							logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
+							logger.Log(0, fmt.Sprintf("ERROR: failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
 						} else {
 							egressGwRoutes = append(egressGwRoutes, ruleInfo{
 								nfRule: dockerRule,
@@ -720,8 +746,10 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 								chain:  "DOCKER-USER",
 								rule:   dockerRuleSpec,
 							})
-							logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
+							logger.Log(0, fmt.Sprintf("SUCCESS: added Docker network rule for interface: %s", egressRangeIface))
 						}
+					} else {
+						logger.Log(0, "Skipping Docker rule - DOCKER-USER chain does not exist")
 					}
 				}
 			}
