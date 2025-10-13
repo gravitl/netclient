@@ -20,6 +20,10 @@ func Configure() error {
 	dnsConfig.Nameservers = []net.IP{net.ParseIP(ip)}
 	dnsConfig.SplitDNS = true
 
+	if config.GetServer(config.CurrServer).DefaultDomain != "" {
+		dnsConfig.SearchDomains = append(dnsConfig.SearchDomains, config.GetServer(config.CurrServer).DefaultDomain)
+	}
+
 	var matchAllDomains bool
 	for _, nameserver := range config.GetServer(config.CurrServer).DnsNameservers {
 		if nameserver.MatchDomain == "." {
