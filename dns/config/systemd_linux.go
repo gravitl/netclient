@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 type systemdManager struct{}
@@ -18,7 +19,6 @@ func newSystemdManager(opts ...ManagerOption) (*systemdManager, error) {
 		for _, iface := range options.residualInterfaces {
 			err := s.resetConfig(iface)
 			if err != nil {
-				// TODO: suppress iface does not exist
 				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
 			}
 		}
@@ -78,12 +78,27 @@ func (s *systemdManager) Configure(iface string, config Config) error {
 }
 
 func (s *systemdManager) resetConfig(iface string) error {
-	err := exec.Command("resolvectl", "dns", iface, "").Run()
+	out, err := exec.Command("resolvectl", "dns", iface, "").CombinedOutput()
 	if err != nil {
+		out := strings.TrimSpace(string(out))
+		if out == fmt.Sprintf("Failed to resolve interface \"%s\": No such device", iface) {
+			return nil
+		}
+
 		return err
 	}
 
-	return exec.Command("resolvectl", "domain", iface, "").Run()
+	out, err = exec.Command("resolvectl", "domain", iface, "").CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(out))
+		if out == fmt.Sprintf("Failed to resolve domain \"%s\": No such device", iface) {
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (s *systemdManager) flushChanges() error {
