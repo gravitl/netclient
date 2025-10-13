@@ -9,5 +9,5 @@ func newSystemdManager() *systemdManager {
 }
 
 func (m *systemdManager) Flush() error {
-	return exec.Command("systemctl", "flush-caches").Run()
+	return exec.Command("resolvectl", "flush-caches").Run()
 }
