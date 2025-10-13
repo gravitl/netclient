@@ -197,8 +197,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if server.IsPro {
-		if peerConnTicker != nil {
-			peerConnTicker.Reset(peerConnectionCheckInterval)
+		if autoRelayConnTicker != nil {
+			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+		}
+		if networking.PeerLocalEndpointConnTicker != nil {
+			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
 		}
 		if wireguard.HaEgressTicker != nil {
 			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)

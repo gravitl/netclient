@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
@@ -239,7 +240,7 @@ func callPublishMetrics(fallback bool) {
 	}
 
 	if server.IsPro {
-		response, err := getPeerInfo()
+		response, err := networking.GetPeerInfo()
 		if err != nil {
 			return
 		}
