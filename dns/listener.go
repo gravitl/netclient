@@ -2,7 +2,6 @@ package dns
 
 import (
 	"context"
-	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -45,9 +44,6 @@ func GetDNSServerInstance() *DNSServer {
 
 // Start the DNS listener
 func (dnsServer *DNSServer) Start() {
-	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
-		return
-	}
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
 	if dnsServer.AddrStr != "" {
@@ -106,11 +102,9 @@ func (dnsServer *DNSServer) Start() {
 		return
 	}
 
-	if config.Netclient().Host.OS == "linux" || config.Netclient().Host.OS == "windows" {
-		err := Configure()
-		if err != nil {
-			logger.Log(0, "error configuring dns settings:", err.Error())
-		}
+	err := Configure()
+	if err != nil {
+		logger.Log(0, "error configuring dns settings:", err.Error())
 	}
 
 	slog.Info("DNS server listens on: ", "Info", dnsServer.AddrStr)
