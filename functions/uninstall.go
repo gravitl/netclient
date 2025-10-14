@@ -45,7 +45,7 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 		return faults, fmt.Errorf("not connected to network: %s", network)
 	}
 	if err := deleteNodeFromServer(&node); err != nil {
-		faults = append(faults, fmt.Errorf("error deleting nodes from server %w", err))
+		fmt.Printf("error deleting nodes from server %v", err)
 	}
 	// remove node from config
 	if err := deleteLocalNetwork(&node); err != nil {
