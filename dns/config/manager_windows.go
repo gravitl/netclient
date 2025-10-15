@@ -48,46 +48,58 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 		w.configs[iface] = config
 	}
 
-	var nameservers []net.IP
-	var searchDomains []string
+	nameservers := make(map[string]bool)
+	searchDomains := make(map[string]bool)
 	var matchAllDomains bool
 	for _, config := range w.configs {
 		if !config.SplitDNS {
 			matchAllDomains = true
 		}
 
-		nameservers = append(nameservers, config.Nameservers...)
-		searchDomains = append(searchDomains, config.SearchDomains...)
+		for _, nameserver := range config.Nameservers {
+			nameservers[nameserver.String()] = true
+		}
+
+		for _, searchDomain := range config.SearchDomains {
+			searchDomains[searchDomain] = true
+		}
 	}
 
-	err := w.setRegistry(nameservers, searchDomains)
+	err := w.resetConfig()
+	if err != nil {
+		return err
+	}
+
+	err = w.setRegistry(nameservers, searchDomains)
 	if err != nil {
 		return err
 	}
 
 	if matchAllDomains {
-		searchDomains = append(searchDomains, ".")
+		searchDomains["."] = true
 	}
 
 	return w.setNrptRules(nameservers, searchDomains)
 }
 
-func (w *windowsManager) setNrptRules(nameservers []net.IP, searchDomains []string) error {
+func (w *windowsManager) setNrptRules(nameservers map[string]bool, searchDomains map[string]bool) error {
 	var nameserver string
-	for _, ns := range nameservers {
+	for ns := range nameservers {
 		if nameserver == "" {
-			nameserver = fmt.Sprintf("\"%s\"", ns.String())
+			nameserver = fmt.Sprintf("\"%s\"", ns)
 		} else {
-			nameserver = fmt.Sprintf("%s,\"%s\"", nameserver, ns.String())
+			nameserver = fmt.Sprintf("%s,\"%s\"", nameserver, ns)
 		}
 	}
 
-	for _, domain := range searchDomains {
+	for domain := range searchDomains {
 		if !strings.HasPrefix(domain, ".") {
 			domain = "." + domain
 		}
 
-		err := w.setNrptRule(domain, nameserver)
+		addCmd := fmt.Sprintf("Add-DnsClientNrptRule -Namespace \"%s\" -NameServers %s -Comment \"%s\"", domain, nameserver, nrptRuleMarker)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", addCmd)
+		err := cmd.Run()
 		if err != nil {
 			return err
 		}
@@ -96,58 +108,34 @@ func (w *windowsManager) setNrptRules(nameservers []net.IP, searchDomains []stri
 	return nil
 }
 
-func (w *windowsManager) setNrptRule(namespace, nameservers string) error {
-	getCmd := fmt.Sprintf("Get-DnsClientNrptRule | Where-Object {$_.Namespace -eq \"%s\" -and $_.Comment -eq \"%s\"} | Select-Object -ExpandProperty Name", namespace, nrptRuleMarker)
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", getCmd)
-	output, err := cmd.Output()
-	if err != nil {
-		return err
-	}
-
-	var names []string
-	for _, name := range strings.Split(strings.TrimSpace(string(output)), "\r\n") {
-		name = strings.TrimSpace(name)
-		if name != "" {
-			names = append(names, name)
-		}
-	}
-
-	for _, name := range names {
-		removeCmd := fmt.Sprintf("Remove-DnsClientNrptRule -Name \"%s\" -Force", name)
-		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", removeCmd)
-		err = cmd.Run()
-		if err != nil {
-			return err
-		}
-	}
-
-	addCmd := fmt.Sprintf("Add-DnsClientNrptRule -Namespace \"%s\" -NameServers %s -Comment \"%s\"", namespace, nameservers, nrptRuleMarker)
-	cmd = exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", addCmd)
-	return cmd.Run()
-}
-
-func (w *windowsManager) setRegistry(nameservers []net.IP, searchDomains []string) error {
+func (w *windowsManager) setRegistry(nameservers map[string]bool, searchDomains map[string]bool) error {
 	skipIpv4 := true
 	skipIpv6 := true
-	for _, ns := range nameservers {
-		if ns.To4() != nil {
+	for ns := range nameservers {
+		ip := net.ParseIP(ns)
+		if ip.To4() != nil {
 			skipIpv4 = false
 		}
 
-		if ns.To16() != nil {
+		if ip.To16() != nil {
 			skipIpv6 = false
 		}
 	}
 
+	var searchDomainsList []string
+	for searchDomain := range searchDomains {
+		searchDomainsList = append(searchDomainsList, searchDomain)
+	}
+
 	if !skipIpv4 {
-		err := w.setRegistrySearchList(searchDomains, false)
+		err := w.setRegistrySearchList(searchDomainsList, false)
 		if err != nil {
 			return err
 		}
 	}
 
 	if !skipIpv6 {
-		err := w.setRegistrySearchList(searchDomains, true)
+		err := w.setRegistrySearchList(searchDomainsList, true)
 		if err != nil {
 			return err
 		}
