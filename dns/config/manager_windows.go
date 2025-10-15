@@ -14,10 +14,14 @@ const (
 	nrptRuleMarker = "Managed by netmaker"
 )
 
-type windowsManager struct{}
+type windowsManager struct {
+	configs map[string]Config
+}
 
 func NewManager(opts ...ManagerOption) (Manager, error) {
-	w := &windowsManager{}
+	w := &windowsManager{
+		configs: make(map[string]Config),
+	}
 	var options ManagerOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -39,24 +43,33 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	}
 
 	if config.Remove {
-		return w.resetConfig()
+		delete(w.configs, iface)
+	} else {
+		w.configs[iface] = config
 	}
 
-	var domains []string
-	for _, domain := range config.SearchDomains {
-		if domain != "." {
-			domains = append(domains, domain)
+	var nameservers []net.IP
+	var searchDomains []string
+	var matchAllDomains bool
+	for _, config := range w.configs {
+		if !config.SplitDNS {
+			matchAllDomains = true
 		}
+
+		nameservers = append(nameservers, config.Nameservers...)
+		searchDomains = append(searchDomains, config.SearchDomains...)
 	}
 
-	// write nrpt rules for routing queries.
-	err := w.setNrptRules(config.Nameservers, config.SearchDomains)
+	err := w.setRegistry(nameservers, searchDomains)
 	if err != nil {
 		return err
 	}
 
-	// write registry config for dns query expansion.
-	return w.setRegistry(config.Nameservers, domains)
+	if matchAllDomains {
+		searchDomains = append(searchDomains, ".")
+	}
+
+	return w.setNrptRules(nameservers, searchDomains)
 }
 
 func (w *windowsManager) setNrptRules(nameservers []net.IP, searchDomains []string) error {
@@ -74,15 +87,43 @@ func (w *windowsManager) setNrptRules(nameservers []net.IP, searchDomains []stri
 			domain = "." + domain
 		}
 
-		addCmd := fmt.Sprintf("Add-DnsClientNrptRule -Namespace \"%s\" -NameServers %s -Comment \"%s\"", domain, nameserver, nrptRuleMarker)
-		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", addCmd)
-		err := cmd.Run()
+		err := w.setNrptRule(domain, nameserver)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (w *windowsManager) setNrptRule(namespace, nameservers string) error {
+	getCmd := fmt.Sprintf("Get-DnsClientNrptRule | Where-Object {$_.Namespace -eq \"%s\" -and $_.Comment -eq \"%s\"} | Select-Object -ExpandProperty Name", namespace, nrptRuleMarker)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", getCmd)
+	output, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+
+	var names []string
+	for _, name := range strings.Split(strings.TrimSpace(string(output)), "\r\n") {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+
+	for _, name := range names {
+		removeCmd := fmt.Sprintf("Remove-DnsClientNrptRule -Name \"%s\" -Force", name)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", removeCmd)
+		err = cmd.Run()
+		if err != nil {
+			return err
+		}
+	}
+
+	addCmd := fmt.Sprintf("Add-DnsClientNrptRule -Namespace \"%s\" -NameServers %s -Comment \"%s\"", namespace, nameservers, nrptRuleMarker)
+	cmd = exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", addCmd)
+	return cmd.Run()
 }
 
 func (w *windowsManager) setRegistry(nameservers []net.IP, searchDomains []string) error {
@@ -174,26 +215,28 @@ func (w *windowsManager) resetNrptRules() error {
 	getCmd := fmt.Sprintf("Get-DnsClientNrptRule | Where-Object {$_.Comment -eq \"%s\"} | Select-Object -ExpandProperty Name", nrptRuleMarker)
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", getCmd)
 	output, err := cmd.Output()
-	if err == nil {
-		var names []string
-		for _, name := range strings.Split(strings.TrimSpace(string(output)), "\r\n") {
-			name = strings.TrimSpace(name)
-			if name != "" {
-				names = append(names, name)
-			}
-		}
+	if err != nil {
+		return err
+	}
 
-		for _, name := range names {
-			removeCmd := fmt.Sprintf("Remove-DnsClientNrptRule -Name \"%s\" -Force", name)
-			cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", removeCmd)
-			err = cmd.Run()
-			if err != nil {
-				return err
-			}
+	var names []string
+	for _, name := range strings.Split(strings.TrimSpace(string(output)), "\r\n") {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			names = append(names, name)
 		}
 	}
 
-	return err
+	for _, name := range names {
+		removeCmd := fmt.Sprintf("Remove-DnsClientNrptRule -Name \"%s\" -Force", name)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", removeCmd)
+		err = cmd.Run()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (w *windowsManager) resetRegistry() error {
