@@ -11,7 +11,6 @@ import (
 
 	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
-	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
@@ -73,6 +72,7 @@ func processPeerSignal(signal models.Signal) {
 }
 
 func handlePeerRelaySignal(signal models.Signal) error {
+	fmt.Println("RECV signal from ", signal.FromNodeID)
 	if !signal.Reply {
 		// signal back
 		err := SignalPeer(models.Signal{
@@ -109,13 +109,13 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	}
 	nearestNode, err := findNearestNode(autoRelayNodes, metricPort)
 	if err != nil {
-		slog.Debug("failed to find nearest relay node", "error", err)
+		slog.Error("failed to find nearest relay node", "error", err)
 		return err
 	}
-
+	fmt.Println("====> Sending relay me req ", signal.FromNodeID)
 	err = autoRelayME(signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
 	if err != nil {
-		slog.Debug("failed to signal server to relay me", "error", err)
+		slog.Error("failed to signal server to relay me", "error", err)
 		return err
 	}
 
@@ -159,13 +159,15 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					}
 					autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
 					if len(autoRelayNodes) == 0 {
+						slog.Error("no auto relay nodes found")
 						continue
 					}
+					fmt.Println("=====> HERE1")
 					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
 					if !ok {
 						continue
 					}
-
+					fmt.Println("=====> HERE2")
 					for pubKey, peer := range peers {
 						if peer.IsExtClient {
 							continue
@@ -174,12 +176,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if !ok {
 							continue
 						}
-						// check if local endpoint is present
-						localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey)
-						if ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
-							networking.SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
-						}
 						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
+							fmt.Println("======> Cache Hit ", peer.Address)
 							continue
 						}
 						// check if there is handshake on interface
@@ -192,9 +190,12 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							// peer is connected,so continue
 							continue
 						}
-						if checkAutoRelayCtxForPeer(config.CurrServer, node.ID.String(), peer.ID) != nil {
-							continue
-						}
+						fmt.Println("=====> HERE3", peer.Address)
+						// if err := checkAutoRelayCtxForPeer(config.CurrServer, node.ID.String(), peer.ID); err != nil {
+						// 	slog.Error("auto relay ctx for peer ", "error", err)
+						// 	continue
+						// }
+						fmt.Println("=====> Sending signal for peerr", peer.Address)
 						s := models.Signal{
 							Server:         config.CurrServer,
 							FromHostID:     config.Netclient().ID.String(),
@@ -246,14 +247,14 @@ func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) 
 	}
 
 	var nearestNode *models.Node
-	var lowestLatency int64 = 9999999 // Start with a very high value (milliseconds)
+	var lowestLatency int64 = 999 // Start with a very high value (milliseconds)
 
 	for i := range nodes {
 		node := &nodes[i]
-
+		fmt.Println("=====>findNearestNode ", node.Address.String())
 		// Try to get metrics/ping the node to determine latency
-		connected, latency := metrics.PeerConnStatus(node.Address.String(), metricPort, 2)
-
+		connected, latency := metrics.PeerConnStatus(node.Address.IP.String(), metricPort, 2)
+		fmt.Println("=====> CONNECTION STATUS", node.Address, connected, latency)
 		if !connected || latency <= 0 {
 			// If we can't reach the node or got invalid latency, skip it
 			slog.Debug("relay node unreachable", "node", node.ID.String(), "address", node.Address.String())
@@ -293,7 +294,7 @@ func checkAutoRelayCtxForPeer(serverName, nodeID, peernodeID string) error {
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/node/%s/auto_relay_check", nodeID),
 		Method:        http.MethodGet,
-		Data:          models.FailOverMeReq{NodeID: peernodeID},
+		Data:          models.AutoRelayMeReq{NodeID: peernodeID},
 		Authorization: "Bearer " + token,
 		ErrorResponse: models.ErrorResponse{},
 	}
@@ -329,10 +330,11 @@ func autoRelayME(serverName, nodeID, peernodeID, relayID string) error {
 		Authorization: "Bearer " + token,
 		ErrorResponse: models.ErrorResponse{},
 	}
-	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	resp, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
 	if err != nil {
+		fmt.Println("+===> RELAY ME: ", resp.Message)
 		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Debug("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
+			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
 		}
 		return err
 	}
