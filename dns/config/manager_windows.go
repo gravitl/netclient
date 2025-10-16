@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"golang.org/x/sys/windows/registry"
@@ -17,6 +18,7 @@ const (
 type windowsManager struct {
 	configs      map[string]Config
 	nrptRuleName string
+	mu           sync.Mutex
 }
 
 type searchListFamily int
@@ -50,6 +52,9 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	if iface == "" {
 		return fmt.Errorf("interface name is required")
 	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	// registry updates only.
 
