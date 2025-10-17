@@ -319,6 +319,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 	}
 
+	server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
+
 	if peerUpdate.ManageDNS != server.ManageDNS {
 		server.ManageDNS = peerUpdate.ManageDNS
 		saveServerConfig = true
@@ -868,6 +870,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.DnsNameservers = pullResponse.DnsNameservers
 		saveServerConfig = true
 	}
+
+	server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
 
 	if pullResponse.ServerConfig.ManageDNS != server.ManageDNS {
 		server.ManageDNS = pullResponse.ServerConfig.ManageDNS
