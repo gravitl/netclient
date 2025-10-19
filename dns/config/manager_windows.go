@@ -56,17 +56,6 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// registry updates only.
-
-	// 1. set search lists.
-	// each search domain we have gets added to the SearchList, except "."
-	// 2. set domain matching.
-	// for each domain, we create a list of nameservers that can resolve it.
-	// additionally for !split dns, we set nameserver for the "." domain.
-
-	// remove
-	// each search domain part of the interface is affected.
-
 	if config.Remove {
 		delete(w.configs, iface)
 	} else {
