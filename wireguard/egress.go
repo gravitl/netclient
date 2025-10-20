@@ -196,11 +196,27 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			if len(nodes) == 0 {
 				continue
 			}
+
+			// Check context before expensive operation
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			egressPeerInfo := getHAEgressDataForProcessing(metricPort)
 			if len(egressPeerInfo) == 0 {
-				//fmt.Println("===> SKIPPING Egress PEERINFO")
+				fmt.Println("===> SKIPPING Egress PEERINFO")
 				continue
 			}
+
+			// Check context again after potentially slow operation
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			//fmt.Printf("HA Egress Ticker: %+v\n", egressPeerInfo)
 			shouldCheck := false
 			for _, egressPeers := range egressPeerInfo {
@@ -218,13 +234,32 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			}
 
 			for egressRange, egressRoutingInfo := range egressPeerInfo {
+				// Check context at start of goroutine
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				go func(egressRange string, egressRoutingInfo []egressPeer) {
+					// Check context at start of goroutine
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
 					_, ipnet, cidrErr := net.ParseCIDR(egressRange)
 					if cidrErr != nil {
 						return
 					}
 					var haActiveRoutingPeer string
 					for _, egressRouteI := range egressRoutingInfo {
+						// Check context before network calls
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+
 						devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
 						if !ok {
 							continue
@@ -274,6 +309,13 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 					}
 					// remove other peers in ha cache
 					for _, egressRouteI := range egressRoutingInfo {
+						// Check context before cleanup operations
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+
 						if egressRouteI.PeerKey != haActiveRoutingPeer {
 							peer, err := GetPeer(ncutils.GetInterfaceName(), egressRouteI.PeerKey)
 							if err == nil {
