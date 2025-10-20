@@ -292,6 +292,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
+	config.UpdateHostPeers(peerUpdate.Peers)
+	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
@@ -299,8 +301,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.RemoveEgressRoutes()
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
-	config.UpdateHostPeers(peerUpdate.Peers)
-	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}

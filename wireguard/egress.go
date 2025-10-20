@@ -83,26 +83,47 @@ func sortRouteMetricByAscending(items []egressPeer, metricsPort int) []egressPee
 	if metricsPort == 0 {
 		metricsPort = 51821
 	}
+
+	// Pre-fetch all latencies concurrently to avoid network calls during sort comparisons
+	latencyCache := make(map[string]int64)
+	var latencyCacheMutex sync.Mutex
+	var wg sync.WaitGroup
+
+	// Collect unique peers to check
+	uniquePeers := make(map[string]egressPeer)
+	for _, item := range items {
+		if _, exists := uniquePeers[item.PeerKey]; !exists {
+			uniquePeers[item.PeerKey] = item
+		}
+	}
+
+	// Check latencies in parallel
+	for peerKey, item := range uniquePeers {
+		wg.Add(1)
+		go func(key string, peer egressPeer) {
+			defer wg.Done()
+			var latency int64
+			if peer.EgressGwAddr.IP != nil {
+				_, latency = metrics.PeerConnStatus(peer.EgressGwAddr.IP.String(), metricsPort, 1)
+			} else if peer.EgressGwAddr6.IP != nil {
+				_, latency = metrics.PeerConnStatus(peer.EgressGwAddr6.IP.String(), metricsPort, 2)
+			}
+			latencyCacheMutex.Lock()
+			latencyCache[key] = latency
+			latencyCacheMutex.Unlock()
+		}(peerKey, item)
+	}
+	wg.Wait()
+
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Metric == items[j].Metric {
-			// sort by latency
-			if items[i].EgressGwAddr.IP != nil && items[j].EgressGwAddr.IP != nil {
-				// trigger a handshake
-				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr.IP.String(), metricsPort, 1)
-				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr.IP.String(), metricsPort, 1)
-				if latencyI < latencyJ {
-					return true
-				} else {
-					return false
-				}
+			// sort by latency using cached values
+			latencyI, hasI := latencyCache[items[i].PeerKey]
+			latencyJ, hasJ := latencyCache[items[j].PeerKey]
 
-			} else if items[i].EgressGwAddr6.IP != nil && items[j].EgressGwAddr6.IP != nil {
-				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr6.IP.String(), metricsPort, 1)
-				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr6.IP.String(), metricsPort, 1)
-				if latencyI < latencyJ {
-					return true
-				} else {
-					return false
+			if hasI && hasJ {
+				if latencyI != latencyJ {
+					return latencyI < latencyJ
 				}
 			}
 			return items[i].PeerKey < items[j].PeerKey
@@ -113,11 +134,19 @@ func sortRouteMetricByAscending(items []egressPeer, metricsPort int) []egressPee
 }
 
 func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer) {
+	ep := time.Now().Unix()
+	fmt.Println("====> IN getHAEgressDataForProcessing", ep)
+	defer fmt.Println("======> OUT getHAEgressDataForProcessing", ep)
+
+	// Only hold lock while copying data from shared cache
 	egressRoutesCacheMutex.Lock()
-	defer egressRoutesCacheMutex.Unlock()
+	egressRoutesCopy := make([]models.EgressNetworkRoutes, len(egressRoutes))
+	copy(egressRoutesCopy, egressRoutes)
+	egressRoutesCacheMutex.Unlock()
+
 	data = make(map[string][]egressPeer)
 
-	for _, egressRouteI := range egressRoutes {
+	for _, egressRouteI := range egressRoutesCopy {
 		// for each egress route, sort it routing node by metric
 		for _, egressRangeI := range egressRouteI.EgressRangesWithMetric {
 			data[egressRangeI.Network] = append(data[egressRangeI.Network], egressPeer{
@@ -129,6 +158,8 @@ func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer
 			})
 		}
 	}
+
+	// Perform expensive sorting and network calls without holding the mutex
 	for route, peers := range data {
 		if len(peers) < 2 {
 			delete(data, route)
@@ -156,7 +187,7 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("exiting startEgressHAFailOverThread")
+			fmt.Println("REV CTX DONE SIGNAL exiting startEgressHAFailOverThread")
 			resetHAEgressCache()
 			return
 		case <-EgressResetCh:
