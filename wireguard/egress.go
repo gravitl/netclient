@@ -68,26 +68,26 @@ func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
 
 func resetHAEgressCache() {
 	egressRoutesCacheMutex.Lock()
-	defer egressRoutesCacheMutex.Unlock()
 	egressRoutes = []models.EgressNetworkRoutes{}
 	haEgressPeerCache = make(map[string][]net.IPNet)
+	egressRoutesCacheMutex.Unlock()
+
 	egressDomainCacheMutex.Lock()
 	egressDomainCache = []models.EgressDomain{}
 	egressDomainCacheMutex.Unlock()
 }
 
-func sortRouteMetricByAscending(items []egressPeer) []egressPeer {
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
+func sortRouteMetricByAscending(items []egressPeer, metricsPort int) []egressPeer {
+	if metricsPort == 0 {
+		metricsPort = 51821
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Metric == items[j].Metric {
 			// sort by latency
 			if items[i].EgressGwAddr.IP != nil && items[j].EgressGwAddr.IP != nil {
 				// trigger a handshake
-				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr.IP.String(), metricPort, 3)
-				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr.IP.String(), metricPort, 3)
+				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr.IP.String(), metricsPort, 3)
+				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr.IP.String(), metricsPort, 3)
 				if latencyI < latencyJ {
 					return true
 				} else {
@@ -95,8 +95,8 @@ func sortRouteMetricByAscending(items []egressPeer) []egressPeer {
 				}
 
 			} else if items[i].EgressGwAddr6.IP != nil && items[j].EgressGwAddr6.IP != nil {
-				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr6.IP.String(), metricPort, 3)
-				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr6.IP.String(), metricPort, 3)
+				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr6.IP.String(), metricsPort, 3)
+				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr6.IP.String(), metricsPort, 3)
 				if latencyI < latencyJ {
 					return true
 				} else {
@@ -110,7 +110,7 @@ func sortRouteMetricByAscending(items []egressPeer) []egressPeer {
 	return items
 }
 
-func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
+func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer) {
 	egressRoutesCacheMutex.Lock()
 	defer egressRoutesCacheMutex.Unlock()
 	data = make(map[string][]egressPeer)
@@ -132,7 +132,7 @@ func getHAEgressDataForProcessing() (data map[string][]egressPeer) {
 			delete(data, route)
 			continue
 		}
-		data[route] = sortRouteMetricByAscending(peers)
+		data[route] = sortRouteMetricByAscending(peers, metricsPort)
 	}
 	return
 }
@@ -141,7 +141,11 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
 	HaEgressTicker = time.NewTicker(HaEgressCheckInterval)
 	defer HaEgressTicker.Stop()
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
 	}
@@ -158,7 +162,7 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 			if len(nodes) == 0 {
 				continue
 			}
-			egressPeerInfo := getHAEgressDataForProcessing()
+			egressPeerInfo := getHAEgressDataForProcessing(metricPort)
 			if len(egressPeerInfo) == 0 {
 				//fmt.Println("===> SKIPPING Egress PEERINFO")
 				continue
