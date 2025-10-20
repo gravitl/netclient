@@ -32,6 +32,7 @@ var HaEgressTicker *time.Ticker
 var EgressResetCh = make(chan struct{}, 2)
 var HaEgressCheckInterval = time.Second * 2
 var haEgressPeerCache = make(map[string][]net.IPNet)
+
 var egressDomainCache = []models.EgressDomain{}
 var egressDomainAnswers = make(map[string][]string)
 var egressDomainCacheMutex = &sync.Mutex{}
@@ -86,8 +87,8 @@ func sortRouteMetricByAscending(items []egressPeer, metricsPort int) []egressPee
 			// sort by latency
 			if items[i].EgressGwAddr.IP != nil && items[j].EgressGwAddr.IP != nil {
 				// trigger a handshake
-				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr.IP.String(), metricsPort, 3)
-				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr.IP.String(), metricsPort, 3)
+				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr.IP.String(), metricsPort, 1)
+				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr.IP.String(), metricsPort, 1)
 				if latencyI < latencyJ {
 					return true
 				} else {
@@ -95,8 +96,8 @@ func sortRouteMetricByAscending(items []egressPeer, metricsPort int) []egressPee
 				}
 
 			} else if items[i].EgressGwAddr6.IP != nil && items[j].EgressGwAddr6.IP != nil {
-				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr6.IP.String(), metricsPort, 3)
-				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr6.IP.String(), metricsPort, 3)
+				_, latencyI := metrics.PeerConnStatus(items[i].EgressGwAddr6.IP.String(), metricsPort, 1)
+				_, latencyJ := metrics.PeerConnStatus(items[j].EgressGwAddr6.IP.String(), metricsPort, 1)
 				if latencyI < latencyJ {
 					return true
 				} else {
@@ -272,33 +273,34 @@ func removeIP(slice []net.IPNet, item net.IPNet) []net.IPNet {
 	return result
 }
 
-func checkIfEgressHAPeer(peer *wgtypes.PeerConfig) bool {
-	data := getHAEgressDataForProcessing()
+func checkIfEgressHAPeer(peer *wgtypes.PeerConfig, haEgressData map[string][]egressPeer) bool {
 	egressRoutesCacheMutex.Lock()
 	defer egressRoutesCacheMutex.Unlock()
 
 	egressList, ok := haEgressPeerCache[peer.PublicKey.String()]
-	if ok {
-		//fmt.Printf("===> Found HA Egress Peer: %s, Data: %+v\n", peer.PublicKey.String(), data)
-		// check if peer exists
-		exists := false
-		for _, egressPeers := range data {
-			for _, egressPeerI := range egressPeers {
-				if egressPeerI.PeerKey == peer.PublicKey.String() {
-					exists = true
-					break
-				}
-			}
-			if exists {
+	if !ok {
+		return false
+	}
+	//fmt.Printf("===> Found HA Egress Peer: %s, Data: %+v\n", peer.PublicKey.String(), data)
+	// check if peer exists
+	exists := false
+	for _, egressPeers := range haEgressData {
+		for _, egressPeerI := range egressPeers {
+			if egressPeerI.PeerKey == peer.PublicKey.String() {
+				exists = true
 				break
 			}
 		}
-		if !exists {
-			delete(haEgressPeerCache, peer.PublicKey.String())
-			return false
+		if exists {
+			break
 		}
-		peer.AllowedIPs = append(peer.AllowedIPs, egressList...)
-		peer.AllowedIPs = logic.UniqueIPNetList(peer.AllowedIPs)
 	}
-	return ok
+	if !exists {
+		delete(haEgressPeerCache, peer.PublicKey.String())
+		return false
+	}
+	peer.AllowedIPs = append(peer.AllowedIPs, egressList...)
+	peer.AllowedIPs = logic.UniqueIPNetList(peer.AllowedIPs)
+
+	return true
 }

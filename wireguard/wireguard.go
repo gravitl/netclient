@@ -49,6 +49,8 @@ func SetPeers(replace bool) error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	peers := config.Netclient().HostPeers
+	server := config.GetServer(config.CurrServer)
+	data := getHAEgressDataForProcessing(server.MetricsPort)
 	for i := range peers {
 		peer := peers[i]
 		if peer.Endpoint != nil && peer.Endpoint.IP == nil {
@@ -58,7 +60,7 @@ func SetPeers(replace bool) error {
 			peers[i] = peer
 		}
 		// set egress routes on correct peer
-		if !peer.Remove && checkIfEgressHAPeer(&peer) {
+		if !peer.Remove && checkIfEgressHAPeer(&peer, data) {
 			peers[i] = peer
 		}
 
