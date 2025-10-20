@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -50,6 +51,9 @@ func SetPeers(replace bool) error {
 	defer wgMutex.Unlock()
 	peers := config.Netclient().HostPeers
 	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return errors.New("server config not found")
+	}
 	data := getHAEgressDataForProcessing(server.MetricsPort)
 	for i := range peers {
 		peer := peers[i]

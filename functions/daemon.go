@@ -256,13 +256,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
-	wireguard.SetPeers(true)
 	if len(pullresp.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
+	wireguard.SetPeers(true)
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {

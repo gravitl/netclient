@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sort"
 	"sync"
@@ -139,6 +140,7 @@ func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer
 }
 
 func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
+	defer fmt.Println("=======> EXITING StartEgressHAFailOverThread")
 	defer waitg.Done()
 	HaEgressTicker = time.NewTicker(HaEgressCheckInterval)
 	defer HaEgressTicker.Stop()
