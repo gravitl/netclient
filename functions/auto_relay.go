@@ -139,6 +139,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			return
 		case <-autoRelayConnTicker.C:
 			go func() {
+				// Exit early if context is done
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				nodes := config.GetNodes()
 				if len(nodes) == 0 {
 					return
@@ -154,6 +161,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					return
 				}
 				for _, node := range nodes {
+					// Check context before processing each node
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+
 					if node.Server != config.CurrServer {
 						continue
 					}
@@ -169,6 +183,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					}
 					fmt.Println("=====> HERE2")
 					for pubKey, peer := range peers {
+						// Check context before processing each peer
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+
 						if peer.IsExtClient {
 							continue
 						}
@@ -275,37 +296,6 @@ func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) 
 	}
 
 	return nearestNode, nil
-}
-
-func checkAutoRelayCtxForPeer(serverName, nodeID, peernodeID string) error {
-	server := config.GetServer(serverName)
-	if server == nil {
-		return errors.New("server config not found")
-	}
-	host := config.Netclient()
-	if host == nil {
-		return fmt.Errorf("no configured host found")
-	}
-	token, err := auth.Authenticate(server, host)
-	if err != nil {
-		return err
-	}
-	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/node/%s/auto_relay_check", nodeID),
-		Method:        http.MethodGet,
-		Data:          models.AutoRelayMeReq{NodeID: peernodeID},
-		Authorization: "Bearer " + token,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Debug("error asking to check failover ctx", "code", strconv.Itoa(errData.Code), "error", errData.Message)
-		}
-		return err
-	}
-	return nil
 }
 
 // autoRelayME - signals the server to auto relay
