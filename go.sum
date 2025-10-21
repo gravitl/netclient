@@ -128,6 +128,10 @@ github.com/gravitl/netmaker v1.1.1-0.20251013041801-bdbc967f1468 h1:cNigGTaZ91hy
 github.com/gravitl/netmaker v1.1.1-0.20251013041801-bdbc967f1468/go.mod h1:aiBTm9AJYk4NDMSCHk6TyNQDIe1ZV6NISYIWnazQNqk=
 github.com/gravitl/netmaker v1.1.1-0.20251013152618-a34dfd8049bf h1:glEiKrtbuYTKxig8cOwDTI06XOqtBg5Q7JhlAedHTgU=
 github.com/gravitl/netmaker v1.1.1-0.20251013152618-a34dfd8049bf/go.mod h1:aiBTm9AJYk4NDMSCHk6TyNQDIe1ZV6NISYIWnazQNqk=
+github.com/gravitl/netmaker v1.1.1-0.20251020184515-554b46bd55ec h1:H3wqfkOLJQb1opAtkmMnD/mVJvOOegqJxecrV+A0CAE=
+github.com/gravitl/netmaker v1.1.1-0.20251020184515-554b46bd55ec/go.mod h1:aiBTm9AJYk4NDMSCHk6TyNQDIe1ZV6NISYIWnazQNqk=
+github.com/gravitl/netmaker v1.1.1-0.20251021112032-32b4accd765c h1:+Gu0g3E93XFEYZm9wWwVF/nvuLfLAIdI2aszswBOEdQ=
+github.com/gravitl/netmaker v1.1.1-0.20251021112032-32b4accd765c/go.mod h1:aiBTm9AJYk4NDMSCHk6TyNQDIe1ZV6NISYIWnazQNqk=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 h1:X5VWvz21y3gzm9Nw/kaUeku/1+uBhcekkmy4IkffJww=

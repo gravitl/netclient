@@ -363,7 +363,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
 	}
-	setAutoRelayNodes(peerUpdate.AutoRelayNodes)
+	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 }

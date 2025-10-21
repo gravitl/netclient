@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devilcove/httpclient"
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
@@ -23,8 +24,9 @@ import (
 
 var (
 	autoRelayCacheMutex = &sync.Mutex{}
+	currentNodesCache   = make(map[string]models.Node)
 	autoRelayCache      = make(map[models.NetworkID][]models.Node)
-
+	nearestRelayNode    = models.Node{}
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
 )
@@ -35,10 +37,15 @@ func getAutoRelayNodes(network models.NetworkID) []models.Node {
 	return autoRelayCache[network]
 }
 
-func setAutoRelayNodes(nodes map[models.NetworkID][]models.Node) {
+func setAutoRelayNodes(nodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	autoRelayCache = nodes
+	currentNodesCache = make(map[string]models.Node)
+	for _, currNode := range currNodes {
+		currentNodesCache[currNode.ID.String()] = currNode
+	}
+
 }
 
 // processPeerSignal - processes the peer signals for any updates from peers
@@ -102,8 +109,12 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	if len(autoRelayNodes) == 0 {
 		return nil
 	}
+	server := config.GetServer(signal.Server)
+	if server == nil {
+		return errors.New("server config not found")
+	}
 	// check for nearest and healthy relay gw
-	metricPort := config.GetServer(signal.Server).MetricsPort
+	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
 	}
@@ -113,7 +124,7 @@ func handlePeerRelaySignal(signal models.Signal) error {
 		return err
 	}
 	fmt.Println("====> Sending relay me req ", signal.FromNodeID)
-	err = autoRelayME(signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
+	err = autoRelayME(http.MethodPost, signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
 	if err != nil {
 		slog.Error("failed to signal server to relay me", "error", err)
 		return err
@@ -128,7 +139,11 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
 	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
 	defer autoRelayConnTicker.Stop()
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
 	}
@@ -173,8 +188,31 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					}
 					autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
 					if len(autoRelayNodes) == 0 {
-						slog.Error("no auto relay nodes found")
+						slog.Error("no auto relay nodes found in " + node.Network)
 						continue
+					}
+					fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.Address.String())
+					// check current relay in use is the closest
+					if currNode, ok := currentNodesCache[node.ID.String()]; ok {
+
+						if currNode.AutoRelayedBy != uuid.Nil {
+							fmt.Println("checking if curr relay is closest")
+							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
+							if len(autoRelayNodes) > 0 {
+								nearestNode, err := findNearestNode(autoRelayNodes, metricPort)
+								fmt.Println("FOUND NEAREST: ", nearestNode.Address.IP.String())
+								if err == nil {
+									if currNode.AutoRelayedBy != nearestNode.ID {
+										err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
+										if err != nil {
+											fmt.Println("failed to switch to nearest relay node ", err)
+										}
+									}
+								}
+
+							}
+
+						}
 					}
 					fmt.Println("=====> HERE1")
 					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
@@ -299,7 +337,7 @@ func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) 
 }
 
 // autoRelayME - signals the server to auto relay
-func autoRelayME(serverName, nodeID, peernodeID, relayID string) error {
+func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	server := config.GetServer(serverName)
 	if server == nil {
 		return errors.New("server config not found")
@@ -315,14 +353,14 @@ func autoRelayME(serverName, nodeID, peernodeID, relayID string) error {
 	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
 		URL:           "https://" + server.API,
 		Route:         fmt.Sprintf("/api/v1/node/%s/auto_relay_me", nodeID),
-		Method:        http.MethodPost,
+		Method:        method,
 		Data:          models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID},
 		Authorization: "Bearer " + token,
 		ErrorResponse: models.ErrorResponse{},
 	}
 	resp, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
 	if err != nil {
-		fmt.Println("+===> RELAY ME: ", resp.Message)
+		fmt.Println("+===> RELAY ME: ", resp.Message, endpoint.Method)
 		if errors.Is(err, httpclient.ErrStatus) {
 			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
 		}
