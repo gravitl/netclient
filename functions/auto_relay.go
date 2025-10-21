@@ -198,7 +198,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if currNode.AutoRelayedBy != uuid.Nil {
 							fmt.Println("checking if curr relay is closest")
 							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
-							if len(autoRelayNodes) > 0 {
+							if len(autoRelayNodes) > 1 {
 								nearestNode, err := findNearestNode(autoRelayNodes, metricPort)
 								fmt.Println("FOUND NEAREST: ", nearestNode.Address.IP.String())
 								if err == nil {
