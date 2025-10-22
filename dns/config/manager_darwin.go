@@ -28,8 +28,13 @@ func NewManager(opts ...ManagerOption) (Manager, error) {
 		opt(&options)
 	}
 
+	err := os.MkdirAll("/etc/resolver", 0755)
+	if err != nil {
+		return nil, err
+	}
+
 	if options.cleanupResidual && len(options.residualInterfaces) > 0 {
-		err := d.resetConfig()
+		err = d.resetConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to cleanup config: %v", err)
 		}
