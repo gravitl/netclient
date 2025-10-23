@@ -27,7 +27,6 @@ var (
 	currentNodesCache   = make(map[string]models.Node)
 	autoRelayCache      = make(map[models.NetworkID][]models.Node)
 	gwNodesCache        = make(map[models.NetworkID][]models.Node)
-	nearestRelayNode    = models.Node{}
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
 )
