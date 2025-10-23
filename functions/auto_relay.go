@@ -221,24 +221,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 
 						}
 
-						if currNode.AutoAssignGateway {
-							fmt.Println("checking if curr gw is closest")
-							gwNodes := getGwNodes(models.NetworkID(node.Network))
-							if len(gwNodes) > 0 {
-								nearestNode, err := findNearestNode(gwNodes, metricPort)
-								fmt.Println("FOUND NEAREST GW: ", nearestNode.Address.IP.String())
-								if err == nil {
-									if currNode.RelayedBy != nearestNode.ID.String() {
-										err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
-										if err != nil {
-											fmt.Println("failed to switch to nearest gw node ", err)
-										}
-									}
-								}
-
-							}
-
-						}
+						checkAssignGw(currNode)
 					}
 					fmt.Println("=====> HERE1")
 					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
@@ -323,6 +306,35 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 func isPeerExist(peerKey string) bool {
 	_, err := wireguard.GetPeer(ncutils.GetInterfaceName(), peerKey)
 	return err == nil
+}
+
+func checkAssignGw(node models.Node) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	metricPort := server.MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
+	if node.AutoAssignGateway {
+		fmt.Println("checking if curr gw is closest")
+		gwNodes := getGwNodes(models.NetworkID(node.Network))
+		if len(gwNodes) > 0 {
+			nearestNode, err := findNearestNode(gwNodes, metricPort)
+			fmt.Println("FOUND NEAREST GW: ", nearestNode.Address.IP.String())
+			if err == nil {
+				if node.RelayedBy != nearestNode.ID.String() {
+					err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
+					if err != nil {
+						fmt.Println("failed to switch to nearest gw node ", err)
+					}
+				}
+			}
+
+		}
+
+	}
 }
 
 // findNearestNode finds the node with the lowest latency from a list of nodes
