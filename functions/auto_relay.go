@@ -309,6 +309,9 @@ func isPeerExist(peerKey string) bool {
 }
 
 func checkAssignGw(node models.Node) {
+	if !node.AutoAssignGateway {
+		return
+	}
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return
@@ -317,24 +320,22 @@ func checkAssignGw(node models.Node) {
 	if metricPort == 0 {
 		metricPort = 51821
 	}
-	if node.AutoAssignGateway {
-		fmt.Println("checking if curr gw is closest")
-		gwNodes := getGwNodes(models.NetworkID(node.Network))
-		if len(gwNodes) > 0 {
-			nearestNode, err := findNearestNode(gwNodes, metricPort)
-			fmt.Println("FOUND NEAREST GW: ", nearestNode.Address.IP.String())
-			if err == nil {
-				if node.RelayedBy != nearestNode.ID.String() {
-					err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
-					if err != nil {
-						fmt.Println("failed to switch to nearest gw node ", err)
-					}
+	fmt.Println("checking if curr gw is closest")
+	gwNodes := getGwNodes(models.NetworkID(node.Network))
+	if len(gwNodes) > 0 {
+		nearestNode, err := findNearestNode(gwNodes, metricPort)
+		fmt.Println("FOUND NEAREST GW: ", nearestNode.Address.IP.String())
+		if err == nil {
+			if node.RelayedBy != nearestNode.ID.String() {
+				err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
+				if err != nil {
+					fmt.Println("failed to switch to nearest gw node ", err)
 				}
 			}
-
 		}
 
 	}
+
 }
 
 // findNearestNode finds the node with the lowest latency from a list of nodes
