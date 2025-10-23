@@ -26,6 +26,7 @@ var (
 	autoRelayCacheMutex = &sync.Mutex{}
 	currentNodesCache   = make(map[string]models.Node)
 	autoRelayCache      = make(map[models.NetworkID][]models.Node)
+	gwNodesCache        = make(map[models.NetworkID][]models.Node)
 	nearestRelayNode    = models.Node{}
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
@@ -36,11 +37,17 @@ func getAutoRelayNodes(network models.NetworkID) []models.Node {
 	defer autoRelayCacheMutex.Unlock()
 	return autoRelayCache[network]
 }
-
-func setAutoRelayNodes(nodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+func getGwNodes(network models.NetworkID) []models.Node {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
-	autoRelayCache = nodes
+	return gwNodesCache[network]
+}
+
+func setAutoRelayNodes(autoRelaynodes, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	autoRelayCache = autoRelaynodes
+	gwNodesCache = gwNodes
 	currentNodesCache = make(map[string]models.Node)
 	for _, currNode := range currNodes {
 		currentNodesCache[currNode.ID.String()] = currNode
@@ -198,7 +205,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if currNode.AutoRelayedBy != uuid.Nil {
 							fmt.Println("checking if curr relay is closest")
 							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
-							if len(autoRelayNodes) > 1 {
+							if len(autoRelayNodes) > 0 {
 								nearestNode, err := findNearestNode(autoRelayNodes, metricPort)
 								fmt.Println("FOUND NEAREST: ", nearestNode.Address.IP.String())
 								if err == nil {
@@ -206,6 +213,25 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 										err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
 										if err != nil {
 											fmt.Println("failed to switch to nearest relay node ", err)
+										}
+									}
+								}
+
+							}
+
+						}
+
+						if currNode.AutoAssignGateway {
+							fmt.Println("checking if curr gw is closest")
+							gwNodes := getGwNodes(models.NetworkID(node.Network))
+							if len(gwNodes) > 0 {
+								nearestNode, err := findNearestNode(gwNodes, metricPort)
+								fmt.Println("FOUND NEAREST GW: ", nearestNode.Address.IP.String())
+								if err == nil {
+									if currNode.RelayedBy != nearestNode.ID.String() {
+										err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
+										if err != nil {
+											fmt.Println("failed to switch to nearest gw node ", err)
 										}
 									}
 								}

@@ -263,7 +263,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
-	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.Nodes)
+	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {
