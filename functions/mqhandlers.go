@@ -235,10 +235,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		daemon.Restart()
 	}
-	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
-		slog.Info("DNS Default Domain or Nameservers have changed ")
-		dns.SetupDNSConfig()
-	}
 	if peerUpdate.MetricInterval != server.MetricInterval {
 		i, err := strconv.Atoi(peerUpdate.MetricInterval)
 		if err == nil {
@@ -309,35 +305,40 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	go CheckEgressDomainUpdates()
 
-	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
-		server.NameServers = peerUpdate.NameServers
-		saveServerConfig = true
-	}
-
-	if len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
-		server.DnsNameservers = peerUpdate.DnsNameservers
-		saveServerConfig = true
-	}
-
-	server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
-
-	if peerUpdate.ManageDNS != server.ManageDNS {
-		server.ManageDNS = peerUpdate.ManageDNS
-		saveServerConfig = true
-		if peerUpdate.ManageDNS {
-			dns.GetDNSServerInstance().Start()
-		} else {
-			dns.GetDNSServerInstance().Stop()
-		}
-	}
-
+	var dnsOp string
+	const start string = "start"
+	const stop string = "stop"
+	const update string = "update"
 	if server.ManageDNS {
-		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
-			config.Netclient().Host.OS == "windows" {
-			dns.SetupDNSConfig()
+		if !peerUpdate.ManageDNS {
+			server.ManageDNS = false
+			server.DefaultDomain = ""
+			server.NameServers = nil
+			server.DnsNameservers = nil
+			saveServerConfig = true
+			dnsOp = stop
+		} else if server.DefaultDomain != peerUpdate.DefaultDomain ||
+			len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) ||
+			!reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
+			server.DefaultDomain = peerUpdate.DefaultDomain
+			server.NameServers = peerUpdate.NameServers
+			server.DnsNameservers = peerUpdate.DnsNameservers
+			saveServerConfig = true
+			dnsOp = update
+		}
+	} else {
+		if peerUpdate.ManageDNS {
+			server.ManageDNS = true
+			server.DefaultDomain = peerUpdate.DefaultDomain
+			server.NameServers = peerUpdate.NameServers
+			server.DnsNameservers = peerUpdate.DnsNameservers
+			saveServerConfig = true
+			dnsOp = start
 		}
 	}
-
+	if saveServerConfig {
+		server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
+	}
 	reloadStun := false
 	if peerUpdate.Stun != server.Stun {
 		server.Stun = peerUpdate.Stun
@@ -354,13 +355,21 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 	}
 
-	if reloadStun {
-		daemon.Restart()
-	}
-
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
+		switch dnsOp {
+		case start:
+			dns.GetDNSServerInstance().Start()
+		case stop:
+			dns.GetDNSServerInstance().Stop()
+		case update:
+			_ = dns.SetupDNSConfig()
+		}
+	}
+
+	if reloadStun {
+		_ = daemon.Restart()
 	}
 
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
