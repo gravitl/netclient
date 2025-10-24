@@ -336,9 +336,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dnsOp = start
 		}
 	}
-	if saveServerConfig {
-		server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
-	}
+	server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
+
 	reloadStun := false
 	if peerUpdate.Stun != server.Stun {
 		server.Stun = peerUpdate.Stun
