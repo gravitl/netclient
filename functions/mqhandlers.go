@@ -304,7 +304,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
-
+	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
 	const stop string = "stop"
@@ -336,7 +336,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dnsOp = start
 		}
 	}
-	server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
 
 	reloadStun := false
 	if peerUpdate.Stun != server.Stun {
@@ -868,6 +867,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
+	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var saveServerConfig bool
 	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
 		server.NameServers = pullResponse.NameServers
@@ -878,8 +878,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.DnsNameservers = pullResponse.DnsNameservers
 		saveServerConfig = true
 	}
-
-	server.DnsNameservers = FilterDnsNameservers(server.DnsNameservers)
 
 	if pullResponse.ServerConfig.ManageDNS != server.ManageDNS {
 		server.ManageDNS = pullResponse.ServerConfig.ManageDNS
