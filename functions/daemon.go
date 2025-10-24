@@ -472,10 +472,12 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
+	clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
+	clearRetainedMsg(client, fmt.Sprintf("host/update/%s/%s", hostID.String(), server))
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
@@ -487,6 +489,7 @@ func setHostSubscription(client mqtt.Client, server string) {
 // setSubcriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setSubscriptions(client mqtt.Client, node *config.Node) {
+	clearRetainedMsg(client, fmt.Sprintf("node/update/%s/%s", node.Network, node.ID))
 	if token := client.Subscribe(fmt.Sprintf("node/update/%s/%s", node.Network, node.ID), 0, mqtt.MessageHandler(NodeUpdate)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to updates for node ", "node", node.ID, "error", "connection timeout")
