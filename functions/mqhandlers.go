@@ -238,10 +238,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		daemon.Restart()
 	}
-	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
-		slog.Info("DNS Default Domain or Nameservers have changed ")
-		dns.SetupDNSConfig()
-	}
 	if peerUpdate.MetricInterval != server.MetricInterval {
 		i, err := strconv.Atoi(peerUpdate.MetricInterval)
 		if err == nil {
@@ -311,31 +307,36 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
-
-	if len(server.NameServers) != len(peerUpdate.NameServers) || reflect.DeepEqual(server.NameServers, peerUpdate.NameServers) {
-		server.NameServers = peerUpdate.NameServers
-		saveServerConfig = true
-	}
-
-	if len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) || reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
-		server.DnsNameservers = peerUpdate.DnsNameservers
-		saveServerConfig = true
-	}
-
-	if peerUpdate.ManageDNS != server.ManageDNS {
-		server.ManageDNS = peerUpdate.ManageDNS
-		saveServerConfig = true
-		if peerUpdate.ManageDNS {
-			dns.GetDNSServerInstance().Start()
-		} else {
-			dns.GetDNSServerInstance().Stop()
-		}
-	}
-
+	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
+	var dnsOp string
+	const start string = "start"
+	const stop string = "stop"
+	const update string = "update"
 	if server.ManageDNS {
-		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
-			config.Netclient().Host.OS == "windows" {
-			dns.SetupDNSConfig()
+		if !peerUpdate.ManageDNS {
+			server.ManageDNS = false
+			server.DefaultDomain = ""
+			server.NameServers = nil
+			server.DnsNameservers = nil
+			saveServerConfig = true
+			dnsOp = stop
+		} else if server.DefaultDomain != peerUpdate.DefaultDomain ||
+			len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) ||
+			!reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
+			server.DefaultDomain = peerUpdate.DefaultDomain
+			server.NameServers = peerUpdate.NameServers
+			server.DnsNameservers = peerUpdate.DnsNameservers
+			saveServerConfig = true
+			dnsOp = update
+		}
+	} else {
+		if peerUpdate.ManageDNS {
+			server.ManageDNS = true
+			server.DefaultDomain = peerUpdate.DefaultDomain
+			server.NameServers = peerUpdate.NameServers
+			server.DnsNameservers = peerUpdate.DnsNameservers
+			saveServerConfig = true
+			dnsOp = start
 		}
 	}
 
@@ -355,13 +356,21 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		saveServerConfig = true
 	}
 
-	if reloadStun {
-		daemon.Restart()
-	}
-
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
+		switch dnsOp {
+		case start:
+			dns.GetDNSServerInstance().Start()
+		case stop:
+			dns.GetDNSServerInstance().Stop()
+		case update:
+			_ = dns.SetupDNSConfig()
+		}
+	}
+
+	if reloadStun {
+		_ = daemon.Restart()
 	}
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
@@ -569,6 +578,7 @@ func resetInterfaceFunc() {
 			dns.GetDNSServerInstance().Start()
 		}
 	}
+	wireguard.EgressResetCh <- struct{}{}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
@@ -862,6 +872,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
+	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var saveServerConfig bool
 	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
 		server.NameServers = pullResponse.NameServers

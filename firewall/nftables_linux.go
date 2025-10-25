@@ -35,8 +35,9 @@ func init() {
 }
 
 var (
-	filterTable = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyINet}
-	natTable    = &nftables.Table{Name: defaultNatTable, Family: nftables.TableFamilyINet}
+	filterTable   = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyINet}
+	natTable      = &nftables.Table{Name: defaultNatTable, Family: nftables.TableFamilyINet}
+	ipFilterTable = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyIPv4}
 
 	nfJumpRules []ruleInfo
 	// filter table netmaker jump rules
@@ -494,7 +495,15 @@ func (n *nftablesManager) CleanRoutingRules(server, ruleTableName string) {
 	for _, rulesCfg := range ruleTable {
 		for _, rules := range rulesCfg.rulesMap {
 			for _, rule := range rules {
-				if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
+				var err error
+				if rule.isDockerRule {
+					// Docker rules are in 'ip' family table
+					err = n.deleteDockerRule(rule.chain, genRuleKey(rule.rule...))
+				} else {
+					// Regular rules are in 'inet' family table
+					err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
+				}
+				if err != nil {
 					logger.Log(0, "Error cleaning up rule: ", err.Error())
 				}
 			}
@@ -534,7 +543,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
 		if egressGwRange.Nat {
-
+			logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
 			source := egressInfo.Network.String()
 			if !isAddrIpv4(egressGwRange.Network) {
 				source = egressInfo.Network6.String()
@@ -542,6 +551,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
+				logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
 				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 				// to avoid duplicate iface route rule,delete if exists
 				var exp []expr.Any
@@ -652,6 +662,104 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:   ruleSpec,
 					})
 				}
+
+				// Add Docker-specific rule if egress interface is a Docker network
+				if isDockerInterface(egressRangeIface) {
+					logger.Log(0, fmt.Sprintf("Detected Docker interface: %s", egressRangeIface))
+					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", "ACCEPT"}
+					// Check if DOCKER-USER chain exists in IPv4 filter table (Docker uses 'ip' family, not 'inet')
+					dockerUserChain := &nftables.Chain{
+						Name:  "DOCKER-USER",
+						Table: ipFilterTable,
+					}
+					chains, err := n.conn.ListChains()
+					dockerChainExists := false
+					if err != nil {
+						logger.Log(0, fmt.Sprintf("Failed to list chains: %v", err))
+					} else {
+						for _, ch := range chains {
+							if ch.Name == "DOCKER-USER" && ch.Table.Name == ipFilterTable.Name && ch.Table.Family == nftables.TableFamilyIPv4 {
+								dockerUserChain = ch
+								dockerChainExists = true
+								logger.Log(0, "Found DOCKER-USER chain in ip filter table")
+								break
+							}
+						}
+						if !dockerChainExists {
+							logger.Log(0, "DOCKER-USER chain not found in ip filter table")
+						}
+					}
+
+					if dockerChainExists {
+						// Build nftables expressions for the Docker rule
+						// Note: We can't jump to NETMAKER-ACL-IN chain here because it's in the 'inet' family
+						// and DOCKER-USER is in the 'ip' family. Instead, we accept the traffic here,
+						// and it will be filtered by the FORWARD chain rules in the inet table anyway.
+						dockerExp := []expr.Any{
+							// Match incoming interface (netmaker interface)
+							&expr.Meta{
+								Key:      expr.MetaKeyIIFNAME,
+								Register: 1,
+							},
+							&expr.Cmp{
+								Op:       expr.CmpOpEq,
+								Register: 1,
+								Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+							},
+							// Match outgoing interface (docker interface)
+							&expr.Meta{
+								Key:      expr.MetaKeyOIFNAME,
+								Register: 1,
+							},
+							&expr.Cmp{
+								Op:       expr.CmpOpEq,
+								Register: 1,
+								Data:     []byte(egressRangeIface + "\x00"),
+							},
+							// Accept the traffic (ACL filtering happens in inet FORWARD chain)
+							&expr.Counter{},
+							&expr.Verdict{
+								Kind: expr.VerdictAccept,
+							},
+						}
+
+						// Note: Can't use deleteRule here as it searches in 'inet' family, but DOCKER-USER is in 'ip' family
+						// Check if rule already exists
+						existingRules, err := n.conn.GetRules(ipFilterTable, dockerUserChain)
+						if err == nil {
+							for _, rule := range existingRules {
+								if string(rule.UserData) == genRuleKey(dockerRuleSpec...) {
+									n.conn.DelRule(rule)
+									break
+								}
+							}
+						}
+
+						dockerRule := &nftables.Rule{
+							Table:    ipFilterTable,
+							Chain:    dockerUserChain,
+							UserData: []byte(genRuleKey(dockerRuleSpec...)),
+							Exprs:    dockerExp,
+							Position: 0, // Insert at the beginning, before Docker's RETURN rule
+						}
+						logger.Log(0, fmt.Sprintf("Inserting Docker rule: %v", dockerRuleSpec))
+						n.conn.InsertRule(dockerRule)
+						if err := n.conn.Flush(); err != nil {
+							logger.Log(0, fmt.Sprintf("ERROR: failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
+						} else {
+							egressGwRoutes = append(egressGwRoutes, ruleInfo{
+								nfRule:       dockerRule,
+								table:        defaultIpTable,
+								chain:        "DOCKER-USER",
+								rule:         dockerRuleSpec,
+								isDockerRule: true, // Mark as Docker rule so cleanup knows to delete from 'ip' family
+							})
+							logger.Log(0, fmt.Sprintf("SUCCESS: added Docker network rule for interface: %s", egressRangeIface))
+						}
+					} else {
+						logger.Log(0, "Skipping Docker rule - DOCKER-USER chain does not exist")
+					}
+				}
 			}
 		}
 	}
@@ -705,9 +813,20 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	}
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
-			if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
-				slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
-					rule.table, rule.rule, peerKey, err))
+			var err error
+			if rule.isDockerRule {
+				// Docker rules are in 'ip' family table, use special delete function
+				err = n.deleteDockerRule(rule.chain, genRuleKey(rule.rule...))
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to delete Docker rule [%v] for %s: %v", rule.rule, peerKey, err))
+				}
+			} else {
+				// Regular rules are in 'inet' family table
+				err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
+				if err != nil {
+					slog.Debug("failed to del egress rule: ", "error", fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
+						rule.table, rule.rule, peerKey, err))
+				}
 			}
 		}
 	}
@@ -726,7 +845,15 @@ func (n *nftablesManager) DeleteRoutingRule(server, ruletableName, srcPeerKey, d
 	}
 	if rules, ok := rulesTable[srcPeerKey].rulesMap[dstPeerKey]; ok {
 		for _, rule := range rules {
-			if err := n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...)); err != nil {
+			var err error
+			if rule.isDockerRule {
+				// Docker rules are in 'ip' family table
+				err = n.deleteDockerRule(rule.chain, genRuleKey(rule.rule...))
+			} else {
+				// Regular rules are in 'inet' family table
+				err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
+			}
+			if err != nil {
 				return fmt.Errorf("nftables: error while removing existing %s rules [%v] for %s: %v",
 					rule.table, rule.rule, srcPeerKey, err)
 			}
@@ -742,6 +869,29 @@ func (n *nftablesManager) FlushAll() {
 	n.mux.Lock()
 	defer n.mux.Unlock()
 	logger.Log(0, "flushing netmaker rules...")
+
+	// Clean up any Docker USER rules we added (in 'ip' family table)
+	chains, err := n.conn.ListChains()
+	if err == nil {
+		for _, ch := range chains {
+			if ch.Name == "DOCKER-USER" && ch.Table.Family == nftables.TableFamilyIPv4 {
+				rules, err := n.conn.GetRules(ipFilterTable, ch)
+				if err == nil {
+					for _, rule := range rules {
+						ruleKey := string(rule.UserData)
+						// Delete rules that match our signature (netmaker interface rules)
+						if strings.Contains(ruleKey, ncutils.GetInterfaceName()) && strings.Contains(ruleKey, "ACCEPT") {
+							n.conn.DelRule(rule)
+							logger.Log(0, fmt.Sprintf("Removed Docker USER rule: %s", ruleKey))
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Flush our inet tables
 	n.conn.FlushTable(filterTable)
 	n.conn.FlushTable(natTable)
 	if err := n.conn.Flush(); err != nil {
@@ -815,6 +965,23 @@ func (n *nftablesManager) deleteRule(tableName, chainName, ruleKey string) error
 		return err
 	}
 	return n.conn.Flush()
+}
+
+// deleteDockerRule deletes a rule from the Docker's 'ip' family filter table
+func (n *nftablesManager) deleteDockerRule(chainName, ruleKey string) error {
+	rules, err := n.conn.GetRules(ipFilterTable, &nftables.Chain{Name: chainName, Table: ipFilterTable})
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if string(rule.UserData) == ruleKey {
+			if err := n.conn.DelRule(rule); err != nil {
+				return err
+			}
+			return n.conn.Flush()
+		}
+	}
+	return fmt.Errorf("docker rule not found: %s in chain %s", ruleKey, chainName)
 }
 
 func (n *nftablesManager) addJumpRules() {

@@ -334,7 +334,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		time.Sleep(time.Second * 45)
 		callPublishMetrics(true)
 	}()
-
+	go handleFwUpdate(server.Server, &pullresp.FwUpdate)
 	return cancel
 }
 

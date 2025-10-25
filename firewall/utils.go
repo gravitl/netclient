@@ -3,6 +3,7 @@ package firewall
 import (
 	"net"
 	"net/netip"
+	"strings"
 )
 
 // isAddrIpv4 - CIDR notation (198.0.0.1/24) return if ipnet is ipv4 or ipv6
@@ -17,6 +18,12 @@ func isAddrIpv4(addr string) bool {
 		isIpv4 = false
 	}
 	return isIpv4
+}
+
+// isDockerInterface - checks if an interface is a Docker network interface
+func isDockerInterface(ifaceName string) bool {
+	// Docker interfaces typically start with "docker" or "br-" (bridge)
+	return strings.HasPrefix(ifaceName, "docker") || strings.HasPrefix(ifaceName, "br-")
 }
 
 // GetLocalIPs retrieves all local IPs (IPv4 and IPv6) on the machine.

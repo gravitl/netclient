@@ -108,7 +108,53 @@ func SetupDNSConfig() error {
 }
 
 func RestoreDNSConfig() error {
+	reset(false)
+	reset(true)
 	return nil
+}
+
+func reset(ipv6 bool) {
+	guid := config.Netclient().Host.ID.String()
+	if guid == "" {
+		guid = config.DefaultHostID
+	}
+
+	guid = "{" + guid + "}"
+
+	keyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\%s`, guid)
+	globalKeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters`)
+	if ipv6 {
+		keyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\%s`, guid)
+		globalKeyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`)
+	}
+
+	_ = resetInterface(keyPath)
+	_ = resetGlobal(globalKeyPath)
+}
+
+func resetInterface(keyPath string) error {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+
+	err = key.SetStringValue("NameServer", "")
+	if err != nil {
+		return err
+	}
+
+	return key.SetStringValue("SearchList", "")
+}
+
+func resetGlobal(globalKeyPath string) error {
+	globalKey, err := registry.OpenKey(registry.LOCAL_MACHINE, globalKeyPath, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer globalKey.Close()
+
+	return globalKey.SetStringValue("SearchList", "")
 }
 
 func InitDNSConfig() {

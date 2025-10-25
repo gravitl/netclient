@@ -61,24 +61,23 @@ func LeaveServer(s string) error {
 		return errors.New("server not found")
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
-	if err != nil {
-		return err
-	}
-	id := config.Netclient().ID.String()
-	endpoint := httpclient.Endpoint{
-		URL:           "https://" + server.API,
-		Route:         "/api/hosts/" + id + "?force=true",
-		Method:        http.MethodDelete,
-		Authorization: "Bearer " + token,
-		Data:          "",
-	}
-	_, err = endpoint.GetResponse()
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			fmt.Println("error leaving server", s)
+	if err == nil {
+		id := config.Netclient().ID.String()
+		endpoint := httpclient.Endpoint{
+			URL:           "https://" + server.API,
+			Route:         "/api/hosts/" + id + "?force=true",
+			Method:        http.MethodDelete,
+			Authorization: "Bearer " + token,
+			Data:          "",
 		}
-		fmt.Println(err)
-		return err
+		_, err = endpoint.GetResponse()
+		if err != nil {
+			if errors.Is(err, httpclient.ErrStatus) {
+				fmt.Println("error leaving server", s)
+			}
+			fmt.Println(err)
+			return err
+		}
 	}
 	config.DeleteServerHostPeerCfg()
 	config.DeleteServer(server.Name)
