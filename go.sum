@@ -90,6 +90,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gravitl/netmaker v1.1.1-0.20250929081002-1f28d121fb5b h1:6SBH7aqugu6PRitNPMZA2x46+YQLZTgPq4rzjWj+UV0=
 github.com/gravitl/netmaker v1.1.1-0.20250929081002-1f28d121fb5b/go.mod h1:aiBTm9AJYk4NDMSCHk6TyNQDIe1ZV6NISYIWnazQNqk=
+github.com/gravitl/netmaker v1.1.1-0.20251017173457-e54155e6e398 h1:8TLLqlZWhX76TdhKuI1sgumqt3zo9Ns6Iadzb3xxOyo=
+github.com/gravitl/netmaker v1.1.1-0.20251017173457-e54155e6e398/go.mod h1:aiBTm9AJYk4NDMSCHk6TyNQDIe1ZV6NISYIWnazQNqk=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 h1:X5VWvz21y3gzm9Nw/kaUeku/1+uBhcekkmy4IkffJww=
