@@ -35,10 +35,9 @@ func init() {
 }
 
 var (
-	filterTable    = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyINet}
-	natTable       = &nftables.Table{Name: defaultNatTable, Family: nftables.TableFamilyINet}
-	ipFilterTable  = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyIPv4}
-	ip6FilterTable = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyIPv6}
+	filterTable   = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyINet}
+	natTable      = &nftables.Table{Name: defaultNatTable, Family: nftables.TableFamilyINet}
+	ipFilterTable = &nftables.Table{Name: defaultIpTable, Family: nftables.TableFamilyIPv4}
 
 	nfJumpRules []ruleInfo
 	// filter table netmaker jump rules
@@ -982,7 +981,7 @@ func (n *nftablesManager) deleteDockerRule(chainName, ruleKey string) error {
 			return n.conn.Flush()
 		}
 	}
-	return fmt.Errorf("Docker rule not found: %s in chain %s", ruleKey, chainName)
+	return fmt.Errorf("docker rule not found: %s in chain %s", ruleKey, chainName)
 }
 
 func (n *nftablesManager) addJumpRules() {
