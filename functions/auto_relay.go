@@ -192,17 +192,14 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
-					if node.AutoAssignGateway {
-						if currNode, ok := currentNodesCache[node.ID.String()]; ok {
+					if currNode, ok := currentNodesCache[node.ID.String()]; ok {
+						if currNode.AutoAssignGateway {
 							checkAssignGw(currNode)
-						}
-					} else {
-						autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
-						if len(autoRelayNodes) > 0 {
-							fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.Address.String())
-							// check current relay in use is the closest
-							if currNode, ok := currentNodesCache[node.ID.String()]; ok {
-
+						} else {
+							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
+							if len(autoRelayNodes) > 0 {
+								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.Address.String())
+								// check current relay in use is the closest
 								if currNode.AutoRelayedBy != uuid.Nil {
 									fmt.Println("checking if curr relay is closest")
 									autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
@@ -223,8 +220,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 								}
 
 							}
-						}
 
+						}
 					}
 
 					fmt.Println("=====> HERE1")
