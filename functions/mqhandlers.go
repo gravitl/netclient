@@ -197,8 +197,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	if server.IsPro {
-		if peerConnTicker != nil {
-			peerConnTicker.Reset(peerConnectionCheckInterval)
+		if autoRelayConnTicker != nil {
+			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+		}
+		if networking.PeerLocalEndpointConnTicker != nil {
+			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
 		}
 		if wireguard.HaEgressTicker != nil {
 			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
@@ -369,7 +372,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if reloadStun {
 		_ = daemon.Restart()
 	}
-
+	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 }
@@ -518,7 +521,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 
 		slog.Info("processing egress update", "domain", hostUpdate.EgressDomain.Domain)
 		go processEgressDomain(hostUpdate.EgressDomain, true)
-
+	case models.CheckAutoAssignGw:
+		checkAssignGw(hostUpdate.Node)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return

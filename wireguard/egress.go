@@ -134,10 +134,6 @@ func sortRouteMetricByAscending(items []egressPeer, metricsPort int) []egressPee
 }
 
 func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer) {
-	ep := time.Now().Unix()
-	fmt.Println("====> IN getHAEgressDataForProcessing", ep)
-	defer fmt.Println("======> OUT getHAEgressDataForProcessing", ep)
-
 	// Only hold lock while copying data from shared cache
 	egressRoutesCacheMutex.Lock()
 	egressRoutesCopy := make([]models.EgressNetworkRoutes, len(egressRoutes))
@@ -206,7 +202,6 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 
 			egressPeerInfo := getHAEgressDataForProcessing(metricPort)
 			if len(egressPeerInfo) == 0 {
-				fmt.Println("===> SKIPPING Egress PEERINFO")
 				continue
 			}
 

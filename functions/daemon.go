@@ -263,6 +263,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
+	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {
@@ -317,7 +318,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		go wireguard.StartEgressHAFailOverThread(ctx, wg)
 	} else {
 		wg.Add(1)
-		go checkPeerEndpoints(ctx, wg)
+		go networking.CheckPeerEndpoints(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
