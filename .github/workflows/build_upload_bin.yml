@@ -60,7 +60,7 @@ jobs:
       run: Get-ChildItem netclient-*
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: netclient-${{ matrix.goos }}-${{ matrix.goarch }}
         path: netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
