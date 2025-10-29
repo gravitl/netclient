@@ -9,5 +9,5 @@ func NewManager() Manager {
 }
 
 func (w *windowsManager) Flush() error {
-	return exec.Command("ipconfig", "/flushdns").Run()
+	return exec.Command("C:\\Windows\\System32\\ipconfig.exe", "/flushdns").Run()
 }
