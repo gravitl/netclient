@@ -41,14 +41,24 @@ func getGwNodes(network models.NetworkID) []models.Node {
 	defer autoRelayCacheMutex.Unlock()
 	return gwNodesCache[network]
 }
-
-func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+func getCurrNode(nodeID string) models.Node {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
+	return currentNodesCache[nodeID]
+}
+
+func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+	ncutils.TraceCaller()
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	for netID, netAutorelaynodes := range autoRelaynodes {
+		fmt.Println("====> setAutoRelayNodes NETWORK: ", netID, len(netAutorelaynodes))
+	}
 	autoRelayCache = autoRelaynodes
 	gwNodesCache = gwNodes
 	currentNodesCache = make(map[string]models.Node)
 	for _, currNode := range currNodes {
+		fmt.Println("====> CURR NODE: ", currNode.Network)
 		currentNodesCache[currNode.ID.String()] = currNode
 	}
 
@@ -192,11 +202,12 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
-					if currNode, ok := currentNodesCache[node.ID.String()]; ok {
+					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
 						if currNode.AutoAssignGateway {
 							checkAssignGw(currNode)
 						} else {
 							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
+							fmt.Println("AUTORELAYNODES:  ", len(autoRelayNodes), node.Network)
 							if len(autoRelayNodes) > 0 {
 								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.Address.String())
 								// check current relay in use is the closest
