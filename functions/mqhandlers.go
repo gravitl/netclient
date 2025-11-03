@@ -196,7 +196,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
-	if peerUpdate.ServerConfig.PeerConnectionCheckInterval != "" {
+	if peerUpdate.ServerConfig.PeerConnectionCheckInterval != "" &&
+		peerUpdate.ServerConfig.PeerConnectionCheckInterval != server.PeerConnectionCheckInterval {
 		sec, err := strconv.Atoi(peerUpdate.ServerConfig.PeerConnectionCheckInterval)
 		if err == nil && sec > 0 {
 			fmt.Println("##### SETTING PEER CONNECTION INTERVAL: ", sec)
