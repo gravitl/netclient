@@ -41,14 +41,24 @@ func getGwNodes(network models.NetworkID) []models.Node {
 	defer autoRelayCacheMutex.Unlock()
 	return gwNodesCache[network]
 }
-
-func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+func getCurrNode(nodeID string) models.Node {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
+	return currentNodesCache[nodeID]
+}
+
+func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+	ncutils.TraceCaller()
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	for netID, netAutorelaynodes := range autoRelaynodes {
+		fmt.Println("====> setAutoRelayNodes NETWORK: ", netID, len(netAutorelaynodes))
+	}
 	autoRelayCache = autoRelaynodes
 	gwNodesCache = gwNodes
 	currentNodesCache = make(map[string]models.Node)
 	for _, currNode := range currNodes {
+		fmt.Println("====> CURR NODE: ", currNode.Network)
 		currentNodesCache[currNode.ID.String()] = currNode
 	}
 
@@ -143,12 +153,19 @@ func handlePeerRelaySignal(signal models.Signal) error {
 // if connection is bad, host will signal peers to use turn
 func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
-	defer autoRelayConnTicker.Stop()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return
 	}
+	if server.PeerConnectionCheckInterval != "" {
+		sec, err := strconv.Atoi(server.PeerConnectionCheckInterval)
+		if err == nil && sec > 0 {
+			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
+		}
+	}
+	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
+	defer autoRelayConnTicker.Stop()
+
 	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
@@ -192,11 +209,12 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
-					if currNode, ok := currentNodesCache[node.ID.String()]; ok {
+					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
 						if currNode.AutoAssignGateway {
 							checkAssignGw(currNode)
 						} else {
 							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
+							fmt.Println("AUTORELAYNODES:  ", len(autoRelayNodes), node.Network)
 							if len(autoRelayNodes) > 0 {
 								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.Address.String())
 								// check current relay in use is the closest

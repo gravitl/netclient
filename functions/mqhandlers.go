@@ -196,6 +196,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
+	if peerUpdate.ServerConfig.PeerConnectionCheckInterval != "" {
+		sec, err := strconv.Atoi(peerUpdate.ServerConfig.PeerConnectionCheckInterval)
+		if err == nil && sec > 0 {
+			fmt.Println("##### SETTING PEER CONNECTION INTERVAL: ", sec)
+			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
+		}
+	}
 	if server.IsPro {
 		if autoRelayConnTicker != nil {
 			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
@@ -452,6 +459,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
+		fmt.Println("======> RECEIVED JoinHostToNetwork")
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
 			CommonNode: commonNode,
