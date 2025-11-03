@@ -108,7 +108,7 @@ jobs:
         AWS_DEFAULT_REGION: ${{ secrets.DO_SPACES_REGION }}
         SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
         SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
-        UPLOAD_PATH_VERSION: releases/download/${{ github.event.inputs.version }}
+        UPLOAD_PATH_VERSION: download/${{ github.event.inputs.version }}
       run: |
         set -e
         if ! command -v aws >/dev/null 2>&1; then
