@@ -200,7 +200,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		peerUpdate.ServerConfig.PeerConnectionCheckInterval != server.PeerConnectionCheckInterval {
 		sec, err := strconv.Atoi(peerUpdate.ServerConfig.PeerConnectionCheckInterval)
 		if err == nil && sec > 0 {
-			fmt.Println("##### SETTING PEER CONNECTION INTERVAL: ", sec)
 			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
 		}
 	}
