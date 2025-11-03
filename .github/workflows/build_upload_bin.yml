@@ -116,10 +116,14 @@ jobs:
           sudo apt-get install -y awscli
         fi
         aws --version
-        echo "Uploading artifacts to DigitalOcean Spaces bucket: $SPACES_BUCKET"
+        echo "Bucket: $SPACES_BUCKET"
+        echo "Path: $UPLOAD_PATH_VERSION"
+        echo "Full destination will be: s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/"
         while IFS= read -r file; do
-          echo "Uploading $file"
-          aws s3 cp "$file" "s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/$(basename "$file")" \
+          filename=$(basename "$file")
+          dest_path="s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/$filename"
+          echo "Uploading $file to $dest_path"
+          aws s3 cp "$file" "$dest_path" \
             --endpoint-url "$SPACES_ENDPOINT" \
             --acl public-read
         done < <(find . -type f -name "netclient-*")
