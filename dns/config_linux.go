@@ -153,7 +153,12 @@ func setupResolvectl() (err error) {
 	if server != nil {
 		for _, ns := range server.DnsNameservers {
 			if ns.MatchDomain != "." {
-				domains = domains + " " + ns.MatchDomain
+				if ns.IsSearchDomain {
+					domains = domains + " " + ns.MatchDomain
+				} else {
+					// ~domain is treated as a routing only domain.
+					domains = domains + " ~" + ns.MatchDomain
+				}
 			}
 		}
 	}
