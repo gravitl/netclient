@@ -153,12 +153,19 @@ func handlePeerRelaySignal(signal models.Signal) error {
 // if connection is bad, host will signal peers to use turn
 func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	defer waitg.Done()
-	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
-	defer autoRelayConnTicker.Stop()
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return
 	}
+	if server.PeerConnectionCheckInterval != "" {
+		sec, err := strconv.Atoi(server.PeerConnectionCheckInterval)
+		if err == nil && sec > 0 {
+			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
+		}
+	}
+	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
+	defer autoRelayConnTicker.Stop()
+
 	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821

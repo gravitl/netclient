@@ -100,3 +100,30 @@ jobs:
         ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION"
 
         find . -type f -name "netclient-*" -exec scp {} root@fileserver.clustercat.com:$UPLOAD_PATH_VERSION/ \;        
+
+    - name: Upload to DigitalOcean Spaces
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+        AWS_DEFAULT_REGION: ${{ secrets.DO_SPACES_REGION }}
+        SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+        SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
+        UPLOAD_PATH_VERSION: download/${{ github.event.inputs.version }}
+      run: |
+        set -e
+        if ! command -v aws >/dev/null 2>&1; then
+          sudo apt-get update -y
+          sudo apt-get install -y awscli
+        fi
+        aws --version
+        echo "Bucket: $SPACES_BUCKET"
+        echo "Path: $UPLOAD_PATH_VERSION"
+        echo "Full destination will be: s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/"
+        while IFS= read -r file; do
+          filename=$(basename "$file")
+          dest_path="s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/$filename"
+          echo "Uploading $file to $dest_path"
+          aws s3 cp "$file" "$dest_path" \
+            --endpoint-url "$SPACES_ENDPOINT" \
+            --acl public-read
+        done < <(find . -type f -name "netclient-*")
