@@ -102,10 +102,6 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 			return err
 		}
 
-		if matchAllDomains {
-			searchDomainsMap["."] = true
-		}
-
 		return setNrptRule(namespaces, dnsIP)
 	} else {
 		return resetConfig()
