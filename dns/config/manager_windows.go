@@ -21,14 +21,6 @@ type windowsManager struct {
 	mu           sync.Mutex
 }
 
-type searchListFamily int
-
-const (
-	ipv4 searchListFamily = iota
-	ipv6
-	both
-)
-
 func NewManager(opts ...ManagerOption) (Manager, error) {
 	w := &windowsManager{
 		configs: make(map[string]Config),
@@ -62,9 +54,8 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 		w.configs[iface] = config
 	}
 
-	skipIpv4 := true
-	skipIpv6 := true
 	nameservers := make(map[string]bool)
+	matchDomains := make(map[string]bool)
 	searchDomains := make(map[string]bool)
 	var searchList, namespaces []string
 	var matchAllDomains bool
@@ -79,14 +70,6 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 			_, ok := nameservers[nameserver]
 			if !ok {
 				nameservers[nameserver] = true
-				if ns.To4() != nil {
-					skipIpv4 = false
-				}
-
-				if ns.To16() != nil {
-					skipIpv6 = false
-				}
-
 				if nameserversStrBuilder.Len() == 0 {
 					nameserversStrBuilder.WriteString(nameserver)
 				} else {
@@ -96,40 +79,35 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 			}
 		}
 
-		for _, searchDomain := range config.SearchDomains {
-			searchDomain = strings.TrimSuffix(strings.TrimPrefix(searchDomain, "."), ".")
+		for _, domain := range config.MatchDomains {
+			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
 
-			_, ok := searchDomains[searchDomain]
+			_, ok := matchDomains[domain]
 			if !ok {
-				searchDomains[searchDomain] = true
-				searchList = append(searchList, searchDomain)
-				namespaces = append(namespaces, "."+searchDomain)
+				matchDomains[domain] = true
+				namespaces = append(namespaces, "."+domain)
 			}
 		}
 
+		for _, domain := range config.SearchDomains {
+			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
+
+			_, ok := searchDomains[domain]
+			if !ok {
+				searchDomains[domain] = true
+				searchList = append(searchList, domain)
+			}
+		}
 	}
 
 	if matchAllDomains {
 		namespaces = append(namespaces, ".")
 	}
 
-	if len(searchDomains) > 0 || matchAllDomains {
-		var family searchListFamily
-		if skipIpv4 == skipIpv6 {
-			family = both
-		} else if !skipIpv4 {
-			family = ipv4
-		} else {
-			family = ipv6
-		}
-
-		err := w.setSearchList(searchList, family)
+	if len(namespaces) > 0 {
+		err := w.setSearchList(searchList)
 		if err != nil {
 			return err
-		}
-
-		if matchAllDomains {
-			searchDomains["."] = true
 		}
 
 		return w.setNrptRule(namespaces, nameserversStrBuilder.String())
@@ -147,22 +125,13 @@ func (w *windowsManager) resetConfig() error {
 	return w.resetNrptRules()
 }
 
-func (w *windowsManager) setSearchList(searchList []string, family searchListFamily) error {
-	if family == ipv4 || family == both {
-		err := w.setSearchListOnRegistry(searchList, false)
-		if err != nil {
-			return err
-		}
+func (w *windowsManager) setSearchList(searchList []string) error {
+	err := w.setSearchListOnRegistry(searchList, false)
+	if err != nil {
+		return err
 	}
 
-	if family == ipv6 || family == both {
-		err := w.setSearchListOnRegistry(searchList, true)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return w.setSearchListOnRegistry(searchList, true)
 }
 
 func (w *windowsManager) setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {

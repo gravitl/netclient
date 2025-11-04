@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/gravitl/netmaker/logger"
 )
 
 type resolvconfFlavor int
@@ -26,12 +28,16 @@ func NewManager(opts ...ManagerOption) (Manager, error) {
 
 	switch flavor {
 	case systemd:
+		logger.Log(0, "creating systemd manager")
 		return newSystemdManager(opts...)
 	case resolvconf:
+		logger.Log(0, "creating resolvconf manager")
 		return newResolvconfManager(opts...)
 	case openresolv:
+		logger.Log(0, "creating openresolv manager")
 		return newOpenresolvManager(opts...)
 	default:
+		logger.Log(0, "creating file manager")
 		return newFileManager(opts...)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 
 type fileManager struct {
 	configs map[string]Config
+	mu      sync.Mutex
 }
 
 func newFileManager(opts ...ManagerOption) (*fileManager, error) {
@@ -43,18 +45,17 @@ func (f *fileManager) Configure(iface string, config Config) error {
 		return fmt.Errorf("interface name is required")
 	}
 
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	if config.Remove {
 		if !f.ownedByUs() {
 			return nil
 		}
 
-		err := f.resetConfig()
-		if err != nil {
-			return err
-		}
-
 		delete(f.configs, iface)
-		return nil
+	} else {
+		f.configs[iface] = config
 	}
 
 	if !f.ownedByUs() {
@@ -66,10 +67,24 @@ func (f *fileManager) Configure(iface string, config Config) error {
 
 	var nameservers []net.IP
 	var searchDomains []string
-	f.configs[iface] = config
+	nameserversMap := make(map[string]bool)
+	searchDomainsMap := make(map[string]bool)
 	for _, config := range f.configs {
-		nameservers = append(nameservers, config.Nameservers...)
-		searchDomains = append(searchDomains, config.SearchDomains...)
+		for _, nameserver := range config.Nameservers {
+			_, ok := nameserversMap[nameserver.String()]
+			if !ok {
+				nameserversMap[nameserver.String()] = true
+				nameservers = append(nameservers, nameserver)
+			}
+		}
+
+		for _, domain := range config.SearchDomains {
+			_, ok := searchDomainsMap[domain]
+			if !ok {
+				searchDomainsMap[domain] = true
+				searchDomains = append(searchDomains, domain)
+			}
+		}
 	}
 
 	return f.writeConfig(nameservers, searchDomains)
@@ -97,14 +112,6 @@ func (f *fileManager) ownedByUs() bool {
 }
 
 func (f *fileManager) writeConfig(nameservers []net.IP, searchDomains []string) error {
-	conf, err := os.Create(resolvconfFile)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = conf.Close()
-	}()
-
 	confBytes := new(bytes.Buffer)
 
 	writeConfig(confBytes, nameservers, searchDomains)
@@ -127,8 +134,7 @@ func (f *fileManager) writeConfig(nameservers []net.IP, searchDomains []string) 
 		confBytes.WriteString(line + "\n")
 	}
 
-	_, err = conf.Write(confBytes.Bytes())
-	return err
+	return os.WriteFile(resolvconfFile, confBytes.Bytes(), 0644)
 }
 
 func (f *fileManager) resetConfig() error {

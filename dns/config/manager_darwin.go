@@ -19,6 +19,11 @@ type darwinManager struct {
 	mu     sync.Mutex
 }
 
+type nameserver struct {
+	ips            []string
+	isSearchDomain bool
+}
+
 func NewManager(opts ...ManagerOption) (Manager, error) {
 	d := &darwinManager{
 		config: make(map[string]Config),
@@ -57,11 +62,11 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 		d.config[iface] = config
 	}
 
-	matchDomains := make(map[string][]string)
-	nameserversMap := make(map[string]bool)
+	domainNameservers := make(map[string]*nameserver)
+	globalNameserversMap := make(map[string]bool)
 	searchDomainsMap := make(map[string]bool)
 
-	var nameservers, searchDomains []string
+	var globalNameservers, globalSearchDomains []string
 
 	for _, config := range d.config {
 		if config.SplitDNS {
@@ -70,57 +75,63 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 				nameservers[i] = ns.String()
 			}
 
-			for _, searchDomain := range config.SearchDomains {
-				_, ok := matchDomains[searchDomain]
+			for _, matchDomain := range config.MatchDomains {
+				_, ok := domainNameservers[matchDomain]
 				if !ok {
-					matchDomains[searchDomain] = make([]string, 0)
+					domainNameservers[matchDomain] = &nameserver{}
 				}
 
-				matchDomains[searchDomain] = append(matchDomains[searchDomain], nameservers...)
+				domainNameservers[matchDomain].ips = append(domainNameservers[matchDomain].ips, nameservers...)
 			}
 		} else {
 			for _, ns := range config.Nameservers {
-				nameserversMap[ns.String()] = true
+				globalNameserversMap[ns.String()] = true
 			}
+		}
 
-			for _, searchDomain := range config.SearchDomains {
-				searchDomainsMap[searchDomain] = true
-			}
+		for _, searchDomain := range config.SearchDomains {
+			searchDomainsMap[searchDomain] = true
 		}
 	}
 
-	for ns := range nameserversMap {
-		nameservers = append(nameservers, ns)
+	for ns := range globalNameserversMap {
+		globalNameservers = append(globalNameservers, ns)
 	}
 
 	for domain := range searchDomainsMap {
-		searchDomains = append(searchDomains, domain)
+		if len(globalNameservers) > 0 {
+			globalSearchDomains = append(globalSearchDomains, domain)
+		}
+
+		domainNameservers[domain].isSearchDomain = true
 	}
 
-	err := d.setupSplitDNS(matchDomains)
+	err := d.setupSplitDNS(domainNameservers)
 	if err != nil {
 		return err
 	}
 
-	return d.setupFullDNS(nameservers, searchDomains)
+	return d.setupFullDNS(globalNameservers, globalSearchDomains)
 }
 
-func (d *darwinManager) setupSplitDNS(matchDomains map[string][]string) error {
+func (d *darwinManager) setupSplitDNS(matchDomains map[string]*nameserver) error {
 	err := d.resetSplitDNS()
 	if err != nil {
 		return err
 	}
 
-	for domain, nameservers := range matchDomains {
+	for domain, nameserver := range matchDomains {
 		resolverConf := new(bytes.Buffer)
 		resolverFilePath := filepath.Join("/etc/resolver", domain)
 
 		resolverConf.WriteString(netmakerResolverFileMarker)
-		for _, nameserver := range nameservers {
-			resolverConf.WriteString(fmt.Sprintf("nameserver %s\n", nameserver))
+		for _, ip := range nameserver.ips {
+			resolverConf.WriteString(fmt.Sprintf("nameserver %s\n", ip))
 		}
 
-		resolverConf.WriteString(fmt.Sprintf("search %s\n", domain))
+		if nameserver.isSearchDomain {
+			resolverConf.WriteString(fmt.Sprintf("search %s\n", domain))
+		}
 
 		err := os.WriteFile(resolverFilePath, resolverConf.Bytes(), 0644)
 		if err != nil {

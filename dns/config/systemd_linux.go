@@ -43,15 +43,29 @@ func (s *systemdManager) Configure(iface string, config Config) error {
 			nameservers[i] = ip.String()
 		}
 
-		searchDomains := make([]string, len(config.SearchDomains))
-		for i, domain := range config.SearchDomains {
-			if domain != "." {
-				searchDomains[i] = domain
+		domainsMap := make(map[string]bool)
+		for _, domain := range config.MatchDomains {
+			domainsMap[domain] = true
+		}
+
+		for _, domain := range config.SearchDomains {
+			_, ok := domainsMap[domain]
+			if ok {
+				delete(domainsMap, domain)
 			}
+
+			domainsMap["~"+domain] = true
+		}
+
+		i := 0
+		domains := make([]string, len(domainsMap))
+		for domain := range domainsMap {
+			domains[i] = domain
+			i++
 		}
 
 		if !config.SplitDNS {
-			searchDomains = append(searchDomains, "~.")
+			domains = append(domains, "~.")
 		}
 
 		args := []string{"dns", iface}
@@ -62,7 +76,7 @@ func (s *systemdManager) Configure(iface string, config Config) error {
 		}
 
 		args = []string{"domain", iface}
-		args = append(args, searchDomains...)
+		args = append(args, domains...)
 		err = exec.Command("resolvectl", args...).Run()
 		if err != nil {
 			return err

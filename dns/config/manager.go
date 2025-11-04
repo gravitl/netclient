@@ -1,9 +1,12 @@
 package config
 
-import "net"
+import (
+	"net"
+)
 
 type Config struct {
 	Nameservers   []net.IP
+	MatchDomains  []string
 	SearchDomains []string
 	SplitDNS      bool
 	Remove        bool

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 
 type resolvconfManager struct {
 	globalResolvers map[string]Config
+	mu              sync.Mutex
 }
 
 func newResolvconfManager(opts ...ManagerOption) (*resolvconfManager, error) {
@@ -32,13 +34,6 @@ func newResolvconfManager(opts ...ManagerOption) (*resolvconfManager, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
 			}
-
-			if r.globalResolvconfOwnedByUs() {
-				err := os.Rename(globalResolvconfBackupFile, globalResolvconfFile)
-				if err != nil {
-					return nil, fmt.Errorf("failed to cleanup global resolvconf config: %v", err)
-				}
-			}
 		}
 	}
 
@@ -50,6 +45,9 @@ func (r *resolvconfManager) Configure(iface string, config Config) error {
 		return fmt.Errorf("interface name is required")
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if config.Remove {
 		return r.resetConfig(iface)
 	}
@@ -57,61 +55,45 @@ func (r *resolvconfManager) Configure(iface string, config Config) error {
 	if !config.SplitDNS {
 		r.globalResolvers[iface] = config
 
-		confBytes := new(bytes.Buffer)
-
-		var nameservers []net.IP
-		var searchDomains []string
-		for _, config := range r.globalResolvers {
-			nameservers = append(nameservers, config.Nameservers...)
-			searchDomains = append(searchDomains, config.SearchDomains...)
-		}
-
-		writeConfig(confBytes, nameservers, searchDomains)
-
-		err := os.Rename(globalResolvconfFile, globalResolvconfBackupFile)
-		if err != nil {
-			return err
-		}
-
-		err = os.WriteFile(globalResolvconfFile, confBytes.Bytes(), 0644)
-		if err != nil {
-			return err
-		}
-
-	} else {
-		confBytes := new(bytes.Buffer)
-
-		searchDomains := make([]string, len(config.SearchDomains))
-		for i, domain := range config.SearchDomains {
-			if domain != "." {
-				searchDomains[i] = domain
+		if !r.globalResolvconfOwnedByUs() {
+			err := os.Rename(globalResolvconfFile, globalResolvconfBackupFile)
+			if err != nil {
+				return err
 			}
 		}
 
-		writeConfig(confBytes, config.Nameservers, searchDomains)
+		return r.writeGlobalResolvconfConfig()
+	} else {
+		confBytes := new(bytes.Buffer)
+
+		writeConfig(confBytes, config.Nameservers, config.SearchDomains)
 
 		cmd := exec.Command("resolvconf", "-a", iface)
 		cmd.Stdin = confBytes
 		return cmd.Run()
 	}
-
-	return nil
 }
 
 func (r *resolvconfManager) resetConfig(iface string) error {
 	_, ok := r.globalResolvers[iface]
 	if ok {
-		err := os.Rename(globalResolvconfBackupFile, globalResolvconfFile)
-		if err != nil {
-			return err
-		}
-
 		delete(r.globalResolvers, iface)
+
+		if r.globalResolvconfOwnedByUs() {
+			if len(r.globalResolvers) == 0 {
+				return os.Rename(globalResolvconfBackupFile, globalResolvconfFile)
+			} else {
+				return r.writeGlobalResolvconfConfig()
+			}
+		} else {
+			// global resolv.conf is not owned by us, so can't clear anything.
+			// resetting global resolver config.
+			r.globalResolvers = make(map[string]Config)
+			return nil
+		}
 	} else {
 		return exec.Command("resolvconf", "-d", iface).Run()
 	}
-
-	return nil
 }
 
 func (r *resolvconfManager) globalResolvconfOwnedByUs() bool {
@@ -133,4 +115,34 @@ func (r *resolvconfManager) globalResolvconfOwnedByUs() bool {
 	}
 
 	return false
+}
+
+func (r *resolvconfManager) writeGlobalResolvconfConfig() error {
+	confBytes := new(bytes.Buffer)
+
+	var nameservers []net.IP
+	var searchDomains []string
+	nameserversMap := make(map[string]bool)
+	searchDomainsMap := make(map[string]bool)
+	for _, config := range r.globalResolvers {
+		for _, nameserver := range config.Nameservers {
+			_, ok := nameserversMap[nameserver.String()]
+			if !ok {
+				nameserversMap[nameserver.String()] = true
+				nameservers = append(nameservers, nameserver)
+			}
+		}
+
+		for _, searchDomain := range config.MatchDomains {
+			_, ok := searchDomainsMap[searchDomain]
+			if !ok {
+				searchDomainsMap[searchDomain] = true
+				searchDomains = append(searchDomains, searchDomain)
+			}
+		}
+	}
+
+	writeConfig(confBytes, nameservers, searchDomains)
+
+	return os.WriteFile(globalResolvconfFile, confBytes.Bytes(), 0644)
 }
