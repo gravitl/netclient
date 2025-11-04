@@ -241,13 +241,10 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 
 						}
 					}
-
-					fmt.Println("=====> HERE1")
 					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
 					if !ok {
 						continue
 					}
-					fmt.Println("=====> HERE2")
 					for pubKey, peer := range peers {
 						// Check context before processing each peer
 						select {
@@ -347,22 +344,21 @@ func checkAssignGw(node models.Node) {
 	if node.RelayedBy != "" {
 		for _, gwNode := range gwNodes {
 			if gwNode.ID.String() == node.RelayedBy {
-				connected, _ := metrics.PeerConnStatus(node.Address.IP.String(), metricPort, 3)
+				connected, _ := metrics.PeerConnStatus(gwNode.PrimaryAddress(), metricPort, 4)
 				if !connected {
 					err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", "")
 					if err != nil {
 						fmt.Println("failed to switch to nearest gw node ", err)
 					}
-					time.Sleep(time.Second * 6)
 				}
-				break
+				return
 			}
 		}
 	}
 	fmt.Println("NO OF GwNODES: ", len(gwNodes))
 	nearestNode, err := findNearestNode(gwNodes, metricPort)
 	if err == nil {
-		fmt.Println("FOUND NEAREST GW: ", nearestNode.Address.IP.String())
+		fmt.Println("FOUND NEAREST GW: ", nearestNode.PrimaryAddress())
 		if node.RelayedBy != nearestNode.ID.String() {
 			err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
 			if err != nil {
