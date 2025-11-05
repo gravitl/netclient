@@ -65,12 +65,13 @@ func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNode
 
 // processPeerSignal - processes the peer signals for any updates from peers
 func processPeerSignal(signal models.Signal) {
-
+	fmt.Println("$$$$ ========>1. RECV PEER SIGNAL: ", signal.FromHostPubKey, signal.Action)
 	// process recieved new signal from peer
 	// if signal is older than 3s ignore it,wait for a fresh signal from peer
-	if time.Now().Unix()-signal.TimeStamp > 3 {
+	if time.Now().Unix()-signal.TimeStamp > 5 {
 		return
 	}
+	fmt.Println("$$$$ ========>2. RECV PEER SIGNAL: ", signal.FromHostPubKey, signal.Action)
 	switch signal.Action {
 	case models.ConnNegotiation:
 		if !isPeerExist(signal.FromHostPubKey) {
@@ -94,7 +95,7 @@ func processPeerSignal(signal models.Signal) {
 }
 
 func handlePeerRelaySignal(signal models.Signal) error {
-	fmt.Println("RECV signal from ", signal.FromNodeID)
+	fmt.Println("=========> $$$$$$$ RECV signal from ", signal.FromNodeID)
 	server := config.GetServer(signal.Server)
 	if server == nil {
 		return errors.New("server config not found")
@@ -115,7 +116,7 @@ func handlePeerRelaySignal(signal models.Signal) error {
 
 	if !signal.Reply {
 		// signal back
-		err := SignalPeer(models.Signal{
+		s := models.Signal{
 			Server:               signal.Server,
 			FromHostID:           signal.ToHostID,
 			FromNodeID:           signal.ToNodeID,
@@ -128,8 +129,8 @@ func handlePeerRelaySignal(signal models.Signal) error {
 			Action:               models.ConnNegotiation,
 			AutoRelayNodeMetrics: autoRelayNodeMetrics,
 			TimeStamp:            time.Now().Unix(),
-		})
-
+		}
+		err := SignalPeer(s)
 		if err != nil {
 			slog.Warn("failed to signal peer", "error", err.Error())
 		} else {
@@ -304,7 +305,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						// 	slog.Error("auto relay ctx for peer ", "error", err)
 						// 	continue
 						// }
-						fmt.Println("=====> Sending signal for peerr", peer.Address)
+						fmt.Println("=====>1. Sending signal for peerr", peer.Address)
 						s := models.Signal{
 							Server:         config.CurrServer,
 							FromHostID:     config.Netclient().ID.String(),
@@ -314,7 +315,6 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							FromHostPubKey: config.Netclient().PublicKey.String(),
 							ToHostPubKey:   pubKey,
 							Action:         models.ConnNegotiation,
-							TimeStamp:      time.Now().Unix(),
 						}
 						server := config.GetServer(config.CurrServer)
 						if server == nil {
@@ -324,11 +324,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if len(autoRelayNodeMetrics) == 0 {
 							continue
 						}
+						fmt.Println("=====>2. Sending signal for peerr", peer.Address)
 						s.AutoRelayNodeMetrics = autoRelayNodeMetrics
+						s.TimeStamp = time.Now().Unix()
 						// signal peer
 						err = SignalPeer(s)
 						if err != nil {
-							logger.Log(2, "failed to signal peer: ", err.Error())
+							fmt.Println("failed to signal peer: ", err.Error())
 						} else {
 							if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
 								if cnt.(int) <= 3 {
@@ -355,17 +357,21 @@ func isPeerExist(peerKey string) bool {
 }
 
 func checkAssignGw(node models.Node) {
+	fmt.Println("===> HERE 1")
 	if !node.AutoAssignGateway {
 		return
 	}
+	fmt.Println("===> HERE 2")
 	gwNodes := getGwNodes(models.NetworkID(node.Network))
 	if len(gwNodes) == 0 {
 		return
 	}
+	fmt.Println("===> HERE 3")
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return
 	}
+	fmt.Println("===> HERE 4")
 	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
