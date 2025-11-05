@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/devilcove/httpclient"
-	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
@@ -96,21 +95,39 @@ func processPeerSignal(signal models.Signal) {
 
 func handlePeerRelaySignal(signal models.Signal) error {
 	fmt.Println("RECV signal from ", signal.FromNodeID)
+	server := config.GetServer(signal.Server)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	// check for nearest and healthy relay gw
+	metricPort := server.MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
+	autoRelayNodes := getAutoRelayNodes(models.NetworkID(signal.NetworkID))
+	if len(autoRelayNodes) == 0 {
+		return nil
+	}
+	autoRelayNodeMetrics := findNodeLatencies(autoRelayNodes, metricPort)
+	if len(autoRelayNodeMetrics) == 0 {
+		return errors.New("failed to find nearest relay node")
+	}
+
 	if !signal.Reply {
 		// signal back
 		err := SignalPeer(models.Signal{
-
-			Server:         signal.Server,
-			FromHostID:     signal.ToHostID,
-			FromNodeID:     signal.ToNodeID,
-			FromHostPubKey: signal.ToHostPubKey,
-			ToHostPubKey:   signal.FromHostPubKey,
-			ToHostID:       signal.FromHostID,
-			ToNodeID:       signal.FromNodeID,
-			Reply:          true,
-			NetworkID:      signal.NetworkID,
-			Action:         models.ConnNegotiation,
-			TimeStamp:      time.Now().Unix(),
+			Server:               signal.Server,
+			FromHostID:           signal.ToHostID,
+			FromNodeID:           signal.ToNodeID,
+			FromHostPubKey:       signal.ToHostPubKey,
+			ToHostPubKey:         signal.FromHostPubKey,
+			ToHostID:             signal.FromHostID,
+			ToNodeID:             signal.FromNodeID,
+			Reply:                true,
+			NetworkID:            signal.NetworkID,
+			Action:               models.ConnNegotiation,
+			AutoRelayNodeMetrics: autoRelayNodeMetrics,
+			TimeStamp:            time.Now().Unix(),
 		})
 
 		if err != nil {
@@ -121,26 +138,35 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	} else {
 		signalThrottleCache.Delete(signal.FromHostID)
 	}
-	autoRelayNodes := getAutoRelayNodes(models.NetworkID(signal.NetworkID))
-	if len(autoRelayNodes) == 0 {
-		return nil
+
+	// compare my node autoRelayNodeMetrics with signal.AutoRelayNodeMetrics and choose closest to both of them on average and set nearest node
+	var nearestNode *models.Node
+	var lowestAvg int64 = 1 << 62 // large
+	if len(signal.AutoRelayNodeMetrics) > 0 {
+		for i := range autoRelayNodes {
+			n := &autoRelayNodes[i]
+			myLat, okMy := autoRelayNodeMetrics[n.ID.String()]
+			peerLat, okPeer := signal.AutoRelayNodeMetrics[n.ID.String()]
+			if okMy && okPeer {
+				avg := (myLat + peerLat) / 2
+				if avg < lowestAvg {
+					lowestAvg = avg
+					nearestNode = n
+				}
+			}
+		}
 	}
-	server := config.GetServer(signal.Server)
-	if server == nil {
-		return errors.New("server config not found")
-	}
-	// check for nearest and healthy relay gw
-	metricPort := server.MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
-	}
-	nearestNode, err := findNearestNode(autoRelayNodes, metricPort)
-	if err != nil {
-		slog.Error("failed to find nearest relay node", "error", err)
-		return err
+	// Fallback: if no common metrics with peer, use our nearest
+	if nearestNode == nil {
+		var err error
+		nearestNode, err = findNearestNode(autoRelayNodes, metricPort)
+		if err != nil {
+			slog.Error("failed to find nearest relay node", "error", err)
+			return err
+		}
 	}
 	fmt.Println("====> Sending relay me req ", signal.FromNodeID)
-	err = autoRelayME(http.MethodPost, signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
+	err := autoRelayME(http.MethodPost, signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
 	if err != nil {
 		slog.Error("failed to signal server to relay me", "error", err)
 		return err
@@ -209,30 +235,29 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
+					autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
 					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
 						if currNode.AutoAssignGateway {
 							checkAssignGw(currNode)
 						} else {
-							autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
+
 							fmt.Println("AUTORELAYNODES:  ", len(autoRelayNodes), node.Network)
 							if len(autoRelayNodes) > 0 {
-								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.Address.String())
+								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.PrimaryAddress())
 								// check current relay in use is the closest
-								if currNode.AutoRelayedBy != uuid.Nil {
+								for autoRelayedPeerID, currentAutoRelayID := range currNode.AutoRelayedPeers {
 									fmt.Println("checking if curr relay is closest")
-									autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
-									if len(autoRelayNodes) > 0 {
-										nearestNode, err := findNearestNode(autoRelayNodes, metricPort)
-										if err == nil {
-											fmt.Println("FOUND NEAREST: ", nearestNode.Address.IP.String())
-											if currNode.AutoRelayedBy != nearestNode.ID {
-												err = autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
+									for _, autoRelayNode := range autoRelayNodes {
+										if autoRelayNode.ID.String() == currentAutoRelayID {
+											connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), metricPort, 4)
+											if !connected {
+												err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
 												if err != nil {
-													fmt.Println("failed to switch to nearest relay node ", err)
+													fmt.Println("failed to switch to nearest gw node ", err)
 												}
+												break
 											}
 										}
-
 									}
 
 								}
@@ -295,6 +320,11 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if server == nil {
 							continue
 						}
+						autoRelayNodeMetrics := findNodeLatencies(autoRelayNodes, metricPort)
+						if len(autoRelayNodeMetrics) == 0 {
+							continue
+						}
+						s.AutoRelayNodeMetrics = autoRelayNodeMetrics
 						// signal peer
 						err = SignalPeer(s)
 						if err != nil {
@@ -387,13 +417,13 @@ func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) 
 
 	for i := range nodes {
 		node := &nodes[i]
-		fmt.Println("=====>findNearestNode: ", node.Address.String())
+		fmt.Println("=====>findNearestNode: ", node.PrimaryAddress())
 		// Try to get metrics/ping the node to determine latency
-		connected, latency := metrics.PeerConnStatus(node.Address.IP.String(), metricPort, 2)
+		connected, latency := metrics.PeerConnStatus(node.PrimaryAddress(), metricPort, 2)
 		fmt.Println("=====> CONNECTION STATUS", node.Address, connected, latency)
 		if !connected || latency <= 0 {
 			// If we can't reach the node or got invalid latency, skip it
-			fmt.Println("====> relay node unreachable", "node", node.ID.String(), "address", node.Address.String())
+			fmt.Println("====> relay node unreachable", "node", node.ID.String(), "address", node.PrimaryAddress())
 			continue
 		}
 
@@ -411,6 +441,29 @@ func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) 
 	}
 
 	return nearestNode, nil
+}
+
+// findNodeLatencies returns a map of relay nodes with their latency values
+// The map key is the node ID (string) and the value is latency in milliseconds
+func findNodeLatencies(nodes []models.Node, metricPort int) map[string]int64 {
+	nodeLatencies := make(map[string]int64)
+
+	for i := range nodes {
+		node := &nodes[i]
+		fmt.Println("=====>findNodeLatencies: ", node.PrimaryAddress())
+		// Try to get metrics/ping the node to determine latency
+		connected, latency := metrics.PeerConnStatus(node.PrimaryAddress(), metricPort, 2)
+		fmt.Println("=====> CONNECTION STATUS", node.Address, connected, latency)
+		if connected && latency > 0 {
+			// Only include reachable nodes with valid latency
+			nodeLatencies[node.ID.String()] = latency
+			slog.Debug("found reachable relay node", "node", node.ID.String(), "latency_ms", latency)
+		} else {
+			fmt.Println("====> relay node unreachable", "node", node.ID.String(), "address", node.PrimaryAddress())
+		}
+	}
+
+	return nodeLatencies
 }
 
 // autoRelayME - signals the server to auto relay
