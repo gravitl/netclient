@@ -18,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+
 	"golang.org/x/exp/slog"
 )
 
@@ -47,17 +48,12 @@ func getCurrNode(nodeID string) models.Node {
 }
 
 func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
-	ncutils.TraceCaller()
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
-	for netID, netAutorelaynodes := range autoRelaynodes {
-		fmt.Println("====> setAutoRelayNodes NETWORK: ", netID, len(netAutorelaynodes))
-	}
 	autoRelayCache = autoRelaynodes
 	gwNodesCache = gwNodes
 	currentNodesCache = make(map[string]models.Node)
 	for _, currNode := range currNodes {
-		fmt.Println("====> CURR NODE: ", currNode.Network)
 		currentNodesCache[currNode.ID.String()] = currNode
 	}
 
@@ -65,13 +61,11 @@ func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNode
 
 // processPeerSignal - processes the peer signals for any updates from peers
 func processPeerSignal(signal models.Signal) {
-	fmt.Println("$$$$ ========>1. RECV PEER SIGNAL: ", signal.FromHostPubKey, signal.Action)
 	// process recieved new signal from peer
 	// if signal is older than 3s ignore it,wait for a fresh signal from peer
 	if time.Now().Unix()-signal.TimeStamp > 5 {
 		return
 	}
-	fmt.Println("$$$$ ========>2. RECV PEER SIGNAL: ", signal.FromHostPubKey, signal.Action)
 	switch signal.Action {
 	case models.ConnNegotiation:
 		if !isPeerExist(signal.FromHostPubKey) {
@@ -95,7 +89,7 @@ func processPeerSignal(signal models.Signal) {
 }
 
 func handlePeerRelaySignal(signal models.Signal) error {
-	fmt.Println("=========> $$$$$$$ RECV signal from ", signal.FromNodeID)
+	fmt.Println("=========> $$$$$$$ RECV signal from ", signal.FromHostPubKey)
 	server := config.GetServer(signal.Server)
 	if server == nil {
 		return errors.New("server config not found")
@@ -243,31 +237,10 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
 					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
 						if currNode.AutoAssignGateway {
-							checkAssignGw(currNode)
+							checkAssignGw(server, currNode)
 						} else {
-							fmt.Println("AUTORELAYNODES:  ", len(autoRelayNodes), node.Network)
 							if len(autoRelayNodes) > 0 {
-								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.PrimaryAddress())
-								// check current relay in use is the closest
-								for autoRelayedPeerID, currentAutoRelayID := range currNode.AutoRelayedPeers {
-									for _, autoRelayNode := range autoRelayNodes {
-										if autoRelayNode.ID.String() == currentAutoRelayID {
-											fmt.Println("checking if curr relay is active", autoRelayNode.PrimaryAddress())
-											connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), metricPort, 4)
-											if !connected {
-												fmt.Println("current relay not active")
-												err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
-												if err != nil {
-													fmt.Println("failed to switch to nearest gw node ", err)
-												}
-												if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
-													signalThrottleCache.Delete(autoRelayedPeer.HostID)
-												}
-												break
-											}
-										}
-									}
-								}
+								checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
 							}
 						}
 					}
@@ -300,12 +273,10 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							// peer is connected,so continue
 							continue
 						}
-						fmt.Println("=====> HERE3", peer.Address)
 						// if err := checkAutoRelayCtxForPeer(config.CurrServer, node.ID.String(), peer.ID); err != nil {
 						// 	slog.Error("auto relay ctx for peer ", "error", err)
 						// 	continue
 						// }
-						fmt.Println("=====>1. Sending signal for peerr", peer.Address)
 						s := models.Signal{
 							Server:         config.CurrServer,
 							FromHostID:     config.Netclient().ID.String(),
@@ -325,7 +296,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						if len(autoRelayNodeMetrics) == 0 {
 							continue
 						}
-						fmt.Println("=====>2. Sending signal for peerr", peer.Address)
+						fmt.Println("=====>Sending signal for peerr", peer.Address)
 						s.AutoRelayNodeMetrics = autoRelayNodeMetrics
 						s.TimeStamp = time.Now().Unix()
 						// signal peer
@@ -357,32 +328,49 @@ func isPeerExist(peerKey string) bool {
 	return err == nil
 }
 
-func checkAssignGw(node models.Node) {
-	fmt.Println("===> HERE 1")
-	if !node.AutoAssignGateway {
-		return
-	}
-	fmt.Println("===> HERE 2")
-	gwNodes := getGwNodes(models.NetworkID(node.Network))
-	if len(gwNodes) == 0 {
-		return
-	}
-	fmt.Println("===> HERE 3")
-	server := config.GetServer(config.CurrServer)
+func checkAutoRelayCtx(server *config.Server, node models.Node, peers models.PeerMap, autoRelayNodes []models.Node) {
 	if server == nil {
 		return
 	}
-	fmt.Println("===> HERE 4")
-	metricPort := server.MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
+	fmt.Println("CHECKING AUTO RELAY CTX for: ", node.ID.String(), node.PrimaryAddress())
+	// check current relay in use is the closest
+	for autoRelayedPeerID, currentAutoRelayID := range node.AutoRelayedPeers {
+		for _, autoRelayNode := range autoRelayNodes {
+			if autoRelayNode.ID.String() == currentAutoRelayID {
+				fmt.Println("checking if curr relay is active", autoRelayNode.PrimaryAddress())
+				connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), server.MetricsPort, 4)
+				if !connected {
+					fmt.Println("current relay not active")
+					err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
+					if err != nil {
+						fmt.Println("failed to switch to nearest gw node ", err)
+					}
+					if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
+						signalThrottleCache.Delete(autoRelayedPeer.HostID)
+					}
+					break
+				}
+			}
+		}
+	}
+}
+
+func checkAssignGw(server *config.Server, node models.Node) {
+	if !node.AutoAssignGateway {
+		return
+	}
+	gwNodes := getGwNodes(models.NetworkID(node.Network))
+	if len(gwNodes) == 0 {
+		return
 	}
 	// check if current gw is reachable
 	if node.RelayedBy != "" {
 		for _, gwNode := range gwNodes {
 			if gwNode.ID.String() == node.RelayedBy {
-				connected, _ := metrics.PeerConnStatus(gwNode.PrimaryAddress(), metricPort, 4)
+				fmt.Println("======> Checking Curr Gw status ", gwNode.PrimaryAddress())
+				connected, _ := metrics.PeerConnStatus(gwNode.PrimaryAddress(), server.MetricsPort, 3)
 				if !connected {
+					fmt.Println("========> Checking Curr Gw Not Active ", gwNode.PrimaryAddress())
 					err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", "")
 					if err != nil {
 						fmt.Println("failed to switch to nearest gw node ", err)
@@ -392,10 +380,9 @@ func checkAssignGw(node models.Node) {
 			}
 		}
 	}
-	fmt.Println("NO OF GwNODES: ", len(gwNodes))
-	nearestNode, err := findNearestNode(gwNodes, metricPort)
+	nearestNode, err := findNearestNode(gwNodes, server.MetricsPort)
 	if err == nil {
-		fmt.Println("FOUND NEAREST GW: ", nearestNode.PrimaryAddress())
+		fmt.Println("======> FOUND NEAREST GW: ", nearestNode.PrimaryAddress())
 		if node.RelayedBy != nearestNode.ID.String() {
 			err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
 			if err != nil {
