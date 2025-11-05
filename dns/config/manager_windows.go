@@ -151,11 +151,16 @@ func (w *windowsManager) setSearchListOnRegistry(searchDomains []string, ipv6 bo
 			if err != nil {
 				return err
 			}
+
+			err = searchListKey.SetStringValue("PreNetmakerSearchList", "")
+			if err != nil {
+				return err
+			}
 		} else {
 			return err
 		}
 	} else {
-		_, _, err = searchListKey.GetStringValue("PreNetmakerSearchList")
+		preNetmakerSearchList, _, err := searchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if errors.Is(err, registry.ErrNotExist) {
 				err = searchListKey.SetStringValue("PreNetmakerSearchList", searchListStr)
@@ -165,6 +170,8 @@ func (w *windowsManager) setSearchListOnRegistry(searchDomains []string, ipv6 bo
 			} else {
 				return err
 			}
+		} else {
+			searchListStr = preNetmakerSearchList
 		}
 
 		if len(searchListStr) > 0 {
