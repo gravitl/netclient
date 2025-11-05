@@ -101,10 +101,6 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 			return err
 		}
 
-		if matchAllDomains {
-			searchDomainsMap["."] = true
-		}
-
 		return setNrptRule(namespaces, dnsIP)
 	} else {
 		return resetConfig()
@@ -146,11 +142,16 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 			if err != nil {
 				return err
 			}
+
+			err = searchListKey.SetStringValue("PreNetmakerSearchList", "")
+			if err != nil {
+				return err
+			}
 		} else {
 			return err
 		}
 	} else {
-		_, _, err = searchListKey.GetStringValue("PreNetmakerSearchList")
+		preNetmakerSearchList, _, err := searchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if errors.Is(err, registry.ErrNotExist) {
 				err = searchListKey.SetStringValue("PreNetmakerSearchList", searchListStr)
@@ -160,6 +161,8 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 			} else {
 				return err
 			}
+		} else {
+			searchListStr = strings.TrimSpace(preNetmakerSearchList)
 		}
 
 		if len(searchListStr) > 0 {
