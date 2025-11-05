@@ -149,6 +149,8 @@ func setupResolvectl() (err error) {
 		domains = defaultDomain
 	}
 
+	var matchAll bool
+
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
 		for _, ns := range server.DnsNameservers {
@@ -159,6 +161,8 @@ func setupResolvectl() (err error) {
 					// ~domain is treated as a routing only domain.
 					domains = domains + " ~" + ns.MatchDomain
 				}
+			} else {
+				matchAll = true
 			}
 		}
 	}
@@ -166,6 +170,16 @@ func setupResolvectl() (err error) {
 	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl domain netmaker %s", domains), false)
 	if err != nil {
 		slog.Warn("add DNS domain for netmaker failed", "error", err.Error())
+	}
+
+	defaultRoute := "no"
+	if matchAll {
+		defaultRoute = "yes"
+	}
+
+	_, err = ncutils.RunCmd(fmt.Sprintf("resolvectl default-route netmaker %s", defaultRoute), false)
+	if err != nil {
+		slog.Warn("changing default route setting for netmaker failed", "error", err.Error())
 	}
 
 	time.Sleep(1 * time.Second)
