@@ -236,40 +236,40 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
+					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
+					if !ok {
+						continue
+					}
 					autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
 					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
 						if currNode.AutoAssignGateway {
 							checkAssignGw(currNode)
 						} else {
-
 							fmt.Println("AUTORELAYNODES:  ", len(autoRelayNodes), node.Network)
 							if len(autoRelayNodes) > 0 {
 								fmt.Println("CHECKING RELAY CTX for: ", node.ID.String(), node.PrimaryAddress())
 								// check current relay in use is the closest
 								for autoRelayedPeerID, currentAutoRelayID := range currNode.AutoRelayedPeers {
-									fmt.Println("checking if curr relay is closest")
 									for _, autoRelayNode := range autoRelayNodes {
 										if autoRelayNode.ID.String() == currentAutoRelayID {
+											fmt.Println("checking if curr relay is active", autoRelayNode.PrimaryAddress())
 											connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), metricPort, 4)
 											if !connected {
+												fmt.Println("current relay not active")
 												err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
 												if err != nil {
 													fmt.Println("failed to switch to nearest gw node ", err)
+												}
+												if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
+													signalThrottleCache.Delete(autoRelayedPeer.HostID)
 												}
 												break
 											}
 										}
 									}
-
 								}
-
 							}
-
 						}
-					}
-					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
-					if !ok {
-						continue
 					}
 					for pubKey, peer := range peers {
 						// Check context before processing each peer
@@ -314,6 +314,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							ToNodeID:       peer.ID,
 							FromHostPubKey: config.Netclient().PublicKey.String(),
 							ToHostPubKey:   pubKey,
+							NetworkID:      peer.Network,
 							Action:         models.ConnNegotiation,
 						}
 						server := config.GetServer(config.CurrServer)
