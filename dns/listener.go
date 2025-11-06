@@ -100,6 +100,11 @@ func (dnsServer *DNSServer) Start() {
 		if err != nil {
 			slog.Error("setup DNS config failed", "error", err.Error())
 		}
+
+		err = FlushLocalDnsCache()
+		if err != nil {
+			slog.Error("flush local DNS cache failed", "error", err.Error())
+		}
 	}
 
 	slog.Info("DNS server listens on: ", "Info", dnsServer.AddrStr)

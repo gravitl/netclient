@@ -373,6 +373,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		case update:
 			_ = dns.SetupDNSConfig()
+			_ = dns.FlushLocalDnsCache()
 		}
 	}
 
@@ -905,7 +906,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if server.ManageDNS {
 		if (config.Netclient().Host.OS == "linux" && dns.GetDNSServerInstance().AddrStr != "" && config.Netclient().DNSManagerType == dns.DNS_MANAGER_STUB) ||
 			config.Netclient().Host.OS == "windows" {
-			dns.SetupDNSConfig()
+			_ = dns.SetupDNSConfig()
+			_ = dns.FlushLocalDnsCache()
 		}
 	}
 
