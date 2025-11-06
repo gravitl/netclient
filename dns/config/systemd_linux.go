@@ -45,16 +45,16 @@ func (s *systemdManager) Configure(iface string, config Config) error {
 
 		domainsMap := make(map[string]bool)
 		for _, domain := range config.MatchDomains {
-			domainsMap[domain] = true
+			domainsMap["~"+domain] = true
 		}
 
 		for _, domain := range config.SearchDomains {
-			_, ok := domainsMap[domain]
+			_, ok := domainsMap["~"+domain]
 			if ok {
-				delete(domainsMap, domain)
+				delete(domainsMap, "~"+domain)
 			}
 
-			domainsMap["~"+domain] = true
+			domainsMap[domain] = true
 		}
 
 		i := 0
