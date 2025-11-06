@@ -473,7 +473,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
-	clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
+	//clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
