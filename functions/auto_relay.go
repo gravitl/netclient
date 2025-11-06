@@ -430,6 +430,7 @@ func checkAssignGw(server *config.Server, node models.Node) {
 }
 
 // findNearestNode finds the node with the lowest latency from a list of nodes
+// Latency calculations are performed in parallel for better performance
 func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) {
 	if len(nodes) == 0 {
 		return nil, errors.New("no relay nodes available")
@@ -437,24 +438,36 @@ func findNearestNode(nodes []models.Node, metricPort int) (*models.Node, error) 
 
 	var nearestNode *models.Node
 	var lowestLatency int64 = 999 // Start with a very high value (milliseconds)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
+	// Process nodes in parallel
 	for i := range nodes {
 		node := &nodes[i]
-		// Try to get metrics/ping the node to determine latency
-		connected, latency := metrics.PeerConnStatus(node.PrimaryAddress(), metricPort, 2)
-		if !connected || latency <= 0 {
-			// If we can't reach the node or got invalid latency, skip it
-			slog.Debug("relay node unreachable", "node", node.ID.String(), "address", node.PrimaryAddress())
-			continue
-		}
+		wg.Add(1)
+		go func(n *models.Node) {
+			defer wg.Done()
+			// Try to get metrics/ping the node to determine latency
+			connected, latency := metrics.PeerConnStatus(n.PrimaryAddress(), metricPort, 2)
+			if !connected || latency <= 0 {
+				// If we can't reach the node or got invalid latency, skip it
+				slog.Debug("relay node unreachable", "node", n.ID.String(), "address", n.PrimaryAddress())
+				return
+			}
 
-		// Update nearest node if this one has lower latency
-		if latency < lowestLatency {
-			lowestLatency = latency
-			nearestNode = node
-			slog.Debug("found reachable relay node", "node", node.ID.String(), "latency_ms", latency)
-		}
+			// Update nearest node if this one has lower latency
+			mu.Lock()
+			if latency < lowestLatency {
+				lowestLatency = latency
+				nearestNode = n
+				slog.Debug("found reachable relay node", "node", n.ID.String(), "latency_ms", latency)
+			}
+			mu.Unlock()
+		}(node)
 	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
 
 	// If no node was reachable, return error
 	if nearestNode == nil {
