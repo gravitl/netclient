@@ -2,7 +2,6 @@ package dns
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -102,10 +101,6 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 			return err
 		}
 
-		if matchAllDomains {
-			searchDomainsMap["."] = true
-		}
-
 		return setNrptRule(namespaces, dnsIP)
 	} else {
 		return resetConfig()
@@ -147,11 +142,16 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 			if err != nil {
 				return err
 			}
+
+			err = searchListKey.SetStringValue("PreNetmakerSearchList", "")
+			if err != nil {
+				return err
+			}
 		} else {
 			return err
 		}
 	} else {
-		_, _, err = searchListKey.GetStringValue("PreNetmakerSearchList")
+		preNetmakerSearchList, _, err := searchListKey.GetStringValue("PreNetmakerSearchList")
 		if err != nil {
 			if errors.Is(err, registry.ErrNotExist) {
 				err = searchListKey.SetStringValue("PreNetmakerSearchList", searchListStr)
@@ -161,6 +161,8 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 			} else {
 				return err
 			}
+		} else {
+			searchListStr = strings.TrimSpace(preNetmakerSearchList)
 		}
 
 		if len(searchListStr) > 0 {
@@ -173,53 +175,7 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 		}
 	}
 
-	reset(false)
-	reset(true)
 	return nil
-}
-
-func reset(ipv6 bool) {
-	guid := config.Netclient().Host.ID.String()
-	if guid == "" {
-		guid = config.DefaultHostID
-	}
-
-	guid = "{" + guid + "}"
-
-	keyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\%s`, guid)
-	globalKeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters`)
-	if ipv6 {
-		keyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\%s`, guid)
-		globalKeyPath = fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`)
-	}
-
-	_ = resetInterface(keyPath)
-	_ = resetGlobal(globalKeyPath)
-}
-
-func resetInterface(keyPath string) error {
-	key, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.QUERY_VALUE|registry.SET_VALUE)
-	if err != nil {
-		return err
-	}
-	defer key.Close()
-
-	err = key.SetStringValue("NameServer", "")
-	if err != nil {
-		return err
-	}
-
-	return key.SetStringValue("SearchList", "")
-}
-
-func resetGlobal(globalKeyPath string) error {
-	globalKey, err := registry.OpenKey(registry.LOCAL_MACHINE, globalKeyPath, registry.QUERY_VALUE|registry.SET_VALUE)
-	if err != nil {
-		return err
-	}
-	defer globalKey.Close()
-
-	return globalKey.SetStringValue("SearchList", "")
 }
 
 func resetSearchList() error {
