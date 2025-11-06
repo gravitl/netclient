@@ -45,7 +45,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer ticker.Stop()
 	ipTicker := time.NewTicker(time.Second * 15)
 	defer ipTicker.Stop()
-	checkinTicker := time.NewTicker(time.Minute * 4)
+	checkinTicker := time.NewTicker(time.Minute * 2)
 	defer checkinTicker.Stop()
 	mi := 15
 	server := config.GetServer(config.CurrServer)
