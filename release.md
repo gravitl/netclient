@@ -1,30 +1,41 @@
-# Netclient v1.1.0
+## Netclient v1.2.0 Release Notes 🚀 
 
-## What’s New ✨ 
+## 🚀 What’s New
 
-- Egress Domain-Based Routing – Route traffic based on domain names, not just network CIDRs.
+### 🌍 Auto-Relays (formerly Failovers)
 
-- DNS Nameservers with Match Domain Functionality – Fine-grained DNS resolution control per domain.
+- Failovers are now Auto-Relays with High Availability (HA) support.
 
-- Device Approval Workflow – Require admin approval before devices can join a network.
+- Enables global routing optimization based on real-time latency between peers across regions.
+
+### 🔁 Gateway High Availability
+
+- Gateways can now automatically assign peer relays and fallback to healthy nodes when primary gateways become unavailable.
+
+### 🌐 Egress HA with Latency-Aware Routing
+
+- Egress gateways now dynamically select the optimal route based on latency, ensuring faster and more resilient connectivity.
+
+### 🧭 DNS Search Domains
+
+- Added DNS search domain functionality for simplified hostname resolution across distributed networks.
 
 
-## Improvements & Fixes 🛠 
+## 🧰 Improvements & Fixes
 
-- Access Control Lists (ACLs): Enhanced functionality and flexibility.
+- Metrics Enrichment: Enhanced uptime and connection-status data.
 
-- Stability Enhancements: More reliable connections for nodes using Internet Gateways.
+- DNS Control Fixes: Fixed toggle behavior for enabling/disabling Netmaker DNS on hosts.
 
-- DNS: Linux DNS Config Fixes
+- DNS Config Update And Cleanup Handling.
 
-- Egress HA: Optimised Egress HA routing.
+- Egress Domain Updates: Fixed domain-related issues in egress configurations to ensure consistent routing behavior.
 
 ## Known Issues 🐞
 
-- Inaccurate uptime info in metrics involving ipv4-only and ipv6-only traffic
+- WireGuard DNS issue on Ubuntu 24.04 and some other newer Linux distributions. The issue is affecting the Netmaker Desktop, previously known as the Remote Access Client (RAC), and the plain WireGuard external clients. Workaround can be found here https://help.netmaker.io/en/articles/9612016-extclient-rac-dns-issue-on-ubuntu-24-04.
 
 - netclients cannot auto-upgrade on ipv6-only machines.
 
 - Need to optimize multi-network netclient join with enrollment key
 
-- Stale Peer On The Interface, When Forced Removed From Multiple Networks At Once.
