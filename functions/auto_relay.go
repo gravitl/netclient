@@ -54,6 +54,23 @@ func getNetworkMetrics(network models.NetworkID) map[string]int64 {
 	return networkMetricsCache[network]
 }
 
+func refreshNetworkMetrics(network models.NetworkID, metricPort int) map[string]int64 {
+	nodes := getAutoRelayNodes(network)
+	if len(nodes) == 0 {
+		return map[string]int64{}
+	}
+
+	copiedNodes := make([]models.Node, len(nodes))
+	copy(copiedNodes, nodes)
+	metrics := findNodeLatencies(copiedNodes, metricPort)
+
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	networkMetricsCache[network] = metrics
+
+	return metrics
+}
+
 func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
@@ -127,9 +144,16 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	// Use cached metrics from setAutoRelayNodes
 	autoRelayNodeMetrics := getNetworkMetrics(models.NetworkID(signal.NetworkID))
 	if len(autoRelayNodeMetrics) == 0 {
-		return errors.New("failed to find nearest relay node: no cached metrics available")
+		metricPort := server.MetricsPort
+		if metricPort == 0 {
+			metricPort = 51821
+		}
+		slog.Debug("no cached relay metrics found; refreshing", "networkID", signal.NetworkID)
+		autoRelayNodeMetrics = refreshNetworkMetrics(models.NetworkID(signal.NetworkID), metricPort)
+		if len(autoRelayNodeMetrics) == 0 {
+			return errors.New("failed to find nearest relay node: no cached metrics available")
+		}
 	}
-
 	if !signal.Reply {
 		// signal back
 		s := models.Signal{
@@ -264,6 +288,12 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					// Use cached metrics from setAutoRelayNodes
 					networkID := models.NetworkID(node.Network)
 					autoRelayNodeMetrics := getNetworkMetrics(networkID)
+					if len(autoRelayNodeMetrics) == 0 {
+						autoRelayNodeMetrics = refreshNetworkMetrics(networkID, metricPort)
+						if len(autoRelayNodeMetrics) == 0 {
+							continue
+						}
+					}
 					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
 						if currNode.AutoAssignGateway {
 							checkAssignGw(server, currNode)
@@ -302,10 +332,6 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							// peer is connected,so continue
 							continue
 						}
-						// if err := checkAutoRelayCtxForPeer(config.CurrServer, node.ID.String(), peer.ID); err != nil {
-						// 	slog.Error("auto relay ctx for peer ", "error", err)
-						// 	continue
-						// }
 						s := models.Signal{
 							Server:         config.CurrServer,
 							FromHostID:     config.Netclient().ID.String(),
@@ -331,7 +357,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						// signal peer
 						err = SignalPeer(s)
 						if err != nil {
-							fmt.Println("failed to signal peer: ", err.Error())
+							slog.Debug("failed to signal peer", "error", err.Error())
 						} else {
 							if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
 								if cnt.(int) <= 3 {
@@ -504,7 +530,7 @@ func findNodeLatencies(nodes []models.Node, metricPort int) map[string]int64 {
 				mu.Unlock()
 				slog.Debug("found reachable relay node", "node", n.ID.String(), "latency_ms", latency)
 			} else {
-				slog.Debug("relay node unreachable", "node", n.ID.String(), "address", n.PrimaryAddress())
+				slog.Debug("relay node unreachable", "node", n.ID.String(), "address", n.PrimaryAddress(), "metricsPort", metricPort)
 			}
 		}(node)
 	}
@@ -537,9 +563,8 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 		Authorization: "Bearer " + token,
 		ErrorResponse: models.ErrorResponse{},
 	}
-	resp, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
 	if err != nil {
-		fmt.Println("+===> RELAY ME: ", resp.Message, endpoint.Method)
 		if errors.Is(err, httpclient.ErrStatus) {
 			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
 		}
