@@ -245,10 +245,6 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		daemon.Restart()
 	}
-	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
-		slog.Info("DNS Default Domain or Nameservers have changed ")
-		dns.SetupDNSConfig()
-	}
 	if peerUpdate.MetricInterval != server.MetricInterval {
 		i, err := strconv.Atoi(peerUpdate.MetricInterval)
 		if err == nil {
