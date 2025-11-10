@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
@@ -44,7 +45,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer ticker.Stop()
 	ipTicker := time.NewTicker(time.Second * 15)
 	defer ipTicker.Stop()
-	checkinTicker := time.NewTicker(time.Minute * 4)
+	checkinTicker := time.NewTicker(time.Minute * 2)
 	defer checkinTicker.Stop()
 	mi := 15
 	server := config.GetServer(config.CurrServer)
@@ -239,7 +240,7 @@ func callPublishMetrics(fallback bool) {
 	}
 
 	if server.IsPro {
-		response, err := getPeerInfo()
+		response, err := networking.GetPeerInfo()
 		if err != nil {
 			return
 		}

@@ -196,9 +196,19 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
+	if peerUpdate.ServerConfig.PeerConnectionCheckInterval != "" &&
+		peerUpdate.ServerConfig.PeerConnectionCheckInterval != server.PeerConnectionCheckInterval {
+		sec, err := strconv.Atoi(peerUpdate.ServerConfig.PeerConnectionCheckInterval)
+		if err == nil && sec > 0 {
+			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
+		}
+	}
 	if server.IsPro {
-		if peerConnTicker != nil {
-			peerConnTicker.Reset(peerConnectionCheckInterval)
+		if autoRelayConnTicker != nil {
+			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+		}
+		if networking.PeerLocalEndpointConnTicker != nil {
+			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
 		}
 		if wireguard.HaEgressTicker != nil {
 			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
@@ -234,6 +244,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.MetricsPort = peerUpdate.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
+	}
+	if peerUpdate.DefaultDomain != server.DefaultDomain || reflect.DeepEqual(peerUpdate.DnsNameservers, server.DnsNameservers) {
+		slog.Info("DNS Default Domain or Nameservers have changed ")
+		dns.SetupDNSConfig()
 	}
 	if peerUpdate.MetricInterval != server.MetricInterval {
 		i, err := strconv.Atoi(peerUpdate.MetricInterval)
@@ -304,7 +318,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
-
+	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
 	const stop string = "stop"
@@ -451,6 +465,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
+		fmt.Println("======> RECEIVED JoinHostToNetwork")
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
 			CommonNode: commonNode,
@@ -520,7 +535,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 
 		slog.Info("processing egress update", "domain", hostUpdate.EgressDomain.Domain)
 		go processEgressDomain(hostUpdate.EgressDomain, true)
-
+	case models.CheckAutoAssignGw:
+		checkAssignGw(server, hostUpdate.Node)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -576,6 +592,7 @@ func resetInterfaceFunc() {
 			dns.GetDNSServerInstance().Start()
 		}
 	}
+	wireguard.EgressResetCh <- struct{}{}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
@@ -869,6 +886,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
 	}
 	go CheckEgressDomainUpdates()
+	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var saveServerConfig bool
 	var dnsOp string
 	const start string = "start"

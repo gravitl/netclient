@@ -155,6 +155,7 @@ func writeServiceConfig() error {
 <description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
 <executable>%s</executable>
 <arguments>daemon</arguments>
+<env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
 <log mode="roll"></log>
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
