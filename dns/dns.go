@@ -6,11 +6,18 @@ import (
 	"net"
 	"sync"
 
+	dnscache "github.com/gravitl/netclient/dns/cache"
+	dnsconfig "github.com/gravitl/netclient/dns/config"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
 )
 
-var dnsSyncMutex = sync.Mutex{} // used to mutex functions of the DNS
+var (
+	configManager dnsconfig.Manager
+	cacheManager  dnscache.Manager
+	dnsSyncMutex  sync.Mutex // used to mutex functions of the DNS
+)
 
 type dnsRecord struct {
 	Name string
@@ -78,7 +85,10 @@ func SyncDNS(network string, dnsEntries []models.DNSEntry) error {
 	}
 
 	//Flush local dns cache if any
-	FlushLocalDnsCache()
+	err := cacheManager.Flush()
+	if err != nil {
+		logger.Log(4, "error flushing dns cache:", err.Error())
+	}
 
 	return nil
 }
