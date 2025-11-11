@@ -69,21 +69,7 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 	var globalNameservers, globalSearchDomains []string
 
 	for _, config := range d.config {
-		if config.SplitDNS {
-			nameservers := make([]string, len(config.Nameservers))
-			for i, ns := range config.Nameservers {
-				nameservers[i] = ns.String()
-			}
-
-			for _, matchDomain := range config.MatchDomains {
-				_, ok := domainNameservers[matchDomain]
-				if !ok {
-					domainNameservers[matchDomain] = &nameserver{}
-				}
-
-				domainNameservers[matchDomain].ips = append(domainNameservers[matchDomain].ips, nameservers...)
-			}
-		} else {
+		if !config.SplitDNS {
 			for _, ns := range config.Nameservers {
 				globalNameserversMap[ns.String()] = true
 			}
@@ -91,6 +77,20 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 
 		for _, searchDomain := range config.SearchDomains {
 			searchDomainsMap[searchDomain] = true
+		}
+
+		nameservers := make([]string, len(config.Nameservers))
+		for i, ns := range config.Nameservers {
+			nameservers[i] = ns.String()
+		}
+
+		for _, matchDomain := range config.MatchDomains {
+			_, ok := domainNameservers[matchDomain]
+			if !ok {
+				domainNameservers[matchDomain] = &nameserver{}
+			}
+
+			domainNameservers[matchDomain].ips = append(domainNameservers[matchDomain].ips, nameservers...)
 		}
 	}
 
