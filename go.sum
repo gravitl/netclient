@@ -13,6 +13,8 @@ github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
 github.com/Microsoft/go-winio v0.6.1/go.mod h1:LRdKpFKfdobln8UmuiYcKPot9D2v6svN5+sAH+4kjUM=
+github.com/biter777/countries v1.7.5 h1:MJ+n3+rSxWQdqVJU8eBy9RqcdH6ePPn4PJHocVWUa+Q=
+github.com/biter777/countries v1.7.5/go.mod h1:1HSpZ526mYqKJcpT5Ti1kcGQ0L0SrXWIaptUWjFfv2E=
 github.com/blang/semver v3.5.1+incompatible h1:cQNTCjp13qL8KC3Nbxr/y2Bqb63oX6wdnnjpJbkM4JQ=
 github.com/blang/semver v3.5.1+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
 github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc h1:biVzkmvwrH8WK8raXaxBx6fRVTlJILwEwQGL1I/ByEI=
@@ -126,6 +128,8 @@ github.com/gravitl/netmaker v1.1.1-0.20251105074748-e28d4539e89c h1:mmbvov+f03uQ
 github.com/gravitl/netmaker v1.1.1-0.20251105074748-e28d4539e89c/go.mod h1:WzKDi5J3WkrIkj47TPAvgJiVWo4nA1e7uM15iYZFFQc=
 github.com/gravitl/netmaker v1.1.1-0.20251105081431-49c4ac2ba438 h1:rx30sfkuAwuYbxqp5fc4Vz0v3REWxdVHRT+OQhSBkt4=
 github.com/gravitl/netmaker v1.1.1-0.20251105081431-49c4ac2ba438/go.mod h1:WzKDi5J3WkrIkj47TPAvgJiVWo4nA1e7uM15iYZFFQc=
+github.com/gravitl/netmaker v1.2.1-0.20251117212737-bab754ff1314 h1:tjWsD16sAB+77FK6Gz8iTRy0mZxGdS4tP2BvwoZzzxY=
+github.com/gravitl/netmaker v1.2.1-0.20251117212737-bab754ff1314/go.mod h1:msG3/sGkFLpgAoC5UvCjlqQJau/ejisJ6UQgYYHKKYM=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 h1:X5VWvz21y3gzm9Nw/kaUeku/1+uBhcekkmy4IkffJww=

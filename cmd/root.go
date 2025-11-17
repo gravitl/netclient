@@ -277,11 +277,21 @@ func setupLogging(flags *viper.Viper) {
 func checkConfig() {
 	fail := false
 	saveRequired := false
+	sysInfo := ncutils.GetOSInfo()
 	netclient := config.Netclient()
-	if netclient.OS != runtime.GOOS {
+	if netclient.OS != sysInfo.OS {
 		logger.Log(0, "setting OS")
 		netclient.OS = runtime.GOOS
 		saveRequired = true
+	}
+	if netclient.OSFamily != sysInfo.OSFamily {
+		netclient.OSFamily = sysInfo.OSFamily
+	}
+	if netclient.OSVersion != sysInfo.OSVersion {
+		netclient.OSVersion = sysInfo.OSVersion
+	}
+	if netclient.KernelVersion != sysInfo.KernelVersion {
+		netclient.KernelVersion = sysInfo.KernelVersion
 	}
 	slog.Info("OS is", "os", netclient.OS)
 	if netclient.OS == "linux" {
