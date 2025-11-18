@@ -59,6 +59,7 @@ jobs:
 
     - name: Build
       id: build
+      shell: bash
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
