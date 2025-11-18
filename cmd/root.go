@@ -281,17 +281,20 @@ func checkConfig() {
 	netclient := config.Netclient()
 	if netclient.OS != sysInfo.OS {
 		logger.Log(0, "setting OS")
-		netclient.OS = runtime.GOOS
+		netclient.OS = sysInfo.OS
 		saveRequired = true
 	}
 	if netclient.OSFamily != sysInfo.OSFamily {
 		netclient.OSFamily = sysInfo.OSFamily
+		saveRequired = true
 	}
 	if netclient.OSVersion != sysInfo.OSVersion {
 		netclient.OSVersion = sysInfo.OSVersion
+		saveRequired = true
 	}
 	if netclient.KernelVersion != sysInfo.KernelVersion {
 		netclient.KernelVersion = sysInfo.KernelVersion
+		saveRequired = true
 	}
 	slog.Info("OS is", "os", netclient.OS)
 	if netclient.OS == "linux" {
