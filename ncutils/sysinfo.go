@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/gravitl/netmaker/logic"
 )
 
 type OSInfo struct {
@@ -102,7 +104,7 @@ func GetOSInfo() OSInfo {
 			OS:            NormalizeOSName(name),
 			OSFamily:      OSFamily(name),
 			OSVersion:     "",
-			KernelVersion: kernel,
+			KernelVersion: logic.CleanVersion(kernel),
 		}
 	}
 }
@@ -150,8 +152,8 @@ func getLinuxOSInfo() OSInfo {
 	return OSInfo{
 		OS:            "linux",
 		OSFamily:      OSFamily(normName),
-		OSVersion:     strings.TrimSpace(osVersion),
-		KernelVersion: kernel,
+		OSVersion:     logic.CleanVersion(osVersion),
+		KernelVersion: logic.CleanVersion(kernel),
 	}
 }
 
@@ -172,9 +174,9 @@ func getDarwinOSInfo() OSInfo {
 	normName := NormalizeOSName(productName)
 	return OSInfo{
 		OS:            "darwin",
-		OSFamily:      OSFamily(normName), // "darwin"
-		OSVersion:     productVer,         // e.g. "15.0"
-		KernelVersion: kernel,
+		OSFamily:      OSFamily(normName),             // "darwin"
+		OSVersion:     logic.CleanVersion(productVer), // e.g. "15.0"
+		KernelVersion: logic.CleanVersion(kernel),
 	}
 }
 
@@ -211,8 +213,8 @@ func getWindowsOSInfo() OSInfo {
 	return OSInfo{
 		OS:            "windows", // "windows"
 		OSFamily:      OSFamily(normName),
-		OSVersion:     version, // e.g. "10.0.22631"
-		KernelVersion: kernel,
+		OSVersion:     logic.CleanVersion(version), // e.g. "10.0.22631"
+		KernelVersion: logic.CleanVersion(kernel),
 	}
 }
 
