@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
 )
 
@@ -18,6 +19,7 @@ func Install() error {
 
 // Restart - restarts a system daemon
 func Restart() error {
+	ncutils.TraceCaller()
 	return restart()
 }
 

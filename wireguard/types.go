@@ -126,7 +126,6 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	addrs := []ifaceAddress{}
-
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
@@ -177,6 +176,32 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 
 		}
 
+	}
+
+	// Ensure unique metrics for routes with the same network
+	networkGroups := make(map[string][]int) // map network -> indices in addrs slice
+	for i, addr := range addrs {
+		networkKey := addr.Network.String()
+		networkGroups[networkKey] = append(networkGroups[networkKey], i)
+	}
+
+	for _, indices := range networkGroups {
+		if len(indices) <= 1 {
+			continue
+		}
+		// Sort indices by metric
+		sort.Slice(indices, func(i, j int) bool {
+			return addrs[indices[i]].Metric < addrs[indices[j]].Metric
+		})
+
+		// Ensure unique metrics by incrementing duplicates
+		for i := 1; i < len(indices); i++ {
+			prevIdx := indices[i-1]
+			currIdx := indices[i]
+			if addrs[currIdx].Metric <= addrs[prevIdx].Metric {
+				addrs[currIdx].Metric = addrs[prevIdx].Metric + 1
+			}
+		}
 	}
 
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {

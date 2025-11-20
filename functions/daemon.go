@@ -263,6 +263,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
+	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
 	if pullErr == nil && pullresp.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {
@@ -317,7 +318,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		go wireguard.StartEgressHAFailOverThread(ctx, wg)
 	} else {
 		wg.Add(1)
-		go checkPeerEndpoints(ctx, wg)
+		go networking.CheckPeerEndpoints(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
@@ -333,7 +334,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		time.Sleep(time.Second * 45)
 		callPublishMetrics(true)
 	}()
-
+	go handleFwUpdate(server.Server, &pullresp.FwUpdate)
 	return cancel
 }
 
@@ -472,10 +473,12 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
+	//clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
+	//clearRetainedMsg(client, fmt.Sprintf("host/update/%s/%s", hostID.String(), server))
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())

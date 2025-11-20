@@ -82,7 +82,7 @@ user: netclient register -s <server> -u <user_name> // attempt to join/register 
 func setHostFields(cmd *cobra.Command) {
 	fmt.Println("setting host fields")
 	port, err := cmd.Flags().GetInt(registerFlags.Port)
-	if err == nil && port != 0 {
+	if err == nil && port != 0 && port != config.Netclient().ListenPort {
 		// check if port is available
 		if !ncutils.IsPortFree(port) {
 			fmt.Printf("port %d is not free\n", port)

@@ -22,6 +22,21 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: 5
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: 6
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: 7
           - os: windows-latest
             goos: windows
             goarch: amd64
@@ -38,18 +53,33 @@ jobs:
         ref: ${{ github.event.inputs.branch }}
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version-file: 'go.mod'
 
     - name: Build
+      id: build
+      shell: bash
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm || '' }}
       run: |
         go version
         go mod tidy
-        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} .
+        if [ -n "$GOARM" ]; then
+          OUTPUT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
+          ARTIFACT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
+        else
+          OUTPUT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ARTIFACT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
+        fi
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          OUTPUT_NAME="${OUTPUT_NAME}.exe"
+        fi
+        echo "OUTPUT_NAME=$OUTPUT_NAME" >> $GITHUB_OUTPUT
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
 
     - name: List built binary (Unix)
       if: matrix.goos != 'windows'
@@ -60,17 +90,17 @@ jobs:
       run: Get-ChildItem netclient-*
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
-        name: netclient-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+        name: ${{ steps.build.outputs.ARTIFACT_NAME }}
+        path: ${{ steps.build.outputs.OUTPUT_NAME }}
 
   upload:
     needs: build
     runs-on: ubuntu-latest
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
 
     - name: Display structure of downloaded files
       run: ls -R
@@ -100,3 +130,30 @@ jobs:
         ssh root@fileserver.clustercat.com "mkdir -p $UPLOAD_PATH_VERSION"
 
         find . -type f -name "netclient-*" -exec scp {} root@fileserver.clustercat.com:$UPLOAD_PATH_VERSION/ \;        
+
+    - name: Upload to DigitalOcean Spaces
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+        AWS_DEFAULT_REGION: ${{ secrets.DO_SPACES_REGION }}
+        SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+        SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
+        UPLOAD_PATH_VERSION: download/${{ github.event.inputs.version }}
+      run: |
+        set -e
+        if ! command -v aws >/dev/null 2>&1; then
+          sudo apt-get update -y
+          sudo apt-get install -y awscli
+        fi
+        aws --version
+        echo "Bucket: $SPACES_BUCKET"
+        echo "Path: $UPLOAD_PATH_VERSION"
+        echo "Full destination will be: s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/"
+        while IFS= read -r file; do
+          filename=$(basename "$file")
+          dest_path="s3://$SPACES_BUCKET/$UPLOAD_PATH_VERSION/$filename"
+          echo "Uploading $file to $dest_path"
+          aws s3 cp "$file" "$dest_path" \
+            --endpoint-url "$SPACES_ENDPOINT" \
+            --acl public-read
+        done < <(find . -type f -name "netclient-*")
