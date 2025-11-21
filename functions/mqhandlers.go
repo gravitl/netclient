@@ -480,7 +480,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 		setSubscriptions(client, &nodeCfg)
-		setDNSSubscriptions(client, &nodeCfg)
+		setDNSSubscriptions(client, &nodeCfg, server.Name)
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
