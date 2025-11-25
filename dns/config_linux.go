@@ -116,9 +116,29 @@ func setupResolveUplink() (err error) {
 DNS=%s
 `, dnsIP)
 
-	err = os.WriteFile(filepath.Join(uplinkResolvedConfOverrideDir, uplinkResolvedConfOverrideFile), []byte(content), 0644)
+	overrideFilePath := filepath.Join(uplinkResolvedConfOverrideDir, uplinkResolvedConfOverrideFile)
+
+	// Read existing file content to avoid unnecessary writes and restarts
+	existingContent, err := os.ReadFile(overrideFilePath)
+	if err == nil && string(existingContent) == content {
+		// Content is the same, no need to rewrite or restart
+		return nil
+	}
+
+	// Write the file atomically by writing to a temp file first, then renaming
+	// This prevents race conditions and ensures the file is completely written
+	tmpFile := overrideFilePath + ".tmp"
+	err = os.WriteFile(tmpFile, []byte(content), 0644)
 	if err != nil {
 		slog.Error("error writing resolved config override file (netmaker.conf)", "error", err.Error())
+		return err
+	}
+
+	// Atomic rename to replace the existing file
+	err = os.Rename(tmpFile, overrideFilePath)
+	if err != nil {
+		slog.Error("error renaming resolved config override file", "error", err.Error())
+		os.Remove(tmpFile) // Clean up temp file on error
 		return err
 	}
 
