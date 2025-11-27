@@ -108,49 +108,47 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 
 	flow := *event.Flow
 
-	var enrichedProtocol *nmmodels.EnrichedProtocol
+	var protoInfo nmmodels.FlowProtocolInfo
+	protoInfo.Protocol = flow.TupleOrig.Proto.Protocol
 	if flow.TupleOrig.Proto.Protocol == 1 || flow.TupleOrig.Proto.Protocol == 58 {
 		// ICMP
-		enrichedProtocol = &nmmodels.EnrichedProtocol{
-			ICMPType: flow.TupleOrig.Proto.ICMPType,
-			ICMPCode: flow.TupleOrig.Proto.ICMPCode,
-		}
+		protoInfo.ICMPType = flow.TupleOrig.Proto.ICMPType
+		protoInfo.ICMPCode = flow.TupleOrig.Proto.ICMPCode
 	} else if flow.TupleOrig.Proto.Protocol == 6 && flow.ProtoInfo.TCP != nil {
 		// TCP
-		enrichedProtocol = &nmmodels.EnrichedProtocol{
-			TCPState:               flow.ProtoInfo.TCP.State,
-			TCPOriginalWindowScale: flow.ProtoInfo.TCP.OriginalWindowScale,
-			TCPReplyWindowScale:    flow.ProtoInfo.TCP.ReplyWindowScale,
-			TCPOriginalFlags:       flow.ProtoInfo.TCP.OriginalFlags,
-			TCPReplyFlags:          flow.ProtoInfo.TCP.ReplyFlags,
-		}
+		protoInfo.TCPState = flow.ProtoInfo.TCP.State
+		protoInfo.TCPOriginalWindowScale = flow.ProtoInfo.TCP.OriginalWindowScale
+		protoInfo.TCPReplyWindowScale = flow.ProtoInfo.TCP.ReplyWindowScale
+		protoInfo.TCPOriginalFlags = flow.ProtoInfo.TCP.OriginalFlags
+		protoInfo.TCPReplyFlags = flow.ProtoInfo.TCP.ReplyFlags
 	}
 
 	return c.flowExporter.Export(nmmodels.FlowEvent{
-		ID:       flow.ID,
-		Type:     eventType,
-		Status:   flow.Status,
-		Protocol: flow.TupleOrig.Proto.Protocol,
-		OriginPeer: nmmodels.Peer{
+		ID:           flow.ID,
+		Type:         eventType,
+		Status:       flow.Status,
+		ProtocolInfo: protoInfo,
+		OriginPeer: nmmodels.FlowPeer{
 			IP:   flow.TupleOrig.IP.SourceAddress.String(),
 			Port: flow.TupleOrig.Proto.SourcePort,
 		},
-		ReplyPeer: nmmodels.Peer{
+		ReplyPeer: nmmodels.FlowPeer{
 			IP:   flow.TupleOrig.IP.DestinationAddress.String(),
 			Port: flow.TupleOrig.Proto.DestinationPort,
 		},
-		OriginCounter: nmmodels.Counter{
+		OriginCounter: nmmodels.FlowCounter{
 			Packets: flow.CountersOrig.Packets,
 			Bytes:   flow.CountersOrig.Bytes,
 		},
-		ReplyCounter: nmmodels.Counter{
+		ReplyCounter: nmmodels.FlowCounter{
 			Packets: flow.CountersReply.Packets,
 			Bytes:   flow.CountersReply.Bytes,
 		},
-		Timestamp:        time.Now(),
-		Start:            flow.Timestamp.Start,
-		Stop:             flow.Timestamp.Stop,
-		EnrichedProtocol: enrichedProtocol,
+		Timestamp: nmmodels.FlowTimestamp{
+			Start:     flow.Timestamp.Start,
+			Stop:      flow.Timestamp.Stop,
+			EventTime: time.Now(),
+		},
 	})
 }
 
