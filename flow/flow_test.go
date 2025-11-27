@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gravitl/netclient/flow/conntrack"
 	"github.com/gravitl/netclient/flow/exporter"
+	"github.com/gravitl/netclient/flow/tracker"
 )
 
 func Test_StdoutExporter(t *testing.T) {
@@ -15,19 +15,19 @@ func Test_StdoutExporter(t *testing.T) {
 	}
 
 	flowExporter := exporter.NewStdoutExporter()
-	connTracker, err := conntrack.New(flowExporter)
+	flowTracker, err := tracker.New(flowExporter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = connTracker.TrackConnections()
+	err = flowTracker.TrackConnections()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(time.Minute)
 
-	err = connTracker.Close()
+	err = flowTracker.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

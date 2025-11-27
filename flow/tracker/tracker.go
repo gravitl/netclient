@@ -1,4 +1,4 @@
-package conntrack
+package tracker
 
 import (
 	"context"
@@ -12,19 +12,19 @@ import (
 	"github.com/gravitl/netclient/flow/exporter"
 	"github.com/gravitl/netmaker/logger"
 	nmmodels "github.com/gravitl/netmaker/models"
-	nfct "github.com/ti-mo/conntrack"
+	ct "github.com/ti-mo/conntrack"
 	"github.com/ti-mo/netfilter"
 )
 
-type ConnTracker struct {
+type FlowTracker struct {
 	flowExporter  exporter.Exporter
 	restoreSysctl bool
 	cancel        context.CancelFunc
 	mu            sync.Mutex
 }
 
-func New(flowExporter exporter.Exporter) (*ConnTracker, error) {
-	c := &ConnTracker{
+func New(flowExporter exporter.Exporter) (*FlowTracker, error) {
+	c := &FlowTracker{
 		flowExporter: flowExporter,
 	}
 
@@ -37,7 +37,7 @@ func New(flowExporter exporter.Exporter) (*ConnTracker, error) {
 	return c, nil
 }
 
-func (c *ConnTracker) TrackConnections() error {
+func (c *FlowTracker) TrackConnections() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -46,12 +46,12 @@ func (c *ConnTracker) TrackConnections() error {
 		c.cancel = nil
 	}
 
-	conn, err := nfct.Dial(nil)
+	conn, err := ct.Dial(nil)
 	if err != nil {
 		return err
 	}
 
-	events := make(chan nfct.Event, 200)
+	events := make(chan ct.Event, 200)
 	errChan, err := conn.Listen(events, 1, []netfilter.NetlinkGroup{
 		netfilter.GroupCTNew,
 		netfilter.GroupCTUpdate,
@@ -69,7 +69,7 @@ func (c *ConnTracker) TrackConnections() error {
 	return nil
 }
 
-func (c *ConnTracker) startEventHandler(ctx context.Context, conn *nfct.Conn, events chan nfct.Event, errChan chan error) {
+func (c *FlowTracker) startEventHandler(ctx context.Context, conn *ct.Conn, events chan ct.Event, errChan chan error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -80,27 +80,27 @@ func (c *ConnTracker) startEventHandler(ctx context.Context, conn *nfct.Conn, ev
 				logger.Log(0, fmt.Sprintf("Error handling event: %v", err))
 			}
 		case err := <-errChan:
-			logger.Log(0, fmt.Sprintf("Error occurred while listening to conntrack events: %v", err))
+			logger.Log(0, fmt.Sprintf("Error occurred while listening to ct events: %v", err))
 			err = conn.Close()
 			if err != nil {
-				logger.Log(0, fmt.Sprintf("Error closing conntrack connection: %v", err))
+				logger.Log(0, fmt.Sprintf("Error closing ct connection: %v", err))
 			}
 		}
 	}
 
 }
 
-func (c *ConnTracker) handleEvent(event nfct.Event) error {
+func (c *FlowTracker) handleEvent(event ct.Event) error {
 	if event.Flow == nil {
 		return nil
 	}
 
 	var eventType nmmodels.FlowEventType
-	if event.Type == nfct.EventNew {
+	if event.Type == ct.EventNew {
 		eventType = nmmodels.FlowStart
-	} else if event.Type == nfct.EventUpdate {
+	} else if event.Type == ct.EventUpdate {
 		eventType = nmmodels.FlowUpdate
-	} else if event.Type == nfct.EventDestroy {
+	} else if event.Type == ct.EventDestroy {
 		eventType = nmmodels.FlowDestroy
 	} else {
 		return nil
@@ -154,7 +154,7 @@ func (c *ConnTracker) handleEvent(event nfct.Event) error {
 	})
 }
 
-func (c *ConnTracker) Close() error {
+func (c *FlowTracker) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -164,7 +164,7 @@ func (c *ConnTracker) Close() error {
 	return c.disableAccounting()
 }
 
-func (c *ConnTracker) enableAccounting() error {
+func (c *FlowTracker) enableAccounting() error {
 	modified, err := c.setConnTrackAccountingValue(1)
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func (c *ConnTracker) enableAccounting() error {
 	return nil
 }
 
-func (c *ConnTracker) disableAccounting() error {
+func (c *FlowTracker) disableAccounting() error {
 	if c.restoreSysctl {
 		_, err := c.setConnTrackAccountingValue(0)
 		if err != nil {
@@ -187,7 +187,7 @@ func (c *ConnTracker) disableAccounting() error {
 	return nil
 }
 
-func (c *ConnTracker) setConnTrackAccountingValue(value int) (bool, error) {
+func (c *FlowTracker) setConnTrackAccountingValue(value int) (bool, error) {
 	const path = "/proc/sys/net/netfilter/nf_conntrack_acct"
 
 	data, err := os.ReadFile(path)
