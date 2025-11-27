@@ -131,7 +131,9 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 				// Successfully got the actual port from the interface
 				if actualPort == host.ListenPort {
 					// Interface is already using the server's port, just update local config
-					hostCfg.ListenPort = host.ListenPort
+					// Update both host and hostCfg to prevent loop on next update
+					host.ListenPort = actualPort
+					hostCfg.ListenPort = actualPort
 					// No restart needed since interface is already using the correct port
 				} else {
 					// Port is in use by WireGuard with a different port, send host update with actual port
