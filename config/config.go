@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/sasha-s/go-deadlock"
+	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -122,13 +123,32 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 		return
 	}
 	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
-		// check if new port is free, otherwise don't update
+		// check if new port is free, otherwise check if WireGuard is already using it
 		if !ncutils.IsPortFree(host.ListenPort) {
-			// send the host update to server with actual port on the interface
-			host.ListenPort = hostCfg.ListenPort
-			sendHostUpdate = true
+			// check if actual port on the WireGuard interface is matching the port from the server
+			actualPort, err := getWireGuardListenPort(ncutils.GetInterfaceName())
+			if err == nil {
+				// Successfully got the actual port from the interface
+				if actualPort == host.ListenPort {
+					// Interface is already using the server's port, just update local config
+					hostCfg.ListenPort = host.ListenPort
+					// No restart needed since interface is already using the correct port
+				} else {
+					// Port is in use by WireGuard with a different port, send host update with actual port
+					host.ListenPort = actualPort
+					sendHostUpdate = true
+					// No restart needed since we're keeping the current port
+				}
+			} else {
+				// Failed to get port from interface, send host update with current config port
+				host.ListenPort = hostCfg.ListenPort
+				sendHostUpdate = true
+				// No restart needed since we're keeping the current port
+			}
+		} else {
+			// Port is free, we need to restart to use the new port
+			restart = true
 		}
-		restart = true
 	}
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {
 		resetInterface = true
@@ -560,4 +580,23 @@ func WriteJSONAtomic(filePath string, data any, lockfile string, perm os.FileMod
 	}
 
 	return nil
+}
+
+// getWireGuardListenPort - gets the listen port from the WireGuard interface
+// This is a helper function to avoid import cycles
+func getWireGuardListenPort(ifaceName string) (int, error) {
+	wg, err := wgctrl.New()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if closeErr := wg.Close(); closeErr != nil {
+			logger.Log(0, "got error while closing wgctl: ", closeErr.Error())
+		}
+	}()
+	wgDevice, err := wg.Device(ifaceName)
+	if err != nil {
+		return 0, err
+	}
+	return wgDevice.ListenPort, nil
 }

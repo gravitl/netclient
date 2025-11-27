@@ -490,6 +490,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
 		restartDaemon = true
+		fmt.Println("====> DELETE HOST ", restartDaemon)
 	case models.UpdateHost:
 		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)
 		if sendHostUpdate {
@@ -497,6 +498,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 				slog.Error("could not publish host update", err.Error())
 			}
 		}
+		fmt.Println("====> UPDATE HOST ", restartDaemon)
 		clearMsg = true
 		writeToDisk = false
 	case models.RequestAck:
@@ -517,6 +519,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearMsg = true
 		restartDaemon = true
 		writeToDisk = false
+		fmt.Println("====> REQ PULL ", restartDaemon)
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
 		response, resetInterface, replacePeers, err := Pull(false, false)
