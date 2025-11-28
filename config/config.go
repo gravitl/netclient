@@ -124,41 +124,60 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	}
 	fmt.Println("=====> UpdateHost: host.ListenPort =", host.ListenPort, "hostCfg.ListenPort =", hostCfg.ListenPort)
 	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
-		fmt.Println("=====> UpdateHost: Port mismatch detected, checking port status...")
-		// check if new port is free, otherwise check if WireGuard is already using it
-		isPortFree := ncutils.IsPortFree(host.ListenPort)
-		fmt.Println("=====> UpdateHost: IsPortFree(", host.ListenPort, ") =", isPortFree)
-		if !isPortFree {
-			// check if actual port on the WireGuard interface is matching the port from the server
-			actualPort, err := getWireGuardListenPort(ncutils.GetInterfaceName())
-			fmt.Println("=====> UpdateHost: getWireGuardListenPort() =", actualPort, "error =", err)
-			if err == nil {
-				// Successfully got the actual port from the interface
-				if actualPort == host.ListenPort {
-					// Interface is already using the server's port, just update local config
-					// Update both host and hostCfg to prevent loop on next update
-					fmt.Println("=====> UpdateHost: Interface already using server's port, updating config only (no restart)")
-					host.ListenPort = actualPort
-					hostCfg.ListenPort = actualPort
-					// No restart needed since interface is already using the correct port
+		fmt.Println("=====> UpdateHost: Port mismatch detected, checking WireGuard interface port first...")
+		// First, check the actual port on the WireGuard interface
+		actualPort, err := getWireGuardListenPort(ncutils.GetInterfaceName())
+		fmt.Println("=====> UpdateHost: getWireGuardListenPort() =", actualPort, "error =", err)
+		if err == nil {
+			// Successfully got the actual port from the interface
+			switch {
+			case actualPort == host.ListenPort:
+				// Interface is already using the server's port, just update local config
+				// Update both host and hostCfg to prevent loop on next update
+				fmt.Println("=====> UpdateHost: Interface already using server's port, updating config only (no restart)")
+				host.ListenPort = actualPort
+				hostCfg.ListenPort = actualPort
+				// No restart needed since interface is already using the correct port
+			case actualPort == hostCfg.ListenPort:
+				// Interface is using the current config port, but server wants a different port
+				// Check if the new port is free before restarting
+				isPortFree := ncutils.IsPortFree(host.ListenPort)
+				fmt.Println("=====> UpdateHost: Interface using config port, IsPortFree(", host.ListenPort, ") =", isPortFree)
+				if isPortFree {
+					// Port is free, we need to restart to use the new port
+					fmt.Println("=====> UpdateHost: Port is free, restart required")
+					restart = true
 				} else {
-					// Port is in use by WireGuard with a different port, send host update with actual port
-					fmt.Println("=====> UpdateHost: Interface using different port, sending host update (no restart)")
+					// Port is in use by something else, send host update with actual port
+					fmt.Println("=====> UpdateHost: Port is in use, sending host update with actual port (no restart)")
 					host.ListenPort = actualPort
 					sendHostUpdate = true
 					// No restart needed since we're keeping the current port
 				}
-			} else {
-				// Failed to get port from interface, send host update with current config port
-				fmt.Println("=====> UpdateHost: Failed to get port from interface, using config port (no restart)")
-				host.ListenPort = hostCfg.ListenPort
+			default:
+				// Interface is using a different port than both server and config
+				// Send host update with actual port
+				fmt.Println("=====> UpdateHost: Interface using unexpected port, sending host update (no restart)")
+				host.ListenPort = actualPort
 				sendHostUpdate = true
 				// No restart needed since we're keeping the current port
 			}
 		} else {
-			// Port is free, we need to restart to use the new port
-			fmt.Println("=====> UpdateHost: Port is free, restart required")
-			restart = true
+			// Failed to get port from interface, check if port is free
+			fmt.Println("=====> UpdateHost: Failed to get port from interface, checking if port is free...")
+			isPortFree := ncutils.IsPortFree(host.ListenPort)
+			fmt.Println("=====> UpdateHost: IsPortFree(", host.ListenPort, ") =", isPortFree)
+			if isPortFree {
+				// Port is free, we need to restart to use the new port
+				fmt.Println("=====> UpdateHost: Port is free, restart required")
+				restart = true
+			} else {
+				// Port is in use, send host update with current config port
+				fmt.Println("=====> UpdateHost: Port is in use, using config port (no restart)")
+				host.ListenPort = hostCfg.ListenPort
+				sendHostUpdate = true
+				// No restart needed since we're keeping the current port
+			}
 		}
 	} else {
 		fmt.Println("=====> UpdateHost: Ports match or host.ListenPort is 0, no port update needed")
