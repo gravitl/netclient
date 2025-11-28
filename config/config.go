@@ -122,36 +122,48 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	if hostCfg == nil || host == nil {
 		return
 	}
+	fmt.Println("=====> UpdateHost: host.ListenPort =", host.ListenPort, "hostCfg.ListenPort =", hostCfg.ListenPort)
 	if host.ListenPort != 0 && hostCfg.ListenPort != host.ListenPort {
+		fmt.Println("=====> UpdateHost: Port mismatch detected, checking port status...")
 		// check if new port is free, otherwise check if WireGuard is already using it
-		if !ncutils.IsPortFree(host.ListenPort) {
+		isPortFree := ncutils.IsPortFree(host.ListenPort)
+		fmt.Println("=====> UpdateHost: IsPortFree(", host.ListenPort, ") =", isPortFree)
+		if !isPortFree {
 			// check if actual port on the WireGuard interface is matching the port from the server
 			actualPort, err := getWireGuardListenPort(ncutils.GetInterfaceName())
+			fmt.Println("=====> UpdateHost: getWireGuardListenPort() =", actualPort, "error =", err)
 			if err == nil {
 				// Successfully got the actual port from the interface
 				if actualPort == host.ListenPort {
 					// Interface is already using the server's port, just update local config
 					// Update both host and hostCfg to prevent loop on next update
+					fmt.Println("=====> UpdateHost: Interface already using server's port, updating config only (no restart)")
 					host.ListenPort = actualPort
 					hostCfg.ListenPort = actualPort
 					// No restart needed since interface is already using the correct port
 				} else {
 					// Port is in use by WireGuard with a different port, send host update with actual port
+					fmt.Println("=====> UpdateHost: Interface using different port, sending host update (no restart)")
 					host.ListenPort = actualPort
 					sendHostUpdate = true
 					// No restart needed since we're keeping the current port
 				}
 			} else {
 				// Failed to get port from interface, send host update with current config port
+				fmt.Println("=====> UpdateHost: Failed to get port from interface, using config port (no restart)")
 				host.ListenPort = hostCfg.ListenPort
 				sendHostUpdate = true
 				// No restart needed since we're keeping the current port
 			}
 		} else {
 			// Port is free, we need to restart to use the new port
+			fmt.Println("=====> UpdateHost: Port is free, restart required")
 			restart = true
 		}
+	} else {
+		fmt.Println("=====> UpdateHost: Ports match or host.ListenPort is 0, no port update needed")
 	}
+	fmt.Println("=====> UpdateHost: After port check - host.ListenPort =", host.ListenPort, "hostCfg.ListenPort =", hostCfg.ListenPort, "restart =", restart)
 	if host.MTU != 0 && hostCfg.MTU != host.MTU {
 		resetInterface = true
 	}
@@ -179,8 +191,10 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
 	hostCfg.Host = *host
+	fmt.Println("=====> UpdateHost: After hostCfg.Host = *host - hostCfg.ListenPort =", hostCfg.ListenPort, "host.ListenPort =", host.ListenPort)
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
+	fmt.Println("=====> UpdateHost: Final values - restart =", restart, "sendHostUpdate =", sendHostUpdate, "resetInterface =", resetInterface)
 	return
 }
 
