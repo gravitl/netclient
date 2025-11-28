@@ -54,7 +54,6 @@ func (c *FlowTracker) TrackConnections() error {
 	events := make(chan ct.Event, 200)
 	errChan, err := conn.Listen(events, 1, []netfilter.NetlinkGroup{
 		netfilter.GroupCTNew,
-		netfilter.GroupCTUpdate,
 		netfilter.GroupCTDestroy,
 	})
 	if err != nil {
@@ -98,8 +97,6 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 	var eventType nmmodels.FlowEventType
 	if event.Type == ct.EventNew {
 		eventType = nmmodels.FlowStart
-	} else if event.Type == ct.EventUpdate {
-		eventType = nmmodels.FlowUpdate
 	} else if event.Type == ct.EventDestroy {
 		eventType = nmmodels.FlowDestroy
 	} else {
@@ -108,47 +105,31 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 
 	flow := *event.Flow
 
-	var protoInfo nmmodels.FlowProtocolInfo
-	protoInfo.Protocol = flow.TupleOrig.Proto.Protocol
+	var icmpType, icmpCode uint8
 	if flow.TupleOrig.Proto.Protocol == 1 || flow.TupleOrig.Proto.Protocol == 58 {
 		// ICMP
-		protoInfo.ICMPType = flow.TupleOrig.Proto.ICMPType
-		protoInfo.ICMPCode = flow.TupleOrig.Proto.ICMPCode
-	} else if flow.TupleOrig.Proto.Protocol == 6 && flow.ProtoInfo.TCP != nil {
-		// TCP
-		protoInfo.TCPState = flow.ProtoInfo.TCP.State
-		protoInfo.TCPOriginalWindowScale = flow.ProtoInfo.TCP.OriginalWindowScale
-		protoInfo.TCPReplyWindowScale = flow.ProtoInfo.TCP.ReplyWindowScale
-		protoInfo.TCPOriginalFlags = flow.ProtoInfo.TCP.OriginalFlags
-		protoInfo.TCPReplyFlags = flow.ProtoInfo.TCP.ReplyFlags
+		icmpType = flow.TupleOrig.Proto.ICMPType
+		icmpCode = flow.TupleOrig.Proto.ICMPCode
 	}
 
 	return c.flowExporter.Export(nmmodels.FlowEvent{
-		ID:           flow.ID,
-		Type:         eventType,
-		Status:       flow.Status,
-		ProtocolInfo: protoInfo,
-		OriginPeer: nmmodels.FlowPeer{
-			IP:   flow.TupleOrig.IP.SourceAddress.String(),
-			Port: flow.TupleOrig.Proto.SourcePort,
-		},
-		ReplyPeer: nmmodels.FlowPeer{
-			IP:   flow.TupleOrig.IP.DestinationAddress.String(),
-			Port: flow.TupleOrig.Proto.DestinationPort,
-		},
-		OriginCounter: nmmodels.FlowCounter{
-			Packets: flow.CountersOrig.Packets,
-			Bytes:   flow.CountersOrig.Bytes,
-		},
-		ReplyCounter: nmmodels.FlowCounter{
-			Packets: flow.CountersReply.Packets,
-			Bytes:   flow.CountersReply.Bytes,
-		},
-		Timestamp: nmmodels.FlowTimestamp{
-			Start:     flow.Timestamp.Start,
-			Stop:      flow.Timestamp.Stop,
-			EventTime: time.Now(),
-		},
+		ID:            flow.ID,
+		Type:          eventType,
+		Status:        flow.Status,
+		Protocol:      flow.TupleOrig.Proto.Protocol,
+		ICMPType:      icmpType,
+		ICMPCode:      icmpCode,
+		OriginIP:      flow.TupleOrig.IP.SourceAddress,
+		OriginPort:    flow.TupleOrig.Proto.SourcePort,
+		ReplyIP:       flow.TupleOrig.IP.DestinationAddress,
+		ReplyPort:     flow.TupleOrig.Proto.DestinationPort,
+		OriginPackets: flow.CountersOrig.Packets,
+		OriginBytes:   flow.CountersOrig.Bytes,
+		ReplyPackets:  flow.CountersReply.Packets,
+		ReplyBytes:    flow.CountersReply.Bytes,
+		EventTime:     time.Now(),
+		FlowStart:     flow.Timestamp.Start,
+		FlowDestroy:   flow.Timestamp.Stop,
 	})
 }
 
