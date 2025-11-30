@@ -50,7 +50,9 @@ func (o *openresolvManager) resetConfig(iface string) error {
 	out, err := exec.Command("resolvconf", "-d", iface).CombinedOutput()
 	if err != nil {
 		out := strings.TrimSpace(string(out))
-		if out == fmt.Sprintf("No resolv.conf for interface %s", iface) {
+		if strings.Contains(out, "No resolv.conf for interface") ||
+			strings.Contains(out, "Failed to resolve interface") ||
+			strings.Contains(out, "No such device") {
 			return nil
 		}
 
