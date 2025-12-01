@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/minio/selfupdate"
+	"golang.org/x/exp/slog"
 )
 
 var binPath, filePath string
@@ -59,6 +60,7 @@ func downloadVersion(version string) error {
 		}
 		url = fmt.Sprintf("https://downloads.netmaker.io/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
 	}
+	slog.Info("Upgrading netclient", "Curr version", config.Netclient().Version, "New version", version, "pulling from", url)
 	res, err := http.Get(url)
 	if err != nil {
 		return err
@@ -115,6 +117,7 @@ func UseVersion(version string, rebootDaemon bool) error {
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
 		windowsBinaryURL := fmt.Sprintf("https://downloads.netmaker.io/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
+		slog.Info("Upgrading netclient", "Curr version", config.Netclient().Version, "New version", version, "pulling from", windowsBinaryURL)
 		if err := windowsUpdate(windowsBinaryURL); err != nil {
 			return err
 		}
