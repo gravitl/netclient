@@ -2,29 +2,41 @@ package tracker
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/flow/exporter"
 	"github.com/gravitl/netmaker/logger"
-	nmmodels "github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/pro/flow/proto"
 	ct "github.com/ti-mo/conntrack"
 	"github.com/ti-mo/netfilter"
 )
 
+type NetworkIDMapper func(flow *ct.Flow) string
+
 type FlowTracker struct {
+	hostID        uuid.UUID
+	hostIDStr     string
+	netIDMapper   NetworkIDMapper
 	flowExporter  exporter.Exporter
 	restoreSysctl bool
 	cancel        context.CancelFunc
 	mu            sync.Mutex
 }
 
-func New(flowExporter exporter.Exporter) (*FlowTracker, error) {
+func New(hostID uuid.UUID, netIDMapper NetworkIDMapper, flowExporter exporter.Exporter) (*FlowTracker, error) {
 	c := &FlowTracker{
+		hostID:       hostID,
+		hostIDStr:    hostID.String(),
+		netIDMapper:  netIDMapper,
 		flowExporter: flowExporter,
 	}
 
@@ -94,17 +106,27 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		return nil
 	}
 
-	var eventType nmmodels.FlowEventType
+	var eventType proto.EventType
 	if event.Type == ct.EventNew {
-		eventType = nmmodels.FlowStart
+		eventType = proto.EventType_EVENT_START
 	} else if event.Type == ct.EventDestroy {
-		eventType = nmmodels.FlowDestroy
+		eventType = proto.EventType_EVENT_DESTROY
 	} else {
 		return nil
 	}
 
-	flow := *event.Flow
+	networkID := c.netIDMapper(event.Flow)
+	if networkID == "" {
+		// if flow doesn't belong to any of our networks, ignore it.
+		return nil
+	}
 
+	flowID := c.getFlowID(event.Flow)
+	direction := c.inferDirection(event.Flow)
+	sentCounter := c.getSentCounter(event.Flow, direction)
+	receivedCounter := c.getReceivedCounter(event.Flow, direction)
+
+	flow := *event.Flow
 	var icmpType, icmpCode uint8
 	if flow.TupleOrig.Proto.Protocol == 1 || flow.TupleOrig.Proto.Protocol == 58 {
 		// ICMP
@@ -112,24 +134,27 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		icmpCode = flow.TupleOrig.Proto.ICMPCode
 	}
 
-	return c.flowExporter.Export(nmmodels.FlowEvent{
-		ID:            flow.ID,
-		Type:          eventType,
-		Status:        flow.Status,
-		Protocol:      flow.TupleOrig.Proto.Protocol,
-		ICMPType:      icmpType,
-		ICMPCode:      icmpCode,
-		OriginIP:      flow.TupleOrig.IP.SourceAddress,
-		OriginPort:    flow.TupleOrig.Proto.SourcePort,
-		ReplyIP:       flow.TupleOrig.IP.DestinationAddress,
-		ReplyPort:     flow.TupleOrig.Proto.DestinationPort,
-		OriginPackets: flow.CountersOrig.Packets,
-		OriginBytes:   flow.CountersOrig.Bytes,
-		ReplyPackets:  flow.CountersReply.Packets,
-		ReplyBytes:    flow.CountersReply.Bytes,
-		EventTime:     time.Now(),
-		FlowStart:     flow.Timestamp.Start,
-		FlowDestroy:   flow.Timestamp.Stop,
+	return c.flowExporter.Export(&proto.FlowEvent{
+		Type:        eventType,
+		FlowId:      flowID,
+		NetworkId:   networkID,
+		HostId:      c.hostIDStr,
+		Protocol:    uint32(flow.TupleOrig.Proto.Protocol),
+		SrcPort:     uint32(flow.TupleOrig.Proto.SourcePort),
+		DstPort:     uint32(flow.TupleOrig.Proto.DestinationPort),
+		IcmpType:    uint32(icmpType),
+		IcmpCode:    uint32(icmpCode),
+		Direction:   direction,
+		SrcIp:       flow.TupleOrig.IP.SourceAddress.String(),
+		DstIp:       flow.TupleOrig.IP.DestinationAddress.String(),
+		StartTsMs:   flow.Timestamp.Start.UnixMilli(),
+		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
+		BytesSent:   sentCounter.Bytes,
+		BytesRecv:   receivedCounter.Bytes,
+		PacketsSent: sentCounter.Packets,
+		PacketsRecv: receivedCounter.Packets,
+		Status:      uint32(flow.Status),
+		Version:     time.Now().UnixMilli(),
 	})
 }
 
@@ -151,6 +176,56 @@ func (c *FlowTracker) enableAccounting() error {
 
 	c.restoreSysctl = modified
 	return nil
+}
+
+func (c *FlowTracker) getFlowID(flow *ct.Flow) string {
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], flow.ID)
+	return uuid.NewSHA1(c.hostID, buf[:]).String()
+}
+
+func (c *FlowTracker) inferDirection(flow *ct.Flow) proto.Direction {
+	srcIP := net.ParseIP(flow.TupleOrig.IP.SourceAddress.String())
+	dstIP := net.ParseIP(flow.TupleOrig.IP.DestinationAddress.String())
+
+	nodes := config.GetNodes()
+	for _, node := range nodes {
+		if node.Server != config.CurrServer {
+			continue
+		}
+
+		if node.Address.IP.Equal(srcIP) || node.Address6.IP.Equal(srcIP) {
+			return proto.Direction_DIR_EGRESS
+		} else if node.Address.IP.Equal(dstIP) || node.Address6.IP.Equal(dstIP) {
+			return proto.Direction_DIR_INGRESS
+		} else if node.NetworkRange.Contains(srcIP) || node.NetworkRange6.Contains(srcIP) {
+			return proto.Direction_DIR_INGRESS
+		} else if node.NetworkRange.Contains(dstIP) || node.NetworkRange6.Contains(dstIP) {
+			return proto.Direction_DIR_EGRESS
+		}
+	}
+
+	return proto.Direction_DIR_UNSPECIFIED
+}
+
+func (c *FlowTracker) getSentCounter(flow *ct.Flow, direction proto.Direction) ct.Counter {
+	if direction == proto.Direction_DIR_INGRESS {
+		return flow.CountersReply
+	} else if direction == proto.Direction_DIR_EGRESS {
+		return flow.CountersOrig
+	} else {
+		return ct.Counter{}
+	}
+}
+
+func (c *FlowTracker) getReceivedCounter(flow *ct.Flow, direction proto.Direction) ct.Counter {
+	if direction == proto.Direction_DIR_INGRESS {
+		return flow.CountersOrig
+	} else if direction == proto.Direction_DIR_EGRESS {
+		return flow.CountersReply
+	} else {
+		return ct.Counter{}
+	}
 }
 
 func (c *FlowTracker) disableAccounting() error {

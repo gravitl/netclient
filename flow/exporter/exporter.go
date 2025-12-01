@@ -1,7 +1,7 @@
 package exporter
 
-import nmmodels "github.com/gravitl/netmaker/models"
+import "github.com/gravitl/netmaker/pro/flow/proto"
 
 type Exporter interface {
-	Export(event nmmodels.FlowEvent) error
+	Export(event *proto.FlowEvent) error
 }
