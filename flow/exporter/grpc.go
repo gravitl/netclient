@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gravitl/netmaker/pro/flow/proto"
+	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -51,12 +51,12 @@ type Client struct {
 	opts       Options
 
 	conn   *grpc.ClientConn
-	stream proto.FlowService_StreamFlowsClient
+	stream pbflow.FlowService_StreamFlowsClient
 
 	seq uint64
 
 	mu     sync.Mutex
-	events []*proto.FlowEvent
+	events []*pbflow.FlowEvent
 
 	stopCh chan struct{}
 	wg     sync.WaitGroup
@@ -102,7 +102,7 @@ func (c *Client) Stop() error {
 	return nil
 }
 
-func (c *Client) Export(event *proto.FlowEvent) error {
+func (c *Client) Export(event *pbflow.FlowEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -140,11 +140,8 @@ func (c *Client) flush() {
 	c.events = nil
 	c.mu.Unlock()
 
-	env := &proto.FlowEnvelope{
-		HostId:    evs[0].HostId,
-		Seq:       c.seq,
-		Events:    evs,
-		BatchTsMs: time.Now().UnixMilli(),
+	env := &pbflow.FlowEnvelope{
+		Events: evs,
 	}
 
 	if err := c.sendWithRetries(env); err != nil {
@@ -154,7 +151,7 @@ func (c *Client) flush() {
 	}
 }
 
-func (c *Client) sendWithRetries(env *proto.FlowEnvelope) error {
+func (c *Client) sendWithRetries(env *pbflow.FlowEnvelope) error {
 	var err error
 
 	for attempt := 1; attempt <= c.opts.retryCount; attempt++ {
@@ -170,7 +167,7 @@ func (c *Client) sendWithRetries(env *proto.FlowEnvelope) error {
 	return fmt.Errorf("retry limit exceeded: %w", err)
 }
 
-func (c *Client) sendOnce(env *proto.FlowEnvelope) error {
+func (c *Client) sendOnce(env *pbflow.FlowEnvelope) error {
 	if c.stream == nil {
 		err := c.reconnect()
 		if err != nil {
@@ -189,7 +186,7 @@ func (c *Client) sendOnce(env *proto.FlowEnvelope) error {
 	}
 
 	if !resp.Success {
-		return fmt.Errorf("server rejected seq=%d: %s", env.Seq, resp.Error)
+		return fmt.Errorf("server rejected: %s", resp.Error)
 	}
 
 	return nil
@@ -211,7 +208,7 @@ func (c *Client) connect() error {
 
 	c.conn = conn
 
-	client := proto.NewFlowServiceClient(conn)
+	client := pbflow.NewFlowServiceClient(conn)
 
 	// The stream should live beyond dial timeout → use background context
 	stream, err := client.StreamFlows(context.Background())

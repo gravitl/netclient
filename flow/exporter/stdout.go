@@ -3,7 +3,7 @@ package exporter
 import (
 	"fmt"
 
-	"github.com/gravitl/netmaker/pro/flow/proto"
+	pbflow "github.com/gravitl/netmaker/grpc/flow"
 )
 
 type StdoutExporter struct{}
@@ -12,7 +12,7 @@ func NewStdoutExporter() *StdoutExporter {
 	return &StdoutExporter{}
 }
 
-func (s *StdoutExporter) Export(event *proto.FlowEvent) error {
+func (s *StdoutExporter) Export(event *pbflow.FlowEvent) error {
 	fmt.Println(event.String())
 	return nil
 }

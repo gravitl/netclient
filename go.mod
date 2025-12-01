@@ -1,6 +1,6 @@
 module github.com/gravitl/netclient
 
-go 1.24.0
+go 1.25.3
 
 replace github.com/gravitl/netmaker => ../nm
 
@@ -33,12 +33,13 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/crypto v0.44.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82
+	golang.org/x/net v0.47.0
 	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
+	google.golang.org/grpc v1.77.0
 	gopkg.in/yaml.v3 v3.0.1
 	gortc.io/stun v1.23.0
 )
@@ -110,7 +111,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
-	go.uber.org/multierr v1.9.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
@@ -118,7 +119,6 @@ require (
 	golang.org/x/tools v0.38.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
-	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gorm.io/datatypes v1.2.7 // indirect

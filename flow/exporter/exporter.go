@@ -1,7 +1,7 @@
 package exporter
 
-import "github.com/gravitl/netmaker/pro/flow/proto"
+import pbflow "github.com/gravitl/netmaker/grpc/flow"
 
 type Exporter interface {
-	Export(event *proto.FlowEvent) error
+	Export(event *pbflow.FlowEvent) error
 }
