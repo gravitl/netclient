@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/minio/selfupdate"
+	"golang.org/x/exp/slog"
 )
 
 var binPath, filePath string
@@ -30,7 +31,7 @@ func createDirIfNotExists() error {
 }
 
 func downloadVersion(version string) error {
-	url := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
+	url := fmt.Sprintf("https://downloads.netmaker.io/releases/download/%s/netclient-%s-%s", version, runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "freebsd" {
 		out, err := ncutils.RunCmd("grep VERSION_ID /etc/os-release", false)
 		if err != nil {
@@ -45,7 +46,7 @@ func downloadVersion(version string) error {
 			return fmt.Errorf("get freebsd vesion %v", freebsdVersion)
 		}
 		freebsd := strings.Trim(freebsdVersion[0], "\"")
-		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsd, runtime.GOARCH)
+		url = fmt.Sprintf("https://downloads.netmaker.io/releases/download/%s/netclient-%s%s-%s", version, runtime.GOOS, freebsd, runtime.GOARCH)
 	}
 	if runtime.GOARCH == "arm" && runtime.GOOS == "linux" {
 		out, err := ncutils.RunCmd("cat /proc/cpuinfo | grep architecture | head -1 | grep -o -E '[0-9]+'", false)
@@ -57,8 +58,9 @@ func downloadVersion(version string) error {
 		} else if strings.Contains(out, "\n") {
 			out = strings.ReplaceAll(out, "\n", "")
 		}
-		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
+		url = fmt.Sprintf("https://downloads.netmaker.io/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
 	}
+	slog.Info("Upgrading netclient", "Curr version", config.Netclient().Version, "New version", version, "pulling from", url)
 	res, err := http.Get(url)
 	if err != nil {
 		return err
@@ -114,7 +116,8 @@ func versionLessThan(v1, v2 string) (bool, error) {
 func UseVersion(version string, rebootDaemon bool) error {
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
-		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
+		windowsBinaryURL := fmt.Sprintf("https://downloads.netmaker.io/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
+		slog.Info("Upgrading netclient", "Curr version", config.Netclient().Version, "New version", version, "pulling from", windowsBinaryURL)
 		if err := windowsUpdate(windowsBinaryURL); err != nil {
 			return err
 		}
