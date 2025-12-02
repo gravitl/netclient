@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"time"
 
@@ -25,15 +26,25 @@ type Manager struct {
 
 var manager *Manager
 
-func GetManager() *Manager {
-	if manager == nil {
-		manager = &Manager{}
-	}
+func init() {
+	manager = &Manager{}
+}
 
+func GetManager() *Manager {
 	return manager
 }
 
 func (m *Manager) Start() error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	// restart if already running.
+	err := m.Stop()
+	if err != nil {
+		return err
+	}
+
 	peerInfo, err := networking.GetPeerInfo()
 	if err != nil {
 		return err
@@ -102,6 +113,10 @@ func (m *Manager) Start() error {
 }
 
 func (m *Manager) Stop() error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
@@ -112,6 +127,7 @@ func (m *Manager) Stop() error {
 		if err != nil {
 			return err
 		}
+		m.flowClient = nil
 	}
 
 	if m.flowTracker != nil {
@@ -119,6 +135,7 @@ func (m *Manager) Stop() error {
 		if err != nil {
 			return err
 		}
+		m.flowTracker = nil
 	}
 
 	return nil
