@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/devilcove/httpclient"
 	"github.com/google/uuid"
@@ -62,7 +61,7 @@ func Register(token string) error {
 	registerResponse, errData, err := api.GetJSON(models.RegisterResponse{}, models.ErrorResponse{})
 	if err != nil {
 		if errors.Is(err, httpclient.ErrStatus) {
-			logger.FatalLog("error registering with server", strconv.Itoa(errData.Code), errData.Message)
+			logger.FatalLog("error registering with server", fmt.Sprintf("code: %d", errData.Code), errData.Message)
 		}
 		return err
 	}
