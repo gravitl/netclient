@@ -12,22 +12,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/flow/exporter"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	ct "github.com/ti-mo/conntrack"
 	"github.com/ti-mo/netfilter"
 )
 
-type NetworkIDMapper func(flow *ct.Flow) string
+type NodeIterator func(func(node *models.CommonNode) bool)
 
-type ParticipantEnricher func(participant *pbflow.FlowParticipant)
+type ParticipantEnricher func(ip string) *pbflow.FlowParticipant
 
 type FlowTracker struct {
 	hostID              uuid.UUID
 	hostIDStr           string
-	netIDMapper         NetworkIDMapper
+	nodeIter            NodeIterator
 	participantEnricher ParticipantEnricher
 	flowExporter        exporter.Exporter
 	restoreSysctl       bool
@@ -35,11 +35,17 @@ type FlowTracker struct {
 	mu                  sync.Mutex
 }
 
-func New(hostID uuid.UUID, netIDMapper NetworkIDMapper, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
+func New(nodeIter NodeIterator, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
+	var hostID uuid.UUID
+	nodeIter(func(node *models.CommonNode) bool {
+		hostID = node.HostID
+		return false
+	})
+
 	c := &FlowTracker{
 		hostID:              hostID,
 		hostIDStr:           hostID.String(),
-		netIDMapper:         netIDMapper,
+		nodeIter:            nodeIter,
 		participantEnricher: participantEnricher,
 		flowExporter:        flowExporter,
 	}
@@ -119,14 +125,13 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		return nil
 	}
 
-	networkID := c.netIDMapper(event.Flow)
+	networkID, direction := c.inferNetworkAndDirection(event.Flow)
 	if networkID == "" {
 		// if flow doesn't belong to any of our networks, ignore it.
 		return nil
 	}
 
 	flowID := c.getFlowID(event.Flow)
-	direction := c.inferDirection(event.Flow)
 	sentCounter := c.getSentCounter(event.Flow, direction)
 	receivedCounter := c.getReceivedCounter(event.Flow, direction)
 
@@ -137,16 +142,6 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		icmpType = flow.TupleOrig.Proto.ICMPType
 		icmpCode = flow.TupleOrig.Proto.ICMPCode
 	}
-
-	src := &pbflow.FlowParticipant{
-		Ip: flow.TupleOrig.IP.SourceAddress.String(),
-	}
-	c.participantEnricher(src)
-
-	dst := &pbflow.FlowParticipant{
-		Ip: flow.TupleOrig.IP.DestinationAddress.String(),
-	}
-	c.participantEnricher(dst)
 
 	return c.flowExporter.Export(&pbflow.FlowEvent{
 		Type:        eventType,
@@ -159,8 +154,8 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		IcmpType:    uint32(icmpType),
 		IcmpCode:    uint32(icmpCode),
 		Direction:   direction,
-		Src:         src,
-		Dst:         dst,
+		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress.String()),
+		Dst:         c.participantEnricher(flow.TupleOrig.IP.DestinationAddress.String()),
 		StartTsMs:   flow.Timestamp.Start.UnixMilli(),
 		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
 		BytesSent:   sentCounter.Bytes,
@@ -198,28 +193,30 @@ func (c *FlowTracker) getFlowID(flow *ct.Flow) string {
 	return uuid.NewSHA1(c.hostID, buf[:]).String()
 }
 
-func (c *FlowTracker) inferDirection(flow *ct.Flow) pbflow.Direction {
+func (c *FlowTracker) inferNetworkAndDirection(flow *ct.Flow) (string, pbflow.Direction) {
 	srcIP := net.ParseIP(flow.TupleOrig.IP.SourceAddress.String())
 	dstIP := net.ParseIP(flow.TupleOrig.IP.DestinationAddress.String())
 
-	nodes := config.GetNodes()
-	for _, node := range nodes {
-		if node.Server != config.CurrServer {
-			continue
-		}
-
+	var networkID string
+	direction := pbflow.Direction_DIR_UNSPECIFIED
+	c.nodeIter(func(node *models.CommonNode) bool {
 		if node.Address.IP.Equal(srcIP) || node.Address6.IP.Equal(srcIP) {
-			return pbflow.Direction_DIR_EGRESS
+			direction = pbflow.Direction_DIR_EGRESS
 		} else if node.Address.IP.Equal(dstIP) || node.Address6.IP.Equal(dstIP) {
-			return pbflow.Direction_DIR_INGRESS
+			direction = pbflow.Direction_DIR_INGRESS
 		} else if node.NetworkRange.Contains(srcIP) || node.NetworkRange6.Contains(srcIP) {
-			return pbflow.Direction_DIR_INGRESS
+			direction = pbflow.Direction_DIR_INGRESS
 		} else if node.NetworkRange.Contains(dstIP) || node.NetworkRange6.Contains(dstIP) {
-			return pbflow.Direction_DIR_EGRESS
+			direction = pbflow.Direction_DIR_EGRESS
+		} else {
+			return true
 		}
-	}
 
-	return pbflow.Direction_DIR_UNSPECIFIED
+		networkID = node.Network
+		return false
+	})
+
+	return networkID, direction
 }
 
 func (c *FlowTracker) getSentCounter(flow *ct.Flow, direction pbflow.Direction) ct.Counter {
