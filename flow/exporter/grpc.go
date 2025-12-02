@@ -46,7 +46,7 @@ func WithRetryPolicy(count int, backoff time.Duration) func(*Options) {
 	}
 }
 
-type Client struct {
+type FlowGrpcClient struct {
 	serverAddr string
 	opts       Options
 
@@ -62,7 +62,7 @@ type Client struct {
 	wg     sync.WaitGroup
 }
 
-func New(serverURL string, optFns ...func(*Options)) *Client {
+func NewFlowGrpcClient(serverURL string, optFns ...func(*Options)) *FlowGrpcClient {
 	opts := Options{
 		tlsCreds:     nil,
 		batchSize:    DefaultBatchSize,
@@ -74,14 +74,14 @@ func New(serverURL string, optFns ...func(*Options)) *Client {
 		fn(&opts)
 	}
 
-	return &Client{
+	return &FlowGrpcClient{
 		serverAddr: serverURL,
 		opts:       opts,
 		stopCh:     make(chan struct{}),
 	}
 }
 
-func (c *Client) Start() error {
+func (c *FlowGrpcClient) Start() error {
 	if err := c.connect(); err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (c *Client) Start() error {
 	return nil
 }
 
-func (c *Client) Stop() error {
+func (c *FlowGrpcClient) Stop() error {
 	close(c.stopCh)
 	c.wg.Wait()
 
@@ -102,7 +102,7 @@ func (c *Client) Stop() error {
 	return nil
 }
 
-func (c *Client) Export(event *pbflow.FlowEvent) error {
+func (c *FlowGrpcClient) Export(event *pbflow.FlowEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -113,7 +113,7 @@ func (c *Client) Export(event *pbflow.FlowEvent) error {
 	return nil
 }
 
-func (c *Client) batchLoop() {
+func (c *FlowGrpcClient) batchLoop() {
 	defer c.wg.Done()
 
 	ticker := time.NewTicker(c.opts.batchTime)
@@ -130,7 +130,7 @@ func (c *Client) batchLoop() {
 	}
 }
 
-func (c *Client) flush() {
+func (c *FlowGrpcClient) flush() {
 	c.mu.Lock()
 	if len(c.events) == 0 {
 		c.mu.Unlock()
@@ -151,7 +151,7 @@ func (c *Client) flush() {
 	}
 }
 
-func (c *Client) sendWithRetries(env *pbflow.FlowEnvelope) error {
+func (c *FlowGrpcClient) sendWithRetries(env *pbflow.FlowEnvelope) error {
 	var err error
 
 	for attempt := 1; attempt <= c.opts.retryCount; attempt++ {
@@ -167,7 +167,7 @@ func (c *Client) sendWithRetries(env *pbflow.FlowEnvelope) error {
 	return fmt.Errorf("retry limit exceeded: %w", err)
 }
 
-func (c *Client) sendOnce(env *pbflow.FlowEnvelope) error {
+func (c *FlowGrpcClient) sendOnce(env *pbflow.FlowEnvelope) error {
 	if c.stream == nil {
 		err := c.reconnect()
 		if err != nil {
@@ -192,7 +192,7 @@ func (c *Client) sendOnce(env *pbflow.FlowEnvelope) error {
 	return nil
 }
 
-func (c *Client) connect() error {
+func (c *FlowGrpcClient) connect() error {
 	var dialOpts []grpc.DialOption
 
 	if c.opts.tlsCreds != nil {
@@ -220,7 +220,7 @@ func (c *Client) connect() error {
 	return nil
 }
 
-func (c *Client) reconnect() error {
+func (c *FlowGrpcClient) reconnect() error {
 	if c.conn != nil {
 		_ = c.conn.Close()
 	}
@@ -229,7 +229,7 @@ func (c *Client) reconnect() error {
 	return c.connect()
 }
 
-func (c *Client) wrapStreamError(err error) error {
+func (c *FlowGrpcClient) wrapStreamError(err error) error {
 	if err == io.EOF {
 		return fmt.Errorf("stream closed: %w", err)
 	}
