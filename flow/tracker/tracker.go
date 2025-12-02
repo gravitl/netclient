@@ -50,8 +50,7 @@ func New(nodeIter NodeIterator, participantEnricher ParticipantEnricher, flowExp
 		flowExporter:        flowExporter,
 	}
 
-	var err error
-	err = c.enableAccounting()
+	err := c.enableAccounting()
 	if err != nil {
 		return nil, err
 	}
