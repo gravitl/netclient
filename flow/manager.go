@@ -52,7 +52,7 @@ func (m *Manager) Start() error {
 
 	m.peerIPIdentityMap = peerInfo.PeerIPIdentityMap
 
-	flowClient := exporter.NewFlowGrpcClient("")
+	flowClient := exporter.NewFlowGrpcClient(config.GetServer(config.CurrServer).Exporter)
 
 	err = flowClient.Start()
 	if err != nil {
