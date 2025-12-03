@@ -53,8 +53,6 @@ type FlowGrpcClient struct {
 	conn   *grpc.ClientConn
 	stream pbflow.FlowService_StreamFlowsClient
 
-	seq uint64
-
 	mu     sync.Mutex
 	events []*pbflow.FlowEvent
 
@@ -144,10 +142,9 @@ func (c *FlowGrpcClient) flush() {
 		Events: evs,
 	}
 
-	if err := c.sendWithRetries(env); err != nil {
+	err := c.sendWithRetries(env)
+	if err != nil {
 		fmt.Println("[flow] permanently dropped batch:", err)
-	} else {
-		c.seq++
 	}
 }
 
@@ -177,12 +174,12 @@ func (c *FlowGrpcClient) sendOnce(env *pbflow.FlowEnvelope) error {
 
 	err := c.stream.Send(env)
 	if err != nil {
-		return c.wrapStreamError(err)
+		return c.handleStreamError(err)
 	}
 
 	resp, err := c.stream.Recv()
 	if err != nil {
-		return c.wrapStreamError(err)
+		return c.handleStreamError(err)
 	}
 
 	if !resp.Success {
@@ -229,8 +226,13 @@ func (c *FlowGrpcClient) reconnect() error {
 	return c.connect()
 }
 
-func (c *FlowGrpcClient) wrapStreamError(err error) error {
+func (c *FlowGrpcClient) handleStreamError(err error) error {
 	if err == io.EOF {
+		recErr := c.reconnect()
+		if recErr != nil {
+			return recErr
+		}
+
 		return fmt.Errorf("stream closed: %w", err)
 	}
 	st, ok := status.FromError(err)

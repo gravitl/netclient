@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ type Manager struct {
 	flowClient        *exporter.FlowGrpcClient
 	flowTracker       *tracker.FlowTracker
 	cancel            context.CancelFunc
+	startOnce         sync.Once
 	mu                sync.RWMutex
 }
 
@@ -39,77 +41,104 @@ func (m *Manager) Start() error {
 		return nil
 	}
 
-	// restart if already running.
-	err := m.Stop()
-	if err != nil {
-		return err
-	}
+	var err error
+	m.startOnce.Do(func() {
+		fmt.Println("[flow] starting flow manager")
+		var peerInfo models.HostPeerInfo
+		peerInfo, err = networking.GetPeerInfo()
+		if err != nil {
+			return
+		}
 
-	peerInfo, err := networking.GetPeerInfo()
-	if err != nil {
-		return err
-	}
+		m.peerIPIdentityMap = peerInfo.PeerIPIdentityMap
 
-	m.peerIPIdentityMap = peerInfo.PeerIPIdentityMap
+		for _, node := range config.GetNodes() {
+			if node.Server == config.CurrServer {
+				if node.Address.IP != nil {
+					m.peerIPIdentityMap[node.Address.IP.String()] = models.PeerIdentity{
+						ID:   node.ID.String(),
+						Type: models.PeerType_Node,
+					}
+				}
 
-	flowClient := exporter.NewFlowGrpcClient(config.GetServer(config.CurrServer).Exporter)
-
-	err = flowClient.Start()
-	if err != nil {
-		return err
-	}
-
-	m.flowClient = flowClient
-
-	flowTracker, err := tracker.New(
-		func(f func(node *models.CommonNode) bool) {
-			for _, node := range config.GetNodes() {
-				if node.Server == config.CurrServer {
-					if !f(&node.CommonNode) {
-						return
+				if node.Address6.IP != nil {
+					m.peerIPIdentityMap[node.Address6.IP.String()] = models.PeerIdentity{
+						ID:   node.ID.String(),
+						Type: models.PeerType_Node,
 					}
 				}
 			}
-		},
-		func(ip string) *pbflow.FlowParticipant {
-			m.mu.RLock()
-			identity, ok := m.peerIPIdentityMap[ip]
-			m.mu.RUnlock()
-			if !ok {
+		}
+
+		flowClient := exporter.NewFlowGrpcClient(config.GetServer(config.CurrServer).Exporter)
+
+		err = flowClient.Start()
+		if err != nil {
+			return
+		}
+
+		m.flowClient = flowClient
+
+		var flowTracker *tracker.FlowTracker
+		flowTracker, err = tracker.New(
+			func(f func(node *models.CommonNode) bool) {
+				for _, node := range config.GetNodes() {
+					if node.Server == config.CurrServer {
+						if !f(&node.CommonNode) {
+							return
+						}
+					}
+				}
+			},
+			func(ip string) *pbflow.FlowParticipant {
+				m.mu.RLock()
+				identity, ok := m.peerIPIdentityMap[ip]
+				m.mu.RUnlock()
+				if !ok {
+					return &pbflow.FlowParticipant{
+						Ip:   ip,
+						Type: pbflow.ParticipantType_PARTICIPANT_EXTERNAL,
+					}
+				}
+
+				participantType := pbflow.ParticipantType_PARTICIPANT_UNSPECIFIED
+				if identity.Type == models.PeerType_Node {
+					participantType = pbflow.ParticipantType_PARTICIPANT_NODE
+				} else if identity.Type == models.PeerType_User {
+					participantType = pbflow.ParticipantType_PARTICIPANT_USER
+				} else if identity.Type == models.PeerType_WireGuard {
+					participantType = pbflow.ParticipantType_PARTICIPANT_EXTCLIENT
+				}
+
 				return &pbflow.FlowParticipant{
 					Ip:   ip,
-					Type: pbflow.ParticipantType_PARTICIPANT_EXTERNAL,
+					Type: participantType,
+					Id:   identity.ID,
 				}
-			}
+			},
+			flowClient,
+		)
+		if err != nil {
+			return
+		}
 
-			participantType := pbflow.ParticipantType_PARTICIPANT_UNSPECIFIED
-			if identity.Type == models.PeerType_Node {
-				participantType = pbflow.ParticipantType_PARTICIPANT_NODE
-			} else if identity.Type == models.PeerType_User {
-				participantType = pbflow.ParticipantType_PARTICIPANT_USER
-			} else if identity.Type == models.PeerType_WireGuard {
-				participantType = pbflow.ParticipantType_PARTICIPANT_EXTCLIENT
-			}
+		m.flowTracker = flowTracker
 
-			return &pbflow.FlowParticipant{
-				Ip:   ip,
-				Type: participantType,
-				Id:   identity.ID,
-			}
-		},
-		flowClient,
-	)
+		err = m.flowTracker.TrackConnections()
+		if err != nil {
+			return
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		m.cancel = cancel
+
+		go m.startRefreshLoop(ctx)
+	})
 	if err != nil {
-		return err
+		fmt.Println("[flow] error starting flow manager:", err)
 	}
 
-	m.flowTracker = flowTracker
-
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-
-	go m.startRefreshLoop(ctx)
-	return nil
+	return err
 }
 
 func (m *Manager) Stop() error {
@@ -117,6 +146,7 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
+	fmt.Println("[flow] stopping flow manager")
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
@@ -125,6 +155,7 @@ func (m *Manager) Stop() error {
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()
 		if err != nil {
+			fmt.Println("[flow] error stopping flow manager:", err)
 			return err
 		}
 		m.flowClient = nil
@@ -133,10 +164,14 @@ func (m *Manager) Stop() error {
 	if m.flowTracker != nil {
 		err := m.flowTracker.Close()
 		if err != nil {
+			fmt.Println("[flow] error stopping flow manager:", err)
 			return err
 		}
 		m.flowTracker = nil
 	}
+
+	// reset start once
+	m.startOnce = sync.Once{}
 
 	return nil
 }
@@ -148,14 +183,30 @@ func (m *Manager) startRefreshLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-
 			peerInfo, err := networking.GetPeerInfo()
 			if err == nil {
+				for _, node := range config.GetNodes() {
+					if node.Server == config.CurrServer {
+						if node.Address.IP != nil {
+							peerInfo.PeerIPIdentityMap[node.Address.IP.String()] = models.PeerIdentity{
+								ID:   node.ID.String(),
+								Type: models.PeerType_Node,
+							}
+						}
+
+						if node.Address6.IP != nil {
+							peerInfo.PeerIPIdentityMap[node.Address6.IP.String()] = models.PeerIdentity{
+								ID:   node.ID.String(),
+								Type: models.PeerType_Node,
+							}
+						}
+					}
+				}
+
 				m.mu.Lock()
 				m.peerIPIdentityMap = peerInfo.PeerIPIdentityMap
 				m.mu.Unlock()
 			}
-
 		}
 	}
 }
