@@ -195,12 +195,16 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 			widths[i] = len(h)
 		}
 		for _, r := range networkResults {
+			latencyStr := "N/A"
+			if r.Connected && r.LatencyMs != 999 {
+				latencyStr = fmt.Sprintf("%d", r.LatencyMs)
+			}
 			row := []string{
 				r.Name,
 				r.Address,
 				fmt.Sprintf("%t", r.IsExt),
 				fmt.Sprintf("%t", r.Connected),
-				fmt.Sprintf("%d", r.LatencyMs),
+				latencyStr,
 			}
 			for i, col := range row {
 				if len(col) > widths[i] {
@@ -234,12 +238,16 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		printRow(headers)
 		printSep()
 		for i, r := range networkResults {
+			latencyStr := "N/A"
+			if r.Connected && r.LatencyMs != 999 {
+				latencyStr = fmt.Sprintf("%d", r.LatencyMs)
+			}
 			printRow([]string{
 				r.Name,
 				r.Address,
 				fmt.Sprintf("%t", r.IsExt),
 				fmt.Sprintf("%t", r.Connected),
-				fmt.Sprintf("%d", r.LatencyMs),
+				latencyStr,
 			})
 			// Add row border after each row (except after the last row)
 			if i < len(networkResults)-1 {
