@@ -3,6 +3,7 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 	"sync"
@@ -64,7 +65,8 @@ func padRight(s string, width int) string {
 // If networkFilter is non-empty, only peers in that network are considered.
 // If peerFilter is non-empty, only peers whose name, address, or ID match (case-insensitive) are considered.
 // packetCount controls how many packets/probes are sent per peer (<=0 uses a sensible default).
-func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount int) error {
+// ipVersion can be "4" for IPv4, "6" for IPv6, or "" for default address.
+func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount int, ipVersion string) error {
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return fmt.Errorf("server config not found")
@@ -140,19 +142,68 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		go func(p peerToPing) {
 			defer wg.Done()
 
+			// Helper function to check if an address is valid (not empty, not "<nil>", and parseable as IP)
+			isValidAddress := func(addr string) bool {
+				if addr == "" || addr == "<nil>" {
+					return false
+				}
+				// Try to parse as IP to validate
+				ip := net.ParseIP(addr)
+				return ip != nil
+			}
+
+			// Select address based on IP version flag
+			var addressToUse string
+			var addressToDisplay string
+			switch ipVersion {
+			case "4":
+				// Use IPv4 address, fallback to default Address if Address4 is empty or invalid
+				if isValidAddress(p.idAndAddr.Address4) {
+					addressToUse = p.idAndAddr.Address4
+					addressToDisplay = p.idAndAddr.Address4
+				} else if isValidAddress(p.idAndAddr.Address) {
+					addressToUse = p.idAndAddr.Address
+					addressToDisplay = p.idAndAddr.Address
+				} else {
+					// No valid address available
+					return
+				}
+			case "6":
+				// Use IPv6 address, fallback to default Address if Address6 is empty or invalid
+				if isValidAddress(p.idAndAddr.Address6) {
+					addressToUse = p.idAndAddr.Address6
+					addressToDisplay = p.idAndAddr.Address6
+				} else if isValidAddress(p.idAndAddr.Address) {
+					addressToUse = p.idAndAddr.Address
+					addressToDisplay = p.idAndAddr.Address
+				} else {
+					// No valid address available
+					return
+				}
+			default:
+				// Use default Address field
+				if isValidAddress(p.idAndAddr.Address) {
+					addressToUse = p.idAndAddr.Address
+					addressToDisplay = p.idAndAddr.Address
+				} else {
+					// No valid address available
+					return
+				}
+			}
+
 			var connected bool
 			var latency int64
 
 			if p.idAndAddr.IsExtClient {
-				connected, latency = metrics.ExtPeerConnStatus(p.idAndAddr.Address, packetCount)
+				connected, latency = metrics.ExtPeerConnStatus(addressToUse, packetCount)
 			} else {
-				connected, latency = metrics.PeerConnStatus(p.idAndAddr.Address, metricPort, packetCount)
+				connected, latency = metrics.PeerConnStatus(addressToUse, metricPort, packetCount)
 			}
 
 			result := PingResult{
 				Network:   p.network,
 				Name:      p.idAndAddr.Name,
-				Address:   p.idAndAddr.Address,
+				Address:   addressToDisplay,
 				IsExt:     p.idAndAddr.IsExtClient,
 				Connected: connected,
 				LatencyMs: latency,

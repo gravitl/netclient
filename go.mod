@@ -14,7 +14,7 @@ require (
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v1.2.0
+	github.com/gravitl/netmaker v1.2.1-0.20251204150713-554071833e41
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
 	github.com/hashicorp/go-version v1.7.0
@@ -27,11 +27,12 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netlink v1.3.1
-	golang.org/x/crypto v0.43.0
+	golang.org/x/crypto v0.44.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.46.0
-	golang.org/x/sys v0.37.0
-	golang.org/x/term v0.36.0
+	golang.org/x/sys v0.38.0
+	golang.org/x/term v0.37.0
+	golang.org/x/text v0.31.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20221104135756-97bc4ad4a1cb
 	golang.zx2c4.com/wireguard/windows v0.5.3
@@ -109,11 +110,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/mod v0.28.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	golang.org/x/tools v0.37.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250804133106-a7a43d27e69b // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -121,5 +121,5 @@ require (
 	gorm.io/driver/mysql v1.5.6 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
 	gorm.io/driver/sqlite v1.6.0 // indirect
-	gorm.io/gorm v1.31.0 // indirect
+	gorm.io/gorm v1.31.1 // indirect
 )
