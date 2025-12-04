@@ -284,7 +284,7 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		}
 		for _, r := range networkResults {
 			// Format name with emoji prefix: 📄 for external clients, 💻 for regular devices
-			nameStr := r.Name
+			var nameStr string
 			if r.IsExt {
 				nameStr = "📄 " + r.Name
 			} else {
@@ -343,7 +343,7 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		printSep()
 		for i, r := range networkResults {
 			// Format name with emoji prefix: 📄 for external clients, 💻 for regular devices
-			nameStr := r.Name
+			var nameStr string
 			if r.IsExt {
 				nameStr = "📄 " + r.Name
 			} else {
