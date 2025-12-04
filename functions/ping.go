@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/text/width"
 )
 
 // PingResult holds the result of a single peer connectivity check
@@ -21,6 +22,42 @@ type PingResult struct {
 	IsExt     bool   `json:"is_extclient"`
 	Connected bool   `json:"connected"`
 	LatencyMs int64  `json:"latency_ms"`
+}
+
+// displayWidth calculates the display width of a string using golang.org/x/text/width
+// This properly handles emojis, wide characters, and other Unicode complexities
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		switch width.LookupRune(r).Kind() {
+		case width.EastAsianWide, width.EastAsianFullwidth:
+			w += 2
+		case width.EastAsianNarrow, width.EastAsianHalfwidth, width.Neutral:
+			w += 1
+		default:
+			// For emojis and other symbols, check if they're typically wide
+			if (r >= 0x1F300 && r <= 0x1F9FF) || // Emojis
+			   (r >= 0x1F600 && r <= 0x1F64F) ||
+			   (r >= 0x2600 && r <= 0x26FF) ||
+			   (r >= 0x2700 && r <= 0x27BF) {
+				w += 2 // Emojis typically take 2 columns
+			} else {
+				w += 1
+			}
+		}
+	}
+	return w
+}
+
+// padRight pads a string to the specified display width, adding spaces on the right
+func padRight(s string, width int) string {
+	currentWidth := displayWidth(s)
+	if currentWidth >= width {
+		return s
+	}
+	// Add the exact number of spaces needed
+	spacesNeeded := width - currentWidth
+	return s + strings.Repeat(" ", spacesNeeded)
 }
 
 // PingPeers checks connectivity to peers and displays status and latency.
@@ -182,7 +219,7 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 	sort.Strings(networks)
 
 	// Headers without NETWORK column since each table is for a specific network
-	headers := []string{"NAME", "ADDRESS", "EXT", "CONNECTED", "LATENCY (ms)"}
+	headers := []string{"NAME", "ADDRESS", "CONNECTED", "LATENCY (ms)"}
 
 	// Print a table for each network
 	for _, netName := range networks {
@@ -192,23 +229,31 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		// Determine column widths for this network's table
 		widths := make([]int, len(headers))
 		for i, h := range headers {
-			widths[i] = len(h)
+			widths[i] = displayWidth(h)
 		}
 		for _, r := range networkResults {
+			// Format name with emoji prefix: 📄 for external clients, 💻 for regular devices
+			nameStr := r.Name
+			if r.IsExt {
+				nameStr = "📄 " + r.Name
+			} else {
+				nameStr = "💻 " + r.Name
+			}
+			
 			latencyStr := "N/A"
 			if r.Connected && r.LatencyMs != 999 {
 				latencyStr = fmt.Sprintf("%d", r.LatencyMs)
 			}
 			row := []string{
-				r.Name,
+				nameStr,
 				r.Address,
-				fmt.Sprintf("%t", r.IsExt),
 				fmt.Sprintf("%t", r.Connected),
 				latencyStr,
 			}
 			for i, col := range row {
-				if len(col) > widths[i] {
-					widths[i] = len(col)
+				colWidth := displayWidth(col)
+				if colWidth > widths[i] {
+					widths[i] = colWidth
 				}
 			}
 		}
@@ -216,7 +261,9 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		printSep := func() {
 			fmt.Print("+")
 			for i := range widths {
-				fmt.Print(strings.Repeat("-", widths[i]+2))
+				// Separator width = content width + 2 spaces (one on each side)
+				sepWidth := widths[i] + 2
+				fmt.Print(strings.Repeat("-", sepWidth))
 				fmt.Print("+")
 			}
 			fmt.Println()
@@ -229,7 +276,13 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 				if i < len(cols) {
 					cell = cols[i]
 				}
-				fmt.Printf(" %-*s |", widths[i], cell)
+				// Pad cell to match the column display width
+				padded := padRight(cell, widths[i])
+				// Print: space + padded content + space + pipe
+				fmt.Print(" ")
+				fmt.Print(padded)
+				fmt.Print(" ")
+				fmt.Print("|")
 			}
 			fmt.Println()
 		}
@@ -238,14 +291,21 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		printRow(headers)
 		printSep()
 		for i, r := range networkResults {
+			// Format name with emoji prefix: 📄 for external clients, 💻 for regular devices
+			nameStr := r.Name
+			if r.IsExt {
+				nameStr = "📄 " + r.Name
+			} else {
+				nameStr = "💻 " + r.Name
+			}
+			
 			latencyStr := "N/A"
 			if r.Connected && r.LatencyMs != 999 {
 				latencyStr = fmt.Sprintf("%d", r.LatencyMs)
 			}
 			printRow([]string{
-				r.Name,
+				nameStr,
 				r.Address,
-				fmt.Sprintf("%t", r.IsExt),
 				fmt.Sprintf("%t", r.Connected),
 				latencyStr,
 			})
