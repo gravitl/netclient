@@ -23,6 +23,7 @@ type PingResult struct {
 	IsExt     bool   `json:"is_extclient"`
 	Connected bool   `json:"connected"`
 	LatencyMs int64  `json:"latency_ms"`
+	UserName  string `json:"username,omitempty"`
 }
 
 // displayWidth calculates the display width of a string using golang.org/x/text/width
@@ -207,6 +208,7 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 				IsExt:     p.idAndAddr.IsExtClient,
 				Connected: connected,
 				LatencyMs: latency,
+				UserName:  p.idAndAddr.UserName,
 			}
 
 			resultsMutex.Lock()
@@ -283,9 +285,12 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 			widths[i] = displayWidth(h)
 		}
 		for _, r := range networkResults {
-			// Format name with emoji prefix: 📄 for external clients, 💻 for regular devices
+			// Format name with emoji prefix: 👤 for users with username, 📄 for external clients, 💻 for regular devices
+			// When username is set, display username instead of name
 			var nameStr string
-			if r.IsExt {
+			if r.UserName != "" {
+				nameStr = "👤 " + r.UserName
+			} else if r.IsExt {
 				nameStr = "📄 " + r.Name
 			} else {
 				nameStr = "💻 " + r.Name
@@ -342,9 +347,12 @@ func PingPeers(networkFilter, peerFilter string, jsonOutput bool, packetCount in
 		printRow(headers)
 		printSep()
 		for i, r := range networkResults {
-			// Format name with emoji prefix: 📄 for external clients, 💻 for regular devices
+			// Format name with emoji prefix: 👤 for users with username, 📄 for external clients, 💻 for regular devices
+			// When username is set, display username instead of name
 			var nameStr string
-			if r.IsExt {
+			if r.UserName != "" {
+				nameStr = "👤 " + r.UserName
+			} else if r.IsExt {
 				nameStr = "📄 " + r.Name
 			} else {
 				nameStr = "💻 " + r.Name

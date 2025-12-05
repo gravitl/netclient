@@ -25,6 +25,7 @@ type peerInfo struct {
 	AllowedIPs          []string  `json:"allowed_ips,omitempty"`
 	PersistentKeepalive string    `json:"persistent_keepalive,omitempty"`
 	IsExt               bool      `json:"is_extclient,omitempty"`
+	UserName            string    `json:"username,omitempty"`
 }
 
 // ShowPeers displays peer information from the WireGuard interface,
@@ -87,6 +88,7 @@ func ShowPeers(jsonOutput bool, networkFilter string) error {
 				ReceiveBytes:  devicePeer.ReceiveBytes,
 				TransmitBytes: devicePeer.TransmitBytes,
 				IsExt:         idAndAddr.IsExtClient,
+				UserName:      idAndAddr.UserName,
 			}
 
 			if devicePeer.Endpoint != nil {
@@ -188,9 +190,12 @@ func ShowPeers(jsonOutput bool, networkFilter string) error {
 				if len(info.AllowedIPs) > 0 {
 					allowed = strings.Join(info.AllowedIPs, ",")
 				}
-				// Format hostname with emoji prefix: 📄 for external clients, 💻 for regular devices
+				// Format hostname with emoji prefix: 👤 for users with username, 📄 for external clients, 💻 for regular devices
+				// When username is set, display username instead of hostname
 				var hostnameStr string
-				if info.IsExt {
+				if info.UserName != "" {
+					hostnameStr = "👤 " + info.UserName
+				} else if info.IsExt {
 					hostnameStr = "📄 " + info.HostName
 				} else {
 					hostnameStr = "💻 " + info.HostName
@@ -360,6 +365,7 @@ func printBorderedTable(headers []string, rows [][]string) {
 }
 
 // wrapText wraps a string to fit within maxWidth, breaking at word boundaries when possible
+// If a word is too long, it will be broken at character boundaries
 func wrapText(text string, maxWidth int) []string {
 	if displayWidth(text) <= maxWidth {
 		return []string{text}
@@ -370,15 +376,55 @@ func wrapText(text string, maxWidth int) []string {
 	currentLine := ""
 
 	for _, word := range words {
-		if displayWidth(currentLine+" "+word) <= maxWidth {
-			if currentLine == "" {
-				currentLine = word
-			} else {
-				currentLine += " " + word
+		wordWidth := displayWidth(word)
+
+		// If a single word exceeds maxWidth, break it at character boundaries
+		if wordWidth > maxWidth {
+			// First, save current line if it has content
+			if currentLine != "" {
+				lines = append(lines, currentLine)
+				currentLine = ""
+			}
+
+			// Break the long word into chunks
+			var wordChars []rune
+			for _, r := range word {
+				wordChars = append(wordChars, r)
+			}
+
+			currentChunk := ""
+			for _, char := range wordChars {
+				testChunk := currentChunk + string(char)
+				if displayWidth(testChunk) <= maxWidth {
+					currentChunk = testChunk
+				} else {
+					if currentChunk != "" {
+						lines = append(lines, currentChunk)
+					}
+					currentChunk = string(char)
+				}
+			}
+			if currentChunk != "" {
+				currentLine = currentChunk
 			}
 		} else {
-			lines = append(lines, currentLine)
-			currentLine = word
+			// Normal word that fits - try to add it to current line
+			testLine := currentLine
+			if testLine != "" {
+				testLine += " " + word
+			} else {
+				testLine = word
+			}
+
+			if displayWidth(testLine) <= maxWidth {
+				currentLine = testLine
+			} else {
+				// Word doesn't fit on current line
+				if currentLine != "" {
+					lines = append(lines, currentLine)
+				}
+				currentLine = word
+			}
 		}
 	}
 	if currentLine != "" {
