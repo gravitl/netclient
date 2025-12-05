@@ -30,7 +30,8 @@ type FlowTracker struct {
 	nodeIter            NodeIterator
 	participantEnricher ParticipantEnricher
 	flowExporter        exporter.Exporter
-	restoreSysctl       bool
+	restoreAccounting   bool
+	restoreTimestamp    bool
 	cancel              context.CancelFunc
 	mu                  sync.Mutex
 }
@@ -51,6 +52,11 @@ func New(nodeIter NodeIterator, participantEnricher ParticipantEnricher, flowExp
 	}
 
 	err := c.enableAccounting()
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.enableTimestamp()
 	if err != nil {
 		return nil, err
 	}
@@ -173,17 +179,12 @@ func (c *FlowTracker) Close() error {
 	c.cancel()
 	c.cancel = nil
 
-	return c.disableAccounting()
-}
-
-func (c *FlowTracker) enableAccounting() error {
-	modified, err := c.setConnTrackAccountingValue(1)
+	err := c.disableAccounting()
 	if err != nil {
 		return err
 	}
 
-	c.restoreSysctl = modified
-	return nil
+	return c.disableTimestamp()
 }
 
 func (c *FlowTracker) getFlowID(flow *ct.Flow) string {
@@ -238,22 +239,61 @@ func (c *FlowTracker) getReceivedCounter(flow *ct.Flow, direction pbflow.Directi
 	}
 }
 
+func (c *FlowTracker) enableAccounting() error {
+	modified, err := c.setConnTrackAccountingValue(1)
+	if err != nil {
+		return err
+	}
+
+	c.restoreAccounting = modified
+	return nil
+}
+
 func (c *FlowTracker) disableAccounting() error {
-	if c.restoreSysctl {
+	if c.restoreAccounting {
 		_, err := c.setConnTrackAccountingValue(0)
 		if err != nil {
 			return err
 		}
 
-		c.restoreSysctl = false
+		c.restoreAccounting = false
+	}
+
+	return nil
+}
+
+func (c *FlowTracker) enableTimestamp() error {
+	modified, err := c.setConnTrackTimestampValue(1)
+	if err != nil {
+		return err
+	}
+
+	c.restoreTimestamp = modified
+	return nil
+}
+
+func (c *FlowTracker) disableTimestamp() error {
+	if c.restoreTimestamp {
+		_, err := c.setConnTrackTimestampValue(0)
+		if err != nil {
+			return err
+		}
+
+		c.restoreTimestamp = false
 	}
 
 	return nil
 }
 
 func (c *FlowTracker) setConnTrackAccountingValue(value int) (bool, error) {
-	const path = "/proc/sys/net/netfilter/nf_conntrack_acct"
+	return c.setSysctlValue("/proc/sys/net/netfilter/nf_conntrack_acct", value)
+}
 
+func (c *FlowTracker) setConnTrackTimestampValue(value int) (bool, error) {
+	return c.setSysctlValue("/proc/sys/net/netfilter/nf_conntrack_timestamp", value)
+}
+
+func (c *FlowTracker) setSysctlValue(path string, value int) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
