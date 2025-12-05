@@ -61,7 +61,7 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 		newMetric.TotalReceived = currPeer.ReceiveBytes
 		newMetric.TotalSent = currPeer.TransmitBytes
 		if isExtClient {
-			newMetric.Connected, newMetric.Latency = ExtPeerConnStatus(address)
+			newMetric.Connected, newMetric.Latency = ExtPeerConnStatus(address, 3)
 		} else {
 			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, metricPort, 4)
 		}
@@ -103,7 +103,7 @@ func fillUnconnectedData(metrics *models.Metrics, peerMap models.PeerMap, mi int
 	}
 }
 
-func ExtPeerConnStatus(address string) (bool, int64) {
+func ExtPeerConnStatus(address string, count int) (bool, int64) {
 	connected := false
 	latency := int64(999)
 
@@ -112,8 +112,11 @@ func ExtPeerConnStatus(address string) (bool, int64) {
 	if err != nil {
 		slog.Debug("could not initiliaze ping for metrics on peer address", "address", address, "err", err)
 	} else {
+		if count <= 0 {
+			count = 3
+		}
 		pinger.SetPrivileged(true)
-		pinger.Count = 3
+		pinger.Count = count
 		pinger.Timeout = time.Second * 2
 		err = pinger.Run()
 		if err != nil {
@@ -148,12 +151,16 @@ func PeerConnStatus(address string, port, counter int) (connected bool, latency 
 		address = fmt.Sprintf("[%s]", address)
 	}
 
+	if counter <= 0 {
+		counter = 4
+	}
+
 	pinger := tcp_ping.NewTCPing()
 	pinger.SetTarget(&tcp_ping.Target{
 		Protocol: tcp_ping.TCP,
 		Host:     address,
 		Port:     port,
-		Counter:  4,
+		Counter:  counter,
 		Interval: 1 * time.Second,
 		Timeout:  2 * time.Second,
 	})
