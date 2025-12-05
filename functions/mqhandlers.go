@@ -22,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/flow"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -375,6 +376,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			_ = dns.SetupDNSConfig()
 			_ = dns.FlushLocalDnsCache()
 		}
+	}
+
+	if peerUpdate.Host.EnableFlowLogs {
+		_ = flow.GetManager().Start()
+	} else {
+		_ = flow.GetManager().Stop()
 	}
 
 	if reloadStun {
@@ -929,6 +936,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 	if reloadStun {
 		daemon.Restart()
+	}
+
+	if pullResponse.Host.EnableFlowLogs {
+		_ = flow.GetManager().Start()
+	} else {
+		_ = flow.GetManager().Stop()
 	}
 
 	if saveServerConfig {

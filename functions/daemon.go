@@ -24,6 +24,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/flow"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -78,6 +79,7 @@ func Daemon() {
 		case <-quit:
 			slog.Info("shutting down netclient daemon")
 			dns.GetDNSServerInstance().Stop()
+			_ = flow.GetManager().Stop()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
@@ -89,6 +91,7 @@ func Daemon() {
 		case <-reset:
 			slog.Info("received reset")
 			dns.GetDNSServerInstance().Stop()
+			_ = flow.GetManager().Stop()
 			config.FwClose()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
