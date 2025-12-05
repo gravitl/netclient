@@ -24,7 +24,7 @@ jobs:
       netmakerbranch: ${{ steps.getbranch.outputs.netmakerbranch }}
     steps:
       - name: checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: gravitl/netmaker
           ref: develop
