@@ -111,6 +111,12 @@ func (c *FlowTracker) startEventHandler(ctx context.Context, conn *ct.Conn, even
 			if err != nil {
 				logger.Log(0, fmt.Sprintf("Error closing ct connection: %v", err))
 			}
+
+			logger.Log(0, "Restarting connection tracking")
+			err = c.TrackConnections()
+			if err != nil {
+				logger.Log(0, fmt.Sprintf("Error occurred while restarting connection tracking: %v", err))
+			}
 		}
 	}
 
