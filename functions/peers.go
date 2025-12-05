@@ -10,6 +10,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/wireguard"
+	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 type peerInfo struct {
@@ -23,6 +24,7 @@ type peerInfo struct {
 	TransmitBytes       int64     `json:"transmit_bytes"`
 	AllowedIPs          []string  `json:"allowed_ips,omitempty"`
 	PersistentKeepalive string    `json:"persistent_keepalive,omitempty"`
+	IsExt               bool      `json:"is_extclient,omitempty"`
 }
 
 // ShowPeers displays peer information from the WireGuard interface,
@@ -33,6 +35,19 @@ func ShowPeers(jsonOutput bool, networkFilter string) error {
 	devicePeers, err := wireguard.GetPeersFromDevice(ifaceName)
 	if err != nil {
 		return fmt.Errorf("failed to get peers from device %s: %w", ifaceName, err)
+	}
+
+	// Get device information (port and public key)
+	var interfacePort int
+	var interfacePublicKey string
+	wg, err := wgctrl.New()
+	if err == nil {
+		defer wg.Close()
+		device, err := wg.Device(ifaceName)
+		if err == nil {
+			interfacePort = device.ListenPort
+			interfacePublicKey = device.PublicKey.String()
+		}
 	}
 
 	if len(devicePeers) == 0 {
@@ -71,6 +86,7 @@ func ShowPeers(jsonOutput bool, networkFilter string) error {
 				Network:       idAndAddr.Network,
 				ReceiveBytes:  devicePeer.ReceiveBytes,
 				TransmitBytes: devicePeer.TransmitBytes,
+				IsExt:         idAndAddr.IsExtClient,
 			}
 
 			if devicePeer.Endpoint != nil {
@@ -118,13 +134,29 @@ func ShowPeers(jsonOutput bool, networkFilter string) error {
 	}
 
 	if jsonOutput {
-		out, err := json.MarshalIndent(networkPeers, "", "  ")
+		// Include interface info in JSON output
+		output := map[string]interface{}{
+			"interface": map[string]interface{}{
+				"name":       ifaceName,
+				"port":       interfacePort,
+				"public_key": interfacePublicKey,
+			},
+			"peers": networkPeers,
+		}
+		out, err := json.MarshalIndent(output, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal peer info: %w", err)
 		}
 		fmt.Println(string(out))
 	} else {
-		fmt.Printf("\nPeer information for interface: %s\n\n", ifaceName)
+		fmt.Printf("\nInterface: %s\n", ifaceName)
+		if interfacePort > 0 {
+			fmt.Printf("Interface Port: %d\n", interfacePort)
+		}
+		if interfacePublicKey != "" {
+			fmt.Printf("Interface Public Key: %s\n", interfacePublicKey)
+		}
+		fmt.Println()
 
 		// Sort networks for stable output
 		networks := make([]string, 0, len(networkPeers))
@@ -156,10 +188,17 @@ func ShowPeers(jsonOutput bool, networkFilter string) error {
 				if len(info.AllowedIPs) > 0 {
 					allowed = strings.Join(info.AllowedIPs, ",")
 				}
+				// Format hostname with emoji prefix: 📄 for external clients, 💻 for regular devices
+				var hostnameStr string
+				if info.IsExt {
+					hostnameStr = "📄 " + info.HostName
+				} else {
+					hostnameStr = "💻 " + info.HostName
+				}
 				rows = append(rows, []string{
 					fmt.Sprintf("%d", i+1),
 					info.Network,
-					info.HostName,
+					hostnameStr,
 					info.PublicKey,
 					info.Endpoint,
 					info.LastHandshake,
@@ -199,29 +238,29 @@ func printBorderedTable(headers []string, rows [][]string) {
 	const maxHostnameWidth = 25
 	const maxAllowedIPsWidth = 30
 
-	// Initialize widths with header lengths
+	// Initialize widths with header display widths
 	for i, h := range headers {
-		widths[i] = len(h)
+		widths[i] = displayWidth(h)
 	}
 
 	// Adjust widths based on row contents, but cap wrapable columns
 	for _, row := range rows {
 		for i := 0; i < colCount && i < len(row); i++ {
-			cellLen := len(row[i])
-			if i == hostnameIdx && cellLen > maxHostnameWidth {
+			cellWidth := displayWidth(row[i])
+			if i == hostnameIdx && cellWidth > maxHostnameWidth {
 				// For hostname, use max width
 				if maxHostnameWidth > widths[i] {
 					widths[i] = maxHostnameWidth
 				}
-			} else if i == allowedIPsIdx && cellLen > maxAllowedIPsWidth {
+			} else if i == allowedIPsIdx && cellWidth > maxAllowedIPsWidth {
 				// For allowed IPs, use max width
 				if maxAllowedIPsWidth > widths[i] {
 					widths[i] = maxAllowedIPsWidth
 				}
 			} else {
-				// For other columns, use actual content length
-				if cellLen > widths[i] {
-					widths[i] = cellLen
+				// For other columns, use actual content display width
+				if cellWidth > widths[i] {
+					widths[i] = cellWidth
 				}
 			}
 		}
@@ -244,14 +283,14 @@ func printBorderedTable(headers []string, rows [][]string) {
 				cell = row[i]
 			}
 
-			if i == hostnameIdx && len(cell) > maxHostnameWidth {
+			if i == hostnameIdx && displayWidth(cell) > maxHostnameWidth {
 				// Wrap hostname
 				lines := wrapText(cell, maxHostnameWidth)
 				multiLineRows[rIdx][i].lines = lines
 				if len(lines) > maxLines {
 					maxLines = len(lines)
 				}
-			} else if i == allowedIPsIdx && len(cell) > maxAllowedIPsWidth {
+			} else if i == allowedIPsIdx && displayWidth(cell) > maxAllowedIPsWidth {
 				// Wrap allowed IPs (split by comma first, then wrap)
 				lines := wrapAllowedIPs(cell, maxAllowedIPsWidth)
 				multiLineRows[rIdx][i].lines = lines
@@ -288,8 +327,9 @@ func printBorderedTable(headers []string, rows [][]string) {
 			if i < len(lineCells) {
 				cell = lineCells[i]
 			}
-			// left pad with a space, right pad to width, then trailing space
-			fmt.Printf(" %-*s |", widths[i], cell)
+			fmt.Print(" ")
+			fmt.Print(padRight(cell, widths[i]))
+			fmt.Print(" |")
 		}
 		fmt.Println()
 	}
@@ -321,84 +361,56 @@ func printBorderedTable(headers []string, rows [][]string) {
 
 // wrapText wraps a string to fit within maxWidth, breaking at word boundaries when possible
 func wrapText(text string, maxWidth int) []string {
-	if len(text) <= maxWidth {
+	if displayWidth(text) <= maxWidth {
 		return []string{text}
 	}
 
 	var lines []string
-	remaining := text
-
-	for len(remaining) > maxWidth {
-		// Try to break at a space or comma
-		breakIdx := maxWidth
-		for i := maxWidth; i > 0; i-- {
-			if i < len(remaining) && (remaining[i] == ' ' || remaining[i] == ',' || remaining[i] == '-') {
-				breakIdx = i + 1
-				break
-			}
-		}
-		lines = append(lines, remaining[:breakIdx])
-		remaining = strings.TrimLeft(remaining[breakIdx:], " ,-")
-	}
-
-	if len(remaining) > 0 {
-		lines = append(lines, remaining)
-	}
-
-	return lines
-}
-
-// wrapAllowedIPs wraps allowed IPs, trying to keep IPs together and breaking at commas
-func wrapAllowedIPs(text string, maxWidth int) []string {
-	if len(text) <= maxWidth {
-		return []string{text}
-	}
-
-	// Split by comma first
-	parts := strings.Split(text, ",")
-	var lines []string
+	words := strings.Fields(text)
 	currentLine := ""
 
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		// If adding this part would exceed maxWidth, start a new line
-		candidate := currentLine
-		if candidate != "" {
-			candidate += "," + part
-		} else {
-			candidate = part
-		}
-
-		if len(candidate) <= maxWidth {
-			currentLine = candidate
-		} else {
-			// Current line is full, save it and start new
-			if currentLine != "" {
-				lines = append(lines, currentLine)
-			}
-			// If the part itself is too long, wrap it
-			if len(part) > maxWidth {
-				wrapped := wrapText(part, maxWidth)
-				lines = append(lines, wrapped[0])
-				if len(wrapped) > 1 {
-					currentLine = strings.Join(wrapped[1:], "")
-				} else {
-					currentLine = ""
-				}
+	for _, word := range words {
+		if displayWidth(currentLine+" "+word) <= maxWidth {
+			if currentLine == "" {
+				currentLine = word
 			} else {
-				currentLine = part
+				currentLine += " " + word
 			}
+		} else {
+			lines = append(lines, currentLine)
+			currentLine = word
 		}
 	}
-
 	if currentLine != "" {
 		lines = append(lines, currentLine)
 	}
+	return lines
+}
 
+// wrapAllowedIPs wraps a comma-separated list of IPs to fit within maxWidth
+func wrapAllowedIPs(ips string, maxWidth int) []string {
+	if displayWidth(ips) <= maxWidth {
+		return []string{ips}
+	}
+
+	var lines []string
+	parts := strings.Split(ips, ",")
+	currentLine := ""
+
+	for _, part := range parts {
+		trimmedPart := strings.TrimSpace(part)
+		if currentLine == "" {
+			currentLine = trimmedPart
+		} else if displayWidth(currentLine+","+trimmedPart) <= maxWidth {
+			currentLine += "," + trimmedPart
+		} else {
+			lines = append(lines, currentLine)
+			currentLine = trimmedPart
+		}
+	}
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
 	return lines
 }
 
