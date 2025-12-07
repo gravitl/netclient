@@ -70,7 +70,7 @@ func (m *Manager) Start() error {
 			}
 		}
 
-		flowClient := exporter.NewFlowGrpcClient(config.GetServer(config.CurrServer).Exporter)
+		flowClient := exporter.NewFlowGrpcClient(config.GetServer(config.CurrServer).GRPC)
 
 		err = flowClient.Start()
 		if err != nil {
