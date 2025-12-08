@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"runtime"
 	"sync"
@@ -70,7 +71,10 @@ func (m *Manager) Start() error {
 			}
 		}
 
-		flowClient := exporter.NewFlowGrpcClient(config.GetServer(config.CurrServer).GRPC)
+		flowClient := exporter.NewFlowGrpcClient(
+			config.GetServer(config.CurrServer).GRPC,
+			exporter.WithTLS(&tls.Config{}),
+		)
 
 		err = flowClient.Start()
 		if err != nil {
