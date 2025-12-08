@@ -31,7 +31,16 @@ func (p *udpConnPool) get(serverAddr string) (*net.UDPConn, error) {
 
 	conn := rawPool.(*sync.Pool).Get()
 	if conn == nil {
-		return nil, fmt.Errorf("failed to get UDP conn for %s", serverAddr)
+		// If pool returned nil, create a new connection directly
+		udpAddr, err := net.ResolveUDPAddr("udp", serverAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve UDP addr for %s: %w", serverAddr, err)
+		}
+		udpConn, err := net.DialUDP("udp", nil, udpAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to dial UDP for %s: %w", serverAddr, err)
+		}
+		return udpConn, nil
 	}
 	return conn.(*net.UDPConn), nil
 }
@@ -42,5 +51,13 @@ func (p *udpConnPool) put(serverAddr string, conn *net.UDPConn) {
 	}
 	if rawPool, ok := p.pools.Load(serverAddr); ok {
 		rawPool.(*sync.Pool).Put(conn)
+	}
+}
+
+// closeConnection closes a connection without putting it back in the pool
+// This is used when a connection fails and we want to ensure a fresh one is created next time
+func (p *udpConnPool) closeConnection(conn *net.UDPConn) {
+	if conn != nil {
+		conn.Close()
 	}
 }

@@ -302,19 +302,45 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 	}
 	serverAddr := ns + ":53"
 
-	conn, err := dnsUDPConnPool.get(serverAddr)
-	if err != nil {
-		return nil, err
-	}
-	defer dnsUDPConnPool.put(serverAddr, conn)
+	// Try up to 2 times: once with pooled connection, once with fresh connection
+	maxRetries := 2
+	var resp *dns.Msg
+	var err error
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		conn, connErr := dnsUDPConnPool.get(serverAddr)
+		if connErr != nil {
+			if attempt == maxRetries-1 {
+				return nil, fmt.Errorf("failed to get UDP connection after %d attempts: %w", maxRetries, connErr)
+			}
+			continue
+		}
 
-	dnsConn := &dns.Conn{
-		Conn:    conn,
-		UDPSize: dns.DefaultMsgSize,
-	}
+		dnsConn := &dns.Conn{
+			Conn:    conn,
+			UDPSize: dns.DefaultMsgSize,
+		}
 
-	client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
-	resp, _, err := client.ExchangeWithConn(r, dnsConn)
+		client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
+		resp, _, err = client.ExchangeWithConn(r, dnsConn)
+		
+		if err == nil && resp != nil {
+			// Success - put the connection back in the pool for reuse
+			dnsUDPConnPool.put(serverAddr, conn)
+			return resp, nil
+		}
+		
+		// Connection failed - close it and don't put it back in the pool
+		// This ensures we get a fresh connection on the next attempt
+		// This is especially important with stub resolvers where routing can be complex
+		dnsUDPConnPool.closeConnection(conn)
+		
+		// If this isn't the last attempt, try again with a fresh connection
+		if attempt < maxRetries-1 {
+			continue
+		}
+	}
+	
 	return resp, err
 }
 
