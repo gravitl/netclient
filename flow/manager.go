@@ -135,8 +135,8 @@ func (m *Manager) Start() error {
 					participantType = pbflow.ParticipantType_PARTICIPANT_USER
 				case models.PeerType_WireGuard:
 					participantType = pbflow.ParticipantType_PARTICIPANT_EXTCLIENT
-				case models.PeerType_EgressRange:
-					participantType = pbflow.ParticipantType_PARTICIPANT_EGRESS_RANGE
+				case models.PeerType_EgressRoute:
+					participantType = pbflow.ParticipantType_PARTICIPANT_EGRESS_ROUTE
 				}
 
 				return &pbflow.FlowParticipant{

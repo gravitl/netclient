@@ -128,11 +128,12 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 	}
 
 	var eventType pbflow.EventType
-	if event.Type == ct.EventNew {
+	switch event.Type {
+	case ct.EventNew:
 		eventType = pbflow.EventType_EVENT_START
-	} else if event.Type == ct.EventDestroy {
+	case ct.EventDestroy:
 		eventType = pbflow.EventType_EVENT_DESTROY
-	} else {
+	default:
 		return nil
 	}
 
