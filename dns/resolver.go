@@ -306,7 +306,7 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 	maxRetries := 2
 	var resp *dns.Msg
 	var err error
-	
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		conn, connErr := dnsUDPConnPool.get(serverAddr)
 		if connErr != nil {
@@ -316,6 +316,12 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 			continue
 		}
 
+		// Log the source IP that will be used for this query
+		// This helps debug routing issues with stub resolvers
+		if localAddr := conn.LocalAddr(); localAddr != nil {
+			logger.Log(4, fmt.Sprintf("DNS query to %s using source IP %s", serverAddr, localAddr.String()))
+		}
+
 		dnsConn := &dns.Conn{
 			Conn:    conn,
 			UDPSize: dns.DefaultMsgSize,
@@ -323,24 +329,24 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 
 		client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
 		resp, _, err = client.ExchangeWithConn(r, dnsConn)
-		
+
 		if err == nil && resp != nil {
 			// Success - put the connection back in the pool for reuse
 			dnsUDPConnPool.put(serverAddr, conn)
 			return resp, nil
 		}
-		
+
 		// Connection failed - close it and don't put it back in the pool
 		// This ensures we get a fresh connection on the next attempt
 		// This is especially important with stub resolvers where routing can be complex
 		dnsUDPConnPool.closeConnection(conn)
-		
+
 		// If this isn't the last attempt, try again with a fresh connection
 		if attempt < maxRetries-1 {
 			continue
 		}
 	}
-	
+
 	return resp, err
 }
 
