@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"runtime"
 	"sync"
 	"time"
@@ -19,12 +20,12 @@ import (
 const RefreshDuration = 10 * time.Minute
 
 type Manager struct {
-	peerIPIdentityMap map[string]models.PeerIdentity
-	flowClient        *exporter.FlowGrpcClient
-	flowTracker       *tracker.FlowTracker
-	cancel            context.CancelFunc
-	startOnce         sync.Once
-	mu                sync.RWMutex
+	peerAddrIdentityMap map[string]models.PeerIdentity
+	flowClient          *exporter.FlowGrpcClient
+	flowTracker         *tracker.FlowTracker
+	cancel              context.CancelFunc
+	startOnce           sync.Once
+	mu                  sync.RWMutex
 }
 
 var manager *Manager
@@ -51,19 +52,19 @@ func (m *Manager) Start() error {
 			return
 		}
 
-		m.peerIPIdentityMap = peerInfo.PeerIPIdentityMap
+		m.peerAddrIdentityMap = peerInfo.PeerAddrIdentityMap
 
 		for _, node := range config.GetNodes() {
 			if node.Server == config.CurrServer {
 				if node.Address.IP != nil {
-					m.peerIPIdentityMap[node.Address.IP.String()] = models.PeerIdentity{
+					m.peerAddrIdentityMap[node.Address.String()] = models.PeerIdentity{
 						ID:   node.ID.String(),
 						Type: models.PeerType_Node,
 					}
 				}
 
 				if node.Address6.IP != nil {
-					m.peerIPIdentityMap[node.Address6.IP.String()] = models.PeerIdentity{
+					m.peerAddrIdentityMap[node.Address6.String()] = models.PeerIdentity{
 						ID:   node.ID.String(),
 						Type: models.PeerType_Node,
 					}
@@ -96,9 +97,30 @@ func (m *Manager) Start() error {
 			},
 			func(ip string) *pbflow.FlowParticipant {
 				m.mu.RLock()
-				identity, ok := m.peerIPIdentityMap[ip]
+				var identity models.PeerIdentity
+				var found bool
+				_ip := net.ParseIP(ip)
+				if _ip.To4() != nil {
+					identity, found = m.peerAddrIdentityMap[fmt.Sprintf("%s/%d", ip, 32)]
+				} else {
+					identity, found = m.peerAddrIdentityMap[fmt.Sprintf("%s/%d", ip, 128)]
+				}
+
+				if !found {
+					for addr := range m.peerAddrIdentityMap {
+						_, cidr, err := net.ParseCIDR(addr)
+						if err != nil {
+							continue
+						}
+						if cidr.Contains(_ip) {
+							identity = m.peerAddrIdentityMap[addr]
+							found = true
+							break
+						}
+					}
+				}
 				m.mu.RUnlock()
-				if !ok {
+				if !found {
 					return &pbflow.FlowParticipant{
 						Ip:   ip,
 						Type: pbflow.ParticipantType_PARTICIPANT_EXTERNAL,
@@ -106,12 +128,15 @@ func (m *Manager) Start() error {
 				}
 
 				participantType := pbflow.ParticipantType_PARTICIPANT_UNSPECIFIED
-				if identity.Type == models.PeerType_Node {
+				switch identity.Type {
+				case models.PeerType_Node:
 					participantType = pbflow.ParticipantType_PARTICIPANT_NODE
-				} else if identity.Type == models.PeerType_User {
+				case models.PeerType_User:
 					participantType = pbflow.ParticipantType_PARTICIPANT_USER
-				} else if identity.Type == models.PeerType_WireGuard {
+				case models.PeerType_WireGuard:
 					participantType = pbflow.ParticipantType_PARTICIPANT_EXTCLIENT
+				case models.PeerType_EgressRange:
+					participantType = pbflow.ParticipantType_PARTICIPANT_EGRESS_RANGE
 				}
 
 				return &pbflow.FlowParticipant{
@@ -182,7 +207,9 @@ func (m *Manager) Stop() error {
 
 func (m *Manager) startRefreshLoop(ctx context.Context) {
 	ticker := time.NewTicker(RefreshDuration)
-	for {
+	for {protoc-gen-go: program not found or is not executable
+Please specify a program using absolute path or make sure the program is available in your PATH system variable
+--go_out: protoc-gen-go: Plugin failed with status code 1.
 		select {
 		case <-ctx.Done():
 			return
@@ -192,14 +219,14 @@ func (m *Manager) startRefreshLoop(ctx context.Context) {
 				for _, node := range config.GetNodes() {
 					if node.Server == config.CurrServer {
 						if node.Address.IP != nil {
-							peerInfo.PeerIPIdentityMap[node.Address.IP.String()] = models.PeerIdentity{
+							peerInfo.PeerAddrIdentityMap[node.Address.IP.String()] = models.PeerIdentity{
 								ID:   node.ID.String(),
 								Type: models.PeerType_Node,
 							}
 						}
 
 						if node.Address6.IP != nil {
-							peerInfo.PeerIPIdentityMap[node.Address6.IP.String()] = models.PeerIdentity{
+							peerInfo.PeerAddrIdentityMap[node.Address6.IP.String()] = models.PeerIdentity{
 								ID:   node.ID.String(),
 								Type: models.PeerType_Node,
 							}
@@ -208,7 +235,7 @@ func (m *Manager) startRefreshLoop(ctx context.Context) {
 				}
 
 				m.mu.Lock()
-				m.peerIPIdentityMap = peerInfo.PeerIPIdentityMap
+				m.peerAddrIdentityMap = peerInfo.PeerAddrIdentityMap
 				m.mu.Unlock()
 			}
 		}

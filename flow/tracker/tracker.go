@@ -226,21 +226,23 @@ func (c *FlowTracker) inferNetworkAndDirection(flow *ct.Flow) (string, pbflow.Di
 }
 
 func (c *FlowTracker) getSentCounter(flow *ct.Flow, direction pbflow.Direction) ct.Counter {
-	if direction == pbflow.Direction_DIR_INGRESS {
+	switch direction {
+	case pbflow.Direction_DIR_INGRESS:
 		return flow.CountersReply
-	} else if direction == pbflow.Direction_DIR_EGRESS {
+	case pbflow.Direction_DIR_EGRESS:
 		return flow.CountersOrig
-	} else {
+	default:
 		return ct.Counter{}
 	}
 }
 
 func (c *FlowTracker) getReceivedCounter(flow *ct.Flow, direction pbflow.Direction) ct.Counter {
-	if direction == pbflow.Direction_DIR_INGRESS {
+	switch direction {
+	case pbflow.Direction_DIR_INGRESS:
 		return flow.CountersOrig
-	} else if direction == pbflow.Direction_DIR_EGRESS {
+	case pbflow.Direction_DIR_EGRESS:
 		return flow.CountersReply
-	} else {
+	default:
 		return ct.Counter{}
 	}
 }
