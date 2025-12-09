@@ -207,9 +207,7 @@ func (m *Manager) Stop() error {
 
 func (m *Manager) startRefreshLoop(ctx context.Context) {
 	ticker := time.NewTicker(RefreshDuration)
-	for {protoc-gen-go: program not found or is not executable
-Please specify a program using absolute path or make sure the program is available in your PATH system variable
---go_out: protoc-gen-go: Plugin failed with status code 1.
+	for {
 		select {
 		case <-ctx.Done():
 			return
