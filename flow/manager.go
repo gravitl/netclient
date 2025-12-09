@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -12,7 +11,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/flow/exporter"
 	"github.com/gravitl/netclient/flow/tracker"
-	"github.com/gravitl/netclient/networking"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"github.com/gravitl/netmaker/models"
 )
@@ -20,12 +18,11 @@ import (
 const RefreshDuration = 10 * time.Minute
 
 type Manager struct {
-	peerAddrIdentityMap map[string]models.PeerIdentity
-	flowClient          *exporter.FlowGrpcClient
-	flowTracker         *tracker.FlowTracker
-	cancel              context.CancelFunc
-	startOnce           sync.Once
-	mu                  sync.RWMutex
+	participantIdentifiers map[string]models.PeerIdentity
+	flowClient             *exporter.FlowGrpcClient
+	flowTracker            *tracker.FlowTracker
+	startOnce              sync.Once
+	mu                     sync.RWMutex
 }
 
 var manager *Manager
@@ -38,39 +35,18 @@ func GetManager() *Manager {
 	return manager
 }
 
-func (m *Manager) Start() error {
+func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) error {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
 
+	m.mu.Lock()
+	m.participantIdentifiers = participantIdentifiers
+	m.mu.Unlock()
+
 	var err error
 	m.startOnce.Do(func() {
 		fmt.Println("[flow] starting flow manager")
-		var peerInfo models.HostPeerInfo
-		peerInfo, err = networking.GetPeerInfo()
-		if err != nil {
-			return
-		}
-
-		m.peerAddrIdentityMap = peerInfo.PeerAddrIdentityMap
-
-		for _, node := range config.GetNodes() {
-			if node.Server == config.CurrServer {
-				if node.Address.IP != nil {
-					m.peerAddrIdentityMap[node.Address.String()] = models.PeerIdentity{
-						ID:   node.ID.String(),
-						Type: models.PeerType_Node,
-					}
-				}
-
-				if node.Address6.IP != nil {
-					m.peerAddrIdentityMap[node.Address6.String()] = models.PeerIdentity{
-						ID:   node.ID.String(),
-						Type: models.PeerType_Node,
-					}
-				}
-			}
-		}
 
 		flowClient := exporter.NewFlowGrpcClient(
 			config.GetServer(config.CurrServer).GRPC,
@@ -97,24 +73,15 @@ func (m *Manager) Start() error {
 			},
 			func(ip string) *pbflow.FlowParticipant {
 				m.mu.RLock()
-				var identity models.PeerIdentity
-				var found bool
-				_ip := net.ParseIP(ip)
-				if _ip.To4() != nil {
-					identity, found = m.peerAddrIdentityMap[fmt.Sprintf("%s/%d", ip, 32)]
-				} else {
-					identity, found = m.peerAddrIdentityMap[fmt.Sprintf("%s/%d", ip, 128)]
-				}
-
+				identity, found := m.participantIdentifiers[ip]
 				if !found {
-					for addr := range m.peerAddrIdentityMap {
+					for addr := range m.participantIdentifiers {
 						_, cidr, err := net.ParseCIDR(addr)
 						if err != nil {
 							continue
 						}
-						if cidr.Contains(_ip) {
-							identity = m.peerAddrIdentityMap[addr]
-							found = true
+						if cidr.Contains(net.ParseIP(ip)) {
+							identity, found = m.participantIdentifiers[addr]
 							break
 						}
 					}
@@ -157,11 +124,6 @@ func (m *Manager) Start() error {
 		if err != nil {
 			return
 		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		m.cancel = cancel
-
-		go m.startRefreshLoop(ctx)
 	})
 	if err != nil {
 		fmt.Println("[flow] error starting flow manager:", err)
@@ -176,10 +138,6 @@ func (m *Manager) Stop() error {
 	}
 
 	fmt.Println("[flow] stopping flow manager")
-	if m.cancel != nil {
-		m.cancel()
-		m.cancel = nil
-	}
 
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()
@@ -203,39 +161,4 @@ func (m *Manager) Stop() error {
 	m.startOnce = sync.Once{}
 
 	return nil
-}
-
-func (m *Manager) startRefreshLoop(ctx context.Context) {
-	ticker := time.NewTicker(RefreshDuration)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			peerInfo, err := networking.GetPeerInfo()
-			if err == nil {
-				for _, node := range config.GetNodes() {
-					if node.Server == config.CurrServer {
-						if node.Address.IP != nil {
-							peerInfo.PeerAddrIdentityMap[node.Address.IP.String()] = models.PeerIdentity{
-								ID:   node.ID.String(),
-								Type: models.PeerType_Node,
-							}
-						}
-
-						if node.Address6.IP != nil {
-							peerInfo.PeerAddrIdentityMap[node.Address6.IP.String()] = models.PeerIdentity{
-								ID:   node.ID.String(),
-								Type: models.PeerType_Node,
-							}
-						}
-					}
-				}
-
-				m.mu.Lock()
-				m.peerAddrIdentityMap = peerInfo.PeerAddrIdentityMap
-				m.mu.Unlock()
-			}
-		}
-	}
 }

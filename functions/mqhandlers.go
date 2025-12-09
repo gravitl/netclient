@@ -379,7 +379,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	if peerUpdate.Host.EnableFlowLogs {
-		_ = flow.GetManager().Start()
+		_ = flow.GetManager().Start(peerUpdate.AddressIdentityMap)
 	} else {
 		_ = flow.GetManager().Stop()
 	}
@@ -939,7 +939,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 
 	if pullResponse.Host.EnableFlowLogs {
-		_ = flow.GetManager().Start()
+		_ = flow.GetManager().Start(pullResponse.AddressIdentityMap)
 	} else {
 		_ = flow.GetManager().Stop()
 	}
