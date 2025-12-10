@@ -23,7 +23,7 @@ import (
 
 type NodeIterator func(func(node *models.CommonNode) bool)
 
-type ParticipantEnricher func(ip string) *pbflow.FlowParticipant
+type ParticipantEnricher func(addr netip.Addr) *pbflow.FlowParticipant
 
 type FlowTracker struct {
 	hostID              uuid.UUID
@@ -156,9 +156,6 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		icmpCode = flow.TupleOrig.Proto.ICMPCode
 	}
 
-	srcIP := netip.PrefixFrom(flow.TupleOrig.IP.SourceAddress, flow.TupleOrig.IP.SourceAddress.BitLen()).String()
-	dstIP := netip.PrefixFrom(flow.TupleOrig.IP.DestinationAddress, flow.TupleOrig.IP.DestinationAddress.BitLen()).String()
-
 	return c.flowExporter.Export(&pbflow.FlowEvent{
 		Type:        eventType,
 		FlowId:      flowID,
@@ -170,8 +167,8 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		IcmpType:    uint32(icmpType),
 		IcmpCode:    uint32(icmpCode),
 		Direction:   direction,
-		Src:         c.participantEnricher(srcIP),
-		Dst:         c.participantEnricher(dstIP),
+		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
+		Dst:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
 		StartTsMs:   flow.Timestamp.Start.UnixMilli(),
 		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
 		BytesSent:   sentCounter.Bytes,

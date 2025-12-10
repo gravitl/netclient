@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/netip"
 	"runtime"
 	"sync"
 	"time"
@@ -71,9 +72,12 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 					}
 				}
 			},
-			func(ip string) *pbflow.FlowParticipant {
+			func(addr netip.Addr) *pbflow.FlowParticipant {
+				ip := addr.String()
+				ipCidr := netip.PrefixFrom(addr, addr.BitLen()).String()
+
 				m.mu.RLock()
-				identity, found := m.participantIdentifiers[ip]
+				identity, found := m.participantIdentifiers[ipCidr]
 				if !found {
 					for addr := range m.participantIdentifiers {
 						_, cidr, err := net.ParseCIDR(addr)
