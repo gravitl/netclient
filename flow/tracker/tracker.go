@@ -120,7 +120,6 @@ func (c *FlowTracker) startEventHandler(ctx context.Context, conn *ct.Conn, even
 			}
 		}
 	}
-
 }
 
 func (c *FlowTracker) handleEvent(event ct.Event) error {
@@ -168,7 +167,7 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		IcmpCode:    uint32(icmpCode),
 		Direction:   direction,
 		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
-		Dst:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
+		Dst:         c.participantEnricher(flow.TupleOrig.IP.DestinationAddress),
 		StartTsMs:   flow.Timestamp.Start.UnixMilli(),
 		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
 		BytesSent:   sentCounter.Bytes,
