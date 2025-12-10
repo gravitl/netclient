@@ -21,6 +21,10 @@ import (
 	"github.com/ti-mo/netfilter"
 )
 
+const (
+	ReadBufferSize = 32 * 1024 * 1024
+)
+
 type NodeIterator func(func(node *models.CommonNode) bool)
 
 type ParticipantEnricher func(addr netip.Addr) *pbflow.FlowParticipant
@@ -79,12 +83,19 @@ func (c *FlowTracker) TrackConnections() error {
 		return err
 	}
 
+	err = conn.SetReadBuffer(ReadBufferSize)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+
 	events := make(chan ct.Event, 200)
 	errChan, err := conn.Listen(events, 1, []netfilter.NetlinkGroup{
 		netfilter.GroupCTNew,
 		netfilter.GroupCTDestroy,
 	})
 	if err != nil {
+		_ = conn.Close()
 		return err
 	}
 
@@ -97,6 +108,14 @@ func (c *FlowTracker) TrackConnections() error {
 }
 
 func (c *FlowTracker) startEventHandler(ctx context.Context, conn *ct.Conn, events chan ct.Event, errChan chan error) {
+	defer func() {
+		logger.Log(0, "Stopping connection tracking")
+		err := conn.Close()
+		if err != nil {
+			logger.Log(0, fmt.Sprintf("Error closing ct connection: %v", err))
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
