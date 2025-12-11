@@ -17,7 +17,7 @@ require (
 	github.com/gravitl/netmaker v1.2.1-0.20251205110124-0a2e787bf8b2
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/guumaster/hostctl v1.1.4
-	github.com/hashicorp/go-version v1.7.0
+	github.com/hashicorp/go-version v1.8.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/miekg/dns v1.1.68
