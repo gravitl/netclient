@@ -3,6 +3,7 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -59,7 +60,68 @@ func install() error {
 
 // start - starts window service
 func start() error {
+	// Verify the executable is valid before attempting to start
+	// This helps catch corruption issues early
+	exePath := config.GetNetclientInstallPath()
+	if err := verifyWindowsExecutable(exePath); err != nil {
+		slog.Error("executable appears corrupted, attempting to restore from backup", "path", exePath, "error", err)
+		backupPath := exePath + ".backup"
+		if restoreErr := restoreWindowsExecutable(exePath, backupPath); restoreErr != nil {
+			return fmt.Errorf("executable corrupted and restore failed: verify error: %w, restore error: %v", err, restoreErr)
+		}
+		slog.Info("successfully restored executable from backup")
+	}
 	return runWinSWCMD("start")
+}
+
+// verifyWindowsExecutable checks if a Windows executable is readable and valid
+func verifyWindowsExecutable(exePath string) error {
+	file, err := os.Open(exePath)
+	if err != nil {
+		return fmt.Errorf("cannot open executable: %w", err)
+	}
+	defer file.Close()
+	
+	// Read first few bytes to check PE signature
+	buf := make([]byte, 2)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read executable: %w", err)
+	}
+	if n < 2 {
+		return fmt.Errorf("executable file appears too small or empty")
+	}
+	
+	// Check for PE signature (MZ)
+	if buf[0] != 'M' || buf[1] != 'Z' {
+		return fmt.Errorf("executable does not have valid PE signature (expected MZ, got %q)", string(buf))
+	}
+	
+	return nil
+}
+
+// restoreWindowsExecutable restores a Windows executable from backup
+func restoreWindowsExecutable(exePath, backupPath string) error {
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return fmt.Errorf("backup file does not exist: %s", backupPath)
+	}
+	
+	backupData, err := os.ReadFile(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to read backup: %w", err)
+	}
+	
+	tmpPath := exePath + ".restore"
+	if err := os.WriteFile(tmpPath, backupData, 0711); err != nil {
+		return fmt.Errorf("failed to write restored file: %w", err)
+	}
+	
+	if err := os.Rename(tmpPath, exePath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to rename restored file: %w", err)
+	}
+	
+	return nil
 }
 
 // stop - stops windows service
@@ -69,9 +131,24 @@ func stop() error {
 
 // restart - restarts windows service
 func restart() error {
+	// On Windows, when updating the executable, the file replacement may be scheduled
+	// by the OS and not complete immediately. Add a small delay to allow Windows to
+	// process any pending file operations before attempting restart.
+	time.Sleep(1 * time.Second)
+	
 	if err := runWinSWCMD("restart!"); err != nil {
 		if strings.Contains(err.Error(), "Failed to stop the service") {
 			return runWinSWCMD("start")
+		}
+		// If we get a file corruption error, it might be because the update hasn't
+		// completed yet. Wait a bit longer and retry once.
+		if strings.Contains(err.Error(), "corrupted") || strings.Contains(err.Error(), "unreadable") {
+			slog.Warn("detected potential file corruption during restart, waiting and retrying", "error", err)
+			time.Sleep(3 * time.Second)
+			if retryErr := runWinSWCMD("restart!"); retryErr != nil {
+				return fmt.Errorf("restart failed after retry: original error: %w, retry error: %v", err, retryErr)
+			}
+			return nil
 		}
 		return err
 	}
