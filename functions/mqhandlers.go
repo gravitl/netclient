@@ -480,7 +480,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 		setSubscriptions(client, &nodeCfg)
-		setDNSSubscriptions(client, &nodeCfg)
+		setDNSSubscriptions(client, &nodeCfg, server.Name)
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -1070,7 +1070,7 @@ func checkIPConnectivity(ips []string) bool {
 		// If TCP connection fails, try ICMP ping for external IPs
 		if !ipReachable {
 			// Use the existing ping functionality from metrics package
-			connected, _ := metrics.ExtPeerConnStatus(ipStr)
+			connected, _ := metrics.ExtPeerConnStatus(ipStr, 3)
 			if connected {
 				slog.Debug("IP is reachable via ping", "ip", ipStr)
 				ipReachable = true
