@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/logic"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -277,10 +278,23 @@ func setupLogging(flags *viper.Viper) {
 func checkConfig() {
 	fail := false
 	saveRequired := false
+	sysInfo := logic.GetOSInfo()
 	netclient := config.Netclient()
-	if netclient.OS != runtime.GOOS {
+	if netclient.OS != sysInfo.OS {
 		logger.Log(0, "setting OS")
-		netclient.OS = runtime.GOOS
+		netclient.OS = sysInfo.OS
+		saveRequired = true
+	}
+	if netclient.OSFamily != sysInfo.OSFamily {
+		netclient.OSFamily = sysInfo.OSFamily
+		saveRequired = true
+	}
+	if netclient.OSVersion != sysInfo.OSVersion {
+		netclient.OSVersion = sysInfo.OSVersion
+		saveRequired = true
+	}
+	if netclient.KernelVersion != sysInfo.KernelVersion {
+		netclient.KernelVersion = sysInfo.KernelVersion
 		saveRequired = true
 	}
 	slog.Info("OS is", "os", netclient.OS)
