@@ -19,7 +19,7 @@ const (
 	ttlTimeout = 3600
 )
 
-var dnsMapMutex = sync.Mutex{} // used to mutex functions of the DNS
+var dnsMapMutex sync.RWMutex // used to mutex functions of the DNS
 
 var (
 	ErrNXDomain      = errors.New("non existent domain")
@@ -46,11 +46,6 @@ func GetDNSResolverInstance() *DNSResolver {
 	return DnsResolver
 }
 
-func isInternetGW() bool {
-	// TODO: let netclient know if it's an igw.
-	return true
-}
-
 // ServeDNS handles a DNS request
 func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply := &dns.Msg{}
@@ -69,112 +64,60 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		)
 
 		resp, err := exchangeDNSQueryWithPool(r, config.Netclient().CurrGwNmIP.String())
-		if err == nil {
+		if err != nil {
+			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), err))
+		} else {
+			logger.Log(4, fmt.Sprintf("resolved dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), resp.Answer))
 			reply.Answer = append(reply.Answer, resp.Answer...)
 		}
 	} else {
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
 
-		bestMatchNameservers := findBestMatch(query, config.GetServer(config.CurrServer).DnsNameservers)
+		currServer := config.GetServer(config.CurrServer)
 
-		// if the best match nameserver is not a match-all nameserver, forward the query to it.
-		if len(bestMatchNameservers) > 0 && bestMatchNameservers[0].MatchDomain != "." {
+		defaultDomain := canonicalizeDomainForMatching(currServer.DefaultDomain)
+		if strings.HasSuffix(query, defaultDomain) {
+			// query matches default domain, resolve with local records
+			logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
+
+			resp, err := GetDNSResolverInstance().Lookup(r)
+			if err != nil {
+				logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with local records: %v", r.Question[0].Name, err))
+			} else {
+				logger.Log(4, fmt.Sprintf("resolved dns query %s with local records: %v", r.Question[0].Name, resp))
+				reply.Authoritative = true
+				reply.Answer = append(reply.Answer, resp)
+			}
+		} else {
+			bestMatchNameservers := findBestMatch(query, currServer.DnsNameservers)
 			for _, nameserver := range bestMatchNameservers {
+				var queryResolved bool
 				for _, ns := range nameserver.IPs {
 					logger.Log(4, fmt.Sprintf("found best match %s, forwarding dns query %s to nameserver %s", nameserver.MatchDomain, r.Question[0].Name, ns))
 
 					resp, err := exchangeDNSQueryWithPool(r, ns)
 					if err != nil || resp == nil || len(resp.Answer) == 0 {
+						if err != nil {
+							logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with nameserver %s: %v", r.Question[0].Name, ns, err))
+						} else {
+							logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with nameserver %s: no answer", r.Question[0].Name, ns))
+						}
 						continue
 					}
 
 					if resp.Rcode != dns.RcodeSuccess {
+						logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with nameserver %s: rcode %d", r.Question[0].Name, ns, resp.Rcode))
 						continue
 					}
 
 					if len(resp.Answer) > 0 {
+						logger.Log(4, fmt.Sprintf("resolved dns query %s with nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
 						reply.Answer = append(reply.Answer, resp.Answer...)
+						queryResolved = true
 						break
 					}
 				}
-			}
-		}
-
-		if len(reply.Answer) == 0 {
-			// if the best match nameserver couldn't resolve the query, try to resolve it with local records.
-			logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
-
-			resp, err := GetDNSResolverInstance().Lookup(r)
-			if err == nil {
-				reply.Authoritative = true
-				reply.Answer = append(reply.Answer, resp)
-			}
-		}
-
-		if len(reply.Answer) == 0 {
-			// if the best match nameserver is a match-all nameserver, we can now forward the query to it.
-			if len(bestMatchNameservers) > 0 && bestMatchNameservers[0].MatchDomain == "." {
-				for _, nameserver := range bestMatchNameservers {
-					for _, ns := range nameserver.IPs {
-						logger.Log(4, fmt.Sprintf("forwarding dns query %s to match-all nameserver %s", r.Question[0].Name, ns))
-
-						resp, err := exchangeDNSQueryWithPool(r, ns)
-						if err != nil || resp == nil || len(resp.Answer) == 0 {
-							continue
-						}
-
-						if resp.Rcode != dns.RcodeSuccess {
-							continue
-						}
-
-						if len(resp.Answer) > 0 {
-							reply.Answer = append(reply.Answer, resp.Answer...)
-							break
-						}
-					}
-				}
-			}
-		}
-
-		if len(reply.Answer) == 0 {
-			// if nothing worked, fallback to the old system.
-			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with new system, falling back to old system", r.Question[0].Name))
-
-			reply = &dns.Msg{}
-			reply.SetReply(r)
-			reply.RecursionAvailable = true
-			reply.RecursionDesired = true
-			reply.Rcode = dns.RcodeSuccess
-
-			fallbackNameservers := config.Netclient().NameServers
-			server := config.GetServer(config.CurrServer)
-			if server != nil {
-				fallbackNameservers = append(fallbackNameservers, server.NameServers...)
-			}
-
-			if isInternetGW() {
-				fallbackNameservers = append(fallbackNameservers, []string{
-					"8.8.8.8",
-					"8.8.4.4",
-					"2001:4860:4860::8888",
-					"2001:4860:4860::8844",
-				}...)
-			}
-
-			for _, ns := range fallbackNameservers {
-				logger.Log(4, fmt.Sprintf("forwarding dns query %s to fallback nameserver %s", r.Question[0].Name, ns))
-
-				resp, err := exchangeDNSQueryWithPool(r, ns)
-				if err != nil || resp == nil || len(resp.Answer) == 0 {
-					continue
-				}
-
-				if resp.Rcode != dns.RcodeSuccess {
-					continue
-				}
-
-				if len(resp.Answer) > 0 {
-					reply.Answer = append(reply.Answer, resp.Answer...)
+				if queryResolved {
 					break
 				}
 			}
@@ -270,18 +213,19 @@ func (d *DNSResolver) RegisterAAAA(record dnsRecord) error {
 
 // Lookup DNS entry in local directory
 func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
-	dnsMapMutex.Lock()
-	defer dnsMapMutex.Unlock()
+	dnsMapMutex.RLock()
+	defer dnsMapMutex.RUnlock()
 	q := m.Question[0]
 	r, ok := d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), q.Qtype)]
 	if !ok {
-		if q.Qtype == dns.TypeA {
+		switch q.Qtype {
+		case dns.TypeA:
 			_, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeAAAA)]
 			if ok {
 				// aware but no ipv6 address
 				return nil, ErrNoQTypeRecord
 			}
-		} else if q.Qtype == dns.TypeAAAA {
+		case dns.TypeAAAA:
 			_, ok = d.DnsEntriesCacheStore[buildDNSEntryKey(strings.TrimSuffix(q.Name, "."), dns.TypeA)]
 			if ok {
 				// aware but no ipv4 address
