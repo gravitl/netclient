@@ -22,6 +22,21 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: 5
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: 6
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: 7
           - os: windows-latest
             goos: windows
             goarch: amd64
@@ -33,7 +48,7 @@ jobs:
             goarch: arm64
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         ref: ${{ github.event.inputs.branch }}
 
@@ -43,13 +58,28 @@ jobs:
         go-version-file: 'go.mod'
 
     - name: Build
+      id: build
+      shell: bash
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm || '' }}
       run: |
         go version
         go mod tidy
-        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} .
+        if [ -n "$GOARM" ]; then
+          OUTPUT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
+          ARTIFACT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
+        else
+          OUTPUT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ARTIFACT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
+        fi
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          OUTPUT_NAME="${OUTPUT_NAME}.exe"
+        fi
+        echo "OUTPUT_NAME=$OUTPUT_NAME" >> $GITHUB_OUTPUT
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
 
     - name: List built binary (Unix)
       if: matrix.goos != 'windows'
@@ -62,8 +92,8 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v5
       with:
-        name: netclient-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: netclient-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+        name: ${{ steps.build.outputs.ARTIFACT_NAME }}
+        path: ${{ steps.build.outputs.OUTPUT_NAME }}
 
   upload:
     needs: build

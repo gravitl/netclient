@@ -22,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/flow"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -378,6 +379,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 
+	if peerUpdate.Host.EnableFlowLogs {
+		_ = flow.GetManager().Start(peerUpdate.AddressIdentityMap)
+	} else {
+		_ = flow.GetManager().Stop()
+	}
+
 	if reloadStun {
 		_ = daemon.Restart()
 	}
@@ -481,7 +488,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("failed to response with ACK to server", "server", serverName, "error", err)
 		}
 		setSubscriptions(client, &nodeCfg)
-		setDNSSubscriptions(client, &nodeCfg)
+		setDNSSubscriptions(client, &nodeCfg, server.Name)
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
@@ -947,6 +954,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	}
 
+	if pullResponse.Host.EnableFlowLogs {
+		_ = flow.GetManager().Start(pullResponse.AddressIdentityMap)
+	} else {
+		_ = flow.GetManager().Stop()
+	}
+
 	if reloadStun {
 		_ = daemon.Restart()
 	}
@@ -1085,7 +1098,7 @@ func checkIPConnectivity(ips []string) bool {
 		// If TCP connection fails, try ICMP ping for external IPs
 		if !ipReachable {
 			// Use the existing ping functionality from metrics package
-			connected, _ := metrics.ExtPeerConnStatus(ipStr)
+			connected, _ := metrics.ExtPeerConnStatus(ipStr, 3)
 			if connected {
 				slog.Debug("IP is reachable via ping", "ip", ipStr)
 				ipReachable = true

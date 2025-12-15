@@ -24,6 +24,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/flow"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -78,6 +79,7 @@ func Daemon() {
 		case <-quit:
 			slog.Info("shutting down netclient daemon")
 			dns.GetDNSServerInstance().Stop()
+			_ = flow.GetManager().Stop()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
 			closeRoutines([]context.CancelFunc{
@@ -89,6 +91,7 @@ func Daemon() {
 		case <-reset:
 			slog.Info("received reset")
 			dns.GetDNSServerInstance().Stop()
+			_ = flow.GetManager().Stop()
 			config.FwClose()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
@@ -382,7 +385,7 @@ func setupMQTT(server *config.Server) error {
 		for _, node := range nodes {
 			node := node
 			setSubscriptions(client, &node)
-			setDNSSubscriptions(client, &node)
+			setDNSSubscriptions(client, &node, server.Name)
 		}
 		setHostSubscription(client, server.Name)
 		time.Sleep(time.Second * 3)
@@ -444,7 +447,7 @@ func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
 			for _, node := range nodes {
 				node := node
 				setSubscriptions(client, &node)
-				setDNSSubscriptions(client, &node)
+				setDNSSubscriptions(client, &node, server.Name)
 			}
 			setHostSubscription(client, server.Name)
 		}
@@ -504,8 +507,8 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 
 // setDNSSubscriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
-func setDNSSubscriptions(client mqtt.Client, node *config.Node) {
-	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s", node.Network), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
+func setDNSSubscriptions(client mqtt.Client, node *config.Node, server string) {
+	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s/%s", node.Network, server), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", "connection timeout")
 		} else {
