@@ -13,7 +13,8 @@ import (
 type resolvconfFlavor int
 
 const (
-	systemd resolvconfFlavor = iota
+	systemdStub resolvconfFlavor = iota
+	systemdUplink
 	resolvconf
 	openresolv
 	file
@@ -27,9 +28,12 @@ func NewManager(opts ...ManagerOption) (Manager, error) {
 	}
 
 	switch flavor {
-	case systemd:
-		logger.Log(0, "creating systemd manager")
-		return newSystemdManager(opts...)
+	case systemdStub:
+		logger.Log(0, "creating systemd stub manager")
+		return newSystemdStubManager(opts...)
+	case systemdUplink:
+		logger.Log(0, "creating systemd uplink manager")
+		return newSystemdUplinkManager(opts...)
 	case resolvconf:
 		logger.Log(0, "creating resolvconf manager")
 		return newResolvconfManager(opts...)
@@ -54,9 +58,10 @@ func getResolvconfFlavor() (resolvconfFlavor, error) {
 			return unknown, err
 		}
 
-		if strings.HasSuffix(target, "/run/systemd/resolve/stub-resolv.conf") ||
-			strings.HasSuffix(target, "/run/systemd/resolve/resolv.conf") {
-			return systemd, nil
+		if strings.HasSuffix(target, "/run/systemd/resolve/stub-resolv.conf") {
+			return systemdStub, nil
+		} else if strings.HasSuffix(target, "/run/systemd/resolve/resolv.conf") {
+			return systemdUplink, nil
 		}
 	}
 
