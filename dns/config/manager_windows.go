@@ -1,15 +1,13 @@
-package dns
+package config
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -17,78 +15,89 @@ const (
 	nrptRuleMarker = "Managed by netmaker"
 )
 
-var dnsConfigMutex sync.Mutex
-var nrptRuleName string
-
-func FlushLocalDnsCache() error {
-	_, err := ncutils.RunCmd("ipconfig /flushdns", false)
-	if err != nil {
-		slog.Warn("failed to flush local dns cache", "error", err.Error())
-	}
-
-	return err
+type windowsManager struct {
+	configs      map[string]Config
+	nrptRuleName string
+	mu           sync.Mutex
 }
 
-func SetupDNSConfig() error {
-	dnsConfigMutex.Lock()
-	defer dnsConfigMutex.Unlock()
-
-	// ignore if dns manager is not Windows Registry
-	if config.Netclient().DNSManagerType != DNS_MANAGER_WINDOWS_REGISTRY {
-		return nil
+func NewManager(opts ...ManagerOption) (Manager, error) {
+	w := &windowsManager{
+		configs: make(map[string]Config),
+	}
+	var options ManagerOptions
+	for _, opt := range opts {
+		opt(&options)
 	}
 
-	dnsIp, err := getDnsIp()
-	if err != nil {
-		return err
+	if options.cleanupResidual {
+		err := w.resetConfig()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	matchDomainsMap := make(map[string]bool)
-	searchDomainsMap := make(map[string]bool)
+	return w, nil
+}
+
+func (w *windowsManager) Configure(iface string, config Config) error {
+	if iface == "" {
+		return fmt.Errorf("interface name is required")
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if config.Remove {
+		delete(w.configs, iface)
+	} else {
+		w.configs[iface] = config
+	}
+
+	nameservers := make(map[string]bool)
+	matchDomains := make(map[string]bool)
+	searchDomains := make(map[string]bool)
+	var searchList, namespaces []string
 	var matchAllDomains bool
-	server := config.GetServer(config.CurrServer)
-	if server != nil {
-		if server.DefaultDomain != "" {
-			domain := strings.TrimSuffix(strings.TrimPrefix(server.DefaultDomain, "."), ".")
-			matchDomainsMap[domain] = true
-			searchDomainsMap[domain] = true
+	var nameserversStrBuilder strings.Builder
+	for _, config := range w.configs {
+		if !config.SplitDNS {
+			matchAllDomains = true
 		}
 
-		for _, ns := range server.DnsNameservers {
-			if ns.MatchDomain != "." {
-				domain := strings.TrimSuffix(strings.TrimPrefix(ns.MatchDomain, "."), ".")
-				matchDomainsMap[domain] = true
-				if ns.IsSearchDomain {
-					searchDomainsMap[domain] = true
+		for _, ns := range config.Nameservers {
+			nameserver := ns.String()
+			_, ok := nameservers[nameserver]
+			if !ok {
+				nameservers[nameserver] = true
+				if nameserversStrBuilder.Len() == 0 {
+					nameserversStrBuilder.WriteString(nameserver)
+				} else {
+					nameserversStrBuilder.WriteString(";")
+					nameserversStrBuilder.WriteString(nameserver)
 				}
-			} else {
-				matchAllDomains = true
 			}
 		}
-	}
 
-	return configure(dnsIp, matchDomainsMap, searchDomainsMap, matchAllDomains)
-}
+		for _, domain := range config.MatchDomains {
+			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
 
-func RestoreDNSConfig() error {
-	return resetConfig()
-}
+			_, ok := matchDomains[domain]
+			if !ok {
+				matchDomains[domain] = true
+				namespaces = append(namespaces, "."+domain)
+			}
+		}
 
-func InitDNSConfig() {
-	dnsConfigMutex.Lock()
-	defer dnsConfigMutex.Unlock()
+		for _, domain := range config.SearchDomains {
+			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
 
-	config.Netclient().DNSManagerType = DNS_MANAGER_WINDOWS_REGISTRY
-}
-
-func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap map[string]bool, matchAllDomains bool) error {
-	var searchList, namespaces []string
-	for matchDomain := range matchDomainsMap {
-		namespaces = append(namespaces, "."+matchDomain)
-	}
-
-	for searchDomain := range searchDomainsMap {
-		searchList = append(searchList, searchDomain)
+			_, ok := searchDomains[domain]
+			if !ok {
+				searchDomains[domain] = true
+				searchList = append(searchList, domain)
+			}
+		}
 	}
 
 	if matchAllDomains {
@@ -96,37 +105,37 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 	}
 
 	if len(namespaces) > 0 {
-		err := setSearchList(searchList)
+		err := w.setSearchList(searchList)
 		if err != nil {
 			return err
 		}
 
-		return setNrptRule(namespaces, dnsIP)
+		return w.setNrptRule(namespaces, nameserversStrBuilder.String())
 	} else {
-		return resetConfig()
+		return w.resetConfig()
 	}
 }
 
-func resetConfig() error {
-	err := resetSearchList()
+func (w *windowsManager) resetConfig() error {
+	err := w.resetSearchList()
 	if err != nil {
 		return err
 	}
 
-	return resetNrptRules()
+	return w.resetNrptRules()
 }
 
-func setSearchList(searchList []string) error {
-	err := setSearchListOnRegistry(searchList, false)
+func (w *windowsManager) setSearchList(searchList []string) error {
+	err := w.setSearchListOnRegistry(searchList, false)
 	if err != nil {
 		return err
 	}
 
-	return setSearchListOnRegistry(searchList, true)
+	return w.setSearchListOnRegistry(searchList, true)
 }
 
-func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
-	searchListKey, err := getSearchListRegistryKey(ipv6)
+func (w *windowsManager) setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
+	searchListKey, err := w.getSearchListRegistryKey(ipv6)
 	if err != nil {
 		return err
 	}
@@ -162,7 +171,7 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 				return err
 			}
 		} else {
-			searchListStr = strings.TrimSpace(preNetmakerSearchList)
+			searchListStr = preNetmakerSearchList
 		}
 
 		if len(searchListStr) > 0 {
@@ -178,19 +187,19 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 	return nil
 }
 
-func resetSearchList() error {
+func (w *windowsManager) resetSearchList() error {
 	var skipGlobal, skipIpv4, skipIpv6 bool
-	globalSearchListKey, err := getGlobalSearchListRegistryKey()
+	globalSearchListKey, err := w.getGlobalSearchListRegistryKey()
 	if err != nil {
 		skipGlobal = true
 	}
 
-	ipv4SearchListKey, err := getIpv4SearchListRegistryKey()
+	ipv4SearchListKey, err := w.getIpv4SearchListRegistryKey()
 	if err != nil {
 		skipIpv4 = true
 	}
 
-	ipv6SearchListKey, err := getIpv6SearchListRegistryKey()
+	ipv6SearchListKey, err := w.getIpv6SearchListRegistryKey()
 	if err != nil {
 		skipIpv6 = true
 	}
@@ -260,8 +269,8 @@ func resetSearchList() error {
 	return nil
 }
 
-func getSearchListRegistryKey(ipv6 bool) (registry.Key, error) {
-	key, err := getGlobalSearchListRegistryKey()
+func (w *windowsManager) getSearchListRegistryKey(ipv6 bool) (registry.Key, error) {
+	key, err := w.getGlobalSearchListRegistryKey()
 	if err != nil {
 		if !errors.Is(err, registry.ErrNotExist) {
 			return 0, err
@@ -279,26 +288,26 @@ func getSearchListRegistryKey(ipv6 bool) (registry.Key, error) {
 	}
 
 	if ipv6 {
-		return getIpv6SearchListRegistryKey()
+		return w.getIpv6SearchListRegistryKey()
 	}
 
-	return getIpv4SearchListRegistryKey()
+	return w.getIpv4SearchListRegistryKey()
 }
 
-func getGlobalSearchListRegistryKey() (registry.Key, error) {
+func (w *windowsManager) getGlobalSearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`, registry.ALL_ACCESS)
 }
 
-func getIpv4SearchListRegistryKey() (registry.Key, error) {
+func (w *windowsManager) getIpv4SearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `System\CurrentControlSet\Services\Tcpip\Parameters`, registry.ALL_ACCESS)
 }
 
-func getIpv6SearchListRegistryKey() (registry.Key, error) {
+func (w *windowsManager) getIpv6SearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `System\CurrentControlSet\Services\Tcpip6\Parameters`, registry.ALL_ACCESS)
 }
 
-func setNrptRule(namespaces []string, nameservers string) error {
-	nrptRuleKey, err := getNrptRuleRegistryKey()
+func (w *windowsManager) setNrptRule(namespaces []string, nameservers string) error {
+	nrptRuleKey, err := w.getNrptRuleRegistryKey()
 	if err != nil {
 		return err
 	}
@@ -329,29 +338,29 @@ func setNrptRule(namespaces []string, nameservers string) error {
 	return nrptRuleKey.SetDWordValue("Version", 2)
 }
 
-func resetNrptRules() error {
-	if nrptRuleName == "" {
-		globalKey, err := getGlobalNrptRuleRegistryKey()
+func (w *windowsManager) resetNrptRules() error {
+	if w.nrptRuleName == "" {
+		globalKey, err := w.getGlobalNrptRuleRegistryKey()
 		if err == nil {
-			_ = findAndResetNrptRule(globalKey)
+			_ = w.findAndResetNrptRule(globalKey)
 			_ = globalKey.Close()
 		}
 
-		localKey, err := getLocalNrptRuleRegistryKey()
+		localKey, err := w.getLocalNrptRuleRegistryKey()
 		if err == nil {
-			_ = findAndResetNrptRule(localKey)
+			_ = w.findAndResetNrptRule(localKey)
 			_ = localKey.Close()
 		}
 	} else {
-		globalKey, err := getGlobalNrptRuleRegistryKey()
+		globalKey, err := w.getGlobalNrptRuleRegistryKey()
 		if err == nil {
-			_ = registry.DeleteKey(globalKey, nrptRuleName)
+			_ = registry.DeleteKey(globalKey, w.nrptRuleName)
 			_ = globalKey.Close()
 		}
 
-		localKey, err := getLocalNrptRuleRegistryKey()
+		localKey, err := w.getLocalNrptRuleRegistryKey()
 		if err == nil {
-			_ = registry.DeleteKey(localKey, nrptRuleName)
+			_ = registry.DeleteKey(localKey, w.nrptRuleName)
 			_ = localKey.Close()
 		}
 	}
@@ -359,7 +368,7 @@ func resetNrptRules() error {
 	return nil
 }
 
-func findAndResetNrptRule(key registry.Key) error {
+func (w *windowsManager) findAndResetNrptRule(key registry.Key) error {
 	keepLooking := true
 	for keepLooking {
 		subKeyNames, err := key.ReadSubKeyNames(10)
@@ -389,8 +398,8 @@ func findAndResetNrptRule(key registry.Key) error {
 	return nil
 }
 
-func getNrptRuleRegistryKey() (registry.Key, error) {
-	key, err := getGlobalNrptRuleRegistryKey()
+func (w *windowsManager) getNrptRuleRegistryKey() (registry.Key, error) {
+	key, err := w.getGlobalNrptRuleRegistryKey()
 	if err != nil {
 		if !errors.Is(err, registry.ErrNotExist) {
 			return 0, err
@@ -400,7 +409,7 @@ func getNrptRuleRegistryKey() (registry.Key, error) {
 			_ = key.Close()
 		}()
 
-		ruleName := nrptRuleName
+		ruleName := w.nrptRuleName
 		if ruleName == "" {
 			ruleName = "{" + strings.ToUpper(uuid.NewString()) + "}"
 		}
@@ -410,11 +419,11 @@ func getNrptRuleRegistryKey() (registry.Key, error) {
 			return 0, err
 		}
 
-		nrptRuleName = ruleName
+		w.nrptRuleName = ruleName
 		return ruleKey, nil
 	}
 
-	ruleName := nrptRuleName
+	ruleName := w.nrptRuleName
 	if ruleName == "" {
 		ruleName = "{" + strings.ToUpper(uuid.NewString()) + "}"
 	}
@@ -424,14 +433,14 @@ func getNrptRuleRegistryKey() (registry.Key, error) {
 		return 0, err
 	}
 
-	nrptRuleName = ruleName
+	w.nrptRuleName = ruleName
 	return key, nil
 }
 
-func getGlobalNrptRuleRegistryKey() (registry.Key, error) {
+func (w *windowsManager) getGlobalNrptRuleRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Policies\Microsoft\WindowsNT\DNSClient\DnsPolicyConfig`, registry.ALL_ACCESS)
 }
 
-func getLocalNrptRuleRegistryKey() (registry.Key, error) {
+func (w *windowsManager) getLocalNrptRuleRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\DnsCache\Parameters\DnsPolicyConfig`, registry.ALL_ACCESS)
 }

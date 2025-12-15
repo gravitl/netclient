@@ -177,9 +177,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		stun.SetDefaultStunServers()
 	}
 	netclientCfg := config.Netclient()
-	if netclientCfg.Host.OS == "linux" || netclientCfg.Host.OS == "windows" {
-		dns.InitDNSConfig()
-		updateConfig = true
+
+	err = dns.Init()
+	if err != nil {
+		logger.FatalLog("error initializing dns manager:", err.Error())
 	}
 
 	if !netclientCfg.IsStaticPort {
