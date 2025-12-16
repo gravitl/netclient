@@ -29,7 +29,7 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
-	firewallMark := 0
+	firewallMark := host.ListenPort
 	peers := config.Netclient().HostPeers
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
