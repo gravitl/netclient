@@ -162,6 +162,10 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		return nil
 	}
 
+	if c.filter(event.Flow) {
+		return nil
+	}
+
 	flowID := c.getFlowID(event.Flow)
 	sentCounter := c.getSentCounter(event.Flow, direction)
 	receivedCounter := c.getReceivedCounter(event.Flow, direction)
@@ -342,4 +346,15 @@ func (c *FlowTracker) setSysctlValue(path string, value int) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (c *FlowTracker) filter(flow *ct.Flow) bool {
+	// filter out dns packet event.
+	if flow.TupleOrig.Proto.Protocol == 17 &&
+		(flow.TupleOrig.Proto.SourcePort == 53 ||
+			flow.TupleOrig.Proto.DestinationPort == 53) {
+		return true
+	}
+
+	return false
 }
