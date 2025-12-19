@@ -121,27 +121,6 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	_ = w.WriteMsg(reply)
 }
 
-// Build a query and send via your pool/upstream.
-func internalLookupA(name, ns string) ([]net.IP, error) {
-	r := new(dns.Msg)
-	r.Id = dns.Id()
-	r.RecursionDesired = true
-	r.SetQuestion(dns.Fqdn(name), dns.TypeA)
-	r.SetEdns0(1232, true)
-
-	resp, err := exchangeDNSQueryWithPool(r, ns) // e.g., "1.1.1.1"
-	if err != nil || resp == nil {
-		return nil, err
-	}
-	var ips []net.IP
-	for _, rr := range resp.Answer {
-		if a, ok := rr.(*dns.A); ok {
-			ips = append(ips, a.A)
-		}
-	}
-	return ips, nil
-}
-
 // Register A record
 func (d *DNSResolver) RegisterA(record dnsRecord) error {
 	dnsMapMutex.Lock()
