@@ -53,9 +53,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionAvailable = true
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
-
 	logger.Log(4, fmt.Sprintf("resolving dns query %s", r.Question[0].Name))
-
 	if config.Netclient().CurrGwNmIP != nil {
 		logger.Log(4, fmt.Sprintf(
 			"connected to gw, forwarding dns query %s to gw %s",
@@ -72,23 +70,19 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	} else {
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
-
 		currServer := config.GetServer(config.CurrServer)
+		// query matches default domain, resolve with local records
+		logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
 
-		defaultDomain := canonicalizeDomainForMatching(currServer.DefaultDomain)
-		if strings.HasSuffix(query, defaultDomain) {
-			// query matches default domain, resolve with local records
-			logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
-
-			resp, err := GetDNSResolverInstance().Lookup(r)
-			if err != nil {
-				logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with local records: %v", r.Question[0].Name, err))
-			} else {
-				logger.Log(4, fmt.Sprintf("resolved dns query %s with local records: %v", r.Question[0].Name, resp))
-				reply.Authoritative = true
-				reply.Answer = append(reply.Answer, resp)
-			}
+		resp, err := GetDNSResolverInstance().Lookup(r)
+		if err != nil {
+			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with local records: %v", r.Question[0].Name, err))
 		} else {
+			logger.Log(4, fmt.Sprintf("resolved dns query %s with local records: %v", r.Question[0].Name, resp))
+			reply.Authoritative = true
+			reply.Answer = append(reply.Answer, resp)
+		}
+		if len(reply.Answer) == 0 {
 			bestMatchNameservers := findBestMatch(query, currServer.DnsNameservers)
 			for _, nameserver := range bestMatchNameservers {
 				var queryResolved bool
@@ -125,37 +119,6 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	_ = w.WriteMsg(reply)
-}
-
-func FindDnsAns(domain string) []net.IP {
-	nslist := []string{}
-	if config.Netclient().CurrGwNmIP != nil {
-		nslist = append(nslist, config.Netclient().CurrGwNmIP.String())
-	} else {
-		query := canonicalizeDomainForMatching(domain)
-		matchNsList := findBestMatch(query, config.GetServer(config.CurrServer).DnsNameservers)
-		for i := len(matchNsList) - 1; i >= 0; i-- {
-			nslist = append(nslist, matchNsList[i].IPs...)
-		}
-	}
-	nslist = append(nslist, "8.8.8.8")
-	nslist = append(nslist, "8.8.4.4")
-	nslist = append(nslist, "1.1.1.1")
-	nslist = append(nslist, "2001:4860:4860::8888")
-	nslist = append(nslist, "2001:4860:4860::8844")
-	server := config.GetServer(config.CurrServer)
-	if server != nil {
-		nslist = append(nslist, server.NameServers...)
-	}
-	for _, v := range nslist {
-		if strings.Contains(v, ":") {
-			v = "[" + v + "]"
-		}
-		if ansIps, err := internalLookupA(domain, v); err == nil && len(ansIps) > 0 {
-			return ansIps
-		}
-	}
-	return []net.IP{}
 }
 
 // Build a query and send via your pool/upstream.
