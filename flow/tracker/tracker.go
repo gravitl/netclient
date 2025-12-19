@@ -27,12 +27,15 @@ const (
 
 type NodeIterator func(func(node *models.CommonNode) bool)
 
+type FlowEventFilter func(flow *ct.Flow) bool
+
 type ParticipantEnricher func(addr netip.Addr) *pbflow.FlowParticipant
 
 type FlowTracker struct {
 	hostID              uuid.UUID
 	hostIDStr           string
 	nodeIter            NodeIterator
+	filter              FlowEventFilter
 	participantEnricher ParticipantEnricher
 	flowExporter        exporter.Exporter
 	restoreAccounting   bool
@@ -41,7 +44,7 @@ type FlowTracker struct {
 	mu                  sync.Mutex
 }
 
-func New(nodeIter NodeIterator, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
+func New(nodeIter NodeIterator, filter FlowEventFilter, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
 	var hostID uuid.UUID
 	nodeIter(func(node *models.CommonNode) bool {
 		hostID = node.HostID
@@ -52,6 +55,7 @@ func New(nodeIter NodeIterator, participantEnricher ParticipantEnricher, flowExp
 		hostID:              hostID,
 		hostIDStr:           hostID.String(),
 		nodeIter:            nodeIter,
+		filter:              filter,
 		participantEnricher: participantEnricher,
 		flowExporter:        flowExporter,
 	}
@@ -346,15 +350,4 @@ func (c *FlowTracker) setSysctlValue(path string, value int) (bool, error) {
 	}
 
 	return true, nil
-}
-
-func (c *FlowTracker) filter(flow *ct.Flow) bool {
-	// filter out dns packet event.
-	if flow.TupleOrig.Proto.Protocol == 17 &&
-		(flow.TupleOrig.Proto.SourcePort == 53 ||
-			flow.TupleOrig.Proto.DestinationPort == 53) {
-		return true
-	}
-
-	return false
 }

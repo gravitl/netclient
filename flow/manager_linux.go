@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/flow/tracker"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"github.com/gravitl/netmaker/models"
+	ct "github.com/ti-mo/conntrack"
 )
 
 const RefreshDuration = 10 * time.Minute
@@ -68,6 +69,27 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 						}
 					}
 				}
+			},
+			func(flow *ct.Flow) bool {
+				// filter out dns packet events.
+				if flow.TupleOrig.Proto.Protocol == 17 &&
+					(flow.TupleOrig.Proto.SourcePort == 53 ||
+						flow.TupleOrig.Proto.DestinationPort == 53) {
+					return true
+				}
+
+				// filter out icmp packet events.
+				if flow.TupleOrig.Proto.Protocol == 1 || flow.TupleOrig.Proto.Protocol == 58 {
+					return true
+				}
+
+				// filter out metrics events.
+				if flow.TupleOrig.Proto.Protocol == 6 &&
+					flow.TupleOrig.Proto.SourcePort == uint16(config.GetServer(config.CurrServer).MetricsPort) {
+					return true
+				}
+
+				return false
 			},
 			func(addr netip.Addr) *pbflow.FlowParticipant {
 				ip := addr.String()
