@@ -85,7 +85,8 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 				// filter out metrics events.
 				if flow.TupleOrig.Proto.Protocol == 6 &&
-					flow.TupleOrig.Proto.SourcePort == uint16(config.GetServer(config.CurrServer).MetricsPort) {
+					(flow.TupleOrig.Proto.SourcePort == uint16(config.GetServer(config.CurrServer).MetricsPort) ||
+						flow.TupleOrig.Proto.DestinationPort == uint16(config.GetServer(config.CurrServer).MetricsPort)) {
 					return true
 				}
 
