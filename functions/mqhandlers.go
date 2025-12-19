@@ -1006,21 +1006,21 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 			oldIPsReachable := checkIPConnectivity(currentIps)
 			if !oldIPsReachable {
 				shouldUpdateCache = true
-				fmt.Println("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+				slog.Debug("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
 			} else {
-				fmt.Println("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
+				slog.Debug("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
 			}
 		} else {
-			fmt.Println("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
+			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
 		}
 	}
 	if !forceUpdate {
 		// Only proceed if there are changes and we should update the cache
 		if !hasChanges || !shouldUpdateCache {
 			if !hasChanges {
-				fmt.Println("skipping server update - no changes detected", "domain", domainI.Domain)
+				slog.Debug("skipping server update - no changes detected", "domain", domainI.Domain)
 			} else {
-				fmt.Println("skipping server update - old IPs are still reachable", "domain", domainI.Domain)
+				slog.Debug("skipping server update - old IPs are still reachable", "domain", domainI.Domain)
 			}
 			return
 		}
