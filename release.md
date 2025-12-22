@@ -46,8 +46,6 @@
 
 ## Known Issues 🐞
 
-- WireGuard DNS issue on Ubuntu 24.04 and some other newer Linux distributions. The issue is affecting the Netmaker Desktop, previously known as the Remote Access Client (RAC), and the plain WireGuard external clients. Workaround can be found here https://help.netmaker.io/en/articles/9612016-extclient-rac-dns-issue-on-ubuntu-24-04.
-
 - netclients cannot auto-upgrade on ipv6-only machines.
 
 - Need to optimize multi-network netclient join with enrollment key
