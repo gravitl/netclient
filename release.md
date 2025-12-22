@@ -1,4 +1,4 @@
-## Netclient v1.2.0 Release Notes 🚀 
+## Netclient v1.4.0 Release Notes 🚀 
 
 ## 🚀 What’s New
 
