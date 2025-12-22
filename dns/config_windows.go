@@ -55,6 +55,10 @@ func SetupDNSConfig() error {
 		}
 
 		for _, ns := range server.DnsNameservers {
+			if ns.IsFallback {
+				continue
+			}
+
 			if ns.MatchDomain != "." {
 				domain := strings.TrimSuffix(strings.TrimPrefix(ns.MatchDomain, "."), ".")
 				matchDomainsMap[domain] = true
