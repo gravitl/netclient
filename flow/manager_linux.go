@@ -4,7 +4,6 @@ package flow
 
 import (
 	"crypto/tls"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -151,7 +150,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 		}
 	})
 	if err != nil {
-		fmt.Println("[flow] error starting flow manager:", err)
+		slog.Debug("[flow] error starting flow manager:", err.Error())
 	}
 
 	return err
@@ -163,7 +162,7 @@ func (m *Manager) Stop() error {
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()
 		if err != nil {
-			slog.Debug("[flow] error stopping flow manager:", err)
+			slog.Debug("[flow] error stopping flow manager:", err.Error())
 			return err
 		}
 		m.flowClient = nil
@@ -172,7 +171,7 @@ func (m *Manager) Stop() error {
 	if m.flowTracker != nil {
 		err := m.flowTracker.Close()
 		if err != nil {
-			slog.Debug("[flow] error stopping flow manager:", err)
+			slog.Debug("[flow] error stopping flow manager:", err.Error())
 			return err
 		}
 		m.flowTracker = nil
