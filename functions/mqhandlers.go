@@ -160,6 +160,7 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	fmt.Println("=======>1. RECV PEER UPDATE")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(msg.Payload()) == 0 {
@@ -169,12 +170,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Info("skipping unwanted peer update, no nodes exist")
 		return
 	}
+	fmt.Println("=======>2. RECV PEER UPDATE")
 	serverName := parseServerFromTopic(msg.Topic())
 	server := config.GetServer(serverName)
 	if server == nil {
 		slog.Error("server not found in config", "server", serverName)
 		return
 	}
+	fmt.Println("=======>3. RECV PEER UPDATE")
 	slog.Info("processing peer update for server", "server", serverName)
 	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
 	if err != nil {
