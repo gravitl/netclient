@@ -1,35 +1,48 @@
-## Netclient v1.2.0 Release Notes 🚀 
+## Netclient v1.4.0 Release Notes 🚀 
 
 ## 🚀 What’s New
 
-### 🌍 Auto-Relays (formerly Failovers)
+### 🌍 Posture Checks (beta)
 
-- Failovers are now Auto-Relays with High Availability (HA) support.
+- Security feature that validates device compliance against configured policies based on device attributes such as OS, OS version, kernel version, client version, geographic location, and auto-update status.
+- Supports tag-based and user group-based assignment of posture checks to specific devices or users.
+- Tracks violations with configurable severity levels and provides real-time evaluation of device compliance.
+- Helps ensure only compliant devices can access network resources.
 
-- Enables global routing optimization based on real-time latency between peers across regions.
+### 🔁 Network Traffic Logging (alpha)
 
-### 🔁 Gateway High Availability
+- Comprehensive network flow logging system that captures and stores network traffic metadata in ClickHouse.
+- Tracks source and destination IPs, ports, protocols, bytes/packets sent/received, and connection timestamps.
+- Provides API endpoints for querying flow data with filters by network, node, user, protocol, and time range.
+- Enables network administrators to monitor, analyze, and audit network traffic patterns for security and troubleshooting purposes.
 
-- Gateways can now automatically assign peer relays and fallback to healthy nodes when primary gateways become unavailable.
+### 🔄 Auto Removal of Offline Peers
 
-### 🌐 Egress HA with Latency-Aware Routing
-
-- Egress gateways now dynamically select the optimal route based on latency, ensuring faster and more resilient connectivity.
+- Automatically removes nodes that have been offline for a configurable threshold period.
+- Configurable per network with customizable timeout thresholds (in minutes).
+- Supports tag-based filtering to selectively apply auto-removal to specific device groups.
+- Helps maintain clean network topology by removing stale or abandoned peer connections.
 
 ### 🧭 DNS Search Domains
 
 - Added DNS search domain functionality for simplified hostname resolution across distributed networks.
 
+### 🖥️ New CLI Commands
+
+- **`netclient peers`**: Display WireGuard peer information including public keys, host names, endpoints, last handshake times, traffic statistics (bytes received/sent), and allowed IPs. Supports filtering by network and JSON output format for programmatic access.
+
+- **`netclient ping`**: Check connectivity and latency to WireGuard peers across networks. Supports filtering by network or peer name, IPv4/IPv6 address selection, configurable packet count, and JSON output format. Helps diagnose network connectivity issues and measure peer latency.
+
 
 ## 🧰 Improvements & Fixes
 
-- Metrics Enrichment: Enhanced uptime and connection-status data.
+- DNS Fixes: Debian DNS configuration fix.
 
-- DNS Control Fixes: Fixed toggle behavior for enabling/disabling Netmaker DNS on hosts.
-
-- DNS Config Update And Cleanup Handling.
+- Host Listen Port: Enhanced Port Configuration Logic.
 
 - Egress Domain Updates: Fixed domain-related issues in egress configurations to ensure consistent routing behavior.
+
+- Auto Gateway: Refresh connection metrics if no Gateway node found to update cached metrics.
 
 ## Known Issues 🐞
 
@@ -38,4 +51,6 @@
 - netclients cannot auto-upgrade on ipv6-only machines.
 
 - Need to optimize multi-network netclient join with enrollment key
+
+- On systems using systemd-resolved in unlink mode, the first 3 entries in resolv.conf are used and rest are ignored. So it might cause DNS issues. Stub mode is preferred.
 
