@@ -5,6 +5,7 @@ package flow
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"sync"
@@ -44,7 +45,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 	var err error
 	m.startOnce.Do(func() {
-		fmt.Println("[flow] starting flow manager")
+		slog.Info("[flow] starting flow manager")
 
 		flowClient := exporter.NewFlowGrpcClient(
 			config.GetServer(config.CurrServer).GRPC,
@@ -134,12 +135,12 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 }
 
 func (m *Manager) Stop() error {
-	fmt.Println("[flow] stopping flow manager")
+	slog.Debug("[flow] stopping flow manager")
 
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()
 		if err != nil {
-			fmt.Println("[flow] error stopping flow manager:", err)
+			slog.Debug("[flow] error stopping flow manager:", err)
 			return err
 		}
 		m.flowClient = nil
@@ -148,7 +149,7 @@ func (m *Manager) Stop() error {
 	if m.flowTracker != nil {
 		err := m.flowTracker.Close()
 		if err != nil {
-			fmt.Println("[flow] error stopping flow manager:", err)
+			slog.Debug("[flow] error stopping flow manager:", err)
 			return err
 		}
 		m.flowTracker = nil
