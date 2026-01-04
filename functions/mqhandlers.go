@@ -22,6 +22,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
+	"github.com/gravitl/netclient/flow"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -375,6 +376,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			_ = dns.SetupDNSConfig()
 			_ = dns.FlushLocalDnsCache()
 		}
+	}
+
+	if peerUpdate.Host.EnableFlowLogs {
+		_ = flow.GetManager().Start(peerUpdate.AddressIdentityMap)
+	} else {
+		_ = flow.GetManager().Stop()
 	}
 
 	if reloadStun {
@@ -931,6 +938,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		daemon.Restart()
 	}
 
+	if pullResponse.Host.EnableFlowLogs {
+		_ = flow.GetManager().Start(pullResponse.AddressIdentityMap)
+	} else {
+		_ = flow.GetManager().Stop()
+	}
+
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
@@ -968,7 +981,6 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 		slog.Warn("no IP addresses resolved for domain", "domain", domainI.Domain)
 		return
 	}
-
 	// Get current cached IPs for this domain
 	currentIps := wireguard.GetDomainAnsFromCache(domainI)
 	slog.Debug("domain resolution check", "domain", domainI.Domain, "domain_id", domainI.ID, "cached_ips", currentIps, "resolved_ips", ips)
@@ -994,9 +1006,9 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 			oldIPsReachable := checkIPConnectivity(currentIps)
 			if !oldIPsReachable {
 				shouldUpdateCache = true
-				slog.Info("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+				slog.Debug("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
 			} else {
-				slog.Info("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
+				slog.Debug("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
 			}
 		} else {
 			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
@@ -1013,8 +1025,6 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 			return
 		}
 	}
-	// Update the cache with new IPs only after confirming changes and connectivity check
-	wireguard.SetDomainAnsInCache(domainI, ips)
 	// Clear existing ranges and add new ones
 	domainI.Node.EgressGatewayRanges = []string{}
 	for _, ip := range ips {
@@ -1029,26 +1039,36 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("sending egress domain update to server", "domain", domainI.Domain, "ips", ips, "ranges", domainI.Node.EgressGatewayRanges)
 
 	// Send the updated host info back to server
-	hostServerUpdate(models.HostUpdate{
+	err = hostServerUpdate(models.HostUpdate{
 		Action:       models.EgressUpdate,
 		Host:         domainI.Host,
 		Node:         domainI.Node,
 		EgressDomain: domainI,
 	})
+	if err != nil {
+		slog.Error("failed to send egress domain update to server", "domain", domainI.Domain, "error", err)
+		return
+	}
+
+	// Update the cache only after successfully sending the update to the server
+	// This ensures that if the function is called again before the server update completes,
+	// it will still see the old cached IPs and attempt the update again
+	wireguard.SetDomainAnsInCache(domainI, ips)
+	slog.Info("successfully updated egress domain cache after server update", "domain", domainI.Domain, "ips", ips)
 }
 
-// checkIPConnectivity checks if all of the given IP addresses are reachable
+// checkIPConnectivity checks if at least one of the given IP addresses is reachable
 func checkIPConnectivity(ips []string) bool {
 	if len(ips) == 0 {
 		return false
 	}
 
-	// Check connectivity for each IP - ALL must be reachable
+	// Check connectivity for each IP - at least ONE must be reachable
 	for _, ipStr := range ips {
 		ip := net.ParseIP(ipStr)
 		if ip == nil {
 			slog.Debug("invalid IP address", "ip", ipStr)
-			return false
+			continue
 		}
 
 		ipReachable := false
@@ -1057,8 +1077,18 @@ func checkIPConnectivity(ips []string) bool {
 		// Try common ports that might be open (80, 443, 22)
 		ports := []int{80, 443, 22}
 		for _, port := range ports {
-			address := fmt.Sprintf("%s:%d", ipStr, port)
-			conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+			var address string
+			var network string
+			if ip.To4() != nil {
+				// IPv4 address
+				address = fmt.Sprintf("%s:%d", ipStr, port)
+				network = "tcp4"
+			} else {
+				// IPv6 address - must be wrapped in brackets
+				address = fmt.Sprintf("[%s]:%d", ipStr, port)
+				network = "tcp6"
+			}
+			conn, err := net.DialTimeout(network, address, 3*time.Second)
 			if err == nil {
 				conn.Close()
 				slog.Debug("IP is reachable", "ip", ipStr, "port", port)
@@ -1070,22 +1100,24 @@ func checkIPConnectivity(ips []string) bool {
 		// If TCP connection fails, try ICMP ping for external IPs
 		if !ipReachable {
 			// Use the existing ping functionality from metrics package
-			connected, _ := metrics.ExtPeerConnStatus(ipStr)
+			connected, _ := metrics.ExtPeerConnStatus(ipStr, 3)
 			if connected {
 				slog.Debug("IP is reachable via ping", "ip", ipStr)
 				ipReachable = true
 			}
 		}
 
-		// If this IP is not reachable, fail the entire check
-		if !ipReachable {
-			slog.Debug("IP is not reachable", "ip", ipStr)
-			return false
+		// If at least one IP is reachable, pass the check
+		if ipReachable {
+			slog.Debug("at least one IP is reachable", "ip", ipStr)
+			return true
 		}
+
+		slog.Debug("IP is not reachable", "ip", ipStr)
 	}
 
-	slog.Debug("all IPs are reachable", "ips", ips)
-	return true
+	slog.Debug("no IPs are reachable", "ips", ips)
+	return false
 }
 
 // resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
@@ -1093,20 +1125,14 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 	if domain == "" {
 		return nil, fmt.Errorf("domain cannot be empty")
 	}
-
-	// Use the existing DNS infrastructure to resolve the domain
-	ips := dns.FindDnsAns(domain)
-	if len(ips) == 0 {
-		lookUpIPs, err := net.LookupIP(domain)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
-		}
-		if len(lookUpIPs) == 0 {
-			return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
-		}
-		ips = lookUpIPs
+	lookUpIPs, err := net.LookupIP(domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
 	}
-
+	if len(lookUpIPs) == 0 {
+		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+	}
+	ips := lookUpIPs
 	// Filter out any invalid IPs and return unique IPs
 	uniqueIPs := make(map[string]string)
 	for _, ip := range ips {
@@ -1119,6 +1145,5 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 	for _, ip := range uniqueIPs {
 		result = append(result, ip)
 	}
-
 	return result, nil
 }

@@ -173,6 +173,9 @@ func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool
 	}
 	// do not update fields that should not be changed by server
 	host.OS = hostCfg.OS
+	host.OSFamily = hostCfg.OSFamily
+	host.OSVersion = hostCfg.OSVersion
+	host.KernelVersion = hostCfg.KernelVersion
 	host.FirewallInUse = hostCfg.FirewallInUse
 	host.DaemonInstalled = hostCfg.DaemonInstalled
 	host.ID = hostCfg.ID

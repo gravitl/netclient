@@ -29,6 +29,9 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
+	// FirewallMark is used for policy-based routing. Set to 0 (disabled) unless
+	// policy-based routing is specifically required. Using 0 is the standard
+	// practice when not using policy-based routing.
 	firewallMark := 0
 	peers := config.Netclient().HostPeers
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
