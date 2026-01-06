@@ -32,9 +32,6 @@ const (
 	CheckInInterval = 1
 )
 
-// metricTicker - metrics collection interval in minutes
-var metricTicker = time.NewTicker(time.Minute * time.Duration(15))
-
 // Checkin  -- go routine that checks for public or local ip changes, publishes changes
 //
 //	if there are no updates, simply "pings" the server as a checkin
@@ -43,22 +40,26 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ticker := time.NewTicker(time.Minute * CheckInInterval)
 	defer ticker.Stop()
-	ipTicker := time.NewTicker(time.Second * 15)
-	defer ipTicker.Stop()
 	checkinTicker := time.NewTicker(time.Minute * 2)
 	defer checkinTicker.Stop()
-	mi := 15
 	server := config.GetServer(config.CurrServer)
+	metricTickerIntervalMin := 15
+	ipTickerIntervalSec := 15
 	if server != nil {
 		i, err := strconv.Atoi(server.MetricInterval)
 		if err == nil && i > 0 {
-			metricTicker = time.NewTicker(time.Minute * time.Duration(i))
+			metricTickerIntervalMin = i
 		}
-	} else {
-		metricTicker = time.NewTicker(time.Minute * time.Duration(mi))
+
+		ipTickerIntervalSec = server.IPDetectionInterval
 	}
 
+	metricTicker := time.NewTicker(time.Minute * time.Duration(metricTickerIntervalMin))
 	defer metricTicker.Stop()
+
+	ipTicker := time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
+	defer ipTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
