@@ -32,6 +32,9 @@ const (
 	CheckInInterval = 1
 )
 
+// metricTicker - metrics collection interval in minutes
+var metricTicker = time.NewTicker(time.Minute * time.Duration(15))
+
 // Checkin  -- go routine that checks for public or local ip changes, publishes changes
 //
 //	if there are no updates, simply "pings" the server as a checkin
@@ -54,7 +57,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 		ipTickerIntervalSec = server.IPDetectionInterval
 	}
 
-	metricTicker := time.NewTicker(time.Minute * time.Duration(metricTickerIntervalMin))
+	metricTicker = time.NewTicker(time.Minute * time.Duration(metricTickerIntervalMin))
 	defer metricTicker.Stop()
 
 	ipTicker := time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
