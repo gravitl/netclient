@@ -252,7 +252,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			metricTicker.Reset(time.Minute * time.Duration(i))
 		}
 		server.MetricInterval = peerUpdate.MetricInterval
-
+	}
+	if peerUpdate.IPDetectionInterval != 0 && peerUpdate.IPDetectionInterval != server.IPDetectionInterval {
+		ipTicker.Reset(time.Second * time.Duration(peerUpdate.IPDetectionInterval))
+		server.IPDetectionInterval = peerUpdate.IPDetectionInterval
+		saveServerConfig = true
 	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -793,6 +797,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
+	var saveServerConfig bool
 	if server == nil {
 		slog.Error("server not found in config", "server", serverName)
 		return
@@ -826,6 +831,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
+	}
+	if pullResponse.ServerConfig.IPDetectionInterval != 0 && pullResponse.ServerConfig.IPDetectionInterval != server.IPDetectionInterval {
+		ipTicker.Reset(time.Second * time.Duration(pullResponse.ServerConfig.IPDetectionInterval))
+		server.IPDetectionInterval = pullResponse.ServerConfig.IPDetectionInterval
+		saveServerConfig = true
 	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -889,7 +899,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	go CheckEgressDomainUpdates()
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	var saveServerConfig bool
 	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
 		server.NameServers = pullResponse.NameServers
 		saveServerConfig = true
