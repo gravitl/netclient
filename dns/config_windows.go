@@ -101,7 +101,7 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 	}
 
 	if len(namespaces) > 0 {
-		err := setSearchList(searchList)
+		err := setSearchList(searchList, dnsIP)
 		if err != nil {
 			return err
 		}
@@ -121,26 +121,26 @@ func resetConfig() error {
 	return resetNrptRules()
 }
 
-func setSearchList(searchList []string) error {
-	err := setSearchListOnRegistry(searchList, false)
+func setSearchList(searchList []string, dnsIP string) error {
+	err := setSearchListOnRegistry(searchList, dnsIP, false)
 	if err != nil {
 		return err
 	}
 
-	err = setSearchListOnRegistry(searchList, true)
+	err = setSearchListOnRegistry(searchList, dnsIP, true)
 	if err != nil {
 		return err
 	}
 
-	err = setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, false)
+	err = setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, dnsIP, false)
 	if err != nil {
 		return err
 	}
 
-	return setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, true)
+	return setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, dnsIP, true)
 }
 
-func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
+func setSearchListOnRegistry(searchDomains []string, dnsIP string, ipv6 bool) error {
 	searchListKey, err := getSearchListRegistryKey(ipv6)
 	if err != nil {
 		return err
@@ -149,10 +149,10 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 		_ = searchListKey.Close()
 	}()
 
-	return setSearchListOnRegistryKey(searchListKey, searchDomains)
+	return setSearchListOnRegistryKey(searchListKey, searchDomains, dnsIP)
 }
 
-func setInterfaceSearchListOnRegistry(guid string, searchDomains []string, ipv6 bool) error {
+func setInterfaceSearchListOnRegistry(guid string, searchDomains []string, dnsIP string, ipv6 bool) error {
 	searchListKey, err := getInterfaceSearchListRegistryKey(ipv6, guid)
 	if err != nil {
 		return err
@@ -161,10 +161,10 @@ func setInterfaceSearchListOnRegistry(guid string, searchDomains []string, ipv6 
 		_ = searchListKey.Close()
 	}()
 
-	return setSearchListOnRegistryKey(searchListKey, searchDomains)
+	return setSearchListOnRegistryKey(searchListKey, searchDomains, dnsIP)
 }
 
-func setSearchListOnRegistryKey(searchListKey registry.Key, searchDomains []string) error {
+func setSearchListOnRegistryKey(searchListKey registry.Key, searchDomains []string, dnsIP string) error {
 	searchListStr, _, err := searchListKey.GetStringValue("SearchList")
 	searchListStr = strings.TrimSpace(searchListStr)
 	if err != nil {
@@ -201,6 +201,48 @@ func setSearchListOnRegistryKey(searchListKey registry.Key, searchDomains []stri
 		}
 
 		err = searchListKey.SetStringValue("SearchList", strings.Join(searchDomains, ","))
+		if err != nil {
+			return err
+		}
+	}
+
+	nameserverStr, _, err := searchListKey.GetStringValue("NameServer")
+	nameserverStr = strings.TrimSpace(nameserverStr)
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			err = searchListKey.SetStringValue("NameServer", dnsIP)
+			if err != nil {
+				return err
+			}
+
+			err = searchListKey.SetStringValue("PreNetmakerNameServer", "")
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		preNetmakerNameServer, _, err := searchListKey.GetStringValue("PreNetmakerNameServer")
+		if err != nil {
+			if errors.Is(err, registry.ErrNotExist) {
+				err = searchListKey.SetStringValue("PreNetmakerNameServer", nameserverStr)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			nameserverStr = strings.TrimSpace(preNetmakerNameServer)
+		}
+
+		nameservers := []string{dnsIP}
+		if len(nameserverStr) > 0 {
+			nameservers = append(nameservers, strings.Split(nameserverStr, ",")...)
+		}
+
+		err = searchListKey.SetStringValue("NameServer", strings.Join(nameservers, ","))
 		if err != nil {
 			return err
 		}
@@ -259,83 +301,70 @@ func resetSearchList() error {
 	}()
 
 	if !skipGlobal {
-		searchList, _, err := globalSearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(globalSearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = globalSearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = globalSearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
 	}
 
 	if !skipIpv4 {
-		searchList, _, err := ipv4SearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(ipv4SearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = ipv4SearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = ipv4SearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
 	}
 
 	if !skipIpv6 {
-		searchList, _, err := ipv6SearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(ipv6SearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = ipv6SearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = ipv6SearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
 	}
 
 	if !skipInterfaceIpv4 {
-		searchList, _, err := ipv4InterfaceSearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(ipv4InterfaceSearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = ipv4InterfaceSearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = ipv4InterfaceSearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
 	}
 
 	if !skipInterfaceIpv6 {
-		searchList, _, err := ipv6InterfaceSearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(ipv6InterfaceSearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = ipv6InterfaceSearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = ipv6InterfaceSearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
+	}
+
+	return nil
+}
+
+func resetSearchListOnRegistryKey(searchListKey registry.Key) error {
+	searchList, _, err := searchListKey.GetStringValue("PreNetmakerSearchList")
+	if err != nil {
+		if !errors.Is(err, registry.ErrNotExist) {
+			return err
+		}
+	} else {
+		err = searchListKey.SetStringValue("SearchList", searchList)
+		if err != nil {
+			return err
+		}
+
+		_ = searchListKey.DeleteValue("PreNetmakerSearchList")
+	}
+
+	nameserver, _, err := searchListKey.GetStringValue("PreNetmakerNameServer")
+	if err != nil {
+		if !errors.Is(err, registry.ErrNotExist) {
+			return err
+		}
+	} else {
+		err = searchListKey.SetStringValue("NameServer", nameserver)
+		if err != nil {
+			return err
+		}
+
+		_ = searchListKey.DeleteValue("PreNetmakerNameServer")
 	}
 
 	return nil
