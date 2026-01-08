@@ -543,6 +543,26 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
 		if egressGwRange.Nat {
+			// Check if virtual NAT should be applied
+			if vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange); shouldApply {
+				logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
+				if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
+					logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
+				} else {
+					wgInterface := ncutils.GetInterfaceName()
+					vnatRules, err := n.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
+					if err != nil {
+						logger.Log(1, fmt.Sprintf("failed to apply virtual NAT rules: %v", err))
+					} else {
+						egressGwRoutes = append(egressGwRoutes, vnatRules...)
+						logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
+					}
+				}
+				// Skip regular NAT processing for virtual NAT ranges
+				continue
+			}
+
+			// Regular NAT processing (existing code)
 			logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
 			source := egressInfo.Network.String()
 			if !isAddrIpv4(egressGwRange.Network) {
@@ -811,6 +831,28 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	if _, ok := rulesTable[peerKey]; !ok {
 		return errors.New("peer not found in rule table: " + peerKey)
 	}
+
+	// Check if this egress has virtual NAT rules (clean up chains and jump rules)
+	hasVNATRules := false
+	for _, rules := range rulesTable[peerKey].rulesMap {
+		for _, rule := range rules {
+			if rule.table == "netmaker_vnat" {
+				hasVNATRules = true
+				break
+			}
+		}
+		if hasVNATRules {
+			break
+		}
+	}
+
+	if hasVNATRules {
+		// Remove virtual NAT chains and jump rules
+		if err := n.removeVirtualNATRules(peerKey); err != nil {
+			logger.Log(1, fmt.Sprintf("failed to remove virtual NAT rules for %s: %v", peerKey, err))
+		}
+	}
+
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
 			var err error
@@ -820,6 +862,10 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 				if err != nil {
 					logger.Log(1, fmt.Sprintf("failed to delete Docker rule [%v] for %s: %v", rule.rule, peerKey, err))
 				}
+			} else if rule.table == "netmaker_vnat" {
+				// Virtual NAT rules are handled by removeVirtualNATRules above
+				// Skip individual rule deletion as chains are deleted
+				continue
 			} else {
 				// Regular rules are in 'inet' family table
 				err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
@@ -2687,4 +2733,472 @@ func rulesEqual(rule1, rule2 *nftables.Rule) bool {
 	}
 
 	return false
+}
+
+// Virtual NAT implementation for nftables
+
+var (
+	vnatTableStruct = &nftables.Table{Name: "netmaker_vnat", Family: nftables.TableFamilyINet}
+)
+
+// applyVirtualNATRules applies virtual NAT rules for an egress gateway
+func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
+	var rules []ruleInfo
+
+	// Ensure vnat table exists
+	if err := n.ensureVNATTable(); err != nil {
+		return nil, fmt.Errorf("failed to ensure vnat table: %w", err)
+	}
+
+	// Get chain names
+	preroutingChain, postroutingChain, forwardChain := getVNATChainNames(egressID)
+	id8 := getEgressID8(egressID)
+
+	// Note: Conntrack zones can be added later for better collision prevention
+	// ctZone := getConntrackZone(egressID)
+
+	// Calculate real range window (same prefix length as virtual range)
+	realWindow := getRealRangeWindow(vnatInfo.realRange, vnatInfo.virtualRange)
+
+	isIPv4 := vnatInfo.virtualRange.IP.To4() != nil
+
+	// Create per-egress chains (regular chains, not base chains)
+	preroutingChainObj := &nftables.Chain{
+		Name:  preroutingChain,
+		Table: vnatTableStruct,
+		Type:  nftables.ChainTypeNAT,
+	}
+	postroutingChainObj := &nftables.Chain{
+		Name:  postroutingChain,
+		Table: vnatTableStruct,
+		Type:  nftables.ChainTypeNAT,
+	}
+	forwardChainObj := &nftables.Chain{
+		Name:  forwardChain,
+		Table: vnatTableStruct,
+		Type:  nftables.ChainTypeFilter,
+	}
+
+	// Delete existing chains if they exist (for idempotency)
+	n.deleteVNATChain(preroutingChain)
+	n.deleteVNATChain(postroutingChain)
+	n.deleteVNATChain(forwardChain)
+
+	// Create chains
+	n.conn.AddChain(preroutingChainObj)
+	n.conn.AddChain(postroutingChainObj)
+	n.conn.AddChain(forwardChainObj)
+
+	if err := n.conn.Flush(); err != nil {
+		return nil, fmt.Errorf("failed to create vnat chains: %w", err)
+	}
+
+	if isIPv4 {
+		// PREROUTING rules: DNAT from VirtualRange to RealWindow
+		// Note: nftables doesn't have direct NETMAP equivalent, so we use a simplified approach
+		// For v1, we DNAT to the real window base address
+		// Conntrack zones can be added later if needed
+		realBase := realWindow.IP.To4()
+
+		preroutingExprs := []expr.Any{
+			// Match input interface
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(wgInterface + "\x00"),
+			},
+			// Match destination address in virtual range
+			&expr.Payload{
+				DestRegister: 2,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       16, // IPv4 destination address offset
+				Len:          4,
+			},
+			&expr.Bitwise{
+				SourceRegister: 2,
+				DestRegister:   2,
+				Len:            4,
+				Mask:           vnatInfo.virtualRange.Mask,
+				Xor:            []byte{0, 0, 0, 0},
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 2,
+				Data:     vnatInfo.virtualRange.IP.To4(),
+			},
+			// TODO: Implement proper prefix-based DNAT (NETMAP-like behavior)
+			// For v1, this is a placeholder. Proper implementation would need to:
+			// 1. Extract host bits from virtual address
+			// 2. Combine with real window base address
+			// 3. DNAT to the resulting address
+			// This requires nftables arithmetic operations or accepting that nftables
+			// doesn't have a direct NETMAP equivalent
+			// For now, DNAT to real window base (simplified)
+			&expr.Immediate{
+				Register: 1,
+				Data:     realBase,
+			},
+			&expr.NAT{
+				Type:       expr.NATTypeDestNAT,
+				Family:     unix.NFPROTO_IPV4,
+				RegAddrMin: 1,
+				RegAddrMax: 1,
+			},
+		}
+
+		preroutingRule := &nftables.Rule{
+			Table:    vnatTableStruct,
+			Chain:    preroutingChainObj,
+			UserData: []byte(fmt.Sprintf("vnat:pr:%s", id8)),
+			Exprs:    preroutingExprs,
+		}
+		n.conn.AddRule(preroutingRule)
+		rules = append(rules, ruleInfo{
+			nfRule: preroutingRule,
+			table:  "netmaker_vnat",
+			chain:  preroutingChain,
+		})
+
+		// POSTROUTING rule: MASQUERADE for traffic from WG to LAN with destination in real range
+		postroutingExprs := []expr.Any{
+			// Match input interface
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(wgInterface + "\x00"),
+			},
+			// Match output interface
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(egressRangeIface + "\x00"),
+			},
+			// Match destination in real range
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       16,
+				Len:          4,
+			},
+			&expr.Bitwise{
+				SourceRegister: 1,
+				DestRegister:   1,
+				Len:            4,
+				Mask:           vnatInfo.realRange.Mask,
+				Xor:            []byte{0, 0, 0, 0},
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     vnatInfo.realRange.IP.To4(),
+			},
+			// MASQUERADE
+			&expr.Masq{},
+		}
+
+		postroutingRule := &nftables.Rule{
+			Table:    vnatTableStruct,
+			Chain:    postroutingChainObj,
+			UserData: []byte(fmt.Sprintf("vnat:po:%s", id8)),
+			Exprs:    postroutingExprs,
+		}
+		n.conn.AddRule(postroutingRule)
+		rules = append(rules, ruleInfo{
+			nfRule: postroutingRule,
+			table:  "netmaker_vnat",
+			chain:  postroutingChain,
+		})
+
+		// FORWARD rules: Accept traffic
+		// Rule 1: WG -> LAN, destination in real range
+		forwardExprs1 := []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(wgInterface + "\x00"),
+			},
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(egressRangeIface + "\x00"),
+			},
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       16,
+				Len:          4,
+			},
+			&expr.Bitwise{
+				SourceRegister: 1,
+				DestRegister:   1,
+				Len:            4,
+				Mask:           vnatInfo.realRange.Mask,
+				Xor:            []byte{0, 0, 0, 0},
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     vnatInfo.realRange.IP.To4(),
+			},
+			&expr.Verdict{Kind: expr.VerdictAccept},
+		}
+
+		forwardRule1 := &nftables.Rule{
+			Table:    vnatTableStruct,
+			Chain:    forwardChainObj,
+			UserData: []byte(fmt.Sprintf("vnat:fw1:%s", id8)),
+			Exprs:    forwardExprs1,
+		}
+		n.conn.AddRule(forwardRule1)
+		rules = append(rules, ruleInfo{
+			nfRule: forwardRule1,
+			table:  "netmaker_vnat",
+			chain:  forwardChain,
+		})
+
+		// Rule 2: LAN -> WG, source in real range
+		forwardExprs2 := []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(egressRangeIface + "\x00"),
+			},
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte(wgInterface + "\x00"),
+			},
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       12, // Source address
+				Len:          4,
+			},
+			&expr.Bitwise{
+				SourceRegister: 1,
+				DestRegister:   1,
+				Len:            4,
+				Mask:           vnatInfo.realRange.Mask,
+				Xor:            []byte{0, 0, 0, 0},
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     vnatInfo.realRange.IP.To4(),
+			},
+			&expr.Verdict{Kind: expr.VerdictAccept},
+		}
+
+		forwardRule2 := &nftables.Rule{
+			Table:    vnatTableStruct,
+			Chain:    forwardChainObj,
+			UserData: []byte(fmt.Sprintf("vnat:fw2:%s", id8)),
+			Exprs:    forwardExprs2,
+		}
+		n.conn.AddRule(forwardRule2)
+		rules = append(rules, ruleInfo{
+			nfRule: forwardRule2,
+			table:  "netmaker_vnat",
+			chain:  forwardChain,
+		})
+	} else {
+		// IPv6 implementation (similar structure but with IPv6 offsets and addresses)
+		// TODO: Implement IPv6 support
+		logger.Log(1, "IPv6 virtual NAT not yet implemented")
+	}
+
+	// Add jump rules from base chains to per-egress chains
+	if err := n.addVNATJumpRules(preroutingChain, postroutingChain, forwardChain, id8); err != nil {
+		return nil, fmt.Errorf("failed to add vnat jump rules: %w", err)
+	}
+
+	if err := n.conn.Flush(); err != nil {
+		return nil, fmt.Errorf("failed to apply vnat rules: %w", err)
+	}
+
+	logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s: %s -> %s", egressID, vnatInfo.virtualRange.String(), realWindow.String()))
+	return rules, nil
+}
+
+// ensureVNATTable ensures the virtual NAT table exists
+func (n *nftablesManager) ensureVNATTable() error {
+	tables, err := n.conn.ListTables()
+	if err != nil {
+		return err
+	}
+	for _, t := range tables {
+		if t.Name == "netmaker_vnat" && t.Family == nftables.TableFamilyINet {
+			return nil // Table exists
+		}
+	}
+	n.conn.AddTable(vnatTableStruct)
+	return n.conn.Flush()
+}
+
+// deleteVNATChain deletes a chain from the vnat table if it exists
+func (n *nftablesManager) deleteVNATChain(chainName string) {
+	chains, err := n.conn.ListChains()
+	if err != nil {
+		return
+	}
+	for _, ch := range chains {
+		if ch.Name == chainName && ch.Table.Name == "netmaker_vnat" && ch.Table.Family == nftables.TableFamilyINet {
+			// Flush chain first
+			rules, err := n.conn.GetRules(vnatTableStruct, ch)
+			if err == nil {
+				for _, rule := range rules {
+					n.conn.DelRule(rule)
+				}
+			}
+			n.conn.DelChain(ch)
+			n.conn.Flush()
+			return
+		}
+	}
+}
+
+// addVNATJumpRules adds jump rules from base chains to per-egress chains
+func (n *nftablesManager) addVNATJumpRules(preroutingChain, postroutingChain, forwardChain, id8 string) error {
+	// Jump from PREROUTING to per-egress prerouting chain
+	preroutingBase, err := n.getChain(defaultNatTable, "PREROUTING")
+	if err == nil {
+		jumpKey := genRuleKey("jump", preroutingChain, "vnat", id8)
+		rules, _ := n.conn.GetRules(natTable, preroutingBase)
+		jumpExists := false
+		for _, r := range rules {
+			if string(r.UserData) == jumpKey {
+				jumpExists = true
+				break
+			}
+		}
+		if !jumpExists {
+			jumpRule := &nftables.Rule{
+				Table:    natTable,
+				Chain:    preroutingBase,
+				UserData: []byte(jumpKey),
+				Exprs: []expr.Any{
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: preroutingChain,
+					},
+				},
+			}
+			n.conn.InsertRule(jumpRule)
+		}
+	}
+
+	// Jump from POSTROUTING to per-egress postrouting chain
+	postroutingBase, err := n.getChain(defaultNatTable, nattablePRTChain)
+	if err == nil {
+		jumpKey := genRuleKey("jump", postroutingChain, "vnat", id8)
+		rules, _ := n.conn.GetRules(natTable, postroutingBase)
+		jumpExists := false
+		for _, r := range rules {
+			if string(r.UserData) == jumpKey {
+				jumpExists = true
+				break
+			}
+		}
+		if !jumpExists {
+			jumpRule := &nftables.Rule{
+				Table:    natTable,
+				Chain:    postroutingBase,
+				UserData: []byte(jumpKey),
+				Exprs: []expr.Any{
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: postroutingChain,
+					},
+				},
+			}
+			n.conn.InsertRule(jumpRule)
+		}
+	}
+
+	// Jump from FORWARD to per-egress forward chain
+	forwardBase, err := n.getChain(defaultIpTable, iptableFWDChain)
+	if err == nil {
+		jumpKey := genRuleKey("jump", forwardChain, "vnat", id8)
+		rules, _ := n.conn.GetRules(filterTable, forwardBase)
+		jumpExists := false
+		for _, r := range rules {
+			if string(r.UserData) == jumpKey {
+				jumpExists = true
+				break
+			}
+		}
+		if !jumpExists {
+			jumpRule := &nftables.Rule{
+				Table:    filterTable,
+				Chain:    forwardBase,
+				UserData: []byte(jumpKey),
+				Exprs: []expr.Any{
+					&expr.Verdict{
+						Kind:  expr.VerdictJump,
+						Chain: forwardChain,
+					},
+				},
+			}
+			n.conn.InsertRule(jumpRule)
+		}
+	}
+
+	return nil
+}
+
+// removeVirtualNATRules removes virtual NAT rules for an egress gateway
+func (n *nftablesManager) removeVirtualNATRules(egressID string) error {
+	preroutingChain, postroutingChain, forwardChain := getVNATChainNames(egressID)
+	id8 := getEgressID8(egressID)
+
+	// Remove jump rules from base chains
+	preroutingBase, err := n.getChain(defaultNatTable, "PREROUTING")
+	if err == nil {
+		jumpKey := genRuleKey("jump", preroutingChain, "vnat", id8)
+		rules, _ := n.conn.GetRules(natTable, preroutingBase)
+		for _, r := range rules {
+			if string(r.UserData) == jumpKey {
+				n.conn.DelRule(r)
+				break
+			}
+		}
+	}
+
+	postroutingBase, err := n.getChain(defaultNatTable, nattablePRTChain)
+	if err == nil {
+		jumpKey := genRuleKey("jump", postroutingChain, "vnat", id8)
+		rules, _ := n.conn.GetRules(natTable, postroutingBase)
+		for _, r := range rules {
+			if string(r.UserData) == jumpKey {
+				n.conn.DelRule(r)
+				break
+			}
+		}
+	}
+
+	forwardBase, err := n.getChain(defaultIpTable, iptableFWDChain)
+	if err == nil {
+		jumpKey := genRuleKey("jump", forwardChain, "vnat", id8)
+		rules, _ := n.conn.GetRules(filterTable, forwardBase)
+		for _, r := range rules {
+			if string(r.UserData) == jumpKey {
+				n.conn.DelRule(r)
+				break
+			}
+		}
+	}
+
+	// Delete per-egress chains (this will also delete all rules in them)
+	n.deleteVNATChain(preroutingChain)
+	n.deleteVNATChain(postroutingChain)
+	n.deleteVNATChain(forwardChain)
+
+	return n.conn.Flush()
 }

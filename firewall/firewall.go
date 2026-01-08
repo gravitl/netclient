@@ -34,6 +34,7 @@ const (
 	ingressTable = "ingress"
 	egressTable  = "egress"
 	aclTable     = "acl"
+	vnatTable    = "netmaker_vnat" // nftables table for virtual NAT
 )
 
 const (

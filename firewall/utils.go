@@ -48,3 +48,46 @@ func GetLocalIPs() ([]net.IP, error) {
 	}
 	return localIPs, nil
 }
+
+// getRealRangeWindow extracts a /X window from a real range with the same prefix length as virtualRange
+// For v1, we map /X -> /X (e.g., 198.18.10.0/24 -> 10.10.0.0/24 from 10.10.0.0/16)
+func getRealRangeWindow(realRange net.IPNet, virtualRange net.IPNet) net.IPNet {
+	// Get prefix length from virtual range
+	virtualPrefixLen, _ := virtualRange.Mask.Size()
+	
+	// Create a mask with the same prefix length as virtual range
+	var mask net.IPMask
+	if virtualRange.IP.To4() != nil {
+		mask = net.CIDRMask(virtualPrefixLen, 32)
+	} else {
+		mask = net.CIDRMask(virtualPrefixLen, 128)
+	}
+	
+	// Apply the mask to the real range base IP
+	return net.IPNet{
+		IP:   realRange.IP.Mask(mask),
+		Mask: mask,
+	}
+}
+
+// getEgressID8 returns first 8 characters of egress ID for chain naming
+func getEgressID8(egressID string) string {
+	if len(egressID) > 8 {
+		return egressID[:8]
+	}
+	return egressID
+}
+
+// getConntrackZone returns a conntrack zone ID based on egress ID hash
+func getConntrackZone(egressID string) uint16 {
+	// Simple hash to get a zone ID between 100-65535
+	hash := 0
+	for _, c := range egressID {
+		hash = hash*31 + int(c)
+	}
+	zone := (hash % 64535) + 100 // Range 100-65535
+	if zone < 100 {
+		zone = 100
+	}
+	return uint16(zone)
+}
