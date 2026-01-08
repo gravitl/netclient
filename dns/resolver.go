@@ -64,11 +64,11 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		resp, err := exchangeDNSQueryWithPool(r, config.Netclient().CurrGwNmIP.String())
 		if err != nil {
 			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), err))
-		} else {
+		} else if resp != nil {
 			logger.Log(4, fmt.Sprintf("resolved dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), resp.Answer))
 			reply.Answer = append(reply.Answer, resp.Answer...)
 			// Preserve authoritative flag from gateway response
-			if resp != nil && resp.Authoritative {
+			if resp.Authoritative {
 				reply.Authoritative = true
 			}
 		}
