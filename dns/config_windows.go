@@ -2,6 +2,7 @@ package dns
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -100,7 +101,7 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 	}
 
 	if len(namespaces) > 0 {
-		err := setSearchList(searchList)
+		err := setSearchList(searchList, dnsIP)
 		if err != nil {
 			return err
 		}
@@ -120,16 +121,26 @@ func resetConfig() error {
 	return resetNrptRules()
 }
 
-func setSearchList(searchList []string) error {
-	err := setSearchListOnRegistry(searchList, false)
+func setSearchList(searchList []string, dnsIP string) error {
+	err := setSearchListOnRegistry(searchList, dnsIP, false)
 	if err != nil {
 		return err
 	}
 
-	return setSearchListOnRegistry(searchList, true)
+	err = setSearchListOnRegistry(searchList, dnsIP, true)
+	if err != nil {
+		return err
+	}
+
+	err = setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, dnsIP, false)
+	if err != nil {
+		return err
+	}
+
+	return setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, dnsIP, true)
 }
 
-func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
+func setSearchListOnRegistry(searchDomains []string, dnsIP string, ipv6 bool) error {
 	searchListKey, err := getSearchListRegistryKey(ipv6)
 	if err != nil {
 		return err
@@ -138,6 +149,22 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 		_ = searchListKey.Close()
 	}()
 
+	return setSearchListOnRegistryKey(searchListKey, searchDomains, dnsIP)
+}
+
+func setInterfaceSearchListOnRegistry(guid string, searchDomains []string, dnsIP string, ipv6 bool) error {
+	searchListKey, err := getInterfaceSearchListRegistryKey(ipv6, guid)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = searchListKey.Close()
+	}()
+
+	return setSearchListOnRegistryKey(searchListKey, searchDomains, dnsIP)
+}
+
+func setSearchListOnRegistryKey(searchListKey registry.Key, searchDomains []string, dnsIP string) error {
 	searchListStr, _, err := searchListKey.GetStringValue("SearchList")
 	searchListStr = strings.TrimSpace(searchListStr)
 	if err != nil {
@@ -179,11 +206,53 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 		}
 	}
 
+	nameserverStr, _, err := searchListKey.GetStringValue("NameServer")
+	nameserverStr = strings.TrimSpace(nameserverStr)
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			err = searchListKey.SetStringValue("NameServer", dnsIP)
+			if err != nil {
+				return err
+			}
+
+			err = searchListKey.SetStringValue("PreNetmakerNameServer", "")
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		preNetmakerNameServer, _, err := searchListKey.GetStringValue("PreNetmakerNameServer")
+		if err != nil {
+			if errors.Is(err, registry.ErrNotExist) {
+				err = searchListKey.SetStringValue("PreNetmakerNameServer", nameserverStr)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			nameserverStr = strings.TrimSpace(preNetmakerNameServer)
+		}
+
+		nameservers := []string{dnsIP}
+		if len(nameserverStr) > 0 {
+			nameservers = append(nameservers, strings.Split(nameserverStr, ",")...)
+		}
+
+		err = searchListKey.SetStringValue("NameServer", strings.Join(nameservers, ","))
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 func resetSearchList() error {
-	var skipGlobal, skipIpv4, skipIpv6 bool
+	var skipGlobal, skipIpv4, skipIpv6, skipInterfaceIpv4, skipInterfaceIpv6 bool
 	globalSearchListKey, err := getGlobalSearchListRegistryKey()
 	if err != nil {
 		skipGlobal = true
@@ -199,6 +268,16 @@ func resetSearchList() error {
 		skipIpv6 = true
 	}
 
+	ipv4InterfaceSearchListKey, err := getIpv4InterfaceSearchListRegistryKey(config.Netclient().Host.ID.String())
+	if err != nil {
+		skipInterfaceIpv4 = true
+	}
+
+	ipv6InterfaceSearchListKey, err := getIpv6InterfaceSearchListRegistryKey(config.Netclient().Host.ID.String())
+	if err != nil {
+		skipInterfaceIpv6 = true
+	}
+
 	defer func() {
 		if !skipGlobal {
 			_ = globalSearchListKey.Close()
@@ -211,54 +290,81 @@ func resetSearchList() error {
 		if !skipIpv6 {
 			_ = ipv6SearchListKey.Close()
 		}
+
+		if !skipInterfaceIpv4 {
+			_ = ipv4InterfaceSearchListKey.Close()
+		}
+
+		if !skipInterfaceIpv6 {
+			_ = ipv6InterfaceSearchListKey.Close()
+		}
 	}()
 
 	if !skipGlobal {
-		searchList, _, err := globalSearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(globalSearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = globalSearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = globalSearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
 	}
 
 	if !skipIpv4 {
-		searchList, _, err := ipv4SearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(ipv4SearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = ipv4SearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = ipv4SearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
 	}
 
 	if !skipIpv6 {
-		searchList, _, err := ipv6SearchListKey.GetStringValue("PreNetmakerSearchList")
+		err = resetSearchListOnRegistryKey(ipv6SearchListKey)
 		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = ipv6SearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = ipv6SearchListKey.DeleteValue("PreNetmakerSearchList")
+			return err
 		}
+	}
+
+	if !skipInterfaceIpv4 {
+		err = resetSearchListOnRegistryKey(ipv4InterfaceSearchListKey)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !skipInterfaceIpv6 {
+		err = resetSearchListOnRegistryKey(ipv6InterfaceSearchListKey)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func resetSearchListOnRegistryKey(searchListKey registry.Key) error {
+	searchList, _, err := searchListKey.GetStringValue("PreNetmakerSearchList")
+	if err != nil {
+		if !errors.Is(err, registry.ErrNotExist) {
+			return err
+		}
+	} else {
+		err = searchListKey.SetStringValue("SearchList", searchList)
+		if err != nil {
+			return err
+		}
+
+		_ = searchListKey.DeleteValue("PreNetmakerSearchList")
+	}
+
+	nameserver, _, err := searchListKey.GetStringValue("PreNetmakerNameServer")
+	if err != nil {
+		if !errors.Is(err, registry.ErrNotExist) {
+			return err
+		}
+	} else {
+		err = searchListKey.SetStringValue("NameServer", nameserver)
+		if err != nil {
+			return err
+		}
+
+		_ = searchListKey.DeleteValue("PreNetmakerNameServer")
 	}
 
 	return nil
@@ -289,6 +395,14 @@ func getSearchListRegistryKey(ipv6 bool) (registry.Key, error) {
 	return getIpv4SearchListRegistryKey()
 }
 
+func getInterfaceSearchListRegistryKey(ipv6 bool, guid string) (registry.Key, error) {
+	if ipv6 {
+		return getIpv6InterfaceSearchListRegistryKey(guid)
+	}
+
+	return getIpv4InterfaceSearchListRegistryKey(guid)
+}
+
 func getGlobalSearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`, registry.ALL_ACCESS)
 }
@@ -299,6 +413,16 @@ func getIpv4SearchListRegistryKey() (registry.Key, error) {
 
 func getIpv6SearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `System\CurrentControlSet\Services\Tcpip6\Parameters`, registry.ALL_ACCESS)
+}
+
+func getIpv4InterfaceSearchListRegistryKey(guid string) (registry.Key, error) {
+	path := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{%s}`, guid)
+	return registry.OpenKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
+}
+
+func getIpv6InterfaceSearchListRegistryKey(guid string) (registry.Key, error) {
+	path := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{%s}`, guid)
+	return registry.OpenKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
 }
 
 func setNrptRule(namespaces []string, nameservers string) error {
