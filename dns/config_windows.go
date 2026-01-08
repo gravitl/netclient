@@ -2,6 +2,7 @@ package dns
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -29,6 +30,22 @@ func FlushLocalDnsCache() error {
 	return err
 }
 
+// SetupDNSConfig configures DNS for Windows using NRPT rules and interface-specific search lists.
+// This implementation:
+//   - Uses NRPT (Name Resolution Policy Table) rules to route DNS queries for specific domains
+//     to the netclient DNS server, ensuring only netmaker-related queries go to netclient.
+//   - Sets DNS server on the interface as a secondary (index 2) server to enable nslookup support
+//     without making netclient the primary resolver. The primary resolver remains unchanged.
+//   - Sets search lists on interface/system-wide level (not global policy), so netmaker
+//     domains are added to the search suffix pool without overriding other interfaces or
+//     global policy settings.
+//
+// Note on nslookup behavior:
+//   - ping and other Windows DNS client-based tools automatically append search domains
+//   - nslookup will use the netclient DNS server as a fallback (secondary) when the primary
+//     DNS server doesn't resolve a query, enabling it to work with netmaker domains
+//   - For best results with nslookup, use the full FQDN: nslookup hostname.domain
+//   - nslookup can also use search domains by running: nslookup, then "set search", then the hostname
 func SetupDNSConfig() error {
 	dnsConfigMutex.Lock()
 	defer dnsConfigMutex.Unlock()
@@ -100,12 +117,32 @@ func configure(dnsIP string, matchDomainsMap map[string]bool, searchDomainsMap m
 	}
 
 	if len(namespaces) > 0 {
-		err := setSearchList(searchList)
+		// Use NRPT rules to route DNS queries for specific domains to netclient DNS server
+		// This ensures only queries for netmaker domains go to netclient DNS, not all queries
+		err := setNrptRule(namespaces, dnsIP)
 		if err != nil {
 			return err
 		}
 
-		return setNrptRule(namespaces, dnsIP)
+		// Set DNS server on the interface as secondary (index 2) to enable nslookup support
+		// This makes the DNS server available to nslookup without making it the primary resolver
+		// The primary resolver remains unchanged, and NRPT rules ensure netmaker domains
+		// are routed correctly regardless of DNS server order
+		err = setInterfaceDNSServer(dnsIP)
+		if err != nil {
+			// Log warning but don't fail - NRPT rules still work without interface DNS setting
+			slog.Warn("failed to set DNS server on interface for nslookup support", "error", err)
+		}
+
+		// Set search list on interface/system-wide level (not global policy)
+		// This adds netmaker domains to the search suffix pool without overriding
+		// other interfaces or global policy settings
+		err = setSearchList(searchList)
+		if err != nil {
+			return err
+		}
+
+		return nil
 	} else {
 		return resetConfig()
 	}
@@ -115,6 +152,12 @@ func resetConfig() error {
 	err := resetSearchList()
 	if err != nil {
 		return err
+	}
+
+	err = resetInterfaceDNSServer()
+	if err != nil {
+		// Log warning but continue - cleanup is best effort
+		slog.Warn("failed to reset DNS server on interface", "error", err)
 	}
 
 	return resetNrptRules()
@@ -183,11 +226,8 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 }
 
 func resetSearchList() error {
-	var skipGlobal, skipIpv4, skipIpv6 bool
-	globalSearchListKey, err := getGlobalSearchListRegistryKey()
-	if err != nil {
-		skipGlobal = true
-	}
+	// Only reset interface/system-wide search lists, never touch global policy
+	var skipIpv4, skipIpv6 bool
 
 	ipv4SearchListKey, err := getIpv4SearchListRegistryKey()
 	if err != nil {
@@ -200,10 +240,6 @@ func resetSearchList() error {
 	}
 
 	defer func() {
-		if !skipGlobal {
-			_ = globalSearchListKey.Close()
-		}
-
 		if !skipIpv4 {
 			_ = ipv4SearchListKey.Close()
 		}
@@ -212,22 +248,6 @@ func resetSearchList() error {
 			_ = ipv6SearchListKey.Close()
 		}
 	}()
-
-	if !skipGlobal {
-		searchList, _, err := globalSearchListKey.GetStringValue("PreNetmakerSearchList")
-		if err != nil {
-			if !errors.Is(err, registry.ErrNotExist) {
-				return err
-			}
-		} else {
-			err = globalSearchListKey.SetStringValue("SearchList", searchList)
-			if err != nil {
-				return err
-			}
-
-			_ = globalSearchListKey.DeleteValue("PreNetmakerSearchList")
-		}
-	}
 
 	if !skipIpv4 {
 		searchList, _, err := ipv4SearchListKey.GetStringValue("PreNetmakerSearchList")
@@ -264,24 +284,14 @@ func resetSearchList() error {
 	return nil
 }
 
+// getSearchListRegistryKey returns interface/system-wide search list registry key
+// We intentionally avoid the global policy key (SOFTWARE\Policies\Microsoft\Windows NT\DNSClient)
+// to prevent overriding interface-specific settings and system-wide configurations.
+// This ensures search domains are added to the interface's search list without affecting
+// other interfaces or overriding group policy settings.
 func getSearchListRegistryKey(ipv6 bool) (registry.Key, error) {
-	key, err := getGlobalSearchListRegistryKey()
-	if err != nil {
-		if !errors.Is(err, registry.ErrNotExist) {
-			return 0, err
-		}
-	} else {
-		_, _, err = key.GetStringValue("SearchList")
-		if err != nil {
-			_ = key.Close()
-			if !errors.Is(err, registry.ErrNotExist) {
-				return 0, err
-			}
-		} else {
-			return key, nil
-		}
-	}
-
+	// Always use interface/system-wide keys, never global policy key
+	// Global policy key overrides all interface-specific settings per MS docs
 	if ipv6 {
 		return getIpv6SearchListRegistryKey()
 	}
@@ -301,6 +311,10 @@ func getIpv6SearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `System\CurrentControlSet\Services\Tcpip6\Parameters`, registry.ALL_ACCESS)
 }
 
+// setNrptRule creates an NRPT rule to route DNS queries for specific domains to the netclient DNS server.
+// Note: nslookup on Windows bypasses search domains and doesn't append them automatically.
+// To use nslookup with netmaker domains, use the full FQDN: nslookup hostname.domain
+// Alternatively, specify the DNS server explicitly: nslookup hostname.domain <netclient-dns-ip>
 func setNrptRule(namespaces []string, nameservers string) error {
 	nrptRuleKey, err := getNrptRuleRegistryKey()
 	if err != nil {
@@ -330,7 +344,16 @@ func setNrptRule(namespaces []string, nameservers string) error {
 		return err
 	}
 
-	return nrptRuleKey.SetDWordValue("Version", 2)
+	err = nrptRuleKey.SetDWordValue("Version", 2)
+	if err != nil {
+		return err
+	}
+
+	// Flush DNS cache to ensure NRPT rules take effect immediately
+	// This is especially important for nslookup which uses a direct DNS client
+	_ = FlushLocalDnsCache()
+
+	return nil
 }
 
 func resetNrptRules() error {
@@ -438,4 +461,51 @@ func getGlobalNrptRuleRegistryKey() (registry.Key, error) {
 
 func getLocalNrptRuleRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\DnsCache\Parameters\DnsPolicyConfig`, registry.ALL_ACCESS)
+}
+
+// setInterfaceDNSServer sets the DNS server on the netmaker interface as a secondary DNS server
+// (index 2) to enable nslookup support without making netclient the primary resolver.
+// nslookup will use this DNS server as a fallback, and NRPT rules ensure netmaker domain
+// queries are routed correctly regardless of DNS server order.
+func setInterfaceDNSServer(dnsIP string) error {
+	ifaceName := ncutils.GetInterfaceName()
+	if ifaceName == "" {
+		return errors.New("interface name not available")
+	}
+
+	// Set DNS server as secondary (index 2) so it's available but not primary
+	// This allows nslookup to use it while keeping the existing primary DNS server intact
+	cmd := fmt.Sprintf("netsh interface ipv4 set dns name=\"%s\" addr=%s index=2", ifaceName, dnsIP)
+	_, err := ncutils.RunCmd(cmd, false)
+	if err != nil {
+		return fmt.Errorf("failed to set DNS server on interface: %w", err)
+	}
+
+	slog.Debug("set DNS server on interface for nslookup support", "interface", ifaceName, "dns", dnsIP)
+	return nil
+}
+
+// resetInterfaceDNSServer removes the netclient DNS server from the interface
+func resetInterfaceDNSServer() error {
+	ifaceName := ncutils.GetInterfaceName()
+	if ifaceName == "" {
+		return errors.New("interface name not available")
+	}
+
+	// Remove DNS server at index 2 (where we set it)
+	cmd := fmt.Sprintf("netsh interface ipv4 delete dns name=\"%s\" addr=all index=2", ifaceName)
+	_, err := ncutils.RunCmd(cmd, false)
+	if err != nil {
+		// Try alternative approach - remove by address if we can get it
+		dnsIP, dnsErr := getDnsIp()
+		if dnsErr == nil {
+			cmd = fmt.Sprintf("netsh interface ipv4 delete dns name=\"%s\" addr=%s", ifaceName, dnsIP)
+			_, err = ncutils.RunCmd(cmd, false)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to reset DNS server on interface: %w", err)
+		}
+	}
+
+	return nil
 }

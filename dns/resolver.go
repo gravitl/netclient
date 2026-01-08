@@ -67,6 +67,10 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		} else {
 			logger.Log(4, fmt.Sprintf("resolved dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), resp.Answer))
 			reply.Answer = append(reply.Answer, resp.Answer...)
+			// Preserve authoritative flag from gateway response
+			if resp != nil && resp.Authoritative {
+				reply.Authoritative = true
+			}
 		}
 	} else {
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
@@ -113,6 +117,10 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 						if len(resp.Answer) > 0 {
 							logger.Log(4, fmt.Sprintf("resolved dns query %s with nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
 							reply.Answer = append(reply.Answer, resp.Answer...)
+							// Preserve authoritative flag from upstream nameserver response
+							if resp.Authoritative {
+								reply.Authoritative = true
+							}
 							queryResolved = true
 							break
 						}
@@ -148,6 +156,10 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 							if len(resp.Answer) > 0 {
 								logger.Log(4, fmt.Sprintf("resolved dns query %s with fallback nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
 								reply.Answer = append(reply.Answer, resp.Answer...)
+								// Preserve authoritative flag from upstream nameserver response
+								if resp.Authoritative {
+									reply.Authoritative = true
+								}
 								queryResolved = true
 								break
 							}
