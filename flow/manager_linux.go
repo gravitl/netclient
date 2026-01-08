@@ -90,6 +90,12 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 					return true
 				}
 
+				// filter out wireguard events.
+				if flow.TupleOrig.Proto.Protocol == 17 &&
+					flow.TupleOrig.Proto.DestinationPort == uint16(config.Netclient().ListenPort) {
+					return true
+				}
+
 				return false
 			},
 			func(addr netip.Addr) *pbflow.FlowParticipant {
