@@ -66,6 +66,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), err))
 		} else {
 			logger.Log(4, fmt.Sprintf("resolved dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), resp.Answer))
+			reply.Authoritative = resp.Authoritative
 			reply.Answer = append(reply.Answer, resp.Answer...)
 		}
 	} else {
@@ -113,6 +114,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 						if len(resp.Answer) > 0 {
 							logger.Log(4, fmt.Sprintf("resolved dns query %s with nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
 							reply.Answer = append(reply.Answer, resp.Answer...)
+							reply.Authoritative = resp.Authoritative
 							queryResolved = true
 							break
 						}
@@ -148,6 +150,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 							if len(resp.Answer) > 0 {
 								logger.Log(4, fmt.Sprintf("resolved dns query %s with fallback nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
 								reply.Answer = append(reply.Answer, resp.Answer...)
+								reply.Authoritative = resp.Authoritative
 								queryResolved = true
 								break
 							}
