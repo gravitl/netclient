@@ -134,6 +134,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 					Ip:   ip,
 					Type: participantType,
 					Id:   identity.ID,
+					Name: identity.Name,
 				}
 			},
 			flowClient,
