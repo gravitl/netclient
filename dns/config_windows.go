@@ -2,6 +2,7 @@ package dns
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -126,7 +127,17 @@ func setSearchList(searchList []string) error {
 		return err
 	}
 
-	return setSearchListOnRegistry(searchList, true)
+	err = setSearchListOnRegistry(searchList, true)
+	if err != nil {
+		return err
+	}
+
+	err = setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, false)
+	if err != nil {
+		return err
+	}
+
+	return setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, true)
 }
 
 func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
@@ -138,6 +149,22 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 		_ = searchListKey.Close()
 	}()
 
+	return setSearchListOnRegistryKey(searchListKey, searchDomains)
+}
+
+func setInterfaceSearchListOnRegistry(guid string, searchDomains []string, ipv6 bool) error {
+	searchListKey, err := getInterfaceSearchListRegistryKey(ipv6, guid)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = searchListKey.Close()
+	}()
+
+	return setSearchListOnRegistryKey(searchListKey, searchDomains)
+}
+
+func setSearchListOnRegistryKey(searchListKey registry.Key, searchDomains []string) error {
 	searchListStr, _, err := searchListKey.GetStringValue("SearchList")
 	searchListStr = strings.TrimSpace(searchListStr)
 	if err != nil {
@@ -183,7 +210,7 @@ func setSearchListOnRegistry(searchDomains []string, ipv6 bool) error {
 }
 
 func resetSearchList() error {
-	var skipGlobal, skipIpv4, skipIpv6 bool
+	var skipGlobal, skipIpv4, skipIpv6, skipInterfaceIpv4, skipInterfaceIpv6 bool
 	globalSearchListKey, err := getGlobalSearchListRegistryKey()
 	if err != nil {
 		skipGlobal = true
@@ -199,6 +226,16 @@ func resetSearchList() error {
 		skipIpv6 = true
 	}
 
+	ipv4InterfaceSearchListKey, err := getIpv4InterfaceSearchListRegistryKey(config.Netclient().Host.ID.String())
+	if err != nil {
+		skipInterfaceIpv4 = true
+	}
+
+	ipv6InterfaceSearchListKey, err := getIpv6InterfaceSearchListRegistryKey(config.Netclient().Host.ID.String())
+	if err != nil {
+		skipInterfaceIpv6 = true
+	}
+
 	defer func() {
 		if !skipGlobal {
 			_ = globalSearchListKey.Close()
@@ -210,6 +247,14 @@ func resetSearchList() error {
 
 		if !skipIpv6 {
 			_ = ipv6SearchListKey.Close()
+		}
+
+		if !skipInterfaceIpv4 {
+			_ = ipv4InterfaceSearchListKey.Close()
+		}
+
+		if !skipInterfaceIpv6 {
+			_ = ipv6InterfaceSearchListKey.Close()
 		}
 	}()
 
@@ -261,6 +306,38 @@ func resetSearchList() error {
 		}
 	}
 
+	if !skipInterfaceIpv4 {
+		searchList, _, err := ipv4InterfaceSearchListKey.GetStringValue("PreNetmakerSearchList")
+		if err != nil {
+			if !errors.Is(err, registry.ErrNotExist) {
+				return err
+			}
+		} else {
+			err = ipv4InterfaceSearchListKey.SetStringValue("SearchList", searchList)
+			if err != nil {
+				return err
+			}
+
+			_ = ipv4InterfaceSearchListKey.DeleteValue("PreNetmakerSearchList")
+		}
+	}
+
+	if !skipInterfaceIpv6 {
+		searchList, _, err := ipv6InterfaceSearchListKey.GetStringValue("PreNetmakerSearchList")
+		if err != nil {
+			if !errors.Is(err, registry.ErrNotExist) {
+				return err
+			}
+		} else {
+			err = ipv6InterfaceSearchListKey.SetStringValue("SearchList", searchList)
+			if err != nil {
+				return err
+			}
+
+			_ = ipv6InterfaceSearchListKey.DeleteValue("PreNetmakerSearchList")
+		}
+	}
+
 	return nil
 }
 
@@ -289,6 +366,14 @@ func getSearchListRegistryKey(ipv6 bool) (registry.Key, error) {
 	return getIpv4SearchListRegistryKey()
 }
 
+func getInterfaceSearchListRegistryKey(ipv6 bool, guid string) (registry.Key, error) {
+	if ipv6 {
+		return getIpv6InterfaceSearchListRegistryKey(guid)
+	}
+
+	return getIpv4InterfaceSearchListRegistryKey(guid)
+}
+
 func getGlobalSearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`, registry.ALL_ACCESS)
 }
@@ -299,6 +384,16 @@ func getIpv4SearchListRegistryKey() (registry.Key, error) {
 
 func getIpv6SearchListRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `System\CurrentControlSet\Services\Tcpip6\Parameters`, registry.ALL_ACCESS)
+}
+
+func getIpv4InterfaceSearchListRegistryKey(guid string) (registry.Key, error) {
+	path := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{%s}`, guid)
+	return registry.OpenKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
+}
+
+func getIpv6InterfaceSearchListRegistryKey(guid string) (registry.Key, error) {
+	path := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{%s}`, guid)
+	return registry.OpenKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
 }
 
 func setNrptRule(namespaces []string, nameservers string) error {
