@@ -182,6 +182,11 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		icmpCode = flow.TupleOrig.Proto.ICMPCode
 	}
 
+	startTime := flow.Timestamp.Start
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+
 	return c.flowExporter.Export(&pbflow.FlowEvent{
 		Type:        eventType,
 		FlowId:      flowID,
@@ -195,7 +200,7 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		Direction:   direction,
 		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
 		Dst:         c.participantEnricher(flow.TupleOrig.IP.DestinationAddress),
-		StartTsMs:   flow.Timestamp.Start.UnixMilli(),
+		StartTsMs:   startTime.UnixMilli(),
 		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
 		BytesSent:   sentCounter.Bytes,
 		BytesRecv:   receivedCounter.Bytes,
