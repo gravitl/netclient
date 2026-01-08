@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,6 +23,14 @@ func install() error {
 		os.Exit(3)
 		return err
 	}
+
+	// Ensure the installation directory exists
+	installPath := config.GetNetclientInstallPath()
+	installDir := filepath.Dir(installPath)
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return fmt.Errorf("failed to create installation directory: %w", err)
+	}
+
 	binarypath, err := os.Executable()
 	if err != nil {
 		return err
@@ -30,9 +39,21 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(config.GetNetclientInstallPath(), binary, 0711)
-	if err != nil {
-		return err
+
+	// Write to a temporary file first, then rename to avoid issues with locked files
+	tmpPath := installPath + ".tmp"
+	if err := os.WriteFile(tmpPath, binary, 0711); err != nil {
+		return fmt.Errorf("failed to write binary to temporary file: %w", err)
+	}
+
+	// Remove the old file if it exists (might fail if locked, but that's okay)
+	_ = os.Remove(installPath)
+
+	// Rename the temporary file to the final location
+	if err := os.Rename(tmpPath, installPath); err != nil {
+		// Clean up temp file on error
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to install binary: %w", err)
 	}
 
 	err = ncutils.GetEmbedded()
