@@ -178,6 +178,11 @@ func deleteRegistryKeys() {
 
 func writeServiceConfig() error {
 
+	// Configure log path to preserve logs across restarts
+	// Note: GetNetclientPath() already returns paths with single backslashes
+	// (the \\ in source code is just Go's escape sequence)
+	executablePath := config.GetNetclientPath() + "netclient.exe"
+	logPath := config.GetNetclientPath() + "netclient.log"
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
 <name>netclient</name>
@@ -185,17 +190,21 @@ func writeServiceConfig() error {
 <executable>%s</executable>
 <arguments>daemon</arguments>
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
-<log mode="roll"></log>
+<log mode="append" path="%s" />
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
 </service>
-`, strings.Replace(config.GetNetclientPath()+"netclient.exe", `\\`, `\`, -1))
-	if !ncutils.FileExists(serviceConfigPath) {
-		err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
-		if err != nil {
-			return err
-		}
+`, executablePath, logPath)
+	// Always write/update the config to ensure log settings are correct
+	fileExisted := ncutils.FileExists(serviceConfigPath)
+	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
+	if err != nil {
+		return err
+	}
+	if !fileExisted {
 		logger.Log(0, "wrote the daemon config file to the Netclient directory")
+	} else {
+		logger.Log(0, "updated the daemon config file with log preservation settings")
 	}
 	return nil
 }
@@ -220,7 +229,8 @@ func runWinSWCMD(command string) error {
 	}
 
 	// format command
-	dirPath := strings.Replace(config.GetNetclientPath(), `\\`, `\`, -1)
+	// Note: GetNetclientPath() already returns paths with single backslashes
+	dirPath := config.GetNetclientPath()
 	winCmd := fmt.Sprintf(`"%swinsw.exe" "%s"`, dirPath, command)
 	logger.Log(1, "running "+command+" of Windows Netclient daemon")
 	// run command and log for success/failure
