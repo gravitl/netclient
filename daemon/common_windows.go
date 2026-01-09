@@ -60,16 +60,24 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	// get exact formatted commands
+	// Always try to stop and uninstall existing service before installing
+	// This prevents "service already exists" errors
+	slog.Info("ensuring any existing service is stopped and uninstalled before installation")
+	_ = runWinSWCMD("stop")
+	time.Sleep(time.Second * 2)
+	_ = runWinSWCMD("uninstall")
+	time.Sleep(time.Second * 2)
+
+	// Now install the service
 	if err = runWinSWCMD("install"); err != nil {
-		for i := 0; i < 3; i++ {
-			fmt.Printf("Attempting to remove previously installed netclient service\n")
-			_ = runWinSWCMD("uninstall")
-			time.Sleep(time.Second >> 1)
-			if err = runWinSWCMD("install"); err == nil {
-				fmt.Printf("successfully installed netclient service")
-				break
-			}
+		// If install still fails, try one more time with stop/uninstall
+		slog.Warn("service install failed, retrying after stop/uninstall", "error", err)
+		_ = runWinSWCMD("stop")
+		time.Sleep(time.Second * 2)
+		_ = runWinSWCMD("uninstall")
+		time.Sleep(time.Second * 2)
+		if err = runWinSWCMD("install"); err != nil {
+			return fmt.Errorf("failed to install service: %w", err)
 		}
 	}
 	time.Sleep(time.Millisecond)
