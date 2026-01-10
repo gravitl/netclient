@@ -183,18 +183,24 @@ func writeServiceConfig() error {
 	// (the \\ in source code is just Go's escape sequence)
 	executablePath := config.GetNetclientPath() + "netclient.exe"
 	logPath := config.GetNetclientPath() + "netclient.log"
+	workingDir := config.GetNetclientPath()
+	// WinSW captures stdout/stderr and writes to the log file
+	// Setting workingdirectory ensures logs are written to the correct location
+	// WinSW may also create netclient.out.log and netclient.err.log in the working directory
+	// The service must be restarted after config changes for logs to be written
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
 <name>netclient</name>
 <description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
 <executable>%s</executable>
 <arguments>daemon</arguments>
+<workingdirectory>%s</workingdirectory>
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
 <log mode="append" path="%s" />
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
 </service>
-`, executablePath, logPath)
+`, executablePath, workingDir, logPath)
 	// Always write/update the config to ensure log settings are correct
 	fileExisted := ncutils.FileExists(serviceConfigPath)
 	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
@@ -202,10 +208,14 @@ func writeServiceConfig() error {
 		return err
 	}
 	if !fileExisted {
-		logger.Log(0, "wrote the daemon config file to the Netclient directory")
+		logger.Log(2, "wrote the daemon config file to the Netclient directory")
 	} else {
-		logger.Log(0, "updated the daemon config file with log preservation settings")
+		logger.Log(2, "updated the daemon config file with log preservation settings")
 	}
+	// Log where the log file should be created
+	logger.Log(0, fmt.Sprintf("netclient logs will be written to: %s", logPath))
+	logger.Log(0, "Note: WinSW may also create netclient.out.log and netclient.err.log in the same directory")
+	logger.Log(0, "The service must be restarted for the new log configuration to take effect")
 	return nil
 }
 
