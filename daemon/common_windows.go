@@ -182,12 +182,10 @@ func writeServiceConfig() error {
 	// Note: GetNetclientPath() already returns paths with single backslashes
 	// (the \\ in source code is just Go's escape sequence)
 	executablePath := config.GetNetclientPath() + "netclient.exe"
-	logPath := config.GetNetclientPath() + "netclient.log"
 	workingDir := config.GetNetclientPath()
-	// WinSW captures stdout/stderr and writes to the log file
-	// Setting workingdirectory ensures logs are written to the correct location
-	// WinSW may also create netclient.out.log and netclient.err.log in the working directory
-	// The service must be restarted after config changes for logs to be written
+	// WinSW creates log files based on the wrapper executable name (winsw.exe -> winsw.out.log, winsw.err.log)
+	// Use mode="append" to preserve logs across service restarts
+	// Logs will be created in the workingdirectory: winsw.out.log (stdout) and winsw.err.log (stderr)
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
 <name>netclient</name>
@@ -196,11 +194,11 @@ func writeServiceConfig() error {
 <arguments>daemon</arguments>
 <workingdirectory>%s</workingdirectory>
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
-<log mode="append" path="%s" />
+<log mode="append" />
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
 </service>
-`, executablePath, workingDir, logPath)
+`, executablePath, workingDir)
 	// Always write/update the config to ensure log settings are correct
 	fileExisted := ncutils.FileExists(serviceConfigPath)
 	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
@@ -212,9 +210,9 @@ func writeServiceConfig() error {
 	} else {
 		logger.Log(2, "updated the daemon config file with log preservation settings")
 	}
-	// Log where the log file should be created
-	logger.Log(0, fmt.Sprintf("netclient logs will be written to: %s", logPath))
-	logger.Log(0, "Note: WinSW may also create netclient.out.log and netclient.err.log in the same directory")
+	// Log where the log files are created
+	// WinSW creates log files based on the wrapper executable name (winsw.exe)
+	logger.Log(0, fmt.Sprintf("netclient logs will be written to: %swinsw.out.log (stdout) and %swinsw.err.log (stderr)", workingDir, workingDir))
 	logger.Log(0, "The service must be restarted for the new log configuration to take effect")
 	return nil
 }
@@ -240,8 +238,10 @@ func runWinSWCMD(command string) error {
 
 	// format command
 	// Note: GetNetclientPath() already returns paths with single backslashes
+	// WinSW automatically finds winsw.xml in the same directory as winsw.exe
+	// Log files are named based on the wrapper executable: winsw.out.log and winsw.err.log
 	dirPath := config.GetNetclientPath()
-	winCmd := fmt.Sprintf(`"%swinsw.exe" "%s"`, dirPath, command)
+	winCmd := fmt.Sprintf(`"%swinsw.exe" %s`, dirPath, command)
 	logger.Log(1, "running "+command+" of Windows Netclient daemon")
 	// run command and log for success/failure
 	out, err := ncutils.RunCmdFormatted(winCmd, true)
