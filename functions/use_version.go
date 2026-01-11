@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/blang/semver"
@@ -16,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/minio/selfupdate"
+	"golang.org/x/exp/slog"
 )
 
 var binPath, filePath string
@@ -114,12 +116,27 @@ func versionLessThan(v1, v2 string) (bool, error) {
 func UseVersion(version string, rebootDaemon bool) error {
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
+		// Stop the daemon before updating to avoid file locking issues
+		if rebootDaemon {
+			if err := daemon.Stop(); err != nil {
+				// Log warning but continue - daemon might not be running
+				slog.Warn("failed to stop daemon before update", "error", err)
+			}
+			// Give the service time to stop
+			time.Sleep(time.Second * 2)
+		}
 		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
 		if err := windowsUpdate(windowsBinaryURL); err != nil {
+			// If update failed, try to restart daemon if it was stopped
+			if rebootDaemon {
+				_ = daemon.Start()
+			}
 			return err
 		}
 		if rebootDaemon {
-			daemon.HardRestart()
+			if err := daemon.Start(); err != nil {
+				return fmt.Errorf("failed to start daemon after update: %w", err)
+			}
 		}
 		return nil
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,6 +23,14 @@ func install() error {
 		os.Exit(3)
 		return err
 	}
+
+	// Ensure the installation directory exists
+	installPath := config.GetNetclientInstallPath()
+	installDir := filepath.Dir(installPath)
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return fmt.Errorf("failed to create installation directory: %w", err)
+	}
+
 	binarypath, err := os.Executable()
 	if err != nil {
 		return err
@@ -30,25 +39,45 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(config.GetNetclientInstallPath(), binary, 0711)
-	if err != nil {
-		return err
+
+	// Write to a temporary file first, then rename to avoid issues with locked files
+	tmpPath := installPath + ".tmp"
+	if err := os.WriteFile(tmpPath, binary, 0711); err != nil {
+		return fmt.Errorf("failed to write binary to temporary file: %w", err)
+	}
+
+	// Remove the old file if it exists (might fail if locked, but that's okay)
+	_ = os.Remove(installPath)
+
+	// Rename the temporary file to the final location
+	if err := os.Rename(tmpPath, installPath); err != nil {
+		// Clean up temp file on error
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to install binary: %w", err)
 	}
 
 	err = ncutils.GetEmbedded()
 	if err != nil {
 		return err
 	}
-	// get exact formatted commands
+	// Always try to stop and uninstall existing service before installing
+	// This prevents "service already exists" errors
+	slog.Info("ensuring any existing service is stopped and uninstalled before installation")
+	_ = runWinSWCMD("stop")
+	time.Sleep(time.Second * 2)
+	_ = runWinSWCMD("uninstall")
+	time.Sleep(time.Second * 2)
+
+	// Now install the service
 	if err = runWinSWCMD("install"); err != nil {
-		for i := 0; i < 3; i++ {
-			fmt.Printf("Attempting to remove previously installed netclient service\n")
-			_ = runWinSWCMD("uninstall")
-			time.Sleep(time.Second >> 1)
-			if err = runWinSWCMD("install"); err == nil {
-				fmt.Printf("successfully installed netclient service")
-				break
-			}
+		// If install still fails, try one more time with stop/uninstall
+		slog.Warn("service install failed, retrying after stop/uninstall", "error", err)
+		_ = runWinSWCMD("stop")
+		time.Sleep(time.Second * 2)
+		_ = runWinSWCMD("uninstall")
+		time.Sleep(time.Second * 2)
+		if err = runWinSWCMD("install"); err != nil {
+			return fmt.Errorf("failed to install service: %w", err)
 		}
 	}
 	time.Sleep(time.Millisecond)
@@ -149,25 +178,42 @@ func deleteRegistryKeys() {
 
 func writeServiceConfig() error {
 
+	// Configure log path to preserve logs across restarts
+	// Note: GetNetclientPath() already returns paths with single backslashes
+	// (the \\ in source code is just Go's escape sequence)
+	executablePath := config.GetNetclientPath() + "netclient.exe"
+	workingDir := config.GetNetclientPath()
+	// WinSW creates log files based on the wrapper executable name (winsw.exe -> winsw.out.log, winsw.err.log)
+	// Use mode="append" to preserve logs across service restarts
+	// Logs will be created in the workingdirectory: winsw.out.log (stdout) and winsw.err.log (stderr)
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
 <name>netclient</name>
 <description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
 <executable>%s</executable>
 <arguments>daemon</arguments>
+<workingdirectory>%s</workingdirectory>
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
-<log mode="roll"></log>
+<log mode="append" />
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
 </service>
-`, strings.Replace(config.GetNetclientPath()+"netclient.exe", `\\`, `\`, -1))
-	if !ncutils.FileExists(serviceConfigPath) {
-		err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
-		if err != nil {
-			return err
-		}
-		logger.Log(0, "wrote the daemon config file to the Netclient directory")
+`, executablePath, workingDir)
+	// Always write/update the config to ensure log settings are correct
+	fileExisted := ncutils.FileExists(serviceConfigPath)
+	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
+	if err != nil {
+		return err
 	}
+	if !fileExisted {
+		logger.Log(2, "wrote the daemon config file to the Netclient directory")
+	} else {
+		logger.Log(2, "updated the daemon config file with log preservation settings")
+	}
+	// Log where the log files are created
+	// WinSW creates log files based on the wrapper executable name (winsw.exe)
+	logger.Log(0, fmt.Sprintf("netclient logs will be written to: %swinsw.out.log (stdout) and %swinsw.err.log (stderr)", workingDir, workingDir))
+	logger.Log(0, "The service must be restarted for the new log configuration to take effect")
 	return nil
 }
 
@@ -191,8 +237,11 @@ func runWinSWCMD(command string) error {
 	}
 
 	// format command
-	dirPath := strings.Replace(config.GetNetclientPath(), `\\`, `\`, -1)
-	winCmd := fmt.Sprintf(`"%swinsw.exe" "%s"`, dirPath, command)
+	// Note: GetNetclientPath() already returns paths with single backslashes
+	// WinSW automatically finds winsw.xml in the same directory as winsw.exe
+	// Log files are named based on the wrapper executable: winsw.out.log and winsw.err.log
+	dirPath := config.GetNetclientPath()
+	winCmd := fmt.Sprintf(`"%swinsw.exe" %s`, dirPath, command)
 	logger.Log(1, "running "+command+" of Windows Netclient daemon")
 	// run command and log for success/failure
 	out, err := ncutils.RunCmdFormatted(winCmd, true)

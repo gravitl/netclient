@@ -37,8 +37,22 @@ func (nc *NCIface) Create() error {
 		}
 		adapter, err = driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
 		if err != nil {
-			slog.Error("creating adapter error: ", "error", err)
-			return err
+			// Check if adapter already exists - try to open it again
+			if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Cannot create a file when that file already exists") {
+				slog.Info("adapter already exists, attempting to open it")
+				// Retry opening the adapter - it might have been created by another process
+				var openErr error
+				adapter, openErr = driver.OpenAdapter(ncutils.GetInterfaceName())
+				if openErr != nil {
+					slog.Error("creating adapter error (adapter exists but cannot be opened): ", "error", err, "openError", openErr)
+					return fmt.Errorf("adapter exists but cannot be opened: %w (original error: %v)", openErr, err)
+				}
+				slog.Info("successfully opened existing adapter")
+				err = nil // Clear the error since we successfully opened the adapter
+			} else {
+				slog.Error("creating adapter error: ", "error", err)
+				return err
+			}
 		}
 	} else {
 		slog.Info("re-using existing adapter")
