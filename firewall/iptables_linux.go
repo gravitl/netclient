@@ -473,7 +473,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
-		if egressGwRange.Nat {
+		if egressGwRange.VirtualNatEnabled {
 			// Check if virtual NAT should be applied
 			if vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange); shouldApply {
 				logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))

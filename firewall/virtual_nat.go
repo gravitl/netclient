@@ -47,7 +47,7 @@ func extractVirtualNatInfoFromRange(egressGwRange models.EgressRangeMetric) *vir
 // Virtual NAT is enabled when VirtualNetwork field is set and Nat is true
 func shouldApplyVirtualNat(egressGwRange models.EgressRangeMetric) (*virtualNatInfo, bool) {
 	// Virtual NAT requires both Nat=true and VirtualNetwork to be set
-	if !egressGwRange.Nat || egressGwRange.VirtualNetwork == "" {
+	if !egressGwRange.VirtualNatEnabled || egressGwRange.VirtualNetwork == "" {
 		return nil, false
 	}
 

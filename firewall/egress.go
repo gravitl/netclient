@@ -109,7 +109,7 @@ func DeleteEgressGwRoutes(server string) {
 }
 
 func key(e models.EgressRangeMetric) string {
-	return fmt.Sprintf("%s|%t", e.Network, e.Nat)
+	return fmt.Sprintf("%s|%t", e.Network, e.VirtualNatEnabled)
 }
 
 func isEgressRangeEqual(a, b []models.EgressRangeMetric) bool {
