@@ -16,6 +16,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/gravitl/netmaker v1.4.1-0.20260106165716-7338ec3f438d
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
+	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.8.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
@@ -57,6 +58,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
