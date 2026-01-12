@@ -2750,8 +2750,8 @@ func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 		return nil, fmt.Errorf("failed to ensure vnat table: %w", err)
 	}
 
-	// Get chain names
-	preroutingChain, postroutingChain, forwardChain := getVNATChainNames(egressID)
+	// Get chain names (forward chain not needed - FORWARD already has ACCEPT policy)
+	preroutingChain, postroutingChain := getVNATChainNames(egressID)
 	id8 := getEgressID8(egressID)
 
 	// Note: Conntrack zones can be added later for better collision prevention
@@ -2773,21 +2773,14 @@ func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 		Table: vnatTableStruct,
 		Type:  nftables.ChainTypeNAT,
 	}
-	forwardChainObj := &nftables.Chain{
-		Name:  forwardChain,
-		Table: vnatTableStruct,
-		Type:  nftables.ChainTypeFilter,
-	}
 
 	// Delete existing chains if they exist (for idempotency)
 	n.deleteVNATChain(preroutingChain)
 	n.deleteVNATChain(postroutingChain)
-	n.deleteVNATChain(forwardChain)
 
-	// Create chains
+	// Create chains (forward chain not needed - FORWARD already has ACCEPT policy)
 	n.conn.AddChain(preroutingChainObj)
 	n.conn.AddChain(postroutingChainObj)
-	n.conn.AddChain(forwardChainObj)
 
 	if err := n.conn.Flush(); err != nil {
 		return nil, fmt.Errorf("failed to create vnat chains: %w", err)
@@ -2912,102 +2905,7 @@ func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 			chain:  postroutingChain,
 		})
 
-		// FORWARD rules: Accept traffic
-		// Rule 1: WG -> LAN, destination in real range
-		forwardExprs1 := []expr.Any{
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(wgInterface + "\x00"),
-			},
-			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(egressRangeIface + "\x00"),
-			},
-			&expr.Payload{
-				DestRegister: 1,
-				Base:         expr.PayloadBaseNetworkHeader,
-				Offset:       16,
-				Len:          4,
-			},
-			&expr.Bitwise{
-				SourceRegister: 1,
-				DestRegister:   1,
-				Len:            4,
-				Mask:           vnatInfo.realRange.Mask,
-				Xor:            []byte{0, 0, 0, 0},
-			},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     vnatInfo.realRange.IP.To4(),
-			},
-			&expr.Verdict{Kind: expr.VerdictAccept},
-		}
-
-		forwardRule1 := &nftables.Rule{
-			Table:    vnatTableStruct,
-			Chain:    forwardChainObj,
-			UserData: []byte(fmt.Sprintf("vnat:fw1:%s", id8)),
-			Exprs:    forwardExprs1,
-		}
-		n.conn.AddRule(forwardRule1)
-		rules = append(rules, ruleInfo{
-			nfRule: forwardRule1,
-			table:  "netmaker_vnat",
-			chain:  forwardChain,
-		})
-
-		// Rule 2: LAN -> WG, source in real range
-		forwardExprs2 := []expr.Any{
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(egressRangeIface + "\x00"),
-			},
-			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(wgInterface + "\x00"),
-			},
-			&expr.Payload{
-				DestRegister: 1,
-				Base:         expr.PayloadBaseNetworkHeader,
-				Offset:       12, // Source address
-				Len:          4,
-			},
-			&expr.Bitwise{
-				SourceRegister: 1,
-				DestRegister:   1,
-				Len:            4,
-				Mask:           vnatInfo.realRange.Mask,
-				Xor:            []byte{0, 0, 0, 0},
-			},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     vnatInfo.realRange.IP.To4(),
-			},
-			&expr.Verdict{Kind: expr.VerdictAccept},
-		}
-
-		forwardRule2 := &nftables.Rule{
-			Table:    vnatTableStruct,
-			Chain:    forwardChainObj,
-			UserData: []byte(fmt.Sprintf("vnat:fw2:%s", id8)),
-			Exprs:    forwardExprs2,
-		}
-		n.conn.AddRule(forwardRule2)
-		rules = append(rules, ruleInfo{
-			nfRule: forwardRule2,
-			table:  "netmaker_vnat",
-			chain:  forwardChain,
-		})
+		// Note: Forward chain rules are not needed - FORWARD chain already has ACCEPT policy
 	} else {
 		// IPv6 implementation (similar structure but with IPv6 offsets and addresses)
 		// TODO: Implement IPv6 support
@@ -3015,7 +2913,7 @@ func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 	}
 
 	// Add jump rules from base chains to per-egress chains
-	if err := n.addVNATJumpRules(preroutingChain, postroutingChain, forwardChain, id8); err != nil {
+	if err := n.addVNATJumpRules(preroutingChain, postroutingChain, id8); err != nil {
 		return nil, fmt.Errorf("failed to add vnat jump rules: %w", err)
 	}
 
@@ -3065,7 +2963,8 @@ func (n *nftablesManager) deleteVNATChain(chainName string) {
 }
 
 // addVNATJumpRules adds jump rules from base chains to per-egress chains
-func (n *nftablesManager) addVNATJumpRules(preroutingChain, postroutingChain, forwardChain, id8 string) error {
+// Note: Forward chain jump not needed - FORWARD already has ACCEPT policy
+func (n *nftablesManager) addVNATJumpRules(preroutingChain, postroutingChain, id8 string) error {
 	// Jump from PREROUTING to per-egress prerouting chain
 	preroutingBase, err := n.getChain(defaultNatTable, "PREROUTING")
 	if err == nil {
@@ -3122,40 +3021,12 @@ func (n *nftablesManager) addVNATJumpRules(preroutingChain, postroutingChain, fo
 		}
 	}
 
-	// Jump from FORWARD to per-egress forward chain
-	forwardBase, err := n.getChain(defaultIpTable, iptableFWDChain)
-	if err == nil {
-		jumpKey := genRuleKey("jump", forwardChain, "vnat", id8)
-		rules, _ := n.conn.GetRules(filterTable, forwardBase)
-		jumpExists := false
-		for _, r := range rules {
-			if string(r.UserData) == jumpKey {
-				jumpExists = true
-				break
-			}
-		}
-		if !jumpExists {
-			jumpRule := &nftables.Rule{
-				Table:    filterTable,
-				Chain:    forwardBase,
-				UserData: []byte(jumpKey),
-				Exprs: []expr.Any{
-					&expr.Verdict{
-						Kind:  expr.VerdictJump,
-						Chain: forwardChain,
-					},
-				},
-			}
-			n.conn.InsertRule(jumpRule)
-		}
-	}
-
 	return nil
 }
 
 // removeVirtualNATRules removes virtual NAT rules for an egress gateway
 func (n *nftablesManager) removeVirtualNATRules(egressID string) error {
-	preroutingChain, postroutingChain, forwardChain := getVNATChainNames(egressID)
+	preroutingChain, postroutingChain := getVNATChainNames(egressID)
 	id8 := getEgressID8(egressID)
 
 	// Remove jump rules from base chains
@@ -3183,22 +3054,9 @@ func (n *nftablesManager) removeVirtualNATRules(egressID string) error {
 		}
 	}
 
-	forwardBase, err := n.getChain(defaultIpTable, iptableFWDChain)
-	if err == nil {
-		jumpKey := genRuleKey("jump", forwardChain, "vnat", id8)
-		rules, _ := n.conn.GetRules(filterTable, forwardBase)
-		for _, r := range rules {
-			if string(r.UserData) == jumpKey {
-				n.conn.DelRule(r)
-				break
-			}
-		}
-	}
-
 	// Delete per-egress chains (this will also delete all rules in them)
 	n.deleteVNATChain(preroutingChain)
 	n.deleteVNATChain(postroutingChain)
-	n.deleteVNATChain(forwardChain)
 
 	return n.conn.Flush()
 }

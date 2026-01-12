@@ -1699,8 +1699,8 @@ func (i *iptablesManager) checkNETMAPSupport(ipv4 bool) bool {
 func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
 	var rules []ruleInfo
 
-	// Get chain names
-	preroutingChain, postroutingChain, forwardChain := getVNATChainNames(egressID)
+	// Get chain names (forward chain not needed - FORWARD already has ACCEPT policy)
+	preroutingChain, postroutingChain := getVNATChainNames(egressID)
 
 	isIPv4 := vnatInfo.virtualRange.IP.To4() != nil
 	var client *iptables.IPTables
@@ -1719,17 +1719,14 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 	realWindow := getRealRangeWindow(vnatInfo.realRange, vnatInfo.virtualRange)
 
 	// Delete existing chains if they exist (for idempotency)
-	i.deleteVNATChains(client, preroutingChain, postroutingChain, forwardChain, isIPv4)
+	i.deleteVNATChains(client, preroutingChain, postroutingChain, isIPv4)
 
-	// Create per-egress chains
+	// Create per-egress chains (forward chain not needed - FORWARD already has ACCEPT policy)
 	if err := createChain(client, defaultNatTable, preroutingChain); err != nil {
 		return nil, fmt.Errorf("failed to create prerouting chain: %w", err)
 	}
 	if err := createChain(client, defaultNatTable, postroutingChain); err != nil {
 		return nil, fmt.Errorf("failed to create postrouting chain: %w", err)
-	}
-	if err := createChain(client, defaultIpTable, forwardChain); err != nil {
-		return nil, fmt.Errorf("failed to create forward chain: %w", err)
 	}
 
 	if isIPv4 {
@@ -1772,46 +1769,7 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 			rule:   postroutingRule,
 			isIpv4: true,
 		})
-
-		// FORWARD rule 1: Allow WG -> LAN, destination in real range
-		forwardRule1 := []string{
-			"-i", wgInterface,
-			"-o", egressRangeIface,
-			"-d", vnatInfo.realRange.String(),
-			"-j", "ACCEPT",
-		}
-		forwardRule1 = appendNetmakerCommentToRule(forwardRule1)
-
-		err = client.Append(defaultIpTable, forwardChain, forwardRule1...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add forward rule 1: %w", err)
-		}
-		rules = append(rules, ruleInfo{
-			table:  defaultIpTable,
-			chain:  forwardChain,
-			rule:   forwardRule1,
-			isIpv4: true,
-		})
-
-		// FORWARD rule 2: Allow LAN -> WG, source in real range
-		forwardRule2 := []string{
-			"-i", egressRangeIface,
-			"-o", wgInterface,
-			"-s", vnatInfo.realRange.String(),
-			"-j", "ACCEPT",
-		}
-		forwardRule2 = appendNetmakerCommentToRule(forwardRule2)
-
-		err = client.Append(defaultIpTable, forwardChain, forwardRule2...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add forward rule 2: %w", err)
-		}
-		rules = append(rules, ruleInfo{
-			table:  defaultIpTable,
-			chain:  forwardChain,
-			rule:   forwardRule2,
-			isIpv4: true,
-		})
+		// Note: Forward chain rules are not needed - FORWARD chain already has ACCEPT policy
 	} else {
 		// IPv6 implementation (similar structure)
 		// TODO: Implement IPv6 support
@@ -1820,7 +1778,7 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 	}
 
 	// Add jump rules from base chains to per-egress chains
-	if err := i.addVNATJumpRules(client, preroutingChain, postroutingChain, forwardChain, isIPv4); err != nil {
+	if err := i.addVNATJumpRules(client, preroutingChain, postroutingChain, isIPv4); err != nil {
 		return nil, fmt.Errorf("failed to add vnat jump rules: %w", err)
 	}
 
@@ -1829,18 +1787,17 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 }
 
 // deleteVNATChains deletes virtual NAT chains if they exist
-func (i *iptablesManager) deleteVNATChains(client *iptables.IPTables, preroutingChain, postroutingChain, forwardChain string, ipv4 bool) {
+func (i *iptablesManager) deleteVNATChains(client *iptables.IPTables, preroutingChain, postroutingChain string, ipv4 bool) {
 	// Flush and delete chains
 	client.ClearChain(defaultNatTable, preroutingChain)
 	client.DeleteChain(defaultNatTable, preroutingChain)
 	client.ClearChain(defaultNatTable, postroutingChain)
 	client.DeleteChain(defaultNatTable, postroutingChain)
-	client.ClearChain(defaultIpTable, forwardChain)
-	client.DeleteChain(defaultIpTable, forwardChain)
 }
 
 // addVNATJumpRules adds jump rules from base chains to per-egress chains
-func (i *iptablesManager) addVNATJumpRules(client *iptables.IPTables, preroutingChain, postroutingChain, forwardChain string, ipv4 bool) error {
+// Note: Forward chain jump not needed - FORWARD already has ACCEPT policy
+func (i *iptablesManager) addVNATJumpRules(client *iptables.IPTables, preroutingChain, postroutingChain string, ipv4 bool) error {
 	// Jump from PREROUTING to per-egress prerouting chain
 	jumpRulePR := []string{"-j", preroutingChain}
 	jumpRulePR = appendNetmakerCommentToRule(jumpRulePR)
@@ -1864,23 +1821,12 @@ func (i *iptablesManager) addVNATJumpRules(client *iptables.IPTables, prerouting
 		}
 	}
 
-	// Jump from FORWARD to per-egress forward chain
-	jumpRuleFW := []string{"-j", forwardChain}
-	jumpRuleFW = appendNetmakerCommentToRule(jumpRuleFW)
-	exists, err = client.Exists(defaultIpTable, iptableFWDChain, jumpRuleFW...)
-	if err == nil && !exists {
-		err = client.Insert(defaultIpTable, iptableFWDChain, 1, jumpRuleFW...)
-		if err != nil {
-			return fmt.Errorf("failed to add forward jump rule: %w", err)
-		}
-	}
-
 	return nil
 }
 
 // removeVirtualNATRules removes virtual NAT rules for an egress gateway
 func (i *iptablesManager) removeVirtualNATRules(egressID string, ipv4 bool) error {
-	preroutingChain, postroutingChain, forwardChain := getVNATChainNames(egressID)
+	preroutingChain, postroutingChain := getVNATChainNames(egressID)
 
 	var client *iptables.IPTables
 	if ipv4 {
@@ -1898,12 +1844,8 @@ func (i *iptablesManager) removeVirtualNATRules(egressID string, ipv4 bool) erro
 	jumpRulePO = appendNetmakerCommentToRule(jumpRulePO)
 	client.DeleteIfExists(defaultNatTable, nattablePRTChain, jumpRulePO...)
 
-	jumpRuleFW := []string{"-j", forwardChain}
-	jumpRuleFW = appendNetmakerCommentToRule(jumpRuleFW)
-	client.DeleteIfExists(defaultIpTable, iptableFWDChain, jumpRuleFW...)
-
 	// Delete per-egress chains (this also flushes them)
-	i.deleteVNATChains(client, preroutingChain, postroutingChain, forwardChain, ipv4)
+	i.deleteVNATChains(client, preroutingChain, postroutingChain, ipv4)
 
 	return nil
 }

@@ -60,10 +60,10 @@ func shouldApplyVirtualNat(egressGwRange models.EgressRangeMetric) (*virtualNatI
 }
 
 // getVNATChainNames returns the chain names for virtual NAT rules
-func getVNATChainNames(egressID string) (preroutingChain, postroutingChain, forwardChain string) {
+// Note: Forward chain is not needed as FORWARD chain already has ACCEPT policy
+func getVNATChainNames(egressID string) (preroutingChain, postroutingChain string) {
 	id8 := getEgressID8(egressID)
 	preroutingChain = fmt.Sprintf("NM-VNAT-PR-%s", id8)
 	postroutingChain = fmt.Sprintf("NM-VNAT-PO-%s", id8)
-	forwardChain = fmt.Sprintf("NM-VNAT-FW-%s", id8)
 	return
 }
