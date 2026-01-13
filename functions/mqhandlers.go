@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
@@ -719,27 +718,23 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 func getServerBrokerStatus() (bool, error) {
-
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return false, errors.New("server is nil")
 	}
-	var status map[string]interface{}
+
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
-	endpoint := httpclient.JSONEndpoint[map[string]interface{}, models.ErrorResponse]{
-		URL:           url,
-		Method:        http.MethodGet,
-		Data:          nil,
-		Response:      status,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	response, errData, err := endpoint.GetJSON(status, models.ErrorResponse{})
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-			return false, err
-		}
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		return false, err
+	}
+
+	response := make(map[string]interface{})
+	err = json.Unmarshal(respBytes.Bytes(), &response)
+	if err != nil {
 		return false, err
 	}
 

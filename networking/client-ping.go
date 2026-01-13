@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -162,26 +161,25 @@ func GetPeerInfo() (models.HostPeerInfo, error) {
 		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
 		return models.HostPeerInfo{}, err
 	}
+
 	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
-	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
-		URL:           url,
-		Method:        http.MethodGet,
-		Authorization: "Bearer " + token,
-		Data:          nil,
-		Response:      models.SuccessResponse{},
-		ErrorResponse: models.ErrorResponse{},
-	}
-	response, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-			return models.HostPeerInfo{}, err
-		}
 		slog.Error("failed to read peer info resp", "error", err.Error())
 		return models.HostPeerInfo{}, err
 	}
-	peerInfo := models.HostPeerInfo{}
-	data, _ := json.Marshal(response.Response)
+
+	var resp models.SuccessResponse
+	err = json.Unmarshal(respBytes.Bytes(), &resp)
+	if err != nil {
+		return models.HostPeerInfo{}, err
+	}
+
+	var peerInfo models.HostPeerInfo
+	data, _ := json.Marshal(resp.Response)
 	err = json.Unmarshal(data, &peerInfo)
 	if err != nil {
 		return models.HostPeerInfo{}, err

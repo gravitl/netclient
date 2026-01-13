@@ -1,18 +1,15 @@
 package functions
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
@@ -22,7 +19,6 @@ import (
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/hashicorp/go-retryablehttp"
 	"golang.org/x/exp/slog"
 )
 
@@ -148,22 +144,13 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 		return err
 	}
 	hu.Host = host.Host
-	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
-		Method:        http.MethodPut,
-		Data:          hu,
-		Authorization: "Bearer " + token,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Error("error sending host update to server", "code", strconv.Itoa(errData.Code), "error", errData.Message)
-		}
-		return err
-	}
-	return nil
+
+	url := fmt.Sprintf("https://%s/api/v1/fallback/host/%s", server.API, host.ID.String())
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	_, err = ncutils.SendRequest(http.MethodPut, url, headers, hu)
+	return err
 }
 
 // hostServerUpdate - used to send host updates to server via restful api
@@ -172,22 +159,8 @@ func hostServerUpdate(hu models.HostUpdate) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
-	host := config.Netclient()
-	if host == nil {
-		return fmt.Errorf("no configured host found")
-	}
-	token, err := auth.Authenticate(server, host)
-	if err != nil {
-		return err
-	}
-	hu.Host = host.Host
 
-	url := fmt.Sprintf("https://%s/api/v1/fallback/host/%s", server.API, host.ID.String())
-	headers := make(http.Header)
-	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
-	_, err = sendRequest(http.MethodPut, url, headers, hu)
-	return err
+	return hostUpdateWithServer(server, hu)
 }
 
 func checkin() {
@@ -450,68 +423,4 @@ func clearRetainedMsg(client mqtt.Client, topic string) {
 	if token := client.Publish(topic, 0, true, []byte{}); token.Error() != nil {
 		logger.Log(0, "failed to clear retained message: ", topic, token.Error().Error())
 	}
-}
-
-func sendRequest(method, endpoint string, headers http.Header, data any) (*bytes.Buffer, error) {
-	var request *retryablehttp.Request
-	var err error
-
-	if data != nil {
-		payload, err := json.Marshal(data)
-		if err != nil {
-			return nil, err
-		}
-		request, err = retryablehttp.NewRequestWithContext(context.TODO(), method, endpoint, bytes.NewBuffer(payload))
-		if err != nil {
-			return nil, err
-		}
-
-		request.Header.Set("Content-Type", "application/json")
-	} else {
-		request, err = retryablehttp.NewRequestWithContext(context.TODO(), method, endpoint, nil)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	for key, value := range headers {
-		request.Header.Set(key, value[0])
-	}
-
-	client := retryablehttp.NewClient()
-	client.RetryMax = 3
-	client.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
-		if err != nil {
-			// retry network errors
-			return true, nil
-		}
-
-		return false, nil
-	}
-	client.RetryWaitMin = 5 * time.Second
-	resp, err := client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp models.ErrorResponse
-		err := json.NewDecoder(resp.Body).Decode(&errResp)
-		if err != nil {
-			return nil, err
-		}
-
-		return nil, errors.New(errResp.Message)
-	}
-
-	var body bytes.Buffer
-	_, err = io.Copy(&body, resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return &body, nil
 }

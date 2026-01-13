@@ -3,12 +3,10 @@ package functions
 import (
 	b64 "encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
 
-	"github.com/devilcove/httpclient"
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -50,24 +48,26 @@ func Register(token string) error {
 	if shouldUpdateHost { // get most up to date values before submitting to server
 		host = config.Netclient()
 	}
-	api := httpclient.JSONEndpoint[models.RegisterResponse, models.ErrorResponse]{
-		URL:           "https://" + serverData.Server,
-		Route:         "/api/v1/host/register/" + token,
-		Method:        http.MethodPost,
-		Data:          host,
-		Response:      models.RegisterResponse{},
-		ErrorResponse: models.ErrorResponse{},
-	}
-	registerResponse, errData, err := api.GetJSON(models.RegisterResponse{}, models.ErrorResponse{})
+
+	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.FatalLog("error registering with server", fmt.Sprintf("code: %d", errData.Code), errData.Message)
-		}
+		logger.FatalLog("error registering with server", err.Error())
 		return err
 	}
+
+	var registerResponse models.RegisterResponse
+	err = json.Unmarshal(respBytes.Bytes(), &registerResponse)
+	if err != nil {
+		return err
+	}
+
 	if config.CurrServer != "" && config.CurrServer != registerResponse.ServerConf.Server {
 		fmt.Println("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server ->", config.CurrServer)
 	}
+
 	handleRegisterResponse(&registerResponse)
 	return nil
 }
