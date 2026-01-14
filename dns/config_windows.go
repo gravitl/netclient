@@ -81,7 +81,7 @@ func SetupDNSConfig() error {
 	}
 
 	// Mark interface as corporate/domain-connected for Intranet classification
-	// This enables RDP Gateway bypass (like Pritunl does)
+	// This enables RDP Gateway bypass
 	// Retry here as a fallback in case it wasn't set during interface creation
 	if runtime.GOOS == "windows" {
 		markInterfaceForIntranetClassification()
@@ -117,7 +117,6 @@ func markInterfaceForIntranetClassification() {
 
 		// Set Type = 6 (Corporate/Enterprise network) for Intranet classification
 		// NOTE: NetworkCategory can show "Public" but Type=6 enables Intranet classification for RDP Gateway bypass
-		// This is what Pritunl does - it works even with NetworkCategory: Public because Type=6 is set
 		err = key.SetDWordValue("Type", 6)
 		if err == nil {
 			// Also set DomainType and MediaSubType if possible
@@ -134,7 +133,7 @@ func markInterfaceForIntranetClassification() {
 
 		if err == nil {
 			// Set NetworkCategory to Private - Netmaker requires Private for RDP Gateway bypass to work
-			// (Pritunl works with Public, but Netmaker needs Private + registry Type=6)
+			// Registry Type=6 + NetworkCategory Private enables Intranet classification
 			interfaceName := ncutils.GetInterfaceName()
 			if interfaceName != "" {
 				// Set network profile to Private - this is required for Netmaker RDP Gateway bypass

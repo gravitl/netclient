@@ -555,7 +555,7 @@ func isEconnRefused(err error) bool {
 
 // markInterfaceAsCorporate marks the WireGuard interface as corporate/domain-connected
 // This enables Windows to classify destinations over VPN as "Intranet", which allows
-// RDP client to bypass RD Gateway and connect directly over VPN (like Pritunl does)
+// RDP client to bypass RD Gateway and connect directly over VPN
 // This function may need to be called multiple times as the registry key might not
 // exist immediately after interface creation
 func markInterfaceAsCorporate(interfaceGUID string) error {
@@ -575,7 +575,6 @@ func markInterfaceAsCorporate(interfaceGUID string) error {
 	// This tells Windows NLA (Network Location Awareness) to treat this as corporate/intranet
 	// Type values: 0=Public, 1=Private, 6=Domain/Corporate
 	// NOTE: NetworkCategory can show "Public" but Type=6 enables Intranet classification for RDP Gateway bypass
-	// This is what Pritunl does - it works even with NetworkCategory: Public because Type=6 is set
 	err = key.SetDWordValue("Type", 6)
 	if err != nil {
 		return fmt.Errorf("failed to set Type: %w", err)
@@ -606,7 +605,7 @@ func markInterfaceAsCorporate(interfaceGUID string) error {
 	}
 
 	// Set NetworkCategory to Private - Netmaker requires Private for RDP Gateway bypass to work
-	// (Pritunl works with Public, but Netmaker needs Private + registry Type=6)
+	// Registry Type=6 + NetworkCategory Private enables Intranet classification
 	interfaceName := ncutils.GetInterfaceName()
 	if interfaceName != "" {
 		// Set network profile to Private - this is required for Netmaker RDP Gateway bypass
