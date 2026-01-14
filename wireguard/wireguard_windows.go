@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
@@ -46,7 +47,23 @@ func (nc *NCIface) Create() error {
 
 	slog.Info("created Windows tunnel")
 	nc.Iface = adapter
-	return adapter.SetAdapterState(driver.AdapterStateUp)
+
+	// Configure DNS and interface settings BEFORE bringing adapter up
+	// This ensures NLA sees DNS configuration immediately when evaluating the interface
+	if err := configureInterfaceForNLA(ncutils.GetInterfaceName()); err != nil {
+		slog.Warn("failed to configure interface for NLA, continuing anyway", "error", err)
+	}
+
+	// Bring adapter up
+	if err := adapter.SetAdapterState(driver.AdapterStateUp); err != nil {
+		return err
+	}
+
+	// Trigger domain authentication traffic immediately after interface comes up
+	// This helps NLA classify the interface as Intranet
+	go triggerDomainAuthTraffic()
+
+	return nil
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
@@ -539,4 +556,196 @@ func DeleteOldInterface(iface string) {
 func isEconnRefused(err error) bool {
 	var winerrno windows.Errno
 	return errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED)
+}
+
+// configureInterfaceForNLA configures the interface to help Windows NLA classify it as Intranet
+// This should be called BEFORE setting adapter state to UP, or immediately after
+func configureInterfaceForNLA(ifaceName string) error {
+	// Set low interface metric to make Windows prefer this interface for NLA checks
+	// Lower metric = higher priority
+	if err := setInterfaceMetric(ifaceName, 1); err != nil {
+		slog.Warn("failed to set interface metric", "error", err)
+	}
+
+	// Configure DNS directly on the interface using netsh
+	// This ensures DNS is available immediately when NLA evaluates the interface
+	dnsIP, err := getDNSIPForInterface()
+	if err != nil {
+		slog.Debug("no DNS IP available yet for interface configuration", "error", err)
+		return nil // Not a fatal error, DNS will be configured later
+	}
+
+	// Set DNS servers directly on the interface
+	if err := setInterfaceDNS(ifaceName, dnsIP); err != nil {
+		slog.Warn("failed to set interface DNS", "error", err)
+	}
+
+	// Set DNS suffix if available
+	server := config.GetServer(config.CurrServer)
+	if server != nil && server.DefaultDomain != "" {
+		domain := strings.TrimSuffix(strings.TrimPrefix(server.DefaultDomain, "."), ".")
+		if err := setInterfaceDNSSuffix(ifaceName, domain); err != nil {
+			slog.Warn("failed to set interface DNS suffix", "error", err)
+		}
+	}
+
+	return nil
+}
+
+// setInterfaceMetric sets a low metric on the interface to make Windows prefer it
+func setInterfaceMetric(ifaceName string, metric int) error {
+	// Set IPv4 interface metric
+	cmd := fmt.Sprintf("netsh interface ipv4 set interface \"%s\" metric=%d", ifaceName, metric)
+	_, err := ncutils.RunCmd(cmd, true)
+	if err != nil {
+		return fmt.Errorf("failed to set IPv4 metric: %w", err)
+	}
+
+	// Set IPv6 interface metric
+	cmd = fmt.Sprintf("netsh interface ipv6 set interface \"%s\" metric=%d", ifaceName, metric)
+	_, err = ncutils.RunCmd(cmd, true)
+	if err != nil {
+		return fmt.Errorf("failed to set IPv6 metric: %w", err)
+	}
+
+	slog.Info("set interface metric for NLA", "interface", ifaceName, "metric", metric)
+	return nil
+}
+
+// setInterfaceDNS sets DNS servers directly on the interface using netsh
+func setInterfaceDNS(ifaceName, dnsIP string) error {
+	// Set IPv4 DNS server
+	cmd := fmt.Sprintf("netsh interface ipv4 set dns \"%s\" static %s", ifaceName, dnsIP)
+	_, err := ncutils.RunCmd(cmd, true)
+	if err != nil {
+		return fmt.Errorf("failed to set IPv4 DNS: %w", err)
+	}
+
+	// Try IPv6 DNS if the IP is IPv6
+	if strings.Contains(dnsIP, ":") {
+		cmd = fmt.Sprintf("netsh interface ipv6 set dns \"%s\" static %s", ifaceName, dnsIP)
+		_, err = ncutils.RunCmd(cmd, true)
+		if err != nil {
+			slog.Debug("failed to set IPv6 DNS (may not be IPv6)", "error", err)
+		}
+	}
+
+	slog.Info("set interface DNS for NLA", "interface", ifaceName, "dns", dnsIP)
+	return nil
+}
+
+// setInterfaceDNSSuffix sets DNS suffix on the interface
+func setInterfaceDNSSuffix(ifaceName, suffix string) error {
+	// Set DNS suffix via registry for the interface
+	guid := config.Netclient().Host.ID.String()
+	if guid == "" {
+		guid = config.DefaultHostID
+	}
+
+	// Set on IPv4 interface registry key
+	ipv4KeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{%s}`, guid)
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, ipv4KeyPath, registry.ALL_ACCESS)
+	if err == nil {
+		defer key.Close()
+		err = key.SetStringValue("Domain", suffix)
+		if err == nil {
+			err = key.SetStringValue("DhcpDomain", "")
+		}
+	}
+
+	if err != nil {
+		slog.Debug("failed to set DNS suffix via registry", "error", err)
+	}
+
+	slog.Info("set interface DNS suffix for NLA", "interface", ifaceName, "suffix", suffix)
+	return nil
+}
+
+// getDNSIPForInterface gets the DNS IP that should be configured on the interface
+func getDNSIPForInterface() (string, error) {
+	// Try to get DNS from the DNS server instance
+	// This may not be available yet if called very early, so we handle that gracefully
+	dnsIP := ""
+
+	// Try to get from config - this might be available even if DNS server isn't running yet
+	server := config.GetServer(config.CurrServer)
+	if server != nil && len(server.DnsNameservers) > 0 {
+		for _, ns := range server.DnsNameservers {
+			if !ns.IsFallback && len(ns.IPs) > 0 {
+				// Use the first IP from the nameserver (IPs is a slice of strings)
+				dnsIP = ns.IPs[0]
+				break
+			}
+		}
+	}
+
+	if dnsIP == "" {
+		return "", errors.New("no DNS IP available")
+	}
+
+	return dnsIP, nil
+}
+
+// triggerDomainAuthTraffic triggers domain authentication traffic to help NLA classify interface as Intranet
+// This should be called immediately after the interface comes up, during the NLA evaluation window
+func triggerDomainAuthTraffic() {
+	ifaceName := ncutils.GetInterfaceName()
+
+	// Get the computer's domain/workgroup name
+	domainName, err := getComputerDomain()
+	if err != nil || domainName == "" {
+		slog.Debug("not domain-joined or domain name unavailable, skipping domain auth traffic", "error", err)
+		return
+	}
+
+	slog.Info("triggering domain authentication traffic for NLA", "interface", ifaceName, "domain", domainName)
+
+	// Try to resolve domain controller name - this triggers DNS lookup
+	dcName := fmt.Sprintf("_ldap._tcp.dc._msdcs.%s", domainName)
+	_, err = ncutils.RunCmd(fmt.Sprintf("nslookup %s", dcName), false)
+	if err != nil {
+		slog.Debug("domain controller lookup failed (expected on non-domain-joined)", "error", err)
+	}
+
+	// Try SMB connection to domain controller (if available)
+	// This generates authentication traffic that NLA can observe
+	go func() {
+		// Use net use command to trigger SMB authentication
+		// This will fail gracefully if not domain-joined, but generates traffic
+		_, _ = ncutils.RunCmd(fmt.Sprintf("net use \\\\%s\\IPC$ /user:guest", domainName), false)
+	}()
+
+	// Try LDAP lookup - generates LDAP/Kerberos traffic
+	go func() {
+		_, _ = ncutils.RunCmd(fmt.Sprintf("nltest /dclist:%s", domainName), false)
+	}()
+
+	// Flush DNS cache to force fresh lookups on the new interface
+	_, _ = ncutils.RunCmd("ipconfig /flushdns", false)
+}
+
+// getComputerDomain gets the computer's domain or workgroup name
+func getComputerDomain() (string, error) {
+	// Try to get domain/workgroup name
+	output, err := ncutils.RunCmd("net config workstation", true)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse output to find domain name
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "domain") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				domain := strings.TrimSpace(parts[1])
+				if domain != "" && domain != "WORKGROUP" {
+					return domain, nil
+				}
+			}
+		}
+	}
+
+	return "", errors.New("domain not found")
 }
