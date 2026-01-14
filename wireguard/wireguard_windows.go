@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -741,25 +743,44 @@ func triggerDomainAuthTraffic() {
 
 // getComputerDomain gets the computer's domain or workgroup name
 func getComputerDomain() (string, error) {
-	// Try to get domain/workgroup name
-	output, err := ncutils.RunCmd("net config workstation", true)
-	if err != nil {
-		return "", err
+	// Method 1: Try PowerShell (more reliable, doesn't require specific session)
+	psCmd := "(Get-WmiObject Win32_ComputerSystem).Domain"
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.Output()
+	if err == nil {
+		domain := strings.TrimSpace(string(output))
+		if domain != "" && domain != "WORKGROUP" && !strings.Contains(strings.ToLower(domain), "error") {
+			return domain, nil
+		}
 	}
 
-	// Parse output to find domain name
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToLower(line), "domain") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 1 {
-				domain := strings.TrimSpace(parts[1])
-				if domain != "" && domain != "WORKGROUP" {
-					return domain, nil
+	// Method 2: Try net config workstation (may fail with permission errors)
+	netOutput, err := ncutils.RunCmd("net config workstation", false)
+	if err == nil {
+		// Parse output to find domain name
+		lines := strings.Split(netOutput, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(strings.ToLower(line), "full computer name") || strings.HasPrefix(strings.ToLower(line), "computer name") {
+				// Skip - this is computer name, not domain
+				continue
+			}
+			if strings.HasPrefix(strings.ToLower(line), "workstation domain") || strings.HasPrefix(strings.ToLower(line), "domain") {
+				parts := strings.Split(line, ":")
+				if len(parts) > 1 {
+					domain := strings.TrimSpace(parts[1])
+					if domain != "" && domain != "WORKGROUP" {
+						return domain, nil
+					}
 				}
 			}
 		}
+	}
+
+	// Method 3: Try environment variable
+	domain := os.Getenv("USERDOMAIN")
+	if domain != "" && domain != "WORKGROUP" {
+		return domain, nil
 	}
 
 	return "", errors.New("domain not found")
@@ -770,12 +791,13 @@ func getComputerDomain() (string, error) {
 func forceSetNetworkProfile(ifaceName string) {
 	// Method 1: Try to set via PowerShell Set-NetConnectionProfile
 	// This requires admin privileges but can force the profile
-	psCmd := fmt.Sprintf("powershell -Command \"$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory DomainAuthenticated -ErrorAction SilentlyContinue }\"", ifaceName, ifaceName)
-	output, err := ncutils.RunCmd(psCmd, true)
+	psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory DomainAuthenticated -ErrorAction SilentlyContinue }", ifaceName, ifaceName)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.CombinedOutput()
 	if err == nil {
-		slog.Info("attempted to force set network profile to DomainAuthenticated", "interface", ifaceName, "output", strings.TrimSpace(output))
+		slog.Info("attempted to force set network profile to DomainAuthenticated", "interface", ifaceName, "output", strings.TrimSpace(string(output)))
 	} else {
-		slog.Debug("failed to force set network profile via PowerShell", "interface", ifaceName, "error", err)
+		slog.Debug("failed to force set network profile via PowerShell", "interface", ifaceName, "error", err, "output", strings.TrimSpace(string(output)))
 	}
 
 	// Method 2: Set DomainAuthenticationKind in registry
@@ -799,17 +821,19 @@ func forceSetNetworkProfile(ifaceName string) {
 		}
 	}
 
-	// Method 3: Trigger NLA re-evaluation by toggling interface
-	// This is more aggressive but can help
+	// Method 3: Restart NLA service to force re-evaluation
+	// This is safer than toggling the interface
 	go func() {
-		time.Sleep(1 * time.Second)
-		// Disable and re-enable the interface to force NLA re-evaluation
-		// This is done in a goroutine to avoid blocking
-		cmd := fmt.Sprintf("netsh interface set interface \"%s\" admin=disable", ifaceName)
-		_, _ = ncutils.RunCmd(cmd, true)
-		time.Sleep(500 * time.Millisecond)
-		cmd = fmt.Sprintf("netsh interface set interface \"%s\" admin=enable", ifaceName)
-		_, _ = ncutils.RunCmd(cmd, true)
-		slog.Info("triggered interface toggle to force NLA re-evaluation", "interface", ifaceName)
+		time.Sleep(2 * time.Second)
+		// Restart NLA service to trigger re-evaluation
+		// This requires admin privileges but is safer than interface toggle
+		psCmd := "Restart-Service NlaSvc -ErrorAction SilentlyContinue"
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			slog.Info("restarted NLA service to force re-evaluation", "interface", ifaceName, "output", strings.TrimSpace(string(output)))
+		} else {
+			slog.Debug("failed to restart NLA service (may require admin)", "error", err, "output", strings.TrimSpace(string(output)))
+		}
 	}()
 }
