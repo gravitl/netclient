@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -72,7 +74,61 @@ func SetupDNSConfig() error {
 		}
 	}
 
-	return configure(dnsIp, matchDomainsMap, searchDomainsMap, matchAllDomains)
+	err = configure(dnsIp, matchDomainsMap, searchDomainsMap, matchAllDomains)
+	if err != nil {
+		return err
+	}
+
+	// Mark interface as corporate/domain-connected for Intranet classification
+	// This enables RDP Gateway bypass (like Pritunl does)
+	// Retry here as a fallback in case it wasn't set during interface creation
+	if runtime.GOOS == "windows" {
+		markInterfaceForIntranetClassification()
+	}
+
+	return nil
+}
+
+// markInterfaceForIntranetClassification marks the WireGuard interface as corporate/domain-connected
+// This is a helper function to avoid circular imports with wireguard package
+func markInterfaceForIntranetClassification() {
+	idString := config.Netclient().Host.ID.String()
+	if idString == "" {
+		idString = config.DefaultHostID
+	}
+
+	// Retry up to 3 times with delays (interface should be registered by now)
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * time.Second)
+		}
+
+		adapterPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{%s}\Connection`, strings.ToUpper(idString))
+		key, err := registry.OpenKey(registry.LOCAL_MACHINE, adapterPath, registry.ALL_ACCESS)
+		if err != nil {
+			if i < 2 {
+				slog.Debug("interface registry key not found, retrying", "attempt", i+1)
+				continue
+			}
+			slog.Debug("interface registry key not found after retries", "error", err)
+			return
+		}
+
+		// Set Type = 6 (Corporate/Enterprise network) for Intranet classification
+		err = key.SetDWordValue("Type", 6)
+		key.Close()
+
+		if err == nil {
+			slog.Info("marked WireGuard interface as corporate/domain-connected for Intranet classification (RDP Gateway bypass enabled)")
+			return
+		}
+
+		if i < 2 {
+			slog.Debug("failed to mark interface as corporate, retrying", "attempt", i+1, "error", err)
+		} else {
+			slog.Warn("failed to mark interface as corporate after retries (RDP Gateway bypass may not work)", "error", err)
+		}
+	}
 }
 
 func RestoreDNSConfig() error {
@@ -449,6 +505,9 @@ func setNrptRule(namespaces []string, nameservers string) error {
 		return err
 	}
 
+	// ConfigOptions = 8 (0x08) enables the NRPT rule
+	// This works together with interface Type=6 (corporate) to enable Intranet classification
+	// Intranet classification allows RDP to bypass RD Gateway for destinations over VPN
 	err = nrptRuleKey.SetDWordValue("ConfigOptions", 8)
 	if err != nil {
 		return err

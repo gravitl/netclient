@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
@@ -24,12 +27,13 @@ func (nc *NCIface) Create() error {
 	defer wgMutex.Unlock()
 
 	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
+	idString := config.Netclient().Host.ID.String()
+	if idString == "" {
+		idString = config.DefaultHostID
+	}
+
 	if err != nil {
 		slog.Info("creating Windows tunnel")
-		idString := config.Netclient().Host.ID.String()
-		if idString == "" {
-			idString = config.DefaultHostID
-		}
 		windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
 		if err != nil {
 			slog.Error("generating guid error: ", "error", err)
@@ -46,6 +50,13 @@ func (nc *NCIface) Create() error {
 
 	slog.Info("created Windows tunnel")
 	nc.Iface = adapter
+
+	// Mark interface as corporate/domain-connected for Intranet classification
+	// This enables RDP Gateway bypass for destinations over VPN
+	if err := markInterfaceAsCorporate(idString); err != nil {
+		slog.Warn("failed to mark interface as corporate (RDP Gateway bypass may not work)", "error", err)
+	}
+
 	return adapter.SetAdapterState(driver.AdapterStateUp)
 }
 
@@ -539,4 +550,84 @@ func DeleteOldInterface(iface string) {
 func isEconnRefused(err error) bool {
 	var winerrno windows.Errno
 	return errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED)
+}
+
+// markInterfaceAsCorporate marks the WireGuard interface as corporate/domain-connected
+// This enables Windows to classify destinations over VPN as "Intranet", which allows
+// RDP client to bypass RD Gateway and connect directly over VPN (like Pritunl does)
+// This function may need to be called multiple times as the registry key might not
+// exist immediately after interface creation
+func markInterfaceAsCorporate(interfaceGUID string) error {
+	// Network adapter registry path
+	// {4D36E972-E325-11CE-BFC1-08002BE10318} is the GUID for network adapters
+	adapterPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{%s}\Connection`, strings.ToUpper(interfaceGUID))
+
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, adapterPath, registry.ALL_ACCESS)
+	if err != nil {
+		// If the key doesn't exist yet, the interface might not be fully registered
+		// This is expected immediately after creation - caller should retry
+		return fmt.Errorf("interface registry key not found (interface may not be fully registered yet): %w", err)
+	}
+	defer key.Close()
+
+	// Set Type = 6 (Corporate/Enterprise network)
+	// This tells Windows NLA (Network Location Awareness) to treat this as corporate/intranet
+	// Type values: 0=Public, 1=Private, 6=Domain/Corporate
+	err = key.SetDWordValue("Type", 6)
+	if err != nil {
+		return fmt.Errorf("failed to set Type: %w", err)
+	}
+
+	// Set MediaSubType = 2 (Domain authenticated network)
+	// This further reinforces corporate/domain classification
+	err = key.SetDWordValue("MediaSubType", 2)
+	if err != nil {
+		// MediaSubType might not exist on all Windows versions, that's okay
+		slog.Debug("MediaSubType not set (may not be supported)", "error", err)
+	}
+
+	// Set DomainType = 1 (Domain network)
+	// This explicitly marks it as domain-connected for NLA
+	err = key.SetDWordValue("DomainType", 1)
+	if err != nil {
+		// DomainType might not exist on all Windows versions, that's okay
+		slog.Debug("DomainType not set (may not be supported)", "error", err)
+	}
+
+	slog.Info("marked WireGuard interface as corporate/domain-connected for Intranet classification (RDP Gateway bypass enabled)")
+	return nil
+}
+
+// MarkInterfaceAsCorporateWithRetry attempts to mark the interface as corporate with retries
+// This is needed because the registry key may not exist immediately after interface creation
+func MarkInterfaceAsCorporateWithRetry() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+
+	idString := config.Netclient().Host.ID.String()
+	if idString == "" {
+		idString = config.DefaultHostID
+	}
+
+	// Retry up to 5 times with increasing delays
+	for i := 0; i < 5; i++ {
+		if i > 0 {
+			// Exponential backoff: 1s, 2s, 4s, 8s
+			delay := time.Duration(1<<(i-1)) * time.Second
+			slog.Debug("retrying interface corporate marking", "attempt", i+1, "delay", delay)
+			time.Sleep(delay)
+		}
+
+		err := markInterfaceAsCorporate(idString)
+		if err == nil {
+			return // Success
+		}
+
+		if i < 4 {
+			slog.Debug("interface corporate marking failed, will retry", "attempt", i+1, "error", err)
+		} else {
+			slog.Warn("failed to mark interface as corporate after retries (RDP Gateway bypass may not work)", "error", err)
+		}
+	}
 }
