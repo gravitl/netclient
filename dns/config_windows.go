@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -140,12 +141,13 @@ func markInterfaceForIntranetClassification() {
 				// Registry Type=6 + NetworkCategory Private enables Intranet classification
 				// Use -Name parameter (this is what works: Set-NetConnectionProfile -Name netmaker -NetworkCategory Private)
 				// Note: Use $connProfile instead of $profile to avoid PowerShell profile variable conflict
-				psCmd := fmt.Sprintf(`powershell -Command "$ErrorActionPreference = 'Stop'; try { $connProfile = Get-NetConnectionProfile -Name '%s' -ErrorAction SilentlyContinue; if (-not $connProfile) { $connProfile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue } if ($connProfile) { if ($connProfile.NetworkCategory -ne 'Private') { Set-NetConnectionProfile -Name '%s' -NetworkCategory Private -ErrorAction Stop; Start-Sleep -Milliseconds 300; $updated = Get-NetConnectionProfile -Name '%s' -ErrorAction SilentlyContinue; if ($updated.NetworkCategory -eq 'Private') { Write-Host ('Success: NetworkCategory set to Private') } else { Write-Host ('Warning: NetworkCategory is ' + $updated.NetworkCategory) } } else { Write-Host ('NetworkCategory already Private') } } else { Write-Host ('Profile not found for ' + '%s') } } catch { Write-Host ('Error: ' + $_.Exception.Message); exit 1 }"`, interfaceName, interfaceName, interfaceName, interfaceName, interfaceName)
-				out, psErr := ncutils.RunCmd(psCmd, false)
+				psCmd := fmt.Sprintf("$ErrorActionPreference = 'Stop'; try { $connProfile = Get-NetConnectionProfile -Name '%s' -ErrorAction SilentlyContinue; if (-not $connProfile) { $connProfile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue } if ($connProfile) { if ($connProfile.NetworkCategory -ne 'Private') { Set-NetConnectionProfile -Name '%s' -NetworkCategory Private -ErrorAction Stop; Start-Sleep -Milliseconds 300; $updated = Get-NetConnectionProfile -Name '%s' -ErrorAction SilentlyContinue; if ($updated.NetworkCategory -eq 'Private') { Write-Host ('Success: NetworkCategory set to Private') } else { Write-Host ('Warning: NetworkCategory is ' + $updated.NetworkCategory) } } else { Write-Host ('NetworkCategory already Private') } } else { Write-Host ('Profile not found for ' + '%s') } } catch { Write-Host ('Error: ' + $_.Exception.Message); exit 1 }", interfaceName, interfaceName, interfaceName, interfaceName, interfaceName)
+				cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+				out, psErr := cmd.Output()
 				if psErr != nil {
-					slog.Warn("failed to set NetworkCategory to Private (RDP Gateway bypass may not work)", "error", psErr, "output", out)
+					slog.Warn("failed to set NetworkCategory to Private (RDP Gateway bypass may not work)", "error", psErr, "output", string(out))
 				} else {
-					outputStr := strings.TrimSpace(out)
+					outputStr := strings.TrimSpace(string(out))
 					if strings.Contains(outputStr, "Success") || strings.Contains(outputStr, "already Private") {
 						slog.Info("NetworkCategory set to Private (required for Netmaker RDP Gateway bypass)", "output", outputStr)
 					} else {
@@ -155,18 +157,20 @@ func markInterfaceForIntranetClassification() {
 
 				// Restart NLA service to force Windows to re-evaluate network classification
 				// This helps Windows pick up the registry changes (Type=6, DomainType=1)
-				// Even if NetworkCategory shows Public, Type=6 enables Intranet classification (like Pritunl)
-				nlaRestartCmd := `powershell -Command "try { Restart-Service -Name NlaSvc -ErrorAction Stop; Write-Host 'NLA service restarted' } catch { Write-Host ('NLA restart: ' + $_.Exception.Message) }"`
-				nlaOut, nlaErr := ncutils.RunCmd(nlaRestartCmd, false)
+				// NetworkCategory Private + registry Type=6 enables Intranet classification for Netmaker
+				nlaRestartCmd := "try { Restart-Service -Name NlaSvc -ErrorAction Stop; Write-Host 'NLA service restarted' } catch { Write-Host ('NLA restart: ' + $_.Exception.Message) }"
+				nlaCmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", nlaRestartCmd)
+				nlaOut, nlaErr := nlaCmd.Output()
 				if nlaErr != nil {
-					slog.Debug("NLA service restart attempted (may require admin privileges)", "output", nlaOut)
+					slog.Debug("NLA service restart attempted (may require admin privileges)", "output", string(nlaOut))
 				} else {
 					slog.Info("restarted NLA service to refresh network classification")
 				}
 
 				// Trigger network change notification
-				refreshCmd := `powershell -Command "[System.Net.NetworkInformation.NetworkChange]::NetworkAddressChanged; Start-Sleep -Milliseconds 500"`
-				_, _ = ncutils.RunCmd(refreshCmd, false)
+				refreshCmd := "[System.Net.NetworkInformation.NetworkChange]::NetworkAddressChanged; Start-Sleep -Milliseconds 500"
+				refreshCmdExec := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", refreshCmd)
+				_ = refreshCmdExec.Run()
 			}
 			slog.Info("marked WireGuard interface as corporate/domain-connected for Intranet classification (RDP Gateway bypass enabled)")
 			return
