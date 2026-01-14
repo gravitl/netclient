@@ -132,19 +132,23 @@ func markInterfaceForIntranetClassification() {
 		key.Close()
 
 		if err == nil {
-			// NOTE: NetworkCategory doesn't matter for RDP Gateway bypass - Pritunl works with NetworkCategory: Public
-			// The registry Type=6 is what enables Intranet classification, not the NetworkCategory
-			// However, we still try to set it to Private and restart NLA to ensure Windows picks up the registry changes
+			// Set NetworkCategory to Private - Netmaker requires Private for RDP Gateway bypass to work
+			// (Pritunl works with Public, but Netmaker needs Private + registry Type=6)
 			interfaceName := ncutils.GetInterfaceName()
 			if interfaceName != "" {
-				// Try to set network profile to Private (optional - Type=6 is what matters)
-				// This helps ensure Windows recognizes the interface, but Type=6 is the key for Intranet classification
-				psCmd := fmt.Sprintf(`powershell -Command "$ErrorActionPreference = 'Stop'; try { $profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction Stop; if ($profile.NetworkCategory -eq 'Public') { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory Private -ErrorAction Stop; Write-Host ('NetworkCategory set to Private') } else { Write-Host ('NetworkCategory: ' + $profile.NetworkCategory) } } catch { Write-Host ('Note: ' + $_.Exception.Message) }"`, interfaceName, interfaceName)
+				// Set network profile to Private - this is required for Netmaker RDP Gateway bypass
+				// Registry Type=6 + NetworkCategory Private enables Intranet classification
+				psCmd := fmt.Sprintf(`powershell -Command "$ErrorActionPreference = 'Stop'; try { $profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction Stop; if ($profile.NetworkCategory -ne 'Private') { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory Private -ErrorAction Stop; Start-Sleep -Milliseconds 300; $updated = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction Stop; if ($updated.NetworkCategory -eq 'Private') { Write-Host ('Success: NetworkCategory set to Private') } else { Write-Host ('Warning: NetworkCategory is ' + $updated.NetworkCategory) } } else { Write-Host ('NetworkCategory already Private') } } catch { Write-Host ('Error: ' + $_.Exception.Message); exit 1 }"`, interfaceName, interfaceName, interfaceName)
 				out, psErr := ncutils.RunCmd(psCmd, false)
 				if psErr != nil {
-					slog.Debug("PowerShell network profile command completed", "output", out)
+					slog.Warn("failed to set NetworkCategory to Private (RDP Gateway bypass may not work)", "error", psErr, "output", out)
 				} else {
-					slog.Debug("PowerShell network profile command completed", "output", strings.TrimSpace(out))
+					outputStr := strings.TrimSpace(out)
+					if strings.Contains(outputStr, "Success") || strings.Contains(outputStr, "already Private") {
+						slog.Info("NetworkCategory set to Private (required for Netmaker RDP Gateway bypass)", "output", outputStr)
+					} else {
+						slog.Info("NetworkCategory setting attempted", "output", outputStr)
+					}
 				}
 
 				// Restart NLA service to force Windows to re-evaluate network classification
