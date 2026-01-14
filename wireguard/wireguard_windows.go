@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -59,9 +60,23 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 
+	// Configure DNS immediately after adapter comes up (before NLA evaluates)
+	// This is critical - DNS must be available when NLA runs
+	if err := configureInterfaceForNLA(ncutils.GetInterfaceName()); err != nil {
+		slog.Warn("failed to configure interface for NLA after adapter up", "error", err)
+	}
+
 	// Trigger domain authentication traffic immediately after interface comes up
 	// This helps NLA classify the interface as Intranet
-	go triggerDomainAuthTraffic()
+	go func() {
+		// Small delay to ensure interface is fully up
+		time.Sleep(500 * time.Millisecond)
+		triggerDomainAuthTraffic()
+
+		// After triggering traffic, try to force set network profile
+		time.Sleep(2 * time.Second)
+		forceSetNetworkProfile(ncutils.GetInterfaceName())
+	}()
 
 	return nil
 }
@@ -748,4 +763,53 @@ func getComputerDomain() (string, error) {
 	}
 
 	return "", errors.New("domain not found")
+}
+
+// forceSetNetworkProfile attempts to force set the network profile to DomainAuthenticated
+// This uses PowerShell to directly set the NetworkCategory
+func forceSetNetworkProfile(ifaceName string) {
+	// Method 1: Try to set via PowerShell Set-NetConnectionProfile
+	// This requires admin privileges but can force the profile
+	psCmd := fmt.Sprintf("powershell -Command \"$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory DomainAuthenticated -ErrorAction SilentlyContinue }\"", ifaceName, ifaceName)
+	output, err := ncutils.RunCmd(psCmd, true)
+	if err == nil {
+		slog.Info("attempted to force set network profile to DomainAuthenticated", "interface", ifaceName, "output", strings.TrimSpace(output))
+	} else {
+		slog.Debug("failed to force set network profile via PowerShell", "interface", ifaceName, "error", err)
+	}
+
+	// Method 2: Set DomainAuthenticationKind in registry
+	// This tells Windows the interface can authenticate to domain
+	guid := config.Netclient().Host.ID.String()
+	if guid == "" {
+		guid = config.DefaultHostID
+	}
+
+	ipv4KeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{%s}`, guid)
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, ipv4KeyPath, registry.ALL_ACCESS)
+	if err == nil {
+		defer key.Close()
+		// Set DomainAuthenticationKind to 1 (DomainAuthenticated)
+		// 0 = None, 1 = DomainAuthenticated
+		err = key.SetDWordValue("DomainAuthenticationKind", 1)
+		if err == nil {
+			slog.Info("set DomainAuthenticationKind in registry", "interface", ifaceName)
+		} else {
+			slog.Debug("failed to set DomainAuthenticationKind", "error", err)
+		}
+	}
+
+	// Method 3: Trigger NLA re-evaluation by toggling interface
+	// This is more aggressive but can help
+	go func() {
+		time.Sleep(1 * time.Second)
+		// Disable and re-enable the interface to force NLA re-evaluation
+		// This is done in a goroutine to avoid blocking
+		cmd := fmt.Sprintf("netsh interface set interface \"%s\" admin=disable", ifaceName)
+		_, _ = ncutils.RunCmd(cmd, true)
+		time.Sleep(500 * time.Millisecond)
+		cmd = fmt.Sprintf("netsh interface set interface \"%s\" admin=enable", ifaceName)
+		_, _ = ncutils.RunCmd(cmd, true)
+		slog.Info("triggered interface toggle to force NLA re-evaluation", "interface", ifaceName)
+	}()
 }
