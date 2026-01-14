@@ -594,6 +594,42 @@ func markInterfaceAsCorporate(interfaceGUID string) error {
 		slog.Debug("DomainType not set (may not be supported)", "error", err)
 	}
 
+	// Notify Windows of the network classification change using PowerShell
+	// This is critical - Windows needs to be notified to refresh NLA classification
+	// Set-NetConnectionProfile sets the network category which triggers RDP Gateway bypass
+	interfaceName := ncutils.GetInterfaceName()
+	if interfaceName != "" {
+		// Try to set network profile to Private (DomainAuthenticated can't be set manually)
+		// Windows only sets DomainAuthenticated when it detects a domain controller
+		// However, Private + registry Type=6 should enable Intranet classification for RDP Gateway bypass
+		psCmd := fmt.Sprintf(`powershell -Command "$ErrorActionPreference = 'Stop'; try { $profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction Stop; if ($profile.NetworkCategory -eq 'Public') { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory Private -ErrorAction Stop; Start-Sleep -Milliseconds 200; $updated = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction Stop; Write-Host ('Success: NetworkCategory changed from Public to ' + $updated.NetworkCategory) } else { Write-Host ('NetworkCategory already: ' + $profile.NetworkCategory) } } catch { Write-Host ('Error: ' + $_.Exception.Message); exit 1 }"`, interfaceName, interfaceName, interfaceName)
+		out, err := ncutils.RunCmd(psCmd, false)
+		if err != nil {
+			slog.Debug("failed to set network profile via PowerShell", "error", err, "output", out)
+		} else {
+			outputStr := strings.TrimSpace(out)
+			if strings.Contains(outputStr, "Success") || strings.Contains(outputStr, "Private") {
+				slog.Info("set network profile to Private (registry Type=6 enables Intranet classification)", "output", outputStr)
+			} else {
+				slog.Info("PowerShell command completed", "output", outputStr)
+			}
+		}
+
+		// Restart NLA service to force Windows to re-evaluate network classification
+		// This helps Windows pick up the registry changes (Type=6, DomainType=1)
+		nlaRestartCmd := `powershell -Command "try { Restart-Service -Name NlaSvc -ErrorAction Stop; Write-Host 'NLA service restarted successfully' } catch { Write-Host ('NLA restart failed: ' + $_.Exception.Message) }"`
+		nlaOut, nlaErr := ncutils.RunCmd(nlaRestartCmd, false)
+		if nlaErr != nil {
+			slog.Debug("failed to restart NLA service (may require admin privileges)", "error", nlaErr, "output", nlaOut)
+		} else {
+			slog.Info("restarted NLA service to refresh network classification")
+		}
+
+		// Also trigger network change notification
+		refreshCmd := `powershell -Command "[System.Net.NetworkInformation.NetworkChange]::NetworkAddressChanged; Start-Sleep -Milliseconds 500"`
+		_, _ = ncutils.RunCmd(refreshCmd, false)
+	}
+
 	slog.Info("marked WireGuard interface as corporate/domain-connected for Intranet classification (RDP Gateway bypass enabled)")
 	return nil
 }
