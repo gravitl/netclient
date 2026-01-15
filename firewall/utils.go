@@ -54,7 +54,7 @@ func GetLocalIPs() ([]net.IP, error) {
 func getRealRangeWindow(realRange net.IPNet, virtualRange net.IPNet) net.IPNet {
 	// Get prefix length from virtual range
 	virtualPrefixLen, _ := virtualRange.Mask.Size()
-	
+
 	// Create a mask with the same prefix length as virtual range
 	var mask net.IPMask
 	if virtualRange.IP.To4() != nil {
@@ -62,7 +62,7 @@ func getRealRangeWindow(realRange net.IPNet, virtualRange net.IPNet) net.IPNet {
 	} else {
 		mask = net.CIDRMask(virtualPrefixLen, 128)
 	}
-	
+
 	// Apply the mask to the real range base IP
 	return net.IPNet{
 		IP:   realRange.IP.Mask(mask),
@@ -79,6 +79,8 @@ func getEgressID8(egressID string) string {
 }
 
 // getConntrackZone returns a conntrack zone ID based on egress ID hash
+//
+//lint:ignore U1000 kept for future conntrack zone support in nftables rules
 func getConntrackZone(egressID string) uint16 {
 	// Simple hash to get a zone ID between 100-65535
 	hash := 0
