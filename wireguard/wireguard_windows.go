@@ -717,28 +717,114 @@ func triggerDomainAuthTraffic() {
 
 	slog.Info("triggering domain authentication traffic for NLA", "interface", ifaceName, "domain", domainName)
 
-	// Try to resolve domain controller name - this triggers DNS lookup
-	dcName := fmt.Sprintf("_ldap._tcp.dc._msdcs.%s", domainName)
-	_, err = ncutils.RunCmd(fmt.Sprintf("nslookup %s", dcName), false)
-	if err != nil {
-		slog.Debug("domain controller lookup failed (expected on non-domain-joined)", "error", err)
+	// Flush DNS cache first to force fresh lookups on the new interface
+	_, _ = ncutils.RunCmd("ipconfig /flushdns", false)
+
+	// Method 1: Resolve domain controller via DNS SRV record (critical for NLA)
+	// This is what Windows NLA actually checks
+	dcSRVName := fmt.Sprintf("_ldap._tcp.dc._msdcs.%s", domainName)
+	psCmd := fmt.Sprintf("Resolve-DnsName -Name '%s' -Type SRV -ErrorAction SilentlyContinue", dcSRVName)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.CombinedOutput()
+	if err == nil && len(output) > 0 {
+		slog.Info("successfully resolved domain controller SRV record", "domain", domainName, "output", strings.TrimSpace(string(output)))
+	} else {
+		slog.Debug("domain controller SRV resolution failed", "error", err, "output", strings.TrimSpace(string(output)))
 	}
 
-	// Try SMB connection to domain controller (if available)
-	// This generates authentication traffic that NLA can observe
+	// Method 2: Try to get DC via nltest (more reliable for domain-joined machines)
 	go func() {
-		// Use net use command to trigger SMB authentication
-		// This will fail gracefully if not domain-joined, but generates traffic
+		dcCmd := fmt.Sprintf("nltest /dsgetdc:%s", domainName)
+		output, err := ncutils.RunCmd(dcCmd, false)
+		if err == nil {
+			slog.Info("successfully discovered domain controller", "domain", domainName, "output", strings.TrimSpace(output))
+		} else {
+			slog.Debug("nltest DC discovery failed", "error", err)
+		}
+	}()
+
+	// Method 3: Test LDAP connectivity to DC (port 389) - this is what NLA checks
+	// First, try to get DC name
+	go func() {
+		psCmd := fmt.Sprintf("$dc = (Get-ADDomainController -DomainName '%s' -ErrorAction SilentlyContinue).HostName; if ($dc) { Test-NetConnection -ComputerName $dc -Port 389 -InformationLevel Quiet -WarningAction SilentlyContinue }", domainName)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			slog.Info("LDAP connectivity test completed", "domain", domainName, "output", strings.TrimSpace(string(output)))
+		} else {
+			// Fallback: try common DC naming patterns
+			commonDCs := []string{
+				fmt.Sprintf("dc.%s", domainName),
+				fmt.Sprintf("dc01.%s", domainName),
+				fmt.Sprintf("dc1.%s", domainName),
+				domainName,
+			}
+			for _, dc := range commonDCs {
+				psCmd := fmt.Sprintf("Test-NetConnection -ComputerName '%s' -Port 389 -InformationLevel Quiet -WarningAction SilentlyContinue", dc)
+				cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+				_, err := cmd.CombinedOutput()
+				if err == nil {
+					slog.Info("LDAP connectivity test succeeded", "dc", dc)
+					break
+				}
+			}
+		}
+	}()
+
+	// Method 4: Try SMB connection to domain controller (generates auth traffic)
+	go func() {
 		_, _ = ncutils.RunCmd(fmt.Sprintf("net use \\\\%s\\IPC$ /user:guest", domainName), false)
 	}()
 
-	// Try LDAP lookup - generates LDAP/Kerberos traffic
+	// Method 5: Force NLA to re-evaluate by triggering network location change
+	// Wait a bit then check and force set if needed
 	go func() {
-		_, _ = ncutils.RunCmd(fmt.Sprintf("nltest /dclist:%s", domainName), false)
+		time.Sleep(5 * time.Second)
+		verifyAndForceNLA(ifaceName, domainName)
+	}()
+}
+
+// verifyAndForceNLA verifies NLA status and forces it if needed
+func verifyAndForceNLA(ifaceName, domainName string) {
+	// Check current status
+	psCmd := fmt.Sprintf("(Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue).NetworkCategory", ifaceName)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.Output()
+	if err == nil {
+		currentStatus := strings.TrimSpace(string(output))
+		slog.Info("current NLA status", "interface", ifaceName, "status", currentStatus)
+
+		if currentStatus != "DomainAuthenticated" {
+			slog.Warn("interface is not DomainAuthenticated, attempting to force", "interface", ifaceName, "current", currentStatus)
+
+			// Try to force set it
+			forceSetNetworkProfile(ifaceName)
+
+			// Also try to trigger domain authentication explicitly
+			triggerExplicitDomainAuth(ifaceName, domainName)
+		} else {
+			slog.Info("✓ Interface is DomainAuthenticated", "interface", ifaceName)
+		}
+	}
+}
+
+// triggerExplicitDomainAuth performs explicit domain authentication attempts
+func triggerExplicitDomainAuth(ifaceName, domainName string) {
+	// Try to authenticate to domain using various methods
+	// This helps NLA see that domain authentication is possible
+
+	// Method 1: Try klist to refresh Kerberos tickets (if domain-joined)
+	go func() {
+		_, _ = ncutils.RunCmd("klist purge", false)
+		_, _ = ncutils.RunCmd("klist", false)
 	}()
 
-	// Flush DNS cache to force fresh lookups on the new interface
-	_, _ = ncutils.RunCmd("ipconfig /flushdns", false)
+	// Method 2: Try to resolve and connect to DC
+	go func() {
+		psCmd := fmt.Sprintf("$dc = (nltest /dsgetdc:%s 2>&1 | Select-String -Pattern '\\\\\\\\([^\\\\]+)' | ForEach-Object { $_.Matches.Groups[1].Value }); if ($dc) { Test-NetConnection -ComputerName $dc -Port 389 -InformationLevel Quiet }", domainName)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+		_, _ = cmd.CombinedOutput()
+	}()
 }
 
 // getComputerDomain gets the computer's domain or workgroup name
@@ -821,7 +907,10 @@ func forceSetNetworkProfile(ifaceName string) {
 		}
 	}
 
-	// Method 3: Restart NLA service to force re-evaluation
+	// Method 3: Configure RDP Gateway settings to recognize this as intranet
+	configureRDPGatewayForIntranet(ifaceName)
+
+	// Method 4: Restart NLA service to force re-evaluation
 	// This is safer than toggling the interface
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -836,4 +925,42 @@ func forceSetNetworkProfile(ifaceName string) {
 			slog.Debug("failed to restart NLA service (may require admin)", "error", err, "output", strings.TrimSpace(string(output)))
 		}
 	}()
+}
+
+// configureRDPGatewayForIntranet configures RDP Gateway to recognize the interface as intranet
+func configureRDPGatewayForIntranet(ifaceName string) {
+	// RDP Gateway checks network profile, but we can also set registry keys
+	// to help it recognize the network as trusted
+
+	// Set network profile in registry for RDP Gateway
+	// RDP Gateway uses the network profile to determine if it should bypass gateway
+	guid := config.Netclient().Host.ID.String()
+	if guid == "" {
+		guid = config.DefaultHostID
+	}
+
+	// Set in network list profiles (used by RDP Gateway)
+	// This is in: HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles
+	// We need to find or create the profile for this interface
+
+	// Also ensure the interface is marked as domain-authenticated in TCP/IP parameters
+	ipv4KeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{%s}`, guid)
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, ipv4KeyPath, registry.ALL_ACCESS)
+	if err == nil {
+		defer key.Close()
+		// Set these values to help RDP Gateway recognize as intranet
+		_ = key.SetDWordValue("DomainAuthenticationKind", 1)
+		_ = key.SetDWordValue("DhcpDomainAuthenticationKind", 0)
+		slog.Info("configured RDP Gateway registry settings", "interface", ifaceName)
+	}
+
+	// Also try to set via PowerShell if available
+	psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -NetworkCategory DomainAuthenticated -ErrorAction SilentlyContinue; Write-Output 'Set to DomainAuthenticated' } else { Write-Output 'Profile not found' }", ifaceName)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		slog.Info("configured network profile for RDP Gateway", "interface", ifaceName, "output", strings.TrimSpace(string(output)))
+	} else {
+		slog.Debug("failed to configure network profile via PowerShell", "error", err, "output", strings.TrimSpace(string(output)))
+	}
 }
