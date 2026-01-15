@@ -174,6 +174,9 @@ func setupResolvectl() (err error) {
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
 		for _, ns := range server.DnsNameservers {
+			if ns.IsFallback {
+				continue
+			}
 			if ns.MatchDomain != "." {
 				if ns.IsSearchDomain {
 					domains = domains + " " + ns.MatchDomain
@@ -361,6 +364,10 @@ func getNSAndDomains() (string, string, error) {
 	}
 
 	for _, ns := range server.DnsNameservers {
+		if ns.IsFallback {
+			continue
+		}
+
 		if ns.MatchDomain == "." {
 			continue
 		}

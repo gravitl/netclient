@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/gravitl/netmaker/releases">
-    <img src="https://img.shields.io/badge/Version-1.2.0-informational?style=flat-square" />
+    <img src="https://img.shields.io/badge/Version-1.4.0-informational?style=flat-square" />
   </a>
   <a href="https://hub.docker.com/r/gravitl/netclient/tags">
     <img src="https://img.shields.io/docker/pulls/gravitl/netclient?label=downloads" />

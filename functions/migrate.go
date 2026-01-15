@@ -49,9 +49,6 @@ func Migrate() {
 
 	for _, network := range networks {
 		slog.Info("migrating " + network)
-		if err := removeHostDNS(network); err != nil {
-			slog.Error("remove host DNS", "error", err)
-		}
 		cfg, err := config.ReadConfig(network)
 		if err != nil {
 			slog.Error("skipping network, could not read config", "network", network, "error", err)

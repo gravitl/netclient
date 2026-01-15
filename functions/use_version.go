@@ -121,25 +121,35 @@ func UseVersion(version string, rebootDaemon bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to get executable path: %w", err)
 		}
-		
+		// Stop the daemon before updating to avoid file locking issues
+		if rebootDaemon {
+			if err := daemon.Stop(); err != nil {
+				// Log warning but continue - daemon might not be running
+				slog.Warn("failed to stop daemon before update", "error", err)
+			}
+			// Give the service time to stop
+			time.Sleep(time.Second * 2)
+		}
 		// Get file info before update to verify it changes
 		beforeInfo, err := os.Stat(currentExe)
 		if err != nil {
 			slog.Warn("could not stat executable before update", "error", err)
 		}
-		
+
 		windowsBinaryURL := fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%s.exe", version, runtime.GOOS, runtime.GOARCH)
-		slog.Info("starting Windows update", "url", windowsBinaryURL, "target", currentExe)
-		
 		if err := windowsUpdate(windowsBinaryURL); err != nil {
-			return fmt.Errorf("failed to apply Windows update: %w", err)
+			// If update failed, try to restart daemon if it was stopped
+			if rebootDaemon {
+				_ = daemon.Start()
+			}
+			return err
 		}
-		
+
 		// Verify the update was applied by checking if file info changed
 		// On Windows, the selfupdate library may schedule the replacement for next restart
 		// so we add a delay to allow Windows to process the file replacement
 		time.Sleep(1 * time.Second)
-		
+
 		afterInfo, err := os.Stat(currentExe)
 		if err != nil {
 			slog.Warn("could not stat executable after update", "error", err)
@@ -151,11 +161,14 @@ func UseVersion(version string, rebootDaemon bool) error {
 				slog.Info("executable file updated successfully", "old_size", beforeInfo.Size(), "new_size", afterInfo.Size())
 			}
 		}
-		
+
 		// Add additional delay before restart to ensure Windows has processed any scheduled file operations
 		if rebootDaemon {
 			time.Sleep(2 * time.Second)
 			daemon.HardRestart()
+			if err := daemon.Start(); err != nil {
+				return fmt.Errorf("failed to start daemon after update: %w", err)
+			}
 		}
 		return nil
 	}
@@ -208,21 +221,21 @@ func windowsUpdate(url string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
-	
+
 	// Create a backup of the current executable before updating
 	// This allows us to restore if the update corrupts the file
 	backupPath := currentExe + ".backup"
 	slog.Info("creating backup of current executable", "backup", backupPath)
-	
+
 	// Remove old backup if it exists
 	_ = os.Remove(backupPath)
-	
+
 	// Read current executable
 	currentData, err := os.ReadFile(currentExe)
 	if err != nil {
 		return fmt.Errorf("failed to read current executable for backup: %w", err)
 	}
-	
+
 	// Write backup
 	if err := os.WriteFile(backupPath, currentData, 0711); err != nil {
 		slog.Warn("failed to create backup, continuing with update anyway", "error", err)
@@ -230,19 +243,19 @@ func windowsUpdate(url string) error {
 	} else {
 		slog.Info("backup created successfully")
 	}
-	
+
 	// Download and apply update
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download update: HTTP %d", resp.StatusCode)
 	}
-	
+
 	slog.Info("applying Windows update using selfupdate")
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
 	if err != nil {
@@ -254,7 +267,7 @@ func windowsUpdate(url string) error {
 		slog.Info("restored from backup after failed update")
 		return fmt.Errorf("update failed: %w", err)
 	}
-	
+
 	// Verify the updated file is readable and valid
 	// Try to stat the file - if it's corrupted, this might fail
 	time.Sleep(500 * time.Millisecond) // Give Windows time to complete file operations
@@ -266,11 +279,11 @@ func windowsUpdate(url string) error {
 		slog.Info("restored from backup after detecting corruption")
 		return fmt.Errorf("updated executable is corrupted: %w", err)
 	}
-	
+
 	slog.Info("update applied and verified successfully")
 	// Clean up backup after successful update (optional - could keep for safety)
 	// _ = os.Remove(backupPath)
-	
+
 	return nil
 }
 
@@ -282,7 +295,7 @@ func verifyExecutable(exePath string) error {
 		return fmt.Errorf("cannot open executable: %w", err)
 	}
 	defer file.Close()
-	
+
 	// Try to read at least the first few bytes to verify it's readable
 	buf := make([]byte, 1024)
 	n, err := file.Read(buf)
@@ -292,14 +305,14 @@ func verifyExecutable(exePath string) error {
 	if n == 0 {
 		return fmt.Errorf("executable file appears empty")
 	}
-	
+
 	// Check for PE (Portable Executable) signature for Windows executables
 	// PE files start with "MZ" signature
 	if n >= 2 && buf[0] == 'M' && buf[1] == 'Z' {
 		// Valid PE signature found
 		return nil
 	}
-	
+
 	// If we can't verify the signature but file is readable, assume it's OK
 	// (might be a different executable format or we didn't read enough)
 	slog.Warn("could not verify PE signature, but file is readable", "bytes_read", n)
@@ -312,28 +325,28 @@ func restoreFromBackup(currentExe, backupPath string) error {
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		return fmt.Errorf("backup file does not exist: %s", backupPath)
 	}
-	
+
 	slog.Info("restoring executable from backup", "backup", backupPath, "target", currentExe)
-	
+
 	// Read backup
 	backupData, err := os.ReadFile(backupPath)
 	if err != nil {
 		return fmt.Errorf("failed to read backup: %w", err)
 	}
-	
+
 	// Write to current executable location
 	// Use a temp file first, then rename (atomic operation)
 	tmpPath := currentExe + ".restore"
 	if err := os.WriteFile(tmpPath, backupData, 0711); err != nil {
 		return fmt.Errorf("failed to write restored file: %w", err)
 	}
-	
+
 	// Atomic rename
 	if err := os.Rename(tmpPath, currentExe); err != nil {
 		_ = os.Remove(tmpPath) // Clean up temp file
 		return fmt.Errorf("failed to rename restored file: %w", err)
 	}
-	
+
 	slog.Info("successfully restored executable from backup")
 	return nil
 }
