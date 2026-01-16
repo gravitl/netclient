@@ -89,10 +89,24 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 			continue
 		} else {
 			egressGatewayReq := existingRules.extraInfo.(models.EgressGatewayRequest)
-			if !isEgressRangeEqual(egressGatewayReq.RangesWithMetric, egressInfo.EgressGWCfg.RangesWithMetric) {
+			rangesEqual := isEgressRangeEqual(egressGatewayReq.RangesWithMetric, egressInfo.EgressGWCfg.RangesWithMetric)
+			slog.Info("checking egress range equality", "node", egressNodeID, "rangesEqual", rangesEqual)
+			if !rangesEqual {
+				slog.Info("egress ranges changed, removing old rules and inserting new ones", "node", egressNodeID)
+				// Log the differences for debugging
+				for i, oldRange := range egressGatewayReq.RangesWithMetric {
+					if i < len(egressInfo.EgressGWCfg.RangesWithMetric) {
+						newRange := egressInfo.EgressGWCfg.RangesWithMetric[i]
+						slog.Info("range comparison", "index", i,
+							"old_network", oldRange.Network, "old_virtualNatEnabled", oldRange.VirtualNatEnabled, "old_virtualNetwork", oldRange.VirtualNetwork,
+							"new_network", newRange.Network, "new_virtualNatEnabled", newRange.VirtualNatEnabled, "new_virtualNetwork", newRange.VirtualNetwork)
+					}
+				}
 				// egress GW is deleted, flush out all rules
 				fwCrtl.RemoveRoutingRules(server, egressTable, egressNodeID)
 				fwCrtl.InsertEgressRoutingRules(server, egressInfo)
+			} else {
+				slog.Debug("egress ranges unchanged, skipping update", "node", egressNodeID)
 			}
 		}
 	}
@@ -109,7 +123,13 @@ func DeleteEgressGwRoutes(server string) {
 }
 
 func key(e models.EgressRangeMetric) string {
-	return fmt.Sprintf("%s|%t", e.Network, e.VirtualNatEnabled)
+	// Include VirtualNetwork in the key to detect changes when switching between
+	// direct NAT, virtual NAT with different networks, or different virtual networks
+	virtualNetwork := e.VirtualNetwork
+	if virtualNetwork == "" {
+		virtualNetwork = "direct"
+	}
+	return fmt.Sprintf("%s|%t|%s", e.Network, e.VirtualNatEnabled, virtualNetwork)
 }
 
 func isEgressRangeEqual(a, b []models.EgressRangeMetric) bool {

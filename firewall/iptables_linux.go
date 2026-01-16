@@ -473,77 +473,81 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
-		if egressGwRange.VirtualNatEnabled {
-			// Check if virtual NAT should be applied
-			if vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange); shouldApply {
-				logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
-				egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
-				if err != nil {
-					logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
-				} else {
-					wgInterface := ncutils.GetInterfaceName()
-					vnatRules, err := i.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
-					if err != nil {
-						logger.Log(1, fmt.Sprintf("failed to apply virtual NAT rules: %v", err))
-					} else {
-						egressGwRoutes = append(egressGwRoutes, vnatRules...)
-						logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
-					}
-				}
-				// Skip regular NAT processing for virtual NAT ranges
-				continue
-			}
-
-			// Regular NAT processing (existing code)
-			logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
-			iptablesClient := i.ipv4Client
-			source := egressInfo.Network.String()
-			if !isAddrIpv4(egressGwRange.Network) {
-				iptablesClient = i.ipv6Client
-				source = egressInfo.Network6.String()
-			}
+		// Check if virtual NAT should be applied first (before checking VirtualNatEnabled flag)
+		// This ensures VNAT is applied when switching from direct to virtual mode
+		if vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange); shouldApply {
+			logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
 			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
 			if err != nil {
-				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
+				logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
 			} else {
-				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
-				if len(config.GetNodes()) == 1 {
-					ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
-				}
-				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-				// to avoid duplicate iface route rule,delete if exists
-				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
-				err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+				wgInterface := ncutils.GetInterfaceName()
+				vnatRules, err := i.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
 				if err != nil {
-					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+					logger.Log(1, fmt.Sprintf("failed to apply virtual NAT rules: %v", err))
 				} else {
-					egressGwRoutes = append(egressGwRoutes, ruleInfo{
-						table: defaultNatTable,
-						chain: nattablePRTChain,
-						rule:  ruleSpec,
-					})
+					egressGwRoutes = append(egressGwRoutes, vnatRules...)
+					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
 				}
+			}
+			// Skip regular NAT processing for virtual NAT ranges
+			continue
+		}
 
-				// Add Docker-specific rule if egress interface is a Docker network
-				if isDockerInterface(egressRangeIface) {
-					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
-					dockerRuleSpec = appendNetmakerCommentToRule(dockerRuleSpec)
-					// Check if DOCKER-USER chain exists, only add rule if it does
-					exists, err := iptablesClient.ChainExists(defaultIpTable, "DOCKER-USER")
-					if err == nil && exists {
-						// Delete if exists to avoid duplicates
-						iptablesClient.DeleteIfExists(defaultIpTable, "DOCKER-USER", dockerRuleSpec...)
-						err := iptablesClient.Insert(defaultIpTable, "DOCKER-USER", 1, dockerRuleSpec...)
-						if err != nil {
-							logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
-						} else {
-							egressGwRoutes = append(egressGwRoutes, ruleInfo{
-								table: defaultIpTable,
-								chain: "DOCKER-USER",
-								rule:  dockerRuleSpec,
-							})
-							logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
-						}
+		// Regular NAT processing (for direct NAT mode or when VirtualNatEnabled is true but VirtualNetwork is not set)
+		// If VirtualNatEnabled is true but shouldApplyVirtualNat returned false, it means VirtualNetwork is not set
+		// In that case, fall through to regular NAT processing
+		if egressGwRange.VirtualNatEnabled && egressGwRange.VirtualNetwork == "" {
+			logger.Log(1, fmt.Sprintf("VirtualNatEnabled is true but VirtualNetwork is not set for range %s, applying regular NAT instead", egressGwRange.Network))
+		}
+		logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
+		iptablesClient := i.ipv4Client
+		source := egressInfo.Network.String()
+		if !isAddrIpv4(egressGwRange.Network) {
+			iptablesClient = i.ipv6Client
+			source = egressInfo.Network6.String()
+		}
+		egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
+		if err != nil {
+			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
+		} else {
+			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
+			if len(config.GetNodes()) == 1 {
+				ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+			}
+			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+			// to avoid duplicate iface route rule,delete if exists
+			iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
+			err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+			if err != nil {
+				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				egressGwRoutes = append(egressGwRoutes, ruleInfo{
+					table: defaultNatTable,
+					chain: nattablePRTChain,
+					rule:  ruleSpec,
+				})
+			}
+
+			// Add Docker-specific rule if egress interface is a Docker network
+			if isDockerInterface(egressRangeIface) {
+				dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
+				dockerRuleSpec = appendNetmakerCommentToRule(dockerRuleSpec)
+				// Check if DOCKER-USER chain exists, only add rule if it does
+				exists, err := iptablesClient.ChainExists(defaultIpTable, "DOCKER-USER")
+				if err == nil && exists {
+					// Delete if exists to avoid duplicates
+					iptablesClient.DeleteIfExists(defaultIpTable, "DOCKER-USER", dockerRuleSpec...)
+					err := iptablesClient.Insert(defaultIpTable, "DOCKER-USER", 1, dockerRuleSpec...)
+					if err != nil {
+						logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
+					} else {
+						egressGwRoutes = append(egressGwRoutes, ruleInfo{
+							table: defaultIpTable,
+							chain: "DOCKER-USER",
+							rule:  dockerRuleSpec,
+						})
+						logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
 					}
 				}
 			}
@@ -1557,27 +1561,17 @@ func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 		return errors.New("peer not found in rule table: " + peerKey)
 	}
 
-	// Check if this egress has virtual NAT rules (clean up chains and jump rules)
-	hasVNATRules := false
-	var isIPv4VNAT bool
-	for _, rules := range rulesTable[peerKey].rulesMap {
-		for _, rule := range rules {
-			if strings.HasPrefix(rule.chain, "NM-VNAT-") {
-				hasVNATRules = true
-				isIPv4VNAT = rule.isIpv4
-				break
-			}
-		}
-		if hasVNATRules {
-			break
-		}
+	// Always try to remove virtual NAT chains and jump rules for this peer
+	// This ensures cleanup when switching from virtual to direct NAT mode,
+	// even if the rulesTable doesn't track the VNAT rules
+	// Try both IPv4 and IPv6 to ensure complete cleanup
+	if err := i.removeVirtualNATRules(peerKey, true); err != nil {
+		// Log as debug since VNAT rules may not exist (e.g., already removed or never existed)
+		slog.Debug("attempted to remove virtual NAT rules (IPv4)", "peer", peerKey, "error", err)
 	}
-
-	if hasVNATRules {
-		// Remove virtual NAT chains and jump rules
-		if err := i.removeVirtualNATRules(peerKey, isIPv4VNAT); err != nil {
-			logger.Log(1, fmt.Sprintf("failed to remove virtual NAT rules for %s: %v", peerKey, err))
-		}
+	if err := i.removeVirtualNATRules(peerKey, false); err != nil {
+		// Log as debug since VNAT rules may not exist (e.g., already removed or never existed)
+		slog.Debug("attempted to remove virtual NAT rules (IPv6)", "peer", peerKey, "error", err)
 	}
 
 	for _, rules := range rulesTable[peerKey].rulesMap {
@@ -1825,6 +1819,7 @@ func (i *iptablesManager) addVNATJumpRules(client *iptables.IPTables, prerouting
 }
 
 // removeVirtualNATRules removes virtual NAT rules for an egress gateway
+// IMPORTANT: Must remove jump rules BEFORE deleting chains to avoid errors
 func (i *iptablesManager) removeVirtualNATRules(egressID string, ipv4 bool) error {
 	preroutingChain, postroutingChain := getVNATChainNames(egressID)
 
@@ -1835,16 +1830,25 @@ func (i *iptablesManager) removeVirtualNATRules(egressID string, ipv4 bool) erro
 		client = i.ipv6Client
 	}
 
-	// Remove jump rules from base chains
+	// Step 1: Remove jump rules from base chains FIRST (before deleting target chains)
+	// This prevents errors when target chains don't exist
 	jumpRulePR := []string{"-j", preroutingChain}
 	jumpRulePR = appendNetmakerCommentToRule(jumpRulePR)
-	client.DeleteIfExists(defaultNatTable, "PREROUTING", jumpRulePR...)
+	if err := client.DeleteIfExists(defaultNatTable, "PREROUTING", jumpRulePR...); err != nil {
+		slog.Debug("failed to delete VNAT prerouting jump rule", "error", err)
+	} else {
+		logger.Log(0, fmt.Sprintf("removed VNAT prerouting jump rule for %s", egressID))
+	}
 
 	jumpRulePO := []string{"-j", postroutingChain}
 	jumpRulePO = appendNetmakerCommentToRule(jumpRulePO)
-	client.DeleteIfExists(defaultNatTable, nattablePRTChain, jumpRulePO...)
+	if err := client.DeleteIfExists(defaultNatTable, nattablePRTChain, jumpRulePO...); err != nil {
+		slog.Debug("failed to delete VNAT postrouting jump rule", "error", err)
+	} else {
+		logger.Log(0, fmt.Sprintf("removed VNAT postrouting jump rule for %s", egressID))
+	}
 
-	// Delete per-egress chains (this also flushes them)
+	// Step 2: Now safe to delete per-egress chains (jump rules are already removed)
 	i.deleteVNATChains(client, preroutingChain, postroutingChain, ipv4)
 
 	return nil
