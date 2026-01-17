@@ -543,11 +543,11 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		extraInfo: egressInfo.EgressGWCfg,
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
-		// Check if virtual NAT should be applied first (before checking VirtualNatEnabled flag)
+		// Check if virtual NAT should be applied first (before checking Nat flag)
 		// This ensures VNAT is applied when switching from direct to virtual mode
 		vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange)
-		logger.Log(0, fmt.Sprintf("Checking egress range %s: VirtualNatEnabled=%v, VirtualNetwork=%s, shouldApplyVNAT=%v",
-			egressGwRange.Network, egressGwRange.VirtualNatEnabled, egressGwRange.VirtualNetwork, shouldApply))
+		logger.Log(0, fmt.Sprintf("Checking egress range %s: Nat=%v, Mode=%s, VirtualNetwork=%s, shouldApplyVNAT=%v",
+			egressGwRange.Network, egressGwRange.Nat, egressGwRange.Mode, egressGwRange.VirtualNetwork, shouldApply))
 
 		if shouldApply {
 			logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
@@ -567,11 +567,13 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			continue
 		}
 
-		// Regular NAT processing (for direct NAT mode or when VirtualNatEnabled is true but VirtualNetwork is not set)
-		// If VirtualNatEnabled is true but shouldApplyVirtualNat returned false, it means VirtualNetwork is not set
+		// Regular NAT processing (for direct NAT mode or when Nat is true but Mode is not VirtualNAT or VirtualNetwork is not set)
+		// If Nat is true but shouldApplyVirtualNat returned false, it means Mode is not VirtualNAT or VirtualNetwork is not set
 		// In that case, fall through to regular NAT processing
-		if egressGwRange.VirtualNatEnabled && egressGwRange.VirtualNetwork == "" {
-			logger.Log(1, fmt.Sprintf("VirtualNatEnabled is true but VirtualNetwork is not set for range %s, applying regular NAT instead", egressGwRange.Network))
+		if egressGwRange.Nat && (egressGwRange.Mode != models.VirtualNAT || egressGwRange.VirtualNetwork == "") {
+			if egressGwRange.Mode == models.VirtualNAT && egressGwRange.VirtualNetwork == "" {
+				logger.Log(1, fmt.Sprintf("Mode is VirtualNAT but VirtualNetwork is not set for range %s, applying regular NAT instead", egressGwRange.Network))
+			}
 		}
 		logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
 		source := egressInfo.Network.String()

@@ -473,7 +473,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
-		// Check if virtual NAT should be applied first (before checking VirtualNatEnabled flag)
+		// Check if virtual NAT should be applied first (before checking Nat flag)
 		// This ensures VNAT is applied when switching from direct to virtual mode
 		if vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange); shouldApply {
 			logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
@@ -490,64 +490,56 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
 				}
 			}
-			// Skip regular NAT processing for virtual NAT ranges
-			continue
-		}
-
-		// Regular NAT processing (for direct NAT mode or when VirtualNatEnabled is true but VirtualNetwork is not set)
-		// If VirtualNatEnabled is true but shouldApplyVirtualNat returned false, it means VirtualNetwork is not set
-		// In that case, fall through to regular NAT processing
-		if egressGwRange.VirtualNatEnabled && egressGwRange.VirtualNetwork == "" {
-			logger.Log(1, fmt.Sprintf("VirtualNatEnabled is true but VirtualNetwork is not set for range %s, applying regular NAT instead", egressGwRange.Network))
-		}
-		logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
-		iptablesClient := i.ipv4Client
-		source := egressInfo.Network.String()
-		if !isAddrIpv4(egressGwRange.Network) {
-			iptablesClient = i.ipv6Client
-			source = egressInfo.Network6.String()
-		}
-		egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
-		if err != nil {
-			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
-		} else {
-			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
-			if len(config.GetNodes()) == 1 {
-				ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+		} else if egressGwRange.Nat {
+			logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
+			iptablesClient := i.ipv4Client
+			source := egressInfo.Network.String()
+			if !isAddrIpv4(egressGwRange.Network) {
+				iptablesClient = i.ipv6Client
+				source = egressInfo.Network6.String()
 			}
-			ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-			// to avoid duplicate iface route rule,delete if exists
-			iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
-			err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
 			if err != nil {
-				logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-				egressGwRoutes = append(egressGwRoutes, ruleInfo{
-					table: defaultNatTable,
-					chain: nattablePRTChain,
-					rule:  ruleSpec,
-				})
-			}
+				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
+				if len(config.GetNodes()) == 1 {
+					ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+				}
+				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				// to avoid duplicate iface route rule,delete if exists
+				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
+				err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						table: defaultNatTable,
+						chain: nattablePRTChain,
+						rule:  ruleSpec,
+					})
+				}
 
-			// Add Docker-specific rule if egress interface is a Docker network
-			if isDockerInterface(egressRangeIface) {
-				dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
-				dockerRuleSpec = appendNetmakerCommentToRule(dockerRuleSpec)
-				// Check if DOCKER-USER chain exists, only add rule if it does
-				exists, err := iptablesClient.ChainExists(defaultIpTable, "DOCKER-USER")
-				if err == nil && exists {
-					// Delete if exists to avoid duplicates
-					iptablesClient.DeleteIfExists(defaultIpTable, "DOCKER-USER", dockerRuleSpec...)
-					err := iptablesClient.Insert(defaultIpTable, "DOCKER-USER", 1, dockerRuleSpec...)
-					if err != nil {
-						logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
-					} else {
-						egressGwRoutes = append(egressGwRoutes, ruleInfo{
-							table: defaultIpTable,
-							chain: "DOCKER-USER",
-							rule:  dockerRuleSpec,
-						})
-						logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
+				// Add Docker-specific rule if egress interface is a Docker network
+				if isDockerInterface(egressRangeIface) {
+					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
+					dockerRuleSpec = appendNetmakerCommentToRule(dockerRuleSpec)
+					// Check if DOCKER-USER chain exists, only add rule if it does
+					exists, err := iptablesClient.ChainExists(defaultIpTable, "DOCKER-USER")
+					if err == nil && exists {
+						// Delete if exists to avoid duplicates
+						iptablesClient.DeleteIfExists(defaultIpTable, "DOCKER-USER", dockerRuleSpec...)
+						err := iptablesClient.Insert(defaultIpTable, "DOCKER-USER", 1, dockerRuleSpec...)
+						if err != nil {
+							logger.Log(1, fmt.Sprintf("failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
+						} else {
+							egressGwRoutes = append(egressGwRoutes, ruleInfo{
+								table: defaultIpTable,
+								chain: "DOCKER-USER",
+								rule:  dockerRuleSpec,
+							})
+							logger.Log(0, fmt.Sprintf("added Docker network rule for interface: %s", egressRangeIface))
+						}
 					}
 				}
 			}

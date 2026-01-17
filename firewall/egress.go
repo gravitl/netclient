@@ -98,8 +98,8 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 					if i < len(egressInfo.EgressGWCfg.RangesWithMetric) {
 						newRange := egressInfo.EgressGWCfg.RangesWithMetric[i]
 						slog.Info("range comparison", "index", i,
-							"old_network", oldRange.Network, "old_virtualNatEnabled", oldRange.VirtualNatEnabled, "old_virtualNetwork", oldRange.VirtualNetwork,
-							"new_network", newRange.Network, "new_virtualNatEnabled", newRange.VirtualNatEnabled, "new_virtualNetwork", newRange.VirtualNetwork)
+							"old_network", oldRange.Network, "old_nat", oldRange.Nat, "old_mode", oldRange.Mode, "old_virtualNetwork", oldRange.VirtualNetwork,
+							"new_network", newRange.Network, "new_nat", newRange.Nat, "new_mode", newRange.Mode, "new_virtualNetwork", newRange.VirtualNetwork)
 					}
 				}
 				// egress GW is deleted, flush out all rules
@@ -123,13 +123,13 @@ func DeleteEgressGwRoutes(server string) {
 }
 
 func key(e models.EgressRangeMetric) string {
-	// Include VirtualNetwork in the key to detect changes when switching between
+	// Include VirtualNetwork and Mode in the key to detect changes when switching between
 	// direct NAT, virtual NAT with different networks, or different virtual networks
 	virtualNetwork := e.VirtualNetwork
 	if virtualNetwork == "" {
 		virtualNetwork = "direct"
 	}
-	return fmt.Sprintf("%s|%t|%s", e.Network, e.VirtualNatEnabled, virtualNetwork)
+	return fmt.Sprintf("%s|%t|%s|%s", e.Network, e.Nat, e.Mode, virtualNetwork)
 }
 
 func isEgressRangeEqual(a, b []models.EgressRangeMetric) bool {
