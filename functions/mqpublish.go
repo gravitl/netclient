@@ -54,7 +54,9 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			metricTickerIntervalMin = i
 		}
 
-		ipTickerIntervalSec = server.IPDetectionInterval
+		if server.IPDetectionInterval > 0 {
+			ipTickerIntervalSec = server.IPDetectionInterval
+		}
 	}
 
 	metricTicker = time.NewTicker(time.Minute * time.Duration(metricTickerIntervalMin))
