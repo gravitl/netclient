@@ -114,6 +114,16 @@ func (n *NCIface) Configure() error {
 	if err != nil {
 		return err
 	}
+
+	// Configure RD Gateway bypass for Windows non-AD joined machines when VPN is available
+	// Only configure when interface is set as Private profile
+	if runtime.GOOS == "windows" && config.Netclient().ForcePrivateProfile {
+		if err := configureRDGatewayBypassForVPN(); err != nil {
+			logger.Log(1, "failed to configure RD Gateway bypass", err.Error())
+			// Don't fail the interface configuration if RD Gateway bypass fails
+		}
+	}
+
 	return nil
 }
 

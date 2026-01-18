@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package wireguard
 
 import (
@@ -14,10 +17,35 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"golang.zx2c4.com/wireguard/windows/driver"
 )
 
 // TODO: update from netsh to a more programmatic approach.
+
+// configureRDGatewayBypassForVPN - configures Windows to bypass RD Gateway when VPN is available
+// This allows non-AD joined machines to use direct VPN routes instead of going through RD Gateway
+func configureRDGatewayBypassForVPN() error {
+	// Open or create the RDP client registry key
+	keyPath := `Software\Microsoft\Terminal Server Client`
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, keyPath, registry.ALL_ACCESS)
+	if err != nil {
+		slog.Warn("failed to open RDP client registry key", "error", err)
+		return fmt.Errorf("failed to open RDP client registry key: %w", err)
+	}
+	defer key.Close()
+
+	// Set fAllowToGetRedirectedServerSources to 0 to prefer direct connections over gateway redirects
+	// This tells RDP to try direct connection first before using RD Gateway
+	err = key.SetDWordValue("fAllowToGetRedirectedServerSources", 0)
+	if err != nil {
+		slog.Warn("failed to set RDP registry value", "error", err)
+		return fmt.Errorf("failed to set RDP registry value: %w", err)
+	}
+
+	slog.Info("configured RDP to bypass RD Gateway when VPN routes are available")
+	return nil
+}
 
 // SetInterfacePrivateProfile - sets the Windows network interface profile to Private
 func SetInterfacePrivateProfile(ifaceName string) error {

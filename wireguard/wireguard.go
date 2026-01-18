@@ -19,6 +19,13 @@ const (
 	IPv6Network = "::/0"
 )
 
+// configureRDGatewayBypassForVPN - stub for non-Windows platforms (implementation in wireguard_windows.go)
+//
+//nolint:unused,dupl // Stub function to satisfy compile-time requirements on non-Windows platforms (Windows implementation in wireguard_windows.go)
+func configureRDGatewayBypassForVPN() error {
+	return nil
+}
+
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
 func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 	hostPeers := config.Netclient().HostPeers
