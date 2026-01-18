@@ -98,6 +98,8 @@ type Config struct {
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
 	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
+	// ForcePrivateProfile - force Windows network interface to be classified as Private
+	ForcePrivateProfile bool `json:"force_private_profile" yaml:"force_private_profile"`
 }
 
 func init() {

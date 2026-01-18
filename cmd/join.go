@@ -57,6 +57,7 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	joinCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	joinCmd.Flags().StringP(registerFlags.Firewall, "f", "", "selects firewall to use on host: iptables/nftables")
+	joinCmd.Flags().BoolP(registerFlags.ForcePrivate, "P", false, "forces Windows network interface to be classified as Private")
 	rootCmd.AddCommand(joinCmd)
 }
 

@@ -35,6 +35,7 @@ var registerFlags = struct {
 	Static      string
 	Interface   string
 	Name        string
+	ForcePrivate string
 }{
 	Server:      "server",
 	User:        "user",
@@ -49,6 +50,7 @@ var registerFlags = struct {
 	Name:        "name",
 	Interface:   "interface",
 	Firewall:    "firewall",
+	ForcePrivate: "force-private",
 }
 
 // registerCmd represents the register command
@@ -145,6 +147,11 @@ func setHostFields(cmd *cobra.Command) {
 				}
 			}
 			config.Netclient().FirewallInUse = firewall
+		}
+	}
+	if forcePrivate, err := cmd.Flags().GetBool(registerFlags.ForcePrivate); err == nil && forcePrivate {
+		if ncutils.IsWindows() {
+			config.Netclient().ForcePrivateProfile = true
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,26 @@ import (
 )
 
 // TODO: update from netsh to a more programmatic approach.
+
+// SetInterfacePrivateProfile - sets the Windows network interface profile to Private
+func SetInterfacePrivateProfile(ifaceName string) error {
+	// Use PowerShell to set the network profile to Private
+	psCmd := fmt.Sprintf("Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory Private -ErrorAction SilentlyContinue", ifaceName)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.Output()
+	if err != nil {
+		// Try alternative approach if the first one fails
+		psCmd2 := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { Set-NetConnectionProfile -InterfaceAlias '%s' -NetworkCategory Private -ErrorAction Stop }", ifaceName, ifaceName)
+		cmd2 := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd2)
+		output, err = cmd2.Output()
+		if err != nil {
+			slog.Error("failed to set interface profile to Private", "interface", ifaceName, "error", err, "output", string(output))
+			return fmt.Errorf("failed to set interface profile: %w", err)
+		}
+	}
+	slog.Info("set interface profile to Private", "interface", ifaceName)
+	return nil
+}
 
 // NCIface.Create - makes a new Wireguard interface and sets given addresses
 func (nc *NCIface) Create() error {
@@ -46,7 +67,19 @@ func (nc *NCIface) Create() error {
 
 	slog.Info("created Windows tunnel")
 	nc.Iface = adapter
-	return adapter.SetAdapterState(driver.AdapterStateUp)
+	if err := adapter.SetAdapterState(driver.AdapterStateUp); err != nil {
+		return err
+	}
+
+	// Set network profile to Private if force flag is set
+	if config.Netclient().ForcePrivateProfile {
+		if err := SetInterfacePrivateProfile(ncutils.GetInterfaceName()); err != nil {
+			slog.Warn("failed to set interface profile to Private", "error", err)
+			// Don't fail the interface creation if profile setting fails
+		}
+	}
+
+	return nil
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
