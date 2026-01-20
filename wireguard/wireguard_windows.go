@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -26,45 +27,93 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		return nil
 	}
 
-	// Use PowerShell to set the profile name directly
-	psCmd := fmt.Sprintf("Set-NetConnectionProfile -InterfaceAlias '%s' -Name '%s' -ErrorAction Stop", ifaceName, profileName)
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
-	output, err := cmd.Output()
-	if err != nil {
-		slog.Warn("failed to set interface profile name via PowerShell", "interface", ifaceName, "error", err, "output", string(output))
+	// Wait a bit for Windows to create the network profile after interface creation
+	// Retry up to 5 times with 1 second delay
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			time.Sleep(1 * time.Second)
+		}
 
-		// Fallback: Set via registry if PowerShell fails
-		return setInterfaceProfileNameViaRegistry(ifaceName, profileName)
+		// Use PowerShell to set the profile name directly
+		// First check if profile exists, then set the name
+		psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { Set-NetConnectionProfile -InterfaceAlias '%s' -Name '%s' -ErrorAction Stop; Write-Output 'Success' } else { Write-Output 'ProfileNotFound' }", ifaceName, ifaceName, profileName)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+		output, err := cmd.Output()
+		outputStr := strings.TrimSpace(string(output))
+
+		if err == nil && outputStr == "Success" {
+			slog.Info("set interface profile name", "interface", ifaceName, "profileName", profileName)
+			return nil
+		}
+
+		if outputStr == "ProfileNotFound" {
+			slog.Debug("profile not found yet, retrying", "interface", ifaceName, "attempt", i+1)
+			continue
+		}
+
+		if i == maxRetries-1 {
+			slog.Warn("failed to set interface profile name via PowerShell after retries", "interface", ifaceName, "error", err, "output", outputStr)
+			// Fallback: Set via registry if PowerShell fails
+			return setInterfaceProfileNameViaRegistry(ifaceName, profileName)
+		}
 	}
 
-	slog.Info("set interface profile name", "interface", ifaceName, "profileName", profileName)
-	return nil
+	return fmt.Errorf("failed to set profile name after %d attempts", maxRetries)
 }
 
 // setInterfaceProfileNameViaRegistry - fallback method to set profile name via registry
 func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) error {
-	// First, get the profile GUID for the interface using PowerShell
-	psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID }", ifaceName)
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to get interface profile GUID: %w", err)
+	// Retry getting the profile GUID with delays
+	maxRetries := 5
+	var profileGUID string
+	var err error
+
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			time.Sleep(1 * time.Second)
+		}
+
+		// First, get the profile GUID for the interface using PowerShell
+		psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+		output, err := cmd.Output()
+		if err != nil {
+			slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
+			continue
+		}
+
+		profileGUID = strings.TrimSpace(string(output))
+		if profileGUID != "" {
+			break
+		}
 	}
 
-	profileGUID := strings.TrimSpace(string(output))
 	if profileGUID == "" {
-		return fmt.Errorf("profile GUID not found for interface %s", ifaceName)
+		return fmt.Errorf("profile GUID not found for interface %s after %d attempts", ifaceName, maxRetries)
 	}
 
 	// Remove braces if present
 	profileGUID = strings.Trim(profileGUID, "{}")
 	profileGUID = strings.TrimSpace(profileGUID)
 
-	// Set the ProfileName in the registry
-	keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUID)
-	key, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.SET_VALUE)
+	// Retry opening the registry key with delays
+	var key registry.Key
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUID)
+		key, err = registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.SET_VALUE)
+		if err == nil {
+			break
+		}
+		slog.Debug("failed to open registry key, retrying", "path", keyPath, "attempt", i+1, "error", err)
+	}
+
 	if err != nil {
-		return fmt.Errorf("failed to open profile registry key: %w", err)
+		return fmt.Errorf("failed to open profile registry key after %d attempts: %w", maxRetries, err)
 	}
 	defer key.Close()
 
@@ -132,21 +181,27 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 
-	// Set network profile to Private if force flag is set
-	if config.Netclient().ForcePrivateProfile {
-		if err := SetInterfacePrivateProfile(ncutils.GetInterfaceName()); err != nil {
-			slog.Warn("failed to set interface profile to Private", "error", err)
-			// Don't fail the interface creation if profile setting fails
-		}
-	}
+	// Set network profile settings asynchronously (non-blocking)
+	go func() {
+		ifaceName := ncutils.GetInterfaceName()
 
-	// Set interface profile name if configured
-	if config.Netclient().InterfaceProfileName != "" {
-		if err := SetInterfaceProfileName(ncutils.GetInterfaceName(), config.Netclient().InterfaceProfileName); err != nil {
-			slog.Warn("failed to set interface profile name", "error", err)
-			// Don't fail the interface creation if profile name setting fails
+		// Wait a moment for Windows to create the network profile after bringing interface up
+		time.Sleep(2 * time.Second)
+
+		// Set network profile to Private if force flag is set
+		if config.Netclient().ForcePrivateProfile {
+			if err := SetInterfacePrivateProfile(ifaceName); err != nil {
+				slog.Warn("failed to set interface profile to Private", "error", err)
+			}
 		}
-	}
+
+		// Set interface profile name if configured
+		if config.Netclient().InterfaceProfileName != "" {
+			if err := SetInterfaceProfileName(ifaceName, config.Netclient().InterfaceProfileName); err != nil {
+				slog.Warn("failed to set interface profile name", "error", err)
+			}
+		}
+	}()
 
 	return nil
 }
