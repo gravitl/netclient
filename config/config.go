@@ -100,6 +100,8 @@ type Config struct {
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
 	// ForcePrivateProfile - force Windows network interface to be classified as Private
 	ForcePrivateProfile bool `json:"force_private_profile" yaml:"force_private_profile"`
+	// InterfaceProfileName - Windows network profile name for the interface
+	InterfaceProfileName string `json:"interface_profile_name" yaml:"interface_profile_name"`
 }
 
 func init() {

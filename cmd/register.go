@@ -21,36 +21,38 @@ import (
 )
 
 var registerFlags = struct {
-	Firewall    string
-	Server      string
-	User        string
-	Token       string
-	Network     string
-	AllNetworks string
-	EndpointIP  string
-	EndpointIP6 string
-	Port        string
-	MTU         string
-	StaticPort  string
-	Static      string
-	Interface   string
-	Name        string
+	Firewall     string
+	Server       string
+	User         string
+	Token        string
+	Network      string
+	AllNetworks  string
+	EndpointIP   string
+	EndpointIP6  string
+	Port         string
+	MTU          string
+	StaticPort   string
+	Static       string
+	Interface    string
+	Name         string
 	ForcePrivate string
+	ProfileName  string
 }{
-	Server:      "server",
-	User:        "user",
-	Token:       "token",
-	Network:     "net",
-	AllNetworks: "all-networks",
-	EndpointIP:  "endpoint-ip",
-	Port:        "port",
-	MTU:         "mtu",
-	StaticPort:  "static-port",
-	Static:      "static-endpoint",
-	Name:        "name",
-	Interface:   "interface",
-	Firewall:    "firewall",
+	Server:       "server",
+	User:         "user",
+	Token:        "token",
+	Network:      "net",
+	AllNetworks:  "all-networks",
+	EndpointIP:   "endpoint-ip",
+	Port:         "port",
+	MTU:          "mtu",
+	StaticPort:   "static-port",
+	Static:       "static-endpoint",
+	Name:         "name",
+	Interface:    "interface",
+	Firewall:     "firewall",
 	ForcePrivate: "force-private",
+	ProfileName:  "profile-name",
 }
 
 // registerCmd represents the register command
@@ -149,9 +151,20 @@ func setHostFields(cmd *cobra.Command) {
 			config.Netclient().FirewallInUse = firewall
 		}
 	}
-	if forcePrivate, err := cmd.Flags().GetBool(registerFlags.ForcePrivate); err == nil && forcePrivate {
+	if forcePrivate, err := cmd.Flags().GetBool(registerFlags.ForcePrivate); err == nil {
 		if ncutils.IsWindows() {
-			config.Netclient().ForcePrivateProfile = true
+			config.Netclient().ForcePrivateProfile = forcePrivate
+		}
+	}
+	if profileName, err := cmd.Flags().GetString(registerFlags.ProfileName); err == nil && profileName != "" {
+		if ncutils.IsWindows() {
+			config.Netclient().InterfaceProfileName = profileName
+		}
+	}
+	// Save config if any Windows-specific settings were changed
+	if ncutils.IsWindows() && (cmd.Flags().Changed(registerFlags.ForcePrivate) || cmd.Flags().Changed(registerFlags.ProfileName)) {
+		if err := config.WriteNetclientConfig(); err != nil {
+			logger.Log(0, "failed to save config after setting Windows interface settings", err.Error())
 		}
 	}
 }
