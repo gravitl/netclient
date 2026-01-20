@@ -45,14 +45,14 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		// Fallback to PowerShell if registry fails
 		// Escape single quotes in profile name for PowerShell
 		escapedProfileName := strings.ReplaceAll(profileName, "'", "''")
-		// Use pipeline syntax which is more reliable
-		psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceAlias '%s'; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' }", ifaceName, escapedProfileName, ifaceName)
+		// Use InterfaceIndex to match the correct profile (more reliable than InterfaceAlias)
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceIndex $index; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' } } else { Write-Output 'AdapterNotFound' }", ifaceName, escapedProfileName)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		outputStr := strings.TrimSpace(string(output))
 
 		// Check if the output matches our desired profile name (case-insensitive)
-		if err == nil && outputStr != "" && outputStr != "ProfileNotFound" && outputStr != "Failed" {
+		if err == nil && outputStr != "" && outputStr != "ProfileNotFound" && outputStr != "Failed" && outputStr != "AdapterNotFound" {
 			if strings.EqualFold(outputStr, profileName) {
 				slog.Info("set interface profile name via PowerShell", "interface", ifaceName, "profileName", profileName, "actualName", outputStr)
 				return nil
@@ -61,7 +61,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 			slog.Debug("profile name set but doesn't match expected", "expected", profileName, "got", outputStr, "attempt", i+1)
 		}
 
-		if outputStr == "ProfileNotFound" || outputStr == "Failed" {
+		if outputStr == "ProfileNotFound" || outputStr == "Failed" || outputStr == "AdapterNotFound" {
 			slog.Debug("profile not found or failed, retrying", "interface", ifaceName, "attempt", i+1, "output", outputStr)
 			continue
 		}
@@ -92,17 +92,26 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) er
 			time.Sleep(1 * time.Second)
 		}
 
-		// First, get the profile GUID for the interface using PowerShell
-		psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
+		// First, get the InterfaceIndex for the interface to ensure we match the correct one
+		// Then get the profile GUID using InterfaceIndex (more reliable than InterfaceAlias)
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", ifaceName)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		if err != nil {
-			slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
-			continue
+			slog.Debug("failed to get profile GUID via InterfaceIndex, trying InterfaceAlias", "attempt", i+1, "error", err)
+			// Fallback to InterfaceAlias method
+			psCmd2 := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
+			cmd2 := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd2)
+			output, err = cmd2.Output()
+			if err != nil {
+				slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
+				continue
+			}
 		}
 
 		profileGUID = strings.TrimSpace(string(output))
 		if profileGUID != "" {
+			slog.Debug("found profile GUID", "interface", ifaceName, "guid", profileGUID)
 			break
 		}
 	}
