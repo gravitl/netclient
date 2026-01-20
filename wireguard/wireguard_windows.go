@@ -26,18 +26,33 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		return nil
 	}
 
+	// Use PowerShell to set the profile name directly
+	psCmd := fmt.Sprintf("Set-NetConnectionProfile -InterfaceAlias '%s' -Name '%s' -ErrorAction Stop", ifaceName, profileName)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	output, err := cmd.Output()
+	if err != nil {
+		slog.Warn("failed to set interface profile name via PowerShell", "interface", ifaceName, "error", err, "output", string(output))
+
+		// Fallback: Set via registry if PowerShell fails
+		return setInterfaceProfileNameViaRegistry(ifaceName, profileName)
+	}
+
+	slog.Info("set interface profile name", "interface", ifaceName, "profileName", profileName)
+	return nil
+}
+
+// setInterfaceProfileNameViaRegistry - fallback method to set profile name via registry
+func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) error {
 	// First, get the profile GUID for the interface using PowerShell
 	psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID }", ifaceName)
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 	output, err := cmd.Output()
 	if err != nil {
-		slog.Warn("failed to get interface profile GUID", "interface", ifaceName, "error", err)
 		return fmt.Errorf("failed to get interface profile GUID: %w", err)
 	}
 
 	profileGUID := strings.TrimSpace(string(output))
 	if profileGUID == "" {
-		slog.Warn("profile GUID not found for interface", "interface", ifaceName)
 		return fmt.Errorf("profile GUID not found for interface %s", ifaceName)
 	}
 
@@ -49,18 +64,16 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 	keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUID)
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.SET_VALUE)
 	if err != nil {
-		slog.Warn("failed to open profile registry key", "path", keyPath, "error", err)
 		return fmt.Errorf("failed to open profile registry key: %w", err)
 	}
 	defer key.Close()
 
 	err = key.SetStringValue("ProfileName", profileName)
 	if err != nil {
-		slog.Warn("failed to set profile name", "error", err)
 		return fmt.Errorf("failed to set profile name: %w", err)
 	}
 
-	slog.Info("set interface profile name", "interface", ifaceName, "profileName", profileName, "guid", profileGUID)
+	slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName, "guid", profileGUID)
 	return nil
 }
 
