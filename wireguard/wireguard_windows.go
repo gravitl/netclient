@@ -22,9 +22,19 @@ import (
 // TODO: update from netsh to a more programmatic approach.
 
 // SetInterfaceProfileName - sets the Windows network profile name for the interface
-func SetInterfaceProfileName(ifaceName string, profileName string, adapterGUID string) error {
+func SetInterfaceProfileName(ifaceName string, profileName string) error {
 	if profileName == "" {
 		return nil
+	}
+
+	// Check if interface exists before attempting to set profile name
+	psCheckCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { Write-Output 'Exists' } else { Write-Output 'NotFound' }", ifaceName)
+	checkCmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCheckCmd)
+	checkOutput, err := checkCmd.Output()
+	checkOutputStr := strings.TrimSpace(string(checkOutput))
+
+	if err != nil || checkOutputStr != "Exists" {
+		return fmt.Errorf("interface %s does not exist, cannot set profile name", ifaceName)
 	}
 
 	// Wait a bit for Windows to create the network profile after interface creation
@@ -36,7 +46,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string, adapterGUID s
 		}
 
 		// Try registry method first (more reliable than PowerShell for profile name)
-		err := setInterfaceProfileNameViaRegistry(ifaceName, profileName, adapterGUID)
+		err := setInterfaceProfileNameViaRegistry(ifaceName, profileName)
 		if err == nil {
 			slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName)
 			return nil
@@ -45,9 +55,9 @@ func SetInterfaceProfileName(ifaceName string, profileName string, adapterGUID s
 		// Fallback to PowerShell if registry fails
 		// Escape single quotes in profile name for PowerShell
 		escapedProfileName := strings.ReplaceAll(profileName, "'", "''")
-		// Use adapter InterfaceGuid to match the correct profile (most reliable)
-		adapterGUIDFormatted := "{" + adapterGUID + "}"
-		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -InterfaceGuid '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceIndex $index; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' } } else { Write-Output 'AdapterNotFound' }", adapterGUIDFormatted, escapedProfileName)
+		// Get adapter by name, then use its InterfaceIndex to match the correct profile
+		// Get-NetConnectionProfile returns the currently active profile for the InterfaceIndex
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceIndex $index; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' } } else { Write-Output 'AdapterNotFound' }", ifaceName, escapedProfileName)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		outputStr := strings.TrimSpace(string(output))
@@ -74,7 +84,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string, adapterGUID s
 		if i == maxRetries-1 {
 			slog.Warn("failed to set interface profile name via PowerShell after retries", "interface", ifaceName, "error", err, "output", outputStr)
 			// Fallback: Set via registry if PowerShell fails
-			return setInterfaceProfileNameViaRegistry(ifaceName, profileName, adapterGUID)
+			return setInterfaceProfileNameViaRegistry(ifaceName, profileName)
 		}
 	}
 
@@ -82,7 +92,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string, adapterGUID s
 }
 
 // setInterfaceProfileNameViaRegistry - fallback method to set profile name via registry
-func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string, adapterGUID string) error {
+func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) error {
 	// Retry getting the profile GUID with delays
 	maxRetries := 5
 	var profileGUID string
@@ -93,36 +103,60 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string, ad
 			time.Sleep(1 * time.Second)
 		}
 
-		// Match by adapter InterfaceGuid to ensure we get the correct profile
-		// The adapter GUID is based on Host ID, so it's unique to this adapter
-		// Format: Get adapter by InterfaceGuid, then get its profile
-		adapterGUIDFormatted := "{" + adapterGUID + "}"
-		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -InterfaceGuid '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", adapterGUIDFormatted)
+		// Get adapter by name first, then use its InterfaceIndex to get the profile
+		// Get all profiles and select the one created most recently (within last 10 seconds)
+		// This ensures we get the profile that was just created when the interface was brought up
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profiles = @(Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue); if ($profiles.Count -gt 0) { $now = Get-Date; $recentProfiles = $profiles | Where-Object { ($now - $_.DateCreated).TotalSeconds -lt 10 }; if ($recentProfiles.Count -gt 0) { ($recentProfiles | Sort-Object -Property DateCreated -Descending | Select-Object -First 1).InstanceID } else { ($profiles | Sort-Object -Property DateCreated -Descending | Select-Object -First 1).InstanceID } } else { Write-Output '' } } else { Write-Output '' }", ifaceName)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		if err != nil {
-			slog.Debug("failed to get profile GUID via InterfaceGuid, trying InterfaceIndex", "attempt", i+1, "error", err)
-			// Fallback: Get adapter by name, then use InterfaceIndex
-			psCmd2 := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", ifaceName)
+			slog.Debug("failed to get profile GUID via InterfaceIndex, trying InterfaceAlias", "attempt", i+1, "error", err)
+			// Fallback to InterfaceAlias method - Get-NetConnectionProfile returns the active profile
+			psCmd2 := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
 			cmd2 := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd2)
 			output, err = cmd2.Output()
 			if err != nil {
-				slog.Debug("failed to get profile GUID via InterfaceIndex, trying InterfaceAlias", "attempt", i+1, "error", err)
-				// Final fallback to InterfaceAlias method
-				psCmd3 := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
-				cmd3 := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd3)
-				output, err = cmd3.Output()
-				if err != nil {
-					slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
-					continue
-				}
+				slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
+				continue
 			}
 		}
 
 		profileGUID = strings.TrimSpace(string(output))
 		if profileGUID != "" {
-			slog.Debug("found profile GUID", "interface", ifaceName, "adapterGUID", adapterGUID, "profileGUID", profileGUID)
-			break
+			// Verify this profile GUID actually exists in the registry before proceeding
+			profileGUIDClean := strings.Trim(profileGUID, "{}")
+			profileGUIDClean = strings.TrimSpace(profileGUIDClean)
+			keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUIDClean)
+
+			// Retry checking registry with delays - Windows might not have registered it yet
+			registryFound := false
+			for j := 0; j < 3; j++ {
+				if j > 0 {
+					time.Sleep(500 * time.Millisecond)
+				}
+				testKey, testErr := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.QUERY_VALUE)
+				if testErr == nil {
+					testKey.Close()
+					registryFound = true
+					slog.Debug("found profile GUID and verified in registry", "interface", ifaceName, "profileGUID", profileGUIDClean, "attempt", j+1)
+					profileGUID = profileGUIDClean
+					break
+				}
+			}
+
+			if !registryFound {
+				slog.Debug("profile GUID from PowerShell not in registry, enumerating registry to find correct profile", "interface", ifaceName, "psGUID", profileGUIDClean)
+				// Fallback: Enumerate registry to find the most recently created profile
+				// This handles the case where PowerShell returns a stale GUID
+				profileGUID = findProfileGUIDInRegistry(ifaceName)
+				if profileGUID != "" {
+					slog.Debug("found profile GUID by enumerating registry", "interface", ifaceName, "profileGUID", profileGUID)
+					break
+				}
+				profileGUID = "" // Clear it so we retry in next outer loop iteration
+			} else {
+				break // Found valid profile GUID in registry
+			}
 		}
 	}
 
@@ -130,7 +164,7 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string, ad
 		return fmt.Errorf("profile GUID not found for interface %s after %d attempts", ifaceName, maxRetries)
 	}
 
-	// Remove braces if present
+	// Remove braces if present (should already be done, but just in case)
 	profileGUID = strings.Trim(profileGUID, "{}")
 	profileGUID = strings.TrimSpace(profileGUID)
 
@@ -187,6 +221,70 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string, ad
 
 	slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName, "guid", profileGUID)
 	return nil
+}
+
+// findProfileGUIDInRegistry - enumerates registry profiles to find the most recently created one
+// This is a fallback when PowerShell returns a GUID that doesn't exist in registry
+func findProfileGUIDInRegistry(ifaceName string) string {
+	// Enumerate all profiles in registry and find the most recently created one
+	// We'll match by checking if the profile was created recently (within last 30 seconds)
+	parentPath := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
+	parentKey, err := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		slog.Debug("failed to open profiles registry key for enumeration", "error", err)
+		return ""
+	}
+	defer parentKey.Close()
+
+	// Get all subkeys (profile GUIDs)
+	subKeys, err := parentKey.ReadSubKeyNames(0)
+	if err != nil {
+		slog.Debug("failed to enumerate profile GUIDs", "error", err)
+		return ""
+	}
+
+	// Find the most recently created profile
+	var latestGUID string
+	var latestTime time.Time
+
+	for _, guid := range subKeys {
+		profilePath := parentPath + `\` + guid
+		profileKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilePath, registry.QUERY_VALUE)
+		if err != nil {
+			continue
+		}
+
+		// Check DateCreated - it's stored as binary
+		dateBytes, _, err := profileKey.GetBinaryValue("DateCreated")
+		if err == nil && len(dateBytes) >= 8 {
+			// Parse FILETIME (low 32 bits, high 32 bits)
+			low := uint32(dateBytes[0]) | uint32(dateBytes[1])<<8 | uint32(dateBytes[2])<<16 | uint32(dateBytes[3])<<24
+			high := uint32(dateBytes[4]) | uint32(dateBytes[5])<<8 | uint32(dateBytes[6])<<16 | uint32(dateBytes[7])<<24
+			fileTime := int64(high)<<32 | int64(low)
+			// Convert FILETIME (100-nanosecond intervals since Jan 1, 1601) to Go time
+			// FILETIME epoch: Jan 1, 1601, Go epoch: Jan 1, 1970
+			// Difference: 116444736000000000 (100-nanosecond intervals)
+			const fileTimeEpoch = 116444736000000000
+			unixNano := (fileTime - fileTimeEpoch) * 100
+			profileTime := time.Unix(0, unixNano)
+
+			// Only consider profiles created in the last 30 seconds
+			if time.Since(profileTime) < 30*time.Second {
+				if profileTime.After(latestTime) {
+					latestTime = profileTime
+					latestGUID = strings.Trim(guid, "{}")
+				}
+			}
+		}
+		profileKey.Close()
+	}
+
+	if latestGUID != "" {
+		slog.Debug("found most recent profile in registry", "interface", ifaceName, "profileGUID", latestGUID, "created", latestTime)
+		return latestGUID
+	}
+
+	return ""
 }
 
 // SetInterfacePrivateProfile - sets the Windows network interface profile to Private
@@ -261,16 +359,21 @@ func (nc *NCIface) Create() error {
 	// Set network profile settings asynchronously (non-blocking)
 	go func() {
 		ifaceName := ncutils.GetInterfaceName()
-		// Get the adapter GUID to ensure we match the correct profile
-		var adapterGUID string
-		idString := config.Netclient().Host.ID.String()
-		if idString == "" {
-			idString = config.DefaultHostID
-		}
-		adapterGUID = idString
 
-		// Wait a moment for Windows to create the network profile after bringing interface up
-		time.Sleep(2 * time.Second)
+		// Wait for Windows to create and register the network profile in the registry
+		// This can take a few seconds, especially on slower systems
+		time.Sleep(5 * time.Second)
+
+		// Check if interface exists before attempting to set profile settings
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { Write-Output 'Exists' } else { Write-Output 'NotFound' }", ifaceName)
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+		output, err := cmd.Output()
+		outputStr := strings.TrimSpace(string(output))
+
+		if err != nil || outputStr != "Exists" {
+			slog.Warn("interface not found, skipping profile settings", "interface", ifaceName, "output", outputStr, "error", err)
+			return
+		}
 
 		// Set network profile to Private if force flag is set
 		if config.Netclient().ForcePrivateProfile {
@@ -281,7 +384,7 @@ func (nc *NCIface) Create() error {
 
 		// Set interface profile name if configured
 		if config.Netclient().InterfaceProfileName != "" {
-			if err := SetInterfaceProfileName(ifaceName, config.Netclient().InterfaceProfileName, adapterGUID); err != nil {
+			if err := SetInterfaceProfileName(ifaceName, config.Netclient().InterfaceProfileName); err != nil {
 				slog.Warn("failed to set interface profile name", "error", err)
 			}
 		}
