@@ -28,28 +28,46 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 	}
 
 	// Wait a bit for Windows to create the network profile after interface creation
-	// Retry up to 5 times with 1 second delay
-	maxRetries := 5
+	// Retry up to 10 times with 1 second delay
+	maxRetries := 10
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
 			time.Sleep(1 * time.Second)
 		}
 
-		// Use PowerShell to set the profile name directly
-		// First check if profile exists, then set the name
-		psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { Set-NetConnectionProfile -InterfaceAlias '%s' -Name '%s' -ErrorAction Stop; Write-Output 'Success' } else { Write-Output 'ProfileNotFound' }", ifaceName, ifaceName, profileName)
+		// Try registry method first (more reliable than PowerShell for profile name)
+		err := setInterfaceProfileNameViaRegistry(ifaceName, profileName)
+		if err == nil {
+			slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName)
+			return nil
+		}
+
+		// Fallback to PowerShell if registry fails
+		// Escape single quotes in profile name for PowerShell
+		escapedProfileName := strings.ReplaceAll(profileName, "'", "''")
+		// Use pipeline syntax which is more reliable
+		psCmd := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceAlias '%s'; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' }", ifaceName, escapedProfileName, ifaceName)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		outputStr := strings.TrimSpace(string(output))
 
-		if err == nil && outputStr == "Success" {
-			slog.Info("set interface profile name", "interface", ifaceName, "profileName", profileName)
-			return nil
+		// Check if the output matches our desired profile name (case-insensitive)
+		if err == nil && outputStr != "" && outputStr != "ProfileNotFound" && outputStr != "Failed" {
+			if strings.EqualFold(outputStr, profileName) {
+				slog.Info("set interface profile name via PowerShell", "interface", ifaceName, "profileName", profileName, "actualName", outputStr)
+				return nil
+			}
+			// If we got a name but it's not what we want, log and continue retrying
+			slog.Debug("profile name set but doesn't match expected", "expected", profileName, "got", outputStr, "attempt", i+1)
 		}
 
-		if outputStr == "ProfileNotFound" {
-			slog.Debug("profile not found yet, retrying", "interface", ifaceName, "attempt", i+1)
+		if outputStr == "ProfileNotFound" || outputStr == "Failed" {
+			slog.Debug("profile not found or failed, retrying", "interface", ifaceName, "attempt", i+1, "output", outputStr)
 			continue
+		}
+
+		if err != nil {
+			slog.Debug("PowerShell command failed, retrying", "interface", ifaceName, "attempt", i+1, "error", err, "output", outputStr)
 		}
 
 		if i == maxRetries-1 {
@@ -105,21 +123,47 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) er
 		}
 
 		keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUID)
+		// Try to open existing key first
 		key, err = registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.SET_VALUE)
+		if err != nil {
+			// If key doesn't exist, try to create it
+			if errors.Is(err, registry.ErrNotExist) {
+				parentPath := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
+				parentKey, parentErr := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ALL_ACCESS)
+				if parentErr == nil {
+					createdKey, _, createErr := registry.CreateKey(parentKey, "{"+profileGUID+"}", registry.ALL_ACCESS)
+					parentKey.Close()
+					if createErr == nil {
+						key = createdKey
+						err = nil
+					} else {
+						slog.Debug("failed to create registry key, retrying", "path", keyPath, "attempt", i+1, "error", createErr)
+					}
+				}
+			} else {
+				slog.Debug("failed to open registry key, retrying", "path", keyPath, "attempt", i+1, "error", err)
+			}
+		}
+
 		if err == nil {
 			break
 		}
-		slog.Debug("failed to open registry key, retrying", "path", keyPath, "attempt", i+1, "error", err)
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to open profile registry key after %d attempts: %w", maxRetries, err)
+		return fmt.Errorf("failed to open/create profile registry key after %d attempts: %w", maxRetries, err)
 	}
 	defer key.Close()
 
 	err = key.SetStringValue("ProfileName", profileName)
 	if err != nil {
 		return fmt.Errorf("failed to set profile name: %w", err)
+	}
+
+	// Also set Description to match (some Windows tools use Description)
+	err = key.SetStringValue("Description", profileName)
+	if err != nil {
+		slog.Debug("failed to set Description, continuing", "error", err)
 	}
 
 	slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName, "guid", profileGUID)
