@@ -102,6 +102,9 @@ func (nc *NCIface) Create() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
+	// Flush network caches before creating interface to ensure clean state
+	FlushWindowsNetworkCaches()
+
 	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
 	if err != nil {
 		slog.Info("creating Windows tunnel")
@@ -594,6 +597,27 @@ func restoreInternetGwV4() (err error) {
 	return config.WriteNetclientConfig()
 }
 
+// FlushWindowsNetworkCaches - flushes Windows network caches (route, ARP, NetBIOS, DNS)
+func FlushWindowsNetworkCaches() {
+	// Clear route destination cache
+	_, _ = ncutils.RunCmd("netsh interface ip delete destinationcache", false)
+
+	// Clear ARP cache
+	_, _ = ncutils.RunCmd("arp -d *", false)
+
+	// Clear NetBIOS cache
+	_, _ = ncutils.RunCmd("nbtstat -R", false)
+	_, _ = ncutils.RunCmd("nbtstat -RR", false)
+
+	// Flush DNS cache
+	_, _ = ncutils.RunCmd("ipconfig /flushdns", false)
+
+	// Re-register DNS
+	_, _ = ncutils.RunCmd("ipconfig /registerdns", false)
+
+	slog.Info("flushed Windows network caches")
+}
+
 // NCIface.Close - closes the managed WireGuard interface
 func (nc *NCIface) Close() {
 	wgMutex.Lock()
@@ -619,6 +643,9 @@ func (nc *NCIface) Close() {
 			}
 		}
 	}
+
+	// Flush network caches when closing interface
+	FlushWindowsNetworkCaches()
 }
 
 // NCIface.SetMTU - sets the MTU of the windows WireGuard Iface adapter
