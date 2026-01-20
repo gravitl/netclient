@@ -38,11 +38,16 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 	}
 
 	// Wait a bit for Windows to create the network profile after interface creation
-	// Retry up to 10 times with 1 second delay
-	maxRetries := 10
+	// Retry up to 8 times with shorter delays (starts with 500ms, then 1s)
+	maxRetries := 8
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
-			time.Sleep(1 * time.Second)
+			// Use shorter delay on first retry, then standard 1 second
+			delay := 1 * time.Second
+			if i == 1 {
+				delay = 500 * time.Millisecond
+			}
+			time.Sleep(delay)
 		}
 
 		// Use registry method (most reliable for profile name)
@@ -65,7 +70,12 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) er
 
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
-			time.Sleep(1 * time.Second)
+			// Use shorter delay on first retry
+			delay := 1 * time.Second
+			if i == 1 {
+				delay = 500 * time.Millisecond
+			}
+			time.Sleep(delay)
 		}
 
 		// Get adapter by name, then use its InterfaceIndex to get the active profile
@@ -315,8 +325,8 @@ func (nc *NCIface) Create() error {
 		ifaceName := ncutils.GetInterfaceName()
 
 		// Wait for Windows to create and register the network profile in the registry
-		// This can take a few seconds, especially on slower systems
-		time.Sleep(5 * time.Second)
+		// Use a shorter initial wait, then check if interface exists
+		time.Sleep(2 * time.Second)
 
 		// Check if interface exists before attempting to set profile settings
 		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { Write-Output 'Exists' } else { Write-Output 'NotFound' }", ifaceName)
