@@ -22,7 +22,7 @@ import (
 // TODO: update from netsh to a more programmatic approach.
 
 // SetInterfaceProfileName - sets the Windows network profile name for the interface
-func SetInterfaceProfileName(ifaceName string, profileName string) error {
+func SetInterfaceProfileName(ifaceName string, profileName string, adapterGUID string) error {
 	if profileName == "" {
 		return nil
 	}
@@ -36,7 +36,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		}
 
 		// Try registry method first (more reliable than PowerShell for profile name)
-		err := setInterfaceProfileNameViaRegistry(ifaceName, profileName)
+		err := setInterfaceProfileNameViaRegistry(ifaceName, profileName, adapterGUID)
 		if err == nil {
 			slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName)
 			return nil
@@ -45,8 +45,9 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		// Fallback to PowerShell if registry fails
 		// Escape single quotes in profile name for PowerShell
 		escapedProfileName := strings.ReplaceAll(profileName, "'", "''")
-		// Use InterfaceIndex to match the correct profile (more reliable than InterfaceAlias)
-		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceIndex $index; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' } } else { Write-Output 'AdapterNotFound' }", ifaceName, escapedProfileName)
+		// Use adapter InterfaceGuid to match the correct profile (most reliable)
+		adapterGUIDFormatted := "{" + adapterGUID + "}"
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -InterfaceGuid '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile | Set-NetConnectionProfile -Name '%s' -ErrorAction Stop; Start-Sleep -Milliseconds 500; $updated = Get-NetConnectionProfile -InterfaceIndex $index; if ($updated) { Write-Output $updated.Name } else { Write-Output 'Failed' } } else { Write-Output 'ProfileNotFound' } } else { Write-Output 'AdapterNotFound' }", adapterGUIDFormatted, escapedProfileName)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		outputStr := strings.TrimSpace(string(output))
@@ -73,7 +74,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		if i == maxRetries-1 {
 			slog.Warn("failed to set interface profile name via PowerShell after retries", "interface", ifaceName, "error", err, "output", outputStr)
 			// Fallback: Set via registry if PowerShell fails
-			return setInterfaceProfileNameViaRegistry(ifaceName, profileName)
+			return setInterfaceProfileNameViaRegistry(ifaceName, profileName, adapterGUID)
 		}
 	}
 
@@ -81,7 +82,7 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 }
 
 // setInterfaceProfileNameViaRegistry - fallback method to set profile name via registry
-func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) error {
+func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string, adapterGUID string) error {
 	// Retry getting the profile GUID with delays
 	maxRetries := 5
 	var profileGUID string
@@ -92,26 +93,35 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) er
 			time.Sleep(1 * time.Second)
 		}
 
-		// First, get the InterfaceIndex for the interface to ensure we match the correct one
-		// Then get the profile GUID using InterfaceIndex (more reliable than InterfaceAlias)
-		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", ifaceName)
+		// Match by adapter InterfaceGuid to ensure we get the correct profile
+		// The adapter GUID is based on Host ID, so it's unique to this adapter
+		// Format: Get adapter by InterfaceGuid, then get its profile
+		adapterGUIDFormatted := "{" + adapterGUID + "}"
+		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -InterfaceGuid '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", adapterGUIDFormatted)
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
 		output, err := cmd.Output()
 		if err != nil {
-			slog.Debug("failed to get profile GUID via InterfaceIndex, trying InterfaceAlias", "attempt", i+1, "error", err)
-			// Fallback to InterfaceAlias method
-			psCmd2 := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
+			slog.Debug("failed to get profile GUID via InterfaceGuid, trying InterfaceIndex", "attempt", i+1, "error", err)
+			// Fallback: Get adapter by name, then use InterfaceIndex
+			psCmd2 := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", ifaceName)
 			cmd2 := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd2)
 			output, err = cmd2.Output()
 			if err != nil {
-				slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
-				continue
+				slog.Debug("failed to get profile GUID via InterfaceIndex, trying InterfaceAlias", "attempt", i+1, "error", err)
+				// Final fallback to InterfaceAlias method
+				psCmd3 := fmt.Sprintf("$profile = Get-NetConnectionProfile -InterfaceAlias '%s' -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' }", ifaceName)
+				cmd3 := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd3)
+				output, err = cmd3.Output()
+				if err != nil {
+					slog.Debug("failed to get profile GUID, retrying", "attempt", i+1, "error", err)
+					continue
+				}
 			}
 		}
 
 		profileGUID = strings.TrimSpace(string(output))
 		if profileGUID != "" {
-			slog.Debug("found profile GUID", "interface", ifaceName, "guid", profileGUID)
+			slog.Debug("found profile GUID", "interface", ifaceName, "adapterGUID", adapterGUID, "profileGUID", profileGUID)
 			break
 		}
 	}
@@ -237,6 +247,13 @@ func (nc *NCIface) Create() error {
 	// Set network profile settings asynchronously (non-blocking)
 	go func() {
 		ifaceName := ncutils.GetInterfaceName()
+		// Get the adapter GUID to ensure we match the correct profile
+		var adapterGUID string
+		idString := config.Netclient().Host.ID.String()
+		if idString == "" {
+			idString = config.DefaultHostID
+		}
+		adapterGUID = idString
 
 		// Wait a moment for Windows to create the network profile after bringing interface up
 		time.Sleep(2 * time.Second)
@@ -250,7 +267,7 @@ func (nc *NCIface) Create() error {
 
 		// Set interface profile name if configured
 		if config.Netclient().InterfaceProfileName != "" {
-			if err := SetInterfaceProfileName(ifaceName, config.Netclient().InterfaceProfileName); err != nil {
+			if err := SetInterfaceProfileName(ifaceName, config.Netclient().InterfaceProfileName, adapterGUID); err != nil {
 				slog.Warn("failed to set interface profile name", "error", err)
 			}
 		}
