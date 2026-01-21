@@ -149,7 +149,7 @@ func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer
 			if egressRangeI.VirtualNetwork != "" {
 				egressRange = egressRangeI.VirtualNetwork
 			}
-			data[egressRange] = append(data[egressRange], egressPeer{
+			data[egressRangeI.Network] = append(data[egressRange], egressPeer{
 				PeerKey:       egressRouteI.PeerKey,
 				EgressGwAddr:  egressRouteI.EgressGwAddr,
 				EgressGwAddr6: egressRouteI.EgressGwAddr6,
