@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/flow/exporter"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"github.com/gravitl/netmaker/logger"
@@ -45,15 +46,9 @@ type FlowTracker struct {
 }
 
 func New(nodeIter NodeIterator, filter FlowEventFilter, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
-	var hostID uuid.UUID
-	nodeIter(func(node *models.CommonNode) bool {
-		hostID = node.HostID
-		return false
-	})
-
 	c := &FlowTracker{
-		hostID:              hostID,
-		hostIDStr:           hostID.String(),
+		hostID:              config.Netclient().ID,
+		hostIDStr:           config.Netclient().ID.String(),
 		nodeIter:            nodeIter,
 		filter:              filter,
 		participantEnricher: participantEnricher,
@@ -190,8 +185,9 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 	return c.flowExporter.Export(&pbflow.FlowEvent{
 		Type:        eventType,
 		FlowId:      flowID,
-		NetworkId:   networkID,
 		HostId:      c.hostIDStr,
+		HostName:    config.Netclient().Name,
+		NetworkId:   networkID,
 		Protocol:    uint32(flow.TupleOrig.Proto.Protocol),
 		SrcPort:     uint32(flow.TupleOrig.Proto.SourcePort),
 		DstPort:     uint32(flow.TupleOrig.Proto.DestinationPort),
