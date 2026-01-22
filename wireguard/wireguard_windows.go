@@ -103,25 +103,43 @@ func findAndUpdateProfileName(ifaceName string, profileName string) error {
 		return fmt.Errorf("failed to read subkeys: %w", err)
 	}
 
-	// Find a profile where ProfileName matches the interface name
+	// First, check if the profile name is already set to the target name
+	// This handles the case where a previous attempt succeeded but we're retrying
 	var matchingGUID string
+	var alreadySet bool
 	for _, guid := range subKeyNames {
 		subKey, err := registry.OpenKey(parentKey, guid, registry.QUERY_VALUE)
 		if err != nil {
 			continue
 		}
 
-		// Check if ProfileName matches the interface name
 		currentProfileName, _, err := subKey.GetStringValue("ProfileName")
-		if err == nil && currentProfileName == ifaceName {
-			// Found a profile matching the interface name
-			matchingGUID = strings.Trim(guid, "{}")
+		if err != nil {
+			subKey.Close()
+			continue
+		}
+
+		// If profile name already matches target, we're done
+		if currentProfileName == profileName {
+			alreadySet = true
 			subKey.Close()
 			break
+		}
+
+		// Check if ProfileName matches the interface name (for initial update)
+		if currentProfileName == ifaceName {
+			// Found a profile matching the interface name
+			matchingGUID = strings.Trim(guid, "{}")
 		}
 		subKey.Close()
 	}
 
+	// If already set to target name, return success
+	if alreadySet {
+		return nil
+	}
+
+	// If no matching profile found, return error
 	if matchingGUID == "" {
 		return fmt.Errorf("no profile found with ProfileName matching interface %s", ifaceName)
 	}
