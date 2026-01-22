@@ -90,10 +90,8 @@ func findAndUpdateProfileName(ifaceName string, profileName string) error {
 	}
 	defer parentKey.Close()
 
-	// First, try to find a profile where ProfileName matches the interface name
-	// If not found, fall back to the most recently created profile (within last 30 seconds)
+	// Find a profile where ProfileName matches the interface name
 	var matchingGUID string
-	var latestGUID string
 	keepLooking := true
 
 	for keepLooking {
@@ -122,29 +120,19 @@ func findAndUpdateProfileName(ifaceName string, profileName string) error {
 				// Found a profile matching the interface name
 				matchingGUID = strings.Trim(guid, "{}")
 				subKey.Close()
+				keepLooking = false
 				break
 			}
 			subKey.Close()
 		}
-
-		// If we found a matching profile, stop searching
-		if matchingGUID != "" {
-			keepLooking = false
-		}
 	}
 
-	// Use matching profile if found, otherwise use the most recent one
-	selectedGUID := matchingGUID
-	if selectedGUID == "" {
-		selectedGUID = latestGUID
-	}
-
-	if selectedGUID == "" {
-		return fmt.Errorf("no profile found in registry for interface %s", ifaceName)
+	if matchingGUID == "" {
+		return fmt.Errorf("no profile found with ProfileName matching interface %s", ifaceName)
 	}
 
 	// Update the profile name
-	profilePath := parentPath + `\` + "{" + selectedGUID + "}"
+	profilePath := parentPath + `\` + "{" + matchingGUID + "}"
 	profileKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilePath, registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("failed to open profile key: %w", err)
@@ -162,11 +150,7 @@ func findAndUpdateProfileName(ifaceName string, profileName string) error {
 		slog.Debug("failed to set Description, continuing", "error", err)
 	}
 
-	if matchingGUID != "" {
-		slog.Debug("updated profile name in registry (matched by interface name)", "interface", ifaceName, "profileGUID", selectedGUID, "profileName", profileName)
-	} else {
-		slog.Debug("updated profile name in registry (using most recent profile)", "interface", ifaceName, "profileGUID", selectedGUID, "profileName", profileName)
-	}
+	slog.Debug("updated profile name in registry", "interface", ifaceName, "profileGUID", matchingGUID, "profileName", profileName)
 	return nil
 }
 
