@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -710,21 +711,47 @@ func restoreInternetGwV4() (err error) {
 
 // FlushWindowsNetworkCaches - flushes Windows network caches (route, ARP, NetBIOS, DNS)
 func FlushWindowsNetworkCaches() {
+	var wg sync.WaitGroup
+
 	// Clear route destination cache
-	_, _ = ncutils.RunCmd("netsh interface ip delete destinationcache", false)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = ncutils.RunCmd("netsh interface ip delete destinationcache", false)
+	}()
 
 	// Clear ARP cache
-	_, _ = ncutils.RunCmd("arp -d *", false)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = ncutils.RunCmd("arp -d *", false)
+	}()
 
 	// Clear NetBIOS cache
-	_, _ = ncutils.RunCmd("nbtstat -R", false)
-	_, _ = ncutils.RunCmd("nbtstat -RR", false)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = ncutils.RunCmd("nbtstat -R", false)
+	}()
 
-	// Flush DNS cache
-	_, _ = ncutils.RunCmd("ipconfig /flushdns", false)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = ncutils.RunCmd("nbtstat -RR", false)
+	}()
 
-	// Re-register DNS
-	_, _ = ncutils.RunCmd("ipconfig /registerdns", false)
+	// Flush DNS cache (run sequentially with registerdns to avoid potential conflicts)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Flush DNS cache first
+		_, _ = ncutils.RunCmd("ipconfig /flushdns", false)
+		// Then re-register DNS
+		_, _ = ncutils.RunCmd("ipconfig /registerdns", false)
+	}()
+
+	// Wait for all commands to complete
+	wg.Wait()
 
 	slog.Info("flushed Windows network caches")
 }
