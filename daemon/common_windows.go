@@ -158,18 +158,16 @@ func writeServiceConfig() error {
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
 <log mode="roll"></log>
 <startmode>Automatic</startmode>
-<delayedAutoStart>false</delayedAutoStart>
-<depend>Tcpip</depend>
-<depend>Dhcp</depend>
-<depend>NlaSvc</depend>
+<delayedAutoStart>true</delayedAutoStart>
 </service>
 `, strings.Replace(config.GetNetclientPath()+"netclient.exe", `\\`, `\`, -1))
-	// Always write the service config to ensure it's up to date
-	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
-	if err != nil {
-		return err
+	if !ncutils.FileExists(serviceConfigPath) {
+		err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
+		if err != nil {
+			return err
+		}
+		logger.Log(0, "wrote the daemon config file to the Netclient directory")
 	}
-	logger.Log(0, "wrote the daemon config file to the Netclient directory")
 	return nil
 }
 
