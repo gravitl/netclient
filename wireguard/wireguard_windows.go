@@ -27,19 +27,10 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 		return nil
 	}
 
-	// Check if interface exists before attempting to set profile name
-	psCheckCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { Write-Output 'Exists' } else { Write-Output 'NotFound' }", ifaceName)
-	checkCmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCheckCmd)
-	checkOutput, err := checkCmd.Output()
-	checkOutputStr := strings.TrimSpace(string(checkOutput))
-
-	if err != nil || checkOutputStr != "Exists" {
-		return fmt.Errorf("interface %s does not exist, cannot set profile name", ifaceName)
-	}
-
 	// Wait a bit for Windows to create the network profile after interface creation
 	// Retry up to 8 times with shorter delays (starts with 500ms, then 1s)
 	maxRetries := 8
+	var lastErr error
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
 			// Use shorter delay on first retry, then standard 1 second
@@ -56,16 +47,16 @@ func SetInterfaceProfileName(ifaceName string, profileName string) error {
 			slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName)
 			return nil
 		}
+		lastErr = err
 	}
 
-	return fmt.Errorf("failed to set profile name after %d attempts: %w", maxRetries, err)
+	return fmt.Errorf("failed to set profile name after %d attempts: %w", maxRetries, lastErr)
 }
 
-// setInterfaceProfileNameViaRegistry - fallback method to set profile name via registry
+// setInterfaceProfileNameViaRegistry - sets profile name by enumerating registry profiles
 func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) error {
-	// Retry getting the profile GUID with delays
+	// Retry finding and updating the profile with delays
 	maxRetries := 5
-	var profileGUID string
 	var err error
 
 	for i := 0; i < maxRetries; i++ {
@@ -78,177 +69,105 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) er
 			time.Sleep(delay)
 		}
 
-		// Get adapter by name, then use its InterfaceIndex to get the active profile
-		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { $index = $adapter.InterfaceIndex; $profile = Get-NetConnectionProfile -InterfaceIndex $index -ErrorAction SilentlyContinue; if ($profile) { $profile.InstanceID } else { Write-Output '' } } else { Write-Output '' }", ifaceName)
-		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
-		output, err := cmd.Output()
+		// Enumerate registry to find and update the profile
+		err = findAndUpdateProfileName(ifaceName, profileName)
+		if err == nil {
+			slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName)
+			return nil
+		}
+		slog.Debug("failed to find/update profile in registry, retrying", "attempt", i+1, "error", err)
+	}
+
+	return fmt.Errorf("failed to set profile name after %d attempts: %w", maxRetries, err)
+}
+
+// findAndUpdateProfileName - enumerates registry profiles to find one matching interface name and update it
+func findAndUpdateProfileName(ifaceName string, profileName string) error {
+	parentPath := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
+	parentKey, err := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return fmt.Errorf("failed to open profiles registry key: %w", err)
+	}
+	defer parentKey.Close()
+
+	// First, try to find a profile where ProfileName matches the interface name
+	// If not found, fall back to the most recently created profile (within last 30 seconds)
+	var matchingGUID string
+	var latestGUID string
+	keepLooking := true
+
+	for keepLooking {
+		subKeyNames, err := parentKey.ReadSubKeyNames(10)
 		if err != nil {
-			slog.Debug("failed to get profile GUID via PowerShell, retrying", "attempt", i+1, "error", err)
+			if err == registry.ErrNotExist || err.Error() == "EOF" {
+				keepLooking = false
+			} else {
+				return fmt.Errorf("failed to read subkeys: %w", err)
+			}
+		}
+		if len(subKeyNames) == 0 {
+			keepLooking = false
 			continue
 		}
 
-		profileGUID = strings.TrimSpace(string(output))
-		if profileGUID != "" {
-			// Clean up the GUID
-			profileGUID = strings.Trim(profileGUID, "{}")
-			profileGUID = strings.TrimSpace(profileGUID)
-			keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUID)
-
-			// Verify this profile GUID exists in the registry (retry with delays)
-			registryFound := false
-			for j := 0; j < 3; j++ {
-				if j > 0 {
-					time.Sleep(500 * time.Millisecond)
-				}
-				testKey, testErr := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.QUERY_VALUE)
-				if testErr == nil {
-					testKey.Close()
-					registryFound = true
-					slog.Debug("found profile GUID and verified in registry", "interface", ifaceName, "profileGUID", profileGUID)
-					break
-				}
+		for _, guid := range subKeyNames {
+			subKey, err := registry.OpenKey(parentKey, guid, registry.QUERY_VALUE)
+			if err != nil {
+				continue
 			}
 
-			if !registryFound {
-				// PowerShell returned a GUID that doesn't exist in registry - enumerate to find the correct one
-				slog.Debug("profile GUID from PowerShell not in registry, enumerating registry", "interface", ifaceName, "psGUID", profileGUID)
-				profileGUID = findProfileGUIDInRegistry(ifaceName)
-				if profileGUID != "" {
-					slog.Debug("found profile GUID by enumerating registry", "interface", ifaceName, "profileGUID", profileGUID)
-					break
-				}
-				profileGUID = "" // Retry in next iteration
-			} else {
-				break // Found valid profile GUID
+			// Check if ProfileName matches the interface name
+			currentProfileName, _, err := subKey.GetStringValue("ProfileName")
+			if err == nil && currentProfileName == ifaceName {
+				// Found a profile matching the interface name
+				matchingGUID = strings.Trim(guid, "{}")
+				subKey.Close()
+				break
 			}
+			subKey.Close()
+		}
+
+		// If we found a matching profile, stop searching
+		if matchingGUID != "" {
+			keepLooking = false
 		}
 	}
 
-	if profileGUID == "" {
-		return fmt.Errorf("profile GUID not found for interface %s after %d attempts", ifaceName, maxRetries)
+	// Use matching profile if found, otherwise use the most recent one
+	selectedGUID := matchingGUID
+	if selectedGUID == "" {
+		selectedGUID = latestGUID
 	}
 
-	// Remove braces if present (should already be done, but just in case)
-	profileGUID = strings.Trim(profileGUID, "{}")
-	profileGUID = strings.TrimSpace(profileGUID)
-
-	// Retry opening the registry key with delays
-	var key registry.Key
-	for i := 0; i < maxRetries; i++ {
-		if i > 0 {
-			time.Sleep(500 * time.Millisecond)
-		}
-
-		keyPath := fmt.Sprintf(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles\{%s}`, profileGUID)
-		// Try to open existing key first
-		key, err = registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.SET_VALUE)
-		if err != nil {
-			// If key doesn't exist, try to create it
-			if errors.Is(err, registry.ErrNotExist) {
-				parentPath := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
-				parentKey, parentErr := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ALL_ACCESS)
-				if parentErr == nil {
-					createdKey, _, createErr := registry.CreateKey(parentKey, "{"+profileGUID+"}", registry.ALL_ACCESS)
-					parentKey.Close()
-					if createErr == nil {
-						key = createdKey
-						err = nil
-					} else {
-						slog.Debug("failed to create registry key, retrying", "path", keyPath, "attempt", i+1, "error", createErr)
-					}
-				}
-			} else {
-				slog.Debug("failed to open registry key, retrying", "path", keyPath, "attempt", i+1, "error", err)
-			}
-		}
-
-		if err == nil {
-			break
-		}
+	if selectedGUID == "" {
+		return fmt.Errorf("no profile found in registry for interface %s", ifaceName)
 	}
 
+	// Update the profile name
+	profilePath := parentPath + `\` + "{" + selectedGUID + "}"
+	profileKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilePath, registry.SET_VALUE)
 	if err != nil {
-		return fmt.Errorf("failed to open/create profile registry key after %d attempts: %w", maxRetries, err)
+		return fmt.Errorf("failed to open profile key: %w", err)
 	}
-	defer key.Close()
+	defer profileKey.Close()
 
-	err = key.SetStringValue("ProfileName", profileName)
+	err = profileKey.SetStringValue("ProfileName", profileName)
 	if err != nil {
 		return fmt.Errorf("failed to set profile name: %w", err)
 	}
 
-	// Also set Description to match (some Windows tools use Description)
-	err = key.SetStringValue("Description", profileName)
+	// Also set Description to match
+	err = profileKey.SetStringValue("Description", profileName)
 	if err != nil {
 		slog.Debug("failed to set Description, continuing", "error", err)
 	}
 
-	slog.Info("set interface profile name via registry", "interface", ifaceName, "profileName", profileName, "guid", profileGUID)
+	if matchingGUID != "" {
+		slog.Debug("updated profile name in registry (matched by interface name)", "interface", ifaceName, "profileGUID", selectedGUID, "profileName", profileName)
+	} else {
+		slog.Debug("updated profile name in registry (using most recent profile)", "interface", ifaceName, "profileGUID", selectedGUID, "profileName", profileName)
+	}
 	return nil
-}
-
-// findProfileGUIDInRegistry - enumerates registry profiles to find the most recently created one
-// This is a fallback when PowerShell returns a GUID that doesn't exist in registry
-func findProfileGUIDInRegistry(ifaceName string) string {
-	// Enumerate all profiles in registry and find the most recently created one
-	// We'll match by checking if the profile was created recently (within last 30 seconds)
-	parentPath := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
-	parentKey, err := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ENUMERATE_SUB_KEYS)
-	if err != nil {
-		slog.Debug("failed to open profiles registry key for enumeration", "error", err)
-		return ""
-	}
-	defer parentKey.Close()
-
-	// Get all subkeys (profile GUIDs)
-	subKeys, err := parentKey.ReadSubKeyNames(0)
-	if err != nil {
-		slog.Debug("failed to enumerate profile GUIDs", "error", err)
-		return ""
-	}
-
-	// Find the most recently created profile
-	var latestGUID string
-	var latestTime time.Time
-
-	for _, guid := range subKeys {
-		profilePath := parentPath + `\` + guid
-		profileKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilePath, registry.QUERY_VALUE)
-		if err != nil {
-			continue
-		}
-
-		// Check DateCreated - it's stored as binary
-		dateBytes, _, err := profileKey.GetBinaryValue("DateCreated")
-		if err == nil && len(dateBytes) >= 8 {
-			// Parse FILETIME (low 32 bits, high 32 bits)
-			low := uint32(dateBytes[0]) | uint32(dateBytes[1])<<8 | uint32(dateBytes[2])<<16 | uint32(dateBytes[3])<<24
-			high := uint32(dateBytes[4]) | uint32(dateBytes[5])<<8 | uint32(dateBytes[6])<<16 | uint32(dateBytes[7])<<24
-			fileTime := int64(high)<<32 | int64(low)
-			// Convert FILETIME (100-nanosecond intervals since Jan 1, 1601) to Go time
-			// FILETIME epoch: Jan 1, 1601, Go epoch: Jan 1, 1970
-			// Difference: 116444736000000000 (100-nanosecond intervals)
-			const fileTimeEpoch = 116444736000000000
-			unixNano := (fileTime - fileTimeEpoch) * 100
-			profileTime := time.Unix(0, unixNano)
-
-			// Only consider profiles created in the last 30 seconds
-			if time.Since(profileTime) < 30*time.Second {
-				if profileTime.After(latestTime) {
-					latestTime = profileTime
-					latestGUID = strings.Trim(guid, "{}")
-				}
-			}
-		}
-		profileKey.Close()
-	}
-
-	if latestGUID != "" {
-		slog.Debug("found most recent profile in registry", "interface", ifaceName, "profileGUID", latestGUID, "created", latestTime)
-		return latestGUID
-	}
-
-	return ""
 }
 
 // SetInterfacePrivateProfile - sets the Windows network interface profile to Private
@@ -327,17 +246,6 @@ func (nc *NCIface) Create() error {
 		// Wait for Windows to create and register the network profile in the registry
 		// Use a shorter initial wait, then check if interface exists
 		time.Sleep(2 * time.Second)
-
-		// Check if interface exists before attempting to set profile settings
-		psCmd := fmt.Sprintf("$adapter = Get-NetAdapter -Name '%s' -ErrorAction SilentlyContinue; if ($adapter) { Write-Output 'Exists' } else { Write-Output 'NotFound' }", ifaceName)
-		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
-		output, err := cmd.Output()
-		outputStr := strings.TrimSpace(string(output))
-
-		if err != nil || outputStr != "Exists" {
-			slog.Warn("interface not found, skipping profile settings", "interface", ifaceName, "output", outputStr, "error", err)
-			return
-		}
 
 		// Set network profile to Private if force flag is set
 		if config.Netclient().ForcePrivateProfile {
