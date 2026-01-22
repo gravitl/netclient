@@ -84,7 +84,8 @@ func setInterfaceProfileNameViaRegistry(ifaceName string, profileName string) er
 // findAndUpdateProfileName - enumerates registry profiles to find one matching interface name and update it
 func findAndUpdateProfileName(ifaceName string, profileName string) error {
 	parentPath := `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
-	parentKey, err := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ENUMERATE_SUB_KEYS)
+	// Need READ permission (includes QUERY_VALUE and ENUMERATE_SUB_KEYS) to use Stat() method
+	parentKey, err := registry.OpenKey(registry.LOCAL_MACHINE, parentPath, registry.ALL_ACCESS)
 	if err != nil {
 		return fmt.Errorf("failed to open profiles registry key: %w", err)
 	}
