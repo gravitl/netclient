@@ -90,41 +90,35 @@ func findAndUpdateProfileName(ifaceName string, profileName string) error {
 	}
 	defer parentKey.Close()
 
+	// Get subkey count using Stat() for efficient enumeration
+	keyInfo, err := parentKey.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get registry key info: %w", err)
+	}
+
+	// Read all subkeys at once since we know the count
+	subKeyNames, err := parentKey.ReadSubKeyNames(int(keyInfo.SubKeyCount))
+	if err != nil {
+		return fmt.Errorf("failed to read subkeys: %w", err)
+	}
+
 	// Find a profile where ProfileName matches the interface name
 	var matchingGUID string
-	keepLooking := true
-
-	for keepLooking {
-		subKeyNames, err := parentKey.ReadSubKeyNames(10)
+	for _, guid := range subKeyNames {
+		subKey, err := registry.OpenKey(parentKey, guid, registry.QUERY_VALUE)
 		if err != nil {
-			if err == registry.ErrNotExist || err.Error() == "EOF" {
-				keepLooking = false
-			} else {
-				return fmt.Errorf("failed to read subkeys: %w", err)
-			}
-		}
-		if len(subKeyNames) == 0 {
-			keepLooking = false
 			continue
 		}
 
-		for _, guid := range subKeyNames {
-			subKey, err := registry.OpenKey(parentKey, guid, registry.QUERY_VALUE)
-			if err != nil {
-				continue
-			}
-
-			// Check if ProfileName matches the interface name
-			currentProfileName, _, err := subKey.GetStringValue("ProfileName")
-			if err == nil && currentProfileName == ifaceName {
-				// Found a profile matching the interface name
-				matchingGUID = strings.Trim(guid, "{}")
-				subKey.Close()
-				keepLooking = false
-				break
-			}
+		// Check if ProfileName matches the interface name
+		currentProfileName, _, err := subKey.GetStringValue("ProfileName")
+		if err == nil && currentProfileName == ifaceName {
+			// Found a profile matching the interface name
+			matchingGUID = strings.Trim(guid, "{}")
 			subKey.Close()
+			break
 		}
+		subKey.Close()
 	}
 
 	if matchingGUID == "" {
