@@ -78,6 +78,7 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 	for egressNodeID := range ruleTable {
 		if _, ok := egressUpdate[egressNodeID]; !ok {
 			// egress GW is deleted, flush out all rules
+			slog.Info("removing egress routes for deleted node", "node", egressNodeID)
 			fwCrtl.RemoveRoutingRules(server, egressTable, egressNodeID)
 		}
 	}

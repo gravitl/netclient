@@ -1553,17 +1553,21 @@ func (i *iptablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 		return errors.New("peer not found in rule table: " + peerKey)
 	}
 
-	// Always try to remove virtual NAT chains and jump rules for this peer
-	// This ensures cleanup when switching from virtual to direct NAT mode,
-	// even if the rulesTable doesn't track the VNAT rules
-	// Try both IPv4 and IPv6 to ensure complete cleanup
-	if err := i.removeVirtualNATRules(peerKey, true); err != nil {
-		// Log as debug since VNAT rules may not exist (e.g., already removed or never existed)
-		slog.Debug("attempted to remove virtual NAT rules (IPv4)", "peer", peerKey, "error", err)
-	}
-	if err := i.removeVirtualNATRules(peerKey, false); err != nil {
-		// Log as debug since VNAT rules may not exist (e.g., already removed or never existed)
-		slog.Debug("attempted to remove virtual NAT rules (IPv6)", "peer", peerKey, "error", err)
+	// Only remove VNAT rules for egress table (VNAT is egress-specific, not for ingress)
+	// Skip VNAT removal for special entries like "allowed-network-rules" or ACL entries
+	if ruletableName == egressTable && peerKey != "allowed-network-rules" && !strings.Contains(peerKey, "acl#") {
+		// Always try to remove virtual NAT chains and jump rules for this peer
+		// This ensures cleanup when switching from virtual to direct NAT mode,
+		// even if the rulesTable doesn't track the VNAT rules
+		// Try both IPv4 and IPv6 to ensure complete cleanup
+		if err := i.removeVirtualNATRules(peerKey, true); err != nil {
+			// Log as debug since VNAT rules may not exist (e.g., already removed or never existed)
+			slog.Debug("attempted to remove virtual NAT rules (IPv4)", "peer", peerKey, "error", err)
+		}
+		if err := i.removeVirtualNATRules(peerKey, false); err != nil {
+			// Log as debug since VNAT rules may not exist (e.g., already removed or never existed)
+			slog.Debug("attempted to remove virtual NAT rules (IPv6)", "peer", peerKey, "error", err)
+		}
 	}
 
 	for _, rules := range rulesTable[peerKey].rulesMap {

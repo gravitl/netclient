@@ -840,13 +840,17 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	n.mux.Lock()
 	defer n.mux.Unlock()
 
-	// Always try to remove virtual NAT chains and jump rules for this peer FIRST
-	// This ensures cleanup when switching from virtual to direct NAT mode,
-	// even if the rulesTable doesn't track the VNAT rules or the peer entry doesn't exist
-	// Do this before checking if peer exists, so cleanup happens regardless
-	if err := n.removeVirtualNATRules(peerKey); err != nil {
-		// Log as info since this is important for cleanup, but don't fail the operation
-		slog.Info("attempted to remove virtual NAT rules", "peer", peerKey, "error", err)
+	// Only remove VNAT rules for egress table (VNAT is egress-specific, not for ingress)
+	// Skip VNAT removal for special entries like "allowed-network-rules" or ACL entries
+	if ruletableName == egressTable && peerKey != "allowed-network-rules" && !strings.Contains(peerKey, "acl#") {
+		// Always try to remove virtual NAT chains and jump rules for this peer FIRST
+		// This ensures cleanup when switching from virtual to direct NAT mode,
+		// even if the rulesTable doesn't track the VNAT rules or the peer entry doesn't exist
+		// Do this before checking if peer exists, so cleanup happens regardless
+		if err := n.removeVirtualNATRules(peerKey); err != nil {
+			// Log as info since this is important for cleanup, but don't fail the operation
+			slog.Info("attempted to remove virtual NAT rules", "peer", peerKey, "error", err)
+		}
 	}
 
 	if _, ok := rulesTable[peerKey]; !ok {
