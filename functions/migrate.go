@@ -1,13 +1,13 @@
 package functions
 
 import (
-	"errors"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"runtime"
 	"strings"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
@@ -81,29 +81,23 @@ func Migrate() {
 			OS:          runtime.GOOS,
 			LegacyNodes: v,
 		}
-		api := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
-			URL:    "https://api." + k,
-			Route:  "/api/v1/nodes/migrate",
-			Method: http.MethodPost,
-			Headers: []httpclient.Header{
-				{
-					Name:  "requestfrom",
-					Value: "node",
-				},
-			},
-			Data:          migrationData,
-			Response:      models.HostPull{},
-			ErrorResponse: models.ErrorResponse{},
-		}
-		migrateResponse, errData, err := api.GetJSON(models.HostPull{}, models.ErrorResponse{})
+
+		url := fmt.Sprintf("https://api.%s/api/v1/nodes/migrate", k)
+		headers := make(http.Header)
+		headers.Set("Content-Type", "application/json")
+		headers.Set("requestfrom", "node")
+		respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, migrationData)
 		if err != nil {
-			slog.Error("migration response", "error", err)
-			if errors.Is(err, httpclient.ErrStatus) {
-				slog.Error("status error", "code", errData.Code, "message", errData.Message)
-			}
 			delete = false
 			continue
 		}
+
+		var migrateResponse models.HostPull
+		err = json.Unmarshal(respBytes.Bytes(), &migrateResponse)
+		if err != nil {
+			continue
+		}
+
 		if !IsVersionComptatible(migrateResponse.ServerConfig.Version) {
 			slog.Error("incompatible server version", "server", migrateResponse.ServerConfig.Version, "client", config.Netclient().Version)
 			delete = false
