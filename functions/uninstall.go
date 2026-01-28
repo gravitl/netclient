@@ -3,15 +3,14 @@ package functions
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"runtime"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -100,27 +99,17 @@ func deleteNodeFromServer(node *config.Node) error {
 	if err != nil {
 		return fmt.Errorf("could not read sever config %w", err)
 	}
-	endpoint := httpclient.Endpoint{
-		URL:    "https://" + server.API,
-		Method: http.MethodDelete,
-		Route:  "/api/nodes/" + node.Network + "/" + node.ID.String(),
-		Headers: []httpclient.Header{
-			{
-				Name:  "requestfrom",
-				Value: "node",
-			},
-		},
-		Authorization: "Bearer " + token,
-	}
-	response, err := endpoint.GetResponse()
+
+	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID.String())
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	headers.Set("requestfrom", "node")
+	_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 	if err != nil {
-		return fmt.Errorf("error deleting node on server: %w", err)
+		return fmt.Errorf("error deleting node from network %s on server: %v", node.Network, err)
 	}
-	if response.StatusCode != http.StatusOK {
-		bodybytes, _ := io.ReadAll(response.Body)
-		defer response.Body.Close()
-		return fmt.Errorf("error deleting node from network %s on server %s %s", node.Network, response.Status, string(bodybytes))
-	}
+
 	return nil
 }
 

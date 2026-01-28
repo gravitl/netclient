@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -62,20 +62,12 @@ func LeaveServer(s string) error {
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err == nil {
-		id := config.Netclient().ID.String()
-		endpoint := httpclient.Endpoint{
-			URL:           "https://" + server.API,
-			Route:         "/api/hosts/" + id + "?force=true",
-			Method:        http.MethodDelete,
-			Authorization: "Bearer " + token,
-			Data:          "",
-		}
-		_, err = endpoint.GetResponse()
+		url := fmt.Sprintf("https://%s/api/hosts/%s?force=true", server.API, config.Netclient().ID.String())
+		headers := make(http.Header)
+		headers.Set("Content-Type", "application/json")
+		headers.Set("Authorization", "Bearer "+token)
+		_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 		if err != nil {
-			if errors.Is(err, httpclient.ErrStatus) {
-				fmt.Println("error leaving server", s)
-			}
-			fmt.Println(err)
 			return err
 		}
 	}
