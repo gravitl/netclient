@@ -2733,12 +2733,6 @@ func rulesEqual(rule1, rule2 *nftables.Rule) bool {
 	return false
 }
 
-// Virtual NAT implementation for nftables
-
-var (
-	vnatTableStruct = &nftables.Table{Name: "netmaker_vnat", Family: nftables.TableFamilyINet}
-)
-
 // applyVirtualNATRules applies virtual NAT rules for an egress gateway
 // NOTE: Virtual NAT is currently disabled for nftables due to lack of prefix NAT support
 func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
