@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -165,14 +166,133 @@ func DeleteOldInterface(iface string) {
 }
 
 // GetDefaultGatewayIp - get current default gateway
-func GetDefaultGatewayIp() (ip net.IP, err error) { return }
+func GetDefaultGatewayIp() (ip net.IP, err error) {
+	// IPv4 Check
+	gwDef, errDef := getRouteGateway("default")
+	gwHalf1, err1 := getRouteGateway("0.0.0.1")
+	gwHalf2, err2 := getRouteGateway("128.0.0.1")
 
-// RestoreDefaultGateway - restore the old default gateway
-func RestoreInternetGw() (err error) { return }
+	if err1 == nil && err2 == nil && gwHalf1.Equal(gwHalf2) {
+		if errDef != nil || !gwHalf1.Equal(gwDef) {
+			return gwHalf1, nil
+		}
+	}
 
-func resetDefaultRoutesOnHost() error { return nil }
+	// IPv6 Check
+	gwHalf6_1, err6_1 := getRouteGateway("2000::1")
+	gwHalf6_2, err6_2 := getRouteGateway("8000::1")
+	if err6_1 == nil && err6_2 == nil && gwHalf6_1.Equal(gwHalf6_2) {
+		gwDef6, errDef6 := getRouteGateway("-inet6", "default")
+		if errDef6 != nil || !gwHalf6_1.Equal(gwDef6) {
+			return gwHalf6_1, nil
+		}
+	}
 
-// SetDefaultGateway - set a new default gateway
-func SetInternetGw(publicKey string, networkIP net.IP) (err error) { return }
+	if errDef == nil {
+		return gwDef, nil
+	}
+	return nil, fmt.Errorf("default gateway not found")
+}
 
-func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error { return nil }
+func getRouteGateway(args ...string) (ip net.IP, err error) {
+	fullArgs := append([]string{"-n", "get"}, args...)
+	cmd := exec.Command("route", fullArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "gateway:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				ip = net.ParseIP(parts[1])
+				if ip != nil {
+					return ip, nil
+				}
+			}
+		}
+	}
+	return nil, fmt.Errorf("gateway not found for %v", args)
+}
+
+// RestoreInternetGw - restore the old default gateway
+func RestoreInternetGw() (err error) {
+	err = resetDefaultRoutesOnHost()
+	if err == nil {
+		GetIGWMonitor().Stop()
+	}
+	return err
+}
+
+func resetDefaultRoutesOnHost() error {
+	iface := ncutils.GetInterfaceName()
+	exec.Command("route", "delete", "-net", "-inet", "0.0.0.0/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet", "128.0.0.0/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", "::/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", "8000::/1", "-interface", iface).Run()
+
+	gwVIP := config.Netclient().CurrGwNmIP
+	if len(gwVIP) > 0 {
+		peers, err := GetPeersFromDevice(iface)
+		if err == nil {
+			for _, peer := range peers {
+				for _, allowed := range peer.AllowedIPs {
+					if allowed.IP.Equal(gwVIP) {
+						if peer.Endpoint != nil {
+							exec.Command("route", "delete", peer.Endpoint.IP.String()).Run()
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+	config.Netclient().CurrGwNmIP = nil
+	return config.WriteNetclientConfig()
+}
+
+// SetInternetGw - set a new default gateway
+func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
+	err = setDefaultRoutesOnHost(publicKey, networkIP)
+	if err == nil {
+		GetIGWMonitor().Monitor(publicKey, networkIP)
+	}
+	return err
+}
+
+func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
+	gw, err := getRouteGateway("default")
+	if err != nil {
+		return fmt.Errorf("failed to get current gateway: %w", err)
+	}
+	config.Netclient().OriginalDefaultGatewayIp = gw
+
+	peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+	if err != nil {
+		return fmt.Errorf("failed to get peer: %w", err)
+	}
+	if peer.Endpoint == nil {
+		return fmt.Errorf("peer endpoint is nil")
+	}
+
+	if out, err := exec.Command("route", "add", peer.Endpoint.IP.String(), gw.String()).CombinedOutput(); err != nil {
+		slog.Error("failed to add route to endpoint", "output", string(out), "error", err)
+	}
+
+	iface := ncutils.GetInterfaceName()
+	run := func(args ...string) {
+		if out, err := exec.Command("route", args...).CombinedOutput(); err != nil {
+			slog.Error("failed to add route", "command", fmt.Sprint(args), "output", string(out), "error", err)
+		}
+	}
+
+	run("add", "-net", "-inet", "0.0.0.0/1", "-interface", iface)
+	run("add", "-net", "-inet", "128.0.0.0/1", "-interface", iface)
+
+	run("add", "-net", "-inet6", "::/1", "-interface", iface)
+	run("add", "-net", "-inet6", "8000::/1", "-interface", iface)
+
+	config.Netclient().CurrGwNmIP = networkIP
+	return config.WriteNetclientConfig()
+}
