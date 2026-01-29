@@ -251,22 +251,31 @@ func writeServiceConfig() error {
 	// (the \\ in source code is just Go's escape sequence)
 	executablePath := config.GetNetclientPath() + "netclient.exe"
 	workingDir := config.GetNetclientPath()
+	logPath := config.GetNetclientPath() + "logs"
 	// WinSW creates log files based on the wrapper executable name (winsw.exe -> winsw.out.log, winsw.err.log)
 	// Use mode="append" to preserve logs across service restarts
-	// Logs will be created in the workingdirectory: winsw.out.log (stdout) and winsw.err.log (stderr)
+	// Logs will be created in the logpath: winsw.out.log (stdout) and winsw.err.log (stderr)
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
-<name>netclient</name>
-<description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
+<name>Netclient</name>
+<description>Manages Windows Netclient on one or more Netmaker networks.</description>
 <executable>%s</executable>
 <arguments>daemon</arguments>
 <workingdirectory>%s</workingdirectory>
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
+<logpath>%s</logpath>
 <log mode="append" />
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
+<stoptimeout>30sec</stoptimeout>
+<resetfailure>1 hour</resetfailure>
+<onfailure action="restart" delay="5 sec"/>
+<onfailure action="restart" delay="15 sec"/>
+<onfailure action="restart" delay="30 sec"/>
+<onfailure action="restart" delay="120 sec"/>
+<onfailure action="restart" delay="300 sec"/>
 </service>
-`, executablePath, workingDir)
+`, executablePath, workingDir, logPath)
 	// Always write/update the config to ensure log settings are correct
 	fileExisted := ncutils.FileExists(serviceConfigPath)
 	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
