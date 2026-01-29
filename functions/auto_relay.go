@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
@@ -555,19 +554,14 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/node/%s/auto_relay_me", nodeID),
-		Method:        method,
-		Data:          models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID},
-		Authorization: "Bearer " + token,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
+
+	url := fmt.Sprintf("https://%s/api/v1/node/%s/auto_relay_me", server.API, nodeID)
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	_, err = ncutils.SendRequest(method, url, headers, models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID})
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Error("error asking server to relay me", "code", strconv.Itoa(errData.Code), "error", errData.Message)
-		}
+		slog.Error("error asking server to relay me", err.Error())
 		return err
 	}
 	return nil

@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
@@ -252,7 +251,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			metricTicker.Reset(time.Minute * time.Duration(i))
 		}
 		server.MetricInterval = peerUpdate.MetricInterval
-
+	}
+	if peerUpdate.IPDetectionInterval != 0 && peerUpdate.IPDetectionInterval != server.IPDetectionInterval {
+		ipTicker.Reset(time.Second * time.Duration(peerUpdate.IPDetectionInterval))
+		server.IPDetectionInterval = peerUpdate.IPDetectionInterval
+		saveServerConfig = true
 	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -715,27 +718,23 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 func getServerBrokerStatus() (bool, error) {
-
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return false, errors.New("server is nil")
 	}
-	var status map[string]interface{}
+
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
-	endpoint := httpclient.JSONEndpoint[map[string]interface{}, models.ErrorResponse]{
-		URL:           url,
-		Method:        http.MethodGet,
-		Data:          nil,
-		Response:      status,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	response, errData, err := endpoint.GetJSON(status, models.ErrorResponse{})
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-			return false, err
-		}
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		return false, err
+	}
+
+	response := make(map[string]interface{})
+	err = json.Unmarshal(respBytes.Bytes(), &response)
+	if err != nil {
 		return false, err
 	}
 
@@ -793,6 +792,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
+	var saveServerConfig bool
 	if server == nil {
 		slog.Error("server not found in config", "server", serverName)
 		return
@@ -826,6 +826,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
+	}
+	if pullResponse.ServerConfig.IPDetectionInterval != 0 && pullResponse.ServerConfig.IPDetectionInterval != server.IPDetectionInterval {
+		ipTicker.Reset(time.Second * time.Duration(pullResponse.ServerConfig.IPDetectionInterval))
+		server.IPDetectionInterval = pullResponse.ServerConfig.IPDetectionInterval
+		saveServerConfig = true
 	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -889,7 +894,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	go CheckEgressDomainUpdates()
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	var saveServerConfig bool
 	if len(server.NameServers) != len(pullResponse.NameServers) || reflect.DeepEqual(server.NameServers, pullResponse.NameServers) {
 		server.NameServers = pullResponse.NameServers
 		saveServerConfig = true

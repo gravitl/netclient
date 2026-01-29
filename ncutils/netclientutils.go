@@ -255,6 +255,33 @@ func IsPublicIP(ip net.IP) bool {
 	return true
 }
 
+// getExcludedInterfaces returns a list of interface name patterns to exclude from detection.
+// Default exclusions: flannel, cni (K8s CNI interfaces that cause endpoint detection bugs).
+// Additional exclusions can be added via NETCLIENT_EXCLUDE_INTERFACES env var (comma-separated).
+// Example: NETCLIENT_EXCLUDE_INTERFACES=flannel,cni,calico,weave
+func getExcludedInterfaces() []string {
+	defaults := []string{"flannel", "cni"}
+	envExcludes := os.Getenv("NETCLIENT_EXCLUDE_INTERFACES")
+	if envExcludes == "" {
+		return defaults
+	}
+	excludes := strings.Split(envExcludes, ",")
+	for i := range excludes {
+		excludes[i] = strings.TrimSpace(excludes[i])
+	}
+	return excludes
+}
+
+// isExcludedInterface checks if an interface name matches any excluded pattern
+func isExcludedInterface(ifaceName string) bool {
+	for _, pattern := range getExcludedInterfaces() {
+		if pattern != "" && strings.Contains(ifaceName, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 func GetInterfaces() ([]models.Iface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -269,7 +296,8 @@ func GetInterfaces() ([]models.Iface, error) {
 			iface.Flags&net.FlagPointToPoint != 0 || // avoid direct connections
 			iface.Name == GetInterfaceName() || strings.Contains(iface.Name, "netmaker") || // avoid netmaker
 			IsBridgeNetwork(iface.Name) || // avoid bridges
-			strings.Contains(iface.Name, "docker") {
+			strings.Contains(iface.Name, "docker") || // avoid docker
+			isExcludedInterface(iface.Name) { // avoid user-configured interfaces (default: flannel, cni)
 			continue
 		}
 		addrs, err := iface.Addrs()
