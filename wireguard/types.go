@@ -132,6 +132,9 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
+			if egressRange.Nat && egressRange.Mode == models.VirtualNAT && egressRange.VirtualNetwork != "" {
+				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNetwork)
+			}
 			if egressRangeIPNet.IP != nil {
 				if len(config.GetNodes()) == 1 {
 					if runtime.GOOS == "linux" {

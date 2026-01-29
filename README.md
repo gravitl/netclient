@@ -1,4 +1,3 @@
-
 <p align="center">
   <a href="https://netmaker.io">
   <img src="./netclient.png" width="50%"><break/>
@@ -17,7 +16,7 @@
   </a>
 </p>
 
-# Automated WireGuard® Management Client 
+# Automated WireGuard® Management Client
 
 This is the client for Netmaker networks. To learn more about Netmaker, [see here](http://github.com/gravitl/netmaker).
 
@@ -31,14 +30,27 @@ This is the client for Netmaker networks. To learn more about Netmaker, [see her
 
 ## Join a network
 
-With Token:  
+With Token:
 `netclient join -t <token>`
 
-With User (Basic Auth):  
+With User (Basic Auth):
 `netclient join -n <net name> -u <username> -s api.<netmaker domain>`
 
-With User (SSO):  
+With User (SSO):
 `netclient join -n <net name> -s api.<netmaker domain>`
+
+## Interface Exclusion
+
+Netclient excludes certain interfaces from being advertised to peers. By default, the following patterns are excluded: `docker`, `netmaker`, `flannel`, `cni`, and bridge networks.
+
+You can customize excluded interfaces using the `NETCLIENT_EXCLUDE_INTERFACES` environment variable:
+
+```bash
+NETCLIENT_EXCLUDE_INTERFACES=flannel,cni,calico,weave
+```
+
+- Comma-separated list of interface name patterns (substring match)
+- Default (if not set): `flannel,cni`
 
 ## Commands
 ```
