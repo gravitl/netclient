@@ -2763,6 +2763,8 @@ func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 }
 
 // ensureVNATTable ensures the virtual NAT table exists
+//
+//nolint:unused // Kept for future use when virtual NAT is re-enabled
 func (n *nftablesManager) ensureVNATTable() error {
 	tables, err := n.conn.ListTables()
 	if err != nil {
@@ -2777,37 +2779,10 @@ func (n *nftablesManager) ensureVNATTable() error {
 	return n.conn.Flush()
 }
 
-// deleteVNATChain deletes a chain from the vnat table if it exists
-func (n *nftablesManager) deleteVNATChain(chainName string) error {
-	chains, err := n.conn.ListChains()
-	if err != nil {
-		return fmt.Errorf("failed to list chains: %w", err)
-	}
-	for _, ch := range chains {
-		if ch.Name == chainName && ch.Table.Name == "netmaker_vnat" && ch.Table.Family == nftables.TableFamilyINet {
-			// Flush chain first
-			rules, err := n.conn.GetRules(vnatTableStruct, ch)
-			if err == nil {
-				for _, rule := range rules {
-					if delErr := n.conn.DelRule(rule); delErr != nil {
-						slog.Debug("failed to delete rule from VNAT chain", "chain", chainName, "error", delErr)
-					}
-				}
-			}
-			n.conn.DelChain(ch)
-			if err := n.conn.Flush(); err != nil {
-				return fmt.Errorf("failed to flush after deleting VNAT chain %s: %w", chainName, err)
-			}
-			slog.Info("deleted VNAT chain", "chain", chainName)
-			return nil
-		}
-	}
-	// Chain doesn't exist, which is fine
-	return nil
-}
-
 // addVNATJumpRules adds jump rules from base chains to per-egress chains
 // Note: Forward chain jump not needed - FORWARD already has ACCEPT policy
+//
+//nolint:unused // Kept for future use when virtual NAT is re-enabled
 func (n *nftablesManager) addVNATJumpRules(preroutingChain, postroutingChain, id8 string) error {
 	// Jump from PREROUTING to per-egress prerouting chain
 	preroutingBase, err := n.getChain(defaultNatTable, "PREROUTING")
@@ -2865,6 +2840,35 @@ func (n *nftablesManager) addVNATJumpRules(preroutingChain, postroutingChain, id
 		}
 	}
 
+	return nil
+}
+
+// deleteVNATChain deletes a chain from the vnat table if it exists
+func (n *nftablesManager) deleteVNATChain(chainName string) error {
+	chains, err := n.conn.ListChains()
+	if err != nil {
+		return fmt.Errorf("failed to list chains: %w", err)
+	}
+	for _, ch := range chains {
+		if ch.Name == chainName && ch.Table.Name == "netmaker_vnat" && ch.Table.Family == nftables.TableFamilyINet {
+			// Flush chain first
+			rules, err := n.conn.GetRules(vnatTableStruct, ch)
+			if err == nil {
+				for _, rule := range rules {
+					if delErr := n.conn.DelRule(rule); delErr != nil {
+						slog.Debug("failed to delete rule from VNAT chain", "chain", chainName, "error", delErr)
+					}
+				}
+			}
+			n.conn.DelChain(ch)
+			if err := n.conn.Flush(); err != nil {
+				return fmt.Errorf("failed to flush after deleting VNAT chain %s: %w", chainName, err)
+			}
+			slog.Info("deleted VNAT chain", "chain", chainName)
+			return nil
+		}
+	}
+	// Chain doesn't exist, which is fine
 	return nil
 }
 
