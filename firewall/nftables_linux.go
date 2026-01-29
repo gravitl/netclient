@@ -549,6 +549,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		logger.Log(0, fmt.Sprintf("Checking egress range %s: Nat=%v, Mode=%s, VirtualNetwork=%s, shouldApplyVNAT=%v",
 			egressGwRange.Network, egressGwRange.Nat, egressGwRange.Mode, egressGwRange.VirtualNetwork, shouldApply))
 
+		virtualNATApplied := false
 		if shouldApply {
 			logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
@@ -557,23 +558,27 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				wgInterface := ncutils.GetInterfaceName()
 				vnatRules, err := n.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
 				if err != nil {
-					logger.Log(1, fmt.Sprintf("failed to apply virtual NAT rules: %v", err))
+					logger.Log(1, fmt.Sprintf("Virtual NAT not supported for nftables, falling back to regular NAT: %v", err))
+					// Fall through to regular NAT processing
+					virtualNATApplied = false
 				} else {
 					egressGwRoutes = append(egressGwRoutes, vnatRules...)
 					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
+					virtualNATApplied = true
 				}
 			}
-			// Skip regular NAT processing for virtual NAT ranges
-			continue
+			// If virtual NAT was successfully applied, skip regular NAT processing
+			if virtualNATApplied {
+				continue
+			}
+			// Otherwise, fall through to regular NAT processing
+			logger.Log(0, fmt.Sprintf("Falling back to regular NAT for egress range %s", egressGwRange.Network))
 		}
 
-		// Regular NAT processing (for direct NAT mode or when Nat is true but Mode is not VirtualNAT or VirtualNetwork is not set)
-		// If Nat is true but shouldApplyVirtualNat returned false, it means Mode is not VirtualNAT or VirtualNetwork is not set
-		// In that case, fall through to regular NAT processing
-		if egressGwRange.Nat && (egressGwRange.Mode != models.VirtualNAT || egressGwRange.VirtualNetwork == "") {
-			if egressGwRange.Mode == models.VirtualNAT && egressGwRange.VirtualNetwork == "" {
-				logger.Log(1, fmt.Sprintf("Mode is VirtualNAT but VirtualNetwork is not set for range %s, applying regular NAT instead", egressGwRange.Network))
-			}
+		// Regular NAT processing (for direct NAT mode, or when virtual NAT failed/not supported)
+		// Apply regular NAT if Nat flag is set
+		if !egressGwRange.Nat {
+			continue // Skip if NAT is not enabled
 		}
 		logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
 		source := egressInfo.Network.String()
@@ -2748,203 +2753,13 @@ var (
 )
 
 // applyVirtualNATRules applies virtual NAT rules for an egress gateway
+// NOTE: Virtual NAT is currently disabled for nftables due to lack of prefix NAT support
 func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
-	var rules []ruleInfo
-
-	logger.Log(0, fmt.Sprintf("Applying virtual NAT rules for egress %s: virtual=%s, real=%s", egressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
-
-	// Ensure vnat table exists
-	if err := n.ensureVNATTable(); err != nil {
-		return nil, fmt.Errorf("failed to ensure vnat table: %w", err)
-	}
-
-	// Get chain names (forward chain not needed - FORWARD already has ACCEPT policy)
-	preroutingChain, postroutingChain := getVNATChainNames(egressID)
-	id8 := getEgressID8(egressID)
-
-	logger.Log(0, fmt.Sprintf("VNAT chain names: prerouting=%s, postrouting=%s", preroutingChain, postroutingChain))
-
-	// Note: Conntrack zones can be added later for better collision prevention
-	// ctZone := getConntrackZone(egressID)
-
-	// Calculate real range window (same prefix length as virtual range)
-	realWindow := getRealRangeWindow(vnatInfo.realRange, vnatInfo.virtualRange)
-
-	isIPv4 := vnatInfo.virtualRange.IP.To4() != nil
-
-	// Create per-egress chains (regular chains, not base chains)
-	preroutingChainObj := &nftables.Chain{
-		Name:  preroutingChain,
-		Table: vnatTableStruct,
-		Type:  nftables.ChainTypeNAT,
-	}
-	postroutingChainObj := &nftables.Chain{
-		Name:  postroutingChain,
-		Table: vnatTableStruct,
-		Type:  nftables.ChainTypeNAT,
-	}
-
-	// Delete existing chains if they exist (for idempotency)
-	// This ensures clean state when switching from direct to virtual or re-applying
-	if err := n.deleteVNATChain(preroutingChain); err != nil {
-		slog.Debug("failed to delete existing VNAT prerouting chain", "chain", preroutingChain, "error", err)
-	} else {
-		logger.Log(0, fmt.Sprintf("Cleaned up existing VNAT prerouting chain: %s", preroutingChain))
-	}
-	if err := n.deleteVNATChain(postroutingChain); err != nil {
-		slog.Debug("failed to delete existing VNAT postrouting chain", "chain", postroutingChain, "error", err)
-	} else {
-		logger.Log(0, fmt.Sprintf("Cleaned up existing VNAT postrouting chain: %s", postroutingChain))
-	}
-
-	// Create chains (forward chain not needed - FORWARD already has ACCEPT policy)
-	logger.Log(0, fmt.Sprintf("Creating VNAT chains: %s, %s", preroutingChain, postroutingChain))
-	n.conn.AddChain(preroutingChainObj)
-	n.conn.AddChain(postroutingChainObj)
-
-	if err := n.conn.Flush(); err != nil {
-		return nil, fmt.Errorf("failed to create vnat chains: %w", err)
-	}
-	logger.Log(0, fmt.Sprintf("Successfully created VNAT chains: %s, %s", preroutingChain, postroutingChain))
-
-	if isIPv4 {
-		// PREROUTING rules: DNAT from VirtualRange to RealWindow
-		// Note: nftables doesn't have direct NETMAP equivalent, so we use a simplified approach
-		// For v1, we DNAT to the real window base address
-		// Conntrack zones can be added later if needed
-		realBase := realWindow.IP.To4()
-
-		preroutingExprs := []expr.Any{
-			// Match input interface
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(wgInterface + "\x00"),
-			},
-			// Match destination address in virtual range
-			&expr.Payload{
-				DestRegister: 2,
-				Base:         expr.PayloadBaseNetworkHeader,
-				Offset:       16, // IPv4 destination address offset
-				Len:          4,
-			},
-			&expr.Bitwise{
-				SourceRegister: 2,
-				DestRegister:   2,
-				Len:            4,
-				Mask:           vnatInfo.virtualRange.Mask,
-				Xor:            []byte{0, 0, 0, 0},
-			},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 2,
-				Data:     vnatInfo.virtualRange.IP.To4(),
-			},
-			// TODO: Implement proper prefix-based DNAT (NETMAP-like behavior)
-			// For v1, this is a placeholder. Proper implementation would need to:
-			// 1. Extract host bits from virtual address
-			// 2. Combine with real window base address
-			// 3. DNAT to the resulting address
-			// This requires nftables arithmetic operations or accepting that nftables
-			// doesn't have a direct NETMAP equivalent
-			// For now, DNAT to real window base (simplified)
-			&expr.Immediate{
-				Register: 1,
-				Data:     realBase,
-			},
-			&expr.NAT{
-				Type:       expr.NATTypeDestNAT,
-				Family:     unix.NFPROTO_IPV4,
-				RegAddrMin: 1,
-				RegAddrMax: 1,
-			},
-		}
-
-		preroutingRule := &nftables.Rule{
-			Table:    vnatTableStruct,
-			Chain:    preroutingChainObj,
-			UserData: []byte(fmt.Sprintf("vnat:pr:%s", id8)),
-			Exprs:    preroutingExprs,
-		}
-		n.conn.AddRule(preroutingRule)
-		rules = append(rules, ruleInfo{
-			nfRule: preroutingRule,
-			table:  "netmaker_vnat",
-			chain:  preroutingChain,
-		})
-
-		// POSTROUTING rule: MASQUERADE for traffic from WG to LAN with destination in real range
-		postroutingExprs := []expr.Any{
-			// Match input interface
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(wgInterface + "\x00"),
-			},
-			// Match output interface
-			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     []byte(egressRangeIface + "\x00"),
-			},
-			// Match destination in real range
-			&expr.Payload{
-				DestRegister: 1,
-				Base:         expr.PayloadBaseNetworkHeader,
-				Offset:       16,
-				Len:          4,
-			},
-			&expr.Bitwise{
-				SourceRegister: 1,
-				DestRegister:   1,
-				Len:            4,
-				Mask:           vnatInfo.realRange.Mask,
-				Xor:            []byte{0, 0, 0, 0},
-			},
-			&expr.Cmp{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				Data:     vnatInfo.realRange.IP.To4(),
-			},
-			// MASQUERADE
-			&expr.Masq{},
-		}
-
-		postroutingRule := &nftables.Rule{
-			Table:    vnatTableStruct,
-			Chain:    postroutingChainObj,
-			UserData: []byte(fmt.Sprintf("vnat:po:%s", id8)),
-			Exprs:    postroutingExprs,
-		}
-		n.conn.AddRule(postroutingRule)
-		rules = append(rules, ruleInfo{
-			nfRule: postroutingRule,
-			table:  "netmaker_vnat",
-			chain:  postroutingChain,
-		})
-
-		// Note: Forward chain rules are not needed - FORWARD chain already has ACCEPT policy
-	} else {
-		// IPv6 implementation (similar structure but with IPv6 offsets and addresses)
-		// TODO: Implement IPv6 support
-		logger.Log(1, "IPv6 virtual NAT not yet implemented")
-	}
-
-	// Add jump rules from base chains to per-egress chains
-	logger.Log(0, fmt.Sprintf("Adding VNAT jump rules for egress %s", egressID))
-	if err := n.addVNATJumpRules(preroutingChain, postroutingChain, id8); err != nil {
-		return nil, fmt.Errorf("failed to add vnat jump rules: %w", err)
-	}
-
-	if err := n.conn.Flush(); err != nil {
-		return nil, fmt.Errorf("failed to apply vnat rules: %w", err)
-	}
-
-	logger.Log(0, fmt.Sprintf("Successfully applied virtual NAT rules for egress %s: %s -> %s", egressID, vnatInfo.virtualRange.String(), realWindow.String()))
-	return rules, nil
+	// Virtual NAT is disabled for nftables - nftables doesn't support prefix NAT (CIDR-to-CIDR translation)
+	// like iptables NETMAP. Without prefix NAT support, we cannot preserve the host part during translation.
+	logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
+		egressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
+	return nil, fmt.Errorf("virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
 }
 
 // ensureVNATTable ensures the virtual NAT table exists
