@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -87,7 +86,6 @@ func List(net string, long bool) {
 
 // GetNodePeers returns the peers for a given node
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
-
 	server := config.GetServer(node.Server)
 	if server == nil {
 		return []wgtypes.PeerConfig{}, errors.New("server config not found")
@@ -100,20 +98,21 @@ func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	endpoint := httpclient.JSONEndpoint[models.NodeGet, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         "/api/nodes/" + node.Network + "/" + node.ID.String(),
-		Method:        http.MethodGet,
-		Authorization: "Bearer " + token,
-		Response:      models.NodeGet{},
-		ErrorResponse: models.ErrorResponse{},
-	}
-	nodeGet, errData, err := endpoint.GetJSON(models.NodeGet{}, models.ErrorResponse{})
+
+	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID.String())
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "error getting node", strconv.Itoa(errData.Code), errData.Message)
-		}
 		return nil, err
 	}
+
+	var nodeGet models.NodeGet
+	err = json.Unmarshal(respBytes.Bytes(), &nodeGet)
+	if err != nil {
+		return nil, err
+	}
+
 	return nodeGet.Peers, nil
 }
