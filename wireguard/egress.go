@@ -145,11 +145,15 @@ func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer
 	for _, egressRouteI := range egressRoutesCopy {
 		// for each egress route, sort it routing node by metric
 		for _, egressRangeI := range egressRouteI.EgressRangesWithMetric {
-			data[egressRangeI.Network] = append(data[egressRangeI.Network], egressPeer{
+			egressRange := egressRangeI.Network
+			if egressRangeI.VirtualNetwork != "" {
+				egressRange = egressRangeI.VirtualNetwork
+			}
+			data[egressRangeI.Network] = append(data[egressRange], egressPeer{
 				PeerKey:       egressRouteI.PeerKey,
 				EgressGwAddr:  egressRouteI.EgressGwAddr,
 				EgressGwAddr6: egressRouteI.EgressGwAddr6,
-				EgressRange:   egressRangeI.Network,
+				EgressRange:   egressRange,
 				Metric:        egressRangeI.RouteMetric,
 			})
 		}

@@ -526,6 +526,7 @@ func (n *nftablesManager) DeleteRuleTable(server, ruleTableName string) {
 
 // nftables.InsertEgressRoutingRules - inserts egress routes for the GW peers
 func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
+	logger.Log(0, fmt.Sprintf("InsertEgressRoutingRules called for egress %s with %d ranges", egressInfo.EgressID, len(egressInfo.EgressGWCfg.RangesWithMetric)))
 	ruleTable := n.FetchRuleTable(server, egressTable)
 	defer n.SaveRules(server, egressTable, ruleTable)
 	n.mux.Lock()
@@ -542,23 +543,94 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		extraInfo: egressInfo.EgressGWCfg,
 	}
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
-		if egressGwRange.Nat {
-			logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
-			source := egressInfo.Network.String()
-			if !isAddrIpv4(egressGwRange.Network) {
-				source = egressInfo.Network6.String()
-			}
-			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
-				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
-			} else {
-				logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
-				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
-				// to avoid duplicate iface route rule,delete if exists
-				var exp []expr.Any
-				if len(config.GetNodes()) == 1 {
-					ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
-					exp = []expr.Any{
+		// Check if virtual NAT should be applied first (before checking Nat flag)
+		// This ensures VNAT is applied when switching from direct to virtual mode
+		vnatInfo, shouldApply := shouldApplyVirtualNat(egressGwRange)
+		logger.Log(0, fmt.Sprintf("Checking egress range %s: Nat=%v, Mode=%s, VirtualNetwork=%s, shouldApplyVNAT=%v",
+			egressGwRange.Network, egressGwRange.Nat, egressGwRange.Mode, egressGwRange.VirtualNetwork, shouldApply))
 
+		virtualNATApplied := false
+		if shouldApply {
+			logger.Log(0, fmt.Sprintf("Processing virtual NAT-enabled egress range: %s (virtual: %s)", egressGwRange.Network, egressGwRange.VirtualNetwork))
+			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
+				logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
+			} else {
+				wgInterface := ncutils.GetInterfaceName()
+				vnatRules, err := n.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("Virtual NAT not supported for nftables, falling back to regular NAT: %v", err))
+					// Fall through to regular NAT processing
+					virtualNATApplied = false
+				} else {
+					egressGwRoutes = append(egressGwRoutes, vnatRules...)
+					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
+					virtualNATApplied = true
+				}
+			}
+			// If virtual NAT was successfully applied, skip regular NAT processing
+			if virtualNATApplied {
+				continue
+			}
+			// Otherwise, fall through to regular NAT processing
+			logger.Log(0, fmt.Sprintf("Falling back to regular NAT for egress range %s", egressGwRange.Network))
+		}
+
+		// Regular NAT processing (for direct NAT mode, or when virtual NAT failed/not supported)
+		// Apply regular NAT if Nat flag is set
+		if !egressGwRange.Nat {
+			continue // Skip if NAT is not enabled
+		}
+		logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
+		source := egressInfo.Network.String()
+		if !isAddrIpv4(egressGwRange.Network) {
+			source = egressInfo.Network6.String()
+		}
+		if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
+			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
+		} else {
+			logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
+			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
+			// to avoid duplicate iface route rule,delete if exists
+			var exp []expr.Any
+			if len(config.GetNodes()) == 1 {
+				ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+				exp = []expr.Any{
+
+					// Match outgoing interface by index
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(egressRangeIface), // Interface name with null terminator
+					},
+					// Perform masquerade
+					&expr.Masq{},
+				}
+			} else {
+				if isAddrIpv4(source) {
+					exp = []expr.Any{
+						// Match source IP address
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       12, // Source address offset in IP header
+							Len:          4,
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            4,
+							Mask:           egressInfo.Network.Mask, // /16 mask for 100.64.0.0/16
+							Xor:            []byte{0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     egressInfo.Network.IP.To4(), // 100.64.0.0/16
+						},
 						// Match outgoing interface by index
 						&expr.Meta{
 							Key:      expr.MetaKeyOIFNAME,
@@ -573,192 +645,156 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						&expr.Masq{},
 					}
 				} else {
-					if isAddrIpv4(source) {
-						exp = []expr.Any{
-							// Match source IP address
-							&expr.Payload{
-								DestRegister: 1,
-								Base:         expr.PayloadBaseNetworkHeader,
-								Offset:       12, // Source address offset in IP header
-								Len:          4,
-							},
-							&expr.Bitwise{
-								SourceRegister: 1,
-								DestRegister:   1,
-								Len:            4,
-								Mask:           egressInfo.Network.Mask, // /16 mask for 100.64.0.0/16
-								Xor:            []byte{0, 0, 0, 0},
-							},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     egressInfo.Network.IP.To4(), // 100.64.0.0/16
-							},
-							// Match outgoing interface by index
-							&expr.Meta{
-								Key:      expr.MetaKeyOIFNAME,
-								Register: 1,
-							},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     []byte(egressRangeIface), // Interface name with null terminator
-							},
-							// Perform masquerade
-							&expr.Masq{},
-						}
-					} else {
-						exp = []expr.Any{
-							// Match source IPv6 address (2001:db8::/64)
-							&expr.Payload{
-								DestRegister: 1,
-								Base:         expr.PayloadBaseNetworkHeader,
-								Offset:       8,  // Source address offset in IPv6 header
-								Len:          16, // Length of IPv6 address
-							},
-							&expr.Bitwise{
-								SourceRegister: 1,
-								DestRegister:   1,
-								Len:            16,
-								Mask:           egressInfo.Network6.Mask, // /64 mask
-								Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-							},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     egressInfo.Network6.IP.To16(), // 2001:db8::/64
-							},
-							// Match outgoing interface by name
-							&expr.Meta{
-								Key:      expr.MetaKeyOIFNAME,
-								Register: 1,
-							},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     []byte(egressRangeIface), // Interface name with null terminator
-							},
-							// Perform masquerade
-							&expr.Masq{},
-						}
+					exp = []expr.Any{
+						// Match source IPv6 address (2001:db8::/64)
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       8,  // Source address offset in IPv6 header
+							Len:          16, // Length of IPv6 address
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            16,
+							Mask:           egressInfo.Network6.Mask, // /64 mask
+							Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     egressInfo.Network6.IP.To16(), // 2001:db8::/64
+						},
+						// Match outgoing interface by name
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     []byte(egressRangeIface), // Interface name with null terminator
+						},
+						// Perform masquerade
+						&expr.Masq{},
 					}
 				}
+			}
 
-				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
-				rule = &nftables.Rule{
-					Table:    natTable,
-					Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
-					UserData: []byte(genRuleKey(ruleSpec...)),
-					Exprs:    exp,
+			n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
+			rule = &nftables.Rule{
+				Table:    natTable,
+				Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+				UserData: []byte(genRuleKey(ruleSpec...)),
+				Exprs:    exp,
+			}
+			n.conn.InsertRule(rule)
+			if err := n.conn.Flush(); err != nil {
+				logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			} else {
+				egressGwRoutes = append(egressGwRoutes, ruleInfo{
+					nfRule: rule,
+					table:  defaultNatTable,
+					chain:  nattablePRTChain,
+					rule:   ruleSpec,
+				})
+			}
+
+			// Add Docker-specific rule if egress interface is a Docker network
+			if isDockerInterface(egressRangeIface) {
+				logger.Log(0, fmt.Sprintf("Detected Docker interface: %s", egressRangeIface))
+				dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", "ACCEPT"}
+				// Check if DOCKER-USER chain exists in IPv4 filter table (Docker uses 'ip' family, not 'inet')
+				dockerUserChain := &nftables.Chain{
+					Name:  "DOCKER-USER",
+					Table: ipFilterTable,
 				}
-				n.conn.InsertRule(rule)
-				if err := n.conn.Flush(); err != nil {
-					logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				chains, err := n.conn.ListChains()
+				dockerChainExists := false
+				if err != nil {
+					logger.Log(0, fmt.Sprintf("Failed to list chains: %v", err))
 				} else {
-					egressGwRoutes = append(egressGwRoutes, ruleInfo{
-						nfRule: rule,
-						table:  defaultNatTable,
-						chain:  nattablePRTChain,
-						rule:   ruleSpec,
-					})
+					for _, ch := range chains {
+						if ch.Name == "DOCKER-USER" && ch.Table.Name == ipFilterTable.Name && ch.Table.Family == nftables.TableFamilyIPv4 {
+							dockerUserChain = ch
+							dockerChainExists = true
+							logger.Log(0, "Found DOCKER-USER chain in ip filter table")
+							break
+						}
+					}
+					if !dockerChainExists {
+						logger.Log(0, "DOCKER-USER chain not found in ip filter table")
+					}
 				}
 
-				// Add Docker-specific rule if egress interface is a Docker network
-				if isDockerInterface(egressRangeIface) {
-					logger.Log(0, fmt.Sprintf("Detected Docker interface: %s", egressRangeIface))
-					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", "ACCEPT"}
-					// Check if DOCKER-USER chain exists in IPv4 filter table (Docker uses 'ip' family, not 'inet')
-					dockerUserChain := &nftables.Chain{
-						Name:  "DOCKER-USER",
-						Table: ipFilterTable,
+				if dockerChainExists {
+					// Build nftables expressions for the Docker rule
+					// Note: We can't jump to NETMAKER-ACL-IN chain here because it's in the 'inet' family
+					// and DOCKER-USER is in the 'ip' family. Instead, we accept the traffic here,
+					// and it will be filtered by the FORWARD chain rules in the inet table anyway.
+					dockerExp := []expr.Any{
+						// Match incoming interface (netmaker interface)
+						&expr.Meta{
+							Key:      expr.MetaKeyIIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						},
+						// Match outgoing interface (docker interface)
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     []byte(egressRangeIface + "\x00"),
+						},
+						// Accept the traffic (ACL filtering happens in inet FORWARD chain)
+						&expr.Counter{},
+						&expr.Verdict{
+							Kind: expr.VerdictAccept,
+						},
 					}
-					chains, err := n.conn.ListChains()
-					dockerChainExists := false
-					if err != nil {
-						logger.Log(0, fmt.Sprintf("Failed to list chains: %v", err))
-					} else {
-						for _, ch := range chains {
-							if ch.Name == "DOCKER-USER" && ch.Table.Name == ipFilterTable.Name && ch.Table.Family == nftables.TableFamilyIPv4 {
-								dockerUserChain = ch
-								dockerChainExists = true
-								logger.Log(0, "Found DOCKER-USER chain in ip filter table")
+
+					// Note: Can't use deleteRule here as it searches in 'inet' family, but DOCKER-USER is in 'ip' family
+					// Check if rule already exists
+					existingRules, err := n.conn.GetRules(ipFilterTable, dockerUserChain)
+					if err == nil {
+						for _, rule := range existingRules {
+							if string(rule.UserData) == genRuleKey(dockerRuleSpec...) {
+								n.conn.DelRule(rule)
 								break
 							}
 						}
-						if !dockerChainExists {
-							logger.Log(0, "DOCKER-USER chain not found in ip filter table")
-						}
 					}
 
-					if dockerChainExists {
-						// Build nftables expressions for the Docker rule
-						// Note: We can't jump to NETMAKER-ACL-IN chain here because it's in the 'inet' family
-						// and DOCKER-USER is in the 'ip' family. Instead, we accept the traffic here,
-						// and it will be filtered by the FORWARD chain rules in the inet table anyway.
-						dockerExp := []expr.Any{
-							// Match incoming interface (netmaker interface)
-							&expr.Meta{
-								Key:      expr.MetaKeyIIFNAME,
-								Register: 1,
-							},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
-							},
-							// Match outgoing interface (docker interface)
-							&expr.Meta{
-								Key:      expr.MetaKeyOIFNAME,
-								Register: 1,
-							},
-							&expr.Cmp{
-								Op:       expr.CmpOpEq,
-								Register: 1,
-								Data:     []byte(egressRangeIface + "\x00"),
-							},
-							// Accept the traffic (ACL filtering happens in inet FORWARD chain)
-							&expr.Counter{},
-							&expr.Verdict{
-								Kind: expr.VerdictAccept,
-							},
-						}
-
-						// Note: Can't use deleteRule here as it searches in 'inet' family, but DOCKER-USER is in 'ip' family
-						// Check if rule already exists
-						existingRules, err := n.conn.GetRules(ipFilterTable, dockerUserChain)
-						if err == nil {
-							for _, rule := range existingRules {
-								if string(rule.UserData) == genRuleKey(dockerRuleSpec...) {
-									n.conn.DelRule(rule)
-									break
-								}
-							}
-						}
-
-						dockerRule := &nftables.Rule{
-							Table:    ipFilterTable,
-							Chain:    dockerUserChain,
-							UserData: []byte(genRuleKey(dockerRuleSpec...)),
-							Exprs:    dockerExp,
-							Position: 0, // Insert at the beginning, before Docker's RETURN rule
-						}
-						logger.Log(0, fmt.Sprintf("Inserting Docker rule: %v", dockerRuleSpec))
-						n.conn.InsertRule(dockerRule)
-						if err := n.conn.Flush(); err != nil {
-							logger.Log(0, fmt.Sprintf("ERROR: failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
-						} else {
-							egressGwRoutes = append(egressGwRoutes, ruleInfo{
-								nfRule:       dockerRule,
-								table:        defaultIpTable,
-								chain:        "DOCKER-USER",
-								rule:         dockerRuleSpec,
-								isDockerRule: true, // Mark as Docker rule so cleanup knows to delete from 'ip' family
-							})
-							logger.Log(0, fmt.Sprintf("SUCCESS: added Docker network rule for interface: %s", egressRangeIface))
-						}
+					dockerRule := &nftables.Rule{
+						Table:    ipFilterTable,
+						Chain:    dockerUserChain,
+						UserData: []byte(genRuleKey(dockerRuleSpec...)),
+						Exprs:    dockerExp,
+						Position: 0, // Insert at the beginning, before Docker's RETURN rule
+					}
+					logger.Log(0, fmt.Sprintf("Inserting Docker rule: %v", dockerRuleSpec))
+					n.conn.InsertRule(dockerRule)
+					if err := n.conn.Flush(); err != nil {
+						logger.Log(0, fmt.Sprintf("ERROR: failed to add Docker rule: %v, Err: %v ", dockerRuleSpec, err.Error()))
 					} else {
-						logger.Log(0, "Skipping Docker rule - DOCKER-USER chain does not exist")
+						egressGwRoutes = append(egressGwRoutes, ruleInfo{
+							nfRule:       dockerRule,
+							table:        defaultIpTable,
+							chain:        "DOCKER-USER",
+							rule:         dockerRuleSpec,
+							isDockerRule: true, // Mark as Docker rule so cleanup knows to delete from 'ip' family
+						})
+						logger.Log(0, fmt.Sprintf("SUCCESS: added Docker network rule for interface: %s", egressRangeIface))
 					}
+				} else {
+					logger.Log(0, "Skipping Docker rule - DOCKER-USER chain does not exist")
 				}
 			}
 		}
@@ -808,9 +844,13 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 	defer n.SaveRules(server, ruletableName, rulesTable)
 	n.mux.Lock()
 	defer n.mux.Unlock()
+
 	if _, ok := rulesTable[peerKey]; !ok {
+		// Peer not in rulesTable, but we've already attempted VNAT cleanup above
+		// Return error but cleanup was attempted
 		return errors.New("peer not found in rule table: " + peerKey)
 	}
+
 	for _, rules := range rulesTable[peerKey].rulesMap {
 		for _, rule := range rules {
 			var err error
@@ -820,6 +860,10 @@ func (n *nftablesManager) RemoveRoutingRules(server, ruletableName, peerKey stri
 				if err != nil {
 					logger.Log(1, fmt.Sprintf("failed to delete Docker rule [%v] for %s: %v", rule.rule, peerKey, err))
 				}
+			} else if rule.table == "netmaker_vnat" {
+				// Virtual NAT rules are handled by removeVirtualNATRules above
+				// Skip individual rule deletion as chains are deleted
+				continue
 			} else {
 				// Regular rules are in 'inet' family table
 				err = n.deleteRule(rule.table, rule.chain, genRuleKey(rule.rule...))
@@ -2687,4 +2731,14 @@ func rulesEqual(rule1, rule2 *nftables.Rule) bool {
 	}
 
 	return false
+}
+
+// applyVirtualNATRules applies virtual NAT rules for an egress gateway
+// NOTE: Virtual NAT is currently disabled for nftables due to lack of prefix NAT support
+func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
+	// Virtual NAT is disabled for nftables - nftables doesn't support prefix NAT (CIDR-to-CIDR translation)
+	// like iptables NETMAP. Without prefix NAT support, we cannot preserve the host part during translation.
+	logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
+		egressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
+	return nil, fmt.Errorf("virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
 }
