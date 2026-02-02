@@ -895,7 +895,6 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	go CheckEgressDomainUpdates()
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	var saveServerConfig bool
 	var dnsOp string
 	const start string = "start"
 	const stop string = "stop"

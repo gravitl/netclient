@@ -11,6 +11,11 @@ import (
 )
 
 func Configure() error {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return errors.New("no server configured")
+	}
+
 	ip, err := getDnsIp()
 	if err != nil {
 		return err
@@ -20,12 +25,16 @@ func Configure() error {
 	dnsConfig.Nameservers = []net.IP{net.ParseIP(ip)}
 	dnsConfig.SplitDNS = true
 
-	if config.GetServer(config.CurrServer).DefaultDomain != "" {
-		dnsConfig.SearchDomains = append(dnsConfig.SearchDomains, config.GetServer(config.CurrServer).DefaultDomain)
+	if server.DefaultDomain != "" {
+		dnsConfig.SearchDomains = append(dnsConfig.SearchDomains, server.DefaultDomain)
 	}
 
 	var matchAllDomains bool
 	for _, nameserver := range config.GetServer(config.CurrServer).DnsNameservers {
+		if nameserver.IsFallback {
+			continue
+		}
+
 		if nameserver.MatchDomain == "." {
 			matchAllDomains = true
 		} else {
