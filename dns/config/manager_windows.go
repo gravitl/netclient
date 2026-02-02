@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -60,12 +62,12 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	var searchList, namespaces []string
 	var matchAllDomains bool
 	var nameserversStrBuilder strings.Builder
-	for _, config := range w.configs {
-		if !config.SplitDNS {
+	for _, _config := range w.configs {
+		if !_config.SplitDNS {
 			matchAllDomains = true
 		}
 
-		for _, ns := range config.Nameservers {
+		for _, ns := range _config.Nameservers {
 			nameserver := ns.String()
 			_, ok := nameservers[nameserver]
 			if !ok {
@@ -79,7 +81,7 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 			}
 		}
 
-		for _, domain := range config.MatchDomains {
+		for _, domain := range _config.MatchDomains {
 			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
 
 			_, ok := matchDomains[domain]
@@ -89,7 +91,7 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 			}
 		}
 
-		for _, domain := range config.SearchDomains {
+		for _, domain := range _config.SearchDomains {
 			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
 
 			_, ok := searchDomains[domain]
@@ -111,9 +113,9 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 		}
 
 		return w.setNrptRule(namespaces, nameserversStrBuilder.String())
-	} else {
-		return w.resetConfig()
 	}
+
+	return w.resetConfig()
 }
 
 func (w *windowsManager) resetConfig() error {
@@ -136,12 +138,14 @@ func (w *windowsManager) setSearchList(searchList []string, dnsIP string) error 
 		return err
 	}
 
-	err = w.setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, dnsIP, false)
+	// TODO: get guid for given interface name.
+	var guid string
+	err = w.setInterfaceSearchListOnRegistry(guid, searchList, dnsIP, false)
 	if err != nil {
 		return err
 	}
 
-	return w.setInterfaceSearchListOnRegistry(config.Netclient().Host.ID.String(), searchList, dnsIP, true)
+	return w.setInterfaceSearchListOnRegistry(guid, searchList, dnsIP, true)
 }
 
 func (w *windowsManager) setSearchListOnRegistry(searchDomains []string, dnsIP string, ipv6 bool) error {
@@ -566,4 +570,16 @@ func (w *windowsManager) getGlobalNrptRuleRegistryKey() (registry.Key, error) {
 
 func (w *windowsManager) getLocalNrptRuleRegistryKey() (registry.Key, error) {
 	return registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\DnsCache\Parameters\DnsPolicyConfig`, registry.ALL_ACCESS)
+}
+
+func (w *windowsManager) getInterfaceGUID(name string) (string, error) {
+	getAdapterCmd := fmt.Sprintf("(Get-NetAdapter -Name '%s').InterfaceGuid", name)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", getAdapterCmd)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	guid := strings.TrimSpace(string(output))
+	return guid, nil
 }
