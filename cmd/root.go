@@ -18,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
+	"github.com/gravitl/netmaker/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -328,16 +329,16 @@ func checkConfig() {
 		saveRequired = true
 	}
 
-	_, location, countryCode, err := ncutils.GetGeoInfo()
+	geoInfo, err := utils.GetGeoInfo()
 	if err == nil {
-		if netclient.Location != location {
+		if netclient.Location != geoInfo.Location {
 			logger.Log(0, "setting location")
-			netclient.Location = location
+			netclient.Location = geoInfo.Location
 			saveRequired = true
 		}
-		if netclient.CountryCode != countryCode {
+		if netclient.CountryCode != geoInfo.CountryCode {
 			logger.Log(0, "setting country code")
-			netclient.CountryCode = countryCode
+			netclient.CountryCode = geoInfo.CountryCode
 			saveRequired = true
 		}
 	}

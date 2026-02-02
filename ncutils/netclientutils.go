@@ -6,12 +6,10 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/gob"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -381,105 +379,4 @@ func TraceCaller() {
 	// Print trace details
 	slog.Debug("## TRACE -> Called from function: ", "tracing-func-name", traceFuncName, "caller-func-name", funcName)
 	slog.Debug("## TRACE -> Caller File Info", "file", file, "line-no", line)
-}
-
-func GetGeoInfo() (ip, location, countryCode string, err error) {
-	ip, location, countryCode, err = getGeoInfoFromIPAPI()
-	if err == nil {
-		return
-	}
-
-	ip, location, countryCode, err = getGeoInfoFromCloudFlare()
-	if err == nil {
-		return
-	}
-
-	return getGeoInfoFromIpInfo()
-}
-
-func getGeoInfoFromIPAPI() (ip, location, countryCode string, err error) {
-	headers := make(http.Header)
-	respBytes, err := SendRequest(http.MethodGet, "https://api.ipapi.is", headers, nil)
-	if err != nil {
-		return
-	}
-
-	var data struct {
-		IP       string `json:"ip"`
-		Location struct {
-			CountryCode string `json:"country_code"`
-			Latitude    string `json:"latitude"`
-			Longitude   string `json:"longitude"`
-		} `json:"location"`
-	}
-
-	err = json.NewDecoder(respBytes).Decode(&data)
-	if err != nil {
-		return
-	}
-
-	ip = data.IP
-	location = data.Location.Latitude + "," + data.Location.Longitude
-	countryCode = data.Location.CountryCode
-	return
-}
-
-func getGeoInfoFromCloudFlare() (ip, location, countryCode string, err error) {
-	headers := make(http.Header)
-	respBytes, err := SendRequest(http.MethodGet, "https://speed.cloudflare.com/meta", headers, nil)
-	if err != nil {
-		return
-	}
-
-	respMap := make(map[string]interface{})
-	err = json.NewDecoder(respBytes).Decode(&respMap)
-	if err != nil {
-		return
-	}
-
-	var latitude, longitude string
-	_, ok := respMap["latitude"]
-	if ok {
-		latitude = respMap["latitude"].(string)
-	}
-
-	_, ok = respMap["longitude"]
-	if ok {
-		longitude = respMap["longitude"].(string)
-	}
-
-	if latitude != "" && longitude != "" {
-		location = latitude + "," + longitude
-	}
-
-	_, ok = respMap["country"]
-	if ok {
-		countryCode = respMap["country"].(string)
-	}
-	return
-}
-
-func getGeoInfoFromIpInfo() (ip, location, countryCode string, err error) {
-	headers := make(http.Header)
-	respBytes, err := SendRequest(http.MethodGet, "https://ipinfo.io/json", headers, nil)
-	if err != nil {
-		return
-	}
-
-	var data struct {
-		IP      string `json:"ip"`
-		Loc     string `json:"loc"`
-		Country string `json:"country"`
-	}
-
-	err = json.NewDecoder(respBytes).Decode(&data)
-	if err != nil {
-		return
-	}
-
-	ip = data.IP
-	location = data.Loc
-	countryCode = data.Country
-
-	return
 }

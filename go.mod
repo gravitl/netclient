@@ -4,7 +4,6 @@ go 1.25.3
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/c-robinson/iplib v1.0.8
 	github.com/coreos/go-iptables v0.8.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/glendc/go-external-ip v0.1.0
@@ -13,7 +12,7 @@ require (
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v1.4.1-0.20260129104327-c7ecb55c3605
+	github.com/gravitl/netmaker v1.4.1-0.20260202100153-25810d588d6c
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.8.0
@@ -46,6 +45,7 @@ require (
 	aead.dev/minisign v0.2.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
+	github.com/c-robinson/iplib v1.0.8 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
