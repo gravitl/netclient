@@ -3,15 +3,15 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -51,32 +51,34 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 		ID:         host.ID.String(),
 		Password:   host.HostPass,
 	}
-	endpoint := httpclient.Endpoint{
-		URL:    "https://" + server.API,
-		Route:  "/api/hosts/adm/authenticate",
-		Method: http.MethodPost,
-		Data:   data,
-	}
-	response, err := endpoint.GetResponse()
+
+	url := fmt.Sprintf("https://%s/api/hosts/adm/authenticate", server.API)
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, data)
 	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		bodybytes, _ := io.ReadAll(response.Body)
-		if response.StatusCode == http.StatusUnauthorized { // if host is unauthorized, clean-up locally
-			if err := cleanUpByServer(server); err != nil {
-				return "", err
-			} else {
+		var notOkErr ncutils.ErrStatusNotOk
+		if errors.As(err, &notOkErr) {
+			if notOkErr.Status == http.StatusUnauthorized {
+				if err := cleanUpByServer(server); err != nil {
+					return "", err
+				}
+
 				return "", fmt.Errorf("unauthorized request - removed instances for %s", server.Name)
 			}
+
+			return "", fmt.Errorf("failed to authenticate %d %s", notOkErr.Status, notOkErr.Message)
 		}
-		return "", fmt.Errorf("failed to authenticate %s %s", response.Status, string(bodybytes))
+
+		return "", err
 	}
-	resp := models.SuccessResponse{}
-	if err := json.NewDecoder(response.Body).Decode(&resp); err != nil {
-		return "", fmt.Errorf("error decoding respone %w", err)
+
+	var resp models.SuccessResponse
+	err = json.Unmarshal(respBytes.Bytes(), &resp)
+	if err != nil {
+		return "", fmt.Errorf("error decoding response %w", err)
 	}
+
 	tokenData := resp.Response.(map[string]interface{})
 	token := tokenData["AuthToken"]
 	jwtToken = token.(string)

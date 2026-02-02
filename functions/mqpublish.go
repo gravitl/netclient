@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
@@ -34,6 +33,7 @@ const (
 
 // metricTicker - metrics collection interval in minutes
 var metricTicker = time.NewTicker(time.Minute * time.Duration(15))
+var ipTicker = time.NewTicker(time.Second * time.Duration(15))
 
 // Checkin  -- go routine that checks for public or local ip changes, publishes changes
 //
@@ -43,22 +43,28 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ticker := time.NewTicker(time.Minute * CheckInInterval)
 	defer ticker.Stop()
-	ipTicker := time.NewTicker(time.Second * 15)
-	defer ipTicker.Stop()
 	checkinTicker := time.NewTicker(time.Minute * 2)
 	defer checkinTicker.Stop()
-	mi := 15
 	server := config.GetServer(config.CurrServer)
+	metricTickerIntervalMin := 15
+	ipTickerIntervalSec := 15
 	if server != nil {
 		i, err := strconv.Atoi(server.MetricInterval)
 		if err == nil && i > 0 {
-			metricTicker = time.NewTicker(time.Minute * time.Duration(i))
+			metricTickerIntervalMin = i
 		}
-	} else {
-		metricTicker = time.NewTicker(time.Minute * time.Duration(mi))
+
+		if server.IPDetectionInterval > 0 {
+			ipTickerIntervalSec = server.IPDetectionInterval
+		}
 	}
 
+	metricTicker = time.NewTicker(time.Minute * time.Duration(metricTickerIntervalMin))
 	defer metricTicker.Stop()
+
+	ipTicker = time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
+	defer ipTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -140,56 +146,23 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 		return err
 	}
 	hu.Host = host.Host
-	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
-		Method:        http.MethodPut,
-		Data:          hu,
-		Authorization: "Bearer " + token,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Error("error sending host update to server", "code", strconv.Itoa(errData.Code), "error", errData.Message)
-		}
-		return err
-	}
-	return nil
+
+	url := fmt.Sprintf("https://%s/api/v1/fallback/host/%s", server.API, host.ID.String())
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	_, err = ncutils.SendRequest(http.MethodPut, url, headers, hu)
+	return err
 }
 
 // hostServerUpdate - used to send host updates to server via restful api
 func hostServerUpdate(hu models.HostUpdate) error {
-
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return errors.New("server config not found")
 	}
-	host := config.Netclient()
-	if host == nil {
-		return fmt.Errorf("no configured host found")
-	}
-	token, err := auth.Authenticate(server, host)
-	if err != nil {
-		return err
-	}
-	hu.Host = host.Host
-	endpoint := httpclient.JSONEndpoint[models.SuccessResponse, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/fallback/host/%s", host.ID.String()),
-		Method:        http.MethodPut,
-		Data:          hu,
-		Authorization: "Bearer " + token,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	_, errData, err := endpoint.GetJSON(models.SuccessResponse{}, models.ErrorResponse{})
-	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			slog.Error("error sending host update to server", "code", strconv.Itoa(errData.Code), "error", errData.Message)
-		}
-		return err
-	}
-	return nil
+
+	return hostUpdateWithServer(server, hu)
 }
 
 func checkin() {
@@ -419,7 +392,10 @@ func UpdateHostSettings(fallback bool) error {
 		}
 		slog.Info("publishing host update for endpoint changes")
 		if fallback {
-			hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
+			err = hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
+			if err != nil {
+				logger.Log(0, "could not publish endpoint change", err.Error())
+			}
 		} else {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				logger.Log(0, "could not publish endpoint change", err.Error())

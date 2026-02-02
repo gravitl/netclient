@@ -114,18 +114,86 @@ func hardRestart() error {
 
 // cleanup - cleans up windows files
 func cleanUp() error {
-	_ = writeServiceConfig() // will auto check if file is present before writing
-	_ = runWinSWCMD("stop")
-	_ = runWinSWCMD("uninstall")
-	//delete the key for adapter in registry
+	var allErrors []string
+
+	// Write service config if it doesn't exist (needed for uninstall)
+	if ncutils.FileExists(serviceConfigPath) {
+		_ = writeServiceConfig()
+	} else {
+		// If config doesn't exist, try to create it from the install path
+		// This handles cases where the service exists but config was deleted
+		installPath := config.GetNetclientInstallPath()
+		if ncutils.FileExists(installPath) {
+			_ = writeServiceConfig()
+		}
+	}
+
+	// Stop the service first
+	slog.Info("stopping netclient service")
+	if err := runWinSWCMD("stop"); err != nil {
+		slog.Warn("failed to stop service (may already be stopped)", "error", err)
+		// Continue even if stop fails - service might not be running
+	} else {
+		// Wait for service to fully stop
+		time.Sleep(time.Second * 3)
+	}
+
+	// Uninstall the service
+	slog.Info("uninstalling netclient service")
+	if err := runWinSWCMD("uninstall"); err != nil {
+		slog.Warn("failed to uninstall service (may not be installed)", "error", err)
+		// Continue even if uninstall fails - service might not exist
+	} else {
+		// Wait for service to be fully removed
+		time.Sleep(time.Second * 2)
+	}
+
+	// Delete registry keys for network profiles
+	slog.Info("cleaning up registry keys")
 	deleteRegistryKeys()
-	time.Sleep(8 * time.Second)
-	os.RemoveAll(config.GetNetclientPath())
 
-	msg := "uninstalling...the window will be closed automatically"
-	winCmd := fmt.Sprintf(`start "%s" /min timeout /t 2 /nobreak > null && rmdir /s /q "%s"`, msg, config.GetNetclientPath())
+	// Wait a bit more to ensure all file handles are released
+	time.Sleep(time.Second * 2)
 
-	return ncutils.StartCmdFormatted(winCmd)
+	// Remove the netclient directory and all files
+	netclientPath := config.GetNetclientPath()
+	slog.Info("removing netclient files", "path", netclientPath)
+
+	// Try to remove files directly first
+	if err := os.RemoveAll(netclientPath); err != nil {
+		slog.Warn("failed to remove netclient directory directly", "error", err, "path", netclientPath)
+		allErrors = append(allErrors, fmt.Sprintf("failed to remove directory: %v", err))
+
+		// If direct removal fails, try using PowerShell to force delete
+		// This handles locked files better than os.RemoveAll
+		slog.Info("attempting PowerShell deletion for locked files")
+		psCmd := fmt.Sprintf("Get-ChildItem -Path '%s' -Recurse | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; if (Test-Path '%s') { $fso = New-Object -ComObject Scripting.FileSystemObject; $fso.DeleteFolder('%s', $true) }", netclientPath, netclientPath, netclientPath)
+		winCmd := fmt.Sprintf(`powershell -NoProfile -ExecutionPolicy Bypass -Command "%s"`, psCmd)
+		_, err2 := ncutils.RunCmdFormatted(winCmd, false)
+		if err2 != nil {
+			slog.Warn("PowerShell deletion also failed", "error", err2)
+			allErrors = append(allErrors, fmt.Sprintf("PowerShell deletion failed: %v", err2))
+		} else {
+			slog.Info("PowerShell deletion completed")
+		}
+	} else {
+		slog.Info("successfully removed netclient directory")
+	}
+
+	// Also try to remove the installed binary if it's in a different location
+	installPath := config.GetNetclientInstallPath()
+	if installPath != netclientPath+"netclient.exe" {
+		if err := os.Remove(installPath); err != nil && !os.IsNotExist(err) {
+			slog.Warn("failed to remove installed binary", "error", err, "path", installPath)
+			allErrors = append(allErrors, fmt.Sprintf("failed to remove binary: %v", err))
+		}
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf("uninstall completed with errors: %s", strings.Join(allErrors, "; "))
+	}
+
+	return nil
 }
 
 // deleteRegistryKeys - delete the keys in registry for netmaker profiles
@@ -183,22 +251,31 @@ func writeServiceConfig() error {
 	// (the \\ in source code is just Go's escape sequence)
 	executablePath := config.GetNetclientPath() + "netclient.exe"
 	workingDir := config.GetNetclientPath()
+	logPath := config.GetNetclientPath() + "logs"
 	// WinSW creates log files based on the wrapper executable name (winsw.exe -> winsw.out.log, winsw.err.log)
 	// Use mode="append" to preserve logs across service restarts
-	// Logs will be created in the workingdirectory: winsw.out.log (stdout) and winsw.err.log (stderr)
+	// Logs will be created in the logpath: winsw.out.log (stdout) and winsw.err.log (stderr)
 	scriptString := fmt.Sprintf(`<service>
 <id>netclient</id>
-<name>netclient</name>
-<description>Manages Windows Netclient Hosts on one or more Netmaker networks.</description>
+<name>Netclient</name>
+<description>Manages Windows Netclient on one or more Netmaker networks.</description>
 <executable>%s</executable>
 <arguments>daemon</arguments>
 <workingdirectory>%s</workingdirectory>
 <env name="PATH" value="%%PATH%%;%%SystemRoot%%\System32;%%SystemRoot%%\Sysnative" />
+<logpath>%s</logpath>
 <log mode="append" />
 <startmode>Automatic</startmode>
 <delayedAutoStart>true</delayedAutoStart>
+<stoptimeout>30sec</stoptimeout>
+<resetfailure>1 hour</resetfailure>
+<onfailure action="restart" delay="5 sec"/>
+<onfailure action="restart" delay="15 sec"/>
+<onfailure action="restart" delay="30 sec"/>
+<onfailure action="restart" delay="120 sec"/>
+<onfailure action="restart" delay="300 sec"/>
 </service>
-`, executablePath, workingDir)
+`, executablePath, workingDir, logPath)
 	// Always write/update the config to ensure log settings are correct
 	fileExisted := ncutils.FileExists(serviceConfigPath)
 	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
@@ -240,8 +317,17 @@ func runWinSWCMD(command string) error {
 	winCmd := fmt.Sprintf(`"%swinsw.exe" %s`, dirPath, command)
 	logger.Log(1, "running "+command+" of Windows Netclient daemon")
 	// run command and log for success/failure
-	out, err := ncutils.RunCmdFormatted(winCmd, true)
+	out, err := ncutils.RunCmdFormatted(winCmd, false) // Don't print errors to console for suppressible cases
 	if err != nil {
+		// Suppress "service does not exist" errors for stop and uninstall commands
+		// Exit status 1060 means "The specified service does not exist as an installed service"
+		if (command == "stop" || command == "uninstall") &&
+			(strings.Contains(err.Error(), "1060") ||
+				strings.Contains(err.Error(), "does not exist") ||
+				strings.Contains(out, "does not exist")) {
+			logger.Log(1, "service does not exist (already stopped/uninstalled), continuing")
+			return nil
+		}
 		logger.Log(0, "error with "+command+" of Windows Netclient daemon: "+err.Error()+" : "+out)
 	} else {
 		logger.Log(1, "successfully ran "+command+" of Windows Netclient daemon")
