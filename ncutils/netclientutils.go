@@ -393,20 +393,14 @@ func GetGeoInfo() (location, countryCode string, err error) {
 }
 
 func getGeoInfoFromCloudFlare() (location, countryCode string, err error) {
-	resp, err := http.Get("https://speed.cloudflare.com/meta")
+	headers := make(http.Header)
+	respBytes, err := SendRequest(http.MethodGet, "https://speed.cloudflare.com/meta", headers, nil)
 	if err != nil {
 		return
 	}
 
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		err = errors.New(resp.Status)
-		return
-	}
-
 	respMap := make(map[string]interface{})
-	err = json.NewDecoder(resp.Body).Decode(&respMap)
+	err = json.NewDecoder(respBytes).Decode(&respMap)
 	if err != nil {
 		return
 	}
@@ -434,32 +428,18 @@ func getGeoInfoFromCloudFlare() (location, countryCode string, err error) {
 }
 
 func getGeoInfoFromIpInfo() (location, countryCode string, err error) {
-	resp, err := http.Get("https://ipinfo.io/json")
+	headers := make(http.Header)
+	respBytes, err := SendRequest(http.MethodGet, "https://ipinfo.io/json", headers, nil)
 	if err != nil {
 		return
 	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		err = errors.New(resp.Status)
-		return
-	}
-
-	respMap := make(map[string]interface{})
-	err = json.NewDecoder(resp.Body).Decode(&respMap)
-	if err != nil {
-		return
-	}
-
-	defer resp.Body.Close()
 
 	var data struct {
 		Loc     string `json:"loc"`
 		Country string `json:"country"`
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	err = json.NewDecoder(respBytes).Decode(&data)
 	if err != nil {
 		return
 	}
