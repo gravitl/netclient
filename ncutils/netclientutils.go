@@ -6,10 +6,12 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -351,4 +353,91 @@ func TraceCaller() {
 	// Print trace details
 	slog.Debug("## TRACE -> Called from function: ", "tracing-func-name", traceFuncName, "caller-func-name", funcName)
 	slog.Debug("## TRACE -> Caller File Info", "file", file, "line-no", line)
+}
+
+func GetGeoInfo() (location, countryCode string, err error) {
+	location, countryCode, err = getGeoInfoFromCloudFlare()
+	if err == nil {
+		return location, countryCode, nil
+	}
+
+	return getGeoInfoFromIpInfo()
+}
+
+func getGeoInfoFromCloudFlare() (location, countryCode string, err error) {
+	resp, err := http.Get("https://speed.cloudflare.com/meta")
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		err = errors.New(resp.Status)
+		return
+	}
+
+	respMap := make(map[string]interface{})
+	err = json.NewDecoder(resp.Body).Decode(&respMap)
+	if err != nil {
+		return
+	}
+
+	var latitude, longitude string
+	_, ok := respMap["latitude"]
+	if ok {
+		latitude = respMap["latitude"].(string)
+	}
+
+	_, ok = respMap["longitude"]
+	if ok {
+		longitude = respMap["longitude"].(string)
+	}
+
+	if latitude != "" && longitude != "" {
+		location = latitude + "," + longitude
+	}
+
+	_, ok = respMap["country"]
+	if ok {
+		countryCode = respMap["country"].(string)
+	}
+	return
+}
+
+func getGeoInfoFromIpInfo() (location, countryCode string, err error) {
+	resp, err := http.Get("https://ipinfo.io/json")
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		err = errors.New(resp.Status)
+		return
+	}
+
+	respMap := make(map[string]interface{})
+	err = json.NewDecoder(resp.Body).Decode(&respMap)
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	var data struct {
+		Loc     string `json:"loc"`
+		Country string `json:"country"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		return
+	}
+
+	location = data.Loc
+	countryCode = data.Country
+
+	return
 }

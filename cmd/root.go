@@ -327,6 +327,18 @@ func checkConfig() {
 		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
+
+	location, countryCode, err := ncutils.GetGeoInfo()
+	if err == nil {
+		if netclient.Location != location {
+			netclient.Location = location
+			saveRequired = true
+		}
+		if netclient.CountryCode != countryCode {
+			netclient.CountryCode = countryCode
+			saveRequired = true
+		}
+	}
 	if netclient.MacAddress == nil || netclient.MacAddress.String() == "" {
 		logger.Log(0, "setting macAddress")
 		mac, err := ncutils.GetMacAddr()
