@@ -55,6 +55,13 @@ func (nc *NCIface) ApplyAddrs() error {
 
 	}
 
+	cmd := exec.Command("ifconfig", "lo0", "alias", "127.51.8.21")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Error("failed to add address for dns server", "command", cmd.String(), "error", string(out))
+		return err
+	}
+
 	return nil
 }
 
@@ -91,6 +98,12 @@ func RemoveRoutes(addrs []ifaceAddress) {
 			}
 		}
 
+	}
+
+	cmd = exec.Command("ifconfig", "lo0", "-alias", "127.51.8.21")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Error("failed to remove address for dns server", "command", cmd.String(), "error", string(out))
 	}
 }
 

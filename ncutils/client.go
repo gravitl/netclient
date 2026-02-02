@@ -54,6 +54,7 @@ func SendRequest(method, endpoint string, headers http.Header, data any) (*bytes
 
 	client := retryablehttp.NewClient()
 	client.RetryMax = 3
+	client.Logger = nil
 	client.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
 		if err != nil {
 			// retry network errors
