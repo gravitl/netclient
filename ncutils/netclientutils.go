@@ -383,16 +383,48 @@ func TraceCaller() {
 	slog.Debug("## TRACE -> Caller File Info", "file", file, "line-no", line)
 }
 
-func GetGeoInfo() (location, countryCode string, err error) {
-	location, countryCode, err = getGeoInfoFromCloudFlare()
+func GetGeoInfo() (ip, location, countryCode string, err error) {
+	ip, location, countryCode, err = getGeoInfoFromIPAPI()
 	if err == nil {
-		return location, countryCode, nil
+		return
+	}
+
+	ip, location, countryCode, err = getGeoInfoFromCloudFlare()
+	if err == nil {
+		return
 	}
 
 	return getGeoInfoFromIpInfo()
 }
 
-func getGeoInfoFromCloudFlare() (location, countryCode string, err error) {
+func getGeoInfoFromIPAPI() (ip, location, countryCode string, err error) {
+	headers := make(http.Header)
+	respBytes, err := SendRequest(http.MethodGet, "https://api.ipapi.is", headers, nil)
+	if err != nil {
+		return
+	}
+
+	var data struct {
+		IP       string `json:"ip"`
+		Location struct {
+			CountryCode string `json:"country_code"`
+			Latitude    string `json:"latitude"`
+			Longitude   string `json:"longitude"`
+		} `json:"location"`
+	}
+
+	err = json.NewDecoder(respBytes).Decode(&data)
+	if err != nil {
+		return
+	}
+
+	ip = data.IP
+	location = data.Location.Latitude + "," + data.Location.Longitude
+	countryCode = data.Location.CountryCode
+	return
+}
+
+func getGeoInfoFromCloudFlare() (ip, location, countryCode string, err error) {
 	headers := make(http.Header)
 	respBytes, err := SendRequest(http.MethodGet, "https://speed.cloudflare.com/meta", headers, nil)
 	if err != nil {
@@ -427,7 +459,7 @@ func getGeoInfoFromCloudFlare() (location, countryCode string, err error) {
 	return
 }
 
-func getGeoInfoFromIpInfo() (location, countryCode string, err error) {
+func getGeoInfoFromIpInfo() (ip, location, countryCode string, err error) {
 	headers := make(http.Header)
 	respBytes, err := SendRequest(http.MethodGet, "https://ipinfo.io/json", headers, nil)
 	if err != nil {
@@ -435,6 +467,7 @@ func getGeoInfoFromIpInfo() (location, countryCode string, err error) {
 	}
 
 	var data struct {
+		IP      string `json:"ip"`
 		Loc     string `json:"loc"`
 		Country string `json:"country"`
 	}
@@ -444,6 +477,7 @@ func getGeoInfoFromIpInfo() (location, countryCode string, err error) {
 		return
 	}
 
+	ip = data.IP
 	location = data.Loc
 	countryCode = data.Country
 

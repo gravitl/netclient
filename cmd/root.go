@@ -328,7 +328,7 @@ func checkConfig() {
 		saveRequired = true
 	}
 
-	location, countryCode, err := ncutils.GetGeoInfo()
+	_, location, countryCode, err := ncutils.GetGeoInfo()
 	if err == nil {
 		if netclient.Location != location {
 			netclient.Location = location
