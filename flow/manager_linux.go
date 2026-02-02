@@ -4,7 +4,7 @@ package flow
 
 import (
 	"crypto/tls"
-	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"sync"
@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/flow/tracker"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"github.com/gravitl/netmaker/models"
+	ct "github.com/ti-mo/conntrack"
 )
 
 const RefreshDuration = 10 * time.Minute
@@ -44,7 +45,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 	var err error
 	m.startOnce.Do(func() {
-		fmt.Println("[flow] starting flow manager")
+		slog.Info("[flow] starting flow manager")
 
 		flowClient := exporter.NewFlowGrpcClient(
 			config.GetServer(config.CurrServer).GRPC,
@@ -68,6 +69,34 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 						}
 					}
 				}
+			},
+			func(flow *ct.Flow) bool {
+				// filter out dns packet events.
+				if flow.TupleOrig.Proto.Protocol == 17 &&
+					(flow.TupleOrig.Proto.SourcePort == 53 ||
+						flow.TupleOrig.Proto.DestinationPort == 53) {
+					return true
+				}
+
+				// filter out icmp packet events.
+				if flow.TupleOrig.Proto.Protocol == 1 || flow.TupleOrig.Proto.Protocol == 58 {
+					return true
+				}
+
+				// filter out metrics events.
+				if flow.TupleOrig.Proto.Protocol == 6 &&
+					(flow.TupleOrig.Proto.SourcePort == uint16(config.GetServer(config.CurrServer).MetricsPort) ||
+						flow.TupleOrig.Proto.DestinationPort == uint16(config.GetServer(config.CurrServer).MetricsPort)) {
+					return true
+				}
+
+				// filter out wireguard events.
+				if flow.TupleOrig.Proto.Protocol == 17 &&
+					flow.TupleOrig.Proto.DestinationPort == uint16(config.Netclient().ListenPort) {
+					return true
+				}
+
+				return false
 			},
 			func(addr netip.Addr) *pbflow.FlowParticipant {
 				ip := addr.String()
@@ -111,6 +140,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 					Ip:   ip,
 					Type: participantType,
 					Id:   identity.ID,
+					Name: identity.Name,
 				}
 			},
 			flowClient,
@@ -127,19 +157,19 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 		}
 	})
 	if err != nil {
-		fmt.Println("[flow] error starting flow manager:", err)
+		slog.Debug("[flow] error starting flow manager: " + err.Error())
 	}
 
 	return err
 }
 
 func (m *Manager) Stop() error {
-	fmt.Println("[flow] stopping flow manager")
+	slog.Debug("[flow] stopping flow manager")
 
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()
 		if err != nil {
-			fmt.Println("[flow] error stopping flow manager:", err)
+			slog.Debug("[flow] error stopping flow manager: " + err.Error())
 			return err
 		}
 		m.flowClient = nil
@@ -148,7 +178,7 @@ func (m *Manager) Stop() error {
 	if m.flowTracker != nil {
 		err := m.flowTracker.Close()
 		if err != nil {
-			fmt.Println("[flow] error stopping flow manager:", err)
+			slog.Debug("[flow] error stopping flow manager: " + err.Error())
 			return err
 		}
 		m.flowTracker = nil

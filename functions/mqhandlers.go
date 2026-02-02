@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devilcove/httpclient"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
@@ -252,7 +251,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			metricTicker.Reset(time.Minute * time.Duration(i))
 		}
 		server.MetricInterval = peerUpdate.MetricInterval
-
+	}
+	if peerUpdate.IPDetectionInterval != 0 && peerUpdate.IPDetectionInterval != server.IPDetectionInterval {
+		ipTicker.Reset(time.Second * time.Duration(peerUpdate.IPDetectionInterval))
+		server.IPDetectionInterval = peerUpdate.IPDetectionInterval
+		saveServerConfig = true
 	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -388,7 +391,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if reloadStun {
 		_ = daemon.Restart()
 	}
-
+	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 }
@@ -716,27 +719,23 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 }
 
 func getServerBrokerStatus() (bool, error) {
-
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return false, errors.New("server is nil")
 	}
-	var status map[string]interface{}
+
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
-	endpoint := httpclient.JSONEndpoint[map[string]interface{}, models.ErrorResponse]{
-		URL:           url,
-		Method:        http.MethodGet,
-		Data:          nil,
-		Response:      status,
-		ErrorResponse: models.ErrorResponse{},
-	}
-	response, errData, err := endpoint.GetJSON(status, models.ErrorResponse{})
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "status error calling ", endpoint.URL, errData.Message)
-			return false, err
-		}
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
+		return false, err
+	}
+
+	response := make(map[string]interface{})
+	err = json.Unmarshal(respBytes.Bytes(), &response)
+	if err != nil {
 		return false, err
 	}
 
@@ -794,6 +793,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
+	var saveServerConfig bool
 	if server == nil {
 		slog.Error("server not found in config", "server", serverName)
 		return
@@ -827,6 +827,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
+	}
+	if pullResponse.ServerConfig.IPDetectionInterval != 0 && pullResponse.ServerConfig.IPDetectionInterval != server.IPDetectionInterval {
+		ipTicker.Reset(time.Second * time.Duration(pullResponse.ServerConfig.IPDetectionInterval))
+		server.IPDetectionInterval = pullResponse.ServerConfig.IPDetectionInterval
+		saveServerConfig = true
 	}
 	//get the current default gateway
 	ip, err := wireguard.GetDefaultGatewayIp()
@@ -996,7 +1001,6 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 		slog.Warn("no IP addresses resolved for domain", "domain", domainI.Domain)
 		return
 	}
-
 	// Get current cached IPs for this domain
 	currentIps := wireguard.GetDomainAnsFromCache(domainI)
 	slog.Debug("domain resolution check", "domain", domainI.Domain, "domain_id", domainI.ID, "cached_ips", currentIps, "resolved_ips", ips)
@@ -1022,9 +1026,9 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 			oldIPsReachable := checkIPConnectivity(currentIps)
 			if !oldIPsReachable {
 				shouldUpdateCache = true
-				slog.Info("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
+				slog.Debug("old IPs are not reachable, updating cache with new IPs", "domain", domainI.Domain, "old_ips", currentIps, "new_ips", ips)
 			} else {
-				slog.Info("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
+				slog.Debug("old IPs are still reachable, keeping current cache to maintain stability", "domain", domainI.Domain, "old_ips", currentIps)
 			}
 		} else {
 			slog.Debug("no changes detected for domain", "domain", domainI.Domain, "ips", ips)
@@ -1041,8 +1045,6 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 			return
 		}
 	}
-	// Update the cache with new IPs only after confirming changes and connectivity check
-	wireguard.SetDomainAnsInCache(domainI, ips)
 	// Clear existing ranges and add new ones
 	domainI.Node.EgressGatewayRanges = []string{}
 	for _, ip := range ips {
@@ -1057,26 +1059,36 @@ func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("sending egress domain update to server", "domain", domainI.Domain, "ips", ips, "ranges", domainI.Node.EgressGatewayRanges)
 
 	// Send the updated host info back to server
-	hostServerUpdate(models.HostUpdate{
+	err = hostServerUpdate(models.HostUpdate{
 		Action:       models.EgressUpdate,
 		Host:         domainI.Host,
 		Node:         domainI.Node,
 		EgressDomain: domainI,
 	})
+	if err != nil {
+		slog.Error("failed to send egress domain update to server", "domain", domainI.Domain, "error", err)
+		return
+	}
+
+	// Update the cache only after successfully sending the update to the server
+	// This ensures that if the function is called again before the server update completes,
+	// it will still see the old cached IPs and attempt the update again
+	wireguard.SetDomainAnsInCache(domainI, ips)
+	slog.Info("successfully updated egress domain cache after server update", "domain", domainI.Domain, "ips", ips)
 }
 
-// checkIPConnectivity checks if all of the given IP addresses are reachable
+// checkIPConnectivity checks if at least one of the given IP addresses is reachable
 func checkIPConnectivity(ips []string) bool {
 	if len(ips) == 0 {
 		return false
 	}
 
-	// Check connectivity for each IP - ALL must be reachable
+	// Check connectivity for each IP - at least ONE must be reachable
 	for _, ipStr := range ips {
 		ip := net.ParseIP(ipStr)
 		if ip == nil {
 			slog.Debug("invalid IP address", "ip", ipStr)
-			return false
+			continue
 		}
 
 		ipReachable := false
@@ -1085,8 +1097,18 @@ func checkIPConnectivity(ips []string) bool {
 		// Try common ports that might be open (80, 443, 22)
 		ports := []int{80, 443, 22}
 		for _, port := range ports {
-			address := fmt.Sprintf("%s:%d", ipStr, port)
-			conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+			var address string
+			var network string
+			if ip.To4() != nil {
+				// IPv4 address
+				address = fmt.Sprintf("%s:%d", ipStr, port)
+				network = "tcp4"
+			} else {
+				// IPv6 address - must be wrapped in brackets
+				address = fmt.Sprintf("[%s]:%d", ipStr, port)
+				network = "tcp6"
+			}
+			conn, err := net.DialTimeout(network, address, 3*time.Second)
 			if err == nil {
 				conn.Close()
 				slog.Debug("IP is reachable", "ip", ipStr, "port", port)
@@ -1105,15 +1127,17 @@ func checkIPConnectivity(ips []string) bool {
 			}
 		}
 
-		// If this IP is not reachable, fail the entire check
-		if !ipReachable {
-			slog.Debug("IP is not reachable", "ip", ipStr)
-			return false
+		// If at least one IP is reachable, pass the check
+		if ipReachable {
+			slog.Debug("at least one IP is reachable", "ip", ipStr)
+			return true
 		}
+
+		slog.Debug("IP is not reachable", "ip", ipStr)
 	}
 
-	slog.Debug("all IPs are reachable", "ips", ips)
-	return true
+	slog.Debug("no IPs are reachable", "ips", ips)
+	return false
 }
 
 // resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
@@ -1121,20 +1145,14 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 	if domain == "" {
 		return nil, fmt.Errorf("domain cannot be empty")
 	}
-
-	// Use the existing DNS infrastructure to resolve the domain
-	ips := dns.FindDnsAns(domain)
-	if len(ips) == 0 {
-		lookUpIPs, err := net.LookupIP(domain)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
-		}
-		if len(lookUpIPs) == 0 {
-			return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
-		}
-		ips = lookUpIPs
+	lookUpIPs, err := net.LookupIP(domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
 	}
-
+	if len(lookUpIPs) == 0 {
+		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+	}
+	ips := lookUpIPs
 	// Filter out any invalid IPs and return unique IPs
 	uniqueIPs := make(map[string]string)
 	for _, ip := range ips {
@@ -1147,6 +1165,5 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 	for _, ip := range uniqueIPs {
 		result = append(result, ip)
 	}
-
 	return result, nil
 }

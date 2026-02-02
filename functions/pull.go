@@ -1,16 +1,16 @@
 package functions
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync"
 
-	"github.com/devilcove/httpclient"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -33,19 +33,19 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	if err != nil {
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
-	endpoint := httpclient.JSONEndpoint[models.HostPull, models.ErrorResponse]{
-		URL:           "https://" + server.API,
-		Route:         fmt.Sprintf("/api/v1/host?reset_failovered=%v", resetIfFailedOvered),
-		Method:        http.MethodGet,
-		Authorization: "Bearer " + token,
-		Response:      models.HostPull{},
-		ErrorResponse: models.ErrorResponse{},
-	}
-	pullResponse, errData, err := endpoint.GetJSON(models.HostPull{}, models.ErrorResponse{})
+
+	url := fmt.Sprintf("https://%s/api/v1/host?reset_failovered=%v", server.API, resetIfFailedOvered)
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Authorization", "Bearer "+token)
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		if errors.Is(err, httpclient.ErrStatus) {
-			logger.Log(0, "error pulling server", serverName, strconv.Itoa(errData.Code), errData.Message)
-		}
+		return models.HostPull{}, resetInterface, replacePeers, err
+	}
+
+	var pullResponse models.HostPull
+	err = json.Unmarshal(respBytes.Bytes(), &pullResponse)
+	if err != nil {
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 

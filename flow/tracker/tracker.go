@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/flow/exporter"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
 	"github.com/gravitl/netmaker/logger"
@@ -27,12 +28,15 @@ const (
 
 type NodeIterator func(func(node *models.CommonNode) bool)
 
+type FlowEventFilter func(flow *ct.Flow) bool
+
 type ParticipantEnricher func(addr netip.Addr) *pbflow.FlowParticipant
 
 type FlowTracker struct {
 	hostID              uuid.UUID
 	hostIDStr           string
 	nodeIter            NodeIterator
+	filter              FlowEventFilter
 	participantEnricher ParticipantEnricher
 	flowExporter        exporter.Exporter
 	restoreAccounting   bool
@@ -41,17 +45,12 @@ type FlowTracker struct {
 	mu                  sync.Mutex
 }
 
-func New(nodeIter NodeIterator, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
-	var hostID uuid.UUID
-	nodeIter(func(node *models.CommonNode) bool {
-		hostID = node.HostID
-		return false
-	})
-
+func New(nodeIter NodeIterator, filter FlowEventFilter, participantEnricher ParticipantEnricher, flowExporter exporter.Exporter) (*FlowTracker, error) {
 	c := &FlowTracker{
-		hostID:              hostID,
-		hostIDStr:           hostID.String(),
+		hostID:              config.Netclient().ID,
+		hostIDStr:           config.Netclient().ID.String(),
 		nodeIter:            nodeIter,
+		filter:              filter,
 		participantEnricher: participantEnricher,
 		flowExporter:        flowExporter,
 	}
@@ -162,6 +161,10 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		return nil
 	}
 
+	if c.filter(event.Flow) {
+		return nil
+	}
+
 	flowID := c.getFlowID(event.Flow)
 	sentCounter := c.getSentCounter(event.Flow, direction)
 	receivedCounter := c.getReceivedCounter(event.Flow, direction)
@@ -174,11 +177,17 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		icmpCode = flow.TupleOrig.Proto.ICMPCode
 	}
 
+	startTime := flow.Timestamp.Start
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+
 	return c.flowExporter.Export(&pbflow.FlowEvent{
 		Type:        eventType,
 		FlowId:      flowID,
-		NetworkId:   networkID,
 		HostId:      c.hostIDStr,
+		HostName:    config.Netclient().Name,
+		NetworkId:   networkID,
 		Protocol:    uint32(flow.TupleOrig.Proto.Protocol),
 		SrcPort:     uint32(flow.TupleOrig.Proto.SourcePort),
 		DstPort:     uint32(flow.TupleOrig.Proto.DestinationPort),
@@ -187,7 +196,7 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		Direction:   direction,
 		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
 		Dst:         c.participantEnricher(flow.TupleOrig.IP.DestinationAddress),
-		StartTsMs:   flow.Timestamp.Start.UnixMilli(),
+		StartTsMs:   startTime.UnixMilli(),
 		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
 		BytesSent:   sentCounter.Bytes,
 		BytesRecv:   receivedCounter.Bytes,
