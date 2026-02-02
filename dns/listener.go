@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -94,6 +95,32 @@ func (dnsServer *DNSServer) Start() {
 			}
 
 		}
+	}
+
+	if runtime.GOOS == "darwin" {
+		lIp := "127.51.8.21:53"
+		dns.HandleFunc(".", handleDNSRequest)
+		srv := &dns.Server{
+			Net:       "udp",
+			Addr:      lIp,
+			UDPSize:   65535,
+			ReusePort: true,
+			ReuseAddr: true,
+		}
+
+		dnsServer.AddrStr = lIp
+		dnsServer.AddrList = append(dnsServer.AddrList, lIp)
+		dnsServer.DnsServer = append(dnsServer.DnsServer, srv)
+
+		go func(dnsServer *DNSServer) {
+			err := srv.ListenAndServe()
+			if err != nil {
+				slog.Error("error in starting dns server", "error", lIp, err.Error())
+				dnsServer.AddrStr = ""
+				dnsServer.AddrList = slices.Delete(dnsServer.AddrList, len(dnsServer.AddrList)-1, len(dnsServer.AddrList))
+				dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, len(dnsServer.DnsServer)-1, len(dnsServer.DnsServer))
+			}
+		}(dnsServer)
 	}
 
 	time.Sleep(time.Second * 1)
