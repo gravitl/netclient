@@ -749,7 +749,7 @@ func getServerBrokerStatus() (bool, error) {
 // MQTT Fallback Mechanism
 func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-	mqFallbackTicker := time.NewTicker(time.Second * 30)
+	mqFallbackTicker := time.NewTicker(time.Second * 4)
 	for {
 		select {
 		case <-ctx.Done():
