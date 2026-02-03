@@ -22,7 +22,9 @@ type resolvconfManager struct {
 }
 
 func newResolvconfManager(opts ...ManagerOption) (*resolvconfManager, error) {
-	r := &resolvconfManager{}
+	r := &resolvconfManager{
+		globalResolvers: make(map[string]Config),
+	}
 	var options ManagerOptions
 	for _, opt := range opts {
 		opt(&options)

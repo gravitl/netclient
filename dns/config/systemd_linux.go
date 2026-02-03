@@ -137,7 +137,9 @@ type systemdUplinkManager struct {
 }
 
 func newSystemdUplinkManager(opts ...ManagerOption) (*systemdUplinkManager, error) {
-	s := &systemdUplinkManager{}
+	s := &systemdUplinkManager{
+		configs: make(map[string]Config),
+	}
 	var options ManagerOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -215,7 +217,7 @@ func (s *systemdUplinkManager) Configure(iface string, config Config) error {
 
 func (s *systemdUplinkManager) resetConfig() error {
 	err := os.Remove(resolvedConfFile)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
