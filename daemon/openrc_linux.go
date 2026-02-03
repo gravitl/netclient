@@ -57,6 +57,10 @@ func startOpenRC() error {
 }
 
 func stopOpenRC() error {
+	if !ncutils.FileExists("/etc/init.d/netclient") {
+		// Service file doesn't exist, nothing to stop
+		return nil
+	}
 	slog.Info("stopping netclient service")
 	_, err := ncutils.RunCmd("/sbin/rc-service netclient stop -s", false)
 	return err
