@@ -65,22 +65,32 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
         GOARM: ${{ matrix.goarm || '' }}
       run: |
+        set -euo pipefail
         go version
         go mod tidy
-        if [ -n "$GOARM" ]; then
-          OUTPUT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
-          ARTIFACT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
+
+        if [ -n "${GOARM:-}" ]; then
+          OUTPUT_NAME="netclient-${GOOS}-armv${GOARM}"
+          ARTIFACT_NAME="netclient-${GOOS}-armv${GOARM}"
         else
-          OUTPUT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
-          ARTIFACT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
+          OUTPUT_NAME="netclient-${GOOS}-${GOARCH}"
+          ARTIFACT_NAME="netclient-${GOOS}-${GOARCH}"
         fi
-        if [ "${{ matrix.goos }}" = "windows" ]; then
+
+        if [ "$GOOS" = "windows" ]; then
           OUTPUT_NAME="${OUTPUT_NAME}.exe"
         fi
+
         echo "OUTPUT_NAME=$OUTPUT_NAME" >> $GITHUB_OUTPUT
         echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
 
+        # Force static binaries for Linux (OpenWrt-friendly)
+        if [ "$GOOS" = "linux" ]; then
+          export CGO_ENABLED=0
+          go build -v -trimpath -ldflags "-s -w -X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
+        else
+          go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
+        fi
     - name: List built binary (Unix)
       if: matrix.goos != 'windows'
       run: ls -l netclient-*
