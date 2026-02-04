@@ -4,7 +4,12 @@ Copyright © 2022 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
+	"fmt"
+	"os"
+
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +23,39 @@ var installCmd = &cobra.Command{
 
 ensure you specify the full path to then new binary to be installed`,
 	Run: func(cmd *cobra.Command, args []string) {
+		setInterfaceFields(cmd)
 		functions.Install()
 	},
 }
 
+func setInterfaceFields(cmd *cobra.Command) {
+	port, err := cmd.Flags().GetInt(registerFlags.Port)
+	if err == nil && port != 0 && port != config.Netclient().ListenPort {
+		// check if port is available
+		if !ncutils.IsPortFree(port) {
+			fmt.Printf("port %d is not free\n", port)
+			os.Exit(1)
+		}
+		config.Netclient().ListenPort = port
+	}
+
+	if isStaticPort, err := cmd.Flags().GetBool(registerFlags.StaticPort); err == nil {
+		config.Netclient().IsStaticPort = isStaticPort
+	}
+
+	if ifaceName, err := cmd.Flags().GetString(registerFlags.Interface); err == nil && ifaceName != "" {
+		if !validateIface(ifaceName) {
+			fmt.Println("invalid interface name", ifaceName)
+			os.Exit(1)
+		}
+		config.Netclient().Interface = ifaceName
+	}
+}
+
 func init() {
+	installCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
+	installCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
+	installCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	rootCmd.AddCommand(installCmd)
 
 	// Here you will define your flags and configuration settings.
