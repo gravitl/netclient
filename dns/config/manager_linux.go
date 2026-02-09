@@ -65,7 +65,7 @@ func getResolvconfFlavor() (resolvconfFlavor, error) {
 		}
 	}
 
-	_, err = exec.LookPath("resolvconf")
+	resolvconfPath, err := exec.LookPath("resolvconf")
 	if err != nil {
 		var execErr *exec.Error
 		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
@@ -73,6 +73,22 @@ func getResolvconfFlavor() (resolvconfFlavor, error) {
 		}
 
 		return unknown, err
+	}
+
+	stat, err = os.Lstat(resolvconfPath)
+	if err != nil {
+		return unknown, err
+	}
+
+	if stat.Mode()&os.ModeSymlink == os.ModeSymlink {
+		target, err := os.Readlink(resolvconfPath)
+		if err != nil {
+			return unknown, err
+		}
+
+		if strings.HasSuffix(target, "resolvectl") {
+			return file, nil
+		}
 	}
 
 	output, err := exec.Command("resolvconf", "--version").CombinedOutput()
