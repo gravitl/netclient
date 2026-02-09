@@ -7,7 +7,9 @@ COPY . .
 RUN go mod tidy
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-s -w" -o netclient-app .
 
-FROM alpine:3.23.2
+# Use this version until this issue is resolved.
+# https://github.com/NetworkConfiguration/openresolv/issues/45
+FROM alpine:3.22.3
 
 WORKDIR /root/
 
