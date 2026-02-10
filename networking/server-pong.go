@@ -14,13 +14,10 @@ import (
 )
 
 func InitialiseIfaceMetricsServer(ctx context.Context, wg *sync.WaitGroup) {
-	nodeMap := config.GetNodes()
-	if len(nodeMap) == 0 {
-		return
-	}
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
+	metricPort := 51821
+	server := config.GetServer(config.CurrServer)
+	if server != nil && server.MetricsPort > 0 {
+		metricPort = server.MetricsPort
 	}
 	wg.Add(1)
 	go startIfaceDetection(ctx, wg, metricPort, 4)
