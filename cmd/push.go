@@ -28,5 +28,6 @@ func init() {
 	pushCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	pushCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	pushCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
+	pushCmd.Flags().StringP(registerFlags.Firewall, "f", "", "selects firewall to use on host: iptables/nftables")
 	rootCmd.AddCommand(pushCmd)
 }
