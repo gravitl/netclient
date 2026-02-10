@@ -538,7 +538,8 @@ func SetFirewall() {
 // what is available on the system.
 func FirewallHasChanged() bool {
 	if !ncutils.IsLinux() {
-		return false
+		// non-Linux should always be FIREWALL_NONE; flag if not set
+		return netclient.FirewallInUse != models.FIREWALL_NONE
 	}
 	switch netclient.FirewallInUse {
 	case models.FIREWALL_IPTABLES:
