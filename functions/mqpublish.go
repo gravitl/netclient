@@ -93,6 +93,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
 			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
 				restart := false
+				needsPublish := false
 				ip4, _, _ := holePunchWgPort(4, 0)
 				ip6, _, _ := holePunchWgPort(6, 0)
 				if ip4 == nil && ip6 == nil {
@@ -100,8 +101,18 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				}
 				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
 					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
-					config.HostPublicIP = ip4
-					restart = true
+					if config.HostPublicIP == nil {
+						// HostPublicIP was not yet initialized (STUN likely failed during startup,
+						// e.g. due to port conflict during rapid restart). Just initialize it and
+						// publish the endpoint update without triggering a full restart to avoid
+						// a restart loop where STUN keeps failing on init but succeeds here.
+						config.HostPublicIP = ip4
+						needsPublish = true
+						logger.Log(0, "initialized public IPv4: ", ip4.String())
+					} else {
+						config.HostPublicIP = ip4
+						restart = true
+					}
 				} else if ip4 == nil && config.HostPublicIP != nil {
 					slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = nil
@@ -110,8 +121,14 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 
 				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
-					config.HostPublicIP6 = ip6
-					restart = true
+					if config.HostPublicIP6 == nil {
+						config.HostPublicIP6 = ip6
+						needsPublish = true
+						logger.Log(0, "initialized public IPv6: ", ip6.String())
+					} else {
+						config.HostPublicIP6 = ip6
+						restart = true
+					}
 				} else if ip6 == nil && config.HostPublicIP6 != nil {
 					slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = nil
@@ -129,6 +146,12 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 						logger.Log(0, "new IPv6 detected: ", ip6.String())
 					}
 					daemon.HardRestart()
+				} else if needsPublish {
+					// Publish endpoint update without restarting — this handles the case
+					// where STUN failed during init but succeeded on the periodic check
+					if err := UpdateHostSettings(true); err != nil {
+						slog.Warn("failed to update host settings", err.Error())
+					}
 				}
 			}
 		}

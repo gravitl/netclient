@@ -211,8 +211,16 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
-			netclientCfg.EndpointIP = nil
-			updateConfig = true
+			if netclientCfg.EndpointIP != nil {
+				// Preserve previously known EndpointIP when STUN temporarily fails
+				// (e.g. during rapid restarts when the WG port is still held by the previous process).
+				// This prevents clearing a valid endpoint due to a transient STUN failure and
+				// avoids triggering a restart loop in the IP detection ticker.
+				slog.Info("preserving previously known endpoint IP", "ip", netclientCfg.EndpointIP.String())
+				config.HostPublicIP = netclientCfg.EndpointIP
+			} else {
+				updateConfig = true
+			}
 		}
 		if netclientCfg.NatType == "" {
 			netclientCfg.NatType = config.HostNatType
@@ -230,8 +238,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
-			netclientCfg.EndpointIPv6 = nil
-			updateConfig = true
+			if netclientCfg.EndpointIPv6 != nil {
+				// Preserve previously known EndpointIPv6 when STUN temporarily fails
+				// (e.g. during rapid restarts when the WG port is still held by the previous process).
+				slog.Info("preserving previously known endpoint IPv6", "ip", netclientCfg.EndpointIPv6.String())
+				config.HostPublicIP6 = netclientCfg.EndpointIPv6
+			} else {
+				updateConfig = true
+			}
 		}
 
 	}
