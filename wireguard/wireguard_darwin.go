@@ -178,6 +178,20 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 		}
 	}
 
+	// On darwin, IGW sets interface-based split routes (route add -net -inet 0.0.0.0/1 -interface <iface>)
+	// which have no gateway: line in `route -n get` output. Detect this by checking if both
+	// half-routes go through the netclient WireGuard interface, and return CurrGwNmIP if so.
+	if err1 != nil || err2 != nil {
+		ncIface := ncutils.GetInterfaceName()
+		iface1, errIf1 := getRouteInterface("0.0.0.1")
+		iface2, errIf2 := getRouteInterface("128.0.0.1")
+		if errIf1 == nil && errIf2 == nil && iface1 == ncIface && iface2 == ncIface {
+			if gwNmIP := config.Netclient().CurrGwNmIP; gwNmIP != nil {
+				return gwNmIP, nil
+			}
+		}
+	}
+
 	// IPv6 Check
 	gwHalf6_1, err6_1 := getRouteGateway("2000::1")
 	gwHalf6_2, err6_2 := getRouteGateway("8000::1")
@@ -185,6 +199,18 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 		gwDef6, errDef6 := getRouteGateway("-inet6", "default")
 		if errDef6 != nil || !gwHalf6_1.Equal(gwDef6) {
 			return gwHalf6_1, nil
+		}
+	}
+
+	// Same interface-based route check for IPv6
+	if err6_1 != nil || err6_2 != nil {
+		ncIface := ncutils.GetInterfaceName()
+		iface1, errIf1 := getRouteInterface("2000::1")
+		iface2, errIf2 := getRouteInterface("8000::1")
+		if errIf1 == nil && errIf2 == nil && iface1 == ncIface && iface2 == ncIface {
+			if gwNmIP := config.Netclient().CurrGwNmIP; gwNmIP != nil {
+				return gwNmIP, nil
+			}
 		}
 	}
 
@@ -214,6 +240,29 @@ func getRouteGateway(args ...string) (ip net.IP, err error) {
 		}
 	}
 	return nil, fmt.Errorf("gateway not found for %v", args)
+}
+
+// getRouteInterface extracts the interface name from `route -n get` output.
+// This is needed on darwin because interface-based routes (e.g. added via
+// `route add -net -inet 0.0.0.0/1 -interface utunX`) do not have a gateway:
+// line, only an interface: line.
+func getRouteInterface(args ...string) (string, error) {
+	fullArgs := append([]string{"-n", "get"}, args...)
+	cmd := exec.Command("route", fullArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "interface:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return parts[1], nil
+			}
+		}
+	}
+	return "", fmt.Errorf("interface not found for %v", args)
 }
 
 // RestoreInternetGw - restore the old default gateway
@@ -249,6 +298,7 @@ func resetDefaultRoutesOnHost() error {
 		}
 	}
 	config.Netclient().CurrGwNmIP = nil
+	config.Netclient().OriginalDefaultGatewayIp = nil
 	return config.WriteNetclientConfig()
 }
 
