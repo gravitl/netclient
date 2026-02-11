@@ -15,7 +15,19 @@ import (
 
 // NCIface.Create - makes a new Wireguard interface for darwin users (userspace)
 func (nc *NCIface) Create() error {
-	return nc.createUserSpaceWG()
+	err := nc.createUserSpaceWG()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("ifconfig", "lo0", "alias", "127.51.8.21")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Error("failed to add address for dns server", "command", cmd.String(), "error", string(out))
+		return err
+	}
+
+	return nil
 }
 
 // NCIface.ApplyAddrs - applies address for darwin userspace
@@ -56,13 +68,6 @@ func (nc *NCIface) ApplyAddrs() error {
 
 	}
 
-	cmd := exec.Command("ifconfig", "lo0", "alias", "127.51.8.21")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error("failed to add address for dns server", "command", cmd.String(), "error", string(out))
-		return err
-	}
-
 	return nil
 }
 
@@ -99,12 +104,6 @@ func RemoveRoutes(addrs []ifaceAddress) {
 			}
 		}
 
-	}
-
-	cmd = exec.Command("ifconfig", "lo0", "-alias", "127.51.8.21")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error("failed to remove address for dns server", "command", cmd.String(), "error", string(out))
 	}
 }
 
@@ -167,6 +166,11 @@ func (nc *NCIface) Close() {
 		}
 	}
 
+	cmd := exec.Command("ifconfig", "lo0", "-alias", "127.51.8.21")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Error("failed to remove address for dns server", "command", cmd.String(), "error", string(out))
+	}
 }
 
 // DeleteOldInterface - removes named interface
