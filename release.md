@@ -1,48 +1,67 @@
-## Netclient v1.4.0 Release Notes 🚀 
+## Netclient v1.5.0 Release Notes 🚀 
 
 ## 🚀 What’s New
 
-### 🌍 Posture Checks (beta)
+### 🔁 Overlapping Egress Ranges (beta)
 
-- Security feature that validates device compliance against configured policies based on device attributes such as OS, OS version, kernel version, client version, geographic location, and auto-update status.
-- Supports tag-based and user group-based assignment of posture checks to specific devices or users.
-- Tracks violations with configurable severity levels and provides real-time evaluation of device compliance.
-- Helps ensure only compliant devices can access network resources.
+- Virtual NAT mode enables multiple egress routers to share overlapping IP ranges by assigning each egress a virtual range from a configurable pool.
+- Configurable per-network IPv4 pool and site prefix length for virtual range allocation.
+- Eliminates routing conflicts when multiple sites need to egress the same destination CIDRs (e.g., multiple offices routing to the same cloud VPC).
+- Supports both direct NAT and virtual NAT modes for flexible egress configurations.
 
-### 🔁 Network Traffic Logging (alpha)
 
-- Comprehensive network flow logging system that captures and stores network traffic metadata in ClickHouse.
-- Tracks source and destination IPs, ports, protocols, bytes/packets sent/received, and connection timestamps.
-- Provides API endpoints for querying flow data with filters by network, node, user, protocol, and time range.
-- Enables network administrators to monitor, analyze, and audit network traffic patterns for security and troubleshooting purposes.
+### 🧭 macOS Local DNS Resolver
 
-### 🔄 Auto Removal of Offline Peers
+- Darwin netclients now run their own local DNS resolver.
 
-- Automatically removes nodes that have been offline for a configurable threshold period.
-- Configurable per network with customizable timeout thresholds (in minutes).
-- Supports tag-based filtering to selectively apply auto-removal to specific device groups.
-- Helps maintain clean network topology by removing stale or abandoned peer connections.
+    #### Benefits
 
-### 🧭 DNS Search Domains
+    - More consistent DNS resolution
 
-- Added DNS search domain functionality for simplified hostname resolution across distributed networks.
+    - Improved compatibility with macOS networking stack
 
-### 🖥️ New CLI Commands
+    - Reduced dependency on system DNS behavior
 
-- **`netclient peers`**: Display WireGuard peer information including public keys, host names, endpoints, last handshake times, traffic statistics (bytes received/sent), and allowed IPs. Supports filtering by network and JSON output format for programmatic access.
+### 🌐 Internet Gateways on macOS
 
-- **`netclient ping`**: Check connectivity and latency to WireGuard peers across networks. Supports filtering by network or peer name, IPv4/IPv6 address selection, configurable packet count, and JSON output format. Helps diagnose network connectivity issues and measure peer latency.
+- Darwin netclients can now:
+
+    - Use Internet Gateways
+
+    - Participate in fully routed internet traffic
+
+    - This brings feature parity closer to Linux and Windows clients.
 
 
 ## 🧰 Improvements & Fixes
 
-- DNS Fixes: Debian DNS configuration fix.
+**DNS:**
 
-- Host Listen Port: Enhanced Port Configuration Logic.
+- Debian DNS configuration fix
 
-- Egress Domain Updates: Fixed domain-related issues in egress configurations to ensure consistent routing behavior.
+- Improved Windows DNS management
 
-- Auto Gateway: Refresh connection metrics if no Gateway node found to update cached metrics.
+**GeoLocation:**
+
+ - Consolidated IP location API usage
+
+ - Added fallback mechanisms
+
+**Windows:**
+
+- Improved logging
+
+- Fixed installer issues
+
+- Version command corrections
+
+- Better adapter error handling
+
+**LAN Routing:**
+
+- Added configurable interface exclusion
+
+- Fixes Kubernetes endpoint detection conflicts
 
 ## Known Issues 🐞
 
