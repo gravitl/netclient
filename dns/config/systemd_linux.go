@@ -23,11 +23,6 @@ func newSystemdStubManager(opts ...ManagerOption) (*systemdStubManager, error) {
 		opt(&options)
 	}
 
-	err := os.MkdirAll(resolvedConfDir, 0755)
-	if err != nil {
-		return nil, err
-	}
-
 	if options.cleanupResidual {
 		for _, iface := range options.residualInterfaces {
 			err := s.resetConfig(iface)
@@ -149,6 +144,11 @@ func newSystemdUplinkManager(opts ...ManagerOption) (*systemdUplinkManager, erro
 	var options ManagerOptions
 	for _, opt := range opts {
 		opt(&options)
+	}
+
+	err := os.MkdirAll(resolvedConfDir, 0755)
+	if err != nil {
+		return nil, err
 	}
 
 	if options.cleanupResidual {
