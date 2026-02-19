@@ -229,7 +229,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 		if netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
-			fmt.Println("=====>INMEM PUBLIC LISTEN PORT ", config.WgPublicListenPort)
 			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
