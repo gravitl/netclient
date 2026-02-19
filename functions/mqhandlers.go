@@ -471,7 +471,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
-		fmt.Println("======> RECEIVED JoinHostToNetwork")
+		slog.Info("received JoinHostToNetwork")
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
 			CommonNode: commonNode,

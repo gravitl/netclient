@@ -192,11 +192,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 
-		if netclientCfg.WgPublicListenPort == 0 {
-			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
-			updateConfig = true
-		}
-
 	} else {
 		netclientCfg.WgPublicListenPort = netclientCfg.ListenPort
 		updateConfig = true
@@ -231,6 +226,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		} else {
 			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
 			netclientCfg.EndpointIPv6 = nil
+			updateConfig = true
+		}
+		if netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
+			fmt.Println("=====>INMEM PUBLIC LISTEN PORT ", config.WgPublicListenPort)
+			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
 

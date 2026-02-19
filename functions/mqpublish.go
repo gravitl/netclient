@@ -65,7 +65,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 
 	ipTicker = time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
 	defer ipTicker.Stop()
-
+	err := hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
+	if err != nil {
+		logger.Log(0, "could not publish endpoint change", err.Error())
+	}
 	for {
 		select {
 		case <-ctx.Done():
