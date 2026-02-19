@@ -199,7 +199,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	if !netclientCfg.IsStatic {
 		// IPV4
+		fmt.Println("BEFORE HOLE PUNCH: ", netclientCfg.ListenPort)
 		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, netclientCfg.ListenPort)
+		fmt.Println("AFTER HOLE PUNCH: ", config.WgPublicListenPort, netclientCfg.ListenPort)
 		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
 		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
 			netclientCfg.EndpointIP = config.HostPublicIP
@@ -229,6 +231,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		}
 		if netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
+			fmt.Println("====> SETTING IN MEM WgPublicListenPort VAR TO CFG", config.WgPublicListenPort)
 			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}

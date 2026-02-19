@@ -91,7 +91,21 @@ func stop() error {
 	}
 }
 
-// restart - restarts daemon
+// restart - restarts daemon via init system where needed, falls back to SIGHUP.
+// Some init systems (e.g. OpenRC with supervise-daemon) manage the PID file
+// themselves, so sending SIGHUP directly via signalDaemon may target the wrong
+// process. Dispatching through the init system avoids this.
+func restart() error {
+	host := config.Netclient()
+	switch host.InitType {
+	case config.OpenRC:
+		return restartOpenRC()
+	default:
+		return signalDaemon(syscall.SIGHUP)
+	}
+}
+
+// hardRestart - restarts daemon through the init system (full stop+start cycle)
 func hardRestart() error {
 	host := config.Netclient()
 	if !host.DaemonInstalled {

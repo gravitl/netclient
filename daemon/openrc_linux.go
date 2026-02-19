@@ -3,7 +3,6 @@ package daemon
 import (
 	"errors"
 	"os"
-	"syscall"
 
 	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
@@ -68,7 +67,8 @@ func stopOpenRC() error {
 
 func restartOpenRC() error {
 	slog.Info("restarting netclient service")
-	return signalDaemon(syscall.SIGTERM)
+	_, err := ncutils.RunCmd("/sbin/rc-service netclient restart", false)
+	return err
 }
 
 func removeOpenRC() error {
