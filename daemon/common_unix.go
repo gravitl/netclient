@@ -12,11 +12,6 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// restart - restarts a system daemon
-func restart() error {
-	return signalDaemon(syscall.SIGHUP)
-}
-
 func signalDaemon(s syscall.Signal) error {
 	pid, err := ncutils.ReadPID()
 	if err != nil {

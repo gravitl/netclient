@@ -79,7 +79,9 @@ if [ "${FIREWALL}" != "" ];then
    FIREWALL_CMD="-f ${FIREWALL}"
 fi
 
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $STATIC_PORT_CMD $IFACE_CMD $ENDPOINT6_CMD $FIREWALL_CMD
+JOIN_CMD="netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $STATIC_PORT_CMD $IFACE_CMD $ENDPOINT6_CMD $FIREWALL_CMD"
+#echo "[netclient] running: $JOIN_CMD"
+$JOIN_CMD
 if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
 
 tail -f /var/log/netclient.log &
