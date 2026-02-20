@@ -49,6 +49,16 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	// Domain controller: do not modify DNS at all — only overlay routes are applied.
+	if config.IsDC {
+		return nil
+	}
+
+	// AD compatibility mode: preserve DC DNS on LAN adapter, only use NRPT for overlay domains.
+	if config.ADCompatEnabled {
+		return w.configureADCompat(iface, config)
+	}
+
 	if config.Remove {
 		delete(w.configs, iface)
 
@@ -124,6 +134,58 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	}
 
 	return w.resetConfig()
+}
+
+// configureADCompat applies NRPT-only DNS for overlay domains while leaving DC DNS untouched.
+// It does NOT modify interface DNS or global DNS settings, preserving the DomainAuthenticated
+// network profile for Windows NLA.
+func (w *windowsManager) configureADCompat(iface string, cfg Config) error {
+	if cfg.Remove {
+		delete(w.configs, iface)
+		return w.resetNrptRule()
+	}
+
+	w.configs[iface] = cfg
+
+	// Build the set of AD domain suffixes to exclude from NRPT namespaces.
+	adSuffixes := make(map[string]bool)
+	for _, s := range cfg.ADDomainSuffs {
+		adSuffixes[strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(s, "."), "."))] = true
+	}
+
+	nameserversMap := make(map[string]bool)
+	var nameservers, namespaces []string
+
+	for _, c := range w.configs {
+		for _, ns := range c.Nameservers {
+			nsStr := ns.String()
+			if !nameserversMap[nsStr] {
+				nameserversMap[nsStr] = true
+				nameservers = append(nameservers, nsStr)
+			}
+		}
+
+		for _, domain := range c.MatchDomains {
+			domain = strings.TrimSuffix(strings.TrimPrefix(domain, "."), ".")
+			if domain == "" {
+				continue
+			}
+			// Do not create NRPT rules for AD domain suffixes — those must resolve via DC DNS.
+			if adSuffixes[strings.ToLower(domain)] {
+				continue
+			}
+			namespaces = append(namespaces, "."+domain)
+		}
+	}
+
+	// Never add the catch-all "." namespace in AD compat mode — that would
+	// redirect all DNS away from the DC and break domain validation.
+
+	if len(namespaces) > 0 && len(nameservers) > 0 {
+		return w.setNrptRule(namespaces, nameservers)
+	}
+
+	return w.resetNrptRule()
 }
 
 func (w *windowsManager) resetConfig() error {

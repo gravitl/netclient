@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/adcompat"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/functions"
@@ -413,6 +414,15 @@ func checkConfig() {
 	if config.FirewallHasChanged() {
 		saveRequired = true
 		config.SetFirewall()
+	}
+	if runtime.GOOS == "windows" {
+		adMode := adcompat.ParseMode(netclient.WindowsADCompat)
+		adEnabled, isDC := adcompat.ShouldEnableADCompat(adMode)
+		if isDC {
+			slog.Info("domain controller detected, DNS modifications disabled")
+		} else if adEnabled {
+			slog.Info("AD compatibility mode enabled, preserving DC DNS")
+		}
 	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")

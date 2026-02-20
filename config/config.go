@@ -98,6 +98,9 @@ type Config struct {
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
 	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
+	// WindowsADCompat controls AD compatibility mode: "auto" (default), "enabled", or "disabled".
+	// When active on domain-joined Windows machines, DC DNS is preserved and only NRPT rules are used.
+	WindowsADCompat string `json:"windows_ad_compat,omitempty" yaml:"windows_ad_compat,omitempty"`
 }
 
 func init() {

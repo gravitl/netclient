@@ -19,6 +19,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	externalip "github.com/glendc/go-external-ip"
+	"github.com/gravitl/netclient/adcompat"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -259,6 +260,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if err := nc.Configure(); err != nil {
 		slog.Error("error configuring netclient interface", "error", err)
+	}
+	if ncutils.IsWindows() {
+		adMode := adcompat.ParseMode(netclientCfg.WindowsADCompat)
+		if adEnabled, _ := adcompat.ShouldEnableADCompat(adMode); adEnabled {
+			slog.Info("AD compatibility mode active, setting interface metrics")
+			wireguard.SetADCompatMetrics(ncutils.GetInterfaceName())
+		}
 	}
 	wireguard.SetPeers(true)
 	if len(pullresp.EgressRoutes) > 0 {

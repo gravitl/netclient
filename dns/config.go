@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/gravitl/netclient/adcompat"
 	"github.com/gravitl/netclient/config"
 	dnsconfig "github.com/gravitl/netclient/dns/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -46,6 +47,16 @@ func Configure() error {
 
 	if config.Netclient().CurrGwNmIP != nil || matchAllDomains {
 		dnsConfig.SplitDNS = false
+	}
+
+	if ncutils.IsWindows() {
+		adMode := adcompat.ParseMode(config.Netclient().WindowsADCompat)
+		adEnabled, isDC := adcompat.ShouldEnableADCompat(adMode)
+		dnsConfig.ADCompatEnabled = adEnabled
+		dnsConfig.IsDC = isDC
+		if adEnabled {
+			dnsConfig.ADDomainSuffs = adcompat.GetDomainSuffixes()
+		}
 	}
 
 	return configManager.Configure(ncutils.GetInterfaceName(), dnsConfig)

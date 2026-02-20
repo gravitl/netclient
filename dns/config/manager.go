@@ -5,11 +5,14 @@ import (
 )
 
 type Config struct {
-	Nameservers   []net.IP
-	MatchDomains  []string
-	SearchDomains []string
-	SplitDNS      bool
-	Remove        bool
+	Nameservers     []net.IP
+	MatchDomains    []string
+	SearchDomains   []string
+	SplitDNS        bool
+	Remove          bool
+	ADCompatEnabled bool     // skip LAN DNS override; use NRPT only for overlay domains
+	IsDC            bool     // domain controller — skip all DNS modifications
+	ADDomainSuffs   []string // AD domain suffixes to exclude from NRPT namespaces
 }
 
 type Manager interface {
