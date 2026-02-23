@@ -102,21 +102,21 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					continue
 				}
 				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
-					slog.Error("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
 					restart = true
 				} else if ip4 == nil && config.HostPublicIP != nil {
-					slog.Error("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+					slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = nil
 					restart = true
 				}
 
 				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
-					slog.Error("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
 					restart = true
 				} else if ip6 == nil && config.HostPublicIP6 != nil {
-					slog.Error("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+					slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = nil
 					restart = true
 				}
