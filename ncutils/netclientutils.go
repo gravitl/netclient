@@ -160,6 +160,17 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			return 443, nil
 		}
 	}
+	if currListenPort > 0 {
+		// check if curr listen port is free
+		udpAddr := net.UDPAddr{
+			Port: currListenPort,
+		}
+		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
+		if udpErr == nil {
+			udpConn.Close()
+			return currListenPort, nil
+		}
+	}
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
 	}

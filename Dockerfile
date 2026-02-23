@@ -1,5 +1,4 @@
 FROM gravitl/go-builder:1.25.3 AS builder
-# add glib support daemon manager
 WORKDIR /app
 
 COPY . . 
@@ -15,18 +14,13 @@ WORKDIR /root/
 
 RUN apk add --no-cache --update \
         bash \
-        libmnl \
-        gcompat \
-        openresolv \
         iproute2 \
         wireguard-tools \
-        openrc \
+        openresolv \
         iptables \
         ip6tables \
-        nftables \
-    && mkdir -p /run/openrc \
-    && touch /run/openrc/softlevel
-    
+        nftables
+
 COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
 RUN chmod 0755 netclient && chmod 0755 netclient.sh
