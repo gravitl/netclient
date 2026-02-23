@@ -10,9 +10,9 @@ type Config struct {
 	SearchDomains   []string
 	SplitDNS        bool
 	Remove          bool
-	ADCompatEnabled bool     // skip LAN DNS override; use NRPT only for overlay domains
+	ADCompatEnabled bool     // use real DNS IPs on interface, NRPT for overlay
 	IsDC            bool     // domain controller — skip all DNS modifications
-	ADDomainSuffs   []string // AD domain suffixes to exclude from NRPT namespaces
+	InternalDNSIPs  []net.IP // real internal DNS server IPs (from server DnsNameservers)
 }
 
 type Manager interface {

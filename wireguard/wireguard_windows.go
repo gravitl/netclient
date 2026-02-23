@@ -554,15 +554,3 @@ func isEconnRefused(err error) bool {
 	var winerrno windows.Errno
 	return errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED)
 }
-
-// SetADCompatMetrics sets the Netmaker WireGuard interface metric higher than typical LAN
-// adapters so that DC traffic is routed through the physical adapter by default.
-func SetADCompatMetrics(netmakerIface string) {
-	const adCompatMetric = "50"
-	for _, proto := range []string{"ipv4", "ipv6"} {
-		cmd := fmt.Sprintf(`netsh int %s set interface "%s" metric=%s`, proto, netmakerIface, adCompatMetric)
-		if _, err := ncutils.RunCmd(cmd, false); err != nil {
-			slog.Warn("failed to set AD compat metric", "proto", proto, "iface", netmakerIface, "error", err)
-		}
-	}
-}

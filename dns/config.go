@@ -54,8 +54,14 @@ func Configure() error {
 		adEnabled, isDC := adcompat.ShouldEnableADCompat(adMode)
 		dnsConfig.ADCompatEnabled = adEnabled
 		dnsConfig.IsDC = isDC
-		if adEnabled {
-			dnsConfig.ADDomainSuffs = adcompat.GetDomainSuffixes()
+		if adEnabled && !isDC {
+			for _, ns := range config.GetServer(config.CurrServer).DnsNameservers {
+				for _, ipStr := range ns.IPs {
+					if ip := net.ParseIP(ipStr); ip != nil {
+						dnsConfig.InternalDNSIPs = append(dnsConfig.InternalDNSIPs, ip)
+					}
+				}
+			}
 		}
 	}
 

@@ -38,7 +38,6 @@ func GetDomainSuffixes() []string {
 	var suffixes []string
 	seen := make(map[string]bool)
 
-	// Primary domain suffix
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
 		"(Get-WmiObject Win32_ComputerSystem).Domain")
 	out, err := cmd.Output()
@@ -51,7 +50,6 @@ func GetDomainSuffixes() []string {
 		}
 	}
 
-	// Global DNS suffix search list
 	cmd = exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
 		"(Get-DnsClientGlobalSetting).SuffixSearchList -join ','")
 	out, err = cmd.Output()
