@@ -23,7 +23,9 @@ func Configure() error {
 	}
 
 	var dnsConfig dnsconfig.Config
+	nameserverIPsMap := make(map[string]bool)
 	dnsConfig.Nameservers = []net.IP{net.ParseIP(ip)}
+	nameserverIPsMap[ip] = true
 	dnsConfig.SplitDNS = true
 
 	if server.DefaultDomain != "" {
@@ -43,7 +45,11 @@ func Configure() error {
 				}
 				if runtime.GOOS == "windows" && nameserver.IsADDomain {
 					for _, nameserverIP := range nameserver.IPs {
-						dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(nameserverIP))
+						_, ok := nameserverIPsMap[nameserverIP]
+						if !ok {
+							dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(nameserverIP))
+							nameserverIPsMap[nameserverIP] = true
+						}
 					}
 				}
 			}
