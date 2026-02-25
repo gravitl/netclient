@@ -3,7 +3,6 @@ package dns
 import (
 	"errors"
 	"net"
-	"runtime"
 	"strings"
 
 	"github.com/gravitl/netclient/config"
@@ -43,7 +42,7 @@ func Configure() error {
 				if nameserver.IsSearchDomain {
 					dnsConfig.SearchDomains = append(dnsConfig.SearchDomains, nameserver.MatchDomain)
 				}
-				if runtime.GOOS == "windows" && nameserver.IsADDomain {
+				if nameserver.IsADDomain {
 					for _, nameserverIP := range nameserver.IPs {
 						_, ok := nameserverIPsMap[nameserverIP]
 						if !ok {
