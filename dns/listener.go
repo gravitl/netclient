@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns/querycache"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 
@@ -18,6 +19,8 @@ import (
 )
 
 var dnsMutex = sync.Mutex{} // used to mutex functions of the DNS
+
+var cleanupCancel context.CancelFunc
 
 type DNSServer struct {
 	DnsServer []*dns.Server
@@ -50,6 +53,10 @@ func (dnsServer *DNSServer) Start() {
 	if dnsServer.AddrStr != "" {
 		return
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cleanupCancel = cancel
+	querycache.StartCleanup(ctx)
 
 	if len(config.GetNodes()) == 0 {
 		return
@@ -143,6 +150,11 @@ func (dnsServer *DNSServer) Stop() {
 	defer dnsMutex.Unlock()
 	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
 		return
+	}
+
+	if cleanupCancel != nil {
+		cleanupCancel()
+		cleanupCancel = nil
 	}
 
 	err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
