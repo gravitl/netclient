@@ -279,9 +279,9 @@ func recordDNSAnswers(answers []dns.RR) {
 	for _, rr := range answers {
 		switch r := rr.(type) {
 		case *dns.A:
-			querycache.Record(r.A.String(), r.Hdr.Name, now)
+			querycache.GetManager().Record(r.A.String(), r.Hdr.Name, now)
 		case *dns.AAAA:
-			querycache.Record(r.AAAA.String(), r.Hdr.Name, now)
+			querycache.GetManager().Record(r.AAAA.String(), r.Hdr.Name, now)
 		}
 	}
 }

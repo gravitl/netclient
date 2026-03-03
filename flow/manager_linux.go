@@ -3,6 +3,7 @@
 package flow
 
 import (
+	"context"
 	"crypto/tls"
 	"log/slog"
 	"net"
@@ -25,6 +26,7 @@ type Manager struct {
 	participantIdentifiers map[string]models.PeerIdentity
 	flowClient             *exporter.FlowGrpcClient
 	flowTracker            *tracker.FlowTracker
+	cacheCtxCancel         context.CancelFunc
 	startOnce              sync.Once
 	mu                     sync.RWMutex
 }
@@ -47,6 +49,8 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 	var err error
 	m.startOnce.Do(func() {
 		slog.Info("[flow] starting flow manager")
+
+		querycache.GetManager().Enable()
 
 		flowClient := exporter.NewFlowGrpcClient(
 			config.GetServer(config.CurrServer).GRPC,
@@ -119,7 +123,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 				}
 				m.mu.RUnlock()
 				if !found {
-					domain := querycache.Lookup(ip, startTime)
+					domain := querycache.GetManager().Lookup(ip, startTime)
 					return &pbflow.FlowParticipant{
 						Ip:   ip,
 						Type: pbflow.ParticipantType_PARTICIPANT_EXTERNAL,
@@ -169,6 +173,8 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 func (m *Manager) Stop() error {
 	slog.Debug("[flow] stopping flow manager")
+
+	querycache.GetManager().Disable()
 
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()

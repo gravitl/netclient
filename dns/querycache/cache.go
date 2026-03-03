@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,14 +20,50 @@ type lookupEntry struct {
 	ts     time.Time
 }
 
-var (
+type Manager struct {
+	enabled atomic.Bool
+	cancel  context.CancelFunc
 	mu      sync.RWMutex
-	entries = make(map[string]*list.List)
+	entries map[string]*list.List
+}
+
+var (
+	manager  *Manager
+	initOnce sync.Once
 )
+
+func GetManager() *Manager {
+	initOnce.Do(func() {
+		manager = &Manager{
+			entries: make(map[string]*list.List),
+		}
+	})
+
+	return manager
+}
+
+func (m *Manager) Enable() {
+	m.enabled.Store(true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	go m.startCleanup(ctx)
+}
+
+func (m *Manager) Disable() {
+	m.enabled.Store(false)
+	if m.cancel != nil {
+		m.cancel()
+	}
+}
 
 // Record stores a domain→IP resolution at the given time.
 // ip is normalized to its canonical string form before storage.
-func Record(ip, domain string, ts time.Time) {
+func (m *Manager) Record(ip, domain string, ts time.Time) {
+	if !m.enabled.Load() {
+		return
+	}
+
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		return
@@ -35,19 +72,19 @@ func Record(ip, domain string, ts time.Time) {
 	key := addr.String()
 	domain = strings.TrimSuffix(domain, ".")
 
-	mu.Lock()
-	l, ok := entries[key]
+	m.mu.Lock()
+	l, ok := m.entries[key]
 	if !ok {
 		l = list.New()
-		entries[key] = l
+		m.entries[key] = l
 	}
 	l.PushBack(lookupEntry{domain: domain, ts: ts})
-	mu.Unlock()
+	m.mu.Unlock()
 }
 
 // Lookup returns the domain most recently resolved to ip at or before the given time.
 // Returns "" if no matching entry exists.
-func Lookup(ip string, before time.Time) string {
+func (m *Manager) Lookup(ip string, before time.Time) string {
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		return ""
@@ -55,10 +92,10 @@ func Lookup(ip string, before time.Time) string {
 	addr = addr.Unmap()
 	key := addr.String()
 
-	mu.RLock()
-	l, ok := entries[key]
+	m.mu.RLock()
+	l, ok := m.entries[key]
 	if !ok {
-		mu.RUnlock()
+		m.mu.RUnlock()
 		return ""
 	}
 	// Entries are ordered oldest→newest (PushBack). Walk back-to-front to
@@ -71,13 +108,13 @@ func Lookup(ip string, before time.Time) string {
 			break
 		}
 	}
-	mu.RUnlock()
+	m.mu.RUnlock()
 	return result
 }
 
 // StartCleanup starts a background goroutine that removes entries older than
 // ttl.
-func StartCleanup(ctx context.Context) {
+func (m *Manager) startCleanup(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(cleanupInterval)
 		defer ticker.Stop()
@@ -86,16 +123,16 @@ func StartCleanup(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				prune(time.Now().Add(-ttl))
+				m.prune(time.Now().Add(-ttl))
 			}
 		}
 	}()
 }
 
-func prune(cutoff time.Time) {
-	mu.Lock()
-	defer mu.Unlock()
-	for key, l := range entries {
+func (m *Manager) prune(cutoff time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key, l := range m.entries {
 		for e := l.Front(); e != nil; {
 			if e.Value.(lookupEntry).ts.Before(cutoff) {
 				next := e.Next()
@@ -106,7 +143,7 @@ func prune(cutoff time.Time) {
 			}
 		}
 		if l.Len() == 0 {
-			delete(entries, key)
+			delete(m.entries, key)
 		}
 	}
 }
