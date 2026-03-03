@@ -3,7 +3,6 @@
 package flow
 
 import (
-	"context"
 	"crypto/tls"
 	"log/slog"
 	"net"
@@ -26,7 +25,6 @@ type Manager struct {
 	participantIdentifiers map[string]models.PeerIdentity
 	flowClient             *exporter.FlowGrpcClient
 	flowTracker            *tracker.FlowTracker
-	cacheCtxCancel         context.CancelFunc
 	startOnce              sync.Once
 	mu                     sync.RWMutex
 }
