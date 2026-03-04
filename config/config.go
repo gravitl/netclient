@@ -98,6 +98,7 @@ type Config struct {
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
 	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
+	FwMark         int      `json:"fwmark" yaml:"fwmark"`
 }
 
 func init() {

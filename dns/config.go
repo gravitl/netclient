@@ -22,7 +22,7 @@ func Configure() error {
 	}
 
 	var dnsConfig dnsconfig.Config
-	dnsConfig.Nameservers = []net.IP{net.ParseIP(ip)}
+	nameserverIPsMap := make(map[string]bool)
 	dnsConfig.SplitDNS = true
 
 	if server.DefaultDomain != "" {
@@ -40,8 +40,23 @@ func Configure() error {
 				if nameserver.IsSearchDomain {
 					dnsConfig.SearchDomains = append(dnsConfig.SearchDomains, nameserver.MatchDomain)
 				}
+				if nameserver.IsADDomain {
+					for _, nameserverIP := range nameserver.IPs {
+						_, ok := nameserverIPsMap[nameserverIP]
+						if !ok {
+							dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(nameserverIP))
+							nameserverIPsMap[nameserverIP] = true
+						}
+					}
+				}
 			}
 		}
+	}
+
+	// AD domain nameservers should always be prioritized before gateway DNS.
+	if _, ok := nameserverIPsMap[ip]; !ok {
+		dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(ip))
+		nameserverIPsMap[ip] = true
 	}
 
 	if config.Netclient().CurrGwNmIP != nil || matchAllDomains {
