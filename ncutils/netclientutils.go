@@ -149,17 +149,6 @@ func GetInterfaces() ([]models.Iface, error) {
 
 // GetFreePort - gets free port of machine
 func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
-	if init || currListenPort == 443 {
-		// check 443 is free
-		udpAddr := net.UDPAddr{
-			Port: 443,
-		}
-		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
-		if udpErr == nil {
-			udpConn.Close()
-			return 443, nil
-		}
-	}
 	if currListenPort > 0 {
 		// check if curr listen port is free
 		udpAddr := net.UDPAddr{
