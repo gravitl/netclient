@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 )
 
 var ifaceName string
@@ -107,13 +107,13 @@ func isExcludedInterface(ifaceName string) bool {
 	return false
 }
 
-func GetInterfaces() ([]models.Iface, error) {
+func GetInterfaces() ([]schema.Iface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
-	var data = []models.Iface{}
-	var link models.Iface
+	var data = []schema.Iface{}
+	var link schema.Iface
 	for _, iface := range ifaces {
 		iface := iface
 		if iface.Flags&net.FlagUp == 0 || // interface down

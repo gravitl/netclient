@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
@@ -230,10 +231,10 @@ func callPublishMetrics(fallback bool) {
 				if metricsPort == 0 {
 					metricsPort = 51821
 				}
-				if _, ok := response.NetworkPeerIDs[models.NetworkID(node.Network)]; !ok {
+				if _, ok := response.NetworkPeerIDs[schema.NetworkID(node.Network)]; !ok {
 					continue
 				}
-				go publishMetrics(&node, metricsPort, response.NetworkPeerIDs[models.NetworkID(node.Network)], fallback)
+				go publishMetrics(&node, metricsPort, response.NetworkPeerIDs[schema.NetworkID(node.Network)], fallback)
 			}
 		}
 	}

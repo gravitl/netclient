@@ -33,6 +33,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -672,7 +673,9 @@ func UpdateKeys() error {
 		slog.Error("error generating privatekey ", "error", err)
 		return err
 	}
-	host.PublicKey = host.PrivateKey.PublicKey()
+	host.PublicKey = schema.WgKey{
+		Key: host.PrivateKey.PublicKey(),
+	}
 	if err := config.WriteNetclientConfig(); err != nil {
 		slog.Error("error saving netclient config:", "error", err)
 	}

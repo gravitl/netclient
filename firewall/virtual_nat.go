@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 )
 
 // virtualNatInfo holds virtual NAT configuration extracted from models
@@ -47,7 +48,7 @@ func extractVirtualNatInfoFromRange(egressGwRange models.EgressRangeMetric) *vir
 // Virtual NAT is enabled when Mode is VirtualNAT and Nat is true and VirtualNetwork is set
 func shouldApplyVirtualNat(egressGwRange models.EgressRangeMetric) (*virtualNatInfo, bool) {
 	// Virtual NAT requires Nat=true, Mode=VirtualNAT, and VirtualNetwork to be set
-	if !egressGwRange.Nat || egressGwRange.Mode != models.VirtualNAT || egressGwRange.VirtualNetwork == "" {
+	if !egressGwRange.Nat || egressGwRange.Mode != schema.VirtualNAT || egressGwRange.VirtualNetwork == "" {
 		return nil, false
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -130,7 +131,7 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
-			if egressRange.Nat && egressRange.Mode == models.VirtualNAT && egressRange.VirtualNetwork != "" {
+			if egressRange.Nat && egressRange.Mode == schema.VirtualNAT && egressRange.VirtualNetwork != "" {
 				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNetwork)
 			}
 			if egressRangeIPNet.IP != nil {
