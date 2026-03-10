@@ -46,6 +46,8 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 	if jwtToken != "" && !isTokenExpired(jwtToken) {
 		return jwtToken, nil
 	}
+	ncutils.TraceCaller()
+	fmt.Println("TOKEN is expired, re-authenticating")
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
 		ID:         host.ID.String(),

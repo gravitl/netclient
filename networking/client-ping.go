@@ -29,6 +29,10 @@ var (
 	LastHandShakeThreshold = time.Minute * 3
 	//
 	PeerLocalEndpointConnTicker *time.Ticker
+
+	peerInfoCache      models.HostPeerInfo
+	peerInfoCacheMu    sync.RWMutex
+	peerInfoCacheReady bool
 )
 
 func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
@@ -45,7 +49,7 @@ func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
 	}()
 	var err error
 	for i := 0; i < 5; i++ {
-		addr := fmt.Sprintf("%s:%d", peerIp, metricsPort)
+		addr := net.JoinHostPort(peerIp, fmt.Sprintf("%d", metricsPort))
 		conn, err = net.DialTimeout("tcp", addr, 3*time.Second)
 		if err != nil {
 			continue
@@ -106,15 +110,15 @@ func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
 			return
 		case <-PeerLocalEndpointConnTicker.C:
 			go func() {
-				nodes := config.GetNodes()
-				if len(nodes) == 0 {
-					return
-				}
-				peerInfo, err := GetPeerInfo()
-				if err != nil {
-					slog.Error("failed to get peer Info", "error", err)
-					return
-				}
+			nodes := config.GetNodes()
+			if len(nodes) == 0 {
+				return
+			}
+			peerInfo, err := GetPeerInfo()
+			if err != nil {
+				slog.Error("failed to get peer info", "error", err)
+				return
+			}
 				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
 				if err != nil {
 					slog.Debug("failed to get peers from device: ", "error", err)
@@ -150,8 +154,32 @@ func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
+// GetPeerInfo returns cached HostPeerInfo if available, otherwise fetches from server.
 func GetPeerInfo() (models.HostPeerInfo, error) {
+	peerInfoCacheMu.RLock()
+	if peerInfoCacheReady {
+		defer peerInfoCacheMu.RUnlock()
+		return peerInfoCache, nil
+	}
+	peerInfoCacheMu.RUnlock()
+	return fetchPeerInfo()
+}
 
+// RefreshPeerInfoCache fetches fresh peer info from the server and updates the cache.
+func RefreshPeerInfoCache() {
+	info, err := fetchPeerInfo()
+	if err != nil {
+		slog.Error("failed to refresh peer info cache", "error", err)
+		return
+	}
+	peerInfoCacheMu.Lock()
+	peerInfoCache = info
+	peerInfoCacheReady = true
+	peerInfoCacheMu.Unlock()
+	slog.Debug("peer info cache refreshed")
+}
+
+func fetchPeerInfo() (models.HostPeerInfo, error) {
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return models.HostPeerInfo{}, errors.New("server is nil")

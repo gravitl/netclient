@@ -15,7 +15,6 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -394,6 +393,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
+	if server.IsPro {
+		go networking.RefreshPeerInfoCache()
+	}
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -758,8 +760,8 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 				continue
 			}
 			// Call netclient http config pull
-			slog.Info("### mqfallback routine execute")
-			auth.CleanJwtToken()
+			slog.Error("### mqfallback routine execute")
+			//auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
@@ -962,6 +964,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+
+	if server.IsPro {
+		go networking.RefreshPeerInfoCache()
+	}
 }
 
 func CheckEgressDomainUpdates() {

@@ -254,15 +254,15 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					return
 				default:
 				}
-				nodes := config.GetNodes()
-				if len(nodes) == 0 {
-					return
-				}
-				peerInfo, err := networking.GetPeerInfo()
-				if err != nil {
-					slog.Error("failed to get peer Info", "error", err)
-					return
-				}
+			nodes := config.GetNodes()
+			if len(nodes) == 0 {
+				return
+			}
+			peerInfo, err := networking.GetPeerInfo()
+			if err != nil {
+				slog.Error("failed to get peer info", "error", err)
+				return
+			}
 				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
 				if err != nil {
 					slog.Debug("failed to get peers from device: ", "error", err)
