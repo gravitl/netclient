@@ -760,7 +760,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 				continue
 			}
 			// Call netclient http config pull
-			slog.Error("### mqfallback routine execute")
+			slog.Info("### mqfallback routine execute")
 			//auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false, false)
 			if err != nil {
