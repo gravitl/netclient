@@ -75,14 +75,10 @@ func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
 func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int) {
 	connected := tryLocalConnect(peerIp, peerPubKey, metricsPort)
 	if connected {
-		parsePeerIp := net.ParseIP(peerIp)
-		if parsePeerIp.To16() != nil {
-			// ipv6
-			peerIp = fmt.Sprintf("[%s]", peerIp)
-		}
-		peerEndpoint, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerIp, peerListenPort))
+		addr := net.JoinHostPort(peerIp, fmt.Sprintf("%d", peerListenPort))
+		peerEndpoint, err := net.ResolveUDPAddr("udp", addr)
 		if err != nil {
-			slog.Error("failed to parse peer udp addr", "peeraddr", fmt.Sprintf("%s:%d", peerIp, peerListenPort), "err", err.Error())
+			slog.Error("failed to parse peer udp addr", "peeraddr", addr, "err", err.Error())
 			return
 		}
 		storeNewPeerIface(peerPubKey, peerEndpoint)

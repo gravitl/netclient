@@ -1095,15 +1095,9 @@ func checkIPConnectivity(ips []string) bool {
 		// Try common ports that might be open (80, 443, 22)
 		ports := []int{80, 443, 22}
 		for _, port := range ports {
-			var address string
-			var network string
-			if ip.To4() != nil {
-				// IPv4 address
-				address = fmt.Sprintf("%s:%d", ipStr, port)
-				network = "tcp4"
-			} else {
-				// IPv6 address - must be wrapped in brackets
-				address = fmt.Sprintf("[%s]:%d", ipStr, port)
+			address := net.JoinHostPort(ipStr, fmt.Sprintf("%d", port))
+			network := "tcp4"
+			if ip.To4() == nil {
 				network = "tcp6"
 			}
 			conn, err := net.DialTimeout(network, address, 3*time.Second)
