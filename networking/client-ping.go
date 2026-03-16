@@ -17,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
-	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
@@ -33,6 +32,8 @@ var (
 	peerInfoCache      models.HostPeerInfo
 	peerInfoCacheMu    sync.RWMutex
 	peerInfoCacheReady bool
+
+	refreshMu sync.Mutex
 )
 
 func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
@@ -106,15 +107,15 @@ func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
 			return
 		case <-PeerLocalEndpointConnTicker.C:
 			go func() {
-			nodes := config.GetNodes()
-			if len(nodes) == 0 {
-				return
-			}
-			peerInfo, err := GetPeerInfo()
-			if err != nil {
-				slog.Error("failed to get peer info", "error", err)
-				return
-			}
+				nodes := config.GetNodes()
+				if len(nodes) == 0 {
+					return
+				}
+				peerInfo, err := GetPeerInfo()
+				if err != nil {
+					slog.Error("failed to get peer info", "error", err)
+					return
+				}
 				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
 				if err != nil {
 					slog.Debug("failed to get peers from device: ", "error", err)
@@ -150,22 +151,25 @@ func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
-// GetPeerInfo returns cached HostPeerInfo if available, otherwise fetches from server.
+// GetPeerInfo returns cached HostPeerInfo. Returns an error if cache is not yet populated.
 func GetPeerInfo() (models.HostPeerInfo, error) {
 	peerInfoCacheMu.RLock()
+	defer peerInfoCacheMu.RUnlock()
 	if peerInfoCacheReady {
-		defer peerInfoCacheMu.RUnlock()
 		return peerInfoCache, nil
 	}
-	peerInfoCacheMu.RUnlock()
-	return fetchPeerInfo()
+	return models.HostPeerInfo{}, errors.New("peer info cache not ready")
 }
 
 // RefreshPeerInfoCache fetches fresh peer info from the server and updates the cache.
+// Uses a dedicated mutex to serialize callers and enforce a minimum interval between attempts.
 func RefreshPeerInfoCache() {
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+
 	info, err := fetchPeerInfo()
 	if err != nil {
-		slog.Error("failed to refresh peer info cache", "error", err)
+		slog.Warn("failed to refresh peer info cache", "error", err)
 		return
 	}
 	peerInfoCacheMu.Lock()
@@ -182,8 +186,7 @@ func fetchPeerInfo() (models.HostPeerInfo, error) {
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
-		logger.Log(1, "failed to authenticate when publishing metrics", err.Error())
-		return models.HostPeerInfo{}, err
+		return models.HostPeerInfo{}, fmt.Errorf("auth failed: %w", err)
 	}
 
 	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
@@ -192,7 +195,11 @@ func fetchPeerInfo() (models.HostPeerInfo, error) {
 	headers.Set("Authorization", "Bearer "+token)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
-		slog.Error("failed to read peer info resp", "error", err.Error())
+		var notOkErr ncutils.ErrStatusNotOk
+		if errors.As(err, &notOkErr) && notOkErr.Status == http.StatusUnauthorized {
+			auth.CleanJwtToken()
+			slog.Warn("peer info request unauthorized, cleared stale JWT token")
+		}
 		return models.HostPeerInfo{}, err
 	}
 
