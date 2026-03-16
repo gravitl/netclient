@@ -35,6 +35,7 @@ var registerFlags = struct {
 	Static      string
 	Interface   string
 	Name        string
+	FwMark      string
 }{
 	Server:      "server",
 	User:        "user",
@@ -49,6 +50,7 @@ var registerFlags = struct {
 	Name:        "name",
 	Interface:   "interface",
 	Firewall:    "firewall",
+	FwMark:      "fwmark",
 }
 
 // registerCmd represents the register command

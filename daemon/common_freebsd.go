@@ -104,6 +104,11 @@ netclient_args="daemon"`
 	return nil
 }
 
+// restart - restarts a system daemon via SIGHUP
+func restart() error {
+	return signalDaemon(syscall.SIGHUP)
+}
+
 func start() error {
 	if status() {
 		return errors.New("service already running")

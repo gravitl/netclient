@@ -12,6 +12,17 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+// isDaemonProcess is set to true when the current process is the long-running
+// daemon (as opposed to a short-lived CLI invocation like "netclient join").
+// This lets restart logic choose between self-signalling (safe inside the
+// daemon) and going through the service manager (required from CLI).
+var isDaemonProcess bool
+
+// SetDaemonMode marks the current process as the running daemon.
+func SetDaemonMode() {
+	isDaemonProcess = true
+}
+
 // Install - Calls the correct function to install the netclient as a daemon service on the given operating system.
 func Install() error {
 	return install()

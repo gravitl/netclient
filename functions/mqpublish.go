@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
 
@@ -64,7 +65,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 
 	ipTicker = time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
 	defer ipTicker.Stop()
-
+	err := hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
+	if err != nil {
+		logger.Log(0, "could not publish endpoint change", err.Error())
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -307,9 +311,10 @@ func UpdateHostSettings(fallback bool) error {
 	_ = config.ReadServerConf()
 	logger.Log(3, "checkin with server(s)")
 	var (
-		err           error
-		publishMsg    bool
-		restartDaemon bool
+		err                error
+		publishMsg         bool
+		restartDaemon      bool
+		endpointHasChanged bool
 	)
 
 	server := config.GetServer(config.CurrServer)
@@ -322,11 +327,13 @@ func UpdateHostSettings(fallback bool) error {
 				logger.Log(0, "endpoint has changed from", config.Netclient().EndpointIP.String(), "to", config.HostPublicIP.String())
 				config.Netclient().EndpointIP = config.HostPublicIP
 				publishMsg = true
+				endpointHasChanged = true
 			}
 		} else {
 			if config.Netclient().EndpointIP != nil {
 				config.Netclient().EndpointIP = nil
 				publishMsg = true
+				endpointHasChanged = true
 			}
 		}
 	}
@@ -337,11 +344,13 @@ func UpdateHostSettings(fallback bool) error {
 				logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 				config.Netclient().EndpointIPv6 = config.HostPublicIP6
 				publishMsg = true
+				endpointHasChanged = true
 			}
 		} else {
 			if config.Netclient().EndpointIPv6 != nil {
 				config.Netclient().EndpointIPv6 = nil
 				publishMsg = true
+				endpointHasChanged = true
 			}
 		}
 	}
@@ -386,6 +395,23 @@ func UpdateHostSettings(fallback bool) error {
 		config.SetFirewall()
 		publishMsg = true
 	}
+	if config.Netclient().Location == "" ||
+		config.Netclient().CountryCode == "" || endpointHasChanged {
+		geoInfo, err := utils.GetGeoInfo()
+		if err == nil {
+			if config.Netclient().Location != geoInfo.Location {
+				logger.Log(0, "setting location")
+				config.Netclient().Location = geoInfo.Location
+				publishMsg = true
+			}
+			if config.Netclient().CountryCode != geoInfo.CountryCode {
+				logger.Log(0, "setting country code")
+				config.Netclient().CountryCode = geoInfo.CountryCode
+				publishMsg = true
+			}
+		}
+	}
+
 	if publishMsg {
 		if err := config.WriteNetclientConfig(); err != nil {
 			return err

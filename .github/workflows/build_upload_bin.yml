@@ -64,6 +64,7 @@ jobs:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
         GOARM: ${{ matrix.goarm || '' }}
+        CGO_ENABLED: 0
       run: |
         go version
         go mod tidy
@@ -90,7 +91,7 @@ jobs:
       run: Get-ChildItem netclient-*
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.build.outputs.ARTIFACT_NAME }}
         path: ${{ steps.build.outputs.OUTPUT_NAME }}
@@ -100,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
 
     - name: Display structure of downloaded files
       run: ls -R

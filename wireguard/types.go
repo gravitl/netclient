@@ -17,11 +17,12 @@ import (
 
 // NCIface - represents a Netclient network interface
 type NCIface struct {
-	Iface     netIface
-	Name      string
-	Addresses []ifaceAddress
-	MTU       int
-	Config    wgtypes.Config
+	Iface       netIface
+	Name        string
+	Addresses   []ifaceAddress
+	MTU         int
+	Config      wgtypes.Config
+	IsTestIface bool
 }
 
 var netmaker NCIface
@@ -29,10 +30,7 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
-	// FirewallMark is used for policy-based routing. Set to 0 (disabled) unless
-	// policy-based routing is specifically required. Using 0 is the standard
-	// practice when not using policy-based routing.
-	firewallMark := 0
+	firewallMark := host.FwMark
 	peers := config.Netclient().HostPeers
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
@@ -132,6 +130,9 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
 			egressRangeIPNet := config.ToIPNet(egressRange.Network)
+			if egressRange.Nat && egressRange.Mode == models.VirtualNAT && egressRange.VirtualNetwork != "" {
+				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNetwork)
+			}
 			if egressRangeIPNet.IP != nil {
 				if len(config.GetNodes()) == 1 {
 					if runtime.GOOS == "linux" {

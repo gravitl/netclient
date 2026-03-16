@@ -18,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
+	"github.com/gravitl/netmaker/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/nacl/box"
@@ -71,6 +72,7 @@ func initConfig() {
 	if runtime.GOOS == "darwin" {
 		nc.Name = "utun70"
 	}
+	nc.IsTestIface = true
 	if err := nc.Create(); err != nil {
 		slog.Error("failed to create interface, is wireguard installed?", "error", err)
 		os.Exit(1)
@@ -327,6 +329,22 @@ func checkConfig() {
 		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
+	if netclient.Location == "" || netclient.CountryCode == "" {
+		geoInfo, err := utils.GetGeoInfo()
+		if err == nil {
+			if netclient.Location != geoInfo.Location {
+				logger.Log(0, "setting location")
+				netclient.Location = geoInfo.Location
+				saveRequired = true
+			}
+			if netclient.CountryCode != geoInfo.CountryCode {
+				logger.Log(0, "setting country code")
+				netclient.CountryCode = geoInfo.CountryCode
+				saveRequired = true
+			}
+		}
+	}
+
 	if netclient.MacAddress == nil || netclient.MacAddress.String() == "" {
 		logger.Log(0, "setting macAddress")
 		mac, err := ncutils.GetMacAddr()

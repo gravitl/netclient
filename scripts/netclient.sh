@@ -1,33 +1,22 @@
 #!/bin/bash
 
-sh -c rc-status
-#Define cleanup
 cleanup() {
     ip rule delete pref 3000 2>/dev/null || true
     ip rule delete pref 2500 2>/dev/null || true
     ip rule delete pref 2000 2>/dev/null || true
-    echo "deleting interface" $net
-    if [ "${IFACE_NAME}" == "" ];then
+    if [ "${IFACE_NAME}" == "" ]; then
         IFACE_NAME="netmaker"
     fi
-    ip link del $IFACE_NAME 2>/dev/null || true
+    echo "deleting interface $IFACE_NAME"
+    ip link del "$IFACE_NAME" 2>/dev/null || true
 }
 
+trap 'cleanup' SIGTERM SIGINT
 
 VERBOSITY_CMD=""
 if [ "$VERBOSITY" != "" ]; then
     VERBOSITY_CMD="-v ${VERBOSITY}"
 fi
-
-# install netclient
-echo "[netclient] starting netclient daemon"
-/root/netclient $VERBOSITY_CMD install
-wait $!
-
-sleep 5
-
-# join network based on env vars
-echo "[netclient] joining network"
 
 TOKEN_CMD=""
 if [ "$TOKEN" != "" ]; then
@@ -40,51 +29,54 @@ if [ "${PORT}" != "" ]; then
 fi
 
 ENDPOINT_CMD=""
-if [ "${ENDPOINT}" != "" ];then
+if [ "${ENDPOINT}" != "" ]; then
     ENDPOINT_CMD="-e ${ENDPOINT}"
 fi
 
 ENDPOINT6_CMD=""
-if [ "${ENDPOINT6}" != "" ];then
+if [ "${ENDPOINT6}" != "" ]; then
     ENDPOINT6_CMD="-E ${ENDPOINT6}"
 fi
 
 MTU_CMD=""
-if [ "${MTU}" != "" ];then
+if [ "${MTU}" != "" ]; then
     MTU_CMD="-m ${MTU}"
 fi
 
 HOSTNAME_CMD=""
-if [ "${HOST_NAME}" != "" ];then
+if [ "${HOST_NAME}" != "" ]; then
     HOSTNAME_CMD="-o ${HOST_NAME}"
 fi
 
 STATIC_CMD=""
-if [ "${IS_STATIC}" != "" ];then
+if [ "${IS_STATIC}" != "" ]; then
     STATIC_CMD="-i ${IS_STATIC}"
 fi
 
 STATIC_PORT_CMD=""
-if [ "${IS_STATIC_PORT}" != "" ];then
+if [ "${IS_STATIC_PORT}" != "" ]; then
     STATIC_PORT_CMD="-j ${IS_STATIC_PORT}"
 fi
 
 IFACE_CMD=""
-if [ "${IFACE_NAME}" != "" ];then
+if [ "${IFACE_NAME}" != "" ]; then
     IFACE_CMD="-I ${IFACE_NAME}"
 fi
 
 FIREWALL_CMD=""
-if [ "${FIREWALL}" != "" ];then
-   FIREWALL_CMD="-f ${FIREWALL}"
+if [ "${FIREWALL}" != "" ]; then
+    FIREWALL_CMD="-f ${FIREWALL}"
 fi
 
-netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $STATIC_PORT_CMD $IFACE_CMD $ENDPOINT6_CMD $FIREWALL_CMD
-if [ $? -ne 0 ]; then { echo "Failed to join, quitting." ; exit 1; } fi
+# Join network
+echo "[netclient] joining network"
+JOIN_CMD="/root/netclient join $TOKEN_CMD $PORT_CMD $ENDPOINT_CMD $MTU_CMD $HOSTNAME_CMD $STATIC_CMD $STATIC_PORT_CMD $IFACE_CMD $ENDPOINT6_CMD $FIREWALL_CMD"
+$JOIN_CMD
+if [ $? -ne 0 ]; then
+    echo "Failed to join, quitting."
+    exit 1
+fi
 
-tail -f /var/log/netclient.log &
-
-#Trap SigTerm
-trap 'cleanup' SIGTERM
-
-wait $!
+# Run daemon directly as the foreground process
+echo "[netclient] starting netclient daemon"
+exec /root/netclient $VERBOSITY_CMD daemon

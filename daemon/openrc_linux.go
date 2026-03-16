@@ -57,6 +57,10 @@ func startOpenRC() error {
 }
 
 func stopOpenRC() error {
+	if !ncutils.FileExists("/etc/init.d/netclient") {
+		// Service file doesn't exist, nothing to stop
+		return nil
+	}
 	slog.Info("stopping netclient service")
 	_, err := ncutils.RunCmd("/sbin/rc-service netclient stop -s", false)
 	return err
@@ -64,7 +68,16 @@ func stopOpenRC() error {
 
 func restartOpenRC() error {
 	slog.Info("restarting netclient service")
-	return signalDaemon(syscall.SIGTERM)
+	if isDaemonProcess {
+		// Inside the daemon: self-signal for a soft restart via the main loop.
+		// Using os.Getpid() directly avoids the PID file which supervise-daemon
+		// may have overwritten with its own PID.
+		return syscall.Kill(os.Getpid(), syscall.SIGHUP)
+	}
+	// From a CLI process: go through the service manager so supervise-daemon
+	// properly cycles the daemon.
+	_, err := ncutils.RunCmd("/sbin/rc-service netclient restart", false)
+	return err
 }
 
 func removeOpenRC() error {

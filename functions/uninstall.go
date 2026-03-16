@@ -96,9 +96,6 @@ func deleteNodeFromServer(node *config.Node) error {
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
-	if err != nil {
-		return fmt.Errorf("could not read sever config %w", err)
-	}
 
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID.String())
 	headers := make(http.Header)

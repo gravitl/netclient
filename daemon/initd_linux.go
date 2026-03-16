@@ -44,6 +44,10 @@ func startInitd() error {
 
 // stopInitd - stops initd daemon
 func stopInitd() error {
+	if !ncutils.FileExists("/etc/init.d/netclient") {
+		// Service file doesn't exist, nothing to stop
+		return nil
+	}
 	slog.Info("stopping netclient service")
 	_, err := ncutils.RunCmd("/etc/init.d/netclient stop", true)
 	return err
