@@ -23,6 +23,6 @@ RUN apk add --no-cache --update \
 
 COPY --from=builder /app/netclient-app ./netclient
 COPY --from=builder /app/scripts/netclient.sh .
-RUN chmod 0755 netclient && chmod 0755 netclient.sh
+RUN chmod 0755 netclient && chmod 0755 netclient.sh && ln -s /root/netclient /usr/bin/netclient
 
 ENTRYPOINT ["/bin/bash", "./netclient.sh"]
