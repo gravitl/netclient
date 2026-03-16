@@ -19,6 +19,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	externalip "github.com/glendc/go-external-ip"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -135,6 +136,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	}
 	wg.Wait()
 	// clear cache
+	auth.CleanJwtToken()
+	networking.ClearPeerInfoCache()
 	cache.EndpointCache = sync.Map{}
 	cache.SkipEndpointCache = sync.Map{}
 	cache.EgressRouteCache = sync.Map{}

@@ -29,12 +29,17 @@ var (
 	//
 	PeerLocalEndpointConnTicker *time.Ticker
 
-	peerInfoCache      models.HostPeerInfo
-	peerInfoCacheMu    sync.RWMutex
-	peerInfoCacheReady bool
-
-	refreshMu sync.Mutex
+	peerInfoCache   models.HostPeerInfo
+	peerInfoCacheMu sync.RWMutex
+	refreshMu       sync.Mutex
 )
+
+// ClearPeerInfoCache resets the peer info cache so the next refresh fetches fresh data.
+func ClearPeerInfoCache() {
+	peerInfoCacheMu.Lock()
+	peerInfoCache = models.HostPeerInfo{}
+	peerInfoCacheMu.Unlock()
+}
 
 func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
 	parsePeerIp := net.ParseIP(peerIp)
@@ -151,14 +156,23 @@ func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
-// GetPeerInfo returns cached HostPeerInfo. Returns an error if cache is not yet populated.
+// GetPeerInfo returns cached HostPeerInfo. If cache is empty, fetches from server and populates it.
 func GetPeerInfo() (models.HostPeerInfo, error) {
 	peerInfoCacheMu.RLock()
-	defer peerInfoCacheMu.RUnlock()
-	if peerInfoCacheReady {
+	if peerInfoCache.NetworkPeerIDs != nil {
+		defer peerInfoCacheMu.RUnlock()
 		return peerInfoCache, nil
 	}
-	return models.HostPeerInfo{}, errors.New("peer info cache not ready")
+	peerInfoCacheMu.RUnlock()
+
+	RefreshPeerInfoCache()
+
+	peerInfoCacheMu.RLock()
+	defer peerInfoCacheMu.RUnlock()
+	if peerInfoCache.NetworkPeerIDs != nil {
+		return peerInfoCache, nil
+	}
+	return models.HostPeerInfo{}, errors.New("failed to fetch peer info")
 }
 
 // RefreshPeerInfoCache fetches fresh peer info from the server and updates the cache.
@@ -174,7 +188,6 @@ func RefreshPeerInfoCache() {
 	}
 	peerInfoCacheMu.Lock()
 	peerInfoCache = info
-	peerInfoCacheReady = true
 	peerInfoCacheMu.Unlock()
 	slog.Debug("peer info cache refreshed")
 }
