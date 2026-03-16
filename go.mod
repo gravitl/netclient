@@ -20,7 +20,7 @@ require (
 	github.com/matryer/is v1.4.1
 	github.com/miekg/dns v1.1.72
 	github.com/minio/selfupdate v0.6.0
-	github.com/sasha-s/go-deadlock v0.3.6
+	github.com/sasha-s/go-deadlock v0.3.7
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
