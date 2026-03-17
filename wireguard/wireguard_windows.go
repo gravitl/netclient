@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -29,6 +30,9 @@ func (nc *NCIface) Create() error {
 		idString := config.Netclient().Host.ID.String()
 		if idString == "" {
 			idString = config.DefaultHostID
+		}
+		if nc.IsTestIface {
+			idString = uuid.NewString()
 		}
 		windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
 		if err != nil {
