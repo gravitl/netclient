@@ -55,11 +55,9 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 		}
 
 	}
-	iface := netmaker.Iface // store current iface cfg before it gets overwritten
 	netmaker = NCIface{
 		Name:      ncutils.GetInterfaceName(),
 		MTU:       host.MTU,
-		Iface:     iface,
 		Addresses: addrs,
 		Config: wgtypes.Config{
 			PrivateKey:   &host.PrivateKey,

@@ -18,44 +18,39 @@ import (
 
 // TODO: update from netsh to a more programmatic approach.
 
-// NCIface.Create - makes a new Wireguard interface and sets given addresses
+// NCIface.Create - makes a new Wireguard interface and sets given addresses.
+// Any lingering adapter from a previous run (crash, force-kill, incomplete
+// cleanup) is destroyed first so we always start with a clean adapter that
+// binds the correct listen port.
 func (nc *NCIface) Create() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
+	ifaceName := ncutils.GetInterfaceName()
+
+	// If a stale adapter still exists (previous Close failed, process crashed,
+	// etc.) destroy it before creating a fresh one.
+	if stale, err := driver.OpenAdapter(ifaceName); err == nil {
+		slog.Warn("found lingering adapter, destroying before creating a new one")
+		if closeErr := stale.Close(); closeErr != nil {
+			slog.Error("failed to destroy lingering adapter", "error", closeErr)
+		}
+	}
+
+	slog.Info("creating Windows tunnel")
+	idString := config.Netclient().Host.ID.String()
+	if idString == "" {
+		idString = config.DefaultHostID
+	}
+	windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
 	if err != nil {
-		slog.Info("creating Windows tunnel")
-		idString := config.Netclient().Host.ID.String()
-		if idString == "" {
-			idString = config.DefaultHostID
-		}
-		windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
-		if err != nil {
-			slog.Error("generating guid error: ", "error", err)
-			return err
-		}
-		adapter, err = driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
-		if err != nil {
-			// Check if adapter already exists - try to open it again
-			if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Cannot create a file when that file already exists") {
-				slog.Info("adapter already exists, attempting to open it")
-				// Retry opening the adapter - it might have been created by another process
-				var openErr error
-				adapter, openErr = driver.OpenAdapter(ncutils.GetInterfaceName())
-				if openErr != nil {
-					slog.Error("creating adapter error (adapter exists but cannot be opened): ", "error", err, "openError", openErr)
-					return fmt.Errorf("adapter exists but cannot be opened: %w (original error: %v)", openErr, err)
-				}
-				slog.Info("successfully opened existing adapter")
-				err = nil // Clear the error since we successfully opened the adapter
-			} else {
-				slog.Error("creating adapter error: ", "error", err)
-				return err
-			}
-		}
-	} else {
-		slog.Info("re-using existing adapter")
+		slog.Error("generating guid error: ", "error", err)
+		return err
+	}
+	adapter, err := driver.CreateAdapter(ifaceName, "WireGuard", &windowsGUID)
+	if err != nil {
+		slog.Error("creating adapter error: ", "error", err)
+		return err
 	}
 
 	slog.Info("created Windows tunnel")
@@ -509,14 +504,17 @@ func restoreInternetGwV4() (err error) {
 	return config.WriteNetclientConfig()
 }
 
-// NCIface.Close - closes the managed WireGuard interface
+// NCIface.Close - destroys the managed WireGuard adapter and cleans up routes.
 func (nc *NCIface) Close() {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-	err := nc.Iface.Close()
-	if err != nil {
+	if nc.Iface == nil {
+		return
+	}
+	if err := nc.Iface.Close(); err != nil {
 		logger.Log(0, "error closing netclient interface -", err.Error())
 	}
+	nc.Iface = nil
 
 	// clean up egress range routes
 	for i := range nc.Addresses {
