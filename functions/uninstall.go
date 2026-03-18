@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"time"
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
@@ -75,6 +76,9 @@ func resetInterfaceUninstall(faults []error) []error {
 	defer mNMutex.Unlock()
 	nc := wireguard.GetInterface()
 	nc.Close()
+	if runtime.GOOS == "windows" {
+		time.Sleep(500 * time.Millisecond)
+	}
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	if err := nc.Configure(); err != nil {

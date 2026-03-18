@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
+	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -97,13 +100,49 @@ func UpdatePeer(p *wgtypes.PeerConfig) error {
 
 func apply(c *wgtypes.Config) error {
 	slog.Debug("applying wireguard config")
-	wg, err := wgctrl.New()
-	if err != nil {
-		return fmt.Errorf("wgctrl %w", err)
-	}
-	defer wg.Close()
+	ifaceName := ncutils.GetInterfaceName()
 
-	return wg.ConfigureDevice(ncutils.GetInterfaceName(), *c)
+	const maxRetries = 3
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		wg, err := wgctrl.New()
+		if err != nil {
+			if runtime.GOOS == "windows" && isDeviceBusyError(err) {
+				lastErr = err
+				if attempt < maxRetries {
+					slog.Warn("wgctrl busy, retrying", "attempt", attempt+1, "error", err)
+					time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+				}
+				continue
+			}
+			return fmt.Errorf("wgctrl %w", err)
+		}
+		err = wg.ConfigureDevice(ifaceName, *c)
+		wg.Close()
+		if err == nil {
+			return nil
+		}
+		if runtime.GOOS == "windows" && isDeviceBusyError(err) {
+			lastErr = err
+			if attempt < maxRetries {
+				slog.Warn("ConfigureDevice busy, retrying", "attempt", attempt+1, "error", err)
+				time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+			}
+			continue
+		}
+		return err
+	}
+	return fmt.Errorf("ConfigureDevice failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func isDeviceBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "being used by another process") ||
+		strings.Contains(msg, "access is denied") ||
+		strings.Contains(msg, "The process cannot access the file")
 }
 
 // returns if better endpoint has been calculated for this peer already
@@ -140,6 +179,8 @@ func EndpointDetectedAlready(peerPubKey string) bool {
 }
 
 func GetPeersFromDevice(ifaceName string) (map[string]wgtypes.Peer, error) {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	peerMap := make(map[string]wgtypes.Peer)
 	wg, err := wgctrl.New()
 	if err != nil {
@@ -163,6 +204,8 @@ func GetPeersFromDevice(ifaceName string) (map[string]wgtypes.Peer, error) {
 
 // GetPeer - gets the peerinfo from the wg interface
 func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	wg, err := wgctrl.New()
 	if err != nil {
 		return wgtypes.Peer{}, err
@@ -183,6 +226,23 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 		}
 	}
 	return wgtypes.Peer{}, fmt.Errorf("peer not found")
+}
+
+// GetDeviceListenPort returns the current listen port from the WireGuard device.
+// Returns 0 and an error if the device cannot be queried.
+func GetDeviceListenPort() (int, error) {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	wg, err := wgctrl.New()
+	if err != nil {
+		return 0, err
+	}
+	defer wg.Close()
+	dev, err := wg.Device(ncutils.GetInterfaceName())
+	if err != nil {
+		return 0, err
+	}
+	return dev.ListenPort, nil
 }
 
 // GetOriginalDefaulGw - fetches system's original default gw
