@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -572,6 +573,9 @@ func resetInterfaceFunc() {
 	defer mNMutex.Unlock()
 	nc := wireguard.GetInterface()
 	nc.Close()
+	if runtime.GOOS == "windows" {
+		time.Sleep(500 * time.Millisecond)
+	}
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	if err := nc.Configure(); err != nil {

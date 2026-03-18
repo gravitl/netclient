@@ -277,6 +277,8 @@ func GetInterface() *NCIface {
 
 // NCIface.UpdatePeer - Updates Peers from provided PeerConfig
 func (n *NCIface) UpdatePeer(p wgtypes.PeerConfig) {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
 	peers := []wgtypes.PeerConfig{}
 	peers = append(peers, p)
 	n.Config.ReplacePeers = false

@@ -184,12 +184,23 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if !netclientCfg.IsStaticPort {
-		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
-			slog.Warn("no free ports available for use by netclient", "error", err.Error())
-		} else if freeport != netclientCfg.ListenPort {
-			slog.Info("port has changed", "old port", netclientCfg.ListenPort, "new port", freeport)
-			netclientCfg.ListenPort = freeport
-			updateConfig = true
+		// Check if the WireGuard adapter already owns the desired port before
+		// doing a UDP bind test. On Windows the adapter from a previous run may
+		// still be alive, and its port looks "busy" to net.ListenUDP even though
+		// it belongs to us.
+		devicePort, devErr := wireguard.GetDeviceListenPort()
+		portOwnedByDevice := devErr == nil && devicePort == netclientCfg.ListenPort && devicePort != 0
+
+		if !portOwnedByDevice {
+			if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
+				slog.Warn("no free ports available for use by netclient", "error", err.Error())
+			} else if freeport != netclientCfg.ListenPort {
+				slog.Info("port has changed", "old port", netclientCfg.ListenPort, "new port", freeport)
+				netclientCfg.ListenPort = freeport
+				updateConfig = true
+			}
+		} else {
+			slog.Info("listen port already held by wireguard adapter, keeping it", "port", devicePort)
 		}
 
 		if netclientCfg.WgPublicListenPort == 0 {
