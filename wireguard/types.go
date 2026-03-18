@@ -151,8 +151,7 @@ func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
 			if network.Contains(ipNet.IP) || ipNet.Contains(network.IP) {
 				return true
 			}
-				return true
-			}
+
 		}
 	}
 	return false
