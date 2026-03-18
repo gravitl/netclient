@@ -13,6 +13,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -124,6 +125,50 @@ func RemoveEgressRoutes() {
 	cache.EgressRouteCache = sync.Map{}
 }
 
+// isNetworkPresentOnLocalInterface checks whether the given network overlaps
+// with any address already assigned to a local network interface (excluding
+// the netmaker WG interface). Overlap means the egress network contains a
+// local interface IP, which would cause a routing conflict.
+func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
+	ncIfaceName := ncutils.GetInterfaceName()
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range ifaces {
+		if iface.Name == ncIfaceName {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if network.Contains(ipNet.IP) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func filterConflictingRoutes(addrs []ifaceAddress) []ifaceAddress {
+	filtered := make([]ifaceAddress, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.Network.IP != nil && isNetworkPresentOnLocalInterface(addr.Network) {
+			slog.Warn("skipping egress route that conflicts with local interface address",
+				"network", addr.Network.String())
+			continue
+		}
+		filtered = append(filtered, addr)
+	}
+	return filtered
+}
+
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
@@ -209,6 +254,8 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 		}
 	}
 
+	addrs = filterConflictingRoutes(addrs)
+
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		isSame := checkEgressRoutes(addrs, addrs1.([]ifaceAddress))
 
@@ -228,9 +275,8 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 }
 
 func SetRoutesFromCache() {
-	//egress route
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
-		SetRoutes(addrs1.([]ifaceAddress))
+		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
 	//inetGW route
 	gwIp := config.Netclient().CurrGwNmIP
