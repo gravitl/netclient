@@ -103,12 +103,16 @@ func apply(c *wgtypes.Config) error {
 	ifaceName := ncutils.GetInterfaceName()
 
 	const maxRetries = 3
+	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		wg, err := wgctrl.New()
 		if err != nil {
-			if runtime.GOOS == "windows" && attempt < maxRetries && isDeviceBusyError(err) {
-				slog.Warn("wgctrl busy, retrying", "attempt", attempt+1, "error", err)
-				time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+			if runtime.GOOS == "windows" && isDeviceBusyError(err) {
+				lastErr = err
+				if attempt < maxRetries {
+					slog.Warn("wgctrl busy, retrying", "attempt", attempt+1, "error", err)
+					time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+				}
 				continue
 			}
 			return fmt.Errorf("wgctrl %w", err)
@@ -118,14 +122,17 @@ func apply(c *wgtypes.Config) error {
 		if err == nil {
 			return nil
 		}
-		if runtime.GOOS == "windows" && attempt < maxRetries && isDeviceBusyError(err) {
-			slog.Warn("ConfigureDevice busy, retrying", "attempt", attempt+1, "error", err)
-			time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+		if runtime.GOOS == "windows" && isDeviceBusyError(err) {
+			lastErr = err
+			if attempt < maxRetries {
+				slog.Warn("ConfigureDevice busy, retrying", "attempt", attempt+1, "error", err)
+				time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+			}
 			continue
 		}
 		return err
 	}
-	return fmt.Errorf("ConfigureDevice failed after %d retries", maxRetries)
+	return fmt.Errorf("ConfigureDevice failed after %d retries: %w", maxRetries, lastErr)
 }
 
 func isDeviceBusyError(err error) bool {
