@@ -48,16 +48,6 @@ if [ "${HOST_NAME}" != "" ]; then
     HOSTNAME_CMD="-o ${HOST_NAME}"
 fi
 
-STATIC_CMD=""
-if [ "${IS_STATIC}" != "" ]; then
-    STATIC_CMD="-i ${IS_STATIC}"
-fi
-
-STATIC_PORT_CMD=""
-if [ "${IS_STATIC_PORT}" != "" ]; then
-    STATIC_PORT_CMD="-j ${IS_STATIC_PORT}"
-fi
-
 IFACE_CMD=""
 if [ "${IFACE_NAME}" != "" ]; then
     IFACE_CMD="-I ${IFACE_NAME}"

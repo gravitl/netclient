@@ -39,10 +39,6 @@ func setInterfaceFields(cmd *cobra.Command) {
 		config.Netclient().ListenPort = port
 	}
 
-	if isStaticPort, err := cmd.Flags().GetBool(registerFlags.StaticPort); err == nil {
-		config.Netclient().IsStaticPort = isStaticPort
-	}
-
 	if ifaceName, err := cmd.Flags().GetString(registerFlags.Interface); err == nil && ifaceName != "" {
 		if !validateIface(ifaceName) {
 			fmt.Println("invalid interface name", ifaceName)
@@ -58,7 +54,6 @@ func setInterfaceFields(cmd *cobra.Command) {
 
 func init() {
 	installCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
-	installCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
 	installCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	installCmd.Flags().IntP(registerFlags.FwMark, "F", 0, "sets firewall mark for wireguard traffic")
 	rootCmd.AddCommand(installCmd)

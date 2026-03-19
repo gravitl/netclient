@@ -31,8 +31,6 @@ var registerFlags = struct {
 	EndpointIP6 string
 	Port        string
 	MTU         string
-	StaticPort  string
-	Static      string
 	Interface   string
 	Name        string
 	FwMark      string
@@ -46,8 +44,6 @@ var registerFlags = struct {
 	EndpointIP6: "endpoint-ip6",
 	Port:        "port",
 	MTU:         "mtu",
-	StaticPort:  "static-port",
-	Static:      "static-endpoint",
 	Name:        "name",
 	Interface:   "interface",
 	Firewall:    "firewall",
@@ -92,17 +88,17 @@ func setHostFields(cmd *cobra.Command) {
 			os.Exit(1)
 		}
 		config.Netclient().ListenPort = port
-	}
-	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
-		config.Netclient().IsStatic = isStatic
+		config.Netclient().IsStaticPort = true
 	}
 	endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP)
 	if err == nil && endpointIP != "" {
 		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
+		config.Netclient().IsStatic = true
 	}
 	endpointIP6, err := cmd.Flags().GetString(registerFlags.EndpointIP6)
 	if err == nil && endpointIP6 != "" {
 		config.Netclient().EndpointIPv6 = net.ParseIP(endpointIP6)
+		config.Netclient().IsStatic = true
 	}
 	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
 		config.Netclient().MTU = mtu
@@ -116,9 +112,6 @@ func setHostFields(cmd *cobra.Command) {
 			os.Exit(1)
 		}
 		config.Netclient().Interface = ifaceName
-	}
-	if isStaticPort, err := cmd.Flags().GetBool(registerFlags.StaticPort); err == nil {
-		config.Netclient().IsStaticPort = isStaticPort
 	}
 	if config.Netclient().IsStaticPort && port == 0 {
 		fmt.Println("port from command: ", port)
@@ -223,8 +216,6 @@ func init() {
 	registerCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
 	registerCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	registerCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
-	registerCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
-	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	registerCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	registerCmd.Flags().StringP(registerFlags.Firewall, "f", "", "selects firewall to use on host")
