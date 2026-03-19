@@ -43,6 +43,7 @@ var registerFlags = struct {
 	Network:     "net",
 	AllNetworks: "all-networks",
 	EndpointIP:  "endpoint-ip",
+	EndpointIP6: "endpoint-ip6",
 	Port:        "port",
 	MTU:         "mtu",
 	StaticPort:  "static-port",
@@ -224,7 +225,6 @@ func init() {
 	registerCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
 	registerCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	registerCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
-	registerCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
 	registerCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
 	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")

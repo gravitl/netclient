@@ -51,7 +51,6 @@ func init() {
 	joinCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
 	joinCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	joinCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
-	joinCmd.Flags().StringP(registerFlags.MTU, "m", "", "sets MTU on host")
 	joinCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
 	joinCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	joinCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
