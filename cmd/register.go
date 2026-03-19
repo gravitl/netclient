@@ -99,12 +99,10 @@ func setHostFields(cmd *cobra.Command) {
 	endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP)
 	if err == nil && endpointIP != "" {
 		config.Netclient().EndpointIP = net.ParseIP(endpointIP)
-		config.Netclient().IsStatic = true
 	}
 	endpointIP6, err := cmd.Flags().GetString(registerFlags.EndpointIP6)
 	if err == nil && endpointIP6 != "" {
 		config.Netclient().EndpointIPv6 = net.ParseIP(endpointIP6)
-		config.Netclient().IsStatic = true
 	}
 	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
 		config.Netclient().MTU = mtu
