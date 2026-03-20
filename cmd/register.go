@@ -113,16 +113,6 @@ func setHostFields(cmd *cobra.Command) {
 		}
 		config.Netclient().Interface = ifaceName
 	}
-	if config.Netclient().IsStaticPort && port == 0 {
-		fmt.Println("port from command: ", port)
-		fmt.Println("error: static port is enabled, please specify valid port with -p option")
-		os.Exit(1)
-	}
-	if config.Netclient().IsStatic && (endpointIP == "" && endpointIP6 == "") {
-		fmt.Println("endpoint from command: ", endpointIP)
-		fmt.Println("error: static endpoint is enabled, please specify valid endpoint ip with -e option")
-		os.Exit(1)
-	}
 	if firewall, err := cmd.Flags().GetString(registerFlags.Firewall); err == nil {
 		if ncutils.IsLinux() && (firewall == models.FIREWALL_IPTABLES || firewall == models.FIREWALL_NFTABLES) {
 			// check if firewall is present
