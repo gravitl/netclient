@@ -37,6 +37,7 @@ func setInterfaceFields(cmd *cobra.Command) {
 			os.Exit(1)
 		}
 		config.Netclient().ListenPort = port
+		config.Netclient().IsStaticPort = true
 	}
 
 	if ifaceName, err := cmd.Flags().GetString(registerFlags.Interface); err == nil && ifaceName != "" {
@@ -55,7 +56,7 @@ func setInterfaceFields(cmd *cobra.Command) {
 func init() {
 	installCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
 	installCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
-	installCmd.Flags().IntP(registerFlags.FwMark, "F", 0, "sets firewall mark for wireguard traffic")
+	installCmd.Flags().IntP(registerFlags.FwMark, "F", 0, "sets firewall mark for netmaker traffic")
 	rootCmd.AddCommand(installCmd)
 
 	// Here you will define your flags and configuration settings.

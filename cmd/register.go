@@ -30,7 +30,6 @@ var registerFlags = struct {
 	EndpointIP  string
 	EndpointIP6 string
 	Port        string
-	MTU         string
 	Interface   string
 	Name        string
 	FwMark      string
@@ -43,7 +42,6 @@ var registerFlags = struct {
 	EndpointIP:  "endpoint-ip",
 	EndpointIP6: "endpoint-ip6",
 	Port:        "port",
-	MTU:         "mtu",
 	Name:        "name",
 	Interface:   "interface",
 	Firewall:    "firewall",
@@ -99,9 +97,6 @@ func setHostFields(cmd *cobra.Command) {
 	if err == nil && endpointIP6 != "" {
 		config.Netclient().EndpointIPv6 = net.ParseIP(endpointIP6)
 		config.Netclient().IsStatic = true
-	}
-	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
-		config.Netclient().MTU = mtu
 	}
 	if hostName, err := cmd.Flags().GetString(registerFlags.Name); err == nil && hostName != "" {
 		config.Netclient().Name = hostName

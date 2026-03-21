@@ -38,11 +38,6 @@ if [ "${ENDPOINT6}" != "" ]; then
     ENDPOINT6_CMD="-E ${ENDPOINT6}"
 fi
 
-MTU_CMD=""
-if [ "${MTU}" != "" ]; then
-    MTU_CMD="-m ${MTU}"
-fi
-
 HOSTNAME_CMD=""
 if [ "${HOST_NAME}" != "" ]; then
     HOSTNAME_CMD="-o ${HOST_NAME}"
