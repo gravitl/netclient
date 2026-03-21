@@ -64,4 +64,4 @@ fi
 
 # Run daemon directly as the foreground process
 echo "[netclient] starting netclient daemon"
-exec /root/netclient $VERBOSITY_CMD daemon
+exec /root/netclient daemon $VERBOSITY_CMD
