@@ -30,7 +30,7 @@ type NodeIterator func(func(node *models.CommonNode) bool)
 
 type FlowEventFilter func(flow *ct.Flow) bool
 
-type ParticipantEnricher func(addr netip.Addr) *pbflow.FlowParticipant
+type ParticipantEnricher func(addr netip.Addr, startTime time.Time) *pbflow.FlowParticipant
 
 type FlowTracker struct {
 	hostID              uuid.UUID
@@ -194,8 +194,8 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 		IcmpType:    uint32(icmpType),
 		IcmpCode:    uint32(icmpCode),
 		Direction:   direction,
-		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress),
-		Dst:         c.participantEnricher(flow.TupleOrig.IP.DestinationAddress),
+		Src:         c.participantEnricher(flow.TupleOrig.IP.SourceAddress, startTime),
+		Dst:         c.participantEnricher(flow.TupleOrig.IP.DestinationAddress, startTime),
 		StartTsMs:   startTime.UnixMilli(),
 		EndTsMs:     flow.Timestamp.Stop.UnixMilli(),
 		BytesSent:   sentCounter.Bytes,

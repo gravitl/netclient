@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
@@ -65,7 +66,10 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 
 	ipTicker = time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
 	defer ipTicker.Stop()
-
+	err := hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
+	if err != nil {
+		logger.Log(0, "could not publish endpoint change", err.Error())
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -227,10 +231,10 @@ func callPublishMetrics(fallback bool) {
 				if metricsPort == 0 {
 					metricsPort = 51821
 				}
-				if _, ok := response.NetworkPeerIDs[models.NetworkID(node.Network)]; !ok {
+				if _, ok := response.NetworkPeerIDs[schema.NetworkID(node.Network)]; !ok {
 					continue
 				}
-				go publishMetrics(&node, metricsPort, response.NetworkPeerIDs[models.NetworkID(node.Network)], fallback)
+				go publishMetrics(&node, metricsPort, response.NetworkPeerIDs[schema.NetworkID(node.Network)], fallback)
 			}
 		}
 	}

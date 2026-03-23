@@ -15,7 +15,6 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -394,6 +393,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
+	if server.IsPro {
+		go networking.RefreshPeerInfoCache()
+	}
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -471,7 +473,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
-		fmt.Println("======> RECEIVED JoinHostToNetwork")
+		slog.Info("received JoinHostToNetwork")
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
 			CommonNode: commonNode,
@@ -759,7 +761,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
-			auth.CleanJwtToken()
+			//auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
@@ -962,6 +964,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+
+	if server.IsPro {
+		go networking.RefreshPeerInfoCache()
+	}
 }
 
 func CheckEgressDomainUpdates() {
@@ -1089,15 +1095,9 @@ func checkIPConnectivity(ips []string) bool {
 		// Try common ports that might be open (80, 443, 22)
 		ports := []int{80, 443, 22}
 		for _, port := range ports {
-			var address string
-			var network string
-			if ip.To4() != nil {
-				// IPv4 address
-				address = fmt.Sprintf("%s:%d", ipStr, port)
-				network = "tcp4"
-			} else {
-				// IPv6 address - must be wrapped in brackets
-				address = fmt.Sprintf("[%s]:%d", ipStr, port)
+			address := net.JoinHostPort(ipStr, fmt.Sprintf("%d", port))
+			network := "tcp4"
+			if ip.To4() == nil {
 				network = "tcp6"
 			}
 			conn, err := net.DialTimeout(network, address, 3*time.Second)

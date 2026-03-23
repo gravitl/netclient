@@ -222,12 +222,7 @@ func removeDefaultRoutesOnIGWPeer(igw wgtypes.Peer) error {
 }
 
 func isHostReachable(ip net.IP, port int) bool {
-	var address string
-	if ip.To4() != nil {
-		address = fmt.Sprintf("%s:%d", ip.String(), port)
-	} else {
-		address = fmt.Sprintf("[%s]:%d", ip.String(), port)
-	}
+	address := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 	conn, err := net.DialTimeout("tcp", address, IGWDialTimeout)
 	if err != nil {
 		if isEconnRefused(err) {

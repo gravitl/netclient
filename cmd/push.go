@@ -22,10 +22,8 @@ var pushCmd = &cobra.Command{
 
 func init() {
 	pushCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
+	pushCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	pushCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
-	pushCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
-	pushCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
-	pushCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	pushCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	pushCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	pushCmd.Flags().StringP(registerFlags.Firewall, "f", "", "selects firewall to use on host: iptables/nftables")
