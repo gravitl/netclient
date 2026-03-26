@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/exp/slog"
 )
 
 type openresolvManager struct{}
@@ -18,9 +20,8 @@ func newOpenresolvManager(opts ...ManagerOption) (*openresolvManager, error) {
 
 	if options.cleanupResidual {
 		for _, iface := range options.residualInterfaces {
-			err := o.resetConfig(iface)
-			if err != nil {
-				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
+			if err := o.resetConfig(iface); err != nil {
+				slog.Warn("failed to cleanup residual dns config, continuing", "interface", iface, "error", err)
 			}
 		}
 	}

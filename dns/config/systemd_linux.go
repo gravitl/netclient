@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -25,9 +27,8 @@ func newSystemdStubManager(opts ...ManagerOption) (*systemdStubManager, error) {
 
 	if options.cleanupResidual {
 		for _, iface := range options.residualInterfaces {
-			err := s.resetConfig(iface)
-			if err != nil {
-				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
+			if err := s.resetConfig(iface); err != nil {
+				slog.Warn("failed to cleanup residual dns config, continuing", "interface", iface, "error", err)
 			}
 		}
 	}
@@ -107,8 +108,7 @@ func (s *systemdStubManager) Configure(iface string, config Config) error {
 func (s *systemdStubManager) resetConfig(iface string) error {
 	out, err := exec.Command("resolvectl", "dns", iface, "").CombinedOutput()
 	if err != nil {
-		out := strings.TrimSpace(string(out))
-		if out == fmt.Sprintf("Failed to resolve interface \"%s\": No such device", iface) {
+		if isInterfaceNotFoundError(string(out)) {
 			return nil
 		}
 
@@ -117,8 +117,7 @@ func (s *systemdStubManager) resetConfig(iface string) error {
 
 	out, err = exec.Command("resolvectl", "domain", iface, "").CombinedOutput()
 	if err != nil {
-		out := strings.TrimSpace(string(out))
-		if out == fmt.Sprintf("Failed to resolve domain \"%s\": No such device", iface) {
+		if isInterfaceNotFoundError(string(out)) {
 			return nil
 		}
 
@@ -126,6 +125,14 @@ func (s *systemdStubManager) resetConfig(iface string) error {
 	}
 
 	return nil
+}
+
+func isInterfaceNotFoundError(output string) bool {
+	out := strings.TrimSpace(strings.ToLower(output))
+	return strings.Contains(out, "no such device") ||
+		strings.Contains(out, "no such link") ||
+		strings.Contains(out, "does not exist") ||
+		strings.Contains(out, "unknown interface")
 }
 
 func (s *systemdStubManager) flushChanges() error {

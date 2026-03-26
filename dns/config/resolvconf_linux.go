@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -32,9 +34,8 @@ func newResolvconfManager(opts ...ManagerOption) (*resolvconfManager, error) {
 
 	if options.cleanupResidual {
 		for _, iface := range options.residualInterfaces {
-			err := r.resetConfig(iface)
-			if err != nil {
-				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
+			if err := r.resetConfig(iface); err != nil {
+				slog.Warn("failed to cleanup residual dns config, continuing", "interface", iface, "error", err)
 			}
 		}
 	}
