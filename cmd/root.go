@@ -18,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
+	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -368,7 +369,9 @@ func checkConfig() {
 		if err != nil {
 			logger.FatalLog("failed to generate wg key", err.Error())
 		}
-		netclient.PublicKey = netclient.PrivateKey.PublicKey()
+		netclient.PublicKey = schema.WgKey{
+			Key: netclient.PrivateKey.PublicKey(),
+		}
 		saveRequired = true
 	}
 	if netclient.Interface == "" {

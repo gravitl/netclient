@@ -19,6 +19,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	externalip "github.com/glendc/go-external-ip"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -33,6 +34,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -58,6 +60,7 @@ type cachedMessage struct {
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
+	daemon.SetDaemonMode()
 	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
@@ -134,6 +137,8 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	}
 	wg.Wait()
 	// clear cache
+	auth.CleanJwtToken()
+	networking.ClearPeerInfoCache()
 	cache.EndpointCache = sync.Map{}
 	cache.SkipEndpointCache = sync.Map{}
 	cache.EgressRouteCache = sync.Map{}
@@ -182,6 +187,15 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err != nil {
 		logger.Log(0, "error initializing dns manager:", err.Error())
 	}
+	slog.Info("configuring netmaker wireguard interface")
+	var pullresp models.HostPull
+	var pullErr error
+	if server != nil && server.API != "" {
+		pullresp, _, _, pullErr = Pull(false, true)
+		if pullErr != nil {
+			slog.Error("fail to pull config from server", "error", pullErr.Error())
+		}
+	}
 
 	if !netclientCfg.IsStaticPort {
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
@@ -189,11 +203,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		} else if freeport != netclientCfg.ListenPort {
 			slog.Info("port has changed", "old port", netclientCfg.ListenPort, "new port", freeport)
 			netclientCfg.ListenPort = freeport
-			updateConfig = true
-		}
-
-		if netclientCfg.WgPublicListenPort == 0 {
-			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
 
@@ -211,8 +220,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
-			netclientCfg.EndpointIP = nil
-			updateConfig = true
+			if netclientCfg.EndpointIP != nil {
+				config.HostPublicIP = netclientCfg.EndpointIP
+				slog.Info("seeded HostPublicIP from stored endpoint", "ip", netclientCfg.EndpointIP)
+			}
 		}
 		if netclientCfg.NatType == "" {
 			netclientCfg.NatType = config.HostNatType
@@ -230,7 +241,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			updateConfig = true
 		} else {
 			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
-			netclientCfg.EndpointIPv6 = nil
+			if netclientCfg.EndpointIPv6 != nil {
+				config.HostPublicIP6 = netclientCfg.EndpointIPv6
+				slog.Info("seeded HostPublicIP6 from stored endpoint", "ip", netclientCfg.EndpointIPv6)
+			}
+		}
+		if netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
+			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
 			updateConfig = true
 		}
 
@@ -248,11 +265,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			slog.Warn("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
-	slog.Info("configuring netmaker wireguard interface")
-	pullresp, _, _, pullErr := Pull(false, true)
-	if pullErr != nil {
-		slog.Error("fail to pull config from server", "error", pullErr.Error())
-	}
+
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
@@ -663,7 +676,9 @@ func UpdateKeys() error {
 		slog.Error("error generating privatekey ", "error", err)
 		return err
 	}
-	host.PublicKey = host.PrivateKey.PublicKey()
+	host.PublicKey = schema.WgKey{
+		Key: host.PrivateKey.PublicKey(),
+	}
 	if err := config.WriteNetclientConfig(); err != nil {
 		slog.Error("error saving netclient config:", "error", err)
 	}

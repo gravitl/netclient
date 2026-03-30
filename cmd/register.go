@@ -30,9 +30,6 @@ var registerFlags = struct {
 	EndpointIP  string
 	EndpointIP6 string
 	Port        string
-	MTU         string
-	StaticPort  string
-	Static      string
 	Interface   string
 	Name        string
 	FwMark      string
@@ -43,10 +40,8 @@ var registerFlags = struct {
 	Network:     "net",
 	AllNetworks: "all-networks",
 	EndpointIP:  "endpoint-ip",
+	EndpointIP6: "endpoint-ip6",
 	Port:        "port",
-	MTU:         "mtu",
-	StaticPort:  "static-port",
-	Static:      "static-endpoint",
 	Name:        "name",
 	Interface:   "interface",
 	Firewall:    "firewall",
@@ -91,9 +86,7 @@ func setHostFields(cmd *cobra.Command) {
 			os.Exit(1)
 		}
 		config.Netclient().ListenPort = port
-	}
-	if isStatic, err := cmd.Flags().GetBool(registerFlags.Static); err == nil {
-		config.Netclient().IsStatic = isStatic
+		config.Netclient().IsStaticPort = true
 	}
 	endpointIP, err := cmd.Flags().GetString(registerFlags.EndpointIP)
 	if err == nil && endpointIP != "" {
@@ -105,9 +98,6 @@ func setHostFields(cmd *cobra.Command) {
 		config.Netclient().EndpointIPv6 = net.ParseIP(endpointIP6)
 		config.Netclient().IsStatic = true
 	}
-	if mtu, err := cmd.Flags().GetInt(registerFlags.MTU); err == nil && mtu != 0 {
-		config.Netclient().MTU = mtu
-	}
 	if hostName, err := cmd.Flags().GetString(registerFlags.Name); err == nil && hostName != "" {
 		config.Netclient().Name = hostName
 	}
@@ -117,19 +107,6 @@ func setHostFields(cmd *cobra.Command) {
 			os.Exit(1)
 		}
 		config.Netclient().Interface = ifaceName
-	}
-	if isStaticPort, err := cmd.Flags().GetBool(registerFlags.StaticPort); err == nil {
-		config.Netclient().IsStaticPort = isStaticPort
-	}
-	if config.Netclient().IsStaticPort && port == 0 {
-		fmt.Println("port from command: ", port)
-		fmt.Println("error: static port is enabled, please specify valid port with -p option")
-		os.Exit(1)
-	}
-	if config.Netclient().IsStatic && (endpointIP == "" && endpointIP6 == "") {
-		fmt.Println("endpoint from command: ", endpointIP)
-		fmt.Println("error: static endpoint is enabled, please specify valid endpoint ip with -e option")
-		os.Exit(1)
 	}
 	if firewall, err := cmd.Flags().GetString(registerFlags.Firewall); err == nil {
 		if ncutils.IsLinux() && (firewall == models.FIREWALL_IPTABLES || firewall == models.FIREWALL_NFTABLES) {
@@ -224,9 +201,6 @@ func init() {
 	registerCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
 	registerCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	registerCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
-	registerCmd.Flags().IntP(registerFlags.MTU, "m", 0, "sets MTU on host")
-	registerCmd.Flags().BoolP(registerFlags.StaticPort, "j", false, "flag to set host as static port")
-	registerCmd.Flags().BoolP(registerFlags.Static, "i", false, "flag to set host as static endpoint")
 	registerCmd.Flags().StringP(registerFlags.Name, "o", "", "sets host name")
 	registerCmd.Flags().StringP(registerFlags.Interface, "I", "", "sets netmaker interface to use on host")
 	registerCmd.Flags().StringP(registerFlags.Firewall, "f", "", "selects firewall to use on host")

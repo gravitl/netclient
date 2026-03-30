@@ -17,6 +17,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 
 	"golang.org/x/exp/slog"
 )
@@ -24,19 +25,19 @@ import (
 var (
 	autoRelayCacheMutex = &sync.Mutex{}
 	currentNodesCache   = make(map[string]models.Node)
-	autoRelayCache      = make(map[models.NetworkID][]models.Node)
-	gwNodesCache        = make(map[models.NetworkID][]models.Node)
-	networkMetricsCache = make(map[models.NetworkID]map[string]int64) // Cached metrics per network
+	autoRelayCache      = make(map[schema.NetworkID][]models.Node)
+	gwNodesCache        = make(map[schema.NetworkID][]models.Node)
+	networkMetricsCache = make(map[schema.NetworkID]map[string]int64) // Cached metrics per network
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
 )
 
-func getAutoRelayNodes(network models.NetworkID) []models.Node {
+func getAutoRelayNodes(network schema.NetworkID) []models.Node {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	return autoRelayCache[network]
 }
-func getGwNodes(network models.NetworkID) []models.Node {
+func getGwNodes(network schema.NetworkID) []models.Node {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	return gwNodesCache[network]
@@ -47,13 +48,13 @@ func getCurrNode(nodeID string) models.Node {
 	return currentNodesCache[nodeID]
 }
 
-func getNetworkMetrics(network models.NetworkID) map[string]int64 {
+func getNetworkMetrics(network schema.NetworkID) map[string]int64 {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	return networkMetricsCache[network]
 }
 
-func refreshNetworkMetrics(network models.NetworkID, metricPort int) map[string]int64 {
+func refreshNetworkMetrics(network schema.NetworkID, metricPort int) map[string]int64 {
 	nodes := getAutoRelayNodes(network)
 	if len(nodes) == 0 {
 		return map[string]int64{}
@@ -70,7 +71,7 @@ func refreshNetworkMetrics(network models.NetworkID, metricPort int) map[string]
 	return metrics
 }
 
-func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNodes map[models.NetworkID][]models.Node, currNodes []models.Node) {
+func setAutoRelayNodes(autoRelaynodes map[schema.NetworkID][]models.Node, gwNodes map[schema.NetworkID][]models.Node, currNodes []models.Node) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	autoRelayCache = autoRelaynodes
@@ -91,7 +92,7 @@ func setAutoRelayNodes(autoRelaynodes map[models.NetworkID][]models.Node, gwNode
 	}
 
 	// Clear old metrics cache
-	networkMetricsCache = make(map[models.NetworkID]map[string]int64)
+	networkMetricsCache = make(map[schema.NetworkID]map[string]int64)
 
 	// Calculate metrics for each network's auto relay nodes
 	for networkID, nodes := range autoRelaynodes {
@@ -136,19 +137,19 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
-	autoRelayNodes := getAutoRelayNodes(models.NetworkID(signal.NetworkID))
+	autoRelayNodes := getAutoRelayNodes(schema.NetworkID(signal.NetworkID))
 	if len(autoRelayNodes) == 0 {
 		return nil
 	}
 	// Use cached metrics from setAutoRelayNodes
-	autoRelayNodeMetrics := getNetworkMetrics(models.NetworkID(signal.NetworkID))
+	autoRelayNodeMetrics := getNetworkMetrics(schema.NetworkID(signal.NetworkID))
 	if len(autoRelayNodeMetrics) == 0 {
 		metricPort := server.MetricsPort
 		if metricPort == 0 {
 			metricPort = 51821
 		}
 		slog.Debug("no cached relay metrics found; refreshing", "networkID", signal.NetworkID)
-		autoRelayNodeMetrics = refreshNetworkMetrics(models.NetworkID(signal.NetworkID), metricPort)
+		autoRelayNodeMetrics = refreshNetworkMetrics(schema.NetworkID(signal.NetworkID), metricPort)
 		if len(autoRelayNodeMetrics) == 0 {
 			return errors.New("failed to find nearest relay node: no cached metrics available")
 		}
@@ -260,7 +261,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 				}
 				peerInfo, err := networking.GetPeerInfo()
 				if err != nil {
-					slog.Error("failed to get peer Info", "error", err)
+					slog.Error("failed to get peer info", "error", err)
 					return
 				}
 				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
@@ -279,13 +280,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					if node.Server != config.CurrServer {
 						continue
 					}
-					peers, ok := peerInfo.NetworkPeerIDs[models.NetworkID(node.Network)]
+					peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
 					if !ok {
 						continue
 					}
-					autoRelayNodes := getAutoRelayNodes(models.NetworkID(node.Network))
+					autoRelayNodes := getAutoRelayNodes(schema.NetworkID(node.Network))
 					// Use cached metrics from setAutoRelayNodes
-					networkID := models.NetworkID(node.Network)
+					networkID := schema.NetworkID(node.Network)
 					autoRelayNodeMetrics := getNetworkMetrics(networkID)
 					if len(autoRelayNodeMetrics) == 0 {
 						autoRelayNodeMetrics = refreshNetworkMetrics(networkID, metricPort)
@@ -413,7 +414,7 @@ func checkAssignGw(server *config.Server, node models.Node) {
 	if !node.AutoAssignGateway {
 		return
 	}
-	gwNodes := getGwNodes(models.NetworkID(node.Network))
+	gwNodes := getGwNodes(schema.NetworkID(node.Network))
 	if len(gwNodes) == 0 {
 		return
 	}
@@ -561,7 +562,6 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	headers.Set("Authorization", "Bearer "+token)
 	_, err = ncutils.SendRequest(method, url, headers, models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID})
 	if err != nil {
-		slog.Error("error asking server to relay me", err.Error())
 		return err
 	}
 	return nil

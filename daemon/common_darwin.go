@@ -35,6 +35,11 @@ func install() error {
 	return start()
 }
 
+// restart - restarts a system daemon via SIGHUP
+func restart() error {
+	return signalDaemon(syscall.SIGHUP)
+}
+
 func start() error {
 	if _, err := ncutils.RunCmd("launchctl load /Library/LaunchDaemons/"+MacServiceName+".plist", true); err != nil {
 		return err

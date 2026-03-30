@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -23,26 +24,29 @@ func (nc *NCIface) Create() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	adapter, err := driver.OpenAdapter(ncutils.GetInterfaceName())
+	adapter, err := driver.OpenAdapter(nc.Name)
 	if err != nil {
 		slog.Info("creating Windows tunnel")
 		idString := config.Netclient().Host.ID.String()
 		if idString == "" {
 			idString = config.DefaultHostID
 		}
+		if nc.IsTestIface {
+			idString = uuid.NewString()
+		}
 		windowsGUID, err := windows.GUIDFromString("{" + idString + "}")
 		if err != nil {
 			slog.Error("generating guid error: ", "error", err)
 			return err
 		}
-		adapter, err = driver.CreateAdapter(ncutils.GetInterfaceName(), "WireGuard", &windowsGUID)
+		adapter, err = driver.CreateAdapter(nc.Name, "WireGuard", &windowsGUID)
 		if err != nil {
 			// Check if adapter already exists - try to open it again
 			if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Cannot create a file when that file already exists") {
 				slog.Info("adapter already exists, attempting to open it")
 				// Retry opening the adapter - it might have been created by another process
 				var openErr error
-				adapter, openErr = driver.OpenAdapter(ncutils.GetInterfaceName())
+				adapter, openErr = driver.OpenAdapter(nc.Name)
 				if openErr != nil {
 					slog.Error("creating adapter error (adapter exists but cannot be opened): ", "error", err, "openError", openErr)
 					return fmt.Errorf("adapter exists but cannot be opened: %w (original error: %v)", openErr, err)

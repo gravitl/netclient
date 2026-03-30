@@ -114,7 +114,7 @@ func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType 
 }
 
 func callHolePunch(stunServer StunServer, portToStun int, network string) (publicIP net.IP, publicPort int, natType string, err error) {
-	s, err := net.ResolveUDPAddr(network, fmt.Sprintf("%s:%d", stunServer.Domain, stunServer.Port))
+	s, err := net.ResolveUDPAddr(network, net.JoinHostPort(stunServer.Domain, fmt.Sprintf("%d", stunServer.Port)))
 	if err != nil {
 		logger.Log(1, "failed to resolve udp addr: ", network, err.Error())
 		return nil, 0, "", err
