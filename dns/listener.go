@@ -35,6 +35,11 @@ func init() {
 func Init() error {
 	var err error
 	configManager, err = dnsconfig.NewManager(dnsconfig.CleanupResidualInterfaceConfigs(ncutils.GetInterfaceName()))
+	if err != nil {
+		// set default noop dns config manager.
+		configManager = &dnsconfig.NoopManager{}
+	}
+
 	return err
 }
 

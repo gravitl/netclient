@@ -20,8 +20,9 @@ func newOpenresolvManager(opts ...ManagerOption) (*openresolvManager, error) {
 
 	if options.cleanupResidual {
 		for _, iface := range options.residualInterfaces {
-			if err := o.resetConfig(iface); err != nil {
-				slog.Warn("failed to cleanup residual dns config, continuing", "interface", iface, "error", err)
+			err := o.resetConfig(iface)
+			if err != nil {
+				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
 			}
 		}
 	}
@@ -44,7 +45,14 @@ func (o *openresolvManager) Configure(iface string, config Config) error {
 
 	cmd := exec.Command("resolvconf", "-m", "0", "-x", "-a", iface)
 	cmd.Stdin = confBytes
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(out))
+		slog.Error(fmt.Sprintf("error configuring interface (%s) dns settings: %v: %s", iface, err, out))
+		return fmt.Errorf("failed to configure interface (%s): %v", iface, err)
+	}
+
+	return nil
 }
 
 func (o *openresolvManager) resetConfig(iface string) error {
@@ -57,6 +65,7 @@ func (o *openresolvManager) resetConfig(iface string) error {
 			return nil
 		}
 
+		slog.Error(fmt.Sprintf("error resetting interface (%s) dns settings: %v: %s", iface, err, out))
 		return err
 	}
 

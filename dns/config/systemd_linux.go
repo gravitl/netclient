@@ -27,8 +27,9 @@ func newSystemdStubManager(opts ...ManagerOption) (*systemdStubManager, error) {
 
 	if options.cleanupResidual {
 		for _, iface := range options.residualInterfaces {
-			if err := s.resetConfig(iface); err != nil {
-				slog.Warn("failed to cleanup residual dns config, continuing", "interface", iface, "error", err)
+			err := s.resetConfig(iface)
+			if err != nil {
+				return nil, fmt.Errorf("failed to cleanup config for interface (%s): %v", iface, err)
 			}
 		}
 	}
@@ -79,15 +80,19 @@ func (s *systemdStubManager) Configure(iface string, config Config) error {
 
 		args := []string{"dns", iface}
 		args = append(args, nameservers...)
-		err := exec.Command("resolvectl", args...).Run()
+		out, err := exec.Command("resolvectl", args...).CombinedOutput()
 		if err != nil {
+			out := strings.TrimSpace(string(out))
+			slog.Error(fmt.Sprintf("error configuring interface (%s) dns nameserver settings: %v: %s", iface, err, out))
 			return err
 		}
 
 		args = []string{"domain", iface}
 		args = append(args, domains...)
-		err = exec.Command("resolvectl", args...).Run()
+		out, err = exec.Command("resolvectl", args...).CombinedOutput()
 		if err != nil {
+			out := strings.TrimSpace(string(out))
+			slog.Error(fmt.Sprintf("error configuring interface (%s) dns domain settings: %v: %s", iface, err, out))
 			return err
 		}
 
@@ -96,8 +101,10 @@ func (s *systemdStubManager) Configure(iface string, config Config) error {
 			defaultRoute = "no"
 		}
 
-		err = exec.Command("resolvectl", "default-route", iface, defaultRoute).Run()
+		out, err = exec.Command("resolvectl", "default-route", iface, defaultRoute).CombinedOutput()
 		if err != nil {
+			out := strings.TrimSpace(string(out))
+			slog.Error(fmt.Sprintf("error configuring interface (%s) dns default-route settings: %v: %s", iface, err, out))
 			return err
 		}
 	}
@@ -108,19 +115,23 @@ func (s *systemdStubManager) Configure(iface string, config Config) error {
 func (s *systemdStubManager) resetConfig(iface string) error {
 	out, err := exec.Command("resolvectl", "dns", iface, "").CombinedOutput()
 	if err != nil {
-		if isInterfaceNotFoundError(string(out)) {
+		out := strings.TrimSpace(string(out))
+		if isInterfaceNotFoundError(out) {
 			return nil
 		}
 
+		slog.Error(fmt.Sprintf("error resetting interface (%s) dns nameserver settings: %v: %s", iface, err, out))
 		return err
 	}
 
 	out, err = exec.Command("resolvectl", "domain", iface, "").CombinedOutput()
 	if err != nil {
-		if isInterfaceNotFoundError(string(out)) {
+		out := strings.TrimSpace(string(out))
+		if isInterfaceNotFoundError(out) {
 			return nil
 		}
 
+		slog.Error(fmt.Sprintf("error resetting interface (%s) dns domain settings: %v: %s", iface, err, out))
 		return err
 	}
 
@@ -136,7 +147,14 @@ func isInterfaceNotFoundError(output string) bool {
 }
 
 func (s *systemdStubManager) flushChanges() error {
-	return exec.Command("systemctl", "restart", "systemd-resolved.service").Run()
+	out, err := exec.Command("systemctl", "restart", "systemd-resolved.service").CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(out))
+		slog.Error(fmt.Sprintf("error flushing systemd-resolved changes: %v: %s", err, out))
+		return fmt.Errorf("failed to flush systemd-resolved changes: %v", err)
+	}
+
+	return nil
 }
 
 type systemdUplinkManager struct {
@@ -248,5 +266,12 @@ func (s *systemdUplinkManager) writeConfig(nameservers []string, domains []strin
 }
 
 func (s *systemdUplinkManager) flushChanges() error {
-	return exec.Command("systemctl", "restart", "systemd-resolved.service").Run()
+	out, err := exec.Command("systemctl", "restart", "systemd-resolved.service").CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(out))
+		slog.Error(fmt.Sprintf("error flushing systemd-resolved changes: %v: %s", err, out))
+		return fmt.Errorf("failed to flush systemd-resolved changes: %v", err)
+	}
+
+	return nil
 }
