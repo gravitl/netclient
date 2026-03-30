@@ -19,6 +19,8 @@ const (
 	IPv6Network = "::/0"
 )
 
+var ErrPeerNotFound = fmt.Errorf("peer not found")
+
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
 func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 	hostPeers := config.Netclient().HostPeers
@@ -182,7 +184,7 @@ func GetPeer(ifaceName, peerPubKey string) (wgtypes.Peer, error) {
 			return peer, nil
 		}
 	}
-	return wgtypes.Peer{}, fmt.Errorf("peer not found")
+	return wgtypes.Peer{}, ErrPeerNotFound
 }
 
 // GetOriginalDefaulGw - fetches system's original default gw
