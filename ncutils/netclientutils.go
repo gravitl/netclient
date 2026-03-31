@@ -377,6 +377,6 @@ func TraceCaller() {
 	funcName := runtime.FuncForPC(pc).Name()
 
 	// Print trace details
-	slog.Error("## TRACE -> Called from function: ", "tracing-func-name", traceFuncName, "caller-func-name", funcName)
-	slog.Error("## TRACE -> Caller File Info", "file", file, "line-no", line)
+	slog.Debug("## TRACE -> Called from function: ", "tracing-func-name", traceFuncName, "caller-func-name", funcName)
+	slog.Debug("## TRACE -> Caller File Info", "file", file, "line-no", line)
 }
