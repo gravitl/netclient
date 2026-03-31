@@ -41,6 +41,7 @@ func Start() error {
 
 // HardRestart - restarts system daemon using init system
 func HardRestart() error {
+	ncutils.TraceCaller()
 	return hardRestart()
 }
 

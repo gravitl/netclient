@@ -113,10 +113,10 @@ func versionLessThan(v1, v2 string) (bool, error) {
 }
 
 // UseVersion switches the current netclient version to the one specified if available in the github releases page
-func UseVersion(version string, rebootDaemon bool) error {
+func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 	if IsContainerized() {
 		slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", version)
-		return nil
+		return true, nil
 	}
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
@@ -135,24 +135,24 @@ func UseVersion(version string, rebootDaemon bool) error {
 			if rebootDaemon {
 				_ = daemon.Start()
 			}
-			return err
+			return false, err
 		}
 		if rebootDaemon {
 			if err := daemon.Start(); err != nil {
-				return fmt.Errorf("failed to start daemon after update: %w", err)
+				return false, fmt.Errorf("failed to start daemon after update: %w", err)
 			}
 		}
-		return nil
+		return false, nil
 	}
 
 	// Use Linux and MacOS specific version change process
 	if err := createDirIfNotExists(); err != nil {
-		return err
+		return false, err
 	}
 	filePath = filepath.Join(binPath, "netclient-"+version)
 	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
 		if err := downloadVersion(version); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if rebootDaemon {
@@ -160,31 +160,31 @@ func UseVersion(version string, rebootDaemon bool) error {
 	}
 	dst, err := os.Executable()
 	if err != nil {
-		return err
+		return false, err
 	}
 	src, err := os.ReadFile(filePath)
 	if err != nil {
-		return err
+		return false, err
 	}
 	tmpPath := dst + "-tmp"
 	tmpFile, err := os.Create(tmpPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tmpFile.Close()
 	if _, err := tmpFile.Write(src); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.Chmod(tmpPath, 0755); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.Rename(tmpPath, dst); err != nil {
-		return err
+		return false, err
 	}
 	if rebootDaemon {
 		daemon.Start()
 	}
-	return nil
+	return false, nil
 }
 
 // windowsUpdate uses a different package and process to upgrade netclient binary on windows

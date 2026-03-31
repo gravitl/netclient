@@ -223,7 +223,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		if vlt && peerUpdate.Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			upgMutex.Lock()
-			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
+			skip, err := UseVersion(peerUpdate.ServerVersion, false)
+			if skip {
+				slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", peerUpdate.ServerVersion)
+			} else if err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
@@ -454,10 +457,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		slog.Info("upgrading client to server's version", "version", sv)
 		upgMutex.Lock()
-		if err := UseVersion(sv, false); err != nil {
-			slog.Error("error upgrading client to server's version", "error", err)
+		skip, err := UseVersion(sv, false)
+		if skip {
+			slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", sv)
+		} else if err != nil {
+			slog.Error("error updating client to server's version", "error", err)
 		} else {
-			slog.Info("upgraded client to server's version, restarting", "version", sv)
+			slog.Info("updated client to server's version", "version", sv)
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
@@ -465,10 +471,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic())
 		slog.Info("force upgrading client to server's version", "version", server.Version)
 		upgMutex.Lock()
-		if err := UseVersion(server.Version, false); err != nil {
-			slog.Error("error upgrading client to server's version", "error", err)
+		skip, err := UseVersion(server.Version, false)
+		if skip {
+			slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", server.Version)
+		} else if err != nil {
+			slog.Error("error updating client to server's version", "error", err)
 		} else {
-			slog.Info("upgraded client to server's version, restarting", "version", server.Version)
+			slog.Info("updated client to server's version", "version", server.Version)
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
@@ -803,7 +812,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", pullResponse.ServerConfig.Version)
 			upgMutex.Lock()
-			if err := UseVersion(pullResponse.ServerConfig.Version, false); err != nil {
+			skip, err := UseVersion(pullResponse.ServerConfig.Version, false)
+			if skip {
+				slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", pullResponse.ServerConfig.Version)
+			} else if err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", pullResponse.ServerConfig.Version)
