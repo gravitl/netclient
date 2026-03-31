@@ -17,9 +17,8 @@ For example:- netclient use v0.18.0`,
 	Run: func(cmd *cobra.Command, args []string) {
 		skip, err := functions.UseVersion(args[0], true)
 		if skip {
-			fmt.Printf("skipping auto-upgrade inside container, update the container image instead (version: %s)\n", args[0])
-		}
-		if err != nil {
+			fmt.Printf("skipping use version inside container, update the container image instead (version: %s)\n", args[0])
+		} else if err != nil {
 			fmt.Println("Error using specified version: ", err.Error())
 		}
 	},
