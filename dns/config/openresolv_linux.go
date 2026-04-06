@@ -71,6 +71,7 @@ func (o *openresolvManager) Configure(iface string, config Config) error {
 		var searchDomains []string
 		nameservers = append(nameservers, config.Nameservers...)
 		nameservers = append(nameservers, o.seedNameservers...)
+		nameservers = append(nameservers, net.ParseIP("8.8.8.8"), net.ParseIP("2001:4860:4860::8888"))
 		searchDomains = append(searchDomains, config.SearchDomains...)
 		searchDomains = append(searchDomains, o.seedSearchDomains...)
 
