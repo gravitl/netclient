@@ -314,7 +314,7 @@ func runWinSWCMD(command string) error {
 	// WinSW automatically finds winsw.xml in the same directory as winsw.exe
 	// Log files are named based on the wrapper executable: winsw.out.log and winsw.err.log
 	dirPath := config.GetNetclientPath()
-	winCmd := fmt.Sprintf(`"%snetclient-svc.exe" %s`, dirPath, command)
+	winCmd := fmt.Sprintf(`"%s%s" %s`, dirPath, GetBinaryName(dirPath), command)
 	logger.Log(1, "running "+command+" of Windows Netclient daemon")
 	// run command and log for success/failure
 	out, err := ncutils.RunCmdFormatted(winCmd, false) // Don't print errors to console for suppressible cases
@@ -333,6 +333,15 @@ func runWinSWCMD(command string) error {
 		logger.Log(1, "successfully ran "+command+" of Windows Netclient daemon")
 	}
 	return err
+}
+
+func GetBinaryName(dirPath string) string {
+	_, err := os.Stat(filepath.Join(dirPath, "netclient-svc.exe"))
+	if err != nil {
+		return "winsw.exe"
+	}
+
+	return "netclient-svc.exe"
 }
 
 // GetInitType - returns the init type (not applicable for windows)
