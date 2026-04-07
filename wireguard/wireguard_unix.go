@@ -32,7 +32,20 @@ func (nc *NCIface) createUserSpaceWG() error {
 		return err
 	}
 	nc.Iface = tunIface
-	tunDevice = device.NewDevice(tunIface, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, "[netclient] "))
+	var bind conn.Bind
+	if relayTCPUplinkEnvConfigured() {
+		rb := newRelayTCPBind(conn.NewDefaultBind())
+		relayBindMu.Lock()
+		relayBind = rb
+		relayBindMu.Unlock()
+		bind = rb
+	} else {
+		relayBindMu.Lock()
+		relayBind = nil
+		relayBindMu.Unlock()
+		bind = conn.NewDefaultBind()
+	}
+	tunDevice = device.NewDevice(tunIface, bind, device.NewLogger(device.LogLevelSilent, "[netclient] "))
 	err = tunDevice.Up()
 	if err != nil {
 		return err
@@ -78,6 +91,9 @@ func (nc *NCIface) closeUserspaceWg() error {
 	if tunDevice != nil {
 		tunDevice.Close()
 	}
+	relayBindMu.Lock()
+	relayBind = nil
+	relayBindMu.Unlock()
 	if uapi != nil {
 		uapi.Close()
 	}

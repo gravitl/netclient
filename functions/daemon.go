@@ -292,6 +292,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	startRelayTCPUplink(ctx, server)
 	// set original default gw info
 
 	// check if default gw needs to be set

@@ -83,6 +83,10 @@ Flags:
 Use "netclient [command] --help" for more information about a command.
 ```
 
+## TCP relay uplink (experimental)
+
+When `NC_RELAY_TCP_UPLINK_ADDR` is set (e.g. `relay.example.com:443`), netclient uses **userspace WireGuard** on Linux (instead of kernel WireGuard). Outbound ciphertext to the relay’s WireGuard UDP endpoint is sent over the TCP/TLS proxy; inbound frames are delivered into the WireGuard receive path via `conn.Bind`. Optional: `NC_RELAY_TCP_UPLINK_TLS_SERVER_NAME` for TLS SNI. Set these **before** starting the daemon. The relay/gateway service needs a matching integration for inbound TCP sessions.
+
 ## Disclaimer
  [WireGuard](https://wireguard.com/) is a registered trademark of Jason A. Donenfeld.
 

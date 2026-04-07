@@ -22,9 +22,14 @@ const (
 	EgressRouteMetric = 256
 )
 
+// useKernelWireGuard prefers kernel WG unless TCP relay uplink is enabled (needs userspace conn.Bind).
+func useKernelWireGuard() bool {
+	return isKernelWireGuardPresent() && !relayTCPUplinkEnvConfigured()
+}
+
 // NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
-	if isKernelWireGuardPresent() {
+	if useKernelWireGuard() {
 		newLink := nc.getKernelLink()
 		if newLink == nil {
 			return fmt.Errorf("failed to create kernel interface")
@@ -53,7 +58,11 @@ func (nc *NCIface) Create() error {
 		}
 		return nil
 	} else if isTunModuleLoaded() {
-		slog.Info("Kernel WireGuard not detected. Proceeding with userspace WireGuard for iface creation.")
+		if relayTCPUplinkEnvConfigured() {
+			slog.Info("TCP relay uplink configured: using userspace WireGuard for conn.Bind integration with proxy transport.")
+		} else {
+			slog.Info("Kernel WireGuard not detected. Proceeding with userspace WireGuard for iface creation.")
+		}
 		if err := nc.createUserSpaceWG(); err != nil {
 			return err
 		}
@@ -93,7 +102,7 @@ func (l *netLink) Type() string {
 
 // NCIface.Close closes netmaker interface
 func (n *NCIface) Close() {
-	if isKernelWireGuardPresent() {
+	if useKernelWireGuard() {
 		link := n.getKernelLink()
 		link.Close()
 	} else if isTunModuleLoaded() {
