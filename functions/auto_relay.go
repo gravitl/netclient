@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gravitl/netclient/auth"
@@ -30,6 +31,7 @@ var (
 	networkMetricsCache = make(map[schema.NetworkID]map[string]int64) // Cached metrics per network
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
+	peerCheckRunning    = atomic.Bool{}
 )
 
 func getAutoRelayNodes(network schema.NetworkID) []models.Node {
@@ -247,14 +249,12 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			slog.Info("exiting peer connection watcher")
 			return
 		case <-autoRelayConnTicker.C:
-			// Use a mutex to prevent overlapping executions and goroutine accumulation
 			go func() {
-				// Exit early if context is done
-				select {
-				case <-ctx.Done():
+				if !peerCheckRunning.CompareAndSwap(false, true) {
+					// skip overlapping runs.
 					return
-				default:
 				}
+
 				nodes := config.GetNodes()
 				if len(nodes) == 0 {
 					return
