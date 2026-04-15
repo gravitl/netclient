@@ -255,6 +255,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 					return
 				}
 
+				defer peerCheckRunning.Store(false)
+
 				nodes := config.GetNodes()
 				if len(nodes) == 0 {
 					return
