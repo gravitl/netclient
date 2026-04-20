@@ -60,6 +60,7 @@ type cachedMessage struct {
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
+	cpuProfile := logic.StartCPUProfiling()
 	daemon.SetDaemonMode()
 	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
@@ -89,6 +90,7 @@ func Daemon() {
 				cancel,
 			}, &wg)
 			config.FwClose()
+			logic.StopCPUProfiling(cpuProfile)
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
