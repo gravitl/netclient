@@ -13,6 +13,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"sync"
 	"syscall"
 	"time"
@@ -50,6 +51,9 @@ const (
 var (
 	Mqclient     mqtt.Client
 	messageCache = new(sync.Map)
+
+	cpuProfileMu      sync.Mutex
+	currentCPUProfile *os.File
 )
 
 type cachedMessage struct {
@@ -60,7 +64,6 @@ type cachedMessage struct {
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
-	cpuProfile := logic.StartCPUProfiling()
 	daemon.SetDaemonMode()
 	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
@@ -76,6 +79,9 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 
+	profCtx, profCancel := context.WithCancel(context.Background())
+	go runCPUProfileLoop(profCtx)
+
 	cancel := startGoRoutines(&wg)
 
 	for {
@@ -89,8 +95,9 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
+			profCancel()
+			stopCPUProfile()
 			config.FwClose()
-			logic.StopCPUProfiling(cpuProfile)
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
@@ -738,4 +745,114 @@ func GetPublicIP(proto uint) (net.IP, error) {
 	consensus.UseIPProtocol(proto)
 	// Get your IP,
 	return consensus.ExternalIP()
+}
+
+// runCPUProfileLoop ticks every 5 minutes: stops any running profile, then
+// starts a new one only when CPU utilization exceeds 10%.
+func runCPUProfileLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rotateCPUProfile()
+		}
+	}
+}
+
+// rotateCPUProfile stops the current profile (if any), samples CPU usage,
+// and starts a new profile when usage is above 10%.
+func rotateCPUProfile() {
+	cpuProfileMu.Lock()
+	defer cpuProfileMu.Unlock()
+
+	if currentCPUProfile != nil {
+		pprof.StopCPUProfile()
+		currentCPUProfile.Close()
+		currentCPUProfile = nil
+	}
+
+	usage, err := sampleCPUUsage()
+	if err != nil {
+		slog.Warn("cpu profile: failed to sample CPU usage", "error", err)
+		return
+	}
+	if usage < 10.0 {
+		return
+	}
+
+	profDir := config.GetNetclientPath() + "profiles"
+	if err := os.MkdirAll(profDir, 0755); err != nil {
+		slog.Error("cpu profile: failed to create profiles dir", "error", err)
+		return
+	}
+	ts := time.Now().Format("2006-01-02T15-04-05")
+	path := fmt.Sprintf("%s/cpu_%s.prof", profDir, ts)
+	f, err := os.Create(path)
+	if err != nil {
+		slog.Error("cpu profile: failed to create file", "path", path, "error", err)
+		return
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		f.Close()
+		os.Remove(path)
+		slog.Error("cpu profile: failed to start", "error", err)
+		return
+	}
+	currentCPUProfile = f
+	slog.Info("cpu profile: started", "path", path, "cpu_pct", fmt.Sprintf("%.1f%%", usage))
+}
+
+// stopCPUProfile stops and closes any active CPU profile.
+func stopCPUProfile() {
+	cpuProfileMu.Lock()
+	defer cpuProfileMu.Unlock()
+	if currentCPUProfile != nil {
+		pprof.StopCPUProfile()
+		currentCPUProfile.Close()
+		currentCPUProfile = nil
+	}
+}
+
+type cpuStatLine struct {
+	user, nice, system, idle, iowait, irq, softirq, steal uint64
+}
+
+func readProcStat() (cpuStatLine, error) {
+	f, err := os.Open("/proc/stat")
+	if err != nil {
+		return cpuStatLine{}, err
+	}
+	defer f.Close()
+	var s cpuStatLine
+	var label string
+	_, err = fmt.Fscanf(f, "%s %d %d %d %d %d %d %d %d",
+		&label, &s.user, &s.nice, &s.system, &s.idle,
+		&s.iowait, &s.irq, &s.softirq, &s.steal)
+	return s, err
+}
+
+// sampleCPUUsage reads /proc/stat twice ~500 ms apart and returns utilization %.
+func sampleCPUUsage() (float64, error) {
+	s1, err := readProcStat()
+	if err != nil {
+		return 0, err
+	}
+	time.Sleep(500 * time.Millisecond)
+	s2, err := readProcStat()
+	if err != nil {
+		return 0, err
+	}
+	idle1 := s1.idle + s1.iowait
+	idle2 := s2.idle + s2.iowait
+	total1 := s1.user + s1.nice + s1.system + idle1 + s1.irq + s1.softirq + s1.steal
+	total2 := s2.user + s2.nice + s2.system + idle2 + s2.irq + s2.softirq + s2.steal
+	totalDelta := total2 - total1
+	if totalDelta == 0 {
+		return 0, nil
+	}
+	idleDelta := idle2 - idle1
+	return float64(totalDelta-idleDelta) / float64(totalDelta) * 100.0, nil
 }
