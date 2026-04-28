@@ -30,6 +30,15 @@ var (
 	networkMetricsCache = make(map[schema.NetworkID]map[string]int64) // Cached metrics per network
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
+	autoRelayReqMu      = &sync.Mutex{}
+	autoRelayReqCache   = make(map[string]time.Time)
+	autoRelayReqCounts  = make(map[string]int)
+)
+
+const (
+	autoRelayReqThrottleWindow = 30 * time.Second
+	// autoRelayReqMaxPerKey caps total sends per throttle key between peer updates (reset in setAutoRelayNodes).
+	autoRelayReqMaxPerKey = 10
 )
 
 func getAutoRelayNodes(network schema.NetworkID) []models.Node {
@@ -72,6 +81,7 @@ func refreshNetworkMetrics(network schema.NetworkID, metricPort int) map[string]
 }
 
 func setAutoRelayNodes(autoRelaynodes map[schema.NetworkID][]models.Node, gwNodes map[schema.NetworkID][]models.Node, currNodes []models.Node) {
+	resetAutoRelayReqThrottle()
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	autoRelayCache = autoRelaynodes
@@ -543,6 +553,8 @@ func findNodeLatencies(nodes []models.Node, metricPort int) map[string]int64 {
 
 // autoRelayME - signals the server to auto relay
 func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
+	reqKey := autoRelayThrottleKey(method, serverName, nodeID, peernodeID, relayID)
+
 	server := config.GetServer(serverName)
 	if server == nil {
 		return errors.New("server config not found")
@@ -551,6 +563,17 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	if host == nil {
 		return fmt.Errorf("no configured host found")
 	}
+
+	if blocked, retryIn, atMax := autoRelayWouldBlock(reqKey); blocked {
+		if atMax {
+			slog.Debug("auto relay request limit reached for key", "method", method, "server", serverName, "nodeID", nodeID, "peerNodeID", peernodeID, "relayID", relayID, "max", autoRelayReqMaxPerKey)
+		} else {
+			slog.Debug("throttled auto relay request", "method", method, "server", serverName, "nodeID", nodeID, "peerNodeID", peernodeID, "relayID", relayID, "retry_in", retryIn.String())
+		}
+		return nil
+	}
+	slog.Debug("sending auto relay request", "method", method, "server", serverName, "nodeID", nodeID, "peerNodeID", peernodeID, "relayID", relayID)
+
 	token, err := auth.Authenticate(server, host)
 	if err != nil {
 		return err
@@ -564,7 +587,55 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	if err != nil {
 		return err
 	}
+	recordAutoRelaySentOK(reqKey)
 	return nil
+}
+
+// autoRelayThrottleKey scopes throttling per remote peer when peernodeID is set (POST/PUT
+// involving that peer). Gateway-only calls (empty peernodeID) use node + method + relay.
+func autoRelayThrottleKey(method, serverName, nodeID, peernodeID, relayID string) string {
+	if peernodeID != "" {
+		return fmt.Sprintf("%s|peer|%s", serverName, peernodeID)
+	}
+	return fmt.Sprintf("%s|node|%s|%s|%s", serverName, nodeID, method, relayID)
+}
+
+func resetAutoRelayReqThrottle() {
+	autoRelayReqMu.Lock()
+	defer autoRelayReqMu.Unlock()
+	autoRelayReqCache = make(map[string]time.Time)
+	autoRelayReqCounts = make(map[string]int)
+}
+
+// autoRelayWouldBlock checks (1) max successful sends per key since last peer update and
+// (2) minimum interval since the last successful send. It does not mutate state.
+func autoRelayWouldBlock(key string) (blocked bool, retryIn time.Duration, atMax bool) {
+	now := time.Now()
+	autoRelayReqMu.Lock()
+	defer autoRelayReqMu.Unlock()
+
+	if autoRelayReqCounts[key] >= autoRelayReqMaxPerKey {
+		return true, 0, true
+	}
+
+	if lastSentAt, ok := autoRelayReqCache[key]; ok {
+		elapsed := now.Sub(lastSentAt)
+		if elapsed < autoRelayReqThrottleWindow {
+			return true, autoRelayReqThrottleWindow - elapsed, false
+		}
+	}
+
+	return false, 0, false
+}
+
+// recordAutoRelaySentOK increments the per-key count and refreshes the last-send time after
+// a successful API call.
+func recordAutoRelaySentOK(key string) {
+	now := time.Now()
+	autoRelayReqMu.Lock()
+	defer autoRelayReqMu.Unlock()
+	autoRelayReqCounts[key]++
+	autoRelayReqCache[key] = now
 }
 
 // SignalPeer - signals the peer with host's turn relay endpoint

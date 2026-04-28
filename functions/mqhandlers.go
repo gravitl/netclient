@@ -974,12 +974,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if reloadStun {
 		_ = daemon.Restart()
 	}
-
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if server.IsPro {
 		go networking.RefreshPeerInfoCache()
 	}
+	setAutoRelayNodes(pullResponse.AutoRelayNodes, pullResponse.GwNodes, pullResponse.Nodes)
 }
 
 func CheckEgressDomainUpdates() {
