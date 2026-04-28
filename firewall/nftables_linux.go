@@ -699,6 +699,63 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					rule:   ruleSpec,
 				})
 			}
+			// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
+			if isAddrIpv4(egressGwRange.Network) {
+				lanCIDR := config.ToIPNet(egressGwRange.Network)
+				additionalRuleSpec := []string{
+					"-s", egressGwRange.Network,
+					"-o", ncutils.GetInterfaceName(),
+					"-j", "MASQUERADE",
+				}
+				additionalExp := []expr.Any{
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       12, // Source address offset in IPv4 header
+						Len:          4,
+					},
+					&expr.Bitwise{
+						SourceRegister: 1,
+						DestRegister:   1,
+						Len:            4,
+						Mask:           lanCIDR.Mask,
+						Xor:            []byte{0, 0, 0, 0},
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     lanCIDR.IP.To4(),
+					},
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     []byte(ncutils.GetInterfaceName()),
+					},
+					&expr.Masq{},
+				}
+				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(additionalRuleSpec...))
+				additionalRule := &nftables.Rule{
+					Table:    natTable,
+					Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+					UserData: []byte(genRuleKey(additionalRuleSpec...)),
+					Exprs:    additionalExp,
+				}
+				n.conn.InsertRule(additionalRule)
+				if err := n.conn.Flush(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add additional egress NAT rule: %v, Err: %v ", additionalRuleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						nfRule: additionalRule,
+						table:  defaultNatTable,
+						chain:  nattablePRTChain,
+						rule:   additionalRuleSpec,
+					})
+				}
+			}
 
 			// Add Docker-specific rule if egress interface is a Docker network
 			if isDockerInterface(egressRangeIface) {
