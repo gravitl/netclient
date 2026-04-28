@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns/querycache"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
@@ -164,6 +165,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
+	go recordDNSAnswers(reply.Answer)
 	_ = w.WriteMsg(reply)
 }
 
@@ -270,6 +272,18 @@ func findBestMatch(domain string, nameservers []models.Nameserver) []models.Name
 	}
 
 	return bestMatch
+}
+
+func recordDNSAnswers(answers []dns.RR) {
+	now := time.Now()
+	for _, rr := range answers {
+		switch r := rr.(type) {
+		case *dns.A:
+			querycache.GetManager().Record(r.A.String(), r.Hdr.Name, now)
+		case *dns.AAAA:
+			querycache.GetManager().Record(r.AAAA.String(), r.Hdr.Name, now)
+		}
+	}
 }
 
 func canonicalizeDomainForMatching(domain string) string {

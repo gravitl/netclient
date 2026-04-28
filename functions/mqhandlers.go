@@ -15,7 +15,6 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -224,7 +223,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		if vlt && peerUpdate.Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			upgMutex.Lock()
-			if err := UseVersion(peerUpdate.ServerVersion, false); err != nil {
+			skip, err := UseVersion(peerUpdate.ServerVersion, false)
+			if skip {
+				slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", peerUpdate.ServerVersion)
+			} else if err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
@@ -394,6 +396,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
+	if server.IsPro {
+		go networking.RefreshPeerInfoCache()
+	}
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -452,10 +457,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		slog.Info("upgrading client to server's version", "version", sv)
 		upgMutex.Lock()
-		if err := UseVersion(sv, false); err != nil {
-			slog.Error("error upgrading client to server's version", "error", err)
+		skip, err := UseVersion(sv, false)
+		if skip {
+			slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", sv)
+		} else if err != nil {
+			slog.Error("error updating client to server's version", "error", err)
 		} else {
-			slog.Info("upgraded client to server's version, restarting", "version", sv)
+			slog.Info("updated client to server's version", "version", sv)
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
@@ -463,15 +471,18 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic())
 		slog.Info("force upgrading client to server's version", "version", server.Version)
 		upgMutex.Lock()
-		if err := UseVersion(server.Version, false); err != nil {
-			slog.Error("error upgrading client to server's version", "error", err)
+		skip, err := UseVersion(server.Version, false)
+		if skip {
+			slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", server.Version)
+		} else if err != nil {
+			slog.Error("error updating client to server's version", "error", err)
 		} else {
-			slog.Info("upgraded client to server's version, restarting", "version", server.Version)
+			slog.Info("updated client to server's version", "version", server.Version)
 			daemon.HardRestart()
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
-		fmt.Println("======> RECEIVED JoinHostToNetwork")
+		slog.Info("received JoinHostToNetwork")
 		commonNode := hostUpdate.Node.CommonNode
 		nodeCfg := config.Node{
 			CommonNode: commonNode,
@@ -759,7 +770,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
-			auth.CleanJwtToken()
+			//auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
@@ -801,7 +812,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", pullResponse.ServerConfig.Version)
 			upgMutex.Lock()
-			if err := UseVersion(pullResponse.ServerConfig.Version, false); err != nil {
+			skip, err := UseVersion(pullResponse.ServerConfig.Version, false)
+			if skip {
+				slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", pullResponse.ServerConfig.Version)
+			} else if err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", pullResponse.ServerConfig.Version)
@@ -962,6 +976,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
+
+	if server.IsPro {
+		go networking.RefreshPeerInfoCache()
+	}
 }
 
 func CheckEgressDomainUpdates() {
@@ -1089,15 +1107,9 @@ func checkIPConnectivity(ips []string) bool {
 		// Try common ports that might be open (80, 443, 22)
 		ports := []int{80, 443, 22}
 		for _, port := range ports {
-			var address string
-			var network string
-			if ip.To4() != nil {
-				// IPv4 address
-				address = fmt.Sprintf("%s:%d", ipStr, port)
-				network = "tcp4"
-			} else {
-				// IPv6 address - must be wrapped in brackets
-				address = fmt.Sprintf("[%s]:%d", ipStr, port)
+			address := net.JoinHostPort(ipStr, fmt.Sprintf("%d", port))
+			network := "tcp4"
+			if ip.To4() == nil {
 				network = "tcp6"
 			}
 			conn, err := net.DialTimeout(network, address, 3*time.Second)

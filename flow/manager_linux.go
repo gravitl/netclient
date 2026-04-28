@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns/querycache"
 	"github.com/gravitl/netclient/flow/exporter"
 	"github.com/gravitl/netclient/flow/tracker"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
@@ -46,6 +47,8 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 	var err error
 	m.startOnce.Do(func() {
 		slog.Info("[flow] starting flow manager")
+
+		querycache.GetManager().Enable()
 
 		flowClient := exporter.NewFlowGrpcClient(
 			config.GetServer(config.CurrServer).GRPC,
@@ -98,7 +101,7 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 				return false
 			},
-			func(addr netip.Addr) *pbflow.FlowParticipant {
+			func(addr netip.Addr, startTime time.Time) *pbflow.FlowParticipant {
 				ip := addr.String()
 				ipCidr := netip.PrefixFrom(addr, addr.BitLen()).String()
 
@@ -118,9 +121,12 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 				}
 				m.mu.RUnlock()
 				if !found {
+					domain := querycache.GetManager().Lookup(ip, startTime)
 					return &pbflow.FlowParticipant{
 						Ip:   ip,
 						Type: pbflow.ParticipantType_PARTICIPANT_EXTERNAL,
+						Id:   domain,
+						Name: domain,
 					}
 				}
 
@@ -165,6 +171,8 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 func (m *Manager) Stop() error {
 	slog.Debug("[flow] stopping flow manager")
+
+	querycache.GetManager().Disable()
 
 	if m.flowClient != nil {
 		err := m.flowClient.Stop()

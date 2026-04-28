@@ -1,73 +1,57 @@
-## Netclient v1.5.0 Release Notes 🚀 
+# Netclient v1.5.1 Release Notes 🚀
 
 ## 🚀 What’s New
 
-### 🔁 Overlapping Egress Ranges (beta)
+### 🔁 Firewall Mark Support
 
-- Virtual NAT mode enables multiple egress routers to share overlapping IP ranges by assigning each egress a virtual range from a configurable pool.
-- Configurable per-network IPv4 pool and site prefix length for virtual range allocation.
-- Eliminates routing conflicts when multiple sites need to egress the same destination CIDRs (e.g., multiple offices routing to the same cloud VPC).
-- Supports both direct NAT and virtual NAT modes for flexible egress configurations.
+Added support for configuring a **firewall mark** via the install command.
 
+### 🔁 Traffic Logs (Beta)
 
-### 🧭 macOS Local DNS Resolver
+Traffic Logs have now moved into **Beta**.
 
-- Darwin netclients now run their own local DNS resolver.
+- Traffic Logs are now enriched with relevant **domain tagging**, making network activity easier to audit and investigate.
 
-    #### Benefits
+### 🔌 Default Netclient Port Update
 
-    - More consistent DNS resolution
+The default Netclient port has been changed to **51821/udp** (previously **443/udp**).
 
-    - Improved compatibility with macOS networking stack
-
-    - Reduced dependency on system DNS behavior
-
-### 🌐 Internet Gateways on macOS
-
-- Darwin netclients can now:
-
-    - Use Internet Gateways
-
-    - Participate in fully routed internet traffic
-
-    - This brings feature parity closer to Linux and Windows clients.
-
+---
 
 ## 🧰 Improvements & Fixes
 
-**DNS:**
+### **Docker Netclient**
+- Updated the Netclient Docker deployment to run in the **foreground**, moving away from daemon management inside the container.
 
-- Debian DNS configuration fix
+### **Scalability Improvements**
+- Improved peer synchronization by **caching peer information** and only refreshing when a peer update is triggered.
 
-- Improved Windows DNS management
+### **Windows**
+- Netclient now uses the **provided interface name** on Windows.
 
-**GeoLocation:**
+### **DNS**
+- Added a **Noop DNS Config Manager** fallback when DNS Manager initialization fails.
+- Added **Windows Active Directory compatibility mode**.
 
- - Consolidated IP location API usage
+### **Egress Routes**
+- Netclient now automatically avoids adding **conflicting routes** with local interfaces.
 
- - Added fallback mechanisms
+### **Internet Gateways**
+- Internet Gateways are now marked **unhealthy** when a node is disconnected or a peer is not found.
 
-**Windows:**
+### **CLI Commands**
+- Fixed missing `endpoint-ip6` flag name.
+- Removed the **MTU flag** from CLI configuration (this can now be configured via the control plane).
 
-- Improved logging
+---
 
-- Fixed installer issues
+## 🐞 Known Issues
 
-- Version command corrections
+- **IPv6-only machines**  
+  Netclients cannot currently **auto-upgrade** on IPv6-only systems.
 
-- Better adapter error handling
+- **Multi-network join performance**  
+  Multi-network netclient joins using an **enrollment key** still require optimization.
 
-**LAN Routing:**
-
-- Added configurable interface exclusion
-
-- Fixes Kubernetes endpoint detection conflicts
-
-## Known Issues 🐞
-
-- netclients cannot auto-upgrade on ipv6-only machines.
-
-- Need to optimize multi-network netclient join with enrollment key
-
-- On systems using systemd-resolved in uplink mode, the first 3 entries in resolv.conf are used and rest are ignored. So it might cause DNS issues. Stub mode is preferred.
-
+- **systemd-resolved DNS limitation**  
+  On systems using **systemd-resolved in uplink mode**, only the **first 3 entries** in `resolv.conf` are honored; additional entries are ignored. This may cause DNS resolution issues. **Stub mode is recommended**.

@@ -12,13 +12,14 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/sasha-s/go-deadlock"
+	"github.com/gravitl/netmaker/schema"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -67,7 +68,7 @@ func (i InitType) String() string {
 }
 
 var (
-	netclientCfgMutex = &deadlock.RWMutex{}
+	netclientCfgMutex sync.RWMutex
 	netclient         Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
@@ -85,7 +86,7 @@ var (
 
 // Config configuration for netclient and host as a whole
 type Config struct {
-	models.Host
+	schema.Host
 	PrivateKey        wgtypes.Key          `json:"privatekey" yaml:"privatekey"`
 	TrafficKeyPrivate []byte               `json:"traffickeyprivate" yaml:"traffickeyprivate"`
 	HostPeers         []wgtypes.PeerConfig `json:"-" yaml:"-"`
@@ -118,7 +119,7 @@ func UpdateNetclient(c Config) {
 	netclient = c
 }
 
-func UpdateHost(host *models.Host) (resetInterface, restart, sendHostUpdate bool) {
+func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool) {
 	hostCfg := Netclient()
 	if hostCfg == nil || host == nil {
 		return

@@ -171,7 +171,7 @@ func getHAEgressDataForProcessing(metricsPort int) (data map[string][]egressPeer
 }
 
 func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
-	defer fmt.Println("=======> EXITING StartEgressHAFailOverThread")
+	defer slog.Info("Exited StartEgressHAFailOverThread.")
 	defer waitg.Done()
 	HaEgressTicker = time.NewTicker(HaEgressCheckInterval)
 	defer HaEgressTicker.Stop()

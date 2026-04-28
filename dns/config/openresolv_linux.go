@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/exp/slog"
 )
 
 type openresolvManager struct{}
@@ -43,7 +45,14 @@ func (o *openresolvManager) Configure(iface string, config Config) error {
 
 	cmd := exec.Command("resolvconf", "-m", "0", "-x", "-a", iface)
 	cmd.Stdin = confBytes
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(out))
+		slog.Error(fmt.Sprintf("error configuring interface (%s) dns settings: %v: %s", iface, err, out))
+		return fmt.Errorf("failed to configure interface (%s): %v", iface, err)
+	}
+
+	return nil
 }
 
 func (o *openresolvManager) resetConfig(iface string) error {
@@ -56,6 +65,7 @@ func (o *openresolvManager) resetConfig(iface string) error {
 			return nil
 		}
 
+		slog.Error(fmt.Sprintf("error resetting interface (%s) dns settings: %v: %s", iface, err, out))
 		return err
 	}
 
