@@ -15,7 +15,7 @@ import (
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -109,15 +109,15 @@ func setHostFields(cmd *cobra.Command) {
 		config.Netclient().Interface = ifaceName
 	}
 	if firewall, err := cmd.Flags().GetString(registerFlags.Firewall); err == nil {
-		if ncutils.IsLinux() && (firewall == models.FIREWALL_IPTABLES || firewall == models.FIREWALL_NFTABLES) {
+		if ncutils.IsLinux() && (firewall == schema.FIREWALL_IPTABLES || firewall == schema.FIREWALL_NFTABLES) {
 			// check if firewall is present
-			if firewall == models.FIREWALL_IPTABLES {
+			if firewall == schema.FIREWALL_IPTABLES {
 				if !ncutils.IsIPTablesPresent() {
 					fmt.Println("iptables is not present")
 					os.Exit(1)
 				}
 			}
-			if firewall == models.FIREWALL_NFTABLES {
+			if firewall == schema.FIREWALL_NFTABLES {
 				if !ncutils.IsNFTablesPresent() {
 					fmt.Println("nftables is not present")
 					os.Exit(1)

@@ -9,7 +9,7 @@ import (
 	"github.com/google/nftables"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
-	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"github.com/vishvananda/netlink"
 )
 
@@ -25,7 +25,7 @@ func newFirewall() (firewallController, error) {
 
 	var manager firewallController
 
-	if config.Netclient().FirewallInUse == models.FIREWALL_IPTABLES {
+	if config.Netclient().FirewallInUse == schema.FIREWALL_IPTABLES {
 		logger.Log(0, "using iptables to manage firewall rules...")
 		ipv4Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		ipv6Client, _ := iptables.NewWithProtocol(iptables.ProtocolIPv6)
@@ -39,7 +39,7 @@ func newFirewall() (firewallController, error) {
 		return manager, nil
 	}
 	logger.Log(0, "using nftables to manage firewall rules...")
-	if config.Netclient().FirewallInUse == models.FIREWALL_NFTABLES {
+	if config.Netclient().FirewallInUse == schema.FIREWALL_NFTABLES {
 		logger.Log(0, "nftables is supported")
 		manager = &nftablesManager{
 			conn:         &nftables.Conn{},

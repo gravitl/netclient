@@ -512,27 +512,27 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 // only auto-detects when no valid firewall has been configured.
 func SetFirewall() {
 	if !ncutils.IsLinux() {
-		netclient.FirewallInUse = models.FIREWALL_NONE
+		netclient.FirewallInUse = schema.FIREWALL_NONE
 		return
 	}
 	// if user explicitly set a firewall and it's still present, keep it
 	switch netclient.FirewallInUse {
-	case models.FIREWALL_IPTABLES:
+	case schema.FIREWALL_IPTABLES:
 		if ncutils.IsIPTablesPresent() {
 			return
 		}
-	case models.FIREWALL_NFTABLES:
+	case schema.FIREWALL_NFTABLES:
 		if ncutils.IsNFTablesPresent() {
 			return
 		}
 	}
 	// auto-detect: user hasn't set one, or their choice is no longer available
 	if ncutils.IsIPTablesPresent() {
-		netclient.FirewallInUse = models.FIREWALL_IPTABLES
+		netclient.FirewallInUse = schema.FIREWALL_IPTABLES
 	} else if ncutils.IsNFTablesPresent() {
-		netclient.FirewallInUse = models.FIREWALL_NFTABLES
+		netclient.FirewallInUse = schema.FIREWALL_NFTABLES
 	} else {
-		netclient.FirewallInUse = models.FIREWALL_NONE
+		netclient.FirewallInUse = schema.FIREWALL_NONE
 	}
 }
 
@@ -541,14 +541,14 @@ func SetFirewall() {
 func FirewallHasChanged() bool {
 	if !ncutils.IsLinux() {
 		// non-Linux should always be FIREWALL_NONE; flag if not set
-		return netclient.FirewallInUse != models.FIREWALL_NONE
+		return netclient.FirewallInUse != schema.FIREWALL_NONE
 	}
 	switch netclient.FirewallInUse {
-	case models.FIREWALL_IPTABLES:
+	case schema.FIREWALL_IPTABLES:
 		return !ncutils.IsIPTablesPresent()
-	case models.FIREWALL_NFTABLES:
+	case schema.FIREWALL_NFTABLES:
 		return !ncutils.IsNFTablesPresent()
-	case models.FIREWALL_NONE:
+	case schema.FIREWALL_NONE:
 		// if a firewall becomes available, that's a change
 		return ncutils.IsIPTablesPresent() || ncutils.IsNFTablesPresent()
 	default:
