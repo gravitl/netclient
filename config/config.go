@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
-	"github.com/sasha-s/go-deadlock"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -68,7 +68,7 @@ func (i InitType) String() string {
 }
 
 var (
-	netclientCfgMutex = &deadlock.RWMutex{}
+	netclientCfgMutex sync.RWMutex
 	netclient         Config // netclient contains the netclient config
 	// Version - default version string
 	Version = "dev"
