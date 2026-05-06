@@ -733,7 +733,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName()),
+						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
 					},
 					&expr.Masq{},
 				}
