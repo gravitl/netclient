@@ -589,6 +589,11 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 		} else {
 			logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
+			defaultIface := config.Netclient().DefaultInterface
+			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
+				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
+				continue
+			}
 			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 			// to avoid duplicate iface route rule,delete if exists
 			var exp []expr.Any
