@@ -436,7 +436,7 @@ func setupMQTT(server *config.Server) error {
 
 // func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
 // only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
-func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
+func SetupMQTTSingleton(server *config.Server, publishOnly bool) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(server.Broker)
 	if server.BrokerType == "emqx" {
