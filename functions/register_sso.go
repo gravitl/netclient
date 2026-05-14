@@ -120,6 +120,7 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 				return
 			}
 			handleRegisterResponse(&response)
+			return
 		}
 	}()
 
