@@ -302,8 +302,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if !peerUpdate.ServerConfig.EndpointDetection {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
+		cache.EndpointCache.Clear()
+		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
@@ -883,8 +883,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	}
 	if !pullResponse.ServerConfig.EndpointDetection {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
+		cache.EndpointCache.Clear()
+		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
