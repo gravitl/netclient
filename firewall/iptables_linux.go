@@ -56,6 +56,12 @@ var (
 		table: defaultIpTable,
 		chain: aclFwdRulesChain,
 	}
+	aclFwdChainOutDropRule = ruleInfo{
+		rule: []string{"-o", ncutils.GetInterfaceName(), "-m",
+			"comment", "--comment", netmakerSignature, "-j", "DROP"},
+		table: defaultIpTable,
+		chain: aclFwdRulesChain,
+	}
 	dropRules = []ruleInfo{
 		{
 			rule: []string{"-i", ncutils.GetInterfaceName(), "-m", "comment",
@@ -65,6 +71,7 @@ var (
 		},
 		aclInChainDropRule,
 		aclFwdChainDropRule,
+		aclFwdChainOutDropRule,
 	}
 
 	// filter table netmaker jump rules
@@ -188,37 +195,39 @@ func (i *iptablesManager) ChangeACLInTarget(target string) {
 	}
 }
 
-func (i *iptablesManager) ChangeACLFwdTarget(target string) {
+func fwdAclTailRuleSpec(inOrOutFlag, iface, verdict string) []string {
+	return []string{inOrOutFlag, iface, "-m", "comment", "--comment", netmakerSignature, "-j", verdict}
+}
 
-	ruleSpec := aclFwdChainDropRule.rule
+func (i *iptablesManager) ChangeACLFwdTarget(target string) {
 	table := aclFwdChainDropRule.table
 	chain := aclFwdChainDropRule.chain
-	ruleSpec[len(ruleSpec)-1] = target
-	ok4, _ := i.ipv4Client.Exists(table, chain, ruleSpec...)
-	ok6, _ := i.ipv6Client.Exists(table, chain, ruleSpec...)
-	if ok4 && ok6 {
+	nm := ncutils.GetInterfaceName()
+
+	curIn := fwdAclTailRuleSpec("-i", nm, target)
+	curOut := fwdAclTailRuleSpec("-o", nm, target)
+	ok4in, _ := i.ipv4Client.Exists(table, chain, curIn...)
+	ok6in, _ := i.ipv6Client.Exists(table, chain, curIn...)
+	ok4out, _ := i.ipv4Client.Exists(table, chain, curOut...)
+	ok6out, _ := i.ipv6Client.Exists(table, chain, curOut...)
+	if ok4in && ok6in && ok4out && ok6out {
 		return
 	}
 	slog.Debug("setting acl forward chain target to", "target", target)
-	if target == targetAccept {
 
-		// remove any DROP rule
-		ruleSpec[len(ruleSpec)-1] = targetDrop
-		i.ipv4Client.DeleteIfExists(table, chain, ruleSpec...)
-		i.ipv6Client.DeleteIfExists(table, chain, ruleSpec...)
-		// Add ACCEPT RULE
-		ruleSpec[len(ruleSpec)-1] = targetAccept
-		i.ipv4Client.Append(table, chain, ruleSpec...)
-		i.ipv6Client.Append(table, chain, ruleSpec...)
-	} else {
-		// remove any ACCEPT rule
-		ruleSpec[len(ruleSpec)-1] = targetAccept
-		i.ipv4Client.DeleteIfExists(table, chain, ruleSpec...)
-		i.ipv6Client.DeleteIfExists(table, chain, ruleSpec...)
-		// Add DROP RULE
-		ruleSpec[len(ruleSpec)-1] = targetDrop
-		i.ipv4Client.Append(table, chain, ruleSpec...)
-		i.ipv6Client.Append(table, chain, ruleSpec...)
+	other := targetAccept
+	if target == targetAccept {
+		other = targetDrop
+	}
+	oldIn := fwdAclTailRuleSpec("-i", nm, other)
+	oldOut := fwdAclTailRuleSpec("-o", nm, other)
+	for _, old := range [][]string{oldIn, oldOut} {
+		i.ipv4Client.DeleteIfExists(table, chain, old...)
+		i.ipv6Client.DeleteIfExists(table, chain, old...)
+	}
+	for _, cur := range [][]string{curIn, curOut} {
+		i.ipv4Client.Append(table, chain, cur...)
+		i.ipv6Client.Append(table, chain, cur...)
 	}
 }
 
@@ -460,6 +469,42 @@ func (i *iptablesManager) removeJumpRules() {
 
 }
 
+// insertEgressForwardAclJumpIfNeeded adds FORWARD -i <egress> -o <netmaker> -j NETMAKER-ACL-FWD for egress ACL (appended).
+// dedupe ensures one rule per interface per address family when multiple ranges share an iface.
+func (i *iptablesManager) insertEgressForwardAclJumpIfNeeded(
+	client *iptables.IPTables,
+	egressIface string,
+	isIPv4 bool,
+	dedupe map[string]struct{},
+	egressGwRoutes *[]ruleInfo,
+) {
+	if egressIface == "" {
+		return
+	}
+	ver := "v6"
+	if isIPv4 {
+		ver = "v4"
+	}
+	key := egressIface + "#" + ver
+	if _, ok := dedupe[key]; ok {
+		return
+	}
+	dedupe[key] = struct{}{}
+	nmIf := ncutils.GetInterfaceName()
+	ruleSpec := []string{"-i", egressIface, "-o", nmIf, "-j", aclFwdRulesChain}
+	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+	client.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
+	if err := client.AppendUnique(defaultIpTable, iptableFWDChain, ruleSpec...); err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add egress FORWARD ACL jump: %v Err: %v ", ruleSpec, err.Error()))
+		return
+	}
+	*egressGwRoutes = append(*egressGwRoutes, ruleInfo{
+		table: defaultIpTable,
+		chain: iptableFWDChain,
+		rule:  ruleSpec,
+	})
+}
+
 // iptablesManager.InsertEgressRoutingRules - inserts egress routes for the GW peers
 func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
 	ruleTable := i.FetchRuleTable(server, egressTable)
@@ -472,6 +517,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		extraInfo: egressInfo.EgressGWCfg,
 	}
 	egressGwRoutes := []ruleInfo{}
+	fwdJumpDedupe := make(map[string]struct{})
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
 		// Check if virtual NAT should be applied first (before checking Nat flag)
 		// This ensures VNAT is applied when switching from direct to virtual mode
@@ -488,6 +534,8 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				} else {
 					egressGwRoutes = append(egressGwRoutes, vnatRules...)
 					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
+					i.insertEgressForwardAclJumpIfNeeded(i.ipv4Client, egressRangeIface, true, fwdJumpDedupe, &egressGwRoutes)
+					continue
 				}
 			}
 		} else if egressGwRange.Nat {
@@ -502,6 +550,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
+
 				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 				if len(config.GetNodes()) == 1 {
 					ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
@@ -519,7 +568,6 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						rule:  ruleSpec,
 					})
 				}
-
 				// Add Docker-specific rule if egress interface is a Docker network
 				if isDockerInterface(egressRangeIface) {
 					dockerRuleSpec := []string{"-i", ncutils.GetInterfaceName(), "-o", egressRangeIface, "-j", aclInputRulesChain}
@@ -542,6 +590,46 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						}
 					}
 				}
+				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, egressRangeIface, isAddrIpv4(egressGwRange.Network), fwdJumpDedupe, &egressGwRoutes)
+				defaultIface := config.Netclient().DefaultInterface
+				if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
+					logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
+					continue
+				}
+				// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
+				// This keeps return path traffic SNATed for egress-ranged destinations.
+				if isAddrIpv4(egressGwRange.Network) {
+					additionalRuleSpec := []string{
+						"-s", egressGwRange.Network,
+						"-o", ncutils.GetInterfaceName(),
+						"-j", "MASQUERADE",
+					}
+					additionalRuleSpec = appendNetmakerCommentToRule(additionalRuleSpec)
+					iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, additionalRuleSpec...)
+					err = iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, additionalRuleSpec...)
+					if err != nil {
+						logger.Log(1, fmt.Sprintf("failed to add additional egress NAT rule: %v, Err: %v ", additionalRuleSpec, err.Error()))
+					} else {
+						egressGwRoutes = append(egressGwRoutes, ruleInfo{
+							table: defaultNatTable,
+							chain: nattablePRTChain,
+							rule:  additionalRuleSpec,
+						})
+					}
+				}
+
+			}
+		} else {
+			// Non-NAT egress: no MASQUERADE path, but LAN -> netmaker still needs ACL in FORWARD.
+			egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network))
+			if err != nil {
+				logger.Log(0, "failed to get interface name for non-NAT egress: ", egressRangeIface, err.Error())
+			} else {
+				iptablesClient := i.ipv4Client
+				if !isAddrIpv4(egressGwRange.Network) {
+					iptablesClient = i.ipv6Client
+				}
+				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, egressRangeIface, isAddrIpv4(egressGwRange.Network), fwdJumpDedupe, &egressGwRoutes)
 			}
 		}
 	}
@@ -1689,7 +1777,7 @@ func (i *iptablesManager) checkNETMAPSupport(ipv4 bool) bool {
 func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
 	var rules []ruleInfo
 
-	// Get chain names (forward chain not needed - FORWARD already has ACCEPT policy)
+	// Per-egress FORWARD ACL (LAN in -> Netmaker out) is added from InsertEgressRoutingRules.
 	preroutingChain, postroutingChain := getVNATChainNames(egressID)
 
 	isIPv4 := vnatInfo.virtualRange.IP.To4() != nil
@@ -1711,7 +1799,7 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 	// Delete existing chains if they exist (for idempotency)
 	i.deleteVNATChains(client, preroutingChain, postroutingChain, isIPv4)
 
-	// Create per-egress chains (forward chain not needed - FORWARD already has ACCEPT policy)
+	// Create per-egress NAT chains (filter FORWARD jump is separate; see InsertEgressRoutingRules).
 	if err := createChain(client, defaultNatTable, preroutingChain); err != nil {
 		return nil, fmt.Errorf("failed to create prerouting chain: %w", err)
 	}
@@ -1759,7 +1847,6 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 			rule:   postroutingRule,
 			isIpv4: true,
 		})
-		// Note: Forward chain rules are not needed - FORWARD chain already has ACCEPT policy
 	} else {
 		// IPv6 implementation (similar structure)
 		// TODO: Implement IPv6 support
@@ -1785,8 +1872,7 @@ func (i *iptablesManager) deleteVNATChains(client *iptables.IPTables, prerouting
 	client.DeleteChain(defaultNatTable, postroutingChain)
 }
 
-// addVNATJumpRules adds jump rules from base chains to per-egress chains
-// Note: Forward chain jump not needed - FORWARD already has ACCEPT policy
+// addVNATJumpRules adds jump rules from base chains to per-egress NAT chains.
 func (i *iptablesManager) addVNATJumpRules(client *iptables.IPTables, preroutingChain, postroutingChain string, ipv4 bool) error {
 	// Jump from PREROUTING to per-egress prerouting chain
 	jumpRulePR := []string{"-j", preroutingChain}

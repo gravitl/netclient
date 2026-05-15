@@ -1147,15 +1147,28 @@ func checkIPConnectivity(ips []string) bool {
 
 // resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
 func resolveDomainToIPs(domain string) ([]string, error) {
+	domain = strings.TrimSpace(domain)
 	if domain == "" {
 		return nil, fmt.Errorf("domain cannot be empty")
 	}
-	lookUpIPs, err := net.LookupIP(domain)
+
+	// net.LookupIP cannot resolve wildcard labels directly ("*.example.com").
+	// Normalize wildcard entries to their base domain so common configs are accepted.
+	lookupDomain := domain
+	if strings.HasPrefix(domain, "*.") {
+		lookupDomain = strings.TrimPrefix(domain, "*.")
+		if lookupDomain == "" || strings.Contains(lookupDomain, "*") {
+			return nil, fmt.Errorf("invalid wildcard domain %s", domain)
+		}
+		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
+	}
+
+	lookUpIPs, err := net.LookupIP(lookupDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
+		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s): %w", domain, lookupDomain, err)
 	}
 	if len(lookUpIPs) == 0 {
-		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
 	}
 	ips := lookUpIPs
 	// Filter out any invalid IPs and return unique IPs
