@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gravitl/netclient/auth"
@@ -22,14 +23,36 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+const (
+	autoRelayMECacheTTL            = 90 * time.Second
+	networkMetricsCacheTTL         = 5 * time.Minute
+	autoRelayHealthCheckInterval   = 60 * time.Second
+	minPeerConnectionCheckInterval = 30 * time.Second
+	signalThrottleMaxAttempts      = 3
+	signalThrottleBackoff          = 5 * time.Minute
+	relayLivenessProbeCount          = 1
+)
+
+type signalThrottleEntry struct {
+	count        int
+	lastAttempt  time.Time
+	backoffUntil time.Time
+}
+
 var (
 	autoRelayCacheMutex = &sync.Mutex{}
 	currentNodesCache   = make(map[string]models.Node)
 	autoRelayCache      = make(map[schema.NetworkID][]models.Node)
 	gwNodesCache        = make(map[schema.NetworkID][]models.Node)
-	networkMetricsCache = make(map[schema.NetworkID]map[string]int64) // Cached metrics per network
-	autoRelayConnTicker *time.Ticker
-	signalThrottleCache = sync.Map{}
+	networkMetricsCache     = make(map[schema.NetworkID]map[string]int64)
+	networkMetricsFetchedAt = make(map[schema.NetworkID]time.Time)
+	autoRelayConnTicker     *time.Ticker
+	signalThrottleCache     = sync.Map{}
+	autoRelayMERecentCache  = sync.Map{} // key nodeID|peerNodeID|relayID -> time.Time
+	relayReachabilityCache  = make(map[string]bool) // key nodeID|relayID
+	gwReachabilityCache     = make(map[string]bool) // key nodeID|gwID
+	nodeHealthCheckLastRun  = make(map[string]time.Time)
+	peerWatchRunning        atomic.Bool
 )
 
 func getAutoRelayNodes(network schema.NetworkID) []models.Node {
@@ -54,6 +77,21 @@ func getNetworkMetrics(network schema.NetworkID) map[string]int64 {
 	return networkMetricsCache[network]
 }
 
+func networkMetricsFresh(network schema.NetworkID) bool {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	fetchedAt, ok := networkMetricsFetchedAt[network]
+	return ok && time.Since(fetchedAt) < networkMetricsCacheTTL
+}
+
+// getNetworkMetricsWithTTL returns cached relay metrics, refreshing only when empty or past TTL.
+func getNetworkMetricsWithTTL(network schema.NetworkID, metricPort int) map[string]int64 {
+	if m := getNetworkMetrics(network); len(m) > 0 && networkMetricsFresh(network) {
+		return m
+	}
+	return refreshNetworkMetrics(network, metricPort)
+}
+
 func refreshNetworkMetrics(network schema.NetworkID, metricPort int) map[string]int64 {
 	nodes := getAutoRelayNodes(network)
 	if len(nodes) == 0 {
@@ -67,6 +105,7 @@ func refreshNetworkMetrics(network schema.NetworkID, metricPort int) map[string]
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	networkMetricsCache[network] = metrics
+	networkMetricsFetchedAt[network] = time.Now()
 
 	return metrics
 }
@@ -91,13 +130,16 @@ func setAutoRelayNodes(autoRelaynodes map[schema.NetworkID][]models.Node, gwNode
 		metricPort = 51821
 	}
 
-	// Clear old metrics cache
+	// Clear old metrics cache (peer update invalidates TTL)
 	networkMetricsCache = make(map[schema.NetworkID]map[string]int64)
+	networkMetricsFetchedAt = make(map[schema.NetworkID]time.Time)
+	now := time.Now()
 
 	// Calculate metrics for each network's auto relay nodes
 	for networkID, nodes := range autoRelaynodes {
 		if len(nodes) > 0 {
 			networkMetricsCache[networkID] = findNodeLatencies(nodes, metricPort)
+			networkMetricsFetchedAt[networkID] = now
 		}
 	}
 }
@@ -137,25 +179,22 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
-	autoRelayNodes := getAutoRelayNodes(schema.NetworkID(signal.NetworkID))
+	networkID := schema.NetworkID(signal.NetworkID)
+	autoRelayNodes := getAutoRelayNodes(networkID)
 	if len(autoRelayNodes) == 0 {
 		return nil
 	}
-	// Use cached metrics from setAutoRelayNodes
-	autoRelayNodeMetrics := getNetworkMetrics(schema.NetworkID(signal.NetworkID))
-	if len(autoRelayNodeMetrics) == 0 {
-		metricPort := server.MetricsPort
-		if metricPort == 0 {
-			metricPort = 51821
-		}
-		slog.Debug("no cached relay metrics found; refreshing", "networkID", signal.NetworkID)
-		autoRelayNodeMetrics = refreshNetworkMetrics(schema.NetworkID(signal.NetworkID), metricPort)
-		if len(autoRelayNodeMetrics) == 0 {
-			return errors.New("failed to find nearest relay node: no cached metrics available")
-		}
+	metricPort := server.MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
 	}
+	autoRelayNodeMetrics := getNetworkMetricsWithTTL(networkID, metricPort)
+	if len(autoRelayNodeMetrics) == 0 {
+		return errors.New("failed to find nearest relay node: no cached metrics available")
+	}
+
 	if !signal.Reply {
-		// signal back
+		// Responder: exchange metrics only; initiator commits relay after Reply.
 		s := models.Signal{
 			Server:               signal.Server,
 			FromHostID:           signal.ToHostID,
@@ -173,16 +212,17 @@ func handlePeerRelaySignal(signal models.Signal) error {
 		err := SignalPeer(s)
 		if err != nil {
 			slog.Warn("failed to signal peer", "error", err.Error())
-		} else {
-			signalThrottleCache.Delete(signal.FromHostID)
+			return err
 		}
-	} else {
 		signalThrottleCache.Delete(signal.FromHostID)
+		return nil
 	}
 
-	// compare my node autoRelayNodeMetrics with signal.AutoRelayNodeMetrics and choose closest to both of them on average and set nearest node
+	signalThrottleCache.Delete(signal.FromHostID)
+
+	// Initiator after peer metrics: pick relay and commit once to the server.
 	var nearestNode *models.Node
-	var lowestAvg int64 = 1 << 62 // large
+	var lowestAvg int64 = 1 << 62
 	if len(signal.AutoRelayNodeMetrics) > 0 {
 		for i := range autoRelayNodes {
 			n := &autoRelayNodes[i]
@@ -197,12 +237,7 @@ func handlePeerRelaySignal(signal models.Signal) error {
 			}
 		}
 	}
-	// Fallback: if no common metrics with peer, use our nearest
 	if nearestNode == nil {
-		metricPort := server.MetricsPort
-		if metricPort == 0 {
-			metricPort = 51821
-		}
 		var err error
 		nearestNode, err = findNearestNode(autoRelayNodes, metricPort)
 		if err != nil {
@@ -211,13 +246,180 @@ func handlePeerRelaySignal(signal models.Signal) error {
 		}
 	}
 	slog.Debug("sending relay me request", "fromNodeID", signal.FromNodeID, "relayNodeID", nearestNode.ID.String())
-	err := autoRelayME(http.MethodPost, signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
+	return autoRelayMEDebounced(http.MethodPost, signal.Server, signal.ToNodeID, signal.FromNodeID, nearestNode.ID.String())
+}
+
+func applyMinPeerCheckInterval() {
+	if networking.PeerConnectionCheckInterval < minPeerConnectionCheckInterval {
+		networking.PeerConnectionCheckInterval = minPeerConnectionCheckInterval
+	}
+}
+
+func autoRelayMECacheKey(nodeID, peerNodeID, relayID string) string {
+	return nodeID + "|" + peerNodeID + "|" + relayID
+}
+
+// autoRelayMEDebounced skips duplicate auto_relay_me API calls within TTL.
+func autoRelayMEDebounced(method, serverName, nodeID, peerNodeID, relayID string) error {
+	key := autoRelayMECacheKey(nodeID, peerNodeID, relayID)
+	if v, ok := autoRelayMERecentCache.Load(key); ok {
+		if time.Since(v.(time.Time)) < autoRelayMECacheTTL {
+			slog.Debug("skipping duplicate auto_relay_me", "key", key)
+			return nil
+		}
+	}
+	err := autoRelayME(method, serverName, nodeID, peerNodeID, relayID)
 	if err != nil {
-		slog.Error("failed to signal server to relay me", "error", err)
 		return err
 	}
-
+	autoRelayMERecentCache.Store(key, time.Now())
 	return nil
+}
+
+func shouldThrottlePeerSignal(hostID string) bool {
+	now := time.Now()
+	if v, ok := signalThrottleCache.Load(hostID); ok {
+		entry := v.(signalThrottleEntry)
+		if now.Before(entry.backoffUntil) {
+			return true
+		}
+		if entry.count >= signalThrottleMaxAttempts {
+			return true
+		}
+	}
+	return false
+}
+
+func recordPeerSignalAttempt(hostID string) {
+	now := time.Now()
+	var entry signalThrottleEntry
+	if v, ok := signalThrottleCache.Load(hostID); ok {
+		entry = v.(signalThrottleEntry)
+		entry.count++
+	} else {
+		entry.count = 1
+	}
+	entry.lastAttempt = now
+	if entry.count >= signalThrottleMaxAttempts {
+		entry.backoffUntil = now.Add(signalThrottleBackoff)
+	}
+	signalThrottleCache.Store(hostID, entry)
+}
+
+func shouldRunNodeHealthCheck(nodeID string) bool {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	last, ok := nodeHealthCheckLastRun[nodeID]
+	if ok && time.Since(last) < autoRelayHealthCheckInterval {
+		return false
+	}
+	nodeHealthCheckLastRun[nodeID] = time.Now()
+	return true
+}
+
+func peerRelayAlreadyActive(node models.Node, peerNodeID string) bool {
+	relayID, ok := node.AutoRelayedPeers[peerNodeID]
+	if !ok || relayID == "" {
+		return false
+	}
+	key := autoRelayMECacheKey(node.ID.String(), peerNodeID, relayID)
+	if v, ok := autoRelayMERecentCache.Load(key); ok {
+		return time.Since(v.(time.Time)) < autoRelayMECacheTTL
+	}
+	return false
+}
+
+func runPeerConnectionWatchTick(ctx context.Context, server *config.Server, metricPort int) {
+	nodes := config.GetNodes()
+	if len(nodes) == 0 {
+		return
+	}
+	peerInfo, err := networking.GetPeerInfo()
+	if err != nil {
+		slog.Error("failed to get peer info", "error", err)
+		return
+	}
+	devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+	if err != nil {
+		slog.Debug("failed to get peers from device: ", "error", err)
+		return
+	}
+	for _, node := range nodes {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if node.Server != config.CurrServer {
+			continue
+		}
+		peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
+		if !ok {
+			continue
+		}
+		networkID := schema.NetworkID(node.Network)
+		autoRelayNodes := getAutoRelayNodes(networkID)
+		autoRelayNodeMetrics := getNetworkMetricsWithTTL(networkID, metricPort)
+		if len(autoRelayNodeMetrics) == 0 {
+			continue
+		}
+		currNode := getCurrNode(node.ID.String())
+		if currNode.ID.String() != "" && shouldRunNodeHealthCheck(currNode.ID.String()) {
+			if currNode.AutoAssignGateway {
+				checkAssignGw(server, currNode)
+			} else if len(autoRelayNodes) > 0 {
+				checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
+			}
+		}
+		for pubKey, peer := range peers {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			if peer.IsExtClient {
+				continue
+			}
+			devicePeer, ok := devicePeerMap[pubKey]
+			if !ok {
+				continue
+			}
+			if shouldThrottlePeerSignal(peer.HostID) {
+				slog.Debug("throttle cache hit", "address", peer.Address)
+				continue
+			}
+			connected, err := networking.IsPeerConnected(devicePeer)
+			if err != nil || connected {
+				continue
+			}
+			connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, relayLivenessProbeCount)
+			if connected {
+				continue
+			}
+			if currNode.ID.String() != "" && peerRelayAlreadyActive(currNode, peer.ID) {
+				continue
+			}
+			s := models.Signal{
+				Server:         config.CurrServer,
+				FromHostID:     config.Netclient().ID.String(),
+				ToHostID:       peer.HostID,
+				FromNodeID:     node.ID.String(),
+				ToNodeID:       peer.ID,
+				FromHostPubKey: config.Netclient().PublicKey.String(),
+				ToHostPubKey:   pubKey,
+				NetworkID:      peer.Network,
+				Action:         models.ConnNegotiation,
+			}
+			slog.Debug("sending signal for peer", "address", peer.Address)
+			s.AutoRelayNodeMetrics = autoRelayNodeMetrics
+			s.TimeStamp = time.Now().Unix()
+			if err = SignalPeer(s); err != nil {
+				slog.Debug("failed to signal peer", "error", err.Error())
+			} else {
+				recordPeerSignalAttempt(peer.HostID)
+			}
+		}
+	}
 }
 
 // watchPeerConnections - periodically watches peer connections.
@@ -234,6 +436,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
 		}
 	}
+	applyMinPeerCheckInterval()
 	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
 	defer autoRelayConnTicker.Stop()
 
@@ -247,133 +450,19 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			slog.Info("exiting peer connection watcher")
 			return
 		case <-autoRelayConnTicker.C:
-			// Use a mutex to prevent overlapping executions and goroutine accumulation
+			if !peerWatchRunning.CompareAndSwap(false, true) {
+				slog.Debug("skipping peer connection watch tick; previous run still active")
+				continue
+			}
 			go func() {
-				// Exit early if context is done
+				defer peerWatchRunning.Store(false)
 				select {
 				case <-ctx.Done():
 					return
 				default:
 				}
-				nodes := config.GetNodes()
-				if len(nodes) == 0 {
-					return
-				}
-				peerInfo, err := networking.GetPeerInfo()
-				if err != nil {
-					slog.Error("failed to get peer info", "error", err)
-					return
-				}
-				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
-				if err != nil {
-					slog.Debug("failed to get peers from device: ", "error", err)
-					return
-				}
-				for _, node := range nodes {
-					// Check context before processing each node
-					select {
-					case <-ctx.Done():
-						return
-					default:
-					}
-
-					if node.Server != config.CurrServer {
-						continue
-					}
-					peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
-					if !ok {
-						continue
-					}
-					autoRelayNodes := getAutoRelayNodes(schema.NetworkID(node.Network))
-					// Use cached metrics from setAutoRelayNodes
-					networkID := schema.NetworkID(node.Network)
-					autoRelayNodeMetrics := getNetworkMetrics(networkID)
-					if len(autoRelayNodeMetrics) == 0 {
-						autoRelayNodeMetrics = refreshNetworkMetrics(networkID, metricPort)
-						if len(autoRelayNodeMetrics) == 0 {
-							continue
-						}
-					}
-					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
-						if currNode.AutoAssignGateway {
-							checkAssignGw(server, currNode)
-						} else {
-							if len(autoRelayNodes) > 0 {
-								checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
-							}
-						}
-					}
-					for pubKey, peer := range peers {
-						// Check context before processing each peer
-						select {
-						case <-ctx.Done():
-							return
-						default:
-						}
-
-						if peer.IsExtClient {
-							continue
-						}
-						devicePeer, ok := devicePeerMap[pubKey]
-						if !ok {
-							continue
-						}
-						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
-							slog.Debug("throttle cache hit", "address", peer.Address)
-							continue
-						}
-						// check if there is handshake on interface
-						connected, err := networking.IsPeerConnected(devicePeer)
-						if err != nil || connected {
-							continue
-						}
-						connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, 2)
-						if connected {
-							// peer is connected,so continue
-							continue
-						}
-						s := models.Signal{
-							Server:         config.CurrServer,
-							FromHostID:     config.Netclient().ID.String(),
-							ToHostID:       peer.HostID,
-							FromNodeID:     node.ID.String(),
-							ToNodeID:       peer.ID,
-							FromHostPubKey: config.Netclient().PublicKey.String(),
-							ToHostPubKey:   pubKey,
-							NetworkID:      peer.Network,
-							Action:         models.ConnNegotiation,
-						}
-						server := config.GetServer(config.CurrServer)
-						if server == nil {
-							continue
-						}
-						// Use cached metrics instead of recalculating for each peer
-						if len(autoRelayNodeMetrics) == 0 {
-							continue
-						}
-						slog.Debug("sending signal for peer", "address", peer.Address)
-						s.AutoRelayNodeMetrics = autoRelayNodeMetrics
-						s.TimeStamp = time.Now().Unix()
-						// signal peer
-						err = SignalPeer(s)
-						if err != nil {
-							slog.Debug("failed to signal peer", "error", err.Error())
-						} else {
-							if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
-								if cnt.(int) <= 3 {
-									cnt := cnt.(int) + 1
-									signalThrottleCache.Store(peer.HostID, cnt)
-								}
-							} else {
-								signalThrottleCache.Store(peer.HostID, 1)
-							}
-
-						}
-
-					}
-				}
+				runPeerConnectionWatchTick(ctx, server, metricPort)
 			}()
-
 		}
 	}
 }
@@ -383,31 +472,77 @@ func isPeerExist(peerKey string) bool {
 	return err == nil
 }
 
+func relayReachabilityKey(nodeID, relayID string) string {
+	return nodeID + "|" + relayID
+}
+
+func setRelayReachability(nodeID, relayID string, reachable bool) {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	relayReachabilityCache[relayReachabilityKey(nodeID, relayID)] = reachable
+}
+
+func wasRelayReachable(nodeID, relayID string) (bool, bool) {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	v, ok := relayReachabilityCache[relayReachabilityKey(nodeID, relayID)]
+	return v, ok
+}
+
 func checkAutoRelayCtx(server *config.Server, node models.Node, peers models.PeerMap, autoRelayNodes []models.Node) {
 	if server == nil {
 		return
 	}
 	slog.Debug("checking auto relay context", "nodeID", node.ID.String(), "address", node.PrimaryAddress())
-	// check current relay in use is the closest
+	metricPort := server.MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	for autoRelayedPeerID, currentAutoRelayID := range node.AutoRelayedPeers {
 		for _, autoRelayNode := range autoRelayNodes {
-			if autoRelayNode.ID.String() == currentAutoRelayID {
-				slog.Debug("checking if current relay is active", "address", autoRelayNode.PrimaryAddress())
-				connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), server.MetricsPort, 4)
-				if !connected {
-					slog.Warn("current relay not active", "nodeID", node.ID.String(), "relayID", currentAutoRelayID)
-					err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
-					if err != nil {
-						slog.Error("failed to switch to nearest gw node", "error", err)
-					}
-					if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
-						signalThrottleCache.Delete(autoRelayedPeer.HostID)
-					}
-					break
+			if autoRelayNode.ID.String() != currentAutoRelayID {
+				continue
+			}
+			slog.Debug("checking if current relay is active", "address", autoRelayNode.PrimaryAddress())
+			connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), metricPort, relayLivenessProbeCount)
+			wasUp, hadState := wasRelayReachable(node.ID.String(), currentAutoRelayID)
+			setRelayReachability(node.ID.String(), currentAutoRelayID, connected)
+			if connected {
+				break
+			}
+			// Edge-trigger: only act on transition from reachable to unreachable.
+			if hadState && !wasUp {
+				break
+			}
+			if hadState && wasUp {
+				slog.Warn("current relay not active", "nodeID", node.ID.String(), "relayID", currentAutoRelayID)
+				if err := autoRelayMEDebounced(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, ""); err != nil {
+					slog.Error("failed to clear auto relay", "error", err)
+				}
+				if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
+					signalThrottleCache.Delete(autoRelayedPeer.HostID)
 				}
 			}
+			break
 		}
 	}
+}
+
+func gwReachabilityKey(nodeID, gwID string) string {
+	return nodeID + "|" + gwID
+}
+
+func setGwReachability(nodeID, gwID string, reachable bool) {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	gwReachabilityCache[gwReachabilityKey(nodeID, gwID)] = reachable
+}
+
+func wasGwReachable(nodeID, gwID string) (bool, bool) {
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	v, ok := gwReachabilityCache[gwReachabilityKey(nodeID, gwID)]
+	return v, ok
 }
 
 func checkAssignGw(server *config.Server, node models.Node) {
@@ -418,41 +553,42 @@ func checkAssignGw(server *config.Server, node models.Node) {
 	if len(gwNodes) == 0 {
 		return
 	}
-	// check if current gw is reachable
+	metricPort := server.MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
 	if node.RelayedBy != "" {
 		for _, gwNode := range gwNodes {
-			if gwNode.ID.String() == node.RelayedBy {
-				slog.Debug("checking current gw status", "address", gwNode.PrimaryAddress())
-				connected, _ := metrics.PeerConnStatus(gwNode.PrimaryAddress(), server.MetricsPort, 3)
-				if !connected {
-					slog.Warn("current gw not active", "address", gwNode.PrimaryAddress())
-					err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", "")
-					if err != nil {
-						slog.Error("failed to switch to nearest gw node", "error", err)
-					}
-				}
+			if gwNode.ID.String() != node.RelayedBy {
+				continue
+			}
+			slog.Debug("checking current gw status", "address", gwNode.PrimaryAddress())
+			connected, _ := metrics.PeerConnStatus(gwNode.PrimaryAddress(), metricPort, relayLivenessProbeCount)
+			wasUp, hadState := wasGwReachable(node.ID.String(), node.RelayedBy)
+			setGwReachability(node.ID.String(), node.RelayedBy, connected)
+			if connected {
 				return
 			}
+			if hadState && !wasUp {
+				return
+			}
+			if hadState && wasUp {
+				slog.Warn("current gw not active", "address", gwNode.PrimaryAddress())
+				_ = autoRelayMEDebounced(http.MethodPut, server.Server, node.ID.String(), "", "")
+			}
+			return
 		}
 	}
-	nearestNode, err := findNearestNode(gwNodes, server.MetricsPort)
+	nearestNode, err := findNearestNode(gwNodes, metricPort)
 	if err == nil {
 		slog.Debug("found nearest gw", "address", nearestNode.PrimaryAddress())
 		if node.RelayedBy != nearestNode.ID.String() {
-			err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
-			if err != nil {
-				slog.Error("failed to switch to nearest gw node", "error", err)
-			}
+			_ = autoRelayMEDebounced(http.MethodPut, server.Server, node.ID.String(), "", nearestNode.ID.String())
 		}
 	} else if node.RelayedBy != "" {
 		slog.Warn("sending signal to unrelay current node", "nodeID", node.ID.String())
-		// current gw is unavailable, unrelay the node
-		err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), "", "")
-		if err != nil {
-			slog.Error("failed to unrelay node", "error", err)
-		}
+		_ = autoRelayMEDebounced(http.MethodPut, server.Server, node.ID.String(), "", "")
 	}
-
 }
 
 // findNearestNode finds the node with the lowest latency from a list of nodes

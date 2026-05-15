@@ -201,6 +201,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err == nil && sec > 0 {
 			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
 		}
+		applyMinPeerCheckInterval()
 	}
 	if server.IsPro {
 		if autoRelayConnTicker != nil {
