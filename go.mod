@@ -15,7 +15,7 @@ require (
 	github.com/gravitl/netmaker v1.5.1
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/hashicorp/go-retryablehttp v0.7.8
-	github.com/hashicorp/go-version v1.8.0
+	github.com/hashicorp/go-version v1.9.0
 	github.com/kr/pretty v0.3.1
 	github.com/matryer/is v1.4.1
 	github.com/miekg/dns v1.1.72
