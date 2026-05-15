@@ -555,6 +555,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		go processEgressDomain(hostUpdate.EgressDomain, true)
 	case models.CheckAutoAssignGw:
 		checkAssignGw(server, hostUpdate.Node)
+	case models.CollectMetrics:
+		go callPublishMetrics(true)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
