@@ -125,39 +125,41 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 					}
 				}
 
-				logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with configured nameservers, falling back to fallback nameservers", r.Question[0].Name))
+				if len(reply.Answer) == 0 {
+					logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with configured nameservers, falling back to fallback nameservers", r.Question[0].Name))
 
-				for _, nameserver := range bestMatchNameservers {
-					if nameserver.IsFallback {
-						var queryResolved bool
-						for _, ns := range nameserver.IPs {
-							logger.Log(4, fmt.Sprintf("forwarding dns query %s to fallback nameserver %s", r.Question[0].Name, ns))
+					for _, nameserver := range bestMatchNameservers {
+						if nameserver.IsFallback {
+							var queryResolved bool
+							for _, ns := range nameserver.IPs {
+								logger.Log(4, fmt.Sprintf("forwarding dns query %s to fallback nameserver %s", r.Question[0].Name, ns))
 
-							resp, err := exchangeDNSQueryWithPool(r, ns)
-							if err != nil || resp == nil || len(resp.Answer) == 0 {
-								if err != nil {
-									logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with fallback nameserver %s: %v", r.Question[0].Name, ns, err))
-								} else {
-									logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with fallback nameserver %s: no answer", r.Question[0].Name, ns))
+								resp, err := exchangeDNSQueryWithPool(r, ns)
+								if err != nil || resp == nil || len(resp.Answer) == 0 {
+									if err != nil {
+										logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with fallback nameserver %s: %v", r.Question[0].Name, ns, err))
+									} else {
+										logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with fallback nameserver %s: no answer", r.Question[0].Name, ns))
+									}
+									continue
 								}
-								continue
-							}
 
-							if resp.Rcode != dns.RcodeSuccess {
-								logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with fallback nameserver %s: rcode %d", r.Question[0].Name, ns, resp.Rcode))
-								continue
-							}
+								if resp.Rcode != dns.RcodeSuccess {
+									logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with fallback nameserver %s: rcode %d", r.Question[0].Name, ns, resp.Rcode))
+									continue
+								}
 
-							if len(resp.Answer) > 0 {
-								logger.Log(4, fmt.Sprintf("resolved dns query %s with fallback nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
-								reply.Answer = append(reply.Answer, resp.Answer...)
-								reply.Authoritative = resp.Authoritative
-								queryResolved = true
+								if len(resp.Answer) > 0 {
+									logger.Log(4, fmt.Sprintf("resolved dns query %s with fallback nameserver %s: %v", r.Question[0].Name, ns, resp.Answer))
+									reply.Answer = append(reply.Answer, resp.Answer...)
+									reply.Authoritative = resp.Authoritative
+									queryResolved = true
+									break
+								}
+							}
+							if queryResolved {
 								break
 							}
-						}
-						if queryResolved {
-							break
 						}
 					}
 				}
