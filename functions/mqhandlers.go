@@ -398,7 +398,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 	if server.IsPro {
-		go networking.RefreshPeerInfoCache()
+		go func() {
+			networking.RefreshPeerInfoCache()
+			time.Sleep(time.Second * 6)
+			callPublishMetrics(true)
+		}()
 	}
 }
 
