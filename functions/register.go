@@ -3,17 +3,28 @@ package functions
 import (
 	b64 "encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
+
+// configWithIdentity wraps *config.Config so JSON-marshalled enrollment
+// payloads carry a top-level "device_identity" sibling alongside the
+// promoted Config fields. Gated on posture.IdentityReportingEnabled().
+type configWithIdentity struct {
+	*config.Config
+	DeviceIdentity posture.DeviceIdentity `json:"device_identity"`
+}
 
 // Register - should be simple to register with a token
 func Register(token string) error {
@@ -52,8 +63,17 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
+	var body any = host
+	if posture.IdentityReportingEnabled() {
+		body = configWithIdentity{Config: host, DeviceIdentity: posture.Collect()}
+	}
+	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, body)
 	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
+			logger.Log(0, "registration refused by server on MDM grounds")
+			os.Exit(2)
+		}
 		logger.FatalLog("error registering with server", err.Error())
 		return err
 	}

@@ -17,12 +17,31 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
+
+// hostUpdateWithIdentity wraps models.HostUpdate so JSON-marshalled host
+// updates carry a sibling "device_identity" object when MDM reporting is
+// enabled. The embedded HostUpdate fields are promoted to the top level.
+type hostUpdateWithIdentity struct {
+	models.HostUpdate
+	DeviceIdentity posture.DeviceIdentity `json:"device_identity"`
+}
+
+// buildHostUpdatePayload returns the payload to JSON-encode for either the
+// HTTP fallback PUT or the MQTT publish path. When reporting is disabled,
+// the bare HostUpdate is returned so the wire format is unchanged.
+func buildHostUpdatePayload(hu models.HostUpdate) any {
+	if !posture.IdentityReportingEnabled() {
+		return hu
+	}
+	return hostUpdateWithIdentity{HostUpdate: hu, DeviceIdentity: posture.Collect()}
+}
 
 const (
 	// ACK - acknowledgement signal for MQ
@@ -156,8 +175,31 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
-	_, err = ncutils.SendRequest(http.MethodPut, url, headers, hu)
+	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
+	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			logMDMDenialOnce()
+			return denyErr
+		}
+	}
 	return err
+}
+
+// mdmDenialOnce throttles MDM denial messaging so each check-in cycle does
+// not spam the user. The message is re-emitted at most every 10 minutes.
+var (
+	mdmDenialMu       sync.Mutex
+	mdmDenialLastShow time.Time
+)
+
+func logMDMDenialOnce() {
+	mdmDenialMu.Lock()
+	defer mdmDenialMu.Unlock()
+	if time.Since(mdmDenialLastShow) < 10*time.Minute {
+		return
+	}
+	mdmDenialLastShow = time.Now()
+	slog.Warn(MDMDeniedMessage)
 }
 
 // hostServerUpdate - used to send host updates to server via restful api
@@ -200,7 +242,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 		Action: hostAction,
 		Host:   hostCfg.Host,
 	}
-	data, err := json.Marshal(hostUpdate)
+	data, err := json.Marshal(buildHostUpdatePayload(hostUpdate))
 	if err != nil {
 		return err
 	}

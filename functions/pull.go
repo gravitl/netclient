@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gravitl/netclient/auth"
@@ -40,6 +41,10 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	headers.Set("Authorization", "Bearer "+token)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
+			return models.HostPull{}, resetInterface, replacePeers, denyErr
+		}
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
