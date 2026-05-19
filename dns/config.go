@@ -31,7 +31,7 @@ func Configure() error {
 	}
 
 	var matchAllDomains bool
-	for _, nameserver := range config.GetServer(config.CurrServer).DnsNameservers {
+	for _, nameserver := range server.DnsNameservers {
 		if !nameserver.IsFallback {
 			if nameserver.MatchDomain == "." {
 				matchAllDomains = true
