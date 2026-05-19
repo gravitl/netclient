@@ -398,7 +398,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 	if server.IsPro {
-		go networking.RefreshPeerInfoCache()
+		go func() {
+			networking.RefreshPeerInfoCache()
+			time.Sleep(time.Second * 6)
+			callPublishMetrics(true)
+		}()
 	}
 }
 
@@ -555,6 +559,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		go processEgressDomain(hostUpdate.EgressDomain, true)
 	case models.CheckAutoAssignGw:
 		checkAssignGw(server, hostUpdate.Node)
+	case models.CollectMetrics:
+		go callPublishMetrics(true)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
