@@ -1151,15 +1151,22 @@ func checkIPConnectivity(ips []string) bool {
 	return false
 }
 
-// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
+// egressDomainPublicDNS are used for egress domain resolution (testing: avoid geo/local split-DNS).
+var egressDomainPublicDNS = []string{
+	"8.8.8.8:53",
+	"1.1.1.1:53",
+}
+
+const egressDomainLookupTimeout = 5 * time.Second
+
+// resolveDomainToIPs resolves a domain name to IP addresses via public DNS.
 func resolveDomainToIPs(domain string) ([]string, error) {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {
 		return nil, fmt.Errorf("domain cannot be empty")
 	}
 
-	// net.LookupIP cannot resolve wildcard labels directly ("*.example.com").
-	// Normalize wildcard entries to their base domain so common configs are accepted.
+	// Wildcard labels ("*.example.com") are normalized to the base domain for lookup.
 	lookupDomain := domain
 	if strings.HasPrefix(domain, "*.") {
 		lookupDomain = strings.TrimPrefix(domain, "*.")
@@ -1169,17 +1176,16 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
 	}
 
-	lookUpIPs, err := net.LookupIP(lookupDomain)
+	lookUpIPs, err := lookupDomainViaPublicDNS(lookupDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s): %w", domain, lookupDomain, err)
+		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s via public DNS): %w", domain, lookupDomain, err)
 	}
 	if len(lookUpIPs) == 0 {
 		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
 	}
-	ips := lookUpIPs
-	// Filter out any invalid IPs and return unique IPs
+
 	uniqueIPs := make(map[string]string)
-	for _, ip := range ips {
+	for _, ip := range lookUpIPs {
 		if ip != nil {
 			uniqueIPs[ip.String()] = ip.String()
 		}
@@ -1190,4 +1196,47 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 		result = append(result, ip)
 	}
 	return result, nil
+}
+
+func lookupDomainViaPublicDNS(name string) ([]net.IP, error) {
+	unique := make(map[string]net.IP)
+	var lastErr error
+
+	for _, server := range egressDomainPublicDNS {
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				dialer := net.Dialer{Timeout: egressDomainLookupTimeout}
+				return dialer.DialContext(ctx, "udp", server)
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), egressDomainLookupTimeout)
+		addrs, err := resolver.LookupIPAddr(ctx, name)
+		cancel()
+		if err != nil {
+			lastErr = err
+			slog.Debug("egress domain public DNS lookup failed",
+				"domain", name, "server", server, "error", err)
+			continue
+		}
+		for _, addr := range addrs {
+			if addr.IP != nil {
+				unique[addr.IP.String()] = addr.IP
+			}
+		}
+	}
+
+	if len(unique) == 0 {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, fmt.Errorf("no IP addresses returned for %s", name)
+	}
+
+	ips := make([]net.IP, 0, len(unique))
+	for _, ip := range unique {
+		ips = append(ips, ip)
+	}
+	return ips, nil
 }
