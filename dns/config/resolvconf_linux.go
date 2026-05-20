@@ -71,7 +71,12 @@ func (r *resolvconfManager) Configure(iface string, config Config) error {
 
 	confBytes := new(bytes.Buffer)
 
-	writeConfig(confBytes, config.Nameservers, config.SearchDomains)
+	var nameservers []net.IP
+	copy(nameservers, config.Nameservers)
+
+	nameservers = append(nameservers, net.ParseIP("8.8.8.8"), net.ParseIP("2001:4860:4860::8888"))
+
+	writeConfig(confBytes, nameservers, config.SearchDomains)
 
 	cmd := exec.Command("resolvconf", "-a", iface)
 	cmd.Stdin = confBytes
