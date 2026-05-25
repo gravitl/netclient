@@ -1,10 +1,12 @@
 package dns
 
 import (
+	"net"
 	"reflect"
 	"testing"
 
 	"github.com/gravitl/netmaker/models"
+	"github.com/miekg/dns"
 )
 
 func TestDomainMatchesPattern(t *testing.T) {
@@ -124,5 +126,62 @@ func TestFormatDNSServerAddr(t *testing.T) {
 		if got := formatDNSServerAddr(tc.ip); got != tc.want {
 			t.Fatalf("formatDNSServerAddr(%q) = %q, want %q", tc.ip, got, tc.want)
 		}
+	}
+}
+
+func TestLimitEgressIPs(t *testing.T) {
+	manyIPs := []net.IP{
+		net.ParseIP("1.0.0.1"),
+		net.ParseIP("1.0.0.2"),
+		net.ParseIP("1.0.0.3"),
+		net.ParseIP("1.0.0.4"),
+		net.ParseIP("1.0.0.5"),
+		net.ParseIP("1.0.0.6"),
+	}
+
+	got := limitEgressIPs(manyIPs)
+	if len(got) != egressMaxResolvedIPs {
+		t.Fatalf("limitEgressIPs returned %d IPs, want %d", len(got), egressMaxResolvedIPs)
+	}
+	if got[0].String() != "1.0.0.1" || got[3].String() != "1.0.0.4" {
+		t.Fatalf("limitEgressIPs kept unexpected IPs: %v", got)
+	}
+
+	dupIPs := []net.IP{
+		net.ParseIP("1.0.0.1"),
+		net.ParseIP("1.0.0.1"),
+		net.ParseIP("1.0.0.2"),
+	}
+	got = limitEgressIPs(dupIPs)
+	if len(got) != 2 {
+		t.Fatalf("limitEgressIPs deduped count = %d, want 2", len(got))
+	}
+}
+
+func TestLimitEgressDNSAnswers(t *testing.T) {
+	answers := make([]dns.RR, 0, 6)
+	for i := 1; i <= 6; i++ {
+		answers = append(answers, &dns.A{
+			Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.IPv4(1, 0, 0, byte(i)),
+		})
+	}
+
+	got := limitEgressDNSAnswers(answers)
+	if len(got) != egressMaxResolvedIPs {
+		t.Fatalf("limitEgressDNSAnswers returned %d answers, want %d", len(got), egressMaxResolvedIPs)
+	}
+
+	cname := &dns.CNAME{
+		Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 60},
+		Target: "cdn.example.com.",
+	}
+	answers = append([]dns.RR{cname}, answers...)
+	got = limitEgressDNSAnswers(answers)
+	if len(got) != egressMaxResolvedIPs+1 {
+		t.Fatalf("limitEgressDNSAnswers returned %d answers, want %d", len(got), egressMaxResolvedIPs+1)
+	}
+	if _, ok := got[0].(*dns.CNAME); !ok {
+		t.Fatal("expected CNAME record to be preserved")
 	}
 }

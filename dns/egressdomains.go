@@ -20,6 +20,7 @@ var egressPublicDNSServers = []string{
 }
 
 const egressPublicDNSLookupTimeout = 5 * time.Second
+const egressMaxResolvedIPs = 4
 
 var (
 	egressDomainPatterns      []string
@@ -176,6 +177,69 @@ func formatDNSServerAddr(ip string) string {
 	return ip + ":53"
 }
 
+func limitEgressIPs(ips []net.IP) []net.IP {
+	if len(ips) == 0 {
+		return ips
+	}
+
+	seen := make(map[string]struct{}, len(ips))
+	limited := make([]net.IP, 0, egressMaxResolvedIPs)
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		key := ip.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		limited = append(limited, ip)
+		if len(limited) >= egressMaxResolvedIPs {
+			break
+		}
+	}
+	return limited
+}
+
+func limitEgressDNSAnswers(answers []dns.RR) []dns.RR {
+	if len(answers) == 0 {
+		return answers
+	}
+
+	limited := make([]dns.RR, 0, len(answers))
+	seen := make(map[string]struct{})
+	ipCount := 0
+	for _, rr := range answers {
+		switch r := rr.(type) {
+		case *dns.A:
+			if ipCount >= egressMaxResolvedIPs {
+				continue
+			}
+			key := r.A.String()
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			ipCount++
+			limited = append(limited, rr)
+		case *dns.AAAA:
+			if ipCount >= egressMaxResolvedIPs {
+				continue
+			}
+			key := r.AAAA.String()
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			ipCount++
+			limited = append(limited, rr)
+		default:
+			limited = append(limited, rr)
+		}
+	}
+	return limited
+}
+
 // LookupHostViaPublicDNS resolves a hostname using configured egress DNS nameservers.
 // It falls back to public resolvers (8.8.8.8, then 1.1.1.1) when no nameserver matches.
 // It stops at the first resolver that returns addresses.
@@ -213,6 +277,7 @@ func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 			}
 		}
 		if len(ips) > 0 {
+			ips = limitEgressIPs(ips)
 			slog.Debug("egress DNS lookup succeeded", "domain", name, "server", server, "count", len(ips))
 			return ips, nil
 		}
@@ -244,7 +309,10 @@ func ResolveEgressQuery(r *dns.Msg) (*dns.Msg, error) {
 			continue
 		}
 		if resp != nil && resp.Rcode == dns.RcodeSuccess && len(resp.Answer) > 0 {
-			return resp, nil
+			resp.Answer = limitEgressDNSAnswers(resp.Answer)
+			if len(resp.Answer) > 0 {
+				return resp, nil
+			}
 		}
 	}
 	if lastErr != nil {
