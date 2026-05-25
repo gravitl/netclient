@@ -317,10 +317,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
-	if len(peerUpdate.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(peerUpdate.EgressWithDomains)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -904,10 +901,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	}
-	if len(pullResponse.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(pullResponse.EgressWithDomains)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -1000,6 +994,11 @@ func CheckEgressDomainUpdates() {
 
 	slog.Info("processing egress domains", "count", len(egressDomains))
 	for _, domainI := range egressDomains {
+		if !isLocalEgressGateway(domainI) {
+			slog.Debug("skipping egress domain resolution on non-gateway host",
+				"domain", domainI.Domain, "gateway_host", domainI.Host.ID.String())
+			continue
+		}
 		slog.Debug("checking egress domain", "domain", domainI.Domain)
 		processEgressDomain(domainI, false)
 	}
@@ -1007,6 +1006,11 @@ func CheckEgressDomainUpdates() {
 
 func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("processing egress domain", "domain", domainI.Domain)
+
+	if !isLocalEgressGateway(domainI) {
+		slog.Debug("skipping egress domain update on non-gateway host", "domain", domainI.Domain)
+		return
+	}
 
 	// Resolve domain to IP addresses
 	ips, err := resolveDomainToIPs(domainI.Domain)
@@ -1151,32 +1155,17 @@ func checkIPConnectivity(ips []string) bool {
 	return false
 }
 
-// egressDomainPublicDNS are used for egress domain resolution (testing: avoid geo/local split-DNS).
-var egressDomainPublicDNS = []string{
-	"8.8.8.8:53",
-	"1.1.1.1:53",
-}
-
-const egressDomainLookupTimeout = 5 * time.Second
-
 // resolveDomainToIPs resolves a domain name to IP addresses via public DNS.
 func resolveDomainToIPs(domain string) ([]string, error) {
-	domain = strings.TrimSpace(domain)
-	if domain == "" {
-		return nil, fmt.Errorf("domain cannot be empty")
+	lookupDomain, err := dns.NormalizeEgressLookupDomain(domain)
+	if err != nil {
+		return nil, err
 	}
-
-	// Wildcard labels ("*.example.com") are normalized to the base domain for lookup.
-	lookupDomain := domain
-	if strings.HasPrefix(domain, "*.") {
-		lookupDomain = strings.TrimPrefix(domain, "*.")
-		if lookupDomain == "" || strings.Contains(lookupDomain, "*") {
-			return nil, fmt.Errorf("invalid wildcard domain %s", domain)
-		}
+	if strings.HasPrefix(strings.TrimSpace(domain), "*.") {
 		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
 	}
 
-	lookUpIPs, err := lookupDomainViaPublicDNS(lookupDomain)
+	lookUpIPs, err := dns.LookupHostViaPublicDNS(lookupDomain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s via public DNS): %w", domain, lookupDomain, err)
 	}
@@ -1196,47 +1185,4 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 		result = append(result, ip)
 	}
 	return result, nil
-}
-
-func lookupDomainViaPublicDNS(name string) ([]net.IP, error) {
-	unique := make(map[string]net.IP)
-	var lastErr error
-
-	for _, server := range egressDomainPublicDNS {
-		resolver := &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				dialer := net.Dialer{Timeout: egressDomainLookupTimeout}
-				return dialer.DialContext(ctx, "udp", server)
-			},
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), egressDomainLookupTimeout)
-		addrs, err := resolver.LookupIPAddr(ctx, name)
-		cancel()
-		if err != nil {
-			lastErr = err
-			slog.Debug("egress domain public DNS lookup failed",
-				"domain", name, "server", server, "error", err)
-			continue
-		}
-		for _, addr := range addrs {
-			if addr.IP != nil {
-				unique[addr.IP.String()] = addr.IP
-			}
-		}
-	}
-
-	if len(unique) == 0 {
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		return nil, fmt.Errorf("no IP addresses returned for %s", name)
-	}
-
-	ips := make([]net.IP, 0, len(unique))
-	for _, ip := range unique {
-		ips = append(ips, ip)
-	}
-	return ips, nil
 }
