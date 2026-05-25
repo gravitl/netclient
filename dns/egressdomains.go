@@ -121,14 +121,14 @@ type egressDomainError struct {
 
 func (e *egressDomainError) Error() string { return e.msg }
 
-// LookupHostViaPublicDNS resolves a hostname using public resolvers (8.8.8.8 / 1.1.1.1).
+// LookupHostViaPublicDNS resolves a hostname using public resolvers (8.8.8.8, then 1.1.1.1).
+// It stops at the first resolver that returns addresses.
 func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 	name = normalizeDomainName(name)
 	if name == "" {
 		return nil, errEmptyEgressDomain
 	}
 
-	unique := make(map[string]net.IP)
 	var lastErr error
 
 	for _, server := range egressPublicDNSServers {
@@ -148,25 +148,23 @@ func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 			slog.Debug("egress public DNS lookup failed", "domain", name, "server", server, "error", err)
 			continue
 		}
+
+		ips := make([]net.IP, 0, len(addrs))
 		for _, addr := range addrs {
 			if addr.IP != nil {
-				unique[addr.IP.String()] = addr.IP
+				ips = append(ips, addr.IP)
 			}
 		}
-	}
-
-	if len(unique) == 0 {
-		if lastErr != nil {
-			return nil, lastErr
+		if len(ips) > 0 {
+			slog.Debug("egress public DNS lookup succeeded", "domain", name, "server", server, "count", len(ips))
+			return ips, nil
 		}
-		return nil, &egressDomainError{"no IP addresses returned for " + name}
 	}
 
-	ips := make([]net.IP, 0, len(unique))
-	for _, ip := range unique {
-		ips = append(ips, ip)
+	if lastErr != nil {
+		return nil, lastErr
 	}
-	return ips, nil
+	return nil, &egressDomainError{"no IP addresses returned for " + name}
 }
 
 // ResolveEgressQuery forwards a DNS query to public resolvers when the name is an egress domain.
