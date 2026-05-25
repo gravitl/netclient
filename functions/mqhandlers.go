@@ -302,8 +302,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if !peerUpdate.ServerConfig.EndpointDetection {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
+		cache.EndpointCache.Clear()
+		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
@@ -398,7 +398,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 	if server.IsPro {
-		go networking.RefreshPeerInfoCache()
+		go func() {
+			networking.RefreshPeerInfoCache()
+			time.Sleep(time.Second * 6)
+			callPublishMetrics(true)
+		}()
 	}
 }
 
@@ -555,6 +559,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		go processEgressDomain(hostUpdate.EgressDomain, true)
 	case models.CheckAutoAssignGw:
 		checkAssignGw(server, hostUpdate.Node)
+	case models.CollectMetrics:
+		go callPublishMetrics(true)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -883,8 +889,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	}
 	if !pullResponse.ServerConfig.EndpointDetection {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
+		cache.EndpointCache.Clear()
+		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
@@ -1147,15 +1153,28 @@ func checkIPConnectivity(ips []string) bool {
 
 // resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
 func resolveDomainToIPs(domain string) ([]string, error) {
+	domain = strings.TrimSpace(domain)
 	if domain == "" {
 		return nil, fmt.Errorf("domain cannot be empty")
 	}
-	lookUpIPs, err := net.LookupIP(domain)
+
+	// net.LookupIP cannot resolve wildcard labels directly ("*.example.com").
+	// Normalize wildcard entries to their base domain so common configs are accepted.
+	lookupDomain := domain
+	if strings.HasPrefix(domain, "*.") {
+		lookupDomain = strings.TrimPrefix(domain, "*.")
+		if lookupDomain == "" || strings.Contains(lookupDomain, "*") {
+			return nil, fmt.Errorf("invalid wildcard domain %s", domain)
+		}
+		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
+	}
+
+	lookUpIPs, err := net.LookupIP(lookupDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
+		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s): %w", domain, lookupDomain, err)
 	}
 	if len(lookUpIPs) == 0 {
-		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
+		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
 	}
 	ips := lookUpIPs
 	// Filter out any invalid IPs and return unique IPs
