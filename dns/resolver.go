@@ -77,7 +77,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			reply.Rcode = dns.RcodeServerFailure
 		} else {
 			if MatchesEgressDomain(r.Question[0].Name) {
-				logger.Log(4, fmt.Sprintf("resolving egress domain %s via public DNS", r.Question[0].Name))
+				logger.Log(4, fmt.Sprintf("resolving egress domain %s via egress DNS", r.Question[0].Name))
 				publicResp, err := ResolveEgressQuery(r)
 				if err == nil && publicResp != nil && len(publicResp.Answer) > 0 {
 					reply.Answer = append(reply.Answer, publicResp.Answer...)

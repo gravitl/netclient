@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
@@ -121,7 +122,62 @@ type egressDomainError struct {
 
 func (e *egressDomainError) Error() string { return e.msg }
 
-// LookupHostViaPublicDNS resolves a hostname using public resolvers (8.8.8.8, then 1.1.1.1).
+func egressResolutionServersForDomain(name string) []string {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return append([]string(nil), egressPublicDNSServers...)
+	}
+	return egressResolutionServersFrom(name, server.DnsNameservers)
+}
+
+func egressResolutionServersFrom(domain string, nameservers []models.Nameserver) []string {
+	if len(nameservers) == 0 {
+		return append([]string(nil), egressPublicDNSServers...)
+	}
+
+	query := canonicalizeDomainForMatching(domain)
+	bestMatch := findBestMatch(query, nameservers)
+	if len(bestMatch) == 0 {
+		return append([]string(nil), egressPublicDNSServers...)
+	}
+
+	seen := make(map[string]struct{})
+	servers := collectNameserverIPs(nil, bestMatch, false, seen)
+	servers = collectNameserverIPs(servers, bestMatch, true, seen)
+	if len(servers) == 0 {
+		return append([]string(nil), egressPublicDNSServers...)
+	}
+	return servers
+}
+
+func collectNameserverIPs(servers []string, nameservers []models.Nameserver, fallbackOnly bool, seen map[string]struct{}) []string {
+	for _, ns := range nameservers {
+		if ns.IsFallback != fallbackOnly {
+			continue
+		}
+		for _, ip := range ns.IPs {
+			if ip == "" {
+				continue
+			}
+			if _, ok := seen[ip]; ok {
+				continue
+			}
+			seen[ip] = struct{}{}
+			servers = append(servers, ip)
+		}
+	}
+	return servers
+}
+
+func formatDNSServerAddr(ip string) string {
+	if strings.Contains(ip, ":") && !strings.HasPrefix(ip, "[") {
+		return "[" + ip + "]:53"
+	}
+	return ip + ":53"
+}
+
+// LookupHostViaPublicDNS resolves a hostname using configured egress DNS nameservers.
+// It falls back to public resolvers (8.8.8.8, then 1.1.1.1) when no nameserver matches.
 // It stops at the first resolver that returns addresses.
 func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 	name = normalizeDomainName(name)
@@ -131,12 +187,13 @@ func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 
 	var lastErr error
 
-	for _, server := range egressPublicDNSServers {
+	for _, server := range egressResolutionServersForDomain(name) {
+		serverAddr := formatDNSServerAddr(server)
 		resolver := &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 				dialer := net.Dialer{Timeout: egressPublicDNSLookupTimeout}
-				return dialer.DialContext(ctx, "udp", server+":53")
+				return dialer.DialContext(ctx, "udp", serverAddr)
 			},
 		}
 
@@ -145,7 +202,7 @@ func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 		cancel()
 		if err != nil {
 			lastErr = err
-			slog.Debug("egress public DNS lookup failed", "domain", name, "server", server, "error", err)
+			slog.Debug("egress DNS lookup failed", "domain", name, "server", server, "error", err)
 			continue
 		}
 
@@ -156,7 +213,7 @@ func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 			}
 		}
 		if len(ips) > 0 {
-			slog.Debug("egress public DNS lookup succeeded", "domain", name, "server", server, "count", len(ips))
+			slog.Debug("egress DNS lookup succeeded", "domain", name, "server", server, "count", len(ips))
 			return ips, nil
 		}
 	}
@@ -167,7 +224,7 @@ func LookupHostViaPublicDNS(name string) ([]net.IP, error) {
 	return nil, &egressDomainError{"no IP addresses returned for " + name}
 }
 
-// ResolveEgressQuery forwards a DNS query to public resolvers when the name is an egress domain.
+// ResolveEgressQuery forwards a DNS query to egress nameservers when the name is an egress domain.
 func ResolveEgressQuery(r *dns.Msg) (*dns.Msg, error) {
 	if r == nil || len(r.Question) == 0 {
 		return nil, &egressDomainError{"empty DNS question"}
@@ -179,7 +236,7 @@ func ResolveEgressQuery(r *dns.Msg) (*dns.Msg, error) {
 	}
 
 	var lastErr error
-	for _, server := range egressPublicDNSServers {
+	for _, server := range egressResolutionServersForDomain(normalizeDomainName(q.Name)) {
 		resp, err := exchangeDNSQueryWithPool(r, server)
 		if err != nil {
 			lastErr = err
@@ -193,5 +250,5 @@ func ResolveEgressQuery(r *dns.Msg) (*dns.Msg, error) {
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, &egressDomainError{"no answer from public DNS for " + q.Name}
+	return nil, &egressDomainError{"no answer from egress DNS for " + q.Name}
 }
