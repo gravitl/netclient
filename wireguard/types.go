@@ -135,6 +135,7 @@ func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
 	if err != nil {
 		return false
 	}
+	netOnes, netBits := network.Mask.Size()
 	for _, iface := range ifaces {
 		if iface.Name == ncIfaceName {
 			continue
@@ -148,10 +149,12 @@ func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
 			if !ok {
 				continue
 			}
-			if network.Contains(ipNet.IP) || ipNet.Contains(network.IP) {
+			localOnes, localBits := ipNet.Mask.Size()
+			if localOnes == netOnes &&
+				localBits == netBits &&
+				ipNet.IP.Mask(ipNet.Mask).Equal(network.IP.Mask(network.Mask)) {
 				return true
 			}
-
 		}
 	}
 	return false
