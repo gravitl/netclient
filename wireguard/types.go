@@ -125,11 +125,11 @@ func RemoveEgressRoutes() {
 	cache.EgressRouteCache = sync.Map{}
 }
 
-// isNetworkPresentOnLocalInterface checks whether the given network overlaps
+// IsNetworkPresentOnLocalInterface checks whether the given network overlaps
 // with any address already assigned to a local network interface (excluding
 // the netmaker WG interface). Overlap means the egress network contains a
 // local interface IP, which would cause a routing conflict.
-func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
+func IsNetworkPresentOnLocalInterface(network net.IPNet) bool {
 	ncIfaceName := ncutils.GetInterfaceName()
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -163,7 +163,7 @@ func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
 func filterConflictingRoutes(addrs []ifaceAddress) []ifaceAddress {
 	filtered := make([]ifaceAddress, 0, len(addrs))
 	for _, addr := range addrs {
-		if addr.Network.IP != nil && isNetworkPresentOnLocalInterface(addr.Network) {
+		if addr.Network.IP != nil && IsNetworkPresentOnLocalInterface(addr.Network) {
 			slog.Warn("skipping egress route that conflicts with local interface address",
 				"network", addr.Network.String())
 			continue
