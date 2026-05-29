@@ -377,7 +377,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		case update:
 			if dns.GetDNSServerInstance().AddrStr != "" {
-				_ = dns.Configure()
+				err = dns.Configure()
+				if err != nil {
+					fmt.Println("DNS CONFIGURE ON HOST PEER UPDATE FAILED:", err.Error())
+				}
 			}
 		}
 	}
@@ -961,7 +964,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			dns.GetDNSServerInstance().Stop()
 		case update:
 			if dns.GetDNSServerInstance().AddrStr != "" {
-				_ = dns.Configure()
+				err = dns.Configure()
+				if err != nil {
+					fmt.Println("DNS CONFIGURE ON PULL FAILED:", err.Error())
+				}
 			}
 		}
 	}

@@ -56,6 +56,8 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	fmt.Printf("CONFIGURING INTERFACE %s: %v", iface, config)
+
 	if config.Remove {
 		delete(d.config, iface)
 	} else {
