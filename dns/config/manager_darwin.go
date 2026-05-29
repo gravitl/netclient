@@ -111,21 +111,25 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 		}
 	}
 
+	fmt.Printf("SETTING UP SPLIT DNS: %v\n", domainNameservers)
 	err := d.setupSplitDNS(domainNameservers)
 	if err != nil {
 		return err
 	}
 
+	fmt.Printf("SETTING FULL DNS: %v %v\n", globalNameservers, globalSearchDomains)
 	return d.setupFullDNS(globalNameservers, globalSearchDomains)
 }
 
 func (d *darwinManager) setupSplitDNS(matchDomains map[string]*nameserver) error {
+	fmt.Printf("SETTING UP SPLIT DNS: %v\n", matchDomains)
 	err := d.resetSplitDNS()
 	if err != nil {
 		return err
 	}
 
 	for domain, nameserver := range matchDomains {
+		fmt.Printf("ADDING RESOLVER FILE: %s %v\n", domain, nameserver)
 		resolverConf := new(bytes.Buffer)
 		resolverFilePath := filepath.Join("/etc/resolver", domain)
 
@@ -173,6 +177,7 @@ func (d *darwinManager) resetConfig() error {
 }
 
 func (d *darwinManager) resetSplitDNS() error {
+	fmt.Printf("RESETTING SPLIT DNS")
 	resolverFiles, err := os.ReadDir("/etc/resolver")
 	if err != nil {
 		if os.IsNotExist(err) {
