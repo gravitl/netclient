@@ -317,10 +317,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
-	if len(peerUpdate.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(peerUpdate.EgressWithDomains)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -904,10 +901,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	}
-	if len(pullResponse.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(pullResponse.EgressWithDomains)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -1000,6 +994,11 @@ func CheckEgressDomainUpdates() {
 
 	slog.Info("processing egress domains", "count", len(egressDomains))
 	for _, domainI := range egressDomains {
+		if !isLocalEgressGateway(domainI) {
+			slog.Debug("skipping egress domain resolution on non-gateway host",
+				"domain", domainI.Domain, "gateway_host", domainI.Host.ID.String())
+			continue
+		}
 		slog.Debug("checking egress domain", "domain", domainI.Domain)
 		processEgressDomain(domainI, false)
 	}
@@ -1007,6 +1006,11 @@ func CheckEgressDomainUpdates() {
 
 func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("processing egress domain", "domain", domainI.Domain)
+
+	if !isLocalEgressGateway(domainI) {
+		slog.Debug("skipping egress domain update on non-gateway host", "domain", domainI.Domain)
+		return
+	}
 
 	// Resolve domain to IP addresses
 	ips, err := resolveDomainToIPs(domainI.Domain)
@@ -1151,43 +1155,29 @@ func checkIPConnectivity(ips []string) bool {
 	return false
 }
 
-// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
+// resolveDomainToIPs resolves a domain name to IP addresses via public DNS.
 func resolveDomainToIPs(domain string) ([]string, error) {
-	domain = strings.TrimSpace(domain)
-	if domain == "" {
-		return nil, fmt.Errorf("domain cannot be empty")
+	lookupDomain, err := dns.NormalizeEgressLookupDomain(domain)
+	if err != nil {
+		return nil, err
 	}
-
-	// net.LookupIP cannot resolve wildcard labels directly ("*.example.com").
-	// Normalize wildcard entries to their base domain so common configs are accepted.
-	lookupDomain := domain
-	if strings.HasPrefix(domain, "*.") {
-		lookupDomain = strings.TrimPrefix(domain, "*.")
-		if lookupDomain == "" || strings.Contains(lookupDomain, "*") {
-			return nil, fmt.Errorf("invalid wildcard domain %s", domain)
-		}
+	if strings.HasPrefix(strings.TrimSpace(domain), "*.") {
 		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
 	}
 
-	lookUpIPs, err := net.LookupIP(lookupDomain)
+	lookUpIPs, err := dns.LookupHostViaPublicDNS(lookupDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s): %w", domain, lookupDomain, err)
+		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s via public DNS): %w", domain, lookupDomain, err)
 	}
 	if len(lookUpIPs) == 0 {
 		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
 	}
-	ips := lookUpIPs
-	// Filter out any invalid IPs and return unique IPs
-	uniqueIPs := make(map[string]string)
-	for _, ip := range ips {
-		if ip != nil {
-			uniqueIPs[ip.String()] = ip.String()
-		}
-	}
 
-	result := make([]string, 0, len(uniqueIPs))
-	for _, ip := range uniqueIPs {
-		result = append(result, ip)
+	result := make([]string, 0, len(lookUpIPs))
+	for _, ip := range lookUpIPs {
+		if ip != nil {
+			result = append(result, ip.String())
+		}
 	}
 	return result, nil
 }
