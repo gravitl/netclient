@@ -1173,16 +1173,11 @@ func resolveDomainToIPs(domain string) ([]string, error) {
 		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
 	}
 
-	uniqueIPs := make(map[string]string)
+	result := make([]string, 0, len(lookUpIPs))
 	for _, ip := range lookUpIPs {
 		if ip != nil {
-			uniqueIPs[ip.String()] = ip.String()
+			result = append(result, ip.String())
 		}
-	}
-
-	result := make([]string, 0, len(uniqueIPs))
-	for _, ip := range uniqueIPs {
-		result = append(result, ip)
 	}
 	return result, nil
 }
