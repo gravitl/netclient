@@ -25,22 +25,11 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// hostUpdateWithIdentity wraps models.HostUpdate so JSON-marshalled host
-// updates carry a sibling "device_identity" object when MDM reporting is
-// enabled. The embedded HostUpdate fields are promoted to the top level.
-type hostUpdateWithIdentity struct {
-	models.HostUpdate
-	DeviceIdentity posture.DeviceIdentity `json:"device_identity"`
-}
-
 // buildHostUpdatePayload returns the payload to JSON-encode for either the
-// HTTP fallback PUT or the MQTT publish path. When reporting is disabled,
-// the bare HostUpdate is returned so the wire format is unchanged.
-func buildHostUpdatePayload(hu models.HostUpdate) any {
-	if !posture.IdentityReportingEnabled() {
-		return hu
-	}
-	return hostUpdateWithIdentity{HostUpdate: hu, DeviceIdentity: posture.Collect()}
+// HTTP fallback PUT or the MQTT publish path.
+func buildHostUpdatePayload(hu models.HostUpdate) models.HostUpdate {
+	posture.ApplyIdentity(&hu.Host)
+	return hu
 }
 
 const (

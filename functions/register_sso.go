@@ -15,14 +15,6 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
-// registerMsgWithIdentity wraps models.RegisterMsg so the SSO websocket
-// payload carries a sibling "device_identity" object when MDM reporting is
-// enabled.
-type registerMsgWithIdentity struct {
-	models.RegisterMsg
-	DeviceIdentity posture.DeviceIdentity `json:"device_identity"`
-}
-
 // RegisterSSO - payload to register via SSO
 type RegisterSSO struct {
 	API         string
@@ -76,6 +68,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 		return
 	}
 
+	posture.ApplyIdentity(&host.Host)
 	request := models.RegisterMsg{
 		RegisterHost: host.Host,
 		User:         registerData.User,
@@ -90,14 +83,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 }
 
 func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn) error {
-	var payload any = reqMsg
-	if posture.IdentityReportingEnabled() {
-		payload = registerMsgWithIdentity{
-			RegisterMsg:    *reqMsg,
-			DeviceIdentity: posture.Collect(),
-		}
-	}
-	reqData, err := json.Marshal(payload)
+	reqData, err := json.Marshal(reqMsg)
 	if err != nil {
 		return err
 	}

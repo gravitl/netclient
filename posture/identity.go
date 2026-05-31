@@ -10,9 +10,8 @@ import (
 	"runtime"
 )
 
-// DeviceIdentity is the stable identifier set netclient ships to the server
-// during join and check-in. All fields are best-effort: empty strings are
-// reported when a value cannot be determined on the current platform.
+// DeviceIdentity is the platform identifier set collected locally and copied
+// onto schema.Host fields via ApplyIdentity during join and check-in.
 type DeviceIdentity struct {
 	Hostname      string `json:"hostname"`
 	SerialNumber  string `json:"serial_number"`

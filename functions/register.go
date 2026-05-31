@@ -18,14 +18,6 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
-// configWithIdentity wraps *config.Config so JSON-marshalled enrollment
-// payloads carry a top-level "device_identity" sibling alongside the
-// promoted Config fields. Gated on posture.IdentityReportingEnabled().
-type configWithIdentity struct {
-	*config.Config
-	DeviceIdentity posture.DeviceIdentity `json:"device_identity"`
-}
-
 // Register - should be simple to register with a token
 func Register(token string) error {
 	data, err := b64.StdEncoding.DecodeString(token)
@@ -63,11 +55,8 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	var body any = host
-	if posture.IdentityReportingEnabled() {
-		body = configWithIdentity{Config: host, DeviceIdentity: posture.Collect()}
-	}
-	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, body)
+	posture.ApplyIdentity(&host.Host)
+	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
 			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
