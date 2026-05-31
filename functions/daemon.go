@@ -339,6 +339,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
+	StartEgressDomainMonitor(ctx, wg)
+
+	if len(pullresp.EgressWithDomains) > 0 {
+		syncEgressDomains(pullresp.EgressWithDomains)
+	}
 
 	if server.ManageDNS {
 		if dns.GetDNSServerInstance().AddrStr == "" {
