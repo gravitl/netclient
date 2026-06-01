@@ -76,6 +76,21 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		if currServer == nil {
 			reply.Rcode = dns.RcodeServerFailure
 		} else {
+			if MatchesEgressDomain(r.Question[0].Name) {
+				logger.Log(4, fmt.Sprintf("resolving egress domain %s via egress DNS", r.Question[0].Name))
+				publicResp, err := ResolveEgressQuery(r)
+				if err == nil && publicResp != nil && len(publicResp.Answer) > 0 {
+					reply.Answer = append(reply.Answer, publicResp.Answer...)
+					reply.Authoritative = publicResp.Authoritative
+					go recordDNSAnswers(reply.Answer)
+					_ = w.WriteMsg(reply)
+					return
+				}
+				if err != nil {
+					logger.Log(4, fmt.Sprintf("egress domain public DNS failed for %s: %v", r.Question[0].Name, err))
+				}
+			}
+
 			// query matches default domain, resolve with local records
 			logger.Log(4, fmt.Sprintf("resolving dns query %s with local records", r.Question[0].Name))
 
