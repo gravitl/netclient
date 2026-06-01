@@ -118,7 +118,7 @@ func (s *systemdStubManager) resetConfig(iface string) error {
 	_, err := net.InterfaceByName(iface)
 	if err != nil {
 		var opErr *net.OpError
-		if errors.As(err, &opErr) && opErr.Err.Error() == "no such network interface" {
+		if errors.As(err, &opErr) && strings.Contains(opErr.Err.Error(), "no such network interface") {
 			return nil
 		}
 	}
