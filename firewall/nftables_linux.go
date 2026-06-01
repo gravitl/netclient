@@ -51,7 +51,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictDrop},
@@ -61,6 +61,46 @@ var (
 			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", "DROP"},
 			table: defaultIpTable,
 			chain: aclInputRulesChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclFwdRulesChain, Table: filterTable},
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+					},
+					&expr.Counter{},
+					&expr.Verdict{Kind: expr.VerdictDrop},
+				},
+				UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", targetDrop)),
+			},
+			rule:  []string{"-i", ncutils.GetInterfaceName(), "-j", targetDrop},
+			table: defaultIpTable,
+			chain: aclFwdRulesChain,
+		},
+		{
+			nfRule: &nftables.Rule{
+				Table: filterTable,
+				Chain: &nftables.Chain{Name: aclFwdRulesChain, Table: filterTable},
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+					},
+					&expr.Counter{},
+					&expr.Verdict{Kind: expr.VerdictDrop},
+				},
+				UserData: []byte(genRuleKey("-o", ncutils.GetInterfaceName(), "-j", targetDrop)),
+			},
+			rule:  []string{"-o", ncutils.GetInterfaceName(), "-j", targetDrop},
+			table: defaultIpTable,
+			chain: aclFwdRulesChain,
 		},
 	}
 	nfFilterJumpRules = []ruleInfo{
@@ -75,9 +115,9 @@ var (
 						Register: 1,                   // Store in register 1
 					},
 					&expr.Cmp{
-						Op:       expr.CmpOpEq,                                // Equals operation
-						Register: 1,                                           // Compare register 1
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"), // Interface name "netmaker" (null-terminated string)
+						Op:       expr.CmpOpEq,                                     // Equals operation
+						Register: 1,                                                // Compare register 1
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()), // Interface name "netmaker" (null-terminated string)
 					},
 					// Match on conntrack state (-m conntrack --ctstate RELATED,ESTABLISHED)
 					&expr.Ct{
@@ -120,7 +160,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 					&expr.Counter{},
 					&expr.Verdict{
@@ -147,7 +187,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 
 					// Match NOT output interface "netmaker"
@@ -158,7 +198,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpNeq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 					// Accept the packet
 					&expr.Verdict{
@@ -184,7 +224,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 
 					// Match output interface "netmaker"
@@ -195,7 +235,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 
 					// Jump to NETMAKER-ACL-IN chain
@@ -223,9 +263,9 @@ var (
 						Register: 1,                   // Store in register 1
 					},
 					&expr.Cmp{
-						Op:       expr.CmpOpEq,                                // Equals operation
-						Register: 1,                                           // Compare register 1
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"), // Interface name "netmaker" (null-terminated string)
+						Op:       expr.CmpOpEq,                                     // Equals operation
+						Register: 1,                                                // Compare register 1
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()), // Interface name "netmaker" (null-terminated string)
 					},
 					// Match on conntrack state (-m conntrack --ctstate RELATED,ESTABLISHED)
 					&expr.Ct{
@@ -269,9 +309,9 @@ var (
 						Register: 1,                   // Store in register 1
 					},
 					&expr.Cmp{
-						Op:       expr.CmpOpEq,                                // Equals operation
-						Register: 1,                                           // Compare register 1
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"), // Interface name "netmaker" (null-terminated string)
+						Op:       expr.CmpOpEq,                                     // Equals operation
+						Register: 1,                                                // Compare register 1
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()), // Interface name "netmaker" (null-terminated string)
 					},
 					// Match on conntrack state (-m conntrack --ctstate RELATED,ESTABLISHED)
 					&expr.Ct{
@@ -313,7 +353,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 					&expr.Counter{},
 					&expr.Verdict{
@@ -338,7 +378,7 @@ var (
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 					},
 					&expr.Counter{},
 					&expr.Verdict{Kind: expr.VerdictJump, Chain: netmakerNatChain},
@@ -524,6 +564,58 @@ func (n *nftablesManager) DeleteRuleTable(server, ruleTableName string) {
 	}
 }
 
+// insertEgressForwardAclJumpNft adds inet FORWARD iif <egress> oif <netmaker> jump NETMAKER-ACL-FWD (appended via AddRule).
+// dedupe is keyed by egress interface (inet filter matches both IPv4 and IPv6).
+func (n *nftablesManager) insertEgressForwardAclJumpNft(egressIface string, dedupe map[string]struct{}, egressGwRoutes *[]ruleInfo) {
+	if egressIface == "" {
+		return
+	}
+	if _, ok := dedupe[egressIface]; ok {
+		return
+	}
+	dedupe[egressIface] = struct{}{}
+	nmIf := ncutils.GetInterfaceName()
+	ruleSpec := []string{"-i", egressIface, "-o", nmIf, "-j", aclFwdRulesChain,
+		"-m", "comment", "--comment", netmakerSignature}
+	ruleKey := genRuleKey(ruleSpec...)
+	n.deleteRule(defaultIpTable, iptableFWDChain, ruleKey)
+	fwdRule := &nftables.Rule{
+		Table:    filterTable,
+		Chain:    &nftables.Chain{Name: iptableFWDChain, Table: filterTable},
+		UserData: []byte(ruleKey),
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     nullTerminatedString(egressIface),
+			},
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     nullTerminatedString(nmIf),
+			},
+			&expr.Verdict{
+				Kind:  expr.VerdictJump,
+				Chain: aclFwdRulesChain,
+			},
+		},
+	}
+	n.conn.AddRule(fwdRule)
+	if err := n.conn.Flush(); err != nil {
+		logger.Log(1, fmt.Sprintf("failed to add egress FORWARD ACL jump (nft): %v Err: %v", ruleSpec, err.Error()))
+		delete(dedupe, egressIface)
+		return
+	}
+	*egressGwRoutes = append(*egressGwRoutes, ruleInfo{
+		nfRule: fwdRule,
+		table:  defaultIpTable,
+		chain:  iptableFWDChain,
+		rule:   ruleSpec,
+	})
+}
+
 // nftables.InsertEgressRoutingRules - inserts egress routes for the GW peers
 func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
 	logger.Log(0, fmt.Sprintf("InsertEgressRoutingRules called for egress %s with %d ranges", egressInfo.EgressID, len(egressInfo.EgressGWCfg.RangesWithMetric)))
@@ -537,6 +629,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		isIpv4         = isAddrIpv4(egressInfo.EgressGwAddr.String())
 		egressGwRoutes = []ruleInfo{}
 	)
+	fwdJumpDedupe := make(map[string]struct{})
 	ruleTable[egressInfo.EgressID] = rulesCfg{
 		isIpv4:    isIpv4,
 		rulesMap:  make(map[string][]ruleInfo),
@@ -564,6 +657,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				} else {
 					egressGwRoutes = append(egressGwRoutes, vnatRules...)
 					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
+					n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 					virtualNATApplied = true
 				}
 			}
@@ -576,9 +670,14 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 		}
 
 		// Regular NAT processing (for direct NAT mode, or when virtual NAT failed/not supported)
-		// Apply regular NAT if Nat flag is set
 		if !egressGwRange.Nat {
-			continue // Skip if NAT is not enabled
+			// Non-NAT egress: still need LAN -> netmaker ACL in inet FORWARD.
+			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
+				logger.Log(0, "failed to get interface name for non-NAT egress: ", egressRangeIface, err.Error())
+			} else {
+				n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
+			}
+			continue
 		}
 		logger.Log(0, fmt.Sprintf("Processing NAT-enabled egress range: %s", egressGwRange.Network))
 		source := egressInfo.Network.String()
@@ -589,6 +688,12 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 		} else {
 			logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
+			defaultIface := config.Netclient().DefaultInterface
+			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
+				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
+				continue
+			}
+			n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 			// to avoid duplicate iface route rule,delete if exists
 			var exp []expr.Any
@@ -604,7 +709,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					&expr.Cmp{
 						Op:       expr.CmpOpEq,
 						Register: 1,
-						Data:     []byte(egressRangeIface), // Interface name with null terminator
+						Data:     nullTerminatedString(egressRangeIface),
 					},
 					// Perform masquerade
 					&expr.Masq{},
@@ -639,7 +744,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						&expr.Cmp{
 							Op:       expr.CmpOpEq,
 							Register: 1,
-							Data:     []byte(egressRangeIface), // Interface name with null terminator
+							Data:     nullTerminatedString(egressRangeIface),
 						},
 						// Perform masquerade
 						&expr.Masq{},
@@ -673,7 +778,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						&expr.Cmp{
 							Op:       expr.CmpOpEq,
 							Register: 1,
-							Data:     []byte(egressRangeIface), // Interface name with null terminator
+							Data:     nullTerminatedString(egressRangeIface),
 						},
 						// Perform masquerade
 						&expr.Masq{},
@@ -698,6 +803,63 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					chain:  nattablePRTChain,
 					rule:   ruleSpec,
 				})
+			}
+			// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
+			if isAddrIpv4(egressGwRange.Network) {
+				lanCIDR := config.ToIPNet(egressGwRange.Network)
+				additionalRuleSpec := []string{
+					"-s", egressGwRange.Network,
+					"-o", ncutils.GetInterfaceName(),
+					"-j", "MASQUERADE",
+				}
+				additionalExp := []expr.Any{
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       12, // Source address offset in IPv4 header
+						Len:          4,
+					},
+					&expr.Bitwise{
+						SourceRegister: 1,
+						DestRegister:   1,
+						Len:            4,
+						Mask:           lanCIDR.Mask,
+						Xor:            []byte{0, 0, 0, 0},
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     lanCIDR.IP.To4(),
+					},
+					&expr.Meta{
+						Key:      expr.MetaKeyOIFNAME,
+						Register: 1,
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+					},
+					&expr.Masq{},
+				}
+				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(additionalRuleSpec...))
+				additionalRule := &nftables.Rule{
+					Table:    natTable,
+					Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+					UserData: []byte(genRuleKey(additionalRuleSpec...)),
+					Exprs:    additionalExp,
+				}
+				n.conn.InsertRule(additionalRule)
+				if err := n.conn.Flush(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add additional egress NAT rule: %v, Err: %v ", additionalRuleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						nfRule: additionalRule,
+						table:  defaultNatTable,
+						chain:  nattablePRTChain,
+						rule:   additionalRuleSpec,
+					})
+				}
 			}
 
 			// Add Docker-specific rule if egress interface is a Docker network
@@ -741,7 +903,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						&expr.Cmp{
 							Op:       expr.CmpOpEq,
 							Register: 1,
-							Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+							Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 						},
 						// Match outgoing interface (docker interface)
 						&expr.Meta{
@@ -751,7 +913,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						&expr.Cmp{
 							Op:       expr.CmpOpEq,
 							Register: 1,
-							Data:     []byte(egressRangeIface + "\x00"),
+							Data:     nullTerminatedString(egressRangeIface),
 						},
 						// Accept the traffic (ACL filtering happens in inet FORWARD chain)
 						&expr.Counter{},
@@ -1054,7 +1216,7 @@ func (n *nftablesManager) addJumpRules() {
 			Chain: &nftables.Chain{Name: aclInputRulesChain},
 			Exprs: []expr.Any{
 				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                        // Match incoming interface
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte("netmaker\x00")},                   // Match interface name
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString("netmaker")},         // Match interface name
 				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2}, // Match TCP destination port
 				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: portB},                                    // Port little-endian format
 				&expr.Verdict{Kind: expr.VerdictAccept},                                                  // Accept packet
@@ -1071,7 +1233,7 @@ func (n *nftablesManager) addJumpRules() {
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     []byte("netmaker\x00"),
+					Data:     nullTerminatedString("netmaker"),
 				},
 				// [ payload load 1b @ network header + 9 => reg 1 ]  (proto)
 				&expr.Payload{
@@ -2074,78 +2236,56 @@ func (n *nftablesManager) DeleteAclRule(server, aclID string) {
 	delete(ruleTable, aclID)
 }
 func (n *nftablesManager) ChangeACLFwdTarget(target string) {
-	// check if rule exists with current target
-	v := &expr.Verdict{
-		Kind: expr.VerdictAccept,
-	}
+	nm := ncutils.GetInterfaceName()
+	v := &expr.Verdict{Kind: expr.VerdictAccept}
 	if target == targetDrop {
-		v = &expr.Verdict{
-			Kind: expr.VerdictDrop,
-		}
+		v = &expr.Verdict{Kind: expr.VerdictDrop}
 	}
 
-	newRule := &nftables.Rule{
+	newRuleIn := &nftables.Rule{
 		Table: filterTable,
-		Chain: &nftables.Chain{Name: aclFwdRulesChain},
+		Chain: &nftables.Chain{Name: aclFwdRulesChain, Table: filterTable},
 		Exprs: []expr.Any{
 			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
 				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+				Data:     nullTerminatedString(nm),
 			},
 			&expr.Counter{},
 			v,
 		},
-		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", target)),
+		UserData: []byte(genRuleKey("-i", nm, "-j", target)),
 	}
-	if n.ruleExists(newRule) {
-		return
-	}
-	slog.Info("setting acl input chain target to", "target", target)
-	// delete old target and insert new rule
-	oldVerdict := &expr.Verdict{
-		Kind: expr.VerdictAccept,
-	}
-	oldTarget := targetAccept
-	if target == targetAccept {
-		oldVerdict = &expr.Verdict{
-			Kind: expr.VerdictDrop,
-		}
-		oldTarget = targetDrop
-	}
-	oldRule := &nftables.Rule{
+	newRuleOut := &nftables.Rule{
 		Table: filterTable,
-		Chain: &nftables.Chain{Name: aclFwdRulesChain},
+		Chain: &nftables.Chain{Name: aclFwdRulesChain, Table: filterTable},
 		Exprs: []expr.Any{
-			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
 				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+				Data:     nullTerminatedString(nm),
 			},
 			&expr.Counter{},
-			oldVerdict,
+			v,
 		},
-		UserData: []byte(genRuleKey("-i", ncutils.GetInterfaceName(), "-j", oldTarget)),
+		UserData: []byte(genRuleKey("-o", nm, "-j", target)),
 	}
-	rules, err := n.conn.GetRules(newRule.Table, newRule.Chain)
-	if err != nil {
-		slog.Error("Error fetching rules: %v", err.Error())
+	if n.ruleExists(newRuleIn) && n.ruleExists(newRuleOut) {
+		return
 	}
-	for _, rI := range rules {
-		if rulesEqual(rI, oldRule) {
-			logger.Log(0, "DELETING OLD TARGET ", oldTarget)
-			err = n.conn.DelRule(rI)
-			if err != nil {
-				logger.Log(0, "failed to delete old target ", err.Error())
-			}
-			break
-		}
-	}
+	slog.Info("setting acl forward chain target to", "target", target)
 
-	n.conn.AddRule(newRule)
-	// Apply the changes
+	other := targetAccept
+	if target == targetAccept {
+		other = targetDrop
+	}
+	_ = n.deleteRule(defaultIpTable, aclFwdRulesChain, genRuleKey("-i", nm, "-j", other))
+	_ = n.deleteRule(defaultIpTable, aclFwdRulesChain, genRuleKey("-o", nm, "-j", other))
+
+	n.conn.AddRule(newRuleIn)
+	n.conn.AddRule(newRuleOut)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(0, "Error Changing ACL TArget: %v\n", err.Error())
 	}
@@ -2649,7 +2789,7 @@ func (n *nftablesManager) ChangeACLInTarget(target string) {
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
 				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+				Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 			},
 			&expr.Counter{},
 			v,
@@ -2679,7 +2819,7 @@ func (n *nftablesManager) ChangeACLInTarget(target string) {
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
 				Register: 1,
-				Data:     []byte(ncutils.GetInterfaceName() + "\x00"),
+				Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 			},
 			&expr.Counter{},
 			oldVerdict,
@@ -2741,4 +2881,8 @@ func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 	logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
 		egressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
 	return nil, fmt.Errorf("virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
+}
+
+func nullTerminatedString(s string) []byte {
+	return []byte(s + "\x00")
 }

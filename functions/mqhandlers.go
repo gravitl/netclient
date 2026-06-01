@@ -27,6 +27,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -90,7 +91,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	ifaceDelta := wireguard.IfaceDelta(&node, &newNode)
 	//nodeCfg.Node = newNode
 	switch newNode.Action {
-	case models.NODE_DELETE:
+	case schema.NODE_DELETE:
 		slog.Info("received delete request for", "node", newNode.ID, "network", newNode.Network)
 		unsubscribeNode(client, &newNode)
 		if _, err = LeaveNetwork(newNode.Network, true); err != nil {
@@ -101,14 +102,14 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		slog.Info("node was deleted", "node", newNode.ID, "network", newNode.Network)
 		return
-	case models.NODE_FORCE_UPDATE:
+	case schema.NODE_FORCE_UPDATE:
 		ifaceDelta = true
-	case models.NODE_NOOP:
+	case schema.NODE_NOOP:
 	default:
 	}
 	if ifaceDelta { // if a change caused an ifacedelta we need to notify the server to update the peers
 		// Save new config
-		newNode.Action = models.NODE_NOOP
+		newNode.Action = schema.NODE_NOOP
 		config.UpdateNodeMap(network, newNode)
 		if err := config.WriteNodeConfig(); err != nil {
 			slog.Warn("failed to write node config", "error", err)
@@ -301,8 +302,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if !peerUpdate.ServerConfig.EndpointDetection {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
+		cache.EndpointCache.Clear()
+		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
@@ -316,10 +317,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
-	if len(peerUpdate.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(peerUpdate.EgressWithDomains)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -397,7 +395,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
 	if server.IsPro {
-		go networking.RefreshPeerInfoCache()
+		go func() {
+			networking.RefreshPeerInfoCache()
+			time.Sleep(time.Second * 6)
+			callPublishMetrics(true)
+		}()
 	}
 }
 
@@ -554,6 +556,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		go processEgressDomain(hostUpdate.EgressDomain, true)
 	case models.CheckAutoAssignGw:
 		checkAssignGw(server, hostUpdate.Node)
+	case models.CollectMetrics:
+		go callPublishMetrics(true)
 	default:
 		slog.Error("unknown host action", "action", hostUpdate.Action)
 		return
@@ -882,8 +886,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		}
 	}
 	if !pullResponse.ServerConfig.EndpointDetection {
-		cache.EndpointCache = sync.Map{}
-		cache.SkipEndpointCache = sync.Map{}
+		cache.EndpointCache.Clear()
+		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
@@ -897,10 +901,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	}
-	if len(pullResponse.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(pullResponse.EgressWithDomains)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -993,6 +994,11 @@ func CheckEgressDomainUpdates() {
 
 	slog.Info("processing egress domains", "count", len(egressDomains))
 	for _, domainI := range egressDomains {
+		if !isLocalEgressGateway(domainI) {
+			slog.Debug("skipping egress domain resolution on non-gateway host",
+				"domain", domainI.Domain, "gateway_host", domainI.Host.ID.String())
+			continue
+		}
 		slog.Debug("checking egress domain", "domain", domainI.Domain)
 		processEgressDomain(domainI, false)
 	}
@@ -1000,6 +1006,11 @@ func CheckEgressDomainUpdates() {
 
 func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("processing egress domain", "domain", domainI.Domain)
+
+	if !isLocalEgressGateway(domainI) {
+		slog.Debug("skipping egress domain update on non-gateway host", "domain", domainI.Domain)
+		return
+	}
 
 	// Resolve domain to IP addresses
 	ips, err := resolveDomainToIPs(domainI.Domain)
@@ -1144,30 +1155,29 @@ func checkIPConnectivity(ips []string) bool {
 	return false
 }
 
-// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
+// resolveDomainToIPs resolves a domain name to IP addresses via public DNS.
 func resolveDomainToIPs(domain string) ([]string, error) {
-	if domain == "" {
-		return nil, fmt.Errorf("domain cannot be empty")
-	}
-	lookUpIPs, err := net.LookupIP(domain)
+	lookupDomain, err := dns.NormalizeEgressLookupDomain(domain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s: %w", domain, err)
+		return nil, err
 	}
-	if len(lookUpIPs) == 0 {
-		return nil, fmt.Errorf("no IP addresses found for domain %s", domain)
-	}
-	ips := lookUpIPs
-	// Filter out any invalid IPs and return unique IPs
-	uniqueIPs := make(map[string]string)
-	for _, ip := range ips {
-		if ip != nil {
-			uniqueIPs[ip.String()] = ip.String()
-		}
+	if strings.HasPrefix(strings.TrimSpace(domain), "*.") {
+		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
 	}
 
-	result := make([]string, 0, len(uniqueIPs))
-	for _, ip := range uniqueIPs {
-		result = append(result, ip)
+	lookUpIPs, err := dns.LookupHostViaPublicDNS(lookupDomain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s via public DNS): %w", domain, lookupDomain, err)
+	}
+	if len(lookUpIPs) == 0 {
+		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
+	}
+
+	result := make([]string, 0, len(lookUpIPs))
+	for _, ip := range lookUpIPs {
+		if ip != nil {
+			result = append(result, ip.String())
+		}
 	}
 	return result, nil
 }
