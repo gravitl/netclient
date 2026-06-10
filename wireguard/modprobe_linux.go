@@ -95,8 +95,17 @@ func lazyLoadKernelWireGuard() bool {
 	newWGLink.attrs.MTU = math.MaxInt
 
 	err := netlink.LinkAdd(newWGLink)
+	defer cleanupProbeLink(wgTestLink)
 
 	return errors.Is(err, syscall.EINVAL)
+}
+
+func cleanupProbeLink(name string) {
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return
+	}
+	_ = netlink.LinkDel(link)
 }
 
 func modProbe(moduleName string) (bool, error) {

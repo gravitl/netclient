@@ -22,54 +22,174 @@ const (
 	EgressRouteMetric = 256
 )
 
-// NCIface.Create - creates a linux WG interface based on a node's host config
+// Create creates or reuses the linux WireGuard interface.
 func (nc *NCIface) Create() error {
-	if isKernelWireGuardPresent() {
-		newLink := nc.getKernelLink()
-		if newLink == nil {
-			return fmt.Errorf("failed to create kernel interface")
-		}
-		nc.Iface = newLink
-		l, err := netlink.LinkByName(nc.Name)
-		if err != nil {
-			switch err.(type) {
-			case netlink.LinkNotFoundError:
-				break
-			default:
-				return err
-			}
-		}
-		if l != nil {
-			err = netlink.LinkDel(newLink)
-			if err != nil {
-				return err
-			}
-		}
-		if err = netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
-			return err
-		}
-		if err = netlink.LinkSetUp(newLink); err != nil {
-			return err
-		}
-		return nil
-	} else if isTunModuleLoaded() {
+	reason, _ := CallerInfo(1)
+	return nc.CreateWithReason(reason)
+}
+
+// CreateWithReason creates or reuses the linux WireGuard interface with structured logging.
+func (nc *NCIface) CreateWithReason(reason string) error {
+	_, caller := CallerInfo(1)
+	if nc.IsTestIface {
+		return nc.createFreshInterface(reason, caller)
+	}
+	if cachedKernelWireGuardPresent() {
+		return nc.ensureKernelInterface(reason, caller)
+	}
+	if isTunModuleLoaded() {
 		slog.Info("Kernel WireGuard not detected. Proceeding with userspace WireGuard for iface creation.")
-		if err := nc.createUserSpaceWG(); err != nil {
+		return nc.ensureUserspaceInterface(reason, caller)
+	}
+	err := fmt.Errorf("WireGuard not detected")
+	IfaceMetrics.CreateErrorsTotal.Add(1)
+	logIfaceOp("create", nc.Name, reason, caller, err)
+	return err
+}
+
+func (nc *NCIface) createFreshInterface(reason, caller string) error {
+	newLink := nc.getKernelLink()
+	if newLink == nil {
+		err := fmt.Errorf("failed to create kernel interface")
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	nc.Iface = newLink
+	if l, err := netlink.LinkByName(nc.Name); err == nil && l != nil {
+		_ = netlink.LinkDel(l)
+	}
+	if err := recordCreateAttempt(nc.Name); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	if err := netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	IfaceMetrics.CreateTotal.Add(1)
+	if err := netlink.LinkSetUp(newLink); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	logIfaceOp("create", nc.Name, reason, caller, nil)
+	return nil
+}
+
+func (nc *NCIface) ensureKernelInterface(reason, caller string) error {
+	newLink := nc.getKernelLink()
+	if newLink == nil {
+		err := fmt.Errorf("failed to create kernel interface")
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	nc.Iface = newLink
+
+	existing, err := netlink.LinkByName(nc.Name)
+	if err == nil {
+		if !isWireGuardLink(existing) {
+			err = fmt.Errorf("interface %q exists but is type %q, not wireguard", nc.Name, existing.Type())
+			IfaceMetrics.CreateErrorsTotal.Add(1)
+			logIfaceOp("create", nc.Name, reason, caller, err)
 			return err
 		}
-		newLink := nc.getKernelLink()
-		if newLink == nil {
-			return fmt.Errorf("failed to create userspace interface")
+		if err := markNetclientOwnership(existing); err != nil {
+			slog.Warn("failed to mark netclient ownership on interface", "interfaceName", nc.Name, "error", err)
 		}
-		if err := netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
+		if err := netlink.LinkSetUp(existing); err != nil {
+			IfaceMetrics.CreateErrorsTotal.Add(1)
+			logIfaceOp("reuse", nc.Name, reason, caller, err)
 			return err
 		}
-		if err := netlink.LinkSetUp(newLink); err != nil {
-			return err
-		}
+		IfaceMetrics.ReuseTotal.Add(1)
+		logIfaceOp("reuse", nc.Name, reason, caller, nil)
 		return nil
 	}
-	return fmt.Errorf("WireGuard not detected")
+	if _, ok := err.(netlink.LinkNotFoundError); !ok {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	if err := recordCreateAttempt(nc.Name); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	if err := netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	created, err := netlink.LinkByName(nc.Name)
+	if err == nil {
+		_ = markNetclientOwnership(created)
+	}
+	IfaceMetrics.CreateTotal.Add(1)
+	if err := netlink.LinkSetUp(newLink); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	logIfaceOp("create", nc.Name, reason, caller, nil)
+	return nil
+}
+
+func (nc *NCIface) ensureUserspaceInterface(reason, caller string) error {
+	if existing, err := netlink.LinkByName(nc.Name); err == nil {
+		if !isWireGuardLink(existing) {
+			err = fmt.Errorf("interface %q exists but is type %q, not wireguard", nc.Name, existing.Type())
+			IfaceMetrics.CreateErrorsTotal.Add(1)
+			logIfaceOp("create", nc.Name, reason, caller, err)
+			return err
+		}
+		_ = markNetclientOwnership(existing)
+		if err := netlink.LinkSetUp(existing); err != nil {
+			IfaceMetrics.CreateErrorsTotal.Add(1)
+			logIfaceOp("reuse", nc.Name, reason, caller, err)
+			return err
+		}
+		IfaceMetrics.ReuseTotal.Add(1)
+		logIfaceOp("reuse", nc.Name, reason, caller, nil)
+		return nil
+	}
+	if err := nc.createUserSpaceWG(); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	newLink := nc.getKernelLink()
+	if newLink == nil {
+		err := fmt.Errorf("failed to create userspace interface")
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	if err := recordCreateAttempt(nc.Name); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	if err := netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	created, err := netlink.LinkByName(nc.Name)
+	if err == nil {
+		_ = markNetclientOwnership(created)
+	}
+	IfaceMetrics.CreateTotal.Add(1)
+	if err := netlink.LinkSetUp(newLink); err != nil {
+		IfaceMetrics.CreateErrorsTotal.Add(1)
+		logIfaceOp("create", nc.Name, reason, caller, err)
+		return err
+	}
+	logIfaceOp("create", nc.Name, reason, caller, nil)
+	return nil
 }
 
 // NCIface.SetMTU - sets the mtu for the interface
@@ -91,14 +211,37 @@ func (l *netLink) Type() string {
 	return "wireguard"
 }
 
-// NCIface.Close closes netmaker interface
+// Close releases userspace resources without deleting the kernel interface.
 func (n *NCIface) Close() {
-	if isKernelWireGuardPresent() {
-		link := n.getKernelLink()
-		link.Close()
-	} else if isTunModuleLoaded() {
-		n.closeUserspaceWg()
+	if n.IsTestIface {
+		n.DeleteInterface("test_cleanup")
+		return
 	}
+	if !cachedKernelWireGuardPresent() && isTunModuleLoaded() {
+		_ = n.closeUserspaceWg()
+	}
+}
+
+// DeleteInterface removes a netclient-owned kernel WireGuard interface.
+func (n *NCIface) DeleteInterface(reason string) error {
+	_, caller := CallerInfo(1)
+	if n.IsTestIface {
+		link, err := netlink.LinkByName(n.Name)
+		if err != nil {
+			if _, ok := err.(netlink.LinkNotFoundError); ok {
+				return nil
+			}
+			return err
+		}
+		if err := netlink.LinkDel(link); err != nil {
+			logIfaceOp("delete", n.Name, reason, caller, err)
+			return err
+		}
+		IfaceMetrics.DeleteTotal.Add(1)
+		logIfaceOp("delete", n.Name, reason, caller, nil)
+		return nil
+	}
+	return deleteLinkByName(n.Name, reason, caller)
 }
 
 // netLink.Close - required function to close linux interface

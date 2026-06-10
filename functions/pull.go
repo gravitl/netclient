@@ -69,9 +69,6 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	if len(config.GetNodes()) != len(pullResponse.Nodes) {
 		resetInterface = true
 	}
-	if config.Netclient().ListenPort != pullResponse.Host.ListenPort {
-		resetInterface = true
-	}
 	if server.MetricsPort != pullResponse.ServerConfig.MetricsPort {
 		restart = true
 	}

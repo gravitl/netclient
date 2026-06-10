@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
@@ -76,11 +75,11 @@ func setKernelDevice(nc *NCIface) error {
 	if err != nil {
 		return err
 	}
-	// == best effort ==
-	ncutils.RunCmd("ip link delete dev "+nc.Name, false)
-	//wait for a bit
-	time.Sleep(time.Millisecond * 500)
-	ncutils.RunCmd(ipExec+" link add dev "+nc.Name+" type wireguard", true)
+	if _, err := ncutils.RunCmd(ipExec+" link add dev "+nc.Name+" type wireguard", false); err != nil {
+		if !strings.Contains(err.Error(), "File exists") {
+			ncutils.RunCmd(ipExec+" link add dev "+nc.Name+" type wireguard", true)
+		}
+	}
 	for _, node := range config.GetNodes() {
 		if !node.Connected {
 			continue

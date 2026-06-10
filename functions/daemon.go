@@ -188,6 +188,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		logger.Log(0, "error initializing dns manager:", err.Error())
 	}
 	slog.Info("configuring netmaker wireguard interface")
+	if err := wireguard.ReconcileOnStartup("daemon_start"); err != nil {
+		slog.Warn("wireguard startup reconciliation issue", "error", err)
+	}
 	var pullresp models.HostPull
 	var pullErr error
 	if server != nil && server.API != "" {
@@ -267,7 +270,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
-	if err := nc.Create(); err != nil {
+	if err := nc.CreateWithReason("daemon_start"); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
 	}
 	if err := nc.Configure(); err != nil {

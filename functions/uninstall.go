@@ -29,6 +29,10 @@ func Uninstall() ([]error, error) {
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
 	}
+	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	if err := nc.DeleteInterface("uninstall"); err != nil {
+		allfaults = append(allfaults, err)
+	}
 
 	if runtime.GOOS == "windows" {
 		err = errors.New("if the install is from msi package, please complete the uninstall using the add/remove program. https://docs.netmaker.io/netclient.html#uninstalling%22")
@@ -73,16 +77,8 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 func resetInterfaceUninstall(faults []error) []error {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
-	nc := wireguard.GetInterface()
-	nc.Close()
-	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	if err := nc.Configure(); err != nil {
-		faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
-	} else {
-		if err = wireguard.SetPeers(true); err != nil {
-			faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
-		}
+	if err := wireguard.RefreshInterface("leave_network", true); err != nil {
+		faults = append(faults, fmt.Errorf("failed to refresh interface during node removal - %v", err.Error()))
 	}
 	return faults
 }

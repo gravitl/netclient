@@ -585,18 +585,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func resetInterfaceFunc() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
-	nc := wireguard.GetInterface()
-	nc.Close()
-	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	if err := nc.Configure(); err != nil {
-		slog.Error("could not configure netmaker interface", "error", err)
+	if err := wireguard.RefreshInterface("host_update_reset", false); err != nil {
+		slog.Error("could not refresh netmaker interface", "error", err)
 		return
 	}
-	if err := wireguard.SetPeers(false); err != nil {
-		slog.Error("failed to set peers", err)
-	}
-	wireguard.SetRoutesFromCache()
 
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
@@ -890,7 +882,13 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
-	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	if resetInterface {
+		if err := wireguard.RefreshInterface("mqtt_fallback_pull", replacePeers); err != nil {
+			slog.Error("failed to refresh interface during mqtt fallback pull", "error", err)
+		}
+	} else {
+		_ = wireguard.SetPeers(replacePeers)
+	}
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
