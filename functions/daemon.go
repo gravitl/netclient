@@ -30,6 +30,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/stun"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
@@ -352,6 +353,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		callPublishMetrics(true)
 	}()
 	go handleFwUpdate(server.Server, &pullresp.FwUpdate)
+	uiapi.Start(ctx)
 	return cancel
 }
 
