@@ -12,9 +12,9 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/dns/querycache"
-	"github.com/gravitl/netclient/flow/exporter"
 	"github.com/gravitl/netclient/flow/tracker"
 	pbflow "github.com/gravitl/netmaker/grpc/flow"
+	grpcoptions "github.com/gravitl/netmaker/grpc/options"
 	"github.com/gravitl/netmaker/models"
 	ct "github.com/ti-mo/conntrack"
 )
@@ -23,7 +23,7 @@ const RefreshDuration = 10 * time.Minute
 
 type Manager struct {
 	participantIdentifiers map[string]models.PeerIdentity
-	flowClient             *exporter.FlowGrpcClient
+	flowClient             *pbflow.GrpcClient
 	flowTracker            *tracker.FlowTracker
 	startOnce              sync.Once
 	mu                     sync.RWMutex
@@ -50,9 +50,9 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 
 		querycache.GetManager().Enable()
 
-		flowClient := exporter.NewFlowGrpcClient(
+		flowClient := pbflow.NewGrpcClient(
 			config.GetServer(config.CurrServer).GRPC,
-			exporter.WithTLS(&tls.Config{}),
+			grpcoptions.WithTLS(&tls.Config{}),
 		)
 
 		err = flowClient.Start()
