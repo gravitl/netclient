@@ -32,8 +32,8 @@ WorkAccount : jane.doe@contoso.com
 func TestCollectPlatformWindowsParsesDsregcmd(t *testing.T) {
 	r := fakeRunner{
 		cmds: map[string]string{
-			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_BIOS).SerialNumber":              "ABC123",
-			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_ComputerSystemProduct).UUID":     "99999999-8888-7777-6666-555555555555",
+			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_BIOS).SerialNumber":          "ABC123",
+			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_ComputerSystemProduct).UUID": "99999999-8888-7777-6666-555555555555",
 			"dsregcmd /status": dsregcmdSample,
 		},
 	}
@@ -57,5 +57,56 @@ func TestExtractDsregcmdValueCaseInsensitive(t *testing.T) {
 	got := extractDsregcmdValue("deviceid : XYZ", "DeviceId")
 	if got != "XYZ" {
 		t.Errorf("got %q, want XYZ", got)
+	}
+}
+
+const dsregcmdWorkplaceSample = `
++----------------------------------------------------------------------+
+| Device State                                                         |
++----------------------------------------------------------------------+
+
+             AzureAdJoined : NO
+          EnterpriseJoined : NO
+              DomainJoined : NO
+           WorkplaceJoined : YES
+
++----------------------------------------------------------------------+
+| Work Account 1                                                       |
++----------------------------------------------------------------------+
+
+         WorkplaceDeviceId : 53234f50-db3a-4f97-a2ec-08285902c1dc
+       WorkplaceTenantId : 8362a4d3-912c-433b-acec-5118c90884e7
+       WorkplaceTenantName : Default Directory
+`
+
+func TestCollectPlatformWindowsWorkplaceJoinFallback(t *testing.T) {
+	r := fakeRunner{
+		cmds: map[string]string{
+			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_BIOS).SerialNumber":          "",
+			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_ComputerSystemProduct).UUID": "",
+			"wmic csproduct get uuid": "UUID\n\n53234f50-db3a-4f97-a2ec-08285902c1dc",
+			"dsregcmd /status":        dsregcmdWorkplaceSample,
+		},
+	}
+	var id DeviceIdentity
+	collectPlatform(&id, r)
+	if id.EntraDeviceID != "53234f50-db3a-4f97-a2ec-08285902c1dc" {
+		t.Errorf("EntraDeviceID = %q, want workplace device id", id.EntraDeviceID)
+	}
+	if id.HardwareUUID != "53234f50-db3a-4f97-a2ec-08285902c1dc" {
+		t.Errorf("HardwareUUID = %q", id.HardwareUUID)
+	}
+	if id.UserEmail != "" {
+		t.Errorf("UserEmail = %q, want empty for workplace-only output", id.UserEmail)
+	}
+}
+
+func TestExtractEntraDeviceIDPrefersAzureADJoin(t *testing.T) {
+	blob := `
+              DeviceId : aaaa-bbbb
+         WorkplaceDeviceId : cccc-dddd
+`
+	if got := extractEntraDeviceID(blob); got != "aaaa-bbbb" {
+		t.Errorf("got %q, want aaaa-bbbb", got)
 	}
 }

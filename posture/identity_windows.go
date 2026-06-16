@@ -9,15 +9,20 @@ import (
 //   - SerialNumber / HardwareUUID via PowerShell Get-CimInstance
 //   - UserEmail / EntraDeviceID via `dsregcmd /status`
 //
+// EntraDeviceID prefers Azure AD join DeviceId; when the host is only
+// workplace-joined, WorkplaceDeviceId is used as a fallback.
+//
 // Each probe is best-effort and leaves the field empty on failure.
 func collectPlatform(id *DeviceIdentity, r runner) {
 	id.SerialNumber = runPowerShell(r,
 		"(Get-CimInstance Win32_BIOS).SerialNumber")
-	id.HardwareUUID = runPowerShell(r,
-		"(Get-CimInstance Win32_ComputerSystemProduct).UUID")
+	id.HardwareUUID = firstNonEmptyString(
+		runPowerShell(r, "(Get-CimInstance Win32_ComputerSystemProduct).UUID"),
+		runWmicValue(r, "csproduct", "uuid"),
+	)
 
 	if out, err := r.Run("dsregcmd", "/status"); err == nil && out != "" {
-		id.EntraDeviceID = extractDsregcmdValue(out, "DeviceId")
+		id.EntraDeviceID = extractEntraDeviceID(out)
 		id.UserEmail = firstNonEmptyString(
 			extractDsregcmdValue(out, "Executing Account Name"),
 			extractDsregcmdValue(out, "WorkAccount"),
@@ -26,12 +31,37 @@ func collectPlatform(id *DeviceIdentity, r runner) {
 	}
 }
 
+// extractEntraDeviceID returns the Azure AD device object ID when present,
+// otherwise the workplace-join device ID for work/school account enrollment.
+func extractEntraDeviceID(blob string) string {
+	if id := extractDsregcmdValue(blob, "DeviceId"); id != "" {
+		return id
+	}
+	return extractDsregcmdValue(blob, "WorkplaceDeviceId")
+}
+
 func runPowerShell(r runner, expr string) string {
 	out, err := r.Run("powershell", "-NoProfile", "-NonInteractive", "-Command", expr)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// runWmicValue reads a single property via `wmic` when PowerShell/CIM is unavailable.
+func runWmicValue(r runner, alias, property string) string {
+	out, err := r.Run("wmic", alias, "get", property)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.EqualFold(line, property) {
+			continue
+		}
+		return line
+	}
+	return ""
 }
 
 // extractDsregcmdValue parses `dsregcmd /status` output, which uses the format
