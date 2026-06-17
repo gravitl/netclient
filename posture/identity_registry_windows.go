@@ -98,7 +98,7 @@ func firstJoinInfoMatch(key registry.Key, root registry.Key, basePath string) (d
 		if deviceID == "" && id != "" {
 			deviceID = id
 		}
-		if userEmail == "" && email != "" {
+		if userEmail == "" && isValidUserEmail(email) {
 			userEmail = email
 		}
 		if deviceID != "" && userEmail != "" {
@@ -117,6 +117,9 @@ func readJoinSubkey(root registry.Key, basePath, name string) (deviceID, userEma
 
 	email, _, _ := sub.GetStringValue("UserEmail")
 	userEmail = strings.TrimSpace(email)
+	if !isValidUserEmail(userEmail) {
+		userEmail = ""
+	}
 
 	for _, valueName := range []string{"DeviceId", "Id"} {
 		if v, _, err := sub.GetStringValue(valueName); err == nil {

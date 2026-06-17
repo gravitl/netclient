@@ -30,15 +30,19 @@ func collectPlatform(id *DeviceIdentity, r runner) {
 	entraID, userEmail := "", ""
 	if out, err := r.Run("dsregcmd", "/status"); err == nil && out != "" {
 		entraID = extractEntraDeviceID(out)
-		userEmail = firstNonEmptyString(
-			extractDsregcmdValue(out, "Executing Account Name"),
+		userEmail = firstValidUserEmail(
+			parseExecutingAccountName(extractDsregcmdValue(out, "Executing Account Name")),
 			extractDsregcmdValue(out, "WorkAccount"),
 			extractDsregcmdValue(out, "UserPrincipalName"),
 		)
 	}
 	regDeviceID, regUserEmail := readJoinInfoFromRegistry()
 	id.EntraDeviceID = firstNonEmptyString(entraID, regDeviceID)
-	id.UserEmail = firstNonEmptyString(userEmail, regUserEmail)
+	id.UserEmail = firstValidUserEmail(
+		userEmail,
+		regUserEmail,
+		collectCloudDomainJoinUserEmail(r),
+	)
 }
 
 // extractEntraDeviceID returns the Azure AD device object ID when present,
@@ -92,6 +96,23 @@ func extractDsregcmdValue(blob, key string) string {
 		}
 	}
 	return ""
+}
+
+// collectCloudDomainJoinUserEmail scans AAD join registry for a human UPN.
+// dsregcmd run as SYSTEM often reports the machine account instead.
+func collectCloudDomainJoinUserEmail(r runner) string {
+	out := runPowerShell(r, `
+$base = 'HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo'
+if (-not (Test-Path $base)) { return }
+foreach ($key in Get-ChildItem $base -ErrorAction SilentlyContinue) {
+  $email = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).UserEmail
+  if ($email -and $email -like '*@*' -and $email -notlike '*$*') {
+    $email
+    return
+  }
+}
+`)
+	return strings.TrimSpace(out)
 }
 
 func firstNonEmptyString(values ...string) string {

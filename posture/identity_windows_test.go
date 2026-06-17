@@ -25,7 +25,7 @@ TenantName             : Contoso
 | User State                                                           |
 +----------------------------------------------------------------------+
 
-  Executing Account Name : Contoso\jane.doe
+  Executing Account Name : Contoso\jane.doe, jane.doe@contoso.com
 WorkAccount : jane.doe@contoso.com
 `
 
@@ -48,7 +48,7 @@ func TestCollectPlatformWindowsParsesDsregcmd(t *testing.T) {
 	if id.EntraDeviceID != "abcd1234-1111-2222-3333-444455556666" {
 		t.Errorf("EntraDeviceID = %q", id.EntraDeviceID)
 	}
-	if id.UserEmail != "Contoso\\jane.doe" {
+	if id.UserEmail != "jane.doe@contoso.com" {
 		t.Errorf("UserEmail = %q", id.UserEmail)
 	}
 }
@@ -129,5 +129,12 @@ func TestIsLoadedUserSID(t *testing.T) {
 	}
 	if isLoadedUserSID("S-1-5-21-3681983559-1923665867-785417408-1007_Classes") {
 		t.Error("class sid should be skipped")
+	}
+}
+
+func TestParseExecutingAccountNameAADJoined(t *testing.T) {
+	got := parseExecutingAccountName("AzureAD\\abhishek-internal, abhi@abhisheknetmaker.onmicrosoft.com")
+	if got != "abhi@abhisheknetmaker.onmicrosoft.com" {
+		t.Errorf("got %q", got)
 	}
 }
