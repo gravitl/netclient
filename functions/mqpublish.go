@@ -29,7 +29,41 @@ import (
 // HTTP fallback PUT or the MQTT publish path.
 func buildHostUpdatePayload(hu models.HostUpdate) models.HostUpdate {
 	posture.ApplyIdentity(&hu.Host)
+	syncHostIdentityToConfig(hu.Host)
 	return hu
+}
+
+// syncHostIdentityToConfig mirrors freshly collected identity into netclient.json.
+func syncHostIdentityToConfig(host schema.Host) {
+	hostCfg := config.Netclient()
+	if hostCfg == nil {
+		return
+	}
+	updated := *hostCfg
+	changed := false
+	if host.EntraDeviceID != "" && updated.EntraDeviceID != host.EntraDeviceID {
+		updated.EntraDeviceID = host.EntraDeviceID
+		changed = true
+	}
+	if host.SerialNumber != "" && updated.SerialNumber != host.SerialNumber {
+		updated.SerialNumber = host.SerialNumber
+		changed = true
+	}
+	if host.HardwareUUID != "" && updated.HardwareUUID != host.HardwareUUID {
+		updated.HardwareUUID = host.HardwareUUID
+		changed = true
+	}
+	if host.UserEmail != "" && updated.UserEmail != host.UserEmail {
+		updated.UserEmail = host.UserEmail
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	config.UpdateNetclient(updated)
+	if err := config.WriteNetclientConfig(); err != nil {
+		slog.Warn("failed to persist host identity to config", "error", err)
+	}
 }
 
 const (

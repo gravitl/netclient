@@ -110,3 +110,24 @@ func TestExtractEntraDeviceIDPrefersAzureADJoin(t *testing.T) {
 		t.Errorf("got %q, want aaaa-bbbb", got)
 	}
 }
+
+func TestLooksLikeGUID(t *testing.T) {
+	if !looksLikeGUID("53234f50-db3a-4f97-a2ec-08285902c1dc") {
+		t.Error("expected valid guid")
+	}
+	if looksLikeGUID("DEADBEEF") {
+		t.Error("thumbprint should not match guid helper")
+	}
+}
+
+func TestIsLoadedUserSID(t *testing.T) {
+	if !isLoadedUserSID("S-1-5-21-3681983559-1923665867-785417408-1007") {
+		t.Error("expected user sid")
+	}
+	if isLoadedUserSID("S-1-5-18") {
+		t.Error("system sid should be skipped")
+	}
+	if isLoadedUserSID("S-1-5-21-3681983559-1923665867-785417408-1007_Classes") {
+		t.Error("class sid should be skipped")
+	}
+}

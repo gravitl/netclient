@@ -84,7 +84,7 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)
-	config.UpdateHost(&pullResponse.Host)
+	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	fmt.Printf("completed pull for server %s\n", serverName)

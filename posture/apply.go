@@ -23,3 +23,17 @@ func ApplyIdentity(host *schema.Host) {
 		host.UserEmail = id.UserEmail
 	}
 }
+
+// ApplyIdentityIfChanged collects device identity onto host and reports
+// whether any posture field changed.
+func ApplyIdentityIfChanged(host *schema.Host) bool {
+	if host == nil {
+		return false
+	}
+	before := *host
+	ApplyIdentity(host)
+	return host.EntraDeviceID != before.EntraDeviceID ||
+		host.SerialNumber != before.SerialNumber ||
+		host.HardwareUUID != before.HardwareUUID ||
+		host.UserEmail != before.UserEmail
+}

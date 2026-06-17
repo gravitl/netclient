@@ -123,7 +123,7 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	config.UpdateHost(&registerResponse.RequestedHost)
+	UpdateHostFromServer(&registerResponse.RequestedHost)
 	config.SetCurrServerCtxInFile(server.Server)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())

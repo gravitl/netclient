@@ -6,29 +6,39 @@ import (
 )
 
 // collectPlatform fills Windows-specific identity fields:
-//   - SerialNumber / HardwareUUID via PowerShell Get-CimInstance
-//   - UserEmail / EntraDeviceID via `dsregcmd /status`
+//   - SerialNumber / HardwareUUID via PowerShell Get-CimInstance, with registry
+//     and wmic fallbacks that work when netclient runs as a SYSTEM service
+//   - UserEmail / EntraDeviceID via `dsregcmd /status`, with registry
+//     fallbacks for workplace-joined hosts (dsregcmd hides user join state
+//     from services)
 //
 // EntraDeviceID prefers Azure AD join DeviceId; when the host is only
-// workplace-joined, WorkplaceDeviceId is used as a fallback.
+// workplace-joined, WorkplaceDeviceId (or its JoinInfo registry key) is used.
 //
 // Each probe is best-effort and leaves the field empty on failure.
 func collectPlatform(id *DeviceIdentity, r runner) {
-	id.SerialNumber = runPowerShell(r,
-		"(Get-CimInstance Win32_BIOS).SerialNumber")
+	id.SerialNumber = firstNonEmptyString(
+		runPowerShell(r, "(Get-CimInstance Win32_BIOS).SerialNumber"),
+		readLocalMachineStringValue(biosRegPath, "SystemSerialNumber"),
+	)
 	id.HardwareUUID = firstNonEmptyString(
 		runPowerShell(r, "(Get-CimInstance Win32_ComputerSystemProduct).UUID"),
 		runWmicValue(r, "csproduct", "uuid"),
+		readLocalMachineStringValue(biosRegPath, "SystemProductGuid"),
 	)
 
+	entraID, userEmail := "", ""
 	if out, err := r.Run("dsregcmd", "/status"); err == nil && out != "" {
-		id.EntraDeviceID = extractEntraDeviceID(out)
-		id.UserEmail = firstNonEmptyString(
+		entraID = extractEntraDeviceID(out)
+		userEmail = firstNonEmptyString(
 			extractDsregcmdValue(out, "Executing Account Name"),
 			extractDsregcmdValue(out, "WorkAccount"),
 			extractDsregcmdValue(out, "UserPrincipalName"),
 		)
 	}
+	regDeviceID, regUserEmail := readJoinInfoFromRegistry()
+	id.EntraDeviceID = firstNonEmptyString(entraID, regDeviceID)
+	id.UserEmail = firstNonEmptyString(userEmail, regUserEmail)
 }
 
 // extractEntraDeviceID returns the Azure AD device object ID when present,

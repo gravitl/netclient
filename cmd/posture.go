@@ -4,10 +4,12 @@ Copyright © 2026 Netmaker Team <info@netmaker.io>
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/posture"
 	"github.com/spf13/cobra"
 )
 
@@ -40,8 +42,26 @@ Exit codes:
 	},
 }
 
+var postureIdentityCmd = &cobra.Command{
+	Use:   "identity",
+	Short: "Print locally collected device identity fields",
+	Long: `Shows hostname, serial, hardware UUID, user email, and Entra device ID as
+collected on this machine. Useful for verifying posture identity before check-in.`,
+	Args: cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		id := posture.Collect()
+		b, err := json.MarshalIndent(id, "", "  ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "posture identity error:", err)
+			os.Exit(2)
+		}
+		fmt.Println(string(b))
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(postureCmd)
 	postureCmd.AddCommand(postureStatusCmd)
+	postureCmd.AddCommand(postureIdentityCmd)
 	postureStatusCmd.Flags().BoolP("json", "j", false, "dump the raw JSON response")
 }
