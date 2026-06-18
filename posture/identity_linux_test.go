@@ -19,8 +19,8 @@ func TestCollectPlatformLinuxPrefersProductSerial(t *testing.T) {
 	if id.HardwareUUID != "uuid-primary" {
 		t.Errorf("HardwareUUID = %q, want uuid-primary", id.HardwareUUID)
 	}
-	if id.UserEmail != "" || id.EntraDeviceID != "" {
-		t.Error("Linux should not populate UserEmail / EntraDeviceID")
+	if id.EntraDeviceID != "" {
+		t.Error("Linux should not populate EntraDeviceID")
 	}
 }
 

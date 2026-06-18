@@ -6,9 +6,9 @@ import (
 )
 
 // collectPlatform fills macOS-specific identity fields by parsing
-// `ioreg -rd1 -c IOPlatformExpertDevice`. UserEmail and EntraDeviceID are
-// left empty: macOS Entra/Intune enrollment is not exposed via a stable CLI
-// hook; the MDM agent reports those upstream.
+// `ioreg -rd1 -c IOPlatformExpertDevice`. EntraDeviceID is left empty: macOS
+// Entra/Intune enrollment is not exposed via a stable CLI hook; the MDM agent
+// reports those upstream.
 func collectPlatform(id *DeviceIdentity, r runner) {
 	out, err := r.Run("ioreg", "-rd1", "-c", "IOPlatformExpertDevice")
 	if err != nil || out == "" {

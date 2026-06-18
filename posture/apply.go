@@ -19,9 +19,6 @@ func ApplyIdentity(host *schema.Host) {
 	if id.HardwareUUID != "" {
 		host.HardwareUUID = id.HardwareUUID
 	}
-	if id.UserEmail != "" {
-		host.UserEmail = id.UserEmail
-	}
 }
 
 // ApplyIdentityIfChanged collects device identity onto host and reports
@@ -34,6 +31,5 @@ func ApplyIdentityIfChanged(host *schema.Host) bool {
 	ApplyIdentity(host)
 	return host.EntraDeviceID != before.EntraDeviceID ||
 		host.SerialNumber != before.SerialNumber ||
-		host.HardwareUUID != before.HardwareUUID ||
-		host.UserEmail != before.UserEmail
+		host.HardwareUUID != before.HardwareUUID
 }

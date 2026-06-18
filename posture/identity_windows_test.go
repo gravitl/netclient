@@ -48,9 +48,6 @@ func TestCollectPlatformWindowsParsesDsregcmd(t *testing.T) {
 	if id.EntraDeviceID != "abcd1234-1111-2222-3333-444455556666" {
 		t.Errorf("EntraDeviceID = %q", id.EntraDeviceID)
 	}
-	if id.UserEmail != "jane.doe@contoso.com" {
-		t.Errorf("UserEmail = %q", id.UserEmail)
-	}
 }
 
 func TestExtractDsregcmdValueCaseInsensitive(t *testing.T) {
@@ -96,9 +93,6 @@ func TestCollectPlatformWindowsWorkplaceJoinFallback(t *testing.T) {
 	if id.HardwareUUID != "53234f50-db3a-4f97-a2ec-08285902c1dc" {
 		t.Errorf("HardwareUUID = %q", id.HardwareUUID)
 	}
-	if id.UserEmail != "" {
-		t.Errorf("UserEmail = %q, want empty for workplace-only output", id.UserEmail)
-	}
 }
 
 func TestExtractEntraDeviceIDPrefersAzureADJoin(t *testing.T) {
@@ -129,12 +123,5 @@ func TestIsLoadedUserSID(t *testing.T) {
 	}
 	if isLoadedUserSID("S-1-5-21-3681983559-1923665867-785417408-1007_Classes") {
 		t.Error("class sid should be skipped")
-	}
-}
-
-func TestParseExecutingAccountNameAADJoined(t *testing.T) {
-	got := parseExecutingAccountName("AzureAD\\abhishek-internal, abhi@abhisheknetmaker.onmicrosoft.com")
-	if got != "abhi@abhisheknetmaker.onmicrosoft.com" {
-		t.Errorf("got %q", got)
 	}
 }

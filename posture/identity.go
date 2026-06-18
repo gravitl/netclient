@@ -17,7 +17,6 @@ type DeviceIdentity struct {
 	SerialNumber  string `json:"serial_number"`
 	HardwareUUID  string `json:"hardware_uuid"`
 	OS            string `json:"os"`
-	UserEmail     string `json:"user_email"`
 	EntraDeviceID string `json:"entra_device_id"`
 }
 

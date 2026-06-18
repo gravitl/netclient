@@ -203,7 +203,6 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 	host.EntraDeviceID = hostCfg.EntraDeviceID
 	host.SerialNumber = hostCfg.SerialNumber
 	host.HardwareUUID = hostCfg.HardwareUUID
-	host.UserEmail = hostCfg.UserEmail
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()

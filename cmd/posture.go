@@ -45,7 +45,7 @@ Exit codes:
 var postureIdentityCmd = &cobra.Command{
 	Use:   "identity",
 	Short: "Print locally collected device identity fields",
-	Long: `Shows hostname, serial, hardware UUID, user email, and Entra device ID as
+	Long: `Shows hostname, serial, hardware UUID, and Entra device ID as
 collected on this machine. Useful for verifying posture identity before check-in.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {

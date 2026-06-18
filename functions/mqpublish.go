@@ -53,10 +53,6 @@ func syncHostIdentityToConfig(host schema.Host) {
 		updated.HardwareUUID = host.HardwareUUID
 		changed = true
 	}
-	if host.UserEmail != "" && updated.UserEmail != host.UserEmail {
-		updated.UserEmail = host.UserEmail
-		changed = true
-	}
 	if !changed {
 		return
 	}

@@ -1,7 +1,7 @@
 package posture
 
 // collectPlatform fills Linux-specific identity fields. Linux hosts are not
-// typically Entra-joined, so UserEmail and EntraDeviceID stay empty.
+// typically Entra-joined, so EntraDeviceID stays empty on Linux.
 func collectPlatform(id *DeviceIdentity, r runner) {
 	id.SerialNumber = firstNonEmpty(r,
 		readFile("/sys/class/dmi/id/product_serial"),
