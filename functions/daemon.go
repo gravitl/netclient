@@ -212,6 +212,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if !netclientCfg.IsStatic {
+		if netclientCfg.EndpointIP != nil {
+			config.HostPublicIP = netclientCfg.EndpointIP
+		}
+		if netclientCfg.EndpointIPv6 != nil {
+			config.HostPublicIP6 = netclientCfg.EndpointIPv6
+		}
 		// IPV4
 		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, netclientCfg.ListenPort)
 		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)

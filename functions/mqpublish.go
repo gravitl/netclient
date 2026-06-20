@@ -66,6 +66,14 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 
 	ipTicker = time.NewTicker(time.Second * time.Duration(ipTickerIntervalSec))
 	defer ipTicker.Stop()
+	if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
+		if config.HostPublicIP == nil && config.Netclient().EndpointIP != nil {
+			config.HostPublicIP = config.Netclient().EndpointIP
+		}
+		if config.HostPublicIP6 == nil && config.Netclient().EndpointIPv6 != nil {
+			config.HostPublicIP6 = config.Netclient().EndpointIPv6
+		}
+	}
 	err := hostServerUpdate(models.HostUpdate{Action: models.UpdateHost})
 	if err != nil {
 		logger.Log(0, "could not publish endpoint change", err.Error())
@@ -102,20 +110,36 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				if ip4 == nil && ip6 == nil {
 					continue
 				}
-				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
-					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
-					config.HostPublicIP = ip4
-					restart = true
+				knownIP4 := config.HostPublicIP
+				if knownIP4 == nil {
+					knownIP4 = config.Netclient().EndpointIP
+				}
+				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() {
+					if !ncutils.IPsEqual(knownIP4, ip4) {
+						slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+						config.HostPublicIP = ip4
+						restart = true
+					} else if config.HostPublicIP == nil {
+						config.HostPublicIP = ip4
+					}
 				} else if ip4 == nil && config.HostPublicIP != nil {
 					slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = nil
 					restart = true
 				}
 
-				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
-					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
-					config.HostPublicIP6 = ip6
-					restart = true
+				knownIP6 := config.HostPublicIP6
+				if knownIP6 == nil {
+					knownIP6 = config.Netclient().EndpointIPv6
+				}
+				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() {
+					if !ncutils.IPsEqual(knownIP6, ip6) {
+						slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+						config.HostPublicIP6 = ip6
+						restart = true
+					} else if config.HostPublicIP6 == nil {
+						config.HostPublicIP6 = ip6
+					}
 				} else if ip6 == nil && config.HostPublicIP6 != nil {
 					slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = nil
