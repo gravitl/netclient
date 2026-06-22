@@ -2,7 +2,9 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -113,6 +115,14 @@ func (s *systemdStubManager) Configure(iface string, config Config) error {
 }
 
 func (s *systemdStubManager) resetConfig(iface string) error {
+	_, err := net.InterfaceByName(iface)
+	if err != nil {
+		var opErr *net.OpError
+		if errors.As(err, &opErr) && strings.Contains(opErr.Err.Error(), "no such network interface") {
+			return nil
+		}
+	}
+
 	out, err := exec.Command("resolvectl", "dns", iface, "").CombinedOutput()
 	if err != nil {
 		out := strings.TrimSpace(string(out))

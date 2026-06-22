@@ -3,10 +3,14 @@ package metrics
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	//lint:ignore SA1019 Reason: will be switching to a alternative package
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
@@ -17,7 +21,14 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
-// Collect - collects metrics
+// defaultProbeConcurrency caps the number of parallel per-peer probes inside
+// Collect. Each probe holds raw ICMP and/or TCP sockets for up to several
+// seconds, so we bound concurrency to avoid exhausting file descriptors on
+// hosts with many peers. Override via NETCLIENT_METRICS_CONCURRENCY.
+const defaultProbeConcurrency = 32
+
+// Collect - collects metrics. Per-peer probes run in parallel (bounded by
+// probeConcurrency()) so a slow or unreachable peer does not delay the rest.
 func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Metrics, error) {
 	mi := 15
 	server := config.GetServer(config.CurrServer)
@@ -41,48 +52,81 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 		return &metrics, err
 	}
 	// TODO handle freebsd??
-	for i := range device.Peers {
-		currPeer := device.Peers[i]
-		if _, ok := peerMap[currPeer.PublicKey.String()]; !ok {
-			continue
+
+	var (
+		wg  sync.WaitGroup
+		mu  sync.Mutex
+		sem = make(chan struct{}, probeConcurrency())
+	)
+
+	wgPeers := make(map[string]int)
+	for i, peer := range device.Peers {
+		wgPeers[peer.PublicKey.String()] = i
+	}
+	for pubKey := range peerMap {
+		var wgPeer wgtypes.Peer
+		index, ok := wgPeers[pubKey]
+		if ok {
+			wgPeer = device.Peers[index]
 		}
-		id := peerMap[currPeer.PublicKey.String()].ID
-		address := peerMap[currPeer.PublicKey.String()].Address
-		isExtClient := peerMap[currPeer.PublicKey.String()].IsExtClient
-		if id == "" || address == "" {
-			logger.Log(0, "attempted to parse metrics for invalid peer from server", id, address)
+
+		peer := peerMap[pubKey]
+		if peer.ID == "" || peer.Address == "" {
+			logger.Log(0, "attempted to parse metrics for invalid peer from server", peer.ID, peer.Address)
 			continue
 		}
 
-		var newMetric = models.Metric{
-			NodeName: peerMap[currPeer.PublicKey.String()].Name,
-		}
-		//slog.Debug("collecting metrics for peer", "address", address)
-		newMetric.TotalReceived = currPeer.ReceiveBytes
-		newMetric.TotalSent = currPeer.TransmitBytes
-		if isExtClient {
-			newMetric.Connected, newMetric.Latency = ExtPeerConnStatus(address, 3)
-		} else {
-			newMetric.Connected, newMetric.Latency = PeerConnStatus(address, metricPort, 4)
-		}
-		if newMetric.Connected {
-			newMetric.Uptime = 1 * int64(mi)
-		}
-		// check device peer to see if WG is working if ping failed
-		if !newMetric.Connected {
-			if currPeer.ReceiveBytes > 0 &&
-				currPeer.TransmitBytes > 0 &&
-				time.Now().Before(currPeer.LastHandshakeTime.Add(time.Minute<<1)) {
-				newMetric.Connected = true
-				newMetric.Uptime = 1 * int64(mi)
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			newMetric := models.Metric{
+				NodeName:      peer.Name,
+				TotalReceived: wgPeer.ReceiveBytes,
+				TotalSent:     wgPeer.TransmitBytes,
 			}
-		}
-		newMetric.TotalTime = 1 * int64(mi)
-		metrics.Connectivity[id] = newMetric
+			if peer.IsExtClient {
+				newMetric.Connected, newMetric.Latency = ExtPeerConnStatus(peer.Address, 3)
+			} else {
+				newMetric.Connected, newMetric.Latency = PeerConnStatus(peer.Address, metricPort, 4)
+			}
+			if newMetric.Connected {
+				newMetric.Uptime = int64(mi)
+			}
+			// fall back to recent-handshake heuristic if the active probe failed
+			if !newMetric.Connected {
+				if wgPeer.ReceiveBytes > 0 &&
+					wgPeer.TransmitBytes > 0 &&
+					time.Now().Before(wgPeer.LastHandshakeTime.Add(time.Minute<<1)) {
+					newMetric.Connected = true
+					newMetric.Uptime = int64(mi)
+				}
+			}
+			newMetric.TotalTime = int64(mi)
+
+			mu.Lock()
+			metrics.Connectivity[peer.ID] = newMetric
+			mu.Unlock()
+		}()
 	}
+	wg.Wait()
 
 	fillUnconnectedData(&metrics, peerMap, mi)
 	return &metrics, nil
+}
+
+// probeConcurrency returns the maximum number of per-peer probes Collect runs
+// in parallel. NETCLIENT_METRICS_CONCURRENCY overrides the default; values
+// <= 0 or unparsable fall back to defaultProbeConcurrency.
+func probeConcurrency() int {
+	if v := os.Getenv("NETCLIENT_METRICS_CONCURRENCY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultProbeConcurrency
 }
 
 // == used to fill zero value data for non connected peers ==

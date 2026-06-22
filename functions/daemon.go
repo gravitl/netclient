@@ -296,29 +296,24 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	// check if default gw needs to be set
 	if pullErr == nil {
-		gwIP, err := wireguard.GetDefaultGatewayIp()
-		if err == nil {
-			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
-				if !wireguard.GetIGWMonitor().IsCurrentIGW(gwIP) {
-					var igw wgtypes.PeerConfig
-					for _, peer := range pullresp.Peers {
-						for _, peerIP := range peer.AllowedIPs {
-							if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-								igw = peer
-								break
-							}
-						}
-					}
-
-					// unlikely that the gwIP is netmaker IP, but still
-					// reset the igw.
-					_ = wireguard.RestoreInternetGw()
-
-					err = wireguard.SetInternetGw(igw.PublicKey.String(), pullresp.DefaultGwIp)
-					if err != nil {
-						slog.Warn("failed to set inet gw", "error", err)
+		if pullresp.ChangeDefaultGw && !wireguard.GetIGWMonitor().IsCurrentIGW(pullresp.DefaultGwIp) {
+			var igw wgtypes.PeerConfig
+			for _, peer := range pullresp.Peers {
+				for _, peerIP := range peer.AllowedIPs {
+					if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
+						igw = peer
+						break
 					}
 				}
+			}
+
+			// unlikely that the gwIP is netmaker IP, but still
+			// reset the igw.
+			_ = wireguard.RestoreInternetGw()
+
+			err = wireguard.SetInternetGw(igw.PublicKey.String(), pullresp.DefaultGwIp)
+			if err != nil {
+				slog.Warn("failed to set inet gw", "error", err)
 			}
 		}
 	}
@@ -339,6 +334,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
+	StartEgressDomainMonitor(ctx, wg)
+
+	if len(pullresp.EgressWithDomains) > 0 {
+		syncEgressDomains(pullresp.EgressWithDomains)
+	}
 
 	if server.ManageDNS {
 		if dns.GetDNSServerInstance().AddrStr == "" {
@@ -432,57 +432,6 @@ func setupMQTT(server *config.Server) error {
 		slog.Info("successfully requested ACK on server", "server", server.Name)
 	}
 	return nil
-}
-
-// func setMQTTSingenton creates a connection to broker for single use (ie to publish a message)
-// only to be called from cli (eg. connect/disconnect, join, leave) and not from daemon ---
-func setupMQTTSingleton(server *config.Server, publishOnly bool) error {
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(server.Broker)
-	if server.BrokerType == "emqx" {
-		opts.SetUsername(config.Netclient().ID.String())
-		opts.SetPassword(config.Netclient().HostPass)
-	} else {
-		opts.SetUsername(server.MQUserName)
-		opts.SetPassword(server.MQPassword)
-	}
-	opts.SetClientID(logic.RandomString(9))
-	opts.SetAutoReconnect(true)
-	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(time.Second * 4)
-	opts.SetKeepAlive(time.Second * 30)
-	opts.SetWriteTimeout(time.Minute)
-	opts.SetCleanSession(true)
-	opts.SetOnConnectHandler(func(client mqtt.Client) {
-		if !publishOnly {
-			slog.Info("mqtt connect handler")
-			nodes := config.GetNodes()
-			for _, node := range nodes {
-				node := node
-				setSubscriptions(client, &node)
-				setDNSSubscriptions(client, &node, server.Name)
-			}
-			setHostSubscription(client, server.Name)
-		}
-		slog.Info("successfully connected to", "server", server.Broker)
-	})
-	opts.SetOrderMatters(true)
-	opts.SetResumeSubs(true)
-	opts.SetConnectionLostHandler(func(c mqtt.Client, e error) {
-		slog.Warn("detected broker connection lost for", "server", server.Broker)
-	})
-	Mqclient = mqtt.NewClient(opts)
-
-	var connecterr error
-	if token := Mqclient.Connect(); !token.WaitTimeout(5*time.Second) || token.Error() != nil {
-		if token.Error() == nil {
-			connecterr = errors.New("connect timeout")
-		} else {
-			connecterr = token.Error()
-		}
-		slog.Error("unable to connect to broker", "server", server.Broker, "error", connecterr)
-	}
-	return connecterr
 }
 
 // setHostSubscription sets MQ client subscriptions for host
