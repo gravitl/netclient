@@ -39,5 +39,5 @@ func AsMDMDenied(err error) error {
 	if !strings.Contains(strings.ToLower(notOk.Message), mdmDenialMarker) {
 		return err
 	}
-	return fmt.Errorf("%w: %s", ErrMDMDenied, notOk.Message)
+	return fmt.Errorf("%w: %w", ErrMDMDenied, err)
 }
