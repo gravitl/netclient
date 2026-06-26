@@ -2,7 +2,9 @@ package posture
 
 import (
 	"bufio"
+	"context"
 	"strings"
+	"time"
 )
 
 // collectPlatform fills Windows-specific identity fields:
@@ -16,18 +18,21 @@ import (
 //
 // Each probe is best-effort and leaves the field empty on failure.
 func collectPlatform(id *DeviceIdentity, r runner) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
 	id.SerialNumber = firstNonEmptyString(
-		runPowerShell(r, "(Get-CimInstance Win32_BIOS).SerialNumber"),
+		runPowerShell(ctx, r, "(Get-CimInstance Win32_BIOS).SerialNumber"),
 		readLocalMachineStringValue(biosRegPath, "SystemSerialNumber"),
 	)
 	id.HardwareUUID = firstNonEmptyString(
-		runPowerShell(r, "(Get-CimInstance Win32_ComputerSystemProduct).UUID"),
-		runWmicValue(r, "csproduct", "uuid"),
-		readLocalMachineStringValue(biosRegPath, "SystemProductGuid"),
+		sanitizeHardwareUUID(runPowerShell(ctx, r, "(Get-CimInstance Win32_ComputerSystemProduct).UUID")),
+		sanitizeHardwareUUID(runWmicValue(ctx, r, "csproduct", "uuid")),
+		sanitizeHardwareUUID(readLocalMachineStringValue(biosRegPath, "SystemProductGuid")),
 	)
 
 	entraID := ""
-	if out, err := r.Run("dsregcmd", "/status"); err == nil && out != "" {
+	if out, err := r.Run(ctx, "dsregcmd", "/status"); err == nil && out != "" {
 		entraID = extractEntraDeviceID(out)
 	}
 	id.EntraDeviceID = firstNonEmptyString(entraID, readJoinInfoFromRegistry())
@@ -42,8 +47,8 @@ func extractEntraDeviceID(blob string) string {
 	return extractDsregcmdValue(blob, "WorkplaceDeviceId")
 }
 
-func runPowerShell(r runner, expr string) string {
-	out, err := r.Run("powershell", "-NoProfile", "-NonInteractive", "-Command", expr)
+func runPowerShell(ctx context.Context, r runner, expr string) string {
+	out, err := r.Run(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", expr)
 	if err != nil {
 		return ""
 	}
@@ -51,8 +56,8 @@ func runPowerShell(r runner, expr string) string {
 }
 
 // runWmicValue reads a single property via `wmic` when PowerShell/CIM is unavailable.
-func runWmicValue(r runner, alias, property string) string {
-	out, err := r.Run("wmic", alias, "get", property)
+func runWmicValue(ctx context.Context, r runner, alias, property string) string {
+	out, err := r.Run(ctx, "wmic", alias, "get", property)
 	if err != nil {
 		return ""
 	}
@@ -93,4 +98,36 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// isSentinelUUID reports known-bad or non-unique hardware UUID placeholders.
+func isSentinelUUID(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	switch strings.ToUpper(value) {
+	case "00000000-0000-0000-0000-000000000000",
+		"FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF":
+		return true
+	}
+	compact := strings.ReplaceAll(value, "-", "")
+	if len(compact) == 0 {
+		return false
+	}
+	first := strings.ToUpper(string(compact[0]))
+	for _, c := range compact[1:] {
+		if strings.ToUpper(string(c)) != first {
+			return false
+		}
+	}
+	return true
+}
+
+func sanitizeHardwareUUID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || isSentinelUUID(value) {
+		return ""
+	}
+	return value
 }

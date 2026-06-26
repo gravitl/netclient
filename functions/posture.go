@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -135,5 +134,5 @@ func humanDuration(d time.Duration) string {
 	if d < 48*time.Hour {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
-	return strings.TrimSuffix(fmt.Sprintf("%dd", int(d.Hours()/24)), "0d")
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }

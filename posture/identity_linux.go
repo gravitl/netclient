@@ -1,10 +1,42 @@
 package posture
 
+import "strings"
+
+// dmiPlaceholders are common sysfs/DMI sentinel values that carry no device identity.
+var dmiPlaceholders = map[string]struct{}{
+	"not specified":            {},
+	"to be filled by o.e.m.":   {},
+	"default string":           {},
+	"system serial number":     {},
+	"none":                     {},
+	"not applicable":           {},
+	"n/a":                      {},
+	"unknown":                  {},
+	"o.e.m.":                   {},
+	"fill by oem":              {},
+	"0123456789":               {},
+	"123456789":                {},
+}
+
+// sanitizeDMI wraps a probe and returns empty when the value is blank or a known placeholder.
+func sanitizeDMI(p probe) probe {
+	return func(r runner) string {
+		v := strings.TrimSpace(p(r))
+		if v == "" {
+			return ""
+		}
+		if _, ok := dmiPlaceholders[strings.ToLower(v)]; ok {
+			return ""
+		}
+		return v
+	}
+}
+
 // collectPlatform fills Linux-specific identity fields. Linux hosts are not
 // typically Entra-joined, so EntraDeviceID stays empty on Linux.
 func collectPlatform(id *DeviceIdentity, r runner) {
 	id.SerialNumber = firstNonEmpty(r,
-		readFile("/sys/class/dmi/id/product_serial"),
+		sanitizeDMI(readFile("/sys/class/dmi/id/product_serial")),
 		readFile("/sys/class/dmi/id/board_serial"),
 	)
 	id.HardwareUUID = firstNonEmpty(r,

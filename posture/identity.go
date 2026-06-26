@@ -6,6 +6,7 @@
 package posture
 
 import (
+	"context"
 	"os"
 	"runtime"
 )
@@ -23,7 +24,7 @@ type DeviceIdentity struct {
 // runner abstracts external-command execution so platform collectors can be
 // unit-tested without shelling out.
 type runner interface {
-	Run(name string, args ...string) (string, error)
+	Run(ctx context.Context, name string, args ...string) (string, error)
 	ReadFile(path string) (string, error)
 }
 

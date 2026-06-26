@@ -1,6 +1,7 @@
 package posture
 
 import (
+	"context"
 	"errors"
 	"os"
 	"runtime"
@@ -13,7 +14,7 @@ type fakeRunner struct {
 	files map[string]string
 }
 
-func (f fakeRunner) Run(name string, args ...string) (string, error) {
+func (f fakeRunner) Run(_ context.Context, name string, args ...string) (string, error) {
 	key := name
 	for _, a := range args {
 		key += " " + a

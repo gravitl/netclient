@@ -2,7 +2,9 @@ package posture
 
 import (
 	"bufio"
+	"context"
 	"strings"
+	"time"
 )
 
 // collectPlatform fills macOS-specific identity fields by parsing
@@ -10,7 +12,9 @@ import (
 // Entra/Intune enrollment is not exposed via a stable CLI hook; the MDM agent
 // reports those upstream.
 func collectPlatform(id *DeviceIdentity, r runner) {
-	out, err := r.Run("ioreg", "-rd1", "-c", "IOPlatformExpertDevice")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := r.Run(ctx, "ioreg", "-rd1", "-c", "IOPlatformExpertDevice")
 	if err != nil || out == "" {
 		return
 	}

@@ -125,3 +125,37 @@ func TestIsLoadedUserSID(t *testing.T) {
 		t.Error("class sid should be skipped")
 	}
 }
+
+func TestIsSentinelUUID(t *testing.T) {
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{"00000000-0000-0000-0000-000000000000", true},
+		{"ffffffff-ffff-ffff-ffff-ffffffffffff", true},
+		{"11111111-1111-1111-1111-111111111111", true},
+		{"99999999-8888-7777-6666-555555555555", false},
+		{"53234f50-db3a-4f97-a2ec-08285902c1dc", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isSentinelUUID(tc.value); got != tc.want {
+			t.Errorf("isSentinelUUID(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestCollectPlatformWindowsSkipsSentinelHardwareUUID(t *testing.T) {
+	r := fakeRunner{
+		cmds: map[string]string{
+			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_BIOS).SerialNumber":          "ABC123",
+			"powershell -NoProfile -NonInteractive -Command (Get-CimInstance Win32_ComputerSystemProduct).UUID": "00000000-0000-0000-0000-000000000000",
+			"wmic csproduct get uuid": "UUID\n\n99999999-8888-7777-6666-555555555555",
+		},
+	}
+	var id DeviceIdentity
+	collectPlatform(&id, r)
+	if id.HardwareUUID != "99999999-8888-7777-6666-555555555555" {
+		t.Errorf("HardwareUUID = %q, want fallback after sentinel", id.HardwareUUID)
+	}
+}
