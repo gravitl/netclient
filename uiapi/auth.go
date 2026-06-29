@@ -7,13 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gravitl/netclient/config"
 )
 
 const defaultAuthKey = "ZZy@PARn4$%2*I#jMVE^2X*b#$U0APqIrGSKiB$dV4"
 
 func authKeyPath() string {
-	return filepath.Join(config.GetNetclientPath(), ".uiapi_key")
+	return filepath.Join(GetDesktopConfigPath(), ".uiapi_key")
 }
 
 func loadAuthKey() string {
@@ -28,8 +27,13 @@ func loadAuthKey() string {
 }
 
 func ensureAuthKey() error {
+	if err := ensureDesktopConfigDir(); err != nil {
+		return err
+	}
 	path := authKeyPath()
 	if _, err := os.Stat(path); err == nil {
+		// Desktop app runs as the logged-in user; key must be world-readable.
+		_ = os.Chmod(path, 0644)
 		return nil
 	}
 	keyBytes := make([]byte, 32)
@@ -37,5 +41,5 @@ func ensureAuthKey() error {
 		return err
 	}
 	key := base64.RawURLEncoding.EncodeToString(keyBytes)
-	return os.WriteFile(path, []byte(key), 0600)
+	return os.WriteFile(path, []byte(key), 0644)
 }

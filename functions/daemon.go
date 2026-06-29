@@ -133,6 +133,9 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
+	if err := uiapi.Stop(); err != nil {
+		slog.Warn("uiapi: error stopping desktop API", "error", err)
+	}
 	if Mqclient != nil {
 		Mqclient.Disconnect(250)
 	}
@@ -170,6 +173,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	updateConfig := false
 
 	config.SetServerCtx()
+	uiapi.Start(ctx)
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
@@ -353,7 +357,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		callPublishMetrics(true)
 	}()
 	go handleFwUpdate(server.Server, &pullresp.FwUpdate)
-	uiapi.Start(ctx)
 	return cancel
 }
 

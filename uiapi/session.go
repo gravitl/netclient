@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/gravitl/netclient/config"
 	nmConfig "github.com/gravitl/netmaker/config"
 )
 
@@ -32,18 +31,62 @@ type sessionState struct {
 var session sessionState
 
 func sessionPath() string {
-	return filepath.Join(config.GetNetclientPath(), ".uisession.json")
+	return filepath.Join(GetDesktopConfigPath(), ".uisession.json")
+}
+
+func legacySessionPath() string {
+	return filepath.Join(GetDesktopConfigPath(), "ctx.json")
+}
+
+type legacyDaemonContext struct {
+	Server    string `json:"server"`
+	Username  string `json:"username"`
+	AuthToken string `json:"auth_token"`
 }
 
 func loadSession() {
-	data, err := os.ReadFile(sessionPath())
-	if err != nil {
+	if stored, ok := readPersistedSession(sessionPath()); ok {
+		applyPersistedSession(stored)
 		return
+	}
+	if stored, ok := loadLegacySession(); ok {
+		applyPersistedSession(stored)
+		_ = saveSession()
+	}
+}
+
+func readPersistedSession(path string) (persistedSession, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return persistedSession{}, false
 	}
 	var stored persistedSession
 	if err := json.Unmarshal(data, &stored); err != nil {
-		return
+		return persistedSession{}, false
 	}
+	return stored, true
+}
+
+func loadLegacySession() (persistedSession, bool) {
+	data, err := os.ReadFile(legacySessionPath())
+	if err != nil {
+		return persistedSession{}, false
+	}
+	var legacy legacyDaemonContext
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return persistedSession{}, false
+	}
+	if legacy.Server == "" && legacy.Username == "" && legacy.AuthToken == "" {
+		return persistedSession{}, false
+	}
+	return persistedSession{
+		PendingServer: legacy.Server,
+		Username:      legacy.Username,
+		AuthToken:     legacy.AuthToken,
+	}, true
+}
+
+func applyPersistedSession(stored persistedSession) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	session.pendingServer = stored.PendingServer
@@ -69,6 +112,9 @@ func saveSession() error {
 	session.mu.RUnlock()
 	data, err := json.Marshal(stored)
 	if err != nil {
+		return err
+	}
+	if err := ensureDesktopConfigDir(); err != nil {
 		return err
 	}
 	return os.WriteFile(sessionPath(), data, 0600)

@@ -1,0 +1,160 @@
+{
+  "info": {
+    "_postman_id": "netclient-uiapi-v1",
+    "name": "Netclient UI API",
+    "description": "Localhost REST API for Netmaker Desktop (netclient uiapi).\n\nAuth key: read from {netmaker-rac}/.uiapi_key\n- Linux: /opt/netmaker-rac/.uiapi_key\n- macOS: /Users/Shared/netmaker-rac/.uiapi_key\n- Windows: C:\\Users\\Public\\netmaker-rac\\.uiapi_key",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/healthz"
+      }
+    },
+    {
+      "name": "Configure Server",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"server\": \"{{server}}\"\n}"
+        },
+        "url": "{{daemon}}/server"
+      }
+    },
+    {
+      "name": "Get Server",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/server"
+      }
+    },
+    {
+      "name": "Configure Session (SSO)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\"\n}"
+        },
+        "url": "{{daemon}}/session"
+      }
+    },
+    {
+      "name": "Configure Session (Basic Auth)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"placeholder\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": "{{daemon}}/session"
+      }
+    },
+    {
+      "name": "Release Session",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/session?clear_token=false",
+          "host": ["{{daemon}}"],
+          "path": ["session"],
+          "query": [
+            {
+              "key": "clear_token",
+              "value": "false",
+              "description": "true = full logout, delete session file"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Release Session (clear token)",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/session?clear_token=true",
+          "host": ["{{daemon}}"],
+          "path": ["session"],
+          "query": [
+            { "key": "clear_token", "value": "true" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "List Connections",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/connections"
+      }
+    },
+    {
+      "name": "Activate Connection",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/connections/{{network}}",
+          "host": ["{{daemon}}"],
+          "path": ["connections", "{{network}}"]
+        }
+      }
+    },
+    {
+      "name": "Deactivate Connection",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/connections/{{network}}",
+          "host": ["{{daemon}}"],
+          "path": ["connections", "{{network}}"]
+        }
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const path = pm.request.url.getPath();",
+          "if (path === '/healthz') { return; }",
+          "const key = pm.collectionVariables.get('auth_key');",
+          "if (key) {",
+          "  pm.request.headers.upsert({ key: 'x-netmaker-auth-key', value: key });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "daemon", "value": "http://127.0.0.1:61820" },
+    { "key": "auth_key", "value": "" },
+    { "key": "server", "value": "api.netmaker.example.com" },
+    { "key": "username", "value": "user@example.com" },
+    { "key": "auth_token", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "network", "value": "my-network" }
+  ]
+}
