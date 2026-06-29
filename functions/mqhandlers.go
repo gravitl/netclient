@@ -513,7 +513,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.DeleteClientNodes()
 		restartDaemon = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)
+		resetInterface, restartDaemon, sendHostUpdate = UpdateHostFromServer(&hostUpdate.Host)
 		if sendHostUpdate {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				slog.Error("could not publish host update", err.Error())

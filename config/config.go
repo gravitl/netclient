@@ -199,6 +199,10 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
+	// Posture identity is client-authoritative; never accept server copies.
+	host.EntraDeviceID = hostCfg.EntraDeviceID
+	host.SerialNumber = hostCfg.SerialNumber
+	host.HardwareUUID = hostCfg.HardwareUUID
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
