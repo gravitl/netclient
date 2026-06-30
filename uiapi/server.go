@@ -38,6 +38,12 @@ func Start(ctx context.Context) {
 	mux.Handle("PUT /session", authMiddleware(http.HandlerFunc(configureSession)))
 	mux.Handle("DELETE /session", authMiddleware(http.HandlerFunc(releaseSession)))
 	mux.Handle("GET /connections", authMiddleware(http.HandlerFunc(listConnectionsHandler)))
+	mux.Handle("GET /networks", authMiddleware(http.HandlerFunc(listNetworksHandler)))
+	mux.Handle("POST /networks/{network}/join", authMiddleware(http.HandlerFunc(joinNetworkHandler)))
+	mux.Handle("DELETE /networks/{network}/leave", authMiddleware(http.HandlerFunc(leaveNetworkHandler)))
+	mux.Handle("DELETE /networks/{network}/cancel", authMiddleware(http.HandlerFunc(cancelJoinHandler)))
+	mux.Handle("POST /networks/{network}/jit/request", authMiddleware(http.HandlerFunc(requestJITHandler)))
+	mux.Handle("POST /sync", authMiddleware(http.HandlerFunc(syncHandler)))
 	mux.Handle("POST /connections/{network}", authMiddleware(http.HandlerFunc(activateConnection)))
 	mux.Handle("DELETE /connections/{network}", authMiddleware(http.HandlerFunc(deactivateConnection)))
 

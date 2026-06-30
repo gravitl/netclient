@@ -100,6 +100,64 @@
       }
     },
     {
+      "name": "Sync Device",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{daemon}}/sync"
+      }
+    },
+    {
+      "name": "List Networks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/networks"
+      }
+    },
+    {
+      "name": "Join Network",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/join",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "join"]
+        }
+      }
+    },
+    {
+      "name": "Leave Network",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/leave",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "leave"]
+        }
+      }
+    },
+    {
+      "name": "Request JIT Access",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Need access for troubleshooting\"\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/jit/request",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "jit", "request"]
+        }
+      }
+    },
+    {
       "name": "List Connections",
       "request": {
         "method": "GET",

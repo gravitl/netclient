@@ -177,6 +177,16 @@ func activateConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := connectNetwork(network); err != nil {
 		setStatus(Running)
+		if isJITAccessError(err) {
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+			return
+		}
+		if isApprovalAccessError(err) {
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+			return
+		}
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
@@ -209,5 +219,162 @@ func deactivateConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setStatus(Running)
+	w.WriteHeader(http.StatusOK)
+}
+
+func isJITAccessError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "JIT access required")
+}
+
+func isApprovalAccessError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "host approval pending") ||
+		strings.Contains(msg, "host approval required") ||
+		strings.Contains(msg, "doesn't meet security requirements")
+}
+
+func requireSession(w http.ResponseWriter) (server, token string, ok bool) {
+	if !isSessionActive() {
+		w.WriteHeader(http.StatusUnauthorized)
+		return "", "", false
+	}
+	server, _, token = sessionToken()
+	if server == "" {
+		server = serverAddress()
+	}
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return "", "", false
+	}
+	return server, token, true
+}
+
+func listNetworksHandler(w http.ResponseWriter, r *http.Request) {
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	networks, err := fetchNetworks(server, token)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(networks)
+}
+
+func joinNetworkHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	setStatus(Loading)
+	defer setStatus(Running)
+	joinStatus, err := joinNetwork(network, server, token)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	if joinStatus == "pending" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "pending"})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func leaveNetworkHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	setStatus(Loading)
+	defer setStatus(Running)
+	if err := disconnectNetwork(network); err != nil && err.Error() != "node is already disconnected" {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	if err := leaveNetwork(network, server, token); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func cancelJoinHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	setStatus(Loading)
+	defer setStatus(Running)
+	if err := cancelJoin(network, server, token); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func requestJITHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Reason == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	if err := requestJIT(network, server, token, req.Reason); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func syncHandler(w http.ResponseWriter, r *http.Request) {
+	_, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	setStatus(Loading)
+	defer setStatus(Running)
+	if err := syncDevice(token); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }

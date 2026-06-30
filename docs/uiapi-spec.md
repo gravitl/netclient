@@ -248,6 +248,69 @@ Log out and disconnect all networks.
 
 ---
 
+### `POST /sync`
+
+Pull latest config from the server and refresh local node state. Requires an active session.
+
+**Response `200`** on success.
+
+---
+
+### `GET /networks`
+
+List networks visible to the logged-in user (membership, JIT flags, connection state). Requires an active session.
+
+**Response `200`** — array of `DeviceNetworkView`:
+
+```json
+[
+  {
+    "network_id": "my-network",
+    "display_name": "My Network",
+    "joined": true,
+    "connected": false,
+    "pending": false,
+    "status": "active",
+    "jit_enabled": false,
+    "jit_applies_to_user": false,
+    "has_jit_access": true,
+    "jit_pending_request": false
+  }
+]
+```
+
+---
+
+### `POST /networks/{network}/join`
+
+Join the host to a network on the server. Requires an active session.
+
+**Response `200`** on success.
+
+---
+
+### `DELETE /networks/{network}/leave`
+
+Leave a network (disconnects locally if connected). Requires an active session.
+
+**Response `200`** on success.
+
+---
+
+### `POST /networks/{network}/jit/request`
+
+Submit a JIT access request.
+
+**Request**
+
+```json
+{ "reason": "Need access for troubleshooting" }
+```
+
+**Response `200`** on success.
+
+---
+
 ### `GET /connections`
 
 List all networks the host belongs to and their connection state.
@@ -453,7 +516,12 @@ POST   /server                       → set server hostname
 GET    /server                       → session + status
 PUT    /session                      → login / register
 DELETE /session?clear_token=true     → logout
-GET    /connections                  → list networks
+GET    /networks                       → list device networks
+POST   /networks/{network}/join        → join network
+DELETE /networks/{network}/leave       → leave network
+POST   /networks/{network}/jit/request → request JIT access
+POST   /sync                           → sync with server
+GET    /connections                    → list connections
 POST   /connections/{network}        → connect
 DELETE /connections/{network}        → disconnect
 

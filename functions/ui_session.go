@@ -37,20 +37,21 @@ func RegisterSession(server, username, authToken, password string) error {
 	}
 
 	if password != "" {
+		if server != "" && config.CurrServer != server {
+			if err := config.SetCurrServerCtxInFile(server); err != nil {
+				return err
+			}
+			config.CurrServer = server
+		}
 		return RegisterWithSSO(&RegisterSSO{
 			API:         server,
 			User:        username,
 			Pass:        password,
-			AllNetworks: true,
+			AllNetworks: false,
 		})
 	}
 
-	return RegisterWithSSO(&RegisterSSO{
-		API:         server,
-		User:        username,
-		Pass:        authToken,
-		AllNetworks: true,
-	})
+	return RegisterDeviceOnServer(server, authToken)
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.

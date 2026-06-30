@@ -189,6 +189,17 @@ func sessionToken() (server, username, authToken string) {
 	return session.pendingServer, session.username, session.authToken
 }
 
+// SessionCredentials returns the active server and user token for device API calls.
+func SessionCredentials() (server, authToken string) {
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	server = session.pendingServer
+	if server == "" {
+		server = getCurrServerName()
+	}
+	return server, session.authToken
+}
+
 func configuredServer() string {
 	session.mu.RLock()
 	defer session.mu.RUnlock()

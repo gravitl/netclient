@@ -109,15 +109,40 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 }
 
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
+	if registerResponse == nil {
+		return
+	}
+	serverKey := registerResponse.ServerConf.Server
+	if config.CurrServer != "" {
+		serverKey = config.CurrServer
+	}
+	if registerResponse.ServerConf.API == "" && serverKey != "" {
+		registerResponse.ServerConf.API = serverKey
+	}
+	if serverKey != "" {
+		registerResponse.ServerConf.Server = serverKey
+	}
+	if serverKey == "" {
+		logger.Log(0, "register response missing server identity")
+		return
+	}
+
 	config.UpdateServerConfig(&registerResponse.ServerConf)
-	server := config.GetServer(registerResponse.ServerConf.Server)
-	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
+	config.CurrServer = serverKey
+	server := config.GetServer(serverKey)
+	if server == nil {
+		logger.Log(0, "failed to save server: config not updated")
+		return
+	}
+	if err := config.SaveServer(serverKey, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
 	config.UpdateHost(&registerResponse.RequestedHost)
-	config.SetCurrServerCtxInFile(server.Server)
+	if err := config.SetCurrServerCtxInFile(serverKey); err != nil {
+		logger.Log(0, "failed to save server context", err.Error())
+	}
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
-	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
+	fmt.Printf("registered with server %s\n", serverKey)
 }

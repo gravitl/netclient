@@ -8,6 +8,12 @@ type HandlerDeps struct {
 	Connect         func(network string) error
 	Disconnect      func(network string) error
 	IsRegistered    func(server string) bool
+	FetchNetworks   func(server, token string) ([]DeviceNetworkView, error)
+	JoinNetwork     func(network, server, token string) (joinStatus string, err error)
+	LeaveNetwork    func(network, server, token string) error
+	CancelJoin      func(network, server, token string) error
+	RequestJIT      func(network, server, token, reason string) error
+	Sync            func(token string) error
 }
 
 var deps HandlerDeps
@@ -43,6 +49,48 @@ func disconnectNetwork(network string) error {
 		return errHandlersNotConfigured
 	}
 	return deps.Disconnect(network)
+}
+
+func fetchNetworks(server, token string) ([]DeviceNetworkView, error) {
+	if deps.FetchNetworks == nil {
+		return nil, errHandlersNotConfigured
+	}
+	return deps.FetchNetworks(server, token)
+}
+
+func joinNetwork(network, server, token string) (string, error) {
+	if deps.JoinNetwork == nil {
+		return "", errHandlersNotConfigured
+	}
+	return deps.JoinNetwork(network, server, token)
+}
+
+func leaveNetwork(network, server, token string) error {
+	if deps.LeaveNetwork == nil {
+		return errHandlersNotConfigured
+	}
+	return deps.LeaveNetwork(network, server, token)
+}
+
+func cancelJoin(network, server, token string) error {
+	if deps.CancelJoin == nil {
+		return errHandlersNotConfigured
+	}
+	return deps.CancelJoin(network, server, token)
+}
+
+func requestJIT(network, server, token, reason string) error {
+	if deps.RequestJIT == nil {
+		return errHandlersNotConfigured
+	}
+	return deps.RequestJIT(network, server, token, reason)
+}
+
+func syncDevice(token string) error {
+	if deps.Sync == nil {
+		return errHandlersNotConfigured
+	}
+	return deps.Sync(token)
 }
 
 func isRegistered(server string) bool {

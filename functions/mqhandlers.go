@@ -609,8 +609,13 @@ func resetInterfaceFunc() {
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		slog.Warn("skipping endpoint detection: server config not found")
+		return
+	}
 	currentCidrs := getAllAllowedIPs(peers[:])
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
 	}
