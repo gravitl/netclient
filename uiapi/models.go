@@ -39,13 +39,14 @@ type GetServerResponse struct {
 	Server       string                `json:"server"`
 	Username     string                `json:"username"`
 	AuthToken    string                `json:"auth_token"`
+	Registered   bool                  `json:"registered"`
 	ServerConfig nmConfig.ServerConfig `json:"server_config"`
 }
 
 type ConfigureSessionRequest struct {
 	Username  string `json:"username"`
 	AuthToken string `json:"auth_token"`
-	Password  string `json:"password,omitempty"`
+	Password  string `json:"password,omitempty"` // deprecated: ignored; use auth_token (user JWT) only
 }
 
 type DaemonHealthStatus struct {

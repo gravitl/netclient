@@ -57,52 +57,27 @@ Install and start via `netclient install`. The desktop API starts as soon as the
 
 If missing, `status` is `"missing_dependencies"`. The UI should block connect actions and prompt the user to install WireGuard.
 
-## Authentication
+## Security
 
-### Public endpoint
+The API binds to `127.0.0.1:61820` only. No request authentication header is required — localhost access is the security boundary.
 
-| Method | Path | Auth |
-|--------|------|------|
-| `GET` | `/healthz` | None |
-
-Use for daemon discovery and dependency checks.
-
-### Protected endpoints
-
-All other routes require:
-
-```
-x-netmaker-auth-key: <key>
-```
-
-### Auth key location
-
-| Platform | Path |
-|----------|------|
-| Linux | `/opt/netmaker-rac/.uiapi_key` |
-| macOS | `/Users/Shared/netmaker-rac/.uiapi_key` |
-| Windows | `C:\Users\Public\netmaker-rac\.uiapi_key` |
-
-- Created on first `uiapi.Start()` (32 random bytes, base64url, mode `0600`).
-- If the file is missing or unreadable, a built-in fallback key is used (see `uiapi/auth.go`).
-
-**UI integration:** Read `.uiapi_key` from the netclient config directory and attach it to every authenticated request.
+User authentication to Netmaker is handled separately via `PUT /session` (JWT or basic auth).
 
 ## Session persistence
 
-Daemon persists UI session state to the legacy desktop daemon config directory:
+Daemon persists **user** session state under the netclient config directory. **Server** context is owned by the daemon (`.serverctx` and `servers.json`).
 
-| Platform | Session file |
-|----------|--------------|
-| Linux | `/opt/netmaker-rac/.uisession.json` |
-| macOS | `/Users/Shared/netmaker-rac/.uisession.json` |
-| Windows | `C:\Users\Public\netmaker-rac\.uisession.json` |
+| Platform | User session file |
+|----------|-------------------|
+| Linux | `/etc/netclient/.uisession.json` |
+| macOS | `/Applications/Netclient/.uisession.json` |
+| Windows | `C:\Program Files (x86)\Netclient\.uisession.json` |
 
-On first load, if `.uisession.json` is missing, netclient migrates session data from the legacy `ctx.json` in the same directory.
+On first load, netclient migrates `.uisession.json` from the legacy `netmaker-rac` directory if present. If still missing, user fields are migrated from legacy `ctx.json`; any server hostname in legacy files is written to `.serverctx`.
 
-Fields: `pending_server`, `username`, `auth_token`, `server_config`.
+User file fields: `username`, `auth_token`, `server_config` (UI cache from Netmaker `getconfig`).
 
-On daemon restart, session is restored; `GET /server` returns `status: "running"` if a valid (non-expired) JWT is present.
+On daemon restart, user session is restored from `.uisession.json`; server is restored from `.serverctx`. `GET /server` returns `status: "running"` if a valid (non-expired) JWT is present.
 
 ## API Reference
 
@@ -145,11 +120,11 @@ Set the Netmaker server hostname **before** login. No scheme — e.g. `"api.netm
 |------|---------|
 | `200` | Server set, or already set to same value |
 | `400` | Empty server, invalid JSON, or session already active |
-| `401` | Missing/invalid auth key |
 | `500` | Failed to persist session file |
 
 **Rules**
 
+- Writes `.serverctx` and sets `CurrServer` (netclient config dir). Does not store server in `.uisession.json`.
 - Cannot change server while session is active.
 - Idempotent if the same server is submitted again.
 
@@ -167,6 +142,7 @@ Current session and daemon status.
   "server": "api.netmaker.example.com",
   "username": "user@example.com",
   "auth_token": "<jwt>",
+  "registered": true,
   "server_config": {}
 }
 ```
@@ -174,9 +150,10 @@ Current session and daemon status.
 | Field | Description |
 |-------|-------------|
 | `status` | `"idle"` \| `"loading"` \| `"restoring"` \| `"running"` \| `"closing"` |
-| `server` | Pending server from session, or registered server from netclient config |
+| `server` | Registered/pending server from `.serverctx` / `servers.json` |
 | `username` | Logged-in user |
 | `auth_token` | JWT (present when session active) |
+| `registered` | Whether the host is registered with the configured server (`servers.json`) |
 | `server_config` | Populated only when session is active; fetched from Netmaker |
 
 `server_config` is the Netmaker `config.ServerConfig` object (includes `rac_restrict_to_single_network`, `manage_dns`, `stun`, `default_domain`, etc.). Use `rac_restrict_to_single_network` to decide whether only one network can be connected at a time.
@@ -192,16 +169,15 @@ Register or refresh the host against the configured server.
 ```json
 {
   "username": "user@example.com",
-  "auth_token": "<jwt-or-password>",
-  "password": "<optional-basic-auth-password>"
+  "auth_token": "<user-jwt-from-netmaker-auth>"
 }
 ```
 
 | Field | Required | Notes |
 |-------|----------|-------|
 | `username` | Yes | Trimmed |
-| `auth_token` | Yes | JWT from SSO, or credential for registration |
-| `password` | No | If set, used for basic-auth registration instead of `auth_token` |
+| `auth_token` | Yes | User JWT from Netmaker (`POST /api/users/adm/authenticate` or OAuth) |
+| `password` | No | **Deprecated, ignored.** Desktop must authenticate with Netmaker first and pass only the JWT |
 
 **Responses**
 
@@ -209,21 +185,19 @@ Register or refresh the host against the configured server.
 |------|------|
 | `200` | Success |
 | `400` | Missing fields, or `POST /server` not done first |
-| `401` | Invalid auth key |
 | `500` | `{ "message": "<error>" }` — registration/sync failed |
 
 **Behavior**
 
 1. Sets status → `"loading"`.
 2. Calls `RegisterSession`:
-   - **Already registered:** switches server context if needed, runs `Pull()`.
-   - **Not registered:** `RegisterWithSSO` via WebSocket (`wss://{server}/api/v1/auth-register/host`).
-     - SSO path: pass JWT as `auth_token`, leave `password` empty.
-     - Basic auth: pass `password`, or pass password as `auth_token`.
-3. Fetches server config from `https://{server}/api/server/getconfig` with `Authorization: Bearer {auth_token}`.
-4. Sets status → `"running"` on success, `"idle"` on registration failure.
+   - **Already registered** (`servers.json` contains the active server from `.serverctx`): align server context if needed, run `PullForDesktop` only — no host re-register.
+   - **Not registered** (no `servers.json` entry): `POST https://{server}/api/v1/device/register` with user JWT, then pull.
+3. Fetches server config from `https://{server}/api/server/getconfig` with `Authorization: Bearer {auth_token}` (best-effort; failure is logged but does not fail the request).
+4. Persists `username`, `auth_token`, and `server_config` (if fetched) to `.uisession.json` (user session only).
+5. Sets status → `"running"` on success, `"idle"` on registration failure.
 
-**Note:** After first registration, the daemon restarts. Poll `GET /server` and `GET /healthz` until the API is back.
+**Note:** After **first** device registration only, the daemon may restart. Re-login when `servers.json` is intact should not re-register. Poll `GET /server` and `GET /healthz` until the API is back after first join.
 
 ---
 
@@ -459,7 +433,7 @@ Poll `GET /connections` every **2–5 s** while connected for live status (hands
 | HTTP | UI action |
 |------|-----------|
 | Connection refused | "Netclient daemon is not running" + link to install/start |
-| `401` | Re-read `.uiapi_key`; likely key mismatch after reinstall |
+| `401` | No active UI session (network/device routes) |
 | `400` | Show server-side validation message if present |
 | `500` | Show `{ "message" }` body when present |
 
@@ -469,12 +443,16 @@ Common operational errors from connect/disconnect:
 - `"node already connected"` / `"node is already disconnected"` — refresh connections list
 - `"can have only one active connection to internet gateway"` — disconnect existing IGW network first
 
-## SSO vs basic auth
+## User authentication (desktop)
+
+The desktop UI authenticates the user with Netmaker directly (basic auth or OAuth), then hands the resulting JWT to uiapi:
 
 | Method | UI responsibility | API call |
 |--------|-------------------|----------|
-| **SSO/OAuth** | Complete OAuth with Netmaker; obtain JWT | `PUT /session` with `auth_token` = JWT, no `password` |
-| **Basic auth** | Collect username/password | `PUT /session` with `password` set, or pass password as `auth_token` |
+| **SSO/OAuth** | Complete OAuth with Netmaker; obtain JWT | `PUT /session` with `auth_token` = JWT |
+| **Basic auth** | `POST /api/users/adm/authenticate` → JWT | `PUT /session` with `auth_token` = JWT (do not send user password to uiapi) |
+
+Host registration uses the device REST API (`POST /api/v1/device/register`) only when `servers.json` has no entry for the configured server.
 
 Netmaker server config (`server_config`) exposes auth-related fields (`authprovider`, `oidcissuer`, `frontendurl`, etc.) for building the SSO login URL in the UI.
 
@@ -482,9 +460,10 @@ Netmaker server config (`server_config`) exposes auth-related fields (`authprovi
 
 | Topic | Detail |
 |-------|--------|
-| Desktop config dir | Linux: `/opt/netmaker-rac/`, macOS: `/Users/Shared/netmaker-rac/`, Windows: `C:\Users\Public\netmaker-rac\` |
 | Netclient config dir | Linux: `/etc/netclient/`, macOS: `/Applications/Netclient/`, Windows: `C:\Program Files (x86)\Netclient\` |
-| Legacy files | `ctx.json`, `rac-cfg.json`, `wg-conf/`, `netdesk-gui.log` (GUI-managed) |
+| UI user session | `.uisession.json` — username, JWT, UI `server_config` cache |
+| Daemon server context | `.serverctx`, `servers.json` |
+| Legacy desktop dir | Linux: `/opt/netmaker-rac/`, macOS: `/Users/Shared/netmaker-rac/`, Windows: `C:\Users\Public\netmaker-rac\` (migrated on first load) |
 | Daemon install | `netclient install` registers OS service |
 | Connect side-effect | Triggers daemon restart — expect brief API unavailability |
 | Network names | URL path segment; encode special characters |
@@ -497,7 +476,7 @@ Netmaker server config (`server_config`) exposes auth-related fields (`authprovi
 | Separate daemon binary | `netclient daemon` / OS service |
 | Port `61821` | Port `61820` |
 | Same route shapes | Same (`/healthz`, `/server`, `/session`, `/connections`) |
-| Auth header | Same `x-netmaker-auth-key` |
+| Localhost only | `127.0.0.1:61820`, no auth header |
 
 Desktop app changes should be minimal if it already spoke to the old daemon API — point at netclient's API and ensure the netclient service is installed.
 
@@ -511,7 +490,7 @@ Desktop app changes should be minimal if it already spoke to the old daemon API 
 ## Quick reference
 
 ```
-GET    /healthz                      → daemon health (no auth)
+GET    /healthz                      → daemon health
 POST   /server                       → set server hostname
 GET    /server                       → session + status
 PUT    /session                      → login / register
@@ -525,7 +504,6 @@ GET    /connections                    → list connections
 POST   /connections/{network}        → connect
 DELETE /connections/{network}        → disconnect
 
-Header: x-netmaker-auth-key: <contents of .uiapi_key>
 Base:   http://127.0.0.1:61820
 Postman: docs/uiapi-postman.json
 ```

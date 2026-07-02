@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	nmConfig "github.com/gravitl/netmaker/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,9 +28,8 @@ func TestListNetworksHandler(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/networks", nil)
-	req.Header.Set("x-netmaker-auth-key", loadAuthKey())
 	rec := httptest.NewRecorder()
-	authMiddleware(http.HandlerFunc(listNetworksHandler)).ServeHTTP(rec, req)
+	listNetworksHandler(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var networks []DeviceNetworkView
@@ -40,10 +41,9 @@ func TestListNetworksHandler(t *testing.T) {
 func TestJoinNetworkHandlerRequiresSession(t *testing.T) {
 	clearSessionForTest()
 	req := httptest.NewRequest(http.MethodPost, "/networks/net1/join", nil)
-	req.Header.Set("x-netmaker-auth-key", loadAuthKey())
 	req.SetPathValue("network", "net1")
 	rec := httptest.NewRecorder()
-	authMiddleware(http.HandlerFunc(joinNetworkHandler)).ServeHTTP(rec, req)
+	joinNetworkHandler(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
@@ -62,9 +62,8 @@ func TestSyncHandler(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/sync", nil)
-	req.Header.Set("x-netmaker-auth-key", loadAuthKey())
 	rec := httptest.NewRecorder()
-	authMiddleware(http.HandlerFunc(syncHandler)).ServeHTTP(rec, req)
+	syncHandler(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, synced)
@@ -87,18 +86,17 @@ func TestCancelJoinHandler(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodDelete, "/networks/auto-join/cancel", nil)
-	req.Header.Set("x-netmaker-auth-key", loadAuthKey())
 	req.SetPathValue("network", "auto-join")
 	rec := httptest.NewRecorder()
-	authMiddleware(http.HandlerFunc(cancelJoinHandler)).ServeHTTP(rec, req)
+	cancelJoinHandler(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, cancelled)
 }
 
 func setupTestSession(server, username, token string) {
+	config.CurrServer = server
 	session.mu.Lock()
-	session.pendingServer = server
 	session.username = username
 	session.authToken = token
 	session.expiresAt = time.Time{}
@@ -106,11 +104,41 @@ func setupTestSession(server, username, token string) {
 }
 
 func clearSessionForTest() {
+	config.CurrServer = ""
 	session.mu.Lock()
 	session.username = ""
 	session.authToken = ""
-	session.pendingServer = ""
 	session.serverConfig = nmConfig.ServerConfig{}
 	session.expiresAt = time.Time{}
 	session.mu.Unlock()
+}
+
+func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "alice-token")
+
+	released := false
+	registeredUser := ""
+	SetHandlers(HandlerDeps{
+		ReleaseSession: func(clearServer bool) error {
+			released = true
+			assert.False(t, clearServer)
+			return nil
+		},
+		RegisterSession: func(server, username, authToken, password string) error {
+			registeredUser = username
+			assert.Equal(t, "api.example.com", server)
+			assert.Equal(t, "bob-token", authToken)
+			return nil
+		},
+	})
+
+	body := `{"username":"bob","auth_token":"bob-token"}`
+	req := httptest.NewRequest(http.MethodPut, "/session", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureSession(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, released, "expected prior user networks to be disconnected before handoff")
+	assert.Equal(t, "bob", registeredUser)
 }

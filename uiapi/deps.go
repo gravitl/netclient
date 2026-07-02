@@ -1,6 +1,8 @@
 package uiapi
 
-import "errors"
+import (
+	"errors"
+)
 
 type HandlerDeps struct {
 	RegisterSession func(server, username, authToken, password string) error

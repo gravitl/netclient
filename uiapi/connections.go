@@ -12,9 +12,8 @@ func getCurrServerName() string {
 	if config.CurrServer != "" {
 		return config.CurrServer
 	}
-	server := config.GetServer(config.CurrServer)
-	if server != nil && server.Server != "" {
-		return server.Server
+	if key := config.ResolveServerKey(""); key != "" {
+		return key
 	}
 	return ""
 }
@@ -24,7 +23,7 @@ func isRegisteredToServer() bool {
 	if server == "" {
 		return false
 	}
-	return config.GetServer(server) != nil
+	return config.ResolveServerKey(server) != ""
 }
 
 func listConnections() (map[string]*Connection, error) {

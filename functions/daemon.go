@@ -76,6 +76,10 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 
+	uiapiCtx, uiapiCancel := context.WithCancel(context.Background())
+	defer uiapiCancel()
+	uiapi.Start(uiapiCtx)
+
 	cancel := startGoRoutines(&wg)
 
 	for {
@@ -89,6 +93,9 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
+			if err := uiapi.Stop(); err != nil {
+				slog.Warn("uiapi: error stopping desktop API", "error", err)
+			}
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
@@ -133,9 +140,6 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	for i := range closers {
 		closers[i]()
 	}
-	if err := uiapi.Stop(); err != nil {
-		slog.Warn("uiapi: error stopping desktop API", "error", err)
-	}
 	if Mqclient != nil {
 		Mqclient.Disconnect(250)
 	}
@@ -173,12 +177,15 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	updateConfig := false
 
 	config.SetServerCtx()
-	uiapi.Start(ctx)
-	server := config.GetServer(config.CurrServer)
+	uiapi.Refresh()
+	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
 		server.Stun = true
 		server.StunServers = ""
+	} else if serverName != config.CurrServer {
+		config.CurrServer = serverName
+		_ = config.SetCurrServerCtxInFile(serverName)
 	}
 
 	if server.Stun && server.StunServers != "" {
@@ -196,7 +203,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var pullresp models.HostPull
 	var pullErr error
 	if server != nil && server.API != "" {
-		pullresp, _, _, pullErr = Pull(false, true)
+		pullresp, _, _, pullErr = PullForDesktop(false, true)
 		if pullErr != nil {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "netclient-uiapi-v1",
     "name": "Netclient UI API",
-    "description": "Localhost REST API for Netmaker Desktop (netclient uiapi).\n\nAuth key: read from {netmaker-rac}/.uiapi_key\n- Linux: /opt/netmaker-rac/.uiapi_key\n- macOS: /Users/Shared/netmaker-rac/.uiapi_key\n- Windows: C:\\Users\\Public\\netmaker-rac\\.uiapi_key",
+    "description": "Localhost REST API for Netmaker Desktop (netclient uiapi).\n\nBinds to http://127.0.0.1:61820 — no auth header required.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -52,7 +52,7 @@
       }
     },
     {
-      "name": "Configure Session (Basic Auth)",
+      "name": "Configure Session (deprecated password field)",
       "request": {
         "method": "PUT",
         "header": [
@@ -60,9 +60,10 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"placeholder\",\n  \"password\": \"{{password}}\"\n}"
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\"\n}"
         },
-        "url": "{{daemon}}/session"
+        "url": "{{daemon}}/session",
+        "description": "password field is ignored; use user JWT in auth_token only"
       }
     },
     {
@@ -190,25 +191,8 @@
       }
     }
   ],
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "const path = pm.request.url.getPath();",
-          "if (path === '/healthz') { return; }",
-          "const key = pm.collectionVariables.get('auth_key');",
-          "if (key) {",
-          "  pm.request.headers.upsert({ key: 'x-netmaker-auth-key', value: key });",
-          "}"
-        ]
-      }
-    }
-  ],
   "variable": [
     { "key": "daemon", "value": "http://127.0.0.1:61820" },
-    { "key": "auth_key", "value": "" },
     { "key": "server", "value": "api.netmaker.example.com" },
     { "key": "username", "value": "user@example.com" },
     { "key": "auth_token", "value": "" },

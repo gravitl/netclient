@@ -41,8 +41,20 @@ func CleanJwtToken() {
 	jwtToken = ""
 }
 
+// AuthenticateOptions controls host authentication behavior.
+type AuthenticateOptions struct {
+	// CleanupOnUnauthorized removes local server registration on HTTP 401.
+	// Desktop UI flows should set this false to avoid wiping servers.json on re-login.
+	CleanupOnUnauthorized bool
+}
+
 // Authenticate authenticates with netmaker api to permit subsequent interactions with the api
 func Authenticate(server *config.Server, host *config.Config) (string, error) {
+	return AuthenticateWithOptions(server, host, AuthenticateOptions{CleanupOnUnauthorized: true})
+}
+
+// AuthenticateWithOptions authenticates with optional control over 401 cleanup behavior.
+func AuthenticateWithOptions(server *config.Server, host *config.Config, opts AuthenticateOptions) (string, error) {
 	if jwtToken != "" && !isTokenExpired(jwtToken) {
 		return jwtToken, nil
 	}
@@ -60,11 +72,13 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 		var notOkErr ncutils.ErrStatusNotOk
 		if errors.As(err, &notOkErr) {
 			if notOkErr.Status == http.StatusUnauthorized {
-				if err := cleanUpByServer(server); err != nil {
-					return "", err
+				if opts.CleanupOnUnauthorized {
+					if err := cleanUpByServer(server); err != nil {
+						return "", err
+					}
+					return "", fmt.Errorf("unauthorized request - removed instances for %s", server.Name)
 				}
-
-				return "", fmt.Errorf("unauthorized request - removed instances for %s", server.Name)
+				return "", fmt.Errorf("host authentication failed: unauthorized")
 			}
 
 			return "", fmt.Errorf("failed to authenticate %d %s", notOkErr.Status, notOkErr.Message)

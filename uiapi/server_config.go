@@ -14,7 +14,7 @@ func fetchServerConfig(ctx context.Context, server, username, authToken string) 
 	if server == "" || authToken == "" {
 		return cfg, fmt.Errorf("server or auth token not configured")
 	}
-	host := server
+	host := normalizeServerHost(server)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+host+"/api/server/getconfig", nil)
 	if err != nil {
 		return cfg, err
@@ -36,18 +36,14 @@ func fetchServerConfig(ctx context.Context, server, username, authToken string) 
 	return cfg, nil
 }
 
+func activeServerAddress() string {
+	return getCurrServerName()
+}
+
 func serverAddress() string {
-	server := configuredServer()
-	if server != "" {
-		return server
-	}
-	if configCurrServer := currentNetclientServer(); configCurrServer != "" {
-		return configCurrServer
-	}
-	return ""
+	return activeServerAddress()
 }
 
 func currentNetclientServer() string {
-	// resolved in connections.go via config import
 	return getCurrServerName()
 }

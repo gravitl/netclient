@@ -62,7 +62,7 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if status == "pending" {
 		return "pending", nil
 	}
-	_, _, _, err = Pull(false, true)
+	_, _, _, err = PullForDesktop(false, true)
 	if err != nil {
 		return "", err
 	}

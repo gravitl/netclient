@@ -13,39 +13,39 @@ import (
 const listenAddr = "127.0.0.1:61820"
 
 var (
-	serverMu  sync.Mutex
-	httpSrv   *http.Server
+	serverMu   sync.Mutex
+	httpSrv    *http.Server
 	listenDone chan struct{}
 )
 
 // Start launches the localhost REST API for desktop UI clients.
-// Any previous instance is stopped first. The server also stops when ctx is cancelled.
+// The listener stays up until Stop is called; repeated Start calls are no-ops
+// while the server is already running.
 func Start(ctx context.Context) {
 	serverMu.Lock()
 	defer serverMu.Unlock()
 
-	stopLocked()
-
-	if err := ensureAuthKey(); err != nil {
-		slog.Warn("uiapi: failed to ensure auth key", "error", err)
-	}
 	loadSession()
+
+	if httpSrv != nil {
+		return
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", checkHealth)
-	mux.Handle("POST /server", authMiddleware(http.HandlerFunc(configureServer)))
-	mux.Handle("GET /server", authMiddleware(http.HandlerFunc(getServer)))
-	mux.Handle("PUT /session", authMiddleware(http.HandlerFunc(configureSession)))
-	mux.Handle("DELETE /session", authMiddleware(http.HandlerFunc(releaseSession)))
-	mux.Handle("GET /connections", authMiddleware(http.HandlerFunc(listConnectionsHandler)))
-	mux.Handle("GET /networks", authMiddleware(http.HandlerFunc(listNetworksHandler)))
-	mux.Handle("POST /networks/{network}/join", authMiddleware(http.HandlerFunc(joinNetworkHandler)))
-	mux.Handle("DELETE /networks/{network}/leave", authMiddleware(http.HandlerFunc(leaveNetworkHandler)))
-	mux.Handle("DELETE /networks/{network}/cancel", authMiddleware(http.HandlerFunc(cancelJoinHandler)))
-	mux.Handle("POST /networks/{network}/jit/request", authMiddleware(http.HandlerFunc(requestJITHandler)))
-	mux.Handle("POST /sync", authMiddleware(http.HandlerFunc(syncHandler)))
-	mux.Handle("POST /connections/{network}", authMiddleware(http.HandlerFunc(activateConnection)))
-	mux.Handle("DELETE /connections/{network}", authMiddleware(http.HandlerFunc(deactivateConnection)))
+	mux.HandleFunc("POST /server", configureServer)
+	mux.HandleFunc("GET /server", getServer)
+	mux.HandleFunc("PUT /session", configureSession)
+	mux.HandleFunc("DELETE /session", releaseSession)
+	mux.HandleFunc("GET /connections", listConnectionsHandler)
+	mux.HandleFunc("GET /networks", listNetworksHandler)
+	mux.HandleFunc("POST /networks/{network}/join", joinNetworkHandler)
+	mux.HandleFunc("DELETE /networks/{network}/leave", leaveNetworkHandler)
+	mux.HandleFunc("DELETE /networks/{network}/cancel", cancelJoinHandler)
+	mux.HandleFunc("POST /networks/{network}/jit/request", requestJITHandler)
+	mux.HandleFunc("POST /sync", syncHandler)
+	mux.HandleFunc("POST /connections/{network}", activateConnection)
+	mux.HandleFunc("DELETE /connections/{network}", deactivateConnection)
 
 	httpSrv = &http.Server{
 		Addr:              listenAddr,
@@ -63,10 +63,22 @@ func Start(ctx context.Context) {
 		}
 	}()
 
-	go func() {
-		<-ctx.Done()
-		_ = Stop()
-	}()
+	if ctx != nil {
+		go func() {
+			<-ctx.Done()
+			_ = Stop()
+		}()
+	}
+}
+
+// Refresh reloads persisted session state without restarting the listener.
+func Refresh() {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if httpSrv == nil {
+		return
+	}
+	loadSession()
 }
 
 // Stop shuts down the uiapi server and waits for the listener to exit.
@@ -92,20 +104,4 @@ func stopLocked() error {
 		slog.Warn("uiapi: shutdown error", "error", err)
 	}
 	return err
-}
-
-func authMiddleware(next http.Handler) http.Handler {
-	key := loadAuthKey()
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("x-netmaker-auth-key") != key {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// AuthKey returns the local API auth key for desktop clients.
-func AuthKey() string {
-	return loadAuthKey()
 }

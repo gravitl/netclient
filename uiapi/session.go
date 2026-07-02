@@ -4,38 +4,40 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/gravitl/netclient/config"
 	nmConfig "github.com/gravitl/netmaker/config"
 )
 
-type persistedSession struct {
-	PendingServer string                `json:"pending_server"`
+type persistedUserSession struct {
+	// PendingServer is read only for one-time migration from older session files.
+	PendingServer string                `json:"pending_server,omitempty"`
 	Username      string                `json:"username"`
 	AuthToken     string                `json:"auth_token"`
 	ServerConfig  nmConfig.ServerConfig `json:"server_config"`
 }
 
 type sessionState struct {
-	mu            sync.RWMutex
-	status        Status
-	pendingServer string
-	username      string
-	authToken     string
-	serverConfig  nmConfig.ServerConfig
-	expiresAt     time.Time
+	mu           sync.RWMutex
+	status       Status
+	username     string
+	authToken    string
+	serverConfig nmConfig.ServerConfig
+	expiresAt    time.Time
 }
 
 var session sessionState
 
-func sessionPath() string {
-	return filepath.Join(GetDesktopConfigPath(), ".uisession.json")
+func userSessionPath() string {
+	return filepath.Join(GetConfigPath(), ".uisession.json")
 }
 
 func legacySessionPath() string {
-	return filepath.Join(GetDesktopConfigPath(), "ctx.json")
+	return filepath.Join(legacyDesktopConfigPath(), "ctx.json")
 }
 
 type legacyDaemonContext struct {
@@ -45,51 +47,79 @@ type legacyDaemonContext struct {
 }
 
 func loadSession() {
-	if stored, ok := readPersistedSession(sessionPath()); ok {
-		applyPersistedSession(stored)
+	migrateLegacyConfig()
+	config.SetServerCtx()
+
+	if stored, ok := readPersistedUserSession(userSessionPath()); ok {
+		migrateLegacyServer(stored.PendingServer)
+		applyPersistedUserSession(stored)
+		rewriteUserSessionIfLegacy(stored)
 		return
 	}
-	if stored, ok := loadLegacySession(); ok {
-		applyPersistedSession(stored)
-		_ = saveSession()
+	if stored, ok := loadLegacyUserSession(); ok {
+		migrateLegacyServer(stored.PendingServer)
+		applyPersistedUserSession(stored)
+		_ = saveUserSession()
+		return
 	}
 }
 
-func readPersistedSession(path string) (persistedSession, bool) {
+func readPersistedUserSession(path string) (persistedUserSession, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return persistedSession{}, false
+		return persistedUserSession{}, false
 	}
-	var stored persistedSession
+	var stored persistedUserSession
 	if err := json.Unmarshal(data, &stored); err != nil {
-		return persistedSession{}, false
+		return persistedUserSession{}, false
+	}
+	if stored.Username == "" && stored.AuthToken == "" && stored.PendingServer == "" {
+		return persistedUserSession{}, false
 	}
 	return stored, true
 }
 
-func loadLegacySession() (persistedSession, bool) {
+func loadLegacyUserSession() (persistedUserSession, bool) {
 	data, err := os.ReadFile(legacySessionPath())
 	if err != nil {
-		return persistedSession{}, false
+		return persistedUserSession{}, false
 	}
 	var legacy legacyDaemonContext
 	if err := json.Unmarshal(data, &legacy); err != nil {
-		return persistedSession{}, false
+		return persistedUserSession{}, false
 	}
 	if legacy.Server == "" && legacy.Username == "" && legacy.AuthToken == "" {
-		return persistedSession{}, false
+		return persistedUserSession{}, false
 	}
-	return persistedSession{
+	return persistedUserSession{
 		PendingServer: legacy.Server,
 		Username:      legacy.Username,
 		AuthToken:     legacy.AuthToken,
 	}, true
 }
 
-func applyPersistedSession(stored persistedSession) {
+func migrateLegacyServer(server string) {
+	server = normalizeServerHost(server)
+	if server == "" || getCurrServerName() != "" {
+		return
+	}
+	if key := config.ResolveServerKey(server); key != "" {
+		server = key
+	}
+	config.CurrServer = server
+	_ = config.SetCurrServerCtxInFile(server)
+}
+
+func rewriteUserSessionIfLegacy(stored persistedUserSession) {
+	if stored.PendingServer == "" {
+		return
+	}
+	_ = saveUserSession()
+}
+
+func applyPersistedUserSession(stored persistedUserSession) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	session.pendingServer = stored.PendingServer
 	session.username = stored.Username
 	session.authToken = stored.AuthToken
 	session.serverConfig = stored.ServerConfig
@@ -101,40 +131,39 @@ func applyPersistedSession(stored persistedSession) {
 	}
 }
 
-func saveSession() error {
+func saveUserSession() error {
 	session.mu.RLock()
-	stored := persistedSession{
-		PendingServer: session.pendingServer,
-		Username:      session.username,
-		AuthToken:     session.authToken,
-		ServerConfig:  session.serverConfig,
+	stored := persistedUserSession{
+		Username:     session.username,
+		AuthToken:    session.authToken,
+		ServerConfig: session.serverConfig,
 	}
 	session.mu.RUnlock()
+	if stored.Username == "" && stored.AuthToken == "" {
+		return os.Remove(userSessionPath())
+	}
 	data, err := json.Marshal(stored)
 	if err != nil {
 		return err
 	}
-	if err := ensureDesktopConfigDir(); err != nil {
+	if err := ensureConfigDir(); err != nil {
 		return err
 	}
-	return os.WriteFile(sessionPath(), data, 0600)
+	return os.WriteFile(userSessionPath(), data, 0600)
 }
 
-func clearSession(clearToken bool) error {
+func clearSession(clearServer bool) error {
 	session.mu.Lock()
 	session.status = Idle
 	session.username = ""
 	session.authToken = ""
 	session.serverConfig = nmConfig.ServerConfig{}
 	session.expiresAt = time.Time{}
-	if clearToken {
-		session.pendingServer = ""
-	}
 	session.mu.Unlock()
-	if clearToken {
-		return os.Remove(sessionPath())
+	if clearServer {
+		return os.Remove(userSessionPath())
 	}
-	return saveSession()
+	return saveUserSession()
 }
 
 func isSessionActive() bool {
@@ -180,49 +209,38 @@ func setSession(username, authToken string, serverConfig nmConfig.ServerConfig) 
 	session.expiresAt = exp
 	session.status = Running
 	session.mu.Unlock()
-	_ = saveSession()
+	_ = saveUserSession()
 }
 
 func sessionToken() (server, username, authToken string) {
 	session.mu.RLock()
-	defer session.mu.RUnlock()
-	return session.pendingServer, session.username, session.authToken
+	username = session.username
+	authToken = session.authToken
+	session.mu.RUnlock()
+	return activeServerAddress(), username, authToken
 }
 
 // SessionCredentials returns the active server and user token for device API calls.
 func SessionCredentials() (server, authToken string) {
 	session.mu.RLock()
-	defer session.mu.RUnlock()
-	server = session.pendingServer
-	if server == "" {
-		server = getCurrServerName()
-	}
-	return server, session.authToken
+	authToken = session.authToken
+	session.mu.RUnlock()
+	return activeServerAddress(), authToken
 }
 
 func configuredServer() string {
-	session.mu.RLock()
-	defer session.mu.RUnlock()
-	return session.pendingServer
-}
-
-func setPendingServer(server string) error {
-	session.mu.Lock()
-	session.pendingServer = server
-	session.mu.Unlock()
-	return saveSession()
+	return activeServerAddress()
 }
 
 func isServerSet(server string) bool {
-	session.mu.RLock()
-	defer session.mu.RUnlock()
-	if session.pendingServer == "" {
+	active := activeServerAddress()
+	if active == "" {
 		return false
 	}
 	if server == "" {
 		return true
 	}
-	return session.pendingServer == server
+	return normalizeServerHost(server) == active
 }
 
 func serverConfig() nmConfig.ServerConfig {
@@ -233,4 +251,8 @@ func serverConfig() nmConfig.ServerConfig {
 
 func racRestrictToSingleNetwork() bool {
 	return serverConfig().RacRestrictToSingleNetwork
+}
+
+func normalizeServerHost(server string) string {
+	return strings.TrimPrefix(strings.TrimSpace(server), "https://")
 }

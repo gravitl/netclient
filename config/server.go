@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -100,20 +101,103 @@ func UpdateServer(name string, server Server) {
 
 // GetServer returns the server struct for the given server name
 func GetServer(name string) *Server {
+	server, _ := ResolveServer(name)
+	return server
+}
+
+// ResolveServerKey returns the servers.json map key for the given identifier.
+func ResolveServerKey(id string) string {
+	_, key := ResolveServer(id)
+	return key
+}
+
+// ResolveServer finds a server by map key or by API/Name/Server fields.
+func ResolveServer(id string) (*Server, string) {
+	id = normalizeServerID(id)
 	serverMutex.RLock()
 	defer serverMutex.RUnlock()
-	if server, ok := Servers[name]; ok {
-		return &server
+	if id != "" {
+		if server, ok := Servers[id]; ok {
+			return copyServerPtr(server), id
+		}
+		for key, server := range Servers {
+			if serverIdentifierMatches(server, id) {
+				return copyServerPtr(server), key
+			}
+		}
+		if !strings.HasPrefix(id, "api.") {
+			if server, ok := Servers["api."+id]; ok {
+				return copyServerPtr(server), "api." + id
+			}
+		}
 	}
-	return nil
+	if len(Servers) == 1 {
+		for key, server := range Servers {
+			return copyServerPtr(server), key
+		}
+	}
+	return nil, ""
+}
+
+func copyServerPtr(server Server) *Server {
+	s := server
+	return &s
+}
+
+func normalizeServerID(id string) string {
+	return strings.TrimPrefix(strings.TrimSpace(id), "https://")
+}
+
+func serverIdentifierMatches(srv Server, id string) bool {
+	id = normalizeServerID(id)
+	if id == "" {
+		return false
+	}
+	for _, candidate := range []string{srv.Name, srv.Server, srv.API} {
+		if normalizeServerID(candidate) == id {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalServerKey(values ...string) string {
+	for _, value := range values {
+		if id := normalizeServerID(value); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// AlignCurrServer sets CurrServer to the resolved servers.json key when possible.
+func AlignCurrServer() {
+	if _, key := ResolveServer(CurrServer); key != "" {
+		if CurrServer != key {
+			CurrServer = key
+			_ = SetCurrServerCtxInFile(key)
+		}
+		return
+	}
+	serverMutex.RLock()
+	var onlyKey string
+	for key := range Servers {
+		onlyKey = key
+		break
+	}
+	serverMutex.RUnlock()
+	if onlyKey != "" {
+		CurrServer = onlyKey
+		_ = SetCurrServerCtxInFile(onlyKey)
+	}
 }
 
 // GetServers - gets all the server names host has registered to.
 func GetServers() (servers []string) {
 	serverMutex.RLock()
 	defer serverMutex.RUnlock()
-	for _, server := range Servers {
-		servers = append(servers, server.Name)
+	for key := range Servers {
+		servers = append(servers, key)
 	}
 	return
 }
@@ -124,7 +208,7 @@ func GetCurrServerCtxFromFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(d), nil
+	return normalizeServerID(string(d)), nil
 }
 
 // SetCurrServerCtxInFile - sets the current server context in the file
@@ -134,26 +218,17 @@ func SetCurrServerCtxInFile(server string) error {
 
 // SetServerCtx - sets netclient's server context
 func SetServerCtx() {
-	// sets server context on startup
-	setDefault := false
 	currServer, err := GetCurrServerCtxFromFile()
-	if err != nil || currServer == "" {
-		setDefault = true
-	} else {
-		if GetServer(currServer) == nil {
-			setDefault = true
-		} else {
-			CurrServer = currServer
-		}
-
-	}
-	if setDefault {
-		servers := GetServers()
-		if len(servers) > 0 {
-			CurrServer = servers[0]
-			SetCurrServerCtxInFile(CurrServer)
+	if err == nil && currServer != "" {
+		if _, key := ResolveServer(currServer); key != "" {
+			CurrServer = key
+			if key != currServer {
+				_ = SetCurrServerCtxInFile(key)
+			}
+			return
 		}
 	}
+	AlignCurrServer()
 }
 
 // DeleteServer deletes the specified server name from the server map
@@ -170,13 +245,31 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	if cfg == nil {
 		return
 	}
-	server, ok := Servers[cfg.Server]
+	key := canonicalServerKey(CurrServer, cfg.API, cfg.Server)
+	if key == "" {
+		return
+	}
+	cfg.Server = key
+	if cfg.API == "" {
+		cfg.API = key
+	}
+	server, ok := Servers[key]
+	if !ok {
+		for existingKey, existing := range Servers {
+			if serverIdentifierMatches(existing, key) {
+				key = existingKey
+				server = existing
+				ok = true
+				break
+			}
+		}
+	}
 	if !ok {
 		server = Server{}
 		server.Nodes = make(map[string]bool)
 	}
-	server.Name = cfg.Server
+	server.Name = key
 	server.MQID = netclient.ID
 	server.ServerConfig = *cfg
-	Servers[cfg.Server] = server
+	Servers[key] = server
 }

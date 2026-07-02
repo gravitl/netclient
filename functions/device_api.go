@@ -64,6 +64,10 @@ func deviceServerURL() (string, error) {
 }
 
 func deviceRequest(method, path, token string, body io.Reader) (*http.Response, error) {
+	return deviceRequestWithHost(method, path, token, body, true)
+}
+
+func deviceRequestWithHost(method, path, token string, body io.Reader, includeHost bool) (*http.Response, error) {
 	base, err := deviceServerURL()
 	if err != nil {
 		return nil, err
@@ -74,7 +78,9 @@ func deviceRequest(method, path, token string, body io.Reader) (*http.Response, 
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-Application-Name", desktopAppHeader)
-	req.Header.Set(deviceHostIDHeader, config.Netclient().ID.String())
+	if includeHost {
+		req.Header.Set(deviceHostIDHeader, config.Netclient().ID.String())
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -176,15 +182,20 @@ func ensureRegisterServerConf(resp *models.RegisterResponse, server, token strin
 		}
 		resp.ServerConf = fetched
 	}
-	serverKey := strings.TrimPrefix(strings.TrimSpace(server), "https://")
-	if serverKey == "" {
+	canon := canonicalServerID(resp.ServerConf.API)
+	if canon == "" {
+		canon = canonicalServerID(server)
+	}
+	if canon == "" {
 		return fmt.Errorf("server not configured")
 	}
-	if resp.ServerConf.API == "" {
-		resp.ServerConf.API = serverKey
-	}
-	resp.ServerConf.Server = serverKey
+	resp.ServerConf.API = canon
+	resp.ServerConf.Server = canon
 	return nil
+}
+
+func canonicalServerID(id string) string {
+	return strings.TrimPrefix(strings.TrimSpace(id), "https://")
 }
 
 // RegisterDeviceOnServer registers the host via the device REST API using a user JWT.
@@ -213,9 +224,8 @@ func RegisterDeviceOnServer(server, token string) error {
 	if err := ensureRegisterServerConf(&registerResponse, server, token); err != nil {
 		return err
 	}
-	if config.CurrServer != "" && config.CurrServer != registerResponse.ServerConf.Server {
-		fmt.Printf("WARNING: Joining any network on another server will disconnect netclient from the networks of the current server -> %s\n", config.CurrServer)
-	}
+	config.CurrServer = registerResponse.ServerConf.Server
+	_ = config.SetCurrServerCtxInFile(config.CurrServer)
 	handleRegisterResponse(&registerResponse)
 	return nil
 }
@@ -230,7 +240,8 @@ var fetchDeviceNetworksImpl = func(server, token string) ([]DeviceNetwork, error
 		_ = config.SetCurrServerCtxInFile(server)
 		config.CurrServer = server
 	}
-	resp, err := deviceRequest(http.MethodGet, "/api/v1/device/networks", token, nil)
+	// Include host so joined/pending/connected state is returned for this device.
+	resp, err := deviceRequestWithHost(http.MethodGet, "/api/v1/device/networks", token, nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +310,7 @@ func SyncDeviceWithServer(token string) error {
 	if err == nil {
 		_ = decodeDeviceResponse(resp, nil)
 	}
-	_, _, _, err = Pull(false, true)
+	_, _, _, err = PullForDesktop(false, true)
 	return err
 }
 
@@ -322,7 +333,7 @@ func ConnectNetwork(network, server, token string) error {
 		if status == "pending" {
 			return ErrApprovalPending
 		}
-		if _, _, _, err := Pull(false, true); err != nil {
+		if _, _, _, err := PullForDesktop(false, true); err != nil {
 			return fmt.Errorf("failed to sync after join: %w", err)
 		}
 	}

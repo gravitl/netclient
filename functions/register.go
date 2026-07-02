@@ -112,9 +112,16 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	if registerResponse == nil {
 		return
 	}
-	serverKey := registerResponse.ServerConf.Server
+	serverKey := canonicalServerID(registerResponse.ServerConf.API)
+	if serverKey == "" {
+		serverKey = canonicalServerID(registerResponse.ServerConf.Server)
+	}
 	if config.CurrServer != "" {
-		serverKey = config.CurrServer
+		if resolved := config.ResolveServerKey(config.CurrServer); resolved != "" {
+			serverKey = resolved
+		} else if canon := canonicalServerID(config.CurrServer); canon != "" {
+			serverKey = canon
+		}
 	}
 	if registerResponse.ServerConf.API == "" && serverKey != "" {
 		registerResponse.ServerConf.API = serverKey
@@ -138,6 +145,9 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 		logger.Log(0, "failed to save server", err.Error())
 	}
 	config.UpdateHost(&registerResponse.RequestedHost)
+	if err := config.WriteNetclientConfig(); err != nil {
+		logger.Log(0, "failed to save netclient config after register", err.Error())
+	}
 	if err := config.SetCurrServerCtxInFile(serverKey); err != nil {
 		logger.Log(0, "failed to save server context", err.Error())
 	}

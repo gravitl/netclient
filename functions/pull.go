@@ -20,16 +20,30 @@ var pMutex = sync.Mutex{} // used to mutex functions for pull
 
 // Pull - pulls the latest config from the server, if manual it will overwrite
 func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
+	return pull(restart, resetIfFailedOvered, true)
+}
+
+// PullForDesktop pulls like Pull but does not delete servers.json on host auth 401.
+func PullForDesktop(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
+	return pull(restart, resetIfFailedOvered, false)
+}
+
+func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
 	resetInterface := false
 	replacePeers := false
-	serverName := config.CurrServer
-	server := config.GetServer(serverName)
+	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
 		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
 	}
-	token, err := auth.Authenticate(server, config.Netclient())
+	if serverName != config.CurrServer {
+		config.CurrServer = serverName
+		_ = config.SetCurrServerCtxInFile(serverName)
+	}
+	token, err := auth.AuthenticateWithOptions(server, config.Netclient(), auth.AuthenticateOptions{
+		CleanupOnUnauthorized: cleanupOnUnauthorized,
+	})
 	if err != nil {
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
@@ -80,7 +94,10 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SetNodes(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
-	server = config.GetServer(serverName)
+	server, serverName = config.ResolveServer(serverName)
+	if server == nil {
+		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
+	}
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	fmt.Printf("completed pull for server %s\n", serverName)
 	config.UpdateServer(server.Name, *server)

@@ -41,12 +41,15 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	req.Server = strings.TrimSpace(req.Server)
-	if req.Server == "" {
+	server := normalizeServerHost(req.Server)
+	if server == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if isServerSet(req.Server) {
+	if key := config.ResolveServerKey(server); key != "" {
+		server = key
+	}
+	if isServerSet(server) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -54,7 +57,8 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := setPendingServer(req.Server); err != nil {
+	config.CurrServer = server
+	if err := config.SetCurrServerCtxInFile(server); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -63,14 +67,12 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 
 func getServer(w http.ResponseWriter, r *http.Request) {
 	server, username, authToken := sessionToken()
-	if server == "" {
-		server = serverAddress()
-	}
 	resp := GetServerResponse{
-		Status:    getStatus(),
-		Server:    server,
-		Username:  username,
-		AuthToken: authToken,
+		Status:     getStatus(),
+		Server:     server,
+		Username:   username,
+		AuthToken:  authToken,
+		Registered: isRegistered(server),
 	}
 	if isSessionActive() {
 		resp.ServerConfig = serverConfig()
@@ -105,6 +107,13 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	_, prevUser, _ := sessionToken()
+	if prevUser != "" && prevUser != req.Username {
+		if err := releaseSessionFn(false); err != nil {
+			slog.Warn("uiapi: failed to disconnect prior user before session handoff", "error", err)
+		}
+	}
+
 	if err := registerSession(server, req.Username, req.AuthToken, req.Password); err != nil {
 		setStatus(Idle)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -115,9 +124,8 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken)
 	if err != nil {
 		slog.Warn("uiapi: failed to fetch server config", "error", err)
-	} else {
-		setSession(req.Username, req.AuthToken, cfg)
 	}
+	setSession(req.Username, req.AuthToken, cfg)
 	setStatus(Running)
 	w.WriteHeader(http.StatusOK)
 }

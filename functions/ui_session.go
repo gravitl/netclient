@@ -2,56 +2,56 @@ package functions
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+)
+
+var (
+	registerDeviceOnServerForSession = RegisterDeviceOnServer
+	pullForDesktopForSession         = PullForDesktop
 )
 
 // IsRegisteredToServer reports whether netclient is registered to the given server.
 func IsRegisteredToServer(server string) bool {
-	if server == "" {
-		return false
-	}
-	return config.GetServer(server) != nil
+	return config.ResolveServerKey(server) != ""
 }
 
 // RegisterSession registers or refreshes a desktop UI session against a server.
+// password is ignored (legacy desktop clients may still send it); authToken must be the user JWT.
 func RegisterSession(server, username, authToken, password string) error {
+	_ = password
+	server = strings.TrimPrefix(strings.TrimSpace(server), "https://")
 	if server == "" {
 		return fmt.Errorf("server not configured")
 	}
 	if username == "" || authToken == "" {
 		return fmt.Errorf("username and auth token are required")
 	}
+	if key := config.ResolveServerKey(server); key != "" {
+		server = key
+	}
+
+	if config.CurrServer != server {
+		if err := config.SetCurrServerCtxInFile(server); err != nil {
+			return err
+		}
+		config.CurrServer = server
+	}
+
+	if !IsRegisteredToServer(server) {
+		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
+			return err
+		}
+	}
 
 	if IsRegisteredToServer(server) {
-		if config.CurrServer != server {
-			if err := config.SetCurrServerCtxInFile(server); err != nil {
-				return err
-			}
-			config.CurrServer = server
-		}
-		if _, _, _, err := Pull(false, true); err != nil {
+		if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
 			return fmt.Errorf("failed to sync with server: %w", err)
 		}
-		return nil
 	}
-
-	if password != "" {
-		if server != "" && config.CurrServer != server {
-			if err := config.SetCurrServerCtxInFile(server); err != nil {
-				return err
-			}
-			config.CurrServer = server
-		}
-		return RegisterWithSSO(&RegisterSSO{
-			API:         server,
-			User:        username,
-			Pass:        password,
-			AllNetworks: false,
-		})
-	}
-
-	return RegisterDeviceOnServer(server, authToken)
+	return nil
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.
@@ -71,5 +71,6 @@ func ReleaseSession(clearServer bool) error {
 		config.CurrServer = ""
 		_ = config.SetCurrServerCtxInFile("")
 	}
+	auth.CleanJwtToken()
 	return nil
 }
