@@ -7,41 +7,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckDeviceNetworkApproval(t *testing.T) {
+func TestCheckDeviceNetworkAccess(t *testing.T) {
 	orig := fetchDeviceNetworksImpl
 	t.Cleanup(func() { fetchDeviceNetworksImpl = orig })
 
 	fetchDeviceNetworksImpl = func(_, _ string) ([]DeviceNetwork, error) {
 		return []DeviceNetwork{
 			{NetworkID: "open-net", Status: "available"},
-			{NetworkID: "pending-net", Status: "pending"},
-			{NetworkID: "needs-approval", Status: "approval_required"},
 			{NetworkID: "blocked-net", Status: "blocked"},
-		}, nil
-	}
-
-	assert.NoError(t, checkDeviceNetworkApproval("open-net", "srv", "tok"))
-	assert.ErrorIs(t, checkDeviceNetworkApproval("pending-net", "srv", "tok"), ErrApprovalPending)
-	assert.ErrorIs(t, checkDeviceNetworkApproval("needs-approval", "srv", "tok"), ErrApprovalRequired)
-	assert.ErrorIs(t, checkDeviceNetworkApproval("blocked-net", "srv", "tok"), ErrDeviceBlocked)
-}
-
-func TestCheckDeviceNetworkAccessPendingBlocksBeforeJIT(t *testing.T) {
-	orig := fetchDeviceNetworksImpl
-	t.Cleanup(func() { fetchDeviceNetworksImpl = orig })
-
-	fetchDeviceNetworksImpl = func(_, _ string) ([]DeviceNetwork, error) {
-		return []DeviceNetwork{
 			{
-				NetworkID:        "jit-pending-net",
-				Status:           "pending",
+				NetworkID:        "jit-net",
+				Status:           "available",
 				JITAppliesToUser: true,
 				HasJITAccess:     false,
 			},
 		}, nil
 	}
 
-	err := checkDeviceNetworkAccess("jit-pending-net", "srv", "tok")
+	assert.NoError(t, checkDeviceNetworkAccess("open-net", "srv", "tok"))
+	assert.ErrorIs(t, checkDeviceNetworkAccess("blocked-net", "srv", "tok"), ErrDeviceBlocked)
+	assert.ErrorIs(t, checkDeviceNetworkAccess("jit-net", "srv", "tok"), ErrJITAccessRequired)
+}
+
+func TestCheckDeviceNetworkAccessJITRequiredStatus(t *testing.T) {
+	orig := fetchDeviceNetworksImpl
+	t.Cleanup(func() { fetchDeviceNetworksImpl = orig })
+
+	fetchDeviceNetworksImpl = func(_, _ string) ([]DeviceNetwork, error) {
+		return []DeviceNetwork{
+			{NetworkID: "jit-required-net", Status: "jit_required"},
+		}, nil
+	}
+
+	err := checkDeviceNetworkAccess("jit-required-net", "srv", "tok")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrApprovalPending)
+	assert.ErrorIs(t, err, ErrJITAccessRequired)
 }

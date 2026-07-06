@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -253,7 +254,7 @@ var fetchDeviceNetworksImpl = func(server, token string) ([]DeviceNetwork, error
 }
 
 // JoinDeviceNetworkOnServer registers the host on a network via the device API.
-// Returns join status: "joined" or "pending".
+// Returns join status: "joined".
 func JoinDeviceNetworkOnServer(network, token string) (string, error) {
 	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/networks/"+network+"/join", token, nil)
 	if err != nil {
@@ -289,15 +290,16 @@ func CancelDeviceNetworkJoinOnServer(network, token string) error {
 	return decodeDeviceResponse(resp, nil)
 }
 
-// RequestDeviceJITOnServer submits a JIT access request.
-func RequestDeviceJITOnServer(network, token, reason string) error {
+// RequestJITOnServer submits a JIT access request via the server user JIT API.
+func RequestJITOnServer(network, token, reason string) error {
 	body, err := json.Marshal(struct {
 		Reason string `json:"reason"`
 	}{Reason: reason})
 	if err != nil {
 		return err
 	}
-	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/networks/"+network+"/jit/request", token, bytes.NewReader(body))
+	path := "/api/v1/jit_user/request?network=" + url.QueryEscape(network)
+	resp, err := deviceRequestWithHost(http.MethodPost, path, token, bytes.NewReader(body), false)
 	if err != nil {
 		return err
 	}
@@ -330,8 +332,8 @@ func ConnectNetwork(network, server, token string) error {
 		if err != nil {
 			return err
 		}
-		if status == "pending" {
-			return ErrApprovalPending
+		if status != "joined" && status != "" {
+			return fmt.Errorf("unexpected join status: %s", status)
 		}
 		if _, _, _, err := PullForDesktop(false, true); err != nil {
 			return fmt.Errorf("failed to sync after join: %w", err)
@@ -341,13 +343,6 @@ func ConnectNetwork(network, server, token string) error {
 }
 
 func checkDeviceNetworkAccess(network, server, token string) error {
-	if err := checkDeviceNetworkApproval(network, server, token); err != nil {
-		return err
-	}
-	return checkDeviceNetworkJIT(network, server, token)
-}
-
-func checkDeviceNetworkApproval(network, server, token string) error {
 	nets, err := FetchDeviceNetworks(server, token)
 	if err != nil {
 		return err
@@ -356,27 +351,8 @@ func checkDeviceNetworkApproval(network, server, token string) error {
 		if n.NetworkID != network {
 			continue
 		}
-		switch n.Status {
-		case "pending":
-			return ErrApprovalPending
-		case "approval_required":
-			return ErrApprovalRequired
-		case "blocked":
+		if n.Status == "blocked" {
 			return ErrDeviceBlocked
-		}
-		return nil
-	}
-	return nil
-}
-
-func checkDeviceNetworkJIT(network, server, token string) error {
-	nets, err := FetchDeviceNetworks(server, token)
-	if err != nil {
-		return err
-	}
-	for _, n := range nets {
-		if n.NetworkID != network {
-			continue
 		}
 		if n.Status == "jit_required" || (n.JITAppliesToUser && !n.HasJITAccess) {
 			return ErrJITAccessRequired

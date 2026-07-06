@@ -40,17 +40,17 @@ func RegisterSession(server, username, authToken, password string) error {
 		config.CurrServer = server
 	}
 
-	if !IsRegisteredToServer(server) {
-		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
-			return err
-		}
+	//if !IsRegisteredToServer(server) {
+	if err := registerDeviceOnServerForSession(server, authToken); err != nil {
+		return err
 	}
+	//}
 
-	if IsRegisteredToServer(server) {
-		if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
-			return fmt.Errorf("failed to sync with server: %w", err)
-		}
+	//if IsRegisteredToServer(server) {
+	if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
+		return fmt.Errorf("failed to sync with server: %w", err)
 	}
+	//}
 	return nil
 }
 

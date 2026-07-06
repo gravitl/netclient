@@ -59,14 +59,14 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if status == "pending" {
-		return "pending", nil
-	}
 	_, _, _, err = PullForDesktop(false, true)
 	if err != nil {
 		return "", err
 	}
-	return "joined", nil
+	if status == "" {
+		return "joined", nil
+	}
+	return status, nil
 }
 
 func leaveNetworkForUI(network, server, token string) error {
@@ -78,7 +78,7 @@ func cancelJoinForUI(network, server, token string) error {
 }
 
 func requestJITForUI(network, server, token, reason string) error {
-	return RequestDeviceJITOnServer(network, token, reason)
+	return RequestJITOnServer(network, token, reason)
 }
 
 func sessionCredentials() (server, token string) {

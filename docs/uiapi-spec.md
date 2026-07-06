@@ -273,7 +273,7 @@ Leave a network (disconnects locally if connected). Requires an active session.
 
 ### `POST /networks/{network}/jit/request`
 
-Submit a JIT access request.
+Submit a JIT access request (proxied to server `POST /api/v1/jit_user/request?network={network}`).
 
 **Request**
 
