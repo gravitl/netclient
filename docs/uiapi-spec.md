@@ -285,6 +285,65 @@ Submit a JIT access request (proxied to server `POST /api/v1/jit_user/request?ne
 
 ---
 
+### `GET /networks/{network}/exit_nodes`
+
+List internet egress exit nodes the device may select on this network (ACL-filtered). Requires an active session and that the device is joined to the network.
+
+Proxied to server `GET /api/v1/device/networks/{network}/exit_nodes`.
+
+**Response `200`** — array of exit nodes:
+
+```json
+[
+  {
+    "egress_id": "uuid",
+    "name": "us-east-exit",
+    "description": "Exit node",
+    "network": "my-network",
+    "routing_node_id": "node-uuid",
+    "routing_host_name": "gw-01",
+    "selected": true,
+    "status": true
+  }
+]
+```
+
+---
+
+### `GET /networks/{network}/exit_node`
+
+Return the currently selected exit node, or `null` if none. Requires an active session.
+
+Proxied to server `GET /api/v1/device/networks/{network}/exit_node`.
+
+**Response `200`** — exit node object or `null`.
+
+---
+
+### `PUT /networks/{network}/exit_node`
+
+Select or clear the exit node for this device on the network. Clearing uses an empty `egress_id`. Routing is applied by netclient when the server peer update arrives (`ChangeDefaultGw`); uiapi only proxies the selection.
+
+Proxied to server `PUT /api/v1/device/networks/{network}/exit_node`.
+
+**Request**
+
+```json
+{ "egress_id": "uuid-or-empty-to-clear" }
+```
+
+**Response `200`** — selected exit node, or `null` if cleared.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| `400` | Not joined, invalid egress, or routing node selecting itself |
+| `403` | No ACL access to the exit node |
+| `401` | No session |
+
+---
+
 ### `GET /connections`
 
 List all networks the host belongs to and their connection state.
@@ -499,6 +558,9 @@ GET    /networks                       → list device networks
 POST   /networks/{network}/join        → join network
 DELETE /networks/{network}/leave       → leave network
 POST   /networks/{network}/jit/request → request JIT access
+GET    /networks/{network}/exit_nodes   → list exit nodes
+GET    /networks/{network}/exit_node    → get selected exit node
+PUT    /networks/{network}/exit_node    → select/clear exit node
 POST   /sync                           → sync with server
 GET    /connections                    → list connections
 POST   /connections/{network}        → connect

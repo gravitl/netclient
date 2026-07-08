@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,10 +45,22 @@ type DeviceNetwork struct {
 	ApprovalRequired    bool   `json:"approval_required"`
 	ApprovalRequestedAt *int64 `json:"approval_requested_at,omitempty"`
 	JITEnabled          bool   `json:"jit_enabled"`
-	JITAppliesToUser  bool   `json:"jit_applies_to_user"`
-	HasJITAccess      bool   `json:"has_jit_access"`
-	JITPendingRequest bool   `json:"jit_pending_request"`
-	JITExpiresAt      *int64 `json:"jit_expires_at,omitempty"`
+	JITAppliesToUser    bool   `json:"jit_applies_to_user"`
+	HasJITAccess        bool   `json:"has_jit_access"`
+	JITPendingRequest   bool   `json:"jit_pending_request"`
+	JITExpiresAt        *int64 `json:"jit_expires_at,omitempty"`
+}
+
+// DeviceExitNode mirrors the server device exit-node API entry.
+type DeviceExitNode struct {
+	EgressID        string `json:"egress_id"`
+	Name            string `json:"name"`
+	Description     string `json:"description,omitempty"`
+	Network         string `json:"network"`
+	RoutingNodeID   string `json:"routing_node_id,omitempty"`
+	RoutingHostName string `json:"routing_host_name,omitempty"`
+	Selected        bool   `json:"selected"`
+	Status          bool   `json:"status"`
 }
 
 type deviceSuccessResponse struct {
@@ -314,6 +327,77 @@ func SyncDeviceWithServer(token string) error {
 	}
 	_, _, _, err = PullForDesktop(false, true)
 	return err
+}
+
+// ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
+func ListDeviceExitNodes(network, token string) ([]DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_nodes"
+	resp, err := deviceRequest(http.MethodGet, path, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var nodes []DeviceExitNode
+	if err := decodeDeviceResponse(resp, &nodes); err != nil {
+		return nil, err
+	}
+	if nodes == nil {
+		nodes = []DeviceExitNode{}
+	}
+	return nodes, nil
+}
+
+// GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
+func GetDeviceSelectedExitNode(network, token string) (*DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	resp, err := deviceRequest(http.MethodGet, path, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var node DeviceExitNode
+	if err := decodeDeviceResponse(resp, &node); err != nil {
+		return nil, err
+	}
+	if node.EgressID == "" {
+		return nil, nil
+	}
+	return &node, nil
+}
+
+// SelectDeviceExitNode selects or clears (empty egressID) the exit node for the device.
+// A pull is attempted afterward so WireGuard picks up peer updates if MQTT is delayed.
+func SelectDeviceExitNode(network, token, egressID string) (*DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	body, err := json.Marshal(struct {
+		EgressID string `json:"egress_id"`
+	}{EgressID: egressID})
+	if err != nil {
+		return nil, err
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	resp, err := deviceRequest(http.MethodPut, path, token, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	var node DeviceExitNode
+	if err := decodeDeviceResponse(resp, &node); err != nil {
+		return nil, err
+	}
+	if _, _, _, pullErr := PullForDesktop(false, true); pullErr != nil {
+		// Selection succeeded on the server; peer update may still arrive via MQTT.
+		slog.Warn("failed to pull after exit node change", "network", network, "error", pullErr)
+	}
+	if egressID == "" || node.EgressID == "" {
+		return nil, nil
+	}
+	return &node, nil
 }
 
 // ConnectNetwork joins (if needed) then connects locally.

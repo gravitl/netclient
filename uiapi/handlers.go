@@ -386,3 +386,100 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
+func writeExitNodeErr(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "does not have access"),
+		strings.Contains(msg, "forbidden"):
+		status = http.StatusForbidden
+	case strings.Contains(msg, "not joined"),
+		strings.Contains(msg, "is required"),
+		strings.Contains(msg, "not found"),
+		strings.Contains(msg, "not an active internet"),
+		strings.Contains(msg, "cannot select itself"):
+		status = http.StatusBadRequest
+	}
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: msg})
+}
+
+func listExitNodesHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	nodes, err := listExitNodes(network, server, token)
+	if err != nil {
+		writeExitNodeErr(w, err)
+		return
+	}
+	if nodes == nil {
+		nodes = []DeviceExitNodeView{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(nodes)
+}
+
+func getExitNodeHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	node, err := getSelectedExitNode(network, server, token)
+	if err != nil {
+		writeExitNodeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if node == nil {
+		_ = json.NewEncoder(w).Encode(nil)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(node)
+}
+
+func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
+		return
+	}
+	var req SelectExitNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "invalid request body"})
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	setStatus(Loading)
+	defer setStatus(Running)
+	node, err := selectExitNode(network, server, token, req.EgressID)
+	if err != nil {
+		writeExitNodeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if node == nil {
+		_ = json.NewEncoder(w).Encode(nil)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(node)
+}

@@ -94,6 +94,69 @@ func TestCancelJoinHandler(t *testing.T) {
 	assert.True(t, cancelled)
 }
 
+func TestListExitNodesHandler(t *testing.T) {
+	setStatus(Idle)
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "token-123")
+
+	SetHandlers(HandlerDeps{
+		ListExitNodes: func(network, server, token string) ([]DeviceExitNodeView, error) {
+			assert.Equal(t, "net1", network)
+			assert.Equal(t, "api.example.com", server)
+			assert.Equal(t, "token-123", token)
+			return []DeviceExitNodeView{{EgressID: "e1", Name: "exit-us", Selected: true}}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/networks/net1/exit_nodes", nil)
+	req.SetPathValue("network", "net1")
+	rec := httptest.NewRecorder()
+	listExitNodesHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var nodes []DeviceExitNodeView
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &nodes))
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "e1", nodes[0].EgressID)
+	assert.True(t, nodes[0].Selected)
+}
+
+func TestSelectExitNodeHandler(t *testing.T) {
+	setStatus(Idle)
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "token-123")
+
+	selected := false
+	SetHandlers(HandlerDeps{
+		SelectExitNode: func(network, server, token, egressID string) (*DeviceExitNodeView, error) {
+			assert.Equal(t, "net1", network)
+			assert.Equal(t, "e1", egressID)
+			selected = true
+			return &DeviceExitNodeView{EgressID: "e1", Name: "exit-us", Selected: true}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/networks/net1/exit_node", strings.NewReader(`{"egress_id":"e1"}`))
+	req.SetPathValue("network", "net1")
+	rec := httptest.NewRecorder()
+	selectExitNodeHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, selected)
+	var node DeviceExitNodeView
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &node))
+	assert.Equal(t, "e1", node.EgressID)
+}
+
+func TestSelectExitNodeHandlerRequiresSession(t *testing.T) {
+	clearSessionForTest()
+	req := httptest.NewRequest(http.MethodPut, "/networks/net1/exit_node", strings.NewReader(`{"egress_id":"e1"}`))
+	req.SetPathValue("network", "net1")
+	rec := httptest.NewRecorder()
+	selectExitNodeHandler(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
 func setupTestSession(server, username, token string) {
 	config.CurrServer = server
 	session.mu.Lock()
