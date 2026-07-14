@@ -688,11 +688,6 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 		} else {
 			logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
-			defaultIface := config.Netclient().DefaultInterface
-			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
-				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
-				continue
-			}
 			n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 			// to avoid duplicate iface route rule,delete if exists
@@ -805,7 +800,11 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				})
 			}
 			// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
-			if isAddrIpv4(egressGwRange.Network) {
+			// Skip when egress is via the default/WAN interface (same as iptables).
+			defaultIface := config.Netclient().DefaultInterface
+			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
+				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
+			} else if isAddrIpv4(egressGwRange.Network) {
 				lanCIDR := config.ToIPNet(egressGwRange.Network)
 				additionalRuleSpec := []string{
 					"-s", egressGwRange.Network,
