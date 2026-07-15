@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 // Uninstall - uninstalls networks from client
@@ -102,6 +103,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set("requestfrom", "node")
+	headers.Set(scope.HeaderTenantID, server.TenantID)
 	_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 	if err != nil {
 		return fmt.Errorf("error deleting node from network %s on server: %v", node.Network, err)

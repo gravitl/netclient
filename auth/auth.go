@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 var (
@@ -55,6 +56,7 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 	url := fmt.Sprintf("https://%s/api/hosts/adm/authenticate", server.API)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, data)
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk
