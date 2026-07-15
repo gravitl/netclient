@@ -16,7 +16,6 @@ import (
 	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/scope"
 )
 
 // Register - should be simple to register with a token
@@ -56,7 +55,6 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set(scope.HeaderTenantID, host.TenantID)
 	posture.ApplyIdentity(&host.Host)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {

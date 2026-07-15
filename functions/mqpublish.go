@@ -195,7 +195,7 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
-	headers.Set(scope.HeaderTenantID, host.TenantID)
+	headers.Set(scope.HeaderTenantID, server.TenantID)
 	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {

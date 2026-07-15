@@ -561,7 +561,7 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
-	headers.Set(scope.HeaderTenantID, host.TenantID)
+	headers.Set(scope.HeaderTenantID, server.TenantID)
 	_, err = ncutils.SendRequest(method, url, headers, models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID})
 	if err != nil {
 		return err
