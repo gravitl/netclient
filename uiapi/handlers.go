@@ -3,6 +3,7 @@ package uiapi
 import (
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/exec"
 	"runtime"
@@ -41,15 +42,31 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	server := normalizeServerHost(req.Server)
-	if server == "" {
+	// Name / map key = base domain (nm...); API keeps api.<domain>:port for HTTPS.
+	domain := config.NormalizeServerHost(req.Server)
+	domain = strings.TrimPrefix(domain, "api.")
+	api := config.NormalizeServerAPI(req.Server)
+	rawHost := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(req.Server), "https://"), "http://")
+	if i := strings.Index(rawHost, "/"); i >= 0 {
+		rawHost = rawHost[:i]
+	}
+	if h, _, err := net.SplitHostPort(rawHost); err == nil {
+		rawHost = h
+	}
+	// Self-hosted: API host is api.<SERVER_NAME>. Skip for tenant IDs (no dots).
+	if domain != "" && strings.Contains(domain, ".") && !strings.HasPrefix(rawHost, "api.") {
+		api = config.NormalizeServerAPI("api." + domain)
+	}
+	if domain == "" || api == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if key := config.ResolveServerKey(server); key != "" {
-		server = key
+	if key := config.ResolveServerKey(domain); key != "" {
+		domain = strings.TrimPrefix(config.NormalizeServerHost(key), "api.")
 	}
-	if isServerSet(server) {
+	if isServerSet(domain) {
+		// Refresh API endpoint even when domain is already selected.
+		_ = config.UpsertPartialServer(domain, api)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -57,8 +74,12 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	config.CurrServer = server
-	if err := config.SetCurrServerCtxInFile(server); err != nil {
+	config.CurrServer = domain
+	if err := config.SetCurrServerCtxInFile(domain); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if err := config.UpsertPartialServer(domain, api); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -70,6 +91,7 @@ func getServer(w http.ResponseWriter, r *http.Request) {
 	resp := GetServerResponse{
 		Status:     getStatus(),
 		Server:     server,
+		API:        configuredServerAPI(server),
 		Username:   username,
 		AuthToken:  authToken,
 		Registered: isRegistered(server),
@@ -81,6 +103,17 @@ func getServer(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Error("uiapi: failed to encode server response", "error", err)
 	}
+}
+
+// configuredServerAPI returns servers.json API (host:port) for the current server context.
+func configuredServerAPI(server string) string {
+	if server == "" {
+		server = getCurrServerName()
+	}
+	if srv := config.GetServer(server); srv != nil && strings.TrimSpace(srv.API) != "" {
+		return config.NormalizeServerAPI(srv.API)
+	}
+	return ""
 }
 
 func configureSession(w http.ResponseWriter, r *http.Request) {

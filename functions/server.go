@@ -62,7 +62,7 @@ func LeaveServer(s string) error {
 	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err == nil {
-		url := fmt.Sprintf("https://%s/api/hosts/%s?force=true", server.API, config.Netclient().ID.String())
+		url := fmt.Sprintf("%s/api/hosts/%s?force=true", config.APIBaseURL(config.NormalizeServerAPI(server.API)), config.Netclient().ID.String())
 		headers := make(http.Header)
 		headers.Set("Content-Type", "application/json")
 		headers.Set("Authorization", "Bearer "+token)

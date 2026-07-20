@@ -280,6 +280,7 @@ func setupLogging(flags *viper.Viper) {
 func checkConfig() {
 	fail := false
 	saveRequired := false
+	skipServerValidation := isUninstallCommand()
 	sysInfo := logic.GetOSInfo()
 	netclient := config.Netclient()
 	if netclient.OS != sysInfo.OS {
@@ -424,7 +425,7 @@ func checkConfig() {
 	}
 	_ = config.ReadServerConf()
 	_ = config.ReadNodeConfig()
-	if config.CurrServer != "" {
+	if config.CurrServer != "" && !skipServerValidation {
 		server := config.GetServer(config.CurrServer)
 		if server == nil {
 			fail = true
@@ -440,4 +441,13 @@ func checkConfig() {
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
+}
+
+func isUninstallCommand() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "uninstall" {
+			return true
+		}
+	}
+	return false
 }

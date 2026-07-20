@@ -14,13 +14,22 @@ func TestIsRegisteredToServer(t *testing.T) {
 		"api.example.com": {
 			Name: "api.example.com",
 			ServerConfig: models.ServerConfig{
-				API: "api.example.com",
+				API:    "api.example.com:443",
+				Server: "api.example.com",
+			},
+		},
+		"partial.example.com": {
+			Name: "partial.example.com",
+			ServerConfig: models.ServerConfig{
+				API: "partial.example.com:443",
+				// Server empty = configureServer partial entry
 			},
 		},
 		"other.example.com": {
 			Name: "other.example.com",
 			ServerConfig: models.ServerConfig{
-				API: "other.example.com",
+				API:    "other.example.com:443",
+				Server: "other.example.com",
 			},
 		},
 	}
@@ -28,6 +37,7 @@ func TestIsRegisteredToServer(t *testing.T) {
 
 	require.True(t, IsRegisteredToServer("api.example.com"))
 	require.True(t, IsRegisteredToServer("example.com"))
+	require.False(t, IsRegisteredToServer("partial.example.com"), "partial entry is not registered")
 	require.False(t, IsRegisteredToServer("unknown.example.com"))
 }
 
@@ -36,7 +46,7 @@ func TestRegisterSession_skipsDeviceRegisterWhenServersJSONHasServer(t *testing.
 		"api.example.com": {
 			Name: "api.example.com",
 			ServerConfig: models.ServerConfig{
-				API:    "api.example.com",
+				API:    "api.example.com:443",
 				Server: "api.example.com",
 			},
 		},
@@ -66,8 +76,54 @@ func TestRegisterSession_skipsDeviceRegisterWhenServersJSONHasServer(t *testing.
 
 	err := RegisterSession("api.example.com", "user", "jwt-token", "")
 	require.NoError(t, err)
-	require.False(t, registerCalled, "device register must be skipped when servers.json has server")
+	require.False(t, registerCalled, "device register must be skipped when Server field is set")
 	require.True(t, pullCalled, "pull must run on re-login")
+}
+
+func TestRegisterSession_registersOnPartialServersJSONEntry(t *testing.T) {
+	config.Servers = map[string]config.Server{
+		"api.example.com": {
+			Name: "api.example.com",
+			ServerConfig: models.ServerConfig{
+				API: "api.example.com:443",
+				// Server empty = not registered yet
+			},
+		},
+	}
+	config.CurrServer = "api.example.com"
+	t.Cleanup(func() {
+		config.Servers = make(map[string]config.Server)
+		config.CurrServer = ""
+	})
+
+	registerCalled := false
+	pullCalled := false
+	origRegister := registerDeviceOnServerForSession
+	origPull := pullForDesktopForSession
+	registerDeviceOnServerForSession = func(server, token string) error {
+		registerCalled = true
+		config.Servers["api.example.com"] = config.Server{
+			Name: "api.example.com",
+			ServerConfig: models.ServerConfig{
+				API:    "api.example.com:443",
+				Server: "api.example.com",
+			},
+		}
+		return nil
+	}
+	pullForDesktopForSession = func(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
+		pullCalled = true
+		return models.HostPull{}, false, false, nil
+	}
+	t.Cleanup(func() {
+		registerDeviceOnServerForSession = origRegister
+		pullForDesktopForSession = origPull
+	})
+
+	err := RegisterSession("api.example.com", "user", "jwt-token", "")
+	require.NoError(t, err)
+	require.True(t, registerCalled, "partial entry must still register")
+	require.True(t, pullCalled)
 }
 
 func TestRegisterSession_registersWhenServersJSONEmpty(t *testing.T) {
@@ -87,7 +143,7 @@ func TestRegisterSession_registersWhenServersJSONEmpty(t *testing.T) {
 		config.Servers["api.example.com"] = config.Server{
 			Name: "api.example.com",
 			ServerConfig: models.ServerConfig{
-				API:    "api.example.com",
+				API:    "api.example.com:443",
 				Server: "api.example.com",
 			},
 		}
@@ -113,7 +169,7 @@ func TestRegisterSession_ignoresPasswordUsesDevicePath(t *testing.T) {
 		"api.example.com": {
 			Name: "api.example.com",
 			ServerConfig: models.ServerConfig{
-				API:    "api.example.com",
+				API:    "api.example.com:443",
 				Server: "api.example.com",
 			},
 		},
@@ -151,7 +207,13 @@ func TestRegisterSession_requiresAuthToken(t *testing.T) {
 
 func TestRegisterSession_propagatesPullError(t *testing.T) {
 	config.Servers = map[string]config.Server{
-		"api.example.com": {Name: "api.example.com"},
+		"api.example.com": {
+			Name: "api.example.com",
+			ServerConfig: models.ServerConfig{
+				API:    "api.example.com:443",
+				Server: "api.example.com",
+			},
+		},
 	}
 	config.CurrServer = "api.example.com"
 	t.Cleanup(func() {

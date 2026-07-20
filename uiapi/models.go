@@ -37,6 +37,7 @@ type SetServerRequest struct {
 type GetServerResponse struct {
 	Status       Status                `json:"status"`
 	Server       string                `json:"server"`
+	API          string                `json:"api"`
 	Username     string                `json:"username"`
 	AuthToken    string                `json:"auth_token"`
 	Registered   bool                  `json:"registered"`

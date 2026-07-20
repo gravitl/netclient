@@ -106,12 +106,12 @@ On daemon restart, user session is restored from `.uisession.json`; server is re
 
 ### `POST /server`
 
-Set the Netmaker server hostname **before** login. No scheme — e.g. `"api.netmaker.example.com"`.
+Set the Netmaker server **before** login. Accepts API host (`api.nm.example.com`) or SERVER_NAME (`nm.example.com`).
 
 **Request**
 
 ```json
-{ "server": "api.netmaker.example.com" }
+{ "server": "api.nm.example.com" }
 ```
 
 **Responses**
@@ -124,7 +124,8 @@ Set the Netmaker server hostname **before** login. No scheme — e.g. `"api.netm
 
 **Rules**
 
-- Writes `.serverctx` and sets `CurrServer` (netclient config dir). Does not store server in `.uisession.json`.
+- Writes `.serverctx` with **SERVER_NAME** (strips leading `api.`) and a partial `servers.json` entry: `Name` = base domain, `API` = `api.<domain>:443` (or the host:port from input when it already has `api.`).
+- Does not store server in `.uisession.json`.
 - Cannot change server while session is active.
 - Idempotent if the same server is submitted again.
 
@@ -139,7 +140,8 @@ Current session and daemon status.
 ```json
 {
   "status": "running",
-  "server": "api.netmaker.example.com",
+  "server": "nm.netmaker.example.com",
+  "api": "api.nm.netmaker.example.com:443",
   "username": "user@example.com",
   "auth_token": "<jwt>",
   "registered": true,
@@ -150,7 +152,8 @@ Current session and daemon status.
 | Field | Description |
 |-------|-------------|
 | `status` | `"idle"` \| `"loading"` \| `"restoring"` \| `"running"` \| `"closing"` |
-| `server` | Registered/pending server from `.serverctx` / `servers.json` |
+| `server` | Current server identity from `.serverctx` (SERVER_NAME / base domain; used for MQTT context) |
+| `api` | HTTPS API host:port from `servers.json` (`Server.API`). **Source of truth for all Netmaker REST calls.** |
 | `username` | Logged-in user |
 | `auth_token` | JWT (present when session active) |
 | `registered` | Whether the host is registered with the configured server (`servers.json`) |

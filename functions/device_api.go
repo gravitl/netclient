@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,11 +69,19 @@ type deviceSuccessResponse struct {
 }
 
 func deviceServerURL() (string, error) {
-	server := config.CurrServer
-	if server == "" {
+	srv := config.GetServer(config.CurrServer)
+	api := ""
+	if srv != nil {
+		api = srv.API
+	}
+	if api == "" {
+		api = config.CurrServer
+	}
+	api = config.NormalizeServerAPI(api)
+	if api == "" {
 		return "", fmt.Errorf("server not configured")
 	}
-	return "https://" + strings.TrimPrefix(server, "https://"), nil
+	return config.APIBaseURL(api), nil
 }
 
 func deviceRequest(method, path, token string, body io.Reader) (*http.Response, error) {
@@ -166,11 +173,18 @@ func decodeDeviceRegisterResponse(resp *http.Response) (models.RegisterResponse,
 }
 
 func fetchModelsServerConfig(server, token string) (models.ServerConfig, error) {
-	host := strings.TrimPrefix(strings.TrimSpace(server), "https://")
-	if host == "" {
+	api := ""
+	if srv := config.GetServer(server); srv != nil {
+		api = srv.API
+	}
+	if api == "" {
+		api = server
+	}
+	api = config.NormalizeServerAPI(api)
+	if api == "" {
 		return models.ServerConfig{}, fmt.Errorf("server not configured")
 	}
-	url := fmt.Sprintf("https://%s/api/server/getserverinfo", host)
+	url := fmt.Sprintf("%s/api/server/getserverinfo", config.APIBaseURL(api))
 	headers := make(http.Header)
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set("X-Application-Name", desktopAppHeader)
@@ -189,32 +203,58 @@ func ensureRegisterServerConf(resp *models.RegisterResponse, server, token strin
 	if resp == nil {
 		return fmt.Errorf("empty register response")
 	}
+	domain := config.NormalizeServerHost(server)
+	if domain == "" {
+		domain = config.NormalizeServerHost(resp.ServerConf.API)
+	}
+	if domain == "" {
+		domain = config.NormalizeServerHost(resp.ServerConf.Server)
+	}
+	if domain == "" {
+		return fmt.Errorf("server not configured")
+	}
+
+	preservedAPI := ""
+	if existing := config.GetServer(domain); existing != nil && existing.API != "" {
+		preservedAPI = config.NormalizeServerAPI(existing.API)
+	}
+
 	if resp.ServerConf.API == "" || resp.ServerConf.Broker == "" {
-		fetched, err := fetchModelsServerConfig(server, token)
+		fetched, err := fetchModelsServerConfig(domain, token)
 		if err != nil {
 			return fmt.Errorf("failed to fetch server config: %w", err)
 		}
-		resp.ServerConf = fetched
+		if resp.ServerConf.Broker == "" {
+			resp.ServerConf.Broker = fetched.Broker
+		}
+		if resp.ServerConf.API == "" {
+			resp.ServerConf.API = fetched.API
+		}
+		// Keep other useful fields if missing.
+		if resp.ServerConf.Server == "" {
+			resp.ServerConf.Server = fetched.Server
+		}
 	}
-	canon := canonicalServerID(resp.ServerConf.API)
-	if canon == "" {
-		canon = canonicalServerID(server)
+
+	api := preservedAPI
+	if api == "" {
+		api = config.NormalizeServerAPI(resp.ServerConf.API)
 	}
-	if canon == "" {
-		return fmt.Errorf("server not configured")
+	if api == "" {
+		api = config.NormalizeServerAPI(domain)
 	}
-	resp.ServerConf.API = canon
-	resp.ServerConf.Server = canon
+	resp.ServerConf.API = api
+	resp.ServerConf.Server = domain
 	return nil
 }
 
 func canonicalServerID(id string) string {
-	return strings.TrimPrefix(strings.TrimSpace(id), "https://")
+	return config.NormalizeServerHost(id)
 }
 
 // RegisterDeviceOnServer registers the host via the device REST API using a user JWT.
 func RegisterDeviceOnServer(server, token string) error {
-	server = strings.TrimPrefix(strings.TrimSpace(server), "https://")
+	server = config.NormalizeServerHost(server)
 	if server != "" && config.CurrServer != server {
 		_ = config.SetCurrServerCtxInFile(server)
 		config.CurrServer = server

@@ -13,16 +13,18 @@ var (
 	pullForDesktopForSession         = PullForDesktop
 )
 
-// IsRegisteredToServer reports whether netclient is registered to the given server.
+// IsRegisteredToServer reports whether netclient is fully registered to the given server.
+// A partial servers.json entry (API set, Server empty) from configureServer does not count.
 func IsRegisteredToServer(server string) bool {
-	return config.ResolveServerKey(server) != ""
+	srv := config.GetServer(server)
+	return srv != nil && strings.TrimSpace(srv.Server) != ""
 }
 
 // RegisterSession registers or refreshes a desktop UI session against a server.
 // password is ignored (legacy desktop clients may still send it); authToken must be the user JWT.
 func RegisterSession(server, username, authToken, password string) error {
 	_ = password
-	server = strings.TrimPrefix(strings.TrimSpace(server), "https://")
+	server = config.NormalizeServerHost(server)
 	if server == "" {
 		return fmt.Errorf("server not configured")
 	}
@@ -40,17 +42,17 @@ func RegisterSession(server, username, authToken, password string) error {
 		config.CurrServer = server
 	}
 
-	//if !IsRegisteredToServer(server) {
-	if err := registerDeviceOnServerForSession(server, authToken); err != nil {
-		return err
+	if !IsRegisteredToServer(server) {
+		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
+			return err
+		}
 	}
-	//}
 
-	//if IsRegisteredToServer(server) {
-	if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
-		return fmt.Errorf("failed to sync with server: %w", err)
+	if IsRegisteredToServer(server) {
+		if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
+			return fmt.Errorf("failed to sync with server: %w", err)
+		}
 	}
-	//}
 	return nil
 }
 

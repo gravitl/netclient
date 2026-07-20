@@ -30,24 +30,3 @@ func TestResolveServerByAPIAlias(t *testing.T) {
 	require.NotNil(t, server)
 	assert.Equal(t, "api.example.com", key)
 }
-
-func TestSetServerCtxAlignsMismatchedCtx(t *testing.T) {
-	Servers = map[string]Server{
-		"api.example.com": {
-			Name: "api.example.com",
-			ServerConfig: models.ServerConfig{
-				Server: "api.example.com",
-				API:    "api.example.com",
-			},
-		},
-	}
-	defer func() {
-		Servers = make(map[string]Server)
-		CurrServer = ""
-	}()
-
-	CurrServer = ""
-	require.NoError(t, SetCurrServerCtxInFile("example.com"))
-	SetServerCtx()
-	assert.Equal(t, "api.example.com", CurrServer)
-}

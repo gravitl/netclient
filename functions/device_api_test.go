@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
 	"github.com/stretchr/testify/assert"
@@ -48,5 +49,28 @@ func TestEnsureRegisterServerConfFillsMissingFields(t *testing.T) {
 	err := ensureRegisterServerConf(&resp, "api.example.com", "token")
 	require.NoError(t, err)
 	assert.Equal(t, "api.example.com", resp.ServerConf.Server)
-	assert.Equal(t, "api.example.com", resp.ServerConf.API)
+	assert.Equal(t, "api.example.com:443", resp.ServerConf.API)
+}
+
+func TestEnsureRegisterServerConfPreservesPortedAPI(t *testing.T) {
+	config.Servers = map[string]config.Server{
+		"api.example.com": {
+			Name: "api.example.com",
+			ServerConfig: models.ServerConfig{
+				API: "api.example.com:8443",
+			},
+		},
+	}
+	t.Cleanup(func() { config.Servers = make(map[string]config.Server) })
+
+	resp := models.RegisterResponse{
+		ServerConf: models.ServerConfig{
+			API:    "api.example.com",
+			Broker: "broker.example.com",
+		},
+	}
+	err := ensureRegisterServerConf(&resp, "api.example.com", "token")
+	require.NoError(t, err)
+	assert.Equal(t, "api.example.com", resp.ServerConf.Server)
+	assert.Equal(t, "api.example.com:8443", resp.ServerConf.API)
 }
