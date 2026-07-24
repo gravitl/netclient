@@ -614,8 +614,8 @@ func resetDefaultRoutesOnHost() error {
 	var firstErr error
 	curr := config.Netclient().CurrGwNmIP
 	curr6 := config.Netclient().CurrGwNmIP6
-	needV4 := curr != nil && len(curr) > 0 && curr.To4() != nil
-	needV6 := (curr6 != nil && len(curr6) > 0) || (curr != nil && len(curr) > 0 && curr.To4() == nil)
+	needV4 := len(curr) > 0 && curr.To4() != nil
+	needV6 := len(curr6) > 0 || (len(curr) > 0 && curr.To4() == nil)
 	if needV4 {
 		if err := restoreInternetGwV4(); err != nil {
 			firstErr = err
@@ -632,7 +632,7 @@ func resetDefaultRoutesOnHost() error {
 // restoreInternetGwV6 - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func restoreInternetGwV6() (err error) {
 	gwIP := config.Netclient().CurrGwNmIP6
-	if gwIP == nil || len(gwIP) == 0 {
+	if len(gwIP) == 0 {
 		gwIP = config.Netclient().CurrGwNmIP // legacy single-stack IPv6
 	}
 	srcIp := getSourceIpv6(gwIP)
