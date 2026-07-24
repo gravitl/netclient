@@ -19,6 +19,28 @@ const (
 	IPv6Network = "::/0"
 )
 
+// NormalizeIGWNexthops splits DefaultGwIp / DefaultGwIp6 into family-correct nexthops.
+// Legacy servers may place an IPv6 address in DefaultGwIp when the client has no EndpointIP.
+func NormalizeIGWNexthops(gwIP, gwIP6 net.IP) (gw4, gw6 net.IP) {
+	gw4, gw6 = gwIP, gwIP6
+	if len(gw4) > 0 && gw4.To4() == nil {
+		if len(gw6) == 0 {
+			gw6 = gw4
+		}
+		gw4 = nil
+	}
+	if len(gw6) > 0 && gw6.To4() != nil {
+		gw6 = nil
+	}
+	if len(gw4) == 0 {
+		gw4 = nil
+	}
+	if len(gw6) == 0 {
+		gw6 = nil
+	}
+	return gw4, gw6
+}
+
 var ErrPeerNotFound = fmt.Errorf("peer not found")
 
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced

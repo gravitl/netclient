@@ -283,9 +283,9 @@ func SetRoutesFromCache() {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
 	//inetGW route
-	gwIp := config.Netclient().CurrGwNmIP
-	if gwIp != nil {
-		if !GetIGWMonitor().IsCurrentIGW(gwIp) {
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 != nil || gw6 != nil {
+		if !GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			var igw wgtypes.PeerConfig
 			for _, peer := range config.Netclient().HostPeers {
 				for _, peerIP := range peer.AllowedIPs {
@@ -298,7 +298,7 @@ func SetRoutesFromCache() {
 
 			_ = RestoreInternetGw()
 
-			SetInternetGw(igw.PublicKey.String(), gwIp)
+			SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 		}
 	}
 }

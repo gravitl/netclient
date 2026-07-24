@@ -260,17 +260,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.IPDetectionInterval = peerUpdate.IPDetectionInterval
 		saveServerConfig = true
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-
 	//setup the default gateway when change_default_gw set to true
 	if peerUpdate.ChangeDefaultGw {
+		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
 		//only update if the current gateway ip is not the same as desired
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(peerUpdate.DefaultGwIp) {
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			var igw wgtypes.PeerConfig
 			for _, peer := range peerUpdate.Peers {
 				for _, peerIP := range peer.AllowedIPs {
@@ -283,20 +277,17 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 			_ = wireguard.RestoreInternetGw()
 
-			err = wireguard.SetInternetGw(igw.PublicKey.String(), peerUpdate.DefaultGwIp)
+			err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 			if err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
-				return
+				// Continue applying peers even if IGW setup failed.
 			}
 		}
-	} else {
-		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
-			err = wireguard.RestoreInternetGw()
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
+	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		// Server cleared exit-node routing; remove any installed IGW routes.
+		err = wireguard.RestoreInternetGw()
+		if err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
 		}
 	}
 	if !peerUpdate.ServerConfig.EndpointDetection {
@@ -842,17 +833,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.IPDetectionInterval = pullResponse.ServerConfig.IPDetectionInterval
 		saveServerConfig = true
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-
 	//setup the default gateway when change_default_gw set to true
 	if pullResponse.ChangeDefaultGw {
+		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
 		//only update if the current gateway ip is not the same as desired
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(pullResponse.DefaultGwIp) {
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			var igw wgtypes.PeerConfig
 			for _, peer := range pullResponse.Peers {
 				for _, peerIP := range peer.AllowedIPs {
@@ -865,20 +850,15 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 			_ = wireguard.RestoreInternetGw()
 
-			err = wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
-			if err != nil {
+			if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 				slog.Error("error setting default gateway", "error", err.Error())
-				return
+				// Continue applying peers even if IGW setup failed.
 			}
 		}
-	} else {
-		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
-			err = wireguard.RestoreInternetGw()
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
+	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		// Server cleared exit-node routing; remove any installed IGW routes.
+		if err := wireguard.RestoreInternetGw(); err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
 		}
 	}
 	if !pullResponse.ServerConfig.EndpointDetection {
