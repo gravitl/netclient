@@ -38,7 +38,8 @@ type IGWMonitor struct {
 }
 
 type igwStatus struct {
-	networkIP    net.IP
+	gw4          net.IP
+	gw6          net.IP
 	publicKey    string
 	isHealthy    bool
 	successCount int
@@ -52,8 +53,8 @@ func GetIGWMonitor() *IGWMonitor {
 	return igwMonitor
 }
 
-// Monitor starts the monitor.
-func (m *IGWMonitor) Monitor(publicKey string, networkIP net.IP) {
+// Monitor starts the monitor for dual-stack (or single-family) internet gateway nexthops.
+func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 	m.mu.Lock()
 	// ideally, it should never happen that we have multiple
 	// internet gateways, but just in case it happens, we need to
@@ -66,7 +67,8 @@ func (m *IGWMonitor) Monitor(publicKey string, networkIP net.IP) {
 	m.cancelFunc = cancel
 
 	s := &igwStatus{
-		networkIP: networkIP,
+		gw4:       gw4,
+		gw6:       gw6,
 		publicKey: publicKey,
 		isHealthy: true, // Assume healthy initially
 	}
@@ -104,9 +106,18 @@ func (m *IGWMonitor) Stop() {
 	m.status = nil
 }
 
-// IsCurrentIGW returns true if the node represented by the networkIP is
-// the current internet gateway.
-func (m *IGWMonitor) IsCurrentIGW(networkIP net.IP) bool {
+func ipEqual(a, b net.IP) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	return a.Equal(b)
+}
+
+// IsCurrentIGW returns true if the configured nexthops match the current internet gateway.
+func (m *IGWMonitor) IsCurrentIGW(gw4, gw6 net.IP) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -114,7 +125,15 @@ func (m *IGWMonitor) IsCurrentIGW(networkIP net.IP) bool {
 		return false
 	}
 
-	return m.status.networkIP.Equal(networkIP)
+	return ipEqual(m.status.gw4, gw4) && ipEqual(m.status.gw6, gw6)
+}
+
+// dialIP returns the preferred nexthop for health checks (IPv4 preferred).
+func (s *igwStatus) dialIP() net.IP {
+	if len(s.gw4) > 0 {
+		return s.gw4
+	}
+	return s.gw6
 }
 
 // check verifies whether the internet gateway is reachable and updates its
@@ -136,7 +155,12 @@ func (s *igwStatus) check() {
 		return
 	}
 
-	reachable := isHostReachable(s.networkIP, igw.Endpoint.Port)
+	dialIP := s.dialIP()
+	if dialIP == nil || igw.Endpoint == nil {
+		return
+	}
+
+	reachable := isHostReachable(dialIP, igw.Endpoint.Port)
 	if reachable {
 		logger.Log(2, "internet gateway detected up")
 
@@ -168,13 +192,13 @@ func (s *igwStatus) setHealthy(igw wgtypes.Peer) {
 
 	logger.Log(0, "restoring default routes for internet gateway")
 	// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
-	err := restoreDefaultRoutesOnIGWPeer(igw, s.networkIP)
+	err := restoreDefaultRoutesOnIGWPeer(igw, s.gw4, s.gw6)
 	if err != nil {
 		logger.Log(0, "failed to restore default routes for internet gateway:", err.Error())
 	}
 
 	logger.Log(0, "setting default routes on host")
-	err = setDefaultRoutesOnHost(s.publicKey, s.networkIP)
+	err = setDefaultRoutesOnHost(s.publicKey, s.gw4, s.gw6)
 	if err != nil {
 		logger.Log(0, "failed to set default routes on host:", err.Error())
 	}
@@ -203,8 +227,8 @@ func (s *igwStatus) setUnhealthy(igw wgtypes.Peer) {
 }
 
 // restoreDefaultRoutesOnIGWPeer restores default routes (0.0.0.0/0,::/0)
-// to the internet gateway peer.
-func restoreDefaultRoutesOnIGWPeer(igw wgtypes.Peer, networkIP net.IP) error {
+// to the internet gateway peer for each configured family.
+func restoreDefaultRoutesOnIGWPeer(igw wgtypes.Peer, gw4, gw6 net.IP) error {
 	var ipv4Present, ipv6Present bool
 	newAllowedIPs := igw.AllowedIPs
 	for _, allowedIP := range newAllowedIPs {
@@ -217,15 +241,12 @@ func restoreDefaultRoutesOnIGWPeer(igw wgtypes.Peer, networkIP net.IP) error {
 		}
 	}
 
-	isIPv4 := networkIP.To4() != nil
-	isIPV6 := networkIP.To4() == nil
-
-	if isIPv4 && !ipv4Present {
+	if gw4 != nil && !ipv4Present {
 		_, ipv4Net, _ := net.ParseCIDR(IPv4Network)
 		newAllowedIPs = append(newAllowedIPs, *ipv4Net)
 	}
 
-	if isIPV6 && !ipv6Present {
+	if gw6 != nil && !ipv6Present {
 		_, ipv6Net, _ := net.ParseCIDR(IPv6Network)
 		newAllowedIPs = append(newAllowedIPs, *ipv6Net)
 	}

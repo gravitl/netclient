@@ -177,16 +177,23 @@ func getInterfaceInfo() (iList []string, err error) {
 	return iList, nil
 }
 
-// getDefaultGateway - an internal function to get the default gateway route entry
-func getDefaultGateway() (output []string, err error) {
+// getDefaultGateway - returns the highest-priority default gateway route for the given IP family ("v4" or "v6").
+func getDefaultGateway(family string) (output []string, err error) {
+	var cmd, network string
+	switch family {
+	case "v6":
+		cmd = "netsh int ipv6 show route"
+		network = IPv6Network
+	default:
+		cmd = "netsh int ipv4 show route"
+		network = IPv4Network
+	}
 
-	//get current ipv4 route
-	input, err := ncutils.RunCmd("netsh int ipv4 show route", true)
+	input, err := ncutils.RunCmd(cmd, true)
 	if err != nil {
 		return []string{}, err
 	}
 
-	//split the output to multiple lines
 	var rList []string
 	if strings.Contains(input, "\r") {
 		rList = strings.Split(input, "\r")
@@ -194,40 +201,16 @@ func getDefaultGateway() (output []string, err error) {
 		rList = strings.Split(input, "\n")
 	}
 
-	//get the lines with gateway route
 	rLines := []string{}
 	for _, l := range rList {
-		if strings.Contains(l, IPv4Network) {
+		if strings.Contains(l, network) {
 			rLines = append(rLines, l)
-		}
-	}
-
-	if len(rLines) == 0 {
-		//get current ipv6 route
-		input, err := ncutils.RunCmd("netsh int ipv6 show route", true)
-		if err != nil {
-			return []string{}, err
-		}
-
-		//split the output to multiple lines
-		var rList []string
-		if strings.Contains(input, "\r") {
-			rList = strings.Split(input, "\r")
-		} else if strings.Contains(input, "\n") {
-			rList = strings.Split(input, "\n")
-		}
-
-		//get the lines with gateway route
-		for _, l := range rList {
-			if strings.Contains(l, IPv6Network) {
-				rLines = append(rLines, l)
-			}
 		}
 	}
 
 	//in case that multiple default gateway in the route table, return the one with higher priority
 	if len(rLines) == 0 {
-		output = []string{}
+		return []string{}, nil
 	} else if len(rLines) == 1 {
 		output = strings.Fields(rLines[0])
 	} else {
@@ -281,7 +264,7 @@ func getDefaultGateway() (output []string, err error) {
 func GetDefaultGatewayIp() (ip net.IP, err error) {
 
 	//filter and get current default gateway route
-	gwRoute, err := getDefaultGateway()
+	gwRoute, err := getDefaultGateway("v4")
 	if err != nil || len(gwRoute) == 0 {
 		return ip, errors.New("no default gateway found, please run command route -n to check in the route table")
 	}
@@ -293,49 +276,101 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 	return ip, nil
 }
 
-// SetInternetGw - set a new default gateway and the route to Internet Gw's ip address
-func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
-	err = setDefaultRoutesOnHost(publicKey, networkIP)
-	if err == nil {
-		GetIGWMonitor().Monitor(publicKey, networkIP)
+// GetDefaultGatewayIp6 - get current default gateway IPv6 address when present.
+func GetDefaultGatewayIp6() (ip net.IP, err error) {
+	if len(config.Netclient().OriginalDefaultGatewayIp6) > 0 {
+		return config.Netclient().OriginalDefaultGatewayIp6, nil
 	}
+	gwRoute, err := getDefaultGateway("v6")
+	if err != nil || len(gwRoute) == 0 {
+		return nil, errors.New("no IPv6 default gateway found")
+	}
+	ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
+	ip = net.ParseIP(ipString)
+	if ip == nil || ip.To4() != nil {
+		return nil, errors.New("no IPv6 default gateway found")
+	}
+	return ip, nil
+}
 
+// SetInternetGw - set a new default gateway and the route to Internet Gw's ip address.
+// Installs IPv4 and/or IPv6 OS default routes when the corresponding nexthop is present.
+func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
+	if IsZeroWGPublicKey(publicKey) {
+		return fmt.Errorf("internet gateway peer public key is empty")
+	}
+	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
+	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
+		if err != nil {
+			slog.Warn("internet gateway partially configured", "error", err.Error())
+		}
+		return nil
+	}
 	return err
 }
 
-func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
-	if ipv4 := networkIP.To4(); ipv4 != nil {
-		return setInternetGwV4(publicKey, networkIP)
-	} else {
-		return setInternetGwV6(publicKey, networkIP)
+func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
+	var firstErr error
+	if len(gw4) > 0 {
+		if err := setInternetGwV4(publicKey, gw4); err != nil {
+			slog.Error("failed to set IPv4 internet gateway", "error", err.Error())
+			firstErr = err
+		}
 	}
+	if len(gw6) > 0 {
+		if err := setInternetGwV6(publicKey, gw6); err != nil {
+			slog.Error("failed to set IPv6 internet gateway", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 // setInternetGwV6 - set a new default gateway and the route to Internet Gw's ip address
 func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
+	// Capture original IPv6 default gateway without clobbering the IPv4 original.
+	if len(config.Netclient().OriginalDefaultGatewayIp6) == 0 {
+		if gwRoute, err := getDefaultGateway("v6"); err == nil && len(gwRoute) > 0 {
+			ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
+			if ip := net.ParseIP(ipString); ip != nil && ip.To4() == nil {
+				config.Netclient().OriginalDefaultGatewayIp6 = ip
+			}
+		}
+	}
 
 	//get current default gateway route
-	gwRoute, err := getDefaultGateway()
+	gwRoute, err := getDefaultGateway("v6")
 	if err != nil || len(gwRoute) == 0 {
-		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
+		if err != nil {
+			slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
+		}
 	} else {
 		//if default gateway metric is 0, then reset it to 50
 		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
 		metric := strings.TrimSpace(gwRoute[2])
 		if metric == "0" && ipString != networkIP.String() {
-			//set the original gateway metric to 50
-			setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPv6Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
+			parsed := net.ParseIP(ipString)
+			if parsed != nil && parsed.To4() == nil {
+				if len(config.Netclient().OriginalDefaultGatewayIp6) == 0 {
+					config.Netclient().OriginalDefaultGatewayIp6 = parsed
+				}
+				//set the original gateway metric to 50
+				setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPv6Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 
-			_, err = ncutils.RunCmd(setGwCmd, true)
-			if err != nil {
-				slog.Error("Failed to set original gateway route metric", "error", err.Error())
-				slog.Error("please change the metric to 50 manaull to avoid issue", "error")
-				slog.Error("netsh int ipv6 set route ::/0 interface=<Idx> nexthop=<ipv6 address> store=active metric=50", "error")
+				_, err = ncutils.RunCmd(setGwCmd, true)
+				if err != nil {
+					slog.Error("Failed to set original gateway route metric", "error", err.Error())
+					slog.Error("please change the metric to 50 manaull to avoid issue", "error")
+					slog.Error("netsh int ipv6 set route ::/0 interface=<Idx> nexthop=<ipv6 address> store=active metric=50", "error")
+				}
 			}
 		}
 
 		igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-		if err == nil {
+		if err == nil && igw.Endpoint != nil && igw.Endpoint.IP.To4() == nil {
 			destination := igw.Endpoint.IP.String() + "/128"
 			gwRouteCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 			_, err = ncutils.RunCmd(gwRouteCmd, true)
@@ -354,15 +389,18 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		return err
 	}
 
-	config.Netclient().CurrGwNmIP = networkIP
-	return nil
+	config.Netclient().CurrGwNmIP6 = networkIP
+	if len(config.Netclient().CurrGwNmIP) == 0 {
+		config.Netclient().CurrGwNmIP = networkIP
+	}
+	return config.WriteNetclientConfig()
 }
 
 // setInternetGwV4 - set a new default gateway and the route to Internet Gw's ip address
 func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 
 	//get current default gateway route
-	gwRoute, err := getDefaultGateway()
+	gwRoute, err := getDefaultGateway("v4")
 	if err != nil || len(gwRoute) == 0 {
 		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
 	} else {
@@ -418,11 +456,22 @@ func RestoreInternetGw() (err error) {
 }
 
 func resetDefaultRoutesOnHost() error {
-	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
-		return restoreInternetGwV4()
-	} else {
-		return restoreInternetGwV6()
+	var firstErr error
+	curr := config.Netclient().CurrGwNmIP
+	curr6 := config.Netclient().CurrGwNmIP6
+	needV4 := curr != nil && len(curr) > 0 && curr.To4() != nil
+	needV6 := (curr6 != nil && len(curr6) > 0) || (curr != nil && len(curr) > 0 && curr.To4() == nil)
+	if needV4 {
+		if err := restoreInternetGwV4(); err != nil {
+			firstErr = err
+		}
 	}
+	if needV6 {
+		if err := restoreInternetGwV6(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // restoreInternetGwV6 - restore the old default gateway and delte the route to the Internet Gw's ip address
@@ -446,7 +495,7 @@ func restoreInternetGwV6() (err error) {
 	}
 
 	//get current default gateway route
-	gwRoute, err := getDefaultGateway()
+	gwRoute, err := getDefaultGateway("v6")
 	if err != nil || len(gwRoute) == 0 {
 		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
 	} else {
@@ -475,7 +524,10 @@ func restoreInternetGwV6() (err error) {
 		}
 	}
 
-	config.Netclient().CurrGwNmIP = net.ParseIP("")
+	config.Netclient().CurrGwNmIP6 = net.ParseIP("")
+	if curr := config.Netclient().CurrGwNmIP; curr != nil && curr.To4() == nil {
+		config.Netclient().CurrGwNmIP = net.ParseIP("")
+	}
 	return config.WriteNetclientConfig()
 }
 
@@ -500,7 +552,7 @@ func restoreInternetGwV4() (err error) {
 	}
 
 	//get current default gateway route
-	gwRoute, err := getDefaultGateway()
+	gwRoute, err := getDefaultGateway("v4")
 	if err != nil || len(gwRoute) == 0 {
 		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
 	} else {
