@@ -286,19 +286,11 @@ func SetRoutesFromCache() {
 	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
 	if gw4 != nil || gw6 != nil {
 		if !GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
-			var igw wgtypes.PeerConfig
-			for _, peer := range config.Netclient().HostPeers {
-				for _, peerIP := range peer.AllowedIPs {
-					if peerIP.String() == IPv4Network || peerIP.String() == IPv6Network {
-						igw = peer
-						break
-					}
-				}
+			igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+			if ok {
+				_ = RestoreInternetGw()
+				SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 			}
-
-			_ = RestoreInternetGw()
-
-			SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 		}
 	}
 }

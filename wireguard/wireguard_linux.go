@@ -369,6 +369,9 @@ func getSourceIpv6(gw net.IP) (src net.IP) {
 // SetInternetGw - set a new default gateway and add rules to activate it.
 // Installs IPv4 and/or IPv6 OS default routes when the corresponding nexthop is present.
 func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
+	if IsZeroWGPublicKey(publicKey) {
+		return fmt.Errorf("internet gateway peer public key is empty")
+	}
 	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
 	// Monitor whenever at least one family was installed.
 	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {

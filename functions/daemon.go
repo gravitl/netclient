@@ -295,23 +295,18 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		if pullresp.ChangeDefaultGw {
 			gw4, gw6 := wireguard.NormalizeIGWNexthops(pullresp.DefaultGwIp, pullresp.DefaultGwIp6)
 			if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
-				var igw wgtypes.PeerConfig
-				for _, peer := range pullresp.Peers {
-					for _, peerIP := range peer.AllowedIPs {
-						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-							igw = peer
-							break
-						}
+				igw, ok := wireguard.FindInternetGwPeer(pullresp.Peers, gw4, gw6)
+				if !ok {
+					slog.Warn("internet gateway peer not found in peer update; skipping default gateway setup")
+				} else {
+					// unlikely that the gwIP is netmaker IP, but still
+					// reset the igw.
+					_ = wireguard.RestoreInternetGw()
+
+					err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
+					if err != nil {
+						slog.Warn("failed to set inet gw", "error", err)
 					}
-				}
-
-				// unlikely that the gwIP is netmaker IP, but still
-				// reset the igw.
-				_ = wireguard.RestoreInternetGw()
-
-				err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
-				if err != nil {
-					slog.Warn("failed to set inet gw", "error", err)
 				}
 			}
 		}
