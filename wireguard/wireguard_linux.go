@@ -373,16 +373,12 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 		return fmt.Errorf("internet gateway peer public key is empty")
 	}
 	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
-	// Monitor whenever at least one family was installed.
 	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
-		// Partial success (e.g. v4 ok, v6 soft-failed) should not block the IGW path.
-		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
-			if err != nil {
-				slog.Warn("internet gateway partially configured", "error", err.Error())
-			}
-			return nil
+		if err != nil {
+			slog.Warn("internet gateway partially configured", "error", err.Error())
 		}
+		return nil
 	}
 	return err
 }
