@@ -804,42 +804,76 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			defaultIface := config.Netclient().DefaultInterface
 			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
 				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
-			} else if isAddrIpv4(egressGwRange.Network) {
+			} else {
 				lanCIDR := config.ToIPNet(egressGwRange.Network)
 				additionalRuleSpec := []string{
 					"-s", egressGwRange.Network,
 					"-o", ncutils.GetInterfaceName(),
 					"-j", "MASQUERADE",
 				}
-				additionalExp := []expr.Any{
-					&expr.Payload{
-						DestRegister: 1,
-						Base:         expr.PayloadBaseNetworkHeader,
-						Offset:       12, // Source address offset in IPv4 header
-						Len:          4,
-					},
-					&expr.Bitwise{
-						SourceRegister: 1,
-						DestRegister:   1,
-						Len:            4,
-						Mask:           lanCIDR.Mask,
-						Xor:            []byte{0, 0, 0, 0},
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     lanCIDR.IP.To4(),
-					},
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
-					},
-					&expr.Masq{},
+				var additionalExp []expr.Any
+				if isAddrIpv4(egressGwRange.Network) {
+					additionalExp = []expr.Any{
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       12, // Source address offset in IPv4 header
+							Len:          4,
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            4,
+							Mask:           lanCIDR.Mask,
+							Xor:            []byte{0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     lanCIDR.IP.To4(),
+						},
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+						},
+						&expr.Masq{},
+					}
+				} else {
+					additionalExp = []expr.Any{
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       8,  // Source address offset in IPv6 header
+							Len:          16, // Length of IPv6 address
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            16,
+							Mask:           lanCIDR.Mask,
+							Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     lanCIDR.IP.To16(),
+						},
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+						},
+						&expr.Masq{},
+					}
 				}
 				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(additionalRuleSpec...))
 				additionalRule := &nftables.Rule{
