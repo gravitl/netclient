@@ -125,16 +125,17 @@ func RemoveEgressRoutes() {
 	cache.EgressRouteCache = sync.Map{}
 }
 
-// isNetworkPresentOnLocalInterface checks whether the given network overlaps
+// IsNetworkPresentOnLocalInterface checks whether the given network overlaps
 // with any address already assigned to a local network interface (excluding
 // the netmaker WG interface). Overlap means the egress network contains a
 // local interface IP, which would cause a routing conflict.
-func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
+func IsNetworkPresentOnLocalInterface(network net.IPNet) bool {
 	ncIfaceName := ncutils.GetInterfaceName()
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return false
 	}
+	netOnes, netBits := network.Mask.Size()
 	for _, iface := range ifaces {
 		if iface.Name == ncIfaceName {
 			continue
@@ -148,10 +149,12 @@ func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
 			if !ok {
 				continue
 			}
-			if network.Contains(ipNet.IP) || ipNet.Contains(network.IP) {
+			localOnes, localBits := ipNet.Mask.Size()
+			if localOnes == netOnes &&
+				localBits == netBits &&
+				ipNet.IP.Mask(ipNet.Mask).Equal(network.IP.Mask(network.Mask)) {
 				return true
 			}
-
 		}
 	}
 	return false
@@ -160,7 +163,7 @@ func isNetworkPresentOnLocalInterface(network net.IPNet) bool {
 func filterConflictingRoutes(addrs []ifaceAddress) []ifaceAddress {
 	filtered := make([]ifaceAddress, 0, len(addrs))
 	for _, addr := range addrs {
-		if addr.Network.IP != nil && isNetworkPresentOnLocalInterface(addr.Network) {
+		if addr.Network.IP != nil && IsNetworkPresentOnLocalInterface(addr.Network) {
 			slog.Warn("skipping egress route that conflicts with local interface address",
 				"network", addr.Network.String())
 			continue
@@ -280,22 +283,14 @@ func SetRoutesFromCache() {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
 	//inetGW route
-	gwIp := config.Netclient().CurrGwNmIP
-	if gwIp != nil {
-		if !GetIGWMonitor().IsCurrentIGW(gwIp) {
-			var igw wgtypes.PeerConfig
-			for _, peer := range config.Netclient().HostPeers {
-				for _, peerIP := range peer.AllowedIPs {
-					if peerIP.String() == IPv4Network || peerIP.String() == IPv6Network {
-						igw = peer
-						break
-					}
-				}
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 != nil || gw6 != nil {
+		if !GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+			if ok {
+				_ = RestoreInternetGw()
+				SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 			}
-
-			_ = RestoreInternetGw()
-
-			SetInternetGw(igw.PublicKey.String(), gwIp)
 		}
 	}
 }

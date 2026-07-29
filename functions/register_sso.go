@@ -2,6 +2,7 @@ package functions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -67,6 +69,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 		return
 	}
 
+	posture.ApplyIdentity(&host.Host)
 	request := models.RegisterMsg{
 		RegisterHost: host.Host,
 		User:         registerData.User,
@@ -81,7 +84,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 }
 
 func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn *websocket.Conn) error {
-	reqData, err := json.Marshal(&reqMsg)
+	reqData, err := json.Marshal(reqMsg)
 	if err != nil {
 		return err
 	}
@@ -91,40 +94,35 @@ func handeServerSSORegisterConn(reqMsg *models.RegisterMsg, apiURI string, conn 
 	done := make(chan struct{})
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
+	defer signal.Stop(interrupt)
 
 	go func() {
 		defer close(done)
 		for {
-			msgType, msg, err := conn.ReadMessage()
+			_, msg, err := conn.ReadMessage()
 			if err != nil {
-				if msgType < 0 {
-					logger.Log(1, "received close message from server")
-					done <- struct{}{}
+				var closeErr *websocket.CloseError
+				if errors.As(err, &closeErr) {
+					logger.Log(1, fmt.Sprintf("received close from server: %d", closeErr.Code))
+					if closeErr.Text != "" {
+						fmt.Printf("error registering with server %s: %s\n", apiURI, closeErr.Text)
+					}
 					return
 				}
-				if !strings.Contains(err.Error(), "normal") { // Error reading a message from the server
-					logger.Log(0, "read:", err.Error())
-				}
-				return
-			}
-
-			if msgType == websocket.CloseMessage {
-				logger.Log(1, "received close message from server")
-				done <- struct{}{}
+				logger.Log(0, "read:", err.Error())
 				return
 			}
 			if strings.Contains(string(msg), "oauth/register") {
 				fmt.Printf("Please visit:\n %s \nto authenticate\n", string(msg))
-			} else {
-				var response models.RegisterResponse
-				if err := json.Unmarshal(msg, &response); err != nil {
-					fmt.Printf("%s\n", string(msg))
-					done <- struct{}{}
-					return
-				}
-				handleRegisterResponse(&response)
+				continue
 			}
-
+			var response models.RegisterResponse
+			if err := json.Unmarshal(msg, &response); err != nil {
+				fmt.Printf("%s\n", string(msg))
+				return
+			}
+			handleRegisterResponse(&response)
+			return
 		}
 	}()
 

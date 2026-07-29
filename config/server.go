@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
-	"github.com/sasha-s/go-deadlock"
 )
 
-var serverMutex = &deadlock.RWMutex{}
+var serverMutex sync.RWMutex
 
 var serverCtxFile = ".serverctx"
 
@@ -34,19 +33,6 @@ type Server struct {
 	AccessKey      string              `json:"accesskey" yaml:"accesskey"`
 	NameServers    []string            `json:"name_servers"`
 	DnsNameservers []models.Nameserver `json:"dns_nameservers"`
-}
-
-// OldNetmakerServerConfig - pre v0.18.0 server configuration
-type OldNetmakerServerConfig struct {
-	CoreDNSAddr string `yaml:"corednsaddr"`
-	API         string `yaml:"api"`
-	APIPort     string `yaml:"apiport"`
-	ClientMode  string `yaml:"clientmode"`
-	DNSMode     string `yaml:"dnsmode"`
-	Version     string `yaml:"version"`
-	MQPort      string `yaml:"mqport"`
-	Server      string `yaml:"server"`
-	Is_EE       bool   `yaml:"isee"`
 }
 
 // TurnConfig - struct to hold turn server config
@@ -175,22 +161,6 @@ func DeleteServer(k string) {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
 	delete(Servers, k)
-}
-
-// ConvertServerCfg converts a netmaker ServerConfig to netclient server struct
-func ConvertServerCfg(cfg *OldNetmakerServerConfig) *Server {
-	var server Server
-	server.Name = strings.Replace(cfg.Server, "broker.", "", 1)
-	server.Version = cfg.Version
-	server.Broker = cfg.Server
-	server.MQPort = cfg.MQPort
-	server.MQID = netclient.ID
-	server.API = cfg.API
-	server.CoreDNSAddr = cfg.CoreDNSAddr
-	server.IsPro = cfg.Is_EE
-	server.DNSMode = cfg.DNSMode
-	server.Nodes = make(map[string]bool)
-	return &server
 }
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server

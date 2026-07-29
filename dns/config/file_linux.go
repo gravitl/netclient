@@ -67,9 +67,14 @@ func (f *fileManager) Configure(iface string, config Config) error {
 
 	var nameservers []net.IP
 	var searchDomains []string
+	var fullTunnelDNS bool
 	nameserversMap := make(map[string]bool)
 	searchDomainsMap := make(map[string]bool)
 	for _, config := range f.configs {
+		if !config.SplitDNS {
+			fullTunnelDNS = true
+		}
+
 		for _, nameserver := range config.Nameservers {
 			_, ok := nameserversMap[nameserver.String()]
 			if !ok {
@@ -85,6 +90,10 @@ func (f *fileManager) Configure(iface string, config Config) error {
 				searchDomains = append(searchDomains, domain)
 			}
 		}
+	}
+
+	if !fullTunnelDNS {
+		nameservers = append(nameservers, net.ParseIP("8.8.8.8"), net.ParseIP("2001:4860:4860::8888"))
 	}
 
 	return f.writeConfig(nameservers, searchDomains)

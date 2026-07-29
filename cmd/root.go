@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
@@ -50,7 +50,7 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(functions.Migrate, initConfig)
+	cobra.OnInitialize(initConfig)
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
@@ -416,6 +416,9 @@ func checkConfig() {
 	if config.FirewallHasChanged() {
 		saveRequired = true
 		config.SetFirewall()
+	}
+	if posture.ApplyIdentityIfChanged(&netclient.Host) {
+		saveRequired = true
 	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")
