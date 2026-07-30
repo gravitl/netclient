@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 )
 
 var serverMutex sync.RWMutex
@@ -27,12 +28,13 @@ const ServerLockfile = "netclient-servers.lck"
 // Server represents a server configuration
 type Server struct {
 	models.ServerConfig
-	Name           string              `json:"name" yaml:"name"`
-	MQID           uuid.UUID           `json:"mqid" yaml:"mqid"`
-	Nodes          map[string]bool     `json:"nodes" yaml:"nodes"`
-	AccessKey      string              `json:"accesskey" yaml:"accesskey"`
-	NameServers    []string            `json:"name_servers"`
-	DnsNameservers []models.Nameserver `json:"dns_nameservers"`
+	HostIDs        map[string]uuid.UUID `json:"host_ids"`
+	Name           string               `json:"name" yaml:"name"`
+	MQID           uuid.UUID            `json:"mqid" yaml:"mqid"`
+	Nodes          map[string]bool      `json:"nodes" yaml:"nodes"`
+	AccessKey      string               `json:"accesskey" yaml:"accesskey"`
+	NameServers    []string             `json:"name_servers"`
+	DnsNameservers []models.Nameserver  `json:"dns_nameservers"`
 }
 
 // TurnConfig - struct to hold turn server config
@@ -164,7 +166,7 @@ func DeleteServer(k string) {
 }
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
-func UpdateServerConfig(cfg *models.ServerConfig) {
+func UpdateServerConfig(cfg *models.ServerConfig, host *schema.Host) {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
 	if cfg == nil {
@@ -175,6 +177,10 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 		server = Server{}
 		server.Nodes = make(map[string]bool)
 	}
+	if server.HostIDs == nil {
+		server.HostIDs = make(map[string]uuid.UUID)
+	}
+	server.HostIDs[host.TenantID] = host.ID
 	server.Name = cfg.Server
 	server.MQID = netclient.ID
 	server.ServerConfig = *cfg

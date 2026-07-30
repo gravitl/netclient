@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 // Register - should be simple to register with a token
@@ -44,7 +45,7 @@ func Register(token string) error {
 	} else if defaultInterface != ncutils.GetInterfaceName() {
 		host.DefaultInterface = defaultInterface
 	}
-	shouldUpdateHost, err := doubleCheck(host)
+	shouldUpdateHost, err := doubleCheck(serverData.TenantID, host)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
 	}
@@ -55,6 +56,7 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, serverData.TenantID)
 	posture.ApplyIdentity(&host.Host)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {
@@ -81,7 +83,7 @@ func Register(token string) error {
 	return nil
 }
 
-func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
+func doubleCheck(tenantID string, host *config.Config) (shouldUpdate bool, err error) {
 	var shouldUpdateHost bool
 
 	if len(config.CurrServer) == 0 { // should indicate a first join
@@ -107,6 +109,23 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 			host.HostPass = ncutils.RandomString(32)
 			shouldUpdateHost = true
 		}
+	} else {
+		server := config.GetServer(config.CurrServer)
+		if server != nil {
+			if server.HostIDs == nil {
+				server.HostIDs = make(map[string]uuid.UUID)
+			}
+
+			_, ok := server.HostIDs[tenantID]
+			if !ok {
+				host.ID, err = uuid.NewUUID()
+				if err != nil {
+					return false, err
+				}
+			} else {
+				host.ID = server.HostIDs[tenantID]
+			}
+		}
 	}
 
 	if shouldUpdateHost {
@@ -118,7 +137,7 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 }
 
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
-	config.UpdateServerConfig(&registerResponse.ServerConf)
+	config.UpdateServerConfig(&registerResponse.ServerConf, &registerResponse.RequestedHost)
 	server := config.GetServer(registerResponse.ServerConf.Server)
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
