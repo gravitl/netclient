@@ -22,9 +22,9 @@ const (
 	EgressRouteMetric = 256
 )
 
-// useKernelWireGuard prefers kernel WG unless TCP relay uplink is enabled (needs userspace conn.Bind).
+// useKernelWireGuard prefers kernel WG unless TCP uplink needs userspace conn.Bind.
 func useKernelWireGuard() bool {
-	return isKernelWireGuardPresent() && !relayTCPUplinkEnvConfigured()
+	return isKernelWireGuardPresent() && !relayTCPUserspaceNeeded()
 }
 
 // NCIface.Create - creates a linux WG interface based on a node's host config
@@ -58,22 +58,27 @@ func (nc *NCIface) Create() error {
 		}
 		return nil
 	} else if isTunModuleLoaded() {
-		if relayTCPUplinkEnvConfigured() {
-			slog.Info("TCP relay uplink configured: using userspace WireGuard for conn.Bind integration with proxy transport.")
+		if relayTCPUserspaceNeeded() {
+			slog.Info("TCP uplink enabled: using userspace WireGuard for conn.Bind integration.")
 		} else {
 			slog.Info("Kernel WireGuard not detected. Proceeding with userspace WireGuard for iface creation.")
+		}
+		// Remove any existing iface (often a leftover kernel wireguard device) so
+		// CreateTUN can own the name. Do not LinkAdd a kernel "wireguard" device
+		// afterward — that conflicts with the TUN and returns EINVAL.
+		if l, err := netlink.LinkByName(nc.Name); err == nil && l != nil {
+			if err := netlink.LinkDel(l); err != nil {
+				return fmt.Errorf("failed to remove existing interface %s: %w", nc.Name, err)
+			}
 		}
 		if err := nc.createUserSpaceWG(); err != nil {
 			return err
 		}
-		newLink := nc.getKernelLink()
-		if newLink == nil {
-			return fmt.Errorf("failed to create userspace interface")
+		l, err := netlink.LinkByName(nc.Name)
+		if err != nil {
+			return fmt.Errorf("userspace tun %s missing after create: %w", nc.Name, err)
 		}
-		if err := netlink.LinkAdd(newLink); err != nil && !os.IsExist(err) {
-			return err
-		}
-		if err := netlink.LinkSetUp(newLink); err != nil {
+		if err := netlink.LinkSetUp(l); err != nil {
 			return err
 		}
 		return nil
@@ -83,11 +88,11 @@ func (nc *NCIface) Create() error {
 
 // NCIface.SetMTU - sets the mtu for the interface
 func (n *NCIface) SetMTU() error {
-	l := n.getKernelLink()
-	if err := netlink.LinkSetMTU(l, n.MTU); err != nil {
+	l, err := netlink.LinkByName(n.Name)
+	if err != nil {
 		return err
 	}
-	return nil
+	return netlink.LinkSetMTU(l, n.MTU)
 }
 
 // netLink.Attrs - implements required function of NetLink package

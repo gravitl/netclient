@@ -21,6 +21,7 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/flow"
+	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -266,6 +267,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
+	if len(peerUpdate.Nodes) > 0 {
+		config.SetNodes(peerUpdate.Nodes)
+		_ = config.WriteNodeConfig()
+	}
+	proxyuplink.UpdatePeerIDs(peerUpdate.PeerIDs)
+	maybeRestartForTCPUplink()
+	reconcileTCPUplink(server, peerUpdate.PeerIDs)
 	//setup the default gateway when change_default_gw set to true (after peers
 	//are on the interface so IGW monitor can resolve the exit peer).
 	if peerUpdate.ChangeDefaultGw {
@@ -834,6 +842,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	proxyuplink.UpdatePeerIDs(pullResponse.PeerIDs)
+	maybeRestartForTCPUplink()
+	reconcileTCPUplink(server, pullResponse.PeerIDs)
 	//setup the default gateway when change_default_gw set to true (after peers)
 	if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)

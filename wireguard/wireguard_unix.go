@@ -33,7 +33,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	}
 	nc.Iface = tunIface
 	var bind conn.Bind
-	if relayTCPUplinkEnvConfigured() {
+	if relayTCPUserspaceNeeded() {
 		rb := newRelayTCPBind(conn.NewDefaultBind())
 		relayBindMu.Lock()
 		relayBind = rb

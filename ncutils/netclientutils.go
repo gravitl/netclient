@@ -345,11 +345,11 @@ func SetVerbosity(logLevel int) {
 		level = slog.LevelInfo
 	case 2:
 		level = slog.LevelWarn
-	case 3:
+	case 3, 4:
 		level = slog.LevelDebug
 
 	default:
-		level = slog.LevelError
+		level = slog.LevelDebug
 	}
 	// Create the logger with the chosen level
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{

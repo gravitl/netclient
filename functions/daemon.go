@@ -26,6 +26,7 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/flow"
+	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -262,6 +263,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	}
 
+	initTCPUplinkContext(ctx)
+	if pullErr == nil {
+		proxyuplink.UpdatePeerIDs(pullresp.PeerIDs)
+	}
+	_ = prepareTCPUplinkWireGuard(false)
+
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
@@ -288,7 +295,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
-	startRelayTCPUplink(ctx, server)
+	fmt.Println("[tcp-uplink-debug] daemon calling reconcileTCPUplink pullErr=", pullErr)
+	if pullErr == nil {
+		reconcileTCPUplink(server, pullresp.PeerIDs)
+	} else {
+		reconcileTCPUplink(server, nil)
+	}
 	// set original default gw info
 
 	// check if default gw needs to be set
