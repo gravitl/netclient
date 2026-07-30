@@ -109,7 +109,7 @@ func doubleCheck(tenantID string, host *config.Config) (shouldUpdate bool, err e
 			host.HostPass = ncutils.RandomString(32)
 			shouldUpdateHost = true
 		}
-	} else {
+	} else if tenantID != "" {
 		server := config.GetServer(config.CurrServer)
 		if server != nil {
 			if server.HostIDs == nil {
