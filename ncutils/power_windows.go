@@ -10,6 +10,11 @@ import (
 // Power event types delivered to the suspend/resume callback.
 // See: https://learn.microsoft.com/en-us/windows/win32/power/system-power-status
 const (
+	// PBT_APMSUSPEND - the system is about to suspend. Handlers registered for
+	// this event must return quickly (Windows gives very little time, on the
+	// order of a couple seconds, before suspending regardless) - do only cheap,
+	// local work here, not network I/O.
+	PBT_APMSUSPEND = 0x4
 	// PBT_APMRESUMESUSPEND - the user resumed interaction with the system after the system
 	// entered a low-power/suspended state due to user activity (e.g. closing a laptop lid
 	// and reopening it).
@@ -35,18 +40,25 @@ var (
 	suspendResumeNotifyHandle uintptr
 	powerEventCallbackPtr     uintptr
 
+	onSuspend         func()
 	onResumeAutomatic func()
 	onResumeSuspend   func()
 )
 
 // RegisterPowerEventHandlers registers the given functions to run when Windows
-// broadcasts PBT_APMRESUMEAUTOMATIC (system resumed, possibly without user
-// interaction) and PBT_APMRESUMESUSPEND (user resumed interaction after suspend).
-// Either handler may be nil to ignore that event. Calling this again replaces
-// any previously registered handlers and re-registers the notification.
-func RegisterPowerEventHandlers(resumeAutomatic, resumeSuspend func()) error {
+// broadcasts PBT_APMSUSPEND (system about to suspend), PBT_APMRESUMEAUTOMATIC
+// (system resumed, possibly without user interaction), and PBT_APMRESUMESUSPEND
+// (user resumed interaction after suspend). Any handler may be nil to ignore
+// that event. Calling this again replaces any previously registered handlers
+// and re-registers the notification.
+//
+// Note: suspend must return quickly - Windows only allows a couple seconds
+// before it suspends regardless, so the suspend handler should do cheap,
+// local work only, not network I/O.
+func RegisterPowerEventHandlers(suspend, resumeAutomatic, resumeSuspend func()) error {
 	UnregisterPowerEventHandlers()
 
+	onSuspend = suspend
 	onResumeAutomatic = resumeAutomatic
 	onResumeSuspend = resumeSuspend
 
@@ -76,6 +88,7 @@ func UnregisterPowerEventHandlers() {
 		procUnregisterSuspendResumeNotification.Call(suspendResumeNotifyHandle)
 		suspendResumeNotifyHandle = 0
 	}
+	onSuspend = nil
 	onResumeAutomatic = nil
 	onResumeSuspend = nil
 }
@@ -84,6 +97,11 @@ func UnregisterPowerEventHandlers() {
 // event occurs. It must match PDEVICE_NOTIFY_CALLBACK_ROUTINE's signature.
 func powerEventCallback(context, eventType, setting uintptr) uintptr {
 	switch eventType {
+	case PBT_APMSUSPEND:
+		logger.Log(0, "windows power event: PBT_APMSUSPEND (system suspending)")
+		if onSuspend != nil {
+			onSuspend()
+		}
 	case PBT_APMRESUMEAUTOMATIC:
 		logger.Log(0, "windows power event: PBT_APMRESUMEAUTOMATIC (system resumed)")
 		if onResumeAutomatic != nil {
