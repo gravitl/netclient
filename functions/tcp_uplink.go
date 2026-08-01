@@ -52,6 +52,17 @@ func prepareTCPUplinkWireGuard(alreadyRunning bool) (needsRestart bool) {
 	return needsRestart
 }
 
+// StopAllTCPUplink tears down client/server sessions and drains async Bind sends.
+// Must run before userspace Device.Close / iface recreate (disable, SIGHUP, shutdown).
+func StopAllTCPUplink() {
+	tcpUplinkMu.Lock()
+	defer tcpUplinkMu.Unlock()
+	fmt.Println("[tcp-uplink-debug] StopAllTCPUplink")
+	stopTCPClientLocked()
+	stopTCPServerLocked()
+	wireguard.PrepareUserspaceTeardown()
+}
+
 // reconcileTCPUplink starts/stops client and gateway TCP uplink from server-published config.
 func reconcileTCPUplink(server *config.Server, peerIDs models.PeerMap) {
 	fmt.Println("[tcp-uplink-debug] reconcileTCPUplink enter peerIDs_len=", len(peerIDs))
@@ -224,6 +235,8 @@ func stopTCPServerLocked() {
 		return
 	}
 	fmt.Println("[tcp-uplink-debug] server: stopping")
+	wireguard.SetTCPUplinkServer(nil)
+	wireguard.ClearAllTCPPeerRoutes()
 	mgr := tcpServerMgr
 	tcpServerMgr = nil
 	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -232,17 +245,15 @@ func stopTCPServerLocked() {
 	slog.Info("tcp uplink server stopped")
 }
 
-// maybeRestartForTCPUplink restarts the daemon when userspace WG mode must change.
-// Returns true if a restart was scheduled; callers should skip reconcileTCPUplink.
+// maybeRestartForTCPUplink restarts the daemon when userspace WG mode must change
+// (enable or disable TCP uplink). Returns true if a restart was scheduled; callers
+// should skip reconcileTCPUplink.
 func maybeRestartForTCPUplink() bool {
 	if !prepareTCPUplinkWireGuard(true) {
 		return false
 	}
-	// Tear down TCP sessions before iface Close so no Bind.Send hits TLS during reset.
-	tcpUplinkMu.Lock()
-	stopTCPClientLocked()
-	stopTCPServerLocked()
-	tcpUplinkMu.Unlock()
+	// Tear down TCP before SIGHUP so Device.Close cannot race Bind.Send / recv.
+	StopAllTCPUplink()
 
 	fmt.Println("[tcp-uplink-debug] WireGuard mode changed; restarting daemon")
 	slog.Info("tcp uplink config changed WireGuard mode; restarting daemon")

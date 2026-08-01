@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"golang.org/x/exp/slog"
@@ -22,6 +23,19 @@ import (
 var tunDevice *device.Device
 var wg sync.WaitGroup
 var uapi net.Listener
+
+// userspaceWGActive is true while a userspace Device from createUserSpaceWG is live.
+// Close must consult this — not relayTCPUserspaceNeeded() — because disable flips the
+// desired mode before iface.Close(); using the desired flag skips Device.Close and
+// leaves UAPI hung (wg show blocks forever).
+var userspaceWGActive bool
+
+// UserspaceWGActive reports whether the current netmaker iface is userspace WireGuard.
+func UserspaceWGActive() bool {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	return userspaceWGActive
+}
 
 func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
@@ -54,21 +68,33 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
+	userspaceWGActive = true
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		dev := tunDevice
+		listener := uapi
 		for {
+			if dev == nil || listener == nil {
+				return
+			}
 			select {
-			case <-tunDevice.Wait():
+			case <-dev.Wait():
 				slog.Debug("tunDevice.Wait() returned")
 				return
 			default:
-				uapiConn, uapiErr := uapi.Accept()
+				uapiConn, uapiErr := listener.Accept()
 				if uapiErr != nil {
-					slog.Debug("uapi error:", "error", uapiErr)
-					continue
+					// Listener closed or device shutting down — exit instead of spinning.
+					select {
+					case <-dev.Wait():
+						return
+					default:
+						slog.Debug("uapi error:", "error", uapiErr)
+						return
+					}
 				}
-				go tunDevice.IpcHandle(uapiConn)
+				go dev.IpcHandle(uapiConn)
 			}
 		}
 	}()
@@ -88,16 +114,44 @@ func (nc *NCIface) closeUserspaceWg() error {
 	defer wgMutex.Unlock()
 	slog.Debug("Closing userspace WireGuard interface", "interface", nc.Name)
 
+	// Belt-and-suspenders if caller skipped StopAllTCPUplink.
+	PrepareUserspaceTeardown()
+	// Unblock TCP ReceiveFunc before Device.Close (closes inbound chan once).
+	closeRelayTCPInbound()
+
+	// Unblock UAPI Accept before Device.Close so the accept loop can observe Wait().
+	if uapi != nil {
+		_ = uapi.Close()
+		uapi = nil
+	}
 	if tunDevice != nil {
-		tunDevice.Close()
+		done := make(chan struct{})
+		go func(dev *device.Device) {
+			dev.Close()
+			close(done)
+		}(tunDevice)
+		tunDevice = nil
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			slog.Error("userspace WireGuard Device.Close timed out; continuing shutdown")
+		}
 	}
 	relayBindMu.Lock()
 	relayBind = nil
 	relayBindMu.Unlock()
-	if uapi != nil {
-		uapi.Close()
+	userspaceWGActive = false
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(3 * time.Second):
+		slog.Warn("userspace WireGuard UAPI accept loop wait timed out")
 	}
-	wg.Wait()
 
 	slog.Debug("Closed userspace WireGuard interface", "interface", nc.Name)
 

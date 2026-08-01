@@ -119,6 +119,10 @@ func checkAndRestoreDefaultGateway() {
 }
 
 func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
+	// Stop TCP uplink before cancelling daemon ctx / closing the iface so
+	// userspace Device.Close is not blocked on Bind.Send or proxy sessions.
+	StopAllTCPUplink()
+
 	for i := range closers {
 		closers[i]()
 	}

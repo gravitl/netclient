@@ -107,6 +107,16 @@ func (l *netLink) Type() string {
 
 // NCIface.Close closes netmaker interface
 func (n *NCIface) Close() {
+	// Tear down the iface that is actually running. Desired mode (kernel after TCP
+	// uplink disable) may already have flipped via SetNeedTCPUplinkBind(false).
+	if UserspaceWGActive() {
+		n.closeUserspaceWg()
+		// Best-effort remove leftover TUN/link name so kernel WG can recreate it.
+		if l, err := netlink.LinkByName(n.Name); err == nil && l != nil {
+			_ = netlink.LinkDel(l)
+		}
+		return
+	}
 	if useKernelWireGuard() {
 		link := n.getKernelLink()
 		link.Close()

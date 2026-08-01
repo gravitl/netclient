@@ -107,7 +107,8 @@ type relayTCPBind struct {
 	epToPeer map[string]string
 	epCache  map[string]conn.Endpoint
 
-	inbound chan inboundPkt
+	inbound     chan inboundPkt
+	inboundOnce sync.Once
 }
 
 func newRelayTCPBind(udp conn.Bind) *relayTCPBind {
@@ -198,10 +199,14 @@ func (b *relayTCPBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 		return nil, 0, err
 	}
 	b.inbound = make(chan inboundPkt, 256)
-	registerRelayInbound(b.inbound)
+	b.inboundOnce = sync.Once{}
+	inbound := b.inbound
+	registerRelayInbound(inbound)
 
 	recvTCP := func(buf []byte) (int, conn.Endpoint, error) {
-		pkt, ok := <-b.inbound
+		// Use the channel captured at Open — never read b.inbound after Close nils it
+		// (receive on a nil channel blocks forever and freezes Device.Close / wg show).
+		pkt, ok := <-inbound
 		if !ok {
 			return 0, nil, net.ErrClosed
 		}
@@ -217,13 +222,29 @@ func (b *relayTCPBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 	return append(fns, recvTCP), actualPort, nil
 }
 
-func (b *relayTCPBind) Close() error {
-	registerRelayInbound(nil)
-	if b.inbound != nil {
-		ch := b.inbound
-		b.inbound = nil
-		close(ch)
+func (b *relayTCPBind) closeInbound() {
+	b.inboundOnce.Do(func() {
+		registerRelayInbound(nil)
+		if b.inbound != nil {
+			close(b.inbound)
+			// Leave b.inbound non-nil so recvTCP's captured ch still works until close;
+			// the closed channel unblocks receivers. Nil would be wrong for the capture.
+		}
+	})
+}
+
+// closeRelayTCPInbound unblocks the TCP ReceiveFunc before Device.Close.
+func closeRelayTCPInbound() {
+	relayBindMu.Lock()
+	b := relayBind
+	relayBindMu.Unlock()
+	if b != nil {
+		b.closeInbound()
 	}
+}
+
+func (b *relayTCPBind) Close() error {
+	b.closeInbound()
 	return b.udp.Close()
 }
 
