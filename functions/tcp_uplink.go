@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -153,12 +154,10 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 		<-ctx.Done()
 		fmt.Println("[tcp-uplink-debug] client: ctx done, stopping")
 		tcpUplinkMu.Lock()
+		defer tcpUplinkMu.Unlock()
 		if tcpClientMgr == m {
-			wireguard.SetRelayTCPUplink(nil)
-			_ = m.Stop(context.Background())
-			tcpClientMgr = nil
+			stopTCPClientLocked()
 		}
-		tcpUplinkMu.Unlock()
 	}(mgr)
 }
 
@@ -167,9 +166,14 @@ func stopTCPClientLocked() {
 		return
 	}
 	fmt.Println("[tcp-uplink-debug] client: stopping")
+	// Clear route first so Bind.Send falls back to UDP immediately.
+	wireguard.ClearClientRelay()
 	wireguard.SetRelayTCPUplink(nil)
-	_ = tcpClientMgr.Stop(context.Background())
+	mgr := tcpClientMgr
 	tcpClientMgr = nil
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = mgr.Stop(stopCtx)
 	slog.Info("tcp uplink client stopped")
 }
 
@@ -208,11 +212,10 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 		<-ctx.Done()
 		fmt.Println("[tcp-uplink-debug] server: ctx done, stopping")
 		tcpUplinkMu.Lock()
+		defer tcpUplinkMu.Unlock()
 		if tcpServerMgr == m {
-			_ = m.Stop(context.Background())
-			tcpServerMgr = nil
+			stopTCPServerLocked()
 		}
-		tcpUplinkMu.Unlock()
 	}(mgr)
 }
 
@@ -221,18 +224,30 @@ func stopTCPServerLocked() {
 		return
 	}
 	fmt.Println("[tcp-uplink-debug] server: stopping")
-	_ = tcpServerMgr.Stop(context.Background())
+	mgr := tcpServerMgr
 	tcpServerMgr = nil
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = mgr.Stop(stopCtx)
 	slog.Info("tcp uplink server stopped")
 }
 
 // maybeRestartForTCPUplink restarts the daemon when userspace WG mode must change.
-func maybeRestartForTCPUplink() {
-	if prepareTCPUplinkWireGuard(true) {
-		fmt.Println("[tcp-uplink-debug] WireGuard mode changed; restarting daemon")
-		slog.Info("tcp uplink config changed WireGuard mode; restarting daemon")
-		_ = daemon.Restart()
+// Returns true if a restart was scheduled; callers should skip reconcileTCPUplink.
+func maybeRestartForTCPUplink() bool {
+	if !prepareTCPUplinkWireGuard(true) {
+		return false
 	}
+	// Tear down TCP sessions before iface Close so no Bind.Send hits TLS during reset.
+	tcpUplinkMu.Lock()
+	stopTCPClientLocked()
+	stopTCPServerLocked()
+	tcpUplinkMu.Unlock()
+
+	fmt.Println("[tcp-uplink-debug] WireGuard mode changed; restarting daemon")
+	slog.Info("tcp uplink config changed WireGuard mode; restarting daemon")
+	_ = daemon.Restart()
+	return true
 }
 
 func min(a, b int) int {

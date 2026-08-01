@@ -10,6 +10,9 @@ func clientRelayEndpoint() string { return "" }
 // SetRelayUDPEndpoint is a no-op on Windows (TCP uplink Bind not supported).
 func SetRelayUDPEndpoint(addr string) error { return nil }
 
+// ClearClientRelay is a no-op on Windows.
+func ClearClientRelay() {}
+
 // SetTCPPeerRoute is unsupported on Windows.
 func SetTCPPeerRoute(peerID, udpEndpoint string) error {
 	return errors.New("tcp uplink bind not supported on windows")

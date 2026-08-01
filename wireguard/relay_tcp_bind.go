@@ -41,6 +41,17 @@ func SetRelayUDPEndpoint(addr string) error {
 	return b.setClientRelay(addr)
 }
 
+// ClearClientRelay clears the client-mode TCP uplink route so packets fall back to UDP.
+func ClearClientRelay() {
+	relayBindMu.Lock()
+	b := relayBind
+	relayBindMu.Unlock()
+	if b == nil {
+		return
+	}
+	b.clearClientRelay()
+}
+
 // SetTCPPeerRoute maps a TCP-uplink client peer ID to a WG UDP endpoint string (gateway mode).
 func SetTCPPeerRoute(peerID, udpEndpoint string) error {
 	relayBindMu.Lock()
@@ -115,10 +126,23 @@ func (b *relayTCPBind) setClientRelay(addr string) error {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.relayStr != "" {
+		delete(b.epCache, b.relayStr)
+	}
 	b.relayEp = ep
 	b.relayStr = ep.DstToString()
 	b.epCache[b.relayStr] = ep
 	return nil
+}
+
+func (b *relayTCPBind) clearClientRelay() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.relayStr != "" {
+		delete(b.epCache, b.relayStr)
+	}
+	b.relayStr = ""
+	b.relayEp = nil
 }
 
 func (b *relayTCPBind) setPeerRoute(peerID, addr string) error {
@@ -215,15 +239,23 @@ func (b *relayTCPBind) Send(p []byte, ep conn.Endpoint) error {
 	peerID := b.epToPeer[dst]
 	b.mu.RUnlock()
 
+	// Never block on TLS I/O here: WireGuard holds device.net.RLock across Bind.Send.
 	if relayStr != "" && dst == relayStr {
 		if u := activeRelayTCPUplink(); u != nil {
-			return u.SendPacket(context.Background(), p)
+			pkt := append([]byte(nil), p...)
+			return enqueueTCPOut(func() {
+				_ = u.SendPacket(context.Background(), pkt)
+			})
 		}
 	}
 
 	if peerID != "" {
 		if s := activeTCPUplinkServer(); s != nil {
-			return s.SendToPeer(context.Background(), peerID, p)
+			pkt := append([]byte(nil), p...)
+			id := peerID
+			return enqueueTCPOut(func() {
+				_ = s.SendToPeer(context.Background(), id, pkt)
+			})
 		}
 	}
 
