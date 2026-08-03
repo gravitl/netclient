@@ -38,6 +38,9 @@ func init() {
 	serverCmd.AddCommand(listServersCmd)
 	serverCmd.AddCommand(switchServerCmd)
 
+	leaveServerCmd.Flags().String("tenant-id", "", "leave only the specified tenant on the server")
+	switchServerCmd.Flags().String("tenant-id", "", "tenant to switch to on the server")
+
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
@@ -53,10 +56,11 @@ func init() {
 var leaveServerCmd = &cobra.Command{
 	Use:   "leave [servername]",
 	Short: "leave a server",
-	Long:  `leave the specified server`,
+	Long:  `leave the specified server. Use --tenant-id to leave only that tenant; omit it to leave every tenant registered on the server.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := functions.LeaveServer(args[0]); err != nil {
+		tenantID, _ := cmd.Flags().GetString("tenant-id")
+		if err := functions.LeaveServer(args[0], tenantID); err != nil {
 			fmt.Println(err.Error())
 		}
 	},
@@ -78,10 +82,11 @@ var listServersCmd = &cobra.Command{
 var switchServerCmd = &cobra.Command{
 	Use:   "switch [servername]",
 	Short: "switch to a server",
-	Long:  `switch to the named server`,
+	Long:  `switch to the named server. Use --tenant-id to switch to a specific tenant; omit it to use the server's last-registered tenant.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := functions.SwitchServer(args[0]); err != nil {
+		tenantID, _ := cmd.Flags().GetString("tenant-id")
+		if err := functions.SwitchServer(args[0], tenantID); err != nil {
 			fmt.Println(err.Error())
 		}
 	},
