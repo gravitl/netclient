@@ -53,7 +53,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 	} else {
 		host.DefaultInterface = defaultInterface
 	}
-	shouldUpdateHost, err := doubleCheck("", host)
+	shouldUpdateHost, err := doubleCheck(registerData.API, "", host)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
 	}

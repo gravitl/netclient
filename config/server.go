@@ -182,7 +182,7 @@ func UpdateServerConfig(cfg *models.ServerConfig, host *schema.Host) {
 	}
 	server.HostIDs[host.TenantID] = host.ID
 	server.Name = cfg.Server
-	server.MQID = netclient.ID
+	server.MQID = host.ID
 	server.ServerConfig = *cfg
 	Servers[cfg.Server] = server
 }

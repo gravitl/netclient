@@ -45,7 +45,7 @@ func Register(token string) error {
 	} else if defaultInterface != ncutils.GetInterfaceName() {
 		host.DefaultInterface = defaultInterface
 	}
-	shouldUpdateHost, err := doubleCheck(serverData.TenantID, host)
+	shouldUpdateHost, err := doubleCheck(serverData.Server, serverData.TenantID, host)
 	if err != nil {
 		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
 	}
@@ -83,7 +83,7 @@ func Register(token string) error {
 	return nil
 }
 
-func doubleCheck(tenantID string, host *config.Config) (shouldUpdate bool, err error) {
+func doubleCheck(server, tenantID string, host *config.Config) (shouldUpdate bool, err error) {
 	var shouldUpdateHost bool
 
 	if len(config.CurrServer) == 0 { // should indicate a first join
@@ -110,7 +110,7 @@ func doubleCheck(tenantID string, host *config.Config) (shouldUpdate bool, err e
 			shouldUpdateHost = true
 		}
 	} else if tenantID != "" {
-		server := config.GetServer(config.CurrServer)
+		server := config.GetServer(server)
 		if server != nil {
 			if server.HostIDs == nil {
 				server.HostIDs = make(map[string]uuid.UUID)
