@@ -5,6 +5,11 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+env:
+  GOPRIVATE: github.com/gravitl/*
+  GONOSUMDB: github.com/gravitl/*
+  GONOPROXY: github.com/gravitl/*
+
 jobs:
   linux-headless:
     runs-on: ubuntu-latest
@@ -15,6 +20,13 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
+      - name: Auth for private Go modules
+        run: |
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+        env:
+          # Same-org private repos (e.g. gravitl/proxy). Use GH_ACCESS_TOKEN if
+          # the default GITHUB_TOKEN cannot read other private org repos.
+          TOKEN: ${{ secrets.GH_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Build
         run: |
           env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build .
@@ -28,6 +40,11 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
+      - name: Auth for private Go modules
+        run: |
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+        env:
+          TOKEN: ${{ secrets.GH_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Run Go tests
         run: |
           go test  ./... -v
@@ -41,6 +58,11 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
+      - name: Auth for private Go modules
+        run: |
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+        env:
+          TOKEN: ${{ secrets.GH_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Run static checks
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest
