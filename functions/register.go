@@ -110,21 +110,14 @@ func doubleCheck(server, tenantID string, host *config.Config) (shouldUpdate boo
 			shouldUpdateHost = true
 		}
 	} else if tenantID != "" {
-		server := config.GetServer(server)
-		if server != nil {
-			if server.HostIDs == nil {
-				server.HostIDs = make(map[string]uuid.UUID)
-			}
-
-			_, ok := server.HostIDs[tenantID]
-			if !ok {
-				host.ID, err = uuid.NewUUID()
-				if err != nil {
-					return false, err
-				}
-			} else {
-				host.ID = server.HostIDs[tenantID]
-			}
+		var hostIDs map[string]uuid.UUID
+		if server := config.GetServer(server); server != nil {
+			hostIDs = server.HostIDs
+		}
+		if existingID, ok := hostIDs[tenantID]; ok {
+			host.ID = existingID
+		} else if host.ID, err = uuid.NewUUID(); err != nil {
+			return false, err
 		}
 	}
 
