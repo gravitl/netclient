@@ -146,12 +146,15 @@ func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello pr
 		slog.Warn("tcp uplink auth: wg proof failed", "node", hello.NodeID, "error", err)
 		return nil, proxy.ErrAuthFailed
 	}
+	gatewayFound := false
 	for _, gw := range config.GetNodes() {
 		if gw.ID.String() != a.gatewayNodeID {
 			continue
 		}
+		gatewayFound = true
 		if len(gw.RelayedNodes) == 0 {
-			break
+			slog.Warn("tcp uplink auth: RelayedNodes empty", "gateway", a.gatewayNodeID)
+			return nil, proxy.ErrAuthFailed
 		}
 		found := false
 		for _, id := range gw.RelayedNodes {
@@ -165,6 +168,10 @@ func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello pr
 			return nil, proxy.ErrAuthFailed
 		}
 		break
+	}
+	if !gatewayFound {
+		slog.Warn("tcp uplink auth: gateway node not found", "gateway", a.gatewayNodeID)
+		return nil, proxy.ErrAuthFailed
 	}
 	if err := registerPeerEndpoint(hello.NodeID); err != nil {
 		slog.Debug("tcp uplink: peer endpoint register deferred", "peer", hello.NodeID, "error", err)

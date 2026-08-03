@@ -3,6 +3,7 @@ package wireguard
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/exp/slog"
@@ -15,9 +16,10 @@ const tcpOutQueueSize = 256
 var (
 	errTCPOutQueueFull = errors.New("tcp uplink: outbound queue full")
 
-	tcpOutMu sync.Mutex
-	tcpOutCh chan func()
-	tcpOutWG sync.WaitGroup
+	tcpOutMu       sync.Mutex
+	tcpOutCh       chan func()
+	tcpOutWG       sync.WaitGroup
+	tcpOutDraining atomic.Bool
 )
 
 func ensureTCPOutWorkerLocked() {
@@ -38,12 +40,16 @@ func ensureTCPOutWorkerLocked() {
 // enqueueTCPOut runs fn asynchronously. Bind.Send must use this for TCP paths.
 func enqueueTCPOut(fn func()) error {
 	tcpOutMu.Lock()
+	defer tcpOutMu.Unlock()
+	if tcpOutDraining.Load() {
+		return errTCPOutQueueFull
+	}
 	ensureTCPOutWorkerLocked()
 	ch := tcpOutCh
-	tcpOutMu.Unlock()
 	if ch == nil {
 		return errTCPOutQueueFull
 	}
+	// Send under tcpOutMu so DrainTCPOutQueue cannot close ch concurrently.
 	select {
 	case ch <- fn:
 		return nil
@@ -56,16 +62,19 @@ func enqueueTCPOut(fn func()) error {
 // in-flight jobs, then allows a fresh worker on the next enqueue.
 func DrainTCPOutQueue(timeout time.Duration) {
 	tcpOutMu.Lock()
+	tcpOutDraining.Store(true)
 	ch := tcpOutCh
 	tcpOutCh = nil
 	tcpOutMu.Unlock()
 	if ch == nil {
+		tcpOutDraining.Store(false)
 		return
 	}
 	close(ch)
 	done := make(chan struct{})
 	go func() {
 		tcpOutWG.Wait()
+		tcpOutDraining.Store(false)
 		close(done)
 	}()
 	if timeout <= 0 {

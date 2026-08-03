@@ -160,16 +160,6 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 	tcpClientMgr = mgr
 	fmt.Println("[tcp-uplink-debug] client: STARTED ok state=", mgr.State())
 	slog.Info("tcp uplink client started", "addr", addr, "relay", node.RelayedBy, "node", node.ID.String())
-
-	go func(m *proxyuplink.Manager) {
-		<-ctx.Done()
-		fmt.Println("[tcp-uplink-debug] client: ctx done, stopping")
-		tcpUplinkMu.Lock()
-		defer tcpUplinkMu.Unlock()
-		if tcpClientMgr == m {
-			stopTCPClientLocked()
-		}
-	}(mgr)
 }
 
 func stopTCPClientLocked() {
@@ -218,16 +208,6 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 	}
 	tcpServerMgr = mgr
 	fmt.Println("[tcp-uplink-debug] server: STARTED ok")
-
-	go func(m *proxyuplink.ServerManager) {
-		<-ctx.Done()
-		fmt.Println("[tcp-uplink-debug] server: ctx done, stopping")
-		tcpUplinkMu.Lock()
-		defer tcpUplinkMu.Unlock()
-		if tcpServerMgr == m {
-			stopTCPServerLocked()
-		}
-	}(mgr)
 }
 
 func stopTCPServerLocked() {

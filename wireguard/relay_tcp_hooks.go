@@ -78,14 +78,17 @@ func registerRelayInbound(ch chan inboundPkt) {
 }
 
 func pushInbound(epStr string, pkt []byte) {
-	relayInboundMu.RLock()
-	ch := relayInboundCh
-	relayInboundMu.RUnlock()
-	if ch == nil || epStr == "" || len(pkt) == 0 {
+	if epStr == "" || len(pkt) == 0 {
 		return
 	}
 	p := make([]byte, len(pkt))
 	copy(p, pkt)
+	relayInboundMu.Lock()
+	defer relayInboundMu.Unlock()
+	ch := relayInboundCh
+	if ch == nil {
+		return
+	}
 	select {
 	case ch <- inboundPkt{data: p, epStr: epStr}:
 	default:
