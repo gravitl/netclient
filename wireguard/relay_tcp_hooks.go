@@ -3,20 +3,21 @@ package wireguard
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/exp/slog"
 )
 
 // needTCPUplinkBind is set from proxyuplink.NeedsUserspaceWG before iface create.
-var needTCPUplinkBind bool
+var needTCPUplinkBind atomic.Bool
 
 // SetNeedTCPUplinkBind marks that userspace WireGuard + TCP bind should be used.
 func SetNeedTCPUplinkBind(v bool) {
-	needTCPUplinkBind = v
+	needTCPUplinkBind.Store(v)
 }
 
 func relayTCPUserspaceNeeded() bool {
-	return needTCPUplinkBind
+	return needTCPUplinkBind.Load()
 }
 
 type inboundPkt struct {

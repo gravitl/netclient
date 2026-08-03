@@ -349,7 +349,7 @@ func SetVerbosity(logLevel int) {
 		level = slog.LevelDebug
 
 	default:
-		level = slog.LevelDebug
+		level = slog.LevelError
 	}
 	// Create the logger with the chosen level
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{

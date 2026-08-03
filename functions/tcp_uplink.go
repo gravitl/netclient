@@ -2,7 +2,6 @@ package functions
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -27,23 +26,29 @@ func initTCPUplinkContext(ctx context.Context) {
 	tcpUplinkMu.Lock()
 	defer tcpUplinkMu.Unlock()
 	tcpUplinkCtx = ctx
-	fmt.Println("[tcp-uplink-debug] initTCPUplinkContext ok")
+	slog.Debug("initTCPUplinkContext ok")
 }
 
 // prepareTCPUplinkWireGuard sets userspace Bind requirement from current node flags.
 // Call after SetNodes / before nc.Create. Returns whether a daemon restart is needed
 // because TCP uplink was toggled while the process was already running on the wrong WG mode.
 func prepareTCPUplinkWireGuard(alreadyRunning bool) (needsRestart bool) {
+	tcpUplinkMu.Lock()
+	defer tcpUplinkMu.Unlock()
 	need := proxyuplink.NeedsUserspaceWG()
 	wireguard.SetNeedTCPUplinkBind(need)
-	fmt.Println("[tcp-uplink-debug] prepareTCPUplinkWireGuard need_userspace=", need, "alreadyRunning=", alreadyRunning, "wasOn=", tcpUplinkWasOn)
+	slog.Debug("prepareTCPUplinkWireGuard",
+		"need_userspace", need,
+		"alreadyRunning", alreadyRunning,
+		"wasOn", tcpUplinkWasOn)
 	for netName, n := range config.GetNodes() {
-		fmt.Println("[tcp-uplink-debug]   node", netName,
-			"use_tcp_uplink=", n.UseTcpUplink,
-			"tcp_proxy_enabled=", n.TcpProxyEnabled,
-			"relayedby=", n.RelayedBy,
-			"is_gw=", n.IsGw,
-			"id=", n.ID.String())
+		slog.Debug("tcp uplink node",
+			"network", netName,
+			"use_tcp_uplink", n.UseTcpUplink,
+			"tcp_proxy_enabled", n.TcpProxyEnabled,
+			"relayedby", n.RelayedBy,
+			"is_gw", n.IsGw,
+			"id", n.ID.String())
 	}
 	if alreadyRunning && need != tcpUplinkWasOn {
 		needsRestart = true
@@ -57,7 +62,7 @@ func prepareTCPUplinkWireGuard(alreadyRunning bool) (needsRestart bool) {
 func StopAllTCPUplink() {
 	tcpUplinkMu.Lock()
 	defer tcpUplinkMu.Unlock()
-	fmt.Println("[tcp-uplink-debug] StopAllTCPUplink")
+	slog.Debug("StopAllTCPUplink")
 	stopTCPClientLocked()
 	stopTCPServerLocked()
 	wireguard.PrepareUserspaceTeardown()
@@ -65,13 +70,15 @@ func StopAllTCPUplink() {
 
 // reconcileTCPUplink starts/stops client and gateway TCP uplink from server-published config.
 func reconcileTCPUplink(server *config.Server, peerIDs models.PeerMap) {
-	fmt.Println("[tcp-uplink-debug] reconcileTCPUplink enter peerIDs_len=", len(peerIDs))
+	slog.Debug("reconcileTCPUplink enter", "peerIDs_len", len(peerIDs))
 	if peerIDs != nil {
 		proxyuplink.UpdatePeerIDs(peerIDs)
 		for pub, ida := range peerIDs {
 			if ida.TcpProxyEndpoint != "" || ida.ID != "" {
-				fmt.Println("[tcp-uplink-debug]   peerID", pub[:min(8, len(pub))], "…",
-					"id=", ida.ID, "tcp_proxy_endpoint=", ida.TcpProxyEndpoint)
+				slog.Debug("tcp uplink peerID",
+					"pubkey_prefix", pub[:min(8, len(pub))],
+					"id", ida.ID,
+					"tcp_proxy_endpoint", ida.TcpProxyEndpoint)
 			}
 		}
 	}
@@ -81,14 +88,14 @@ func reconcileTCPUplink(server *config.Server, peerIDs models.PeerMap) {
 
 	ctx := tcpUplinkCtx
 	if ctx == nil {
-		fmt.Println("[tcp-uplink-debug] reconcileTCPUplink ABORT: tcpUplinkCtx is nil")
+		slog.Debug("reconcileTCPUplink ABORT: tcpUplinkCtx is nil")
 		return
 	}
 	if server == nil {
 		server = config.GetServer(config.CurrServer)
 	}
 	if server == nil {
-		fmt.Println("[tcp-uplink-debug] reconcileTCPUplink ABORT: server is nil")
+		slog.Debug("reconcileTCPUplink ABORT: server is nil")
 		return
 	}
 
@@ -99,24 +106,27 @@ func reconcileTCPUplink(server *config.Server, peerIDs models.PeerMap) {
 func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) {
 	node, ok := proxyuplink.FindUplinkClient()
 	if !ok {
-		fmt.Println("[tcp-uplink-debug] client: no local node with use_tcp_uplink+relayedby")
+		slog.Debug("client: no local node with use_tcp_uplink+relayedby")
 		stopTCPClientLocked()
 		return
 	}
-	fmt.Println("[tcp-uplink-debug] client: found node", node.ID.String(), "relay=", node.RelayedBy, "net=", node.Network)
+	slog.Debug("client: found node",
+		"node", node.ID.String(),
+		"relay", node.RelayedBy,
+		"net", node.Network)
 
 	addr := proxyuplink.TcpProxyEndpointForRelay(node.RelayedBy)
 	if addr == "" {
-		fmt.Println("[tcp-uplink-debug] client: MISSING tcp_proxy_endpoint for relay", node.RelayedBy)
+		slog.Debug("client: MISSING tcp_proxy_endpoint for relay", "relay", node.RelayedBy)
 		slog.Warn("tcp uplink: use_tcp_uplink set but gateway tcp_proxy_endpoint missing",
 			"relay", node.RelayedBy, "network", node.Network)
 		stopTCPClientLocked()
 		return
 	}
-	fmt.Println("[tcp-uplink-debug] client: endpoint=", addr)
+	slog.Debug("client: endpoint", "addr", addr)
 
 	if tcpClientMgr != nil && tcpClientMgr.Addr() == addr && tcpClientMgr.RelayPeerID() == node.RelayedBy {
-		fmt.Println("[tcp-uplink-debug] client: already running, refresh UDP endpoint only")
+		slog.Debug("client: already running, refresh UDP endpoint only")
 		if ep := proxyuplink.RelayPeerUDPEndpoint(node.RelayedBy); ep != "" {
 			_ = wireguard.SetRelayUDPEndpoint(ep)
 		}
@@ -135,30 +145,30 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 	}
 	mgr, err := proxyuplink.NewManager(opts)
 	if err != nil {
-		fmt.Println("[tcp-uplink-debug] client: NewManager error=", err)
+		slog.Debug("client: NewManager error", "error", err)
 		slog.Error("tcp uplink client", "error", err)
 		return
 	}
 	if ep := proxyuplink.RelayPeerUDPEndpoint(node.RelayedBy); ep != "" {
-		fmt.Println("[tcp-uplink-debug] client: WG UDP endpoint=", ep)
+		slog.Debug("client: WG UDP endpoint", "endpoint", ep)
 		if err := wireguard.SetRelayUDPEndpoint(ep); err != nil {
-			fmt.Println("[tcp-uplink-debug] client: SetRelayUDPEndpoint error=", err)
+			slog.Debug("client: SetRelayUDPEndpoint error", "error", err)
 			slog.Warn("tcp uplink: set relay UDP endpoint", "endpoint", ep, "error", err)
 		}
 	} else {
-		fmt.Println("[tcp-uplink-debug] client: WG UDP endpoint not found yet")
+		slog.Debug("client: WG UDP endpoint not found yet")
 		slog.Warn("tcp uplink: gateway WG UDP endpoint not found yet; will retry on peer update")
 	}
 	wireguard.SetRelayTCPUplink(mgr)
-	fmt.Println("[tcp-uplink-debug] client: starting proxy.Client to", addr)
+	slog.Debug("client: starting proxy.Client", "addr", addr)
 	if err := mgr.Start(ctx, server, config.Netclient(), opts); err != nil {
 		wireguard.SetRelayTCPUplink(nil)
-		fmt.Println("[tcp-uplink-debug] client: Start FAILED error=", err)
+		slog.Debug("client: Start FAILED", "error", err)
 		slog.Error("tcp uplink client start", "error", err)
 		return
 	}
 	tcpClientMgr = mgr
-	fmt.Println("[tcp-uplink-debug] client: STARTED ok state=", mgr.State())
+	slog.Debug("client: STARTED ok", "state", mgr.State())
 	slog.Info("tcp uplink client started", "addr", addr, "relay", node.RelayedBy, "node", node.ID.String())
 }
 
@@ -166,7 +176,7 @@ func stopTCPClientLocked() {
 	if tcpClientMgr == nil {
 		return
 	}
-	fmt.Println("[tcp-uplink-debug] client: stopping")
+	slog.Debug("client: stopping")
 	// Clear route first so Bind.Send falls back to UDP immediately.
 	wireguard.ClearClientRelay()
 	wireguard.SetRelayTCPUplink(nil)
@@ -181,14 +191,14 @@ func stopTCPClientLocked() {
 func reconcileTCPUplinkServerLocked(ctx context.Context) {
 	node, port, ok := proxyuplink.FindTCPGateway()
 	if !ok {
-		fmt.Println("[tcp-uplink-debug] server: no local gateway with tcp_proxy_enabled")
+		slog.Debug("server: no local gateway with tcp_proxy_enabled")
 		stopTCPServerLocked()
 		return
 	}
-	fmt.Println("[tcp-uplink-debug] server: found gateway", node.ID.String(), "port=", port)
+	slog.Debug("server: found gateway", "node", node.ID.String(), "port", port)
 
 	if tcpServerMgr != nil && tcpServerMgr.NodeID() == node.ID.String() && tcpServerMgr.ListenPort() == port {
-		fmt.Println("[tcp-uplink-debug] server: already running")
+		slog.Debug("server: already running")
 		return
 	}
 
@@ -196,25 +206,25 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 
 	mgr, err := proxyuplink.NewServerManager(node.ID.String(), port)
 	if err != nil {
-		fmt.Println("[tcp-uplink-debug] server: NewServerManager error=", err)
+		slog.Debug("server: NewServerManager error", "error", err)
 		slog.Error("tcp uplink server", "error", err)
 		return
 	}
-	fmt.Println("[tcp-uplink-debug] server: starting listen :", port)
+	slog.Debug("server: starting listen", "port", port)
 	if err := mgr.Start(ctx); err != nil {
-		fmt.Println("[tcp-uplink-debug] server: Start FAILED error=", err)
+		slog.Debug("server: Start FAILED", "error", err)
 		slog.Error("tcp uplink server start", "error", err)
 		return
 	}
 	tcpServerMgr = mgr
-	fmt.Println("[tcp-uplink-debug] server: STARTED ok")
+	slog.Debug("server: STARTED ok")
 }
 
 func stopTCPServerLocked() {
 	if tcpServerMgr == nil {
 		return
 	}
-	fmt.Println("[tcp-uplink-debug] server: stopping")
+	slog.Debug("server: stopping")
 	wireguard.SetTCPUplinkServer(nil)
 	wireguard.ClearAllTCPPeerRoutes()
 	mgr := tcpServerMgr
@@ -235,15 +245,8 @@ func maybeRestartForTCPUplink() bool {
 	// Tear down TCP before SIGHUP so Device.Close cannot race Bind.Send / recv.
 	StopAllTCPUplink()
 
-	fmt.Println("[tcp-uplink-debug] WireGuard mode changed; restarting daemon")
+	slog.Debug("WireGuard mode changed; restarting daemon")
 	slog.Info("tcp uplink config changed WireGuard mode; restarting daemon")
 	_ = daemon.Restart()
 	return true
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -13,7 +13,7 @@ import (
 
 // Manager owns a TCP/TLS uplink proxy.Client to the gateway.
 type Manager struct {
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	client *proxy.Client
 	cancel context.CancelFunc
 	addr   string
@@ -143,9 +143,9 @@ func (m *Manager) Stop(ctx context.Context) error {
 
 // SendPacket sends framed WireGuard ciphertext to the gateway.
 func (m *Manager) SendPacket(ctx context.Context, pkt []byte) error {
-	m.mu.Lock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	c := m.client
-	m.mu.Unlock()
 	if c == nil {
 		return proxy.ErrClientClosed
 	}
@@ -154,9 +154,9 @@ func (m *Manager) SendPacket(ctx context.Context, pkt []byte) error {
 
 // State returns the proxy client state.
 func (m *Manager) State() proxy.ClientState {
-	m.mu.Lock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	c := m.client
-	m.mu.Unlock()
 	if c == nil {
 		return proxy.StateDisconnected
 	}

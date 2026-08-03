@@ -299,7 +299,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
-	fmt.Println("[tcp-uplink-debug] daemon calling reconcileTCPUplink pullErr=", pullErr)
+	slog.Debug("daemon calling reconcileTCPUplink", "pullErr", pullErr)
 	if pullErr == nil {
 		reconcileTCPUplink(server, pullresp.PeerIDs)
 	} else {
