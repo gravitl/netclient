@@ -15,9 +15,9 @@ const tcpOutQueueSize = 256
 var (
 	errTCPOutQueueFull = errors.New("tcp uplink: outbound queue full")
 
-	tcpOutMu   sync.Mutex
-	tcpOutCh   chan func()
-	tcpOutWG   sync.WaitGroup
+	tcpOutMu sync.Mutex
+	tcpOutCh chan func()
+	tcpOutWG sync.WaitGroup
 )
 
 func ensureTCPOutWorkerLocked() {
@@ -33,12 +33,6 @@ func ensureTCPOutWorkerLocked() {
 			fn()
 		}
 	}(ch)
-}
-
-func ensureTCPOutWorker() {
-	tcpOutMu.Lock()
-	defer tcpOutMu.Unlock()
-	ensureTCPOutWorkerLocked()
 }
 
 // enqueueTCPOut runs fn asynchronously. Bind.Send must use this for TCP paths.
