@@ -7,14 +7,14 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/proxy"
+	"github.com/gravitl/proxy/uplink"
 	"golang.org/x/exp/slog"
 )
 
-// Manager owns a TCP/TLS uplink proxy.Client to the gateway.
+// Manager owns a TCP/TLS uplink.Client to the gateway.
 type Manager struct {
 	mu     sync.RWMutex
-	client *proxy.Client
+	client *uplink.Client
 	cancel context.CancelFunc
 	addr   string
 	relay  string
@@ -80,11 +80,11 @@ func (m *Manager) Start(ctx context.Context, server *config.Server, host *config
 	}
 
 	tlsCfg := ClientTLSConfig(opts.TLSServerName)
-	c, err := proxy.NewClient(proxy.ClientOptions{
+	c, err := uplink.NewClient(uplink.ClientOptions{
 		Addr:       opts.Addr,
 		ServerName: opts.TLSServerName,
 		TLSConfig:  tlsCfg,
-		HelloFactory: func() (proxy.ClientHello, error) {
+		HelloFactory: func() (uplink.ClientHello, error) {
 			return buildClientHello(host, opts)
 		},
 		PacketHandler: func(pkt []byte) error {
@@ -147,18 +147,18 @@ func (m *Manager) SendPacket(ctx context.Context, pkt []byte) error {
 	defer m.mu.RUnlock()
 	c := m.client
 	if c == nil {
-		return proxy.ErrClientClosed
+		return uplink.ErrClientClosed
 	}
 	return c.SendPacket(ctx, pkt)
 }
 
 // State returns the proxy client state.
-func (m *Manager) State() proxy.ClientState {
+func (m *Manager) State() uplink.ClientState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	c := m.client
 	if c == nil {
-		return proxy.StateDisconnected
+		return uplink.StateDisconnected
 	}
 	return c.State()
 }

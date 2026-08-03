@@ -8,15 +8,15 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/wireguard"
-	"github.com/gravitl/proxy"
+	"github.com/gravitl/proxy/uplink"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// ServerManager owns a proxy.Server on a TCP-uplink-enabled gateway.
+// ServerManager owns an uplink.Server on a TCP-uplink-enabled gateway.
 type ServerManager struct {
 	mu         sync.Mutex
-	server     *proxy.Server
+	server     *uplink.Server
 	cancel     context.CancelFunc
 	nodeID     string
 	listenPort int
@@ -53,7 +53,7 @@ func (m *ServerManager) Start(ctx context.Context) error {
 	}
 
 	addr := fmt.Sprintf(":%d", m.listenPort)
-	srv, err := proxy.NewServer(proxy.ServerOptions{
+	srv, err := uplink.NewServer(uplink.ServerOptions{
 		ListenAddr:    addr,
 		TLSConfig:     tlsCfg,
 		Authenticator: &gatewayAuthenticator{gatewayNodeID: m.nodeID},
@@ -121,7 +121,7 @@ func (m *ServerManager) SendToPeer(ctx context.Context, peerID string, pkt []byt
 	srv := m.server
 	m.mu.Unlock()
 	if srv == nil {
-		return proxy.ErrServerClosed
+		return uplink.ErrServerClosed
 	}
 	return srv.SendToPeer(ctx, peerID, pkt)
 }
@@ -136,15 +136,15 @@ type gatewayAuthenticator struct {
 	gatewayNodeID string
 }
 
-func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello proxy.ClientHello) (*proxy.AuthResult, error) {
+func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello uplink.ClientHello) (*uplink.AuthResult, error) {
 	_ = ctx
 	if hello.RelayPeerID != a.gatewayNodeID {
 		slog.Warn("tcp uplink auth: relay_peer_id mismatch", "got", hello.RelayPeerID, "want", a.gatewayNodeID)
-		return nil, proxy.ErrAuthFailed
+		return nil, uplink.ErrAuthFailed
 	}
 	if err := validateWGHelloProof(hello); err != nil {
 		slog.Warn("tcp uplink auth: wg proof failed", "node", hello.NodeID, "error", err)
-		return nil, proxy.ErrAuthFailed
+		return nil, uplink.ErrAuthFailed
 	}
 	gatewayFound := false
 	for _, gw := range config.GetNodes() {
@@ -154,7 +154,7 @@ func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello pr
 		gatewayFound = true
 		if len(gw.RelayedNodes) == 0 {
 			slog.Warn("tcp uplink auth: RelayedNodes empty", "gateway", a.gatewayNodeID)
-			return nil, proxy.ErrAuthFailed
+			return nil, uplink.ErrAuthFailed
 		}
 		found := false
 		for _, id := range gw.RelayedNodes {
@@ -165,18 +165,18 @@ func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello pr
 		}
 		if !found {
 			slog.Warn("tcp uplink auth: node not in RelayedNodes", "node", hello.NodeID)
-			return nil, proxy.ErrAuthFailed
+			return nil, uplink.ErrAuthFailed
 		}
 		break
 	}
 	if !gatewayFound {
 		slog.Warn("tcp uplink auth: gateway node not found", "gateway", a.gatewayNodeID)
-		return nil, proxy.ErrAuthFailed
+		return nil, uplink.ErrAuthFailed
 	}
 	if err := registerPeerEndpoint(hello.NodeID); err != nil {
 		slog.Debug("tcp uplink: peer endpoint register deferred", "peer", hello.NodeID, "error", err)
 	}
-	return &proxy.AuthResult{
+	return &uplink.AuthResult{
 		PeerID:      hello.NodeID,
 		RelayPeerID: hello.RelayPeerID,
 		NetworkID:   hello.NetworkID,
