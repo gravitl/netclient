@@ -434,9 +434,9 @@ func checkConfig() {
 			fail = true
 			logger.Log(0, "configuration for", config.CurrServer, "is missing")
 		} else {
-			if server.MQID != netclient.ID {
+			if server.HostIDs[netclient.TenantID] != netclient.ID {
 				fail = true
-				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+				logger.Log(0, server.Name, "is misconfigured: registered host ID does not match hostid/password")
 			}
 		}
 	}

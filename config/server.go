@@ -30,7 +30,6 @@ type Server struct {
 	models.ServerConfig
 	HostIDs        map[string]uuid.UUID `json:"host_ids"`
 	Name           string               `json:"name" yaml:"name"`
-	MQID           uuid.UUID            `json:"mqid" yaml:"mqid"`
 	Nodes          map[string]bool      `json:"nodes" yaml:"nodes"`
 	AccessKey      string               `json:"accesskey" yaml:"accesskey"`
 	NameServers    []string             `json:"name_servers"`
@@ -182,7 +181,6 @@ func UpdateServerConfig(cfg *models.ServerConfig, host *schema.Host) {
 	}
 	server.HostIDs[host.TenantID] = host.ID
 	server.Name = cfg.Server
-	server.MQID = host.ID
 	server.ServerConfig = *cfg
 	Servers[cfg.Server] = server
 }
