@@ -13,18 +13,15 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// SwitchServer - switches netclient server context to the given server/tenant.
-// tenantID may be left empty, in which case it defaults to the server's
-// last-registered tenant.
-func SwitchServer(server, tenantID string) error {
+// SwitchServer - switches netclient server context to the given server, using
+// the server's last-registered tenant.
+func SwitchServer(server string) error {
 	fmt.Println("setting netclient server context to " + server)
 	srvCfg := config.GetServer(server)
 	if srvCfg == nil {
 		return errors.New("server config not found")
 	}
-	if tenantID == "" {
-		tenantID = srvCfg.TenantID
-	}
+	tenantID := srvCfg.TenantID
 	hostID, ok := srvCfg.HostIDs[tenantID]
 	if !ok {
 		return fmt.Errorf("no host identity found for tenant %q on server %q", tenantID, server)

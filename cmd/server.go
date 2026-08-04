@@ -39,7 +39,6 @@ func init() {
 	serverCmd.AddCommand(switchServerCmd)
 
 	leaveServerCmd.Flags().String("tenant-id", "", "leave only the specified tenant on the server")
-	switchServerCmd.Flags().String("tenant-id", "", "tenant to switch to on the server")
 
 	// Here you will define your flags and configuration settings.
 
@@ -82,11 +81,10 @@ var listServersCmd = &cobra.Command{
 var switchServerCmd = &cobra.Command{
 	Use:   "switch [servername]",
 	Short: "switch to a server",
-	Long:  `switch to the named server. Use --tenant-id to switch to a specific tenant; omit it to use the server's last-registered tenant.`,
+	Long:  `switch to the named server`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		tenantID, _ := cmd.Flags().GetString("tenant-id")
-		if err := functions.SwitchServer(args[0], tenantID); err != nil {
+		if err := functions.SwitchServer(args[0]); err != nil {
 			fmt.Println(err.Error())
 		}
 	},
