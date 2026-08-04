@@ -111,7 +111,7 @@ func doubleCheck(server, tenantID string, host *config.Config) (shouldUpdate boo
 		}
 	} else if tenantID != "" {
 		var hostIDs map[string]uuid.UUID
-		if server := config.GetServer(server); server != nil {
+		if server := config.GetServerByAPIHost(server); server != nil {
 			hostIDs = server.HostIDs
 		}
 		if existingID, ok := hostIDs[tenantID]; ok {

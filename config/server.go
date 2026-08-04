@@ -109,6 +109,17 @@ func GetServer(name string) *Server {
 	return nil
 }
 
+func GetServerByAPIHost(apiHost string) *Server {
+	serverMutex.RLock()
+	defer serverMutex.RUnlock()
+	for _, server := range Servers {
+		if server.APIHost == apiHost {
+			return &server
+		}
+	}
+	return nil
+}
+
 // GetServers - gets all the server names host has registered to.
 func GetServers() (servers []string) {
 	serverMutex.RLock()
