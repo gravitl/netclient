@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/gravitl/netmaker v1.6.1-0.20260730045355-339fdc8fa192
-	github.com/gravitl/proxy v0.0.0-20260803084632-c85c08be3cf1
+	github.com/gravitl/proxy v0.0.0-20260804070119-17eb27ac4c30
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.9.0
