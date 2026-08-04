@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
@@ -83,6 +84,9 @@ func LeaveServer(s, tenantID string) error {
 		}
 	}
 
+	currServerCtx, _ := config.GetCurrServerCtxFromFile()
+	activeTenantLeaving := s == currServerCtx && slices.Contains(tenantsToLeave, config.Netclient().TenantID)
+
 	for _, tid := range tenantsToLeave {
 		if err := leaveServerTenant(server, tid); err != nil {
 			return err
@@ -90,7 +94,8 @@ func LeaveServer(s, tenantID string) error {
 		delete(server.HostIDs, tid)
 	}
 
-	if len(server.HostIDs) == 0 {
+	serverRemoved := len(server.HostIDs) == 0
+	if serverRemoved {
 		config.DeleteServerHostPeerCfg()
 		config.DeleteServer(server.Name)
 		config.DeleteNodes()
@@ -98,11 +103,53 @@ func LeaveServer(s, tenantID string) error {
 	} else {
 		config.UpdateServer(server.Name, *server)
 	}
+
+	if activeTenantLeaving {
+		switchToRemainingServer(server, serverRemoved)
+	}
+
 	config.WriteServerConfig()
 	config.WriteNodeConfig()
 	config.WriteNetclientConfig()
 	daemon.Restart()
 	return nil
+}
+
+func switchToRemainingServer(leftServer *config.Server, serverRemoved bool) {
+	netclient := config.Netclient()
+
+	if !serverRemoved {
+		for tenantID, hostID := range leftServer.HostIDs {
+			netclient.ID = hostID
+			netclient.TenantID = tenantID
+			netclient.HostPeers = []wgtypes.PeerConfig{}
+			return
+		}
+	}
+
+	for _, name := range config.GetServers() {
+		srvCfg := config.GetServer(name)
+		if srvCfg == nil || len(srvCfg.HostIDs) == 0 {
+			continue
+		}
+		tenantID := srvCfg.TenantID
+		hostID, ok := srvCfg.HostIDs[tenantID]
+		if !ok {
+			for tid, hid := range srvCfg.HostIDs {
+				tenantID, hostID, ok = tid, hid, true
+				break
+			}
+		}
+		_ = config.SetCurrServerCtxInFile(name)
+		netclient.ID = hostID
+		netclient.TenantID = tenantID
+		netclient.HostPeers = []wgtypes.PeerConfig{}
+		fmt.Println("switched netclient server context to " + name)
+		return
+	}
+
+	// no servers left to switch to; clear the stale context
+	_ = config.SetCurrServerCtxInFile("")
 }
 
 // leaveServerTenant deletes the host record for a single tenant on the given
