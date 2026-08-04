@@ -434,6 +434,16 @@ func checkConfig() {
 			fail = true
 			logger.Log(0, "configuration for", config.CurrServer, "is missing")
 		} else {
+			if len(server.HostIDs) == 0 && netclient.ID != uuid.Nil {
+				// pre-multi-tenancy configs predate the HostIDs map; backfill it
+				// from the existing single host id instead of failing
+				logger.Log(0, "backfilling host id for", server.Name)
+				server.HostIDs = map[string]uuid.UUID{netclient.TenantID: netclient.ID}
+				config.UpdateServer(server.Name, *server)
+				if err := config.WriteServerConfig(); err != nil {
+					logger.Log(0, "failed to save server", server.Name, err.Error())
+				}
+			}
 			if server.HostIDs[netclient.TenantID] != netclient.ID {
 				fail = true
 				logger.Log(0, server.Name, "is misconfigured: registered host ID does not match hostid/password")
