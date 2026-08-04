@@ -26,6 +26,7 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/flow"
+	"github.com/gravitl/netclient/internal/proxyegress"
 	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
@@ -122,6 +123,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	// Stop TCP uplink before cancelling daemon ctx / closing the iface so
 	// userspace Device.Close is not blocked on Bind.Send or proxy sessions.
 	StopAllTCPUplink()
+	proxyegress.Stop()
 
 	for i := range closers {
 		closers[i]()
@@ -350,6 +352,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if len(pullresp.EgressWithDomains) > 0 {
 		syncEgressDomains(pullresp.EgressWithDomains)
 	}
+	proxyegress.ApplyProxyRoutes(pullresp.EgressProxyRoutes)
 
 	if server.ManageDNS {
 		if dns.GetDNSServerInstance().AddrStr == "" {

@@ -21,6 +21,7 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/flow"
+	"github.com/gravitl/netclient/internal/proxyegress"
 	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
@@ -311,6 +312,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
 	syncEgressDomains(peerUpdate.EgressWithDomains)
+	proxyegress.ApplyProxyRoutes(peerUpdate.EgressProxyRoutes)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -880,6 +882,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	}
 	syncEgressDomains(pullResponse.EgressWithDomains)
+	proxyegress.ApplyProxyRoutes(pullResponse.EgressProxyRoutes)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
