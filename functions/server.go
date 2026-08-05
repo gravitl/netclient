@@ -100,8 +100,10 @@ func LeaveServer(s, tenantID string) error {
 		config.DeleteServer(server.Name)
 		config.DeleteNodes()
 		config.DeleteClientNodes()
+		fmt.Printf("left server %s\n", s)
 	} else {
 		config.UpdateServer(server.Name, *server)
+		fmt.Printf("left tenant %s on server %s\n", tenantID, s)
 	}
 
 	if activeTenantLeaving {
