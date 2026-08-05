@@ -160,7 +160,13 @@ func leaveServerTenant(server *config.Server, tenantID string) error {
 	if !ok {
 		return nil
 	}
-	token, err := auth.Authenticate(server, config.Netclient())
+	tenantServer := *server
+	tenantServer.TenantID = tenantID
+	tenantHost := *config.Netclient()
+	tenantHost.ID = hostID
+	tenantHost.TenantID = tenantID
+	auth.CleanJwtToken()
+	token, err := auth.Authenticate(&tenantServer, &tenantHost)
 	if err != nil {
 		return nil
 	}
