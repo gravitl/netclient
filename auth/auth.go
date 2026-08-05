@@ -62,7 +62,7 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 		var notOkErr ncutils.ErrStatusNotOk
 		if errors.As(err, &notOkErr) {
 			if notOkErr.Status == http.StatusUnauthorized {
-				if err := cleanUpByServer(server); err != nil {
+				if err := cleanUpByServer(server, host); err != nil {
 					return "", err
 				}
 
@@ -87,7 +87,7 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 	return token.(string), nil
 }
 
-func cleanUpByServer(server *config.Server) error {
+func cleanUpByServer(server *config.Server, host *config.Config) error {
 	if err := config.ReadNodeConfig(); err != nil {
 		return err
 	}
@@ -113,7 +113,19 @@ func cleanUpByServer(server *config.Server) error {
 	if err := config.WriteNetclientConfig(); err != nil {
 		return err
 	}
-	config.DeleteServer(server.Name)
+
+	freshServer := config.GetServer(server.Name)
+	if freshServer != nil && host != nil && host.TenantID != "" {
+		logger.Log(0, "removing unauthorized tenant", host.TenantID, "from", server.Name)
+		delete(freshServer.HostIDs, host.TenantID)
+		if len(freshServer.HostIDs) == 0 {
+			config.DeleteServer(server.Name)
+		} else {
+			config.UpdateServer(server.Name, *freshServer)
+		}
+	} else {
+		config.DeleteServer(server.Name)
+	}
 	if err := config.WriteServerConfig(); err != nil {
 		return err
 	}

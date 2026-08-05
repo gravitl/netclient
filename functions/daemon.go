@@ -19,6 +19,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	externalip "github.com/glendc/go-external-ip"
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -595,8 +596,10 @@ func unsubscribeNode(client mqtt.Client, node *config.Node) {
 }
 
 // unsubscribe client broker communications for host topics
-func unsubscribeHost(client mqtt.Client, server string) {
-	hostID := config.Netclient().ID
+func unsubscribeHost(client mqtt.Client, server string, hostID uuid.UUID) {
+	if hostID != config.Netclient().ID {
+		return
+	}
 	slog.Info("removing subscription for host peer updates", "host", hostID, "server", server)
 	if token := client.Unsubscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		slog.Error("unable to unsubscribe from host peer updates", "host", hostID, "server", server, "error", token.Error())

@@ -493,8 +493,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
-		unsubscribeHost(client, serverName)
-		deleteHostCfg(client, serverName)
+		unsubscribeHost(client, serverName, hostUpdate.Host.ID)
+		deleteHostCfg(client, serverName, hostUpdate.Host.TenantID)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
@@ -649,7 +649,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 	}
 }
 
-func deleteHostCfg(client mqtt.Client, server string) {
+func deleteHostCfg(client mqtt.Client, server, tenantID string) {
 	config.DeleteServerHostPeerCfg()
 	nodes := config.GetNodes()
 	for k, node := range nodes {
@@ -659,7 +659,18 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
-	config.DeleteServer(server)
+
+	srvCfg := config.GetServer(server)
+	if srvCfg != nil && tenantID != "" {
+		delete(srvCfg.HostIDs, tenantID)
+		if len(srvCfg.HostIDs) == 0 {
+			config.DeleteServer(server)
+		} else {
+			config.UpdateServer(server, *srvCfg)
+		}
+	} else {
+		config.DeleteServer(server)
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {
