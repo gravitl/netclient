@@ -56,7 +56,7 @@ func postureGet(server *config.Server, host *config.Config) (*HostPostureStatus,
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
-	headers.Set(scope.HeaderTenantID, server.TenantID)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		return nil, err

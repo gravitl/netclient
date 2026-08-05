@@ -720,7 +720,7 @@ func getServerBrokerStatus() (bool, error) {
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set(scope.HeaderTenantID, server.TenantID)
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())

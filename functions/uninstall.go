@@ -103,7 +103,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set("requestfrom", "node")
-	headers.Set(scope.HeaderTenantID, server.TenantID)
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 	if err != nil {
 		return fmt.Errorf("error deleting node from network %s on server: %v", node.Network, err)
