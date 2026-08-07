@@ -5,6 +5,7 @@ package wireguard
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"syscall"
@@ -112,6 +113,12 @@ func getUAPIByInterface(iface string) (net.Listener, error) {
 func (nc *NCIface) closeUserspaceWg() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	listenPort := 0
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
+	fmt.Println("[listen-port-debug] closeUserspaceWg: start",
+		"iface=", nc.Name, "listenPort=", listenPort)
 	slog.Debug("Closing userspace WireGuard interface", "interface", nc.Name)
 
 	// Belt-and-suspenders if caller skipped StopAllTCPUplink.
@@ -126,6 +133,7 @@ func (nc *NCIface) closeUserspaceWg() error {
 	}
 	if tunDevice != nil {
 		done := make(chan struct{})
+		closeStart := time.Now()
 		go func(dev *device.Device) {
 			dev.Close()
 			close(done)
@@ -133,9 +141,17 @@ func (nc *NCIface) closeUserspaceWg() error {
 		tunDevice = nil
 		select {
 		case <-done:
+			fmt.Println("[listen-port-debug] closeUserspaceWg: Device.Close done",
+				"elapsed=", time.Since(closeStart),
+				"portFree=", portFreeDebug(listenPort))
 		case <-time.After(15 * time.Second):
+			fmt.Println("[listen-port-debug] closeUserspaceWg: Device.Close TIMEOUT",
+				"elapsed=", time.Since(closeStart),
+				"portFree=", portFreeDebug(listenPort))
 			slog.Error("userspace WireGuard Device.Close timed out; continuing shutdown")
 		}
+	} else {
+		fmt.Println("[listen-port-debug] closeUserspaceWg: tunDevice was nil")
 	}
 	relayBindMu.Lock()
 	relayBind = nil
@@ -150,19 +166,36 @@ func (nc *NCIface) closeUserspaceWg() error {
 	select {
 	case <-waitDone:
 	case <-time.After(3 * time.Second):
+		fmt.Println("[listen-port-debug] closeUserspaceWg: UAPI accept loop wait TIMEOUT")
 		slog.Warn("userspace WireGuard UAPI accept loop wait timed out")
 	}
 
 	// Ensure the previous UDP listen port is released before callers run GetFreePort.
-	if port := config.Netclient().ListenPort; port > 0 {
-		if !waitUDPPortFree(port, 5*time.Second) {
-			slog.Warn("WireGuard UDP listen port still busy after Device.Close", "port", port)
+	if listenPort > 0 {
+		waitStart := time.Now()
+		ok := waitUDPPortFree(listenPort, 5*time.Second)
+		fmt.Println("[listen-port-debug] closeUserspaceWg: after port wait",
+			"port=", listenPort, "free=", ok, "waited=", time.Since(waitStart))
+		if !ok {
+			slog.Warn("WireGuard UDP listen port still busy after Device.Close", "port", listenPort)
 		}
 	}
 
 	slog.Debug("Closed userspace WireGuard interface", "interface", nc.Name)
 
 	return nil
+}
+
+func portFreeDebug(port int) bool {
+	if port <= 0 {
+		return true
+	}
+	c, err := net.ListenUDP("udp", &net.UDPAddr{Port: port})
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
 }
 
 func waitUDPPortFree(port int, timeout time.Duration) bool {

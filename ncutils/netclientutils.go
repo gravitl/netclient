@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -153,10 +154,22 @@ func GetInterfaces() ([]schema.Iface, error) {
 // our own WireGuard iface just released is not abandoned for curr+1 (e.g. 51821→51822).
 func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 	_ = init
+	fmt.Println("[listen-port-debug] GetFreePort enter",
+		"rangestart=", rangestart,
+		"currListenPort=", currListenPort,
+		"init=", init)
 	if currListenPort > 0 {
+		busyBefore := !IsPortFree(currListenPort)
+		fmt.Println("[listen-port-debug] GetFreePort curr port busy before wait?", busyBefore, "port=", currListenPort)
+		waitStart := time.Now()
 		if WaitForUDPPortFree(currListenPort, 5*time.Second) {
+			fmt.Println("[listen-port-debug] GetFreePort keeping currListenPort=", currListenPort,
+				"waited=", time.Since(waitStart))
 			return currListenPort, nil
 		}
+		fmt.Println("[listen-port-debug] GetFreePort currListenPort STILL BUSY after wait; will scan",
+			"port=", currListenPort,
+			"waited=", time.Since(waitStart))
 	}
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
@@ -167,6 +180,7 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 	if currListenPort >= rangestart {
 		start = currListenPort + 1
 	}
+	fmt.Println("[listen-port-debug] GetFreePort scanning from", start)
 	for x := start; x <= 65535; x++ {
 		udpAddr := net.UDPAddr{
 			Port: x,
@@ -176,6 +190,8 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			continue
 		}
 		udpConn.Close()
+		fmt.Println("[listen-port-debug] GetFreePort BUMPED to freeport=", x,
+			"old=", currListenPort)
 		return x, nil
 	}
 	// Wrap around below curr if needed (rare).
@@ -186,6 +202,8 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			continue
 		}
 		udpConn.Close()
+		fmt.Println("[listen-port-debug] GetFreePort BUMPED (wrap) to freeport=", x,
+			"old=", currListenPort)
 		return x, nil
 	}
 	return rangestart, errors.New("no free ports")

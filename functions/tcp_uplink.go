@@ -261,6 +261,7 @@ func maybeRestartForTCPUplink() bool {
 	// Tear down TCP before SIGHUP so Device.Close cannot race Bind.Send / recv.
 	StopAllTCPUplink()
 
+	fmt.Println("[listen-port-debug] maybeRestartForTCPUplink: scheduling daemon.Restart (userspace mode flip)")
 	slog.Debug("WireGuard mode changed; restarting daemon")
 	slog.Info("tcp uplink config changed WireGuard mode; restarting daemon")
 	_ = daemon.Restart()
