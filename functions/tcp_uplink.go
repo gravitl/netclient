@@ -50,6 +50,11 @@ func prepareTCPUplinkWireGuard(alreadyRunning bool) (needsRestart bool) {
 			"is_gw", n.IsGw,
 			"id", n.ID.String())
 	}
+	if h := config.Netclient(); h != nil {
+		slog.Debug("tcp uplink host",
+			"tcp_proxy_enabled", h.TcpProxyEnabled,
+			"tcp_proxy_listen_port", h.TcpProxyListenPort)
+	}
 	if alreadyRunning && need != tcpUplinkWasOn {
 		needsRestart = true
 	}

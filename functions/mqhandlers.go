@@ -271,6 +271,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.SetNodes(peerUpdate.Nodes)
 		_ = config.WriteNodeConfig()
 	}
+	// Host carries TCP proxy listen settings; apply before uplink reconcile.
+	UpdateHostFromServer(&peerUpdate.Host)
 	proxyuplink.UpdatePeerIDs(peerUpdate.PeerIDs)
 	if !maybeRestartForTCPUplink() {
 		reconcileTCPUplink(server, peerUpdate.PeerIDs)

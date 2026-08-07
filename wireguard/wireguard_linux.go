@@ -30,13 +30,19 @@ func useKernelWireGuard() bool {
 // NCIface.Create - creates a linux WG interface based on a node's host config
 func (nc *NCIface) Create() error {
 	if !relayTCPUserspaceNeeded() {
+		hostTcp := false
+		if h := config.Netclient(); h != nil {
+			hostTcp = h.TcpProxyEnabled
+		}
 		for netName, n := range config.GetNodes() {
-			if n.UseTcpUplink || n.TcpProxyEnabled {
+			if n.UseTcpUplink || n.TcpProxyEnabled || hostTcp {
 				slog.Warn("TCP uplink flags set but userspace bind not marked; prepareTCPUplinkWireGuard should run before Create",
 					"network", netName,
 					"use_tcp_uplink", n.UseTcpUplink,
 					"tcp_proxy_enabled", n.TcpProxyEnabled,
+					"host_tcp_proxy_enabled", hostTcp,
 					"node", n.ID.String())
+				break
 			}
 		}
 	}

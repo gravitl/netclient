@@ -31,6 +31,9 @@ func UpdatePeerIDs(m models.PeerMap) {
 
 // NeedsUserspaceWG reports whether TCP uplink client or gateway listen requires userspace WireGuard conn.Bind.
 func NeedsUserspaceWG() bool {
+	if h := config.Netclient(); h != nil && h.TcpProxyEnabled {
+		return true
+	}
 	for _, n := range config.GetNodes() {
 		if n.UseTcpUplink || n.TcpProxyEnabled {
 			return true
@@ -49,16 +52,26 @@ func FindUplinkClient() (config.Node, bool) {
 	return config.Node{}, false
 }
 
-// FindTCPGateway returns the first local gateway node with TCP uplink listen enabled.
+// FindTCPGateway returns the first local gateway node that should listen for TCP uplinks.
+// Listen enable/port are host-level (peer update Host); node TcpProxy* is a fallback for older servers.
 func FindTCPGateway() (node config.Node, listenPort int, ok bool) {
+	host := config.Netclient()
+	hostEnabled := host != nil && host.TcpProxyEnabled
+	hostPort := 0
+	if host != nil {
+		hostPort = host.TcpProxyListenPort
+	}
 	for _, n := range config.GetNodes() {
-		if !n.TcpProxyEnabled {
-			continue
-		}
 		if !(n.IsGw || n.IsRelay || n.IsIngressGateway) {
 			continue
 		}
-		port := n.TcpProxyListenPort
+		if !hostEnabled && !n.TcpProxyEnabled {
+			continue
+		}
+		port := hostPort
+		if port <= 0 {
+			port = n.TcpProxyListenPort
+		}
 		if port <= 0 {
 			port = DefaultListenPort
 		}
