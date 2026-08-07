@@ -595,7 +595,7 @@ func resetInterfaceFunc() {
 	}
 	nc := wireguard.GetInterface()
 	nc.Close()
-	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 3*time.Second) {
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 5*time.Second) {
 		slog.Warn("WireGuard UDP listen port still busy after reset Close", "port", listenPort)
 	}
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())

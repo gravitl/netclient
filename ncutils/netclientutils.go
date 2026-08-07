@@ -148,26 +148,39 @@ func GetInterfaces() ([]schema.Iface, error) {
 	return data, nil
 }
 
-// GetFreePort - gets free port of machine
+// GetFreePort - gets free port of machine.
+// When currListenPort is set, it is preferred: we retry briefly so a port that
+// our own WireGuard iface just released is not abandoned for curr+1 (e.g. 51821→51822).
 func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
+	_ = init
 	if currListenPort > 0 {
-		// check if curr listen port is free
-		udpAddr := net.UDPAddr{
-			Port: currListenPort,
-		}
-		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
-		if udpErr == nil {
-			udpConn.Close()
+		if WaitForUDPPortFree(currListenPort, 5*time.Second) {
 			return currListenPort, nil
 		}
 	}
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
 	}
-	for x := rangestart; x <= 65535; x++ {
+	// Prefer scanning from currListenPort+1 when current is still busy, so we
+	// do not immediately re-probe the same busy port at rangestart.
+	start := rangestart
+	if currListenPort >= rangestart {
+		start = currListenPort + 1
+	}
+	for x := start; x <= 65535; x++ {
 		udpAddr := net.UDPAddr{
 			Port: x,
 		}
+		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
+		if udpErr != nil {
+			continue
+		}
+		udpConn.Close()
+		return x, nil
+	}
+	// Wrap around below curr if needed (rare).
+	for x := rangestart; x < start && x <= 65535; x++ {
+		udpAddr := net.UDPAddr{Port: x}
 		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
 		if udpErr != nil {
 			continue

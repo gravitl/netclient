@@ -146,7 +146,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	iface.Close()
 	// Device.Close / LinkDel can release UDP asynchronously; wait so GetFreePort
 	// in startGoRoutines does not bump ListenPort (e.g. 51821 → 51822).
-	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 3*time.Second) {
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 5*time.Second) {
 		slog.Warn("WireGuard UDP listen port still busy after iface.Close", "port", listenPort)
 	}
 }
@@ -201,6 +201,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if !netclientCfg.IsStaticPort {
+		// After iface recreate, prefer the configured port (GetFreePort waits for release).
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != netclientCfg.ListenPort {

@@ -155,7 +155,7 @@ func (nc *NCIface) closeUserspaceWg() error {
 
 	// Ensure the previous UDP listen port is released before callers run GetFreePort.
 	if port := config.Netclient().ListenPort; port > 0 {
-		if !waitUDPPortFree(port, 3*time.Second) {
+		if !waitUDPPortFree(port, 5*time.Second) {
 			slog.Warn("WireGuard UDP listen port still busy after Device.Close", "port", port)
 		}
 	}
