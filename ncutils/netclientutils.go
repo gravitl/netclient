@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/schema"
@@ -185,6 +186,24 @@ func IsPortFree(port int) (free bool) {
 		conn.Close()
 	}
 	return
+}
+
+// WaitForUDPPortFree polls until port is free or timeout elapses.
+// Used after WireGuard iface Close so GetFreePort does not bump ListenPort.
+func WaitForUDPPortFree(port int, timeout time.Duration) bool {
+	if port <= 0 {
+		return true
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if IsPortFree(port) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // Copy - copies a src file to dest

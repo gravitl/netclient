@@ -516,6 +516,15 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 				slog.Error("could not publish host update", err.Error())
 			}
 		}
+		// Apply TcpProxyEnabled / TcpProxyListenPort without requiring a peer update.
+		// Listen-port-only changes reconcile the TCP server; mode flips may restart daemon.
+		if !maybeRestartForTCPUplink() {
+			reconcileTCPUplink(server, nil)
+		} else {
+			// Mode change already scheduled daemon.Restart; skip duplicate restart below.
+			restartDaemon = false
+			resetInterface = false
+		}
 		clearMsg = true
 		writeToDisk = false
 	case models.RequestAck:
@@ -580,8 +589,15 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func resetInterfaceFunc() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
+	listenPort := 0
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
 	nc := wireguard.GetInterface()
 	nc.Close()
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 3*time.Second) {
+		slog.Warn("WireGuard UDP listen port still busy after reset Close", "port", listenPort)
+	}
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	if err := nc.Configure(); err != nil {

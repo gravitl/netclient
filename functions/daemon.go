@@ -138,8 +138,17 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	cache.EgressRouteCache = sync.Map{}
 	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
+	listenPort := 0
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
 	iface := wireguard.GetInterface()
 	iface.Close()
+	// Device.Close / LinkDel can release UDP asynchronously; wait so GetFreePort
+	// in startGoRoutines does not bump ListenPort (e.g. 51821 → 51822).
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 3*time.Second) {
+		slog.Warn("WireGuard UDP listen port still busy after iface.Close", "port", listenPort)
+	}
 }
 
 // startGoRoutines starts the daemon goroutines

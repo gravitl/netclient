@@ -32,6 +32,7 @@ func initTCPUplinkContext(ctx context.Context) {
 // prepareTCPUplinkWireGuard sets userspace Bind requirement from current node flags.
 // Call after SetNodes / before nc.Create. Returns whether a daemon restart is needed
 // because TCP uplink was toggled while the process was already running on the wrong WG mode.
+// TcpProxyListenPort-only changes never require a restart (reconcile rebinds the TCP server).
 func prepareTCPUplinkWireGuard(alreadyRunning bool) (needsRestart bool) {
 	tcpUplinkMu.Lock()
 	defer tcpUplinkMu.Unlock()
@@ -55,6 +56,8 @@ func prepareTCPUplinkWireGuard(alreadyRunning bool) (needsRestart bool) {
 			"tcp_proxy_enabled", h.TcpProxyEnabled,
 			"tcp_proxy_listen_port", h.TcpProxyListenPort)
 	}
+	// Only flip of userspace-vs-kernel mode needs a daemon restart. Listen port
+	// changes are handled by reconcileTCPUplinkServerLocked (stop+start proxy).
 	if alreadyRunning && need != tcpUplinkWasOn {
 		needsRestart = true
 	}
@@ -207,6 +210,14 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 		return
 	}
 
+	// Listen-port (or node) change: stop+start TCP proxy only — do not restart WG/daemon.
+	if tcpServerMgr != nil {
+		slog.Info("tcp uplink: rebinding listen",
+			"old_port", tcpServerMgr.ListenPort(),
+			"new_port", port,
+			"node", node.ID.String())
+	}
+
 	stopTCPServerLocked()
 
 	mgr, err := proxyuplink.NewServerManager(node.ID.String(), port)
@@ -240,9 +251,9 @@ func stopTCPServerLocked() {
 	slog.Info("tcp uplink server stopped")
 }
 
-// maybeRestartForTCPUplink restarts the daemon when userspace WG mode must change
-// (enable or disable TCP uplink). Returns true if a restart was scheduled; callers
-// should skip reconcileTCPUplink.
+// maybeRestartForTCPUplink restarts the daemon only when userspace WG mode must change
+// (enable or disable TCP uplink). TcpProxyListenPort-only changes return false so callers
+// reconcile the TCP server in-process without recreating the WireGuard iface.
 func maybeRestartForTCPUplink() bool {
 	if !prepareTCPUplinkWireGuard(true) {
 		return false

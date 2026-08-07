@@ -133,7 +133,7 @@ func (nc *NCIface) closeUserspaceWg() error {
 		tunDevice = nil
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(15 * time.Second):
 			slog.Error("userspace WireGuard Device.Close timed out; continuing shutdown")
 		}
 	}
@@ -153,9 +153,31 @@ func (nc *NCIface) closeUserspaceWg() error {
 		slog.Warn("userspace WireGuard UAPI accept loop wait timed out")
 	}
 
+	// Ensure the previous UDP listen port is released before callers run GetFreePort.
+	if port := config.Netclient().ListenPort; port > 0 {
+		if !waitUDPPortFree(port, 3*time.Second) {
+			slog.Warn("WireGuard UDP listen port still busy after Device.Close", "port", port)
+		}
+	}
+
 	slog.Debug("Closed userspace WireGuard interface", "interface", nc.Name)
 
 	return nil
+}
+
+func waitUDPPortFree(port int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		c, err := net.ListenUDP("udp", &net.UDPAddr{Port: port})
+		if err == nil {
+			_ = c.Close()
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func isEconnRefused(err error) bool {
