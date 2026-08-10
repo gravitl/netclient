@@ -612,6 +612,12 @@ func (nc *NCIface) Close() {
 	}
 }
 
+// UserspaceWGActive reports whether the current netmaker iface is userspace WireGuard.
+// Windows always uses the WireGuardNT driver path, not the unix userspace Device.
+func UserspaceWGActive() bool {
+	return false
+}
+
 // NCIface.SetMTU - sets the MTU of the windows WireGuard Iface adapter
 func (nc *NCIface) SetMTU() error {
 	// TODO figure out how to change MTU of adapter
