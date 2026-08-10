@@ -44,6 +44,12 @@ func SwitchServer(server string) error {
 	netclient.TenantID = tenantID
 	netclient.HostPeers = []wgtypes.PeerConfig{}
 	_ = config.WriteNetclientConfig()
+	for network, node := range config.GetNodes() {
+		if node.TenantID != tenantID {
+			config.DeleteNode(network)
+		}
+	}
+	_ = config.WriteNodeConfig()
 	return daemon.Restart()
 }
 
@@ -104,6 +110,11 @@ func LeaveServer(s, tenantID string) error {
 		fmt.Printf("left server %s\n", s)
 	} else {
 		config.UpdateServer(server.Name, *server)
+		for network, node := range config.GetNodes() {
+			if slices.Contains(tenantsToLeave, node.TenantID) {
+				config.DeleteNode(network)
+			}
+		}
 		fmt.Printf("left tenant %s on server %s\n", tenantID, s)
 	}
 
