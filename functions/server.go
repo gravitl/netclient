@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -154,6 +155,8 @@ func switchToRemainingServer(leftServer *config.Server, serverRemoved bool) {
 
 	// no servers left to switch to; clear the stale context
 	_ = config.SetCurrServerCtxInFile("")
+	netclient.ID = uuid.Nil
+	netclient.TenantID = ""
 }
 
 // leaveServerTenant deletes the host record for a single tenant on the given

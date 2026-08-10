@@ -164,6 +164,8 @@ func SetServerCtx() {
 		if len(servers) > 0 {
 			CurrServer = servers[0]
 			SetCurrServerCtxInFile(CurrServer)
+		} else {
+			CurrServer = ""
 		}
 	}
 }
