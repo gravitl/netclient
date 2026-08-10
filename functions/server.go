@@ -113,7 +113,9 @@ func LeaveServer(s, tenantID string) error {
 	config.WriteServerConfig()
 	config.WriteNodeConfig()
 	config.WriteNetclientConfig()
-	daemon.Restart()
+	if activeTenantLeaving {
+		daemon.Restart()
+	}
 	return nil
 }
 
