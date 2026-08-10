@@ -136,6 +136,13 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 		logger.Log(0, "failed to save server", err.Error())
 	}
 	UpdateHostFromServer(&registerResponse.RequestedHost)
+	activeTenantID := registerResponse.RequestedHost.TenantID
+	for network, node := range config.GetNodes() {
+		if node.Server == server.Name && node.TenantID != activeTenantID {
+			config.DeleteNode(network)
+		}
+	}
+	_ = config.WriteNodeConfig()
 	config.SetCurrServerCtxInFile(server.Server)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
