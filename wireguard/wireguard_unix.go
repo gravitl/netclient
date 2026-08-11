@@ -41,7 +41,17 @@ func (nc *NCIface) createUserSpaceWG() error {
 
 	prepareUserspaceTUN(nc)
 
-	tunIface, err := tun.CreateTUN(nc.Name, config.Netclient().MTU)
+	// wintun.CreateAdapter panics if wintun.dll cannot be loaded (Windows).
+	var tunIface tun.Device
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("userspace TUN create panic (is wintun.dll installed?): %v", r)
+			}
+		}()
+		tunIface, err = tun.CreateTUN(nc.Name, config.Netclient().MTU)
+	}()
 	if err != nil {
 		return err
 	}
