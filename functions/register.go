@@ -118,6 +118,8 @@ func doubleCheck(server, tenantID string, host *config.Config) (shouldUpdate boo
 			host.ID = existingID
 		} else if host.ID, err = uuid.NewUUID(); err != nil {
 			return false, err
+		} else {
+			host.Nodes = nil
 		}
 	}
 
@@ -142,7 +144,9 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 			config.DeleteNode(network)
 		}
 	}
-	_ = config.WriteNodeConfig()
+	if err := config.WriteNodeConfig(); err != nil {
+		logger.Log(0, "failed to write node config after pruning other-tenant nodes", err.Error())
+	}
 	config.SetCurrServerCtxInFile(server.Server)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
