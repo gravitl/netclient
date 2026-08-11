@@ -1,5 +1,5 @@
-//go:build linux || darwin || freebsd
-// +build linux darwin freebsd
+//go:build linux || darwin || freebsd || windows
+// +build linux darwin freebsd windows
 
 package wireguard
 
@@ -92,6 +92,23 @@ func TCPPeerEndpoint(peerID string) string {
 		return ""
 	}
 	return b.peerEndpoint(peerID)
+}
+
+// TCPRoutedPeerIDs returns peer IDs currently mapped for gateway TCP uplink.
+func TCPRoutedPeerIDs() []string {
+	relayBindMu.Lock()
+	b := relayBind
+	relayBindMu.Unlock()
+	if b == nil {
+		return nil
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	ids := make([]string, 0, len(b.peerToEp))
+	for id := range b.peerToEp {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // relayTCPBind wraps the default UDP bind and routes TCP-uplink peer traffic.

@@ -1,21 +1,19 @@
-//go:build linux || darwin || freebsd
-// +build linux darwin freebsd
+//go:build linux || darwin || freebsd || windows
+// +build linux darwin freebsd windows
 
 package wireguard
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"sync"
-	"syscall"
+	"sync/atomic"
 	"time"
 
 	"github.com/gravitl/netclient/config"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/ipc"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
@@ -29,18 +27,19 @@ var uapi net.Listener
 // Close must consult this — not relayTCPUserspaceNeeded() — because disable flips the
 // desired mode before iface.Close(); using the desired flag skips Device.Close and
 // leaves UAPI hung (wg show blocks forever).
-var userspaceWGActive bool
+// Atomic so callers holding wgMutex (e.g. Configure → ApplyAddrs) can read safely.
+var userspaceWGActive atomic.Bool
 
 // UserspaceWGActive reports whether the current netmaker iface is userspace WireGuard.
 func UserspaceWGActive() bool {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	return userspaceWGActive
+	return userspaceWGActive.Load()
 }
 
 func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+
+	prepareUserspaceTUN(nc)
 
 	tunIface, err := tun.CreateTUN(nc.Name, config.Netclient().MTU)
 	if err != nil {
@@ -69,7 +68,7 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
-	userspaceWGActive = true
+	userspaceWGActive.Store(true)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -100,14 +99,6 @@ func (nc *NCIface) createUserSpaceWG() error {
 		}
 	}()
 	return nil
-}
-
-func getUAPIByInterface(iface string) (net.Listener, error) {
-	tunSock, err := ipc.UAPIOpen(iface)
-	if err != nil {
-		return nil, err
-	}
-	return ipc.UAPIListen(iface, tunSock)
 }
 
 func (nc *NCIface) closeUserspaceWg() error {
@@ -156,7 +147,7 @@ func (nc *NCIface) closeUserspaceWg() error {
 	relayBindMu.Lock()
 	relayBind = nil
 	relayBindMu.Unlock()
-	userspaceWGActive = false
+	userspaceWGActive.Store(false)
 
 	waitDone := make(chan struct{})
 	go func() {
@@ -211,9 +202,4 @@ func waitUDPPortFree(port int, timeout time.Duration) bool {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-}
-
-func isEconnRefused(err error) bool {
-	var errno syscall.Errno
-	return errors.As(err, &errno) && errors.Is(errno, syscall.ECONNREFUSED)
 }

@@ -267,6 +267,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
+	if proxyuplink.ActiveServer() != nil {
+		proxyuplink.RefreshTCPPeerRoutes()
+	}
 	if len(peerUpdate.Nodes) > 0 {
 		config.SetNodes(peerUpdate.Nodes)
 		_ = config.WriteNodeConfig()
@@ -589,6 +592,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func resetInterfaceFunc() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
+	// Drop TCP sessions before recreating userspace WG so clients reconnect cleanly
+	// against the new Bind (PrepareUserspaceTeardown alone leaves proxy sessions up).
+	StopAllTCPUplink()
 	listenPort := 0
 	if cfg := config.Netclient(); cfg != nil {
 		listenPort = cfg.ListenPort
@@ -613,6 +619,8 @@ func resetInterfaceFunc() {
 	if server == nil {
 		return
 	}
+	// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
+	reconcileTCPUplink(server, nil)
 	if server.ManageDNS {
 		dns.GetDNSServerInstance().Stop()
 		dns.GetDNSServerInstance().Start()
@@ -861,6 +869,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	if proxyuplink.ActiveServer() != nil {
+		proxyuplink.RefreshTCPPeerRoutes()
+	}
 	proxyuplink.UpdatePeerIDs(pullResponse.PeerIDs)
 	if !maybeRestartForTCPUplink() {
 		reconcileTCPUplink(server, pullResponse.PeerIDs)

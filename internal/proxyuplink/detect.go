@@ -10,18 +10,19 @@ import (
 const DefaultListenPort = 443
 
 var (
-	peerIDsMu  sync.RWMutex
+	peerIDsMu   sync.RWMutex
 	lastPeerIDs models.PeerMap
 )
 
 // UpdatePeerIDs caches PeerIDs / peer_ids from HostPull or HostPeerUpdate for TCP endpoint lookup.
+// Ignores nil/empty maps so a partial peer update cannot wipe pubkey↔node mappings needed
+// for ClientHello / gateway peer route registration after a GW restart.
 func UpdatePeerIDs(m models.PeerMap) {
-	peerIDsMu.Lock()
-	defer peerIDsMu.Unlock()
-	if m == nil {
-		lastPeerIDs = nil
+	if len(m) == 0 {
 		return
 	}
+	peerIDsMu.Lock()
+	defer peerIDsMu.Unlock()
 	cp := make(models.PeerMap, len(m))
 	for k, v := range m {
 		cp[k] = v
@@ -43,9 +44,10 @@ func NeedsUserspaceWG() bool {
 }
 
 // FindUplinkClient returns the first local node opted into TCP uplink to its gateway.
+// Requires Connected so disconnect stops the TCP client without flipping userspace WG mode.
 func FindUplinkClient() (config.Node, bool) {
 	for _, n := range config.GetNodes() {
-		if n.UseTcpUplink && n.RelayedBy != "" {
+		if n.Connected && n.UseTcpUplink && n.RelayedBy != "" {
 			return n, true
 		}
 	}

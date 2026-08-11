@@ -343,6 +343,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		reconcileTCPUplink(server, nil)
 	}
+	if proxyuplink.ActiveServer() != nil {
+		proxyuplink.RefreshTCPPeerRoutes()
+	}
 	// set original default gw info
 
 	// check if default gw needs to be set

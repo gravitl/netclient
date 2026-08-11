@@ -10,7 +10,6 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/proxy/uplink"
 	"golang.org/x/exp/slog"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // ServerManager owns an uplink.Server on a TCP-uplink-enabled gateway.
@@ -208,22 +207,34 @@ func registerPeerEndpoint(peerID string) error {
 		placeholder := fmt.Sprintf("127.0.0.1:%d", syntheticPort(peerID))
 		return wireguard.SetTCPPeerRoute(peerID, placeholder)
 	}
-	pk, err := wgtypes.ParseKey(pub)
-	if err != nil {
-		return err
-	}
-	for _, p := range config.Netclient().HostPeers {
-		if p.PublicKey != pk {
-			continue
-		}
-		if p.Endpoint == nil {
-			placeholder := fmt.Sprintf("127.0.0.1:%d", syntheticPort(peerID))
-			return wireguard.SetTCPPeerRoute(peerID, placeholder)
-		}
-		return wireguard.SetTCPPeerRoute(peerID, p.Endpoint.String())
+	if ep := hostPeerEndpoint(pub); ep != "" {
+		return wireguard.SetTCPPeerRoute(peerID, ep)
 	}
 	placeholder := fmt.Sprintf("127.0.0.1:%d", syntheticPort(peerID))
 	return wireguard.SetTCPPeerRoute(peerID, placeholder)
+}
+
+// RefreshTCPPeerRoutes re-resolves gateway TCP peer routes from current HostPeers.
+// Call after SetPeers / iface reset so Bind.Send endpoint keys stay aligned.
+func RefreshTCPPeerRoutes() {
+	peerIDs := make(map[string]struct{})
+	for _, id := range wireguard.TCPRoutedPeerIDs() {
+		if id != "" {
+			peerIDs[id] = struct{}{}
+		}
+	}
+	for _, n := range config.GetNodes() {
+		for _, id := range n.RelayedNodes {
+			if id != "" {
+				peerIDs[id] = struct{}{}
+			}
+		}
+	}
+	for id := range peerIDs {
+		if err := registerPeerEndpoint(id); err != nil {
+			slog.Debug("tcp uplink: refresh peer route", "peer", id, "error", err)
+		}
+	}
 }
 
 func syntheticPort(peerID string) int {

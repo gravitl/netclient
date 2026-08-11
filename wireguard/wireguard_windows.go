@@ -18,12 +18,20 @@ import (
 	"golang.org/x/exp/slog"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/driver"
+	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
 
 // TODO: update from netsh to a more programmatic approach.
 
 // NCIface.Create - makes a new Wireguard interface and sets given addresses
 func (nc *NCIface) Create() error {
+	// TCP uplink needs userspace wireguard-go + relayTCPBind (Wintun). WireGuardNT
+	// cannot host a custom conn.Bind, so divert traffic over TCP when required.
+	if relayTCPUserspaceNeeded() {
+		slog.Info("TCP uplink enabled: using userspace WireGuard (Wintun) for conn.Bind integration")
+		return nc.createUserSpaceWG()
+	}
+
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
@@ -89,7 +97,6 @@ func (nc *NCIface) Create() error {
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
 func (nc *NCIface) ApplyAddrs() error {
-	adapter := nc.Iface
 	prefixAddrs := []netip.Prefix{}
 	for i := range nc.Addresses {
 
@@ -103,6 +110,19 @@ func (nc *NCIface) ApplyAddrs() error {
 		}
 	}
 
+	if UserspaceWGActive() {
+		iface, err := net.InterfaceByName(nc.Name)
+		if err != nil {
+			return fmt.Errorf("userspace iface %s: %w", nc.Name, err)
+		}
+		luid, err := winipcfg.LUIDFromIndex(uint32(iface.Index))
+		if err != nil {
+			return fmt.Errorf("userspace LUID: %w", err)
+		}
+		return luid.SetIPAddresses(prefixAddrs)
+	}
+
+	adapter := nc.Iface
 	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
 }
 
@@ -587,11 +607,18 @@ func restoreInternetGwV4() (err error) {
 
 // NCIface.Close - closes the managed WireGuard interface
 func (nc *NCIface) Close() {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	err := nc.Iface.Close()
-	if err != nil {
-		logger.Log(0, "error closing netclient interface -", err.Error())
+	// Tear down the iface that is actually running — not the *desired* mode.
+	// prepareTCPUplinkWireGuard may flip needTCPUplinkBind before SIGHUP.
+	if UserspaceWGActive() {
+		_ = nc.closeUserspaceWg()
+	} else {
+		wgMutex.Lock()
+		if nc.Iface != nil {
+			if err := nc.Iface.Close(); err != nil {
+				logger.Log(0, "error closing netclient interface -", err.Error())
+			}
+		}
+		wgMutex.Unlock()
 	}
 
 	// clean up egress range routes
@@ -612,15 +639,16 @@ func (nc *NCIface) Close() {
 	}
 }
 
-// UserspaceWGActive reports whether the current netmaker iface is userspace WireGuard.
-// Windows always uses the WireGuardNT driver path, not the unix userspace Device.
-func UserspaceWGActive() bool {
-	return false
-}
-
 // NCIface.SetMTU - sets the MTU of the windows WireGuard Iface adapter
 func (nc *NCIface) SetMTU() error {
-	// TODO figure out how to change MTU of adapter
+	if !UserspaceWGActive() || nc.MTU <= 0 {
+		// TODO figure out how to change MTU of WireGuardNT adapter
+		return nil
+	}
+	cmd := fmt.Sprintf(`netsh interface ipv4 set subinterface "%s" mtu=%d store=active`, nc.Name, nc.MTU)
+	if _, err := ncutils.RunCmd(cmd, false); err != nil {
+		slog.Warn("failed to set userspace iface MTU", "error", err)
+	}
 	return nil
 }
 

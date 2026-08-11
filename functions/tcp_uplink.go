@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/proxy/uplink"
 	"golang.org/x/exp/slog"
 )
 
@@ -115,7 +116,7 @@ func reconcileTCPUplink(server *config.Server, peerIDs models.PeerMap) {
 func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) {
 	node, ok := proxyuplink.FindUplinkClient()
 	if !ok {
-		slog.Debug("client: no local node with use_tcp_uplink+relayedby")
+		slog.Debug("client: no connected local node with use_tcp_uplink+relayedby")
 		stopTCPClientLocked()
 		return
 	}
@@ -136,9 +137,8 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 
 	if tcpClientMgr != nil && tcpClientMgr.Addr() == addr && tcpClientMgr.RelayPeerID() == node.RelayedBy {
 		slog.Debug("client: already running, refresh UDP endpoint only")
-		if ep := proxyuplink.RelayPeerUDPEndpoint(node.RelayedBy); ep != "" {
-			_ = wireguard.SetRelayUDPEndpoint(ep)
-		}
+		ensureClientRelayUDPEndpoint(node.RelayedBy)
+		wireguard.SetRelayTCPUplink(tcpClientMgr)
 		return
 	}
 
@@ -158,16 +158,7 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 		slog.Error("tcp uplink client", "error", err)
 		return
 	}
-	if ep := proxyuplink.RelayPeerUDPEndpoint(node.RelayedBy); ep != "" {
-		slog.Debug("client: WG UDP endpoint", "endpoint", ep)
-		if err := wireguard.SetRelayUDPEndpoint(ep); err != nil {
-			slog.Debug("client: SetRelayUDPEndpoint error", "error", err)
-			slog.Warn("tcp uplink: set relay UDP endpoint", "endpoint", ep, "error", err)
-		}
-	} else {
-		slog.Debug("client: WG UDP endpoint not found yet")
-		slog.Warn("tcp uplink: gateway WG UDP endpoint not found yet; will retry on peer update")
-	}
+	ensureClientRelayUDPEndpoint(node.RelayedBy)
 	wireguard.SetRelayTCPUplink(mgr)
 	slog.Debug("client: starting proxy.Client", "addr", addr)
 	if err := mgr.Start(ctx, server, config.Netclient(), opts); err != nil {
@@ -177,8 +168,88 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 		return
 	}
 	tcpClientMgr = mgr
+	// Peers may have been applied just before reconcile; retry endpoint once more.
+	ensureClientRelayUDPEndpoint(node.RelayedBy)
+	go watchTCPClientHealth(ctx, mgr, node.RelayedBy)
 	slog.Debug("client: STARTED ok", "state", mgr.State())
 	slog.Info("tcp uplink client started", "addr", addr, "relay", node.RelayedBy, "node", node.ID.String())
+}
+
+// watchTCPClientHealth recovers after gateway restart/pull without requiring a client pull:
+//   - when TCP becomes Active again, restore HostPeers-based divert + uplink hook
+//   - if down too long, recreate the proxy client (resets reconnect/auth state)
+// Divert stays keyed to the server-published HostPeers endpoint so a working LAN
+// address from endpoint detection (different UDP dest) naturally uses UDP instead of TCP.
+func watchTCPClientHealth(ctx context.Context, mgr *proxyuplink.Manager, relayPeerID string) {
+	wasActive := mgr.State() == uplink.StateActive
+	var downSince time.Time
+	if !wasActive {
+		downSince = time.Now()
+	}
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			tcpUplinkMu.Lock()
+			if tcpClientMgr != mgr {
+				tcpUplinkMu.Unlock()
+				return
+			}
+			active := mgr.State() == uplink.StateActive
+			switch {
+			case active && !wasActive:
+				slog.Info("tcp uplink client reconnected; restoring relay divert", "relay", relayPeerID)
+				ensureClientRelayUDPEndpoint(relayPeerID)
+				wireguard.SetRelayTCPUplink(mgr)
+				downSince = time.Time{}
+				wasActive = true
+				tcpUplinkMu.Unlock()
+			case !active && wasActive:
+				slog.Info("tcp uplink client disconnected; waiting for reconnect", "relay", relayPeerID)
+				downSince = time.Now()
+				wasActive = false
+				tcpUplinkMu.Unlock()
+			case !active && !downSince.IsZero() && time.Since(downSince) > 30*time.Second:
+				slog.Warn("tcp uplink client down too long; recreating client",
+					"relay", relayPeerID, "state", mgr.State())
+				tcpUplinkMu.Unlock()
+				restartTCPUplinkClient()
+				return
+			default:
+				tcpUplinkMu.Unlock()
+			}
+		}
+	}
+}
+
+// restartTCPUplinkClient stops and re-reconciles the TCP uplink client.
+func restartTCPUplinkClient() {
+	tcpUplinkMu.Lock()
+	defer tcpUplinkMu.Unlock()
+	ctx := tcpUplinkCtx
+	server := config.GetServer(config.CurrServer)
+	stopTCPClientLocked()
+	if ctx == nil || server == nil {
+		return
+	}
+	reconcileTCPUplinkClientLocked(ctx, server)
+}
+
+func ensureClientRelayUDPEndpoint(relayPeerID string) {
+	ep := proxyuplink.RelayPeerUDPEndpoint(relayPeerID)
+	if ep == "" {
+		slog.Debug("client: WG UDP endpoint not found yet")
+		slog.Warn("tcp uplink: gateway WG UDP endpoint not found yet; will retry on peer update")
+		return
+	}
+	slog.Debug("client: WG UDP endpoint", "endpoint", ep)
+	if err := wireguard.SetRelayUDPEndpoint(ep); err != nil {
+		slog.Debug("client: SetRelayUDPEndpoint error", "error", err)
+		slog.Warn("tcp uplink: set relay UDP endpoint", "endpoint", ep, "error", err)
+	}
 }
 
 func stopTCPClientLocked() {
@@ -207,7 +278,11 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 	slog.Debug("server: found gateway", "node", node.ID.String(), "port", port)
 
 	if tcpServerMgr != nil && tcpServerMgr.NodeID() == node.ID.String() && tcpServerMgr.ListenPort() == port {
-		slog.Debug("server: already running")
+		// Listener may still be up after PrepareUserspaceTeardown cleared the bind hook
+		// and peer routes (e.g. resetInterfaceFunc). Re-hook and refresh routes.
+		slog.Debug("server: already running; re-hook and refresh peer routes")
+		wireguard.SetTCPUplinkServer(tcpServerMgr)
+		proxyuplink.RefreshTCPPeerRoutes()
 		return
 	}
 
@@ -235,6 +310,7 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 	}
 	tcpServerMgr = mgr
 	slog.Debug("server: STARTED ok")
+	proxyuplink.RefreshTCPPeerRoutes()
 }
 
 func stopTCPServerLocked() {
@@ -246,7 +322,8 @@ func stopTCPServerLocked() {
 	wireguard.ClearAllTCPPeerRoutes()
 	mgr := tcpServerMgr
 	tcpServerMgr = nil
-	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// Allow session CloseAll + connWG drain (zombies used to block forever).
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = mgr.Stop(stopCtx)
 	slog.Info("tcp uplink server stopped")
