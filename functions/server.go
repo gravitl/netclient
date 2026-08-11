@@ -157,6 +157,7 @@ func switchToRemainingServer(leftServer *config.Server, serverRemoved bool) {
 			}
 		}
 		_ = config.SetCurrServerCtxInFile(name)
+		config.CurrServer = name
 		netclient.ID = hostID
 		netclient.TenantID = tenantID
 		netclient.HostPeers = []wgtypes.PeerConfig{}
@@ -186,6 +187,7 @@ func leaveServerTenant(server *config.Server, tenantID string) error {
 	auth.CleanJwtToken()
 	token, err := auth.Authenticate(&tenantServer, &tenantHost)
 	if err != nil {
+		fmt.Printf("warning: failed to authenticate with server %s to remove tenant %s (host %s) - it may still exist on the server: %v\n", server.Name, tenantID, hostID, err)
 		return nil
 	}
 	url := fmt.Sprintf("https://%s/api/hosts/%s?force=true", server.API, hostID.String())
@@ -194,5 +196,8 @@ func leaveServerTenant(server *config.Server, tenantID string) error {
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set(scope.HeaderTenantID, tenantID)
 	_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
+	if err != nil {
+		fmt.Printf("warning: failed to remove tenant %s (host %s) from server %s - it may still exist on the server: %v\n", tenantID, hostID, server.Name, err)
+	}
 	return err
 }
