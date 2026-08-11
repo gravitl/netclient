@@ -474,6 +474,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		nodeCfg := config.Node{
 			CommonNode: commonNode,
 		}
+		for network, node := range config.GetNodes() {
+			if node.Server == commonNode.Server && node.TenantID != commonNode.TenantID {
+				config.DeleteNode(network)
+			}
+		}
 		config.UpdateNodeMap(hostUpdate.Node.Network, nodeCfg)
 		server := config.GetServer(serverName)
 		if server == nil {
@@ -481,8 +486,12 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		server.Nodes[hostUpdate.Node.Network] = true
 		config.UpdateServer(serverName, *server)
-		config.WriteNodeConfig()
-		config.WriteServerConfig()
+		if err := config.WriteNodeConfig(); err != nil {
+			slog.Error("failed to write node config after JoinHostToNetwork", "error", err)
+		}
+		if err := config.WriteServerConfig(); err != nil {
+			slog.Error("failed to write server config after JoinHostToNetwork", "error", err)
+		}
 		slog.Info("added node to network", "network", hostUpdate.Node.Network, "server", serverName)
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
