@@ -117,6 +117,12 @@ func cleanUpByServer(server *config.Server) error {
 	if err := config.WriteServerConfig(); err != nil {
 		return err
 	}
+	if config.CurrServer == server.Name {
+		config.SwitchToRemainingServer()
+		if err := config.WriteNetclientConfig(); err != nil {
+			return err
+		}
+	}
 	_ = daemon.Restart()
 	return nil
 }
