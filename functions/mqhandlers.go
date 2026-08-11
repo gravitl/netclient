@@ -659,7 +659,11 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	wasActive := config.CurrServer == server
 	config.DeleteServer(server)
+	if wasActive {
+		config.SwitchToRemainingServer()
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {
