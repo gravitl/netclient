@@ -26,13 +26,15 @@ func Uninstall() ([]error, error) {
 	activeID, activeTenantID := netclient.ID, netclient.TenantID
 
 	for _, v := range config.Servers {
-		v := v
 		for tenantID, hostID := range v.HostIDs {
 			netclient.ID = hostID
 			netclient.TenantID = tenantID
 			tenantServer := v
 			tenantServer.TenantID = tenantID
-			hostUpdateWithServer(&tenantServer, models.HostUpdate{Action: models.DeleteHost})
+			auth.CleanJwtToken()
+			if err := hostUpdateWithServer(&tenantServer, models.HostUpdate{Action: models.DeleteHost}); err != nil {
+				allfaults = append(allfaults, fmt.Errorf("failed to delete host for tenant %s on server %s: %w", tenantID, v.Name, err))
+			}
 		}
 	}
 
