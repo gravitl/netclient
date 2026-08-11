@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var serverMutex sync.RWMutex
@@ -222,4 +224,44 @@ func UpdateServerConfig(cfg *models.ServerConfig, host *schema.Host) {
 	server.ServerConfig = *cfg
 	Servers[cfg.Server] = server
 	delete(deletedServers, cfg.Server)
+}
+
+func SwitchToRemainingServer(leftServer *Server, serverRemoved bool) {
+	netclient := Netclient()
+
+	if !serverRemoved {
+		for tenantID, hostID := range leftServer.HostIDs {
+			netclient.ID = hostID
+			netclient.TenantID = tenantID
+			netclient.HostPeers = []wgtypes.PeerConfig{}
+			return
+		}
+	}
+
+	for _, name := range GetServers() {
+		srvCfg := GetServer(name)
+		if srvCfg == nil || len(srvCfg.HostIDs) == 0 {
+			continue
+		}
+		tenantID := srvCfg.TenantID
+		hostID, ok := srvCfg.HostIDs[tenantID]
+		if !ok {
+			for tid, hid := range srvCfg.HostIDs {
+				tenantID, hostID, ok = tid, hid, true
+				break
+			}
+		}
+		_ = SetCurrServerCtxInFile(name)
+		CurrServer = name
+		netclient.ID = hostID
+		netclient.TenantID = tenantID
+		netclient.HostPeers = []wgtypes.PeerConfig{}
+		slog.Info("switched netclient server context", "server", name)
+		return
+	}
+
+	// no servers left to switch to; clear the stale context
+	_ = SetCurrServerCtxInFile("")
+	netclient.ID = uuid.Nil
+	netclient.TenantID = ""
 }

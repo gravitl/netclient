@@ -118,13 +118,16 @@ func cleanUpByServer(server *config.Server, host *config.Config) error {
 	if freshServer != nil && host != nil && host.TenantID != "" {
 		logger.Log(0, "removing unauthorized tenant", host.TenantID, "from", server.Name)
 		delete(freshServer.HostIDs, host.TenantID)
-		if len(freshServer.HostIDs) == 0 {
+		serverRemoved := len(freshServer.HostIDs) == 0
+		if serverRemoved {
 			config.DeleteServer(server.Name)
 		} else {
 			config.UpdateServer(server.Name, *freshServer)
 		}
+		config.SwitchToRemainingServer(freshServer, serverRemoved)
 	} else {
 		config.DeleteServer(server.Name)
+		config.SwitchToRemainingServer(nil, true)
 	}
 	if err := config.WriteServerConfig(); err != nil {
 		return err

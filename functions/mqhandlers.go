@@ -672,13 +672,16 @@ func deleteHostCfg(client mqtt.Client, server, tenantID string) {
 	srvCfg := config.GetServer(server)
 	if srvCfg != nil && tenantID != "" {
 		delete(srvCfg.HostIDs, tenantID)
-		if len(srvCfg.HostIDs) == 0 {
+		serverRemoved := len(srvCfg.HostIDs) == 0
+		if serverRemoved {
 			config.DeleteServer(server)
 		} else {
 			config.UpdateServer(server, *srvCfg)
 		}
+		config.SwitchToRemainingServer(srvCfg, serverRemoved)
 	} else {
 		config.DeleteServer(server)
+		config.SwitchToRemainingServer(nil, true)
 	}
 }
 

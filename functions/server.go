@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -119,7 +118,7 @@ func LeaveServer(s, tenantID string) error {
 	}
 
 	if activeTenantLeaving {
-		switchToRemainingServer(server, serverRemoved)
+		config.SwitchToRemainingServer(server, serverRemoved)
 	}
 
 	config.WriteServerConfig()
@@ -129,46 +128,6 @@ func LeaveServer(s, tenantID string) error {
 		daemon.Restart()
 	}
 	return nil
-}
-
-func switchToRemainingServer(leftServer *config.Server, serverRemoved bool) {
-	netclient := config.Netclient()
-
-	if !serverRemoved {
-		for tenantID, hostID := range leftServer.HostIDs {
-			netclient.ID = hostID
-			netclient.TenantID = tenantID
-			netclient.HostPeers = []wgtypes.PeerConfig{}
-			return
-		}
-	}
-
-	for _, name := range config.GetServers() {
-		srvCfg := config.GetServer(name)
-		if srvCfg == nil || len(srvCfg.HostIDs) == 0 {
-			continue
-		}
-		tenantID := srvCfg.TenantID
-		hostID, ok := srvCfg.HostIDs[tenantID]
-		if !ok {
-			for tid, hid := range srvCfg.HostIDs {
-				tenantID, hostID, ok = tid, hid, true
-				break
-			}
-		}
-		_ = config.SetCurrServerCtxInFile(name)
-		config.CurrServer = name
-		netclient.ID = hostID
-		netclient.TenantID = tenantID
-		netclient.HostPeers = []wgtypes.PeerConfig{}
-		fmt.Println("switched netclient server context to " + name)
-		return
-	}
-
-	// no servers left to switch to; clear the stale context
-	_ = config.SetCurrServerCtxInFile("")
-	netclient.ID = uuid.Nil
-	netclient.TenantID = ""
 }
 
 // leaveServerTenant deletes the host record for a single tenant on the given
