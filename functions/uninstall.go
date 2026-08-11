@@ -22,10 +22,21 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 
+	netclient := config.Netclient()
+	activeID, activeTenantID := netclient.ID, netclient.TenantID
+
 	for _, v := range config.Servers {
 		v := v
-		hostUpdateWithServer(&v, models.HostUpdate{Action: models.DeleteHost})
+		for tenantID, hostID := range v.HostIDs {
+			netclient.ID = hostID
+			netclient.TenantID = tenantID
+			tenantServer := v
+			tenantServer.TenantID = tenantID
+			hostUpdateWithServer(&tenantServer, models.HostUpdate{Action: models.DeleteHost})
+		}
 	}
+
+	netclient.ID, netclient.TenantID = activeID, activeTenantID
 
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
