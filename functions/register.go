@@ -29,6 +29,10 @@ func Register(token string) error {
 	if err = json.Unmarshal(data, &serverData); err != nil {
 		logger.FatalLog("could not read enrollment token")
 	}
+	if existing := config.GetServerByAPIHost(serverData.Server); existing != nil &&
+		existing.TenantID != "" && existing.TenantID != serverData.TenantID {
+		return fmt.Errorf("already joined to server %s under a different tenant; run `netclient server leave %s` before joining a different tenant on it", existing.Name, existing.Name)
+	}
 	host := config.Netclient()
 	ip, err := ncutils.GetInterfaces()
 	if err != nil {
