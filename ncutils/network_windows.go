@@ -1,6 +1,8 @@
 package ncutils
 
 import (
+	"fmt"
+	"net"
 	"syscall"
 	"unsafe"
 
@@ -8,6 +10,12 @@ import (
 )
 
 const afUnspec = 0
+
+// interfaceIndexOffset is the byte offset of InterfaceIndex within
+// MIB_IPINTERFACE_ROW (netioapi.h): Family (USHORT, offset 0) is followed by
+// 6 bytes of padding to satisfy NET_LUID's 8-byte alignment, then
+// InterfaceLuid (8 bytes, offset 8), then InterfaceIndex (ULONG, offset 16).
+const interfaceIndexOffset = 16
 
 var (
 	modIphlpapi                 = syscall.NewLazyDLL("iphlpapi.dll")
@@ -17,7 +25,7 @@ var (
 	networkChangeNotifyHandle uintptr
 	networkChangeCallbackPtr  uintptr
 
-	onNetworkChange func()
+	onNetworkChange func(interfaceName string)
 )
 
 // RegisterNetworkChangeHandler registers a function to run whenever an IP
@@ -28,7 +36,16 @@ var (
 // unplugged, hotspot bounced), and also covers cases like Modern Standby
 // where the network can stay associated across a real sleep and
 // suspend/resume notifications alone wouldn't be enough signal.
-func RegisterNetworkChangeHandler(onChange func()) error {
+//
+// onChange receives the name of the interface that changed, resolved on a
+// best-effort basis - it's empty if the interface could no longer be looked
+// up (most commonly because it was just removed). Callers that create their
+// own virtual interfaces (e.g. WireGuard adapters) will see notifications
+// for their own interface churn too; onChange is called for every change
+// regardless of source, so filtering out self-caused changes is the
+// caller's responsibility (this package has no way to know what a caller's
+// own interfaces are named).
+func RegisterNetworkChangeHandler(onChange func(interfaceName string)) error {
 	UnregisterNetworkChangeHandler()
 
 	onNetworkChange = onChange
@@ -65,10 +82,18 @@ func UnregisterNetworkChangeHandler() {
 // networkChangeCallback is invoked by Windows on a system thread whenever an
 // IP interface's state changes. It must match
 // PIPINTERFACE_CHANGE_CALLBACK's signature.
-func networkChangeCallback(callerContext, row, notificationType uintptr) uintptr {
-	logger.Log(2, "windows network interface change notification received")
+func networkChangeCallback(callerContext uintptr, row unsafe.Pointer, notificationType uintptr) uintptr {
+	var interfaceName string
+	if row != nil {
+		index := *(*uint32)(unsafe.Add(row, interfaceIndexOffset))
+		if iface, err := net.InterfaceByIndex(int(index)); err == nil {
+			interfaceName = iface.Name
+		}
+	}
+
+	logger.Log(2, fmt.Sprintf("windows network interface change notification received (interface=%q)", interfaceName))
 	if onNetworkChange != nil {
-		onNetworkChange()
+		onNetworkChange(interfaceName)
 	}
 	return 0
 }
