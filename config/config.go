@@ -564,6 +564,16 @@ func FirewallHasChanged() bool {
 }
 
 func WriteJSONAtomic(filePath string, data any, lockfile string, perm os.FileMode) error {
+	// Acquire lock
+	if err := Lock(lockfile); err != nil {
+		return fmt.Errorf("failed to obtain lockfile: %w", err)
+	}
+	defer Unlock(lockfile)
+
+	return writeJSONAtomicLocked(filePath, data, perm)
+}
+
+func writeJSONAtomicLocked(filePath string, data any, perm os.FileMode) error {
 	tmpFile := filePath + ".tmp"
 	backupFile := filePath + ".bak"
 
@@ -579,12 +589,6 @@ func WriteJSONAtomic(filePath string, data any, lockfile string, perm os.FileMod
 	} else if err != nil {
 		return fmt.Errorf("error checking config directory: %w", err)
 	}
-
-	// Acquire lock
-	if err := Lock(lockfile); err != nil {
-		return fmt.Errorf("failed to obtain lockfile: %w", err)
-	}
-	defer Unlock(lockfile)
 
 	// Write to temp file
 	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
