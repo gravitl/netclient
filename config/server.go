@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,6 +14,8 @@ import (
 )
 
 var serverMutex sync.RWMutex
+
+var deletedServers = make(map[string]bool)
 
 var serverCtxFile = ".serverctx"
 
@@ -51,6 +54,7 @@ func ReadServerConf() error {
 		if err == nil {
 			serverMutex.Lock()
 			Servers = serversI
+			deletedServers = make(map[string]bool)
 			serverMutex.Unlock()
 		}
 	}()
@@ -76,10 +80,28 @@ func ReadServerConf() error {
 func WriteServerConfig() error {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
-	return WriteJSONAtomic(
+
+	lockfile := filepath.Join(os.TempDir(), ServerLockfile)
+	if err := Lock(lockfile); err != nil {
+		return err
+	}
+	defer Unlock(lockfile)
+
+	merged := make(map[string]Server)
+	if f, err := os.Open(GetNetclientPath() + "servers.json"); err == nil {
+		_ = json.NewDecoder(f).Decode(&merged)
+		f.Close()
+	}
+	maps.Copy(merged, Servers)
+	for k := range deletedServers {
+		delete(merged, k)
+	}
+	Servers = merged
+	deletedServers = make(map[string]bool)
+
+	return writeJSONAtomicLocked(
 		filepath.Join(GetNetclientPath(), "servers.json"),
 		Servers,
-		filepath.Join(os.TempDir(), ServerLockfile),
 		0700,
 	)
 }
@@ -88,6 +110,7 @@ func WriteServerConfig() error {
 func SaveServer(name string, server Server) error {
 	serverMutex.Lock()
 	Servers[name] = server
+	delete(deletedServers, name)
 	serverMutex.Unlock()
 	return WriteServerConfig()
 }
@@ -97,6 +120,7 @@ func UpdateServer(name string, server Server) {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
 	Servers[name] = server
+	delete(deletedServers, name)
 }
 
 // GetServer returns the server struct for the given server name
@@ -175,6 +199,7 @@ func DeleteServer(k string) {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
 	delete(Servers, k)
+	deletedServers[k] = true
 }
 
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
@@ -196,4 +221,5 @@ func UpdateServerConfig(cfg *models.ServerConfig, host *schema.Host) {
 	server.Name = cfg.Server
 	server.ServerConfig = *cfg
 	Servers[cfg.Server] = server
+	delete(deletedServers, cfg.Server)
 }
