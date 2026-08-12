@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/scope"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -66,6 +67,7 @@ func LeaveServer(s string) error {
 		headers := make(http.Header)
 		headers.Set("Content-Type", "application/json")
 		headers.Set("Authorization", "Bearer "+token)
+		headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 		_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 		if err != nil {
 			return err
