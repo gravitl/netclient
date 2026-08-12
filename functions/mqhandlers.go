@@ -520,11 +520,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 		// Apply TcpProxyEnabled / TcpProxyListenPort without requiring a peer update.
-		// Listen-port-only changes reconcile the TCP server; mode flips may restart daemon.
+		// Listen-port-only changes reconcile the TCP server; mode flips recreate the WG iface in-process.
 		if !maybeRestartForTCPUplink() {
 			reconcileTCPUplink(server, nil)
 		} else {
-			// Mode change already scheduled daemon.Restart; skip duplicate restart below.
+			// Mode change already flipped the iface; skip duplicate restart/reset below.
 			restartDaemon = false
 			resetInterface = false
 		}

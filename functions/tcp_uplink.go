@@ -2,13 +2,13 @@ package functions
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/internal/proxyuplink"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/proxy/uplink"
@@ -329,19 +329,66 @@ func stopTCPServerLocked() {
 	slog.Info("tcp uplink server stopped")
 }
 
-// maybeRestartForTCPUplink restarts the daemon only when userspace WG mode must change
-// (enable or disable TCP uplink). TcpProxyListenPort-only changes return false so callers
-// reconcile the TCP server in-process without recreating the WireGuard iface.
+// maybeRestartForTCPUplink flips userspace↔kernel/NT WireGuard when TCP uplink
+// enablement changes. Does an in-process iface recreate (not daemon.Restart):
+// on Windows, Restart() is a full WinSW service stop/start and commonly costs
+// ~1 minute before peers can handshake again.
+// TcpProxyListenPort-only changes return false so callers reconcile the TCP
+// server without recreating the WireGuard iface.
 func maybeRestartForTCPUplink() bool {
 	if !prepareTCPUplinkWireGuard(true) {
 		return false
 	}
-	// Tear down TCP before SIGHUP so Device.Close cannot race Bind.Send / recv.
+	slog.Info("tcp uplink config changed WireGuard mode; flipping iface in-process")
+	flipTCPUplinkWireGuardMode()
+	return true
+}
+
+// flipTCPUplinkWireGuardMode tears down the current netmaker iface and recreates
+// it in the mode required by needTCPUplinkBind (userspace vs kernel/WireGuardNT).
+// MQTT and other daemon goroutines keep running.
+func flipTCPUplinkWireGuardMode() {
+	mNMutex.Lock()
+	defer mNMutex.Unlock()
+
 	StopAllTCPUplink()
 
-	fmt.Println("[listen-port-debug] maybeRestartForTCPUplink: scheduling daemon.Restart (userspace mode flip)")
-	slog.Debug("WireGuard mode changed; restarting daemon")
-	slog.Info("tcp uplink config changed WireGuard mode; restarting daemon")
-	_ = daemon.Restart()
-	return true
+	listenPort := 0
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
+	nc := wireguard.GetInterface()
+	nc.Close()
+	// Short wait — full 5s was leftover from listen-port bump debugging.
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 2*time.Second) {
+		slog.Warn("WireGuard UDP listen port still busy after mode-flip Close", "port", listenPort)
+	}
+
+	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
+	if err := nc.Create(); err != nil {
+		slog.Error("tcp uplink mode flip: create iface", "error", err)
+		return
+	}
+	if err := nc.Configure(); err != nil {
+		slog.Error("tcp uplink mode flip: configure iface", "error", err)
+		return
+	}
+	if err := wireguard.SetPeers(true); err != nil {
+		slog.Error("tcp uplink mode flip: set peers", "error", err)
+	}
+	wireguard.SetRoutesFromCache()
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	reconcileTCPUplink(server, nil)
+	if server.ManageDNS {
+		dns.GetDNSServerInstance().Stop()
+		dns.GetDNSServerInstance().Start()
+	}
+	select {
+	case wireguard.EgressResetCh <- struct{}{}:
+	default:
+	}
 }
