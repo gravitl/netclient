@@ -34,6 +34,9 @@ func SwitchServer(server string) error {
 	}
 	config.Netclient().HostPeers = []wgtypes.PeerConfig{}
 	_ = config.WriteNetclientConfig()
+	config.DeleteNodes()
+	config.DeleteClientNodes()
+	_ = config.WriteNodeConfig()
 	return daemon.Restart()
 }
 
