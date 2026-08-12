@@ -67,17 +67,23 @@ func LeaveServer(s string) error {
 	if server == nil {
 		return errors.New("server not found")
 	}
-	token, err := auth.Authenticate(server, config.Netclient())
+
+	scopedHost := *config.Netclient()
+	scopedHost.TenantID = server.TenantID
+	auth.CleanJwtToken()
+	token, err := auth.Authenticate(server, &scopedHost)
 	if err == nil {
-		url := fmt.Sprintf("https://%s/api/hosts/%s?force=true", server.API, config.Netclient().ID.String())
+		url := fmt.Sprintf("https://%s/api/hosts/%s?force=true", server.API, scopedHost.ID.String())
 		headers := make(http.Header)
 		headers.Set("Content-Type", "application/json")
 		headers.Set("Authorization", "Bearer "+token)
-		headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
+		headers.Set(scope.HeaderTenantID, server.TenantID)
 		_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 		if err != nil {
 			return err
 		}
+	} else {
+		return fmt.Errorf("failed to authenticate with server %s - host may still exist on the server: %w", server.Name, err)
 	}
 	wasActive := config.CurrServer == server.Name
 	config.DeleteServerHostPeerCfg()
