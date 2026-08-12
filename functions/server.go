@@ -16,7 +16,8 @@ import (
 // SwitchServer - switches netclient server context
 func SwitchServer(server string) error {
 	fmt.Println("setting netclient server context to " + server)
-	if config.GetServer(server) == nil {
+	srvCfg := config.GetServer(server)
+	if srvCfg == nil {
 		return errors.New("server config not found")
 	}
 	currServerCtx, err := config.GetCurrServerCtxFromFile()
@@ -32,7 +33,9 @@ func SwitchServer(server string) error {
 		fmt.Println("failed to set server context ", err)
 		return err
 	}
-	config.Netclient().HostPeers = []wgtypes.PeerConfig{}
+	netclient := config.Netclient()
+	netclient.HostPeers = []wgtypes.PeerConfig{}
+	netclient.TenantID = srvCfg.TenantID
 	_ = config.WriteNetclientConfig()
 	config.DeleteNodes()
 	config.DeleteClientNodes()
