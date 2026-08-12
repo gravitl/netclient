@@ -79,10 +79,14 @@ func LeaveServer(s string) error {
 			return err
 		}
 	}
+	wasActive := config.CurrServer == server.Name
 	config.DeleteServerHostPeerCfg()
 	config.DeleteServer(server.Name)
 	config.DeleteNodes()
 	config.DeleteClientNodes()
+	if wasActive {
+		config.SwitchToRemainingServer()
+	}
 	config.WriteServerConfig()
 	config.WriteNodeConfig()
 	config.WriteNetclientConfig()
