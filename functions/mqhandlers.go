@@ -495,6 +495,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
+		config.WriteNetclientConfig()
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
