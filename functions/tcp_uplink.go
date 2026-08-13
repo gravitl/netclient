@@ -377,6 +377,9 @@ func flipTCPUplinkWireGuardMode() {
 		slog.Error("tcp uplink mode flip: set peers", "error", err)
 	}
 	wireguard.SetRoutesFromCache()
+	// Closing the iface drops OS default routes used for exit-node traffic, but
+	// IGWMonitor still reports the old nexthop as current — force reinstall.
+	wireguard.ReapplyInternetGwAfterIfaceRecreate()
 
 	server := config.GetServer(config.CurrServer)
 	if server == nil {

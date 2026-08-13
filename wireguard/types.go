@@ -282,16 +282,40 @@ func SetRoutesFromCache() {
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
-	//inetGW route
+	//inetGW route — only when monitor thinks routes are missing (iface recreate
+	// must call ReapplyInternetGwAfterIfaceRecreate instead; IsCurrentIGW stays
+	// true across Close even though OS routes are gone).
 	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
 	if gw4 != nil || gw6 != nil {
 		if !GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
-			igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
-			if ok {
-				_ = RestoreInternetGw()
-				SetInternetGw(igw.PublicKey.String(), gw4, gw6)
-			}
+			ReapplyInternetGw(gw4, gw6)
 		}
+	}
+}
+
+// ReapplyInternetGwAfterIfaceRecreate reinstalls OS default routes for an active
+// exit nexthop after the netmaker iface was torn down. Closing the iface drops
+// those routes while IGWMonitor may still report IsCurrentIGW=true, so callers
+// must not gate on IsCurrentIGW.
+func ReapplyInternetGwAfterIfaceRecreate() {
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 == nil && gw6 == nil {
+		return
+	}
+	ReapplyInternetGw(gw4, gw6)
+}
+
+// ReapplyInternetGw restores then sets the host default route via the exit peer.
+func ReapplyInternetGw(gw4, gw6 net.IP) {
+	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+	if !ok {
+		slog.Warn("exit peer not found; OS default routes not restored",
+			"gw4", gw4, "gw6", gw6)
+		return
+	}
+	_ = RestoreInternetGw()
+	if err := SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
+		slog.Error("failed to reapply internet gateway routes", "error", err)
 	}
 }
 

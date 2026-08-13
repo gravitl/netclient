@@ -277,15 +277,17 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// Host carries TCP proxy listen settings; apply before uplink reconcile.
 	UpdateHostFromServer(&peerUpdate.Host)
 	proxyuplink.UpdatePeerIDs(peerUpdate.PeerIDs)
-	if !maybeRestartForTCPUplink() {
+	tcpModeFlipped := maybeRestartForTCPUplink()
+	if !tcpModeFlipped {
 		reconcileTCPUplink(server, peerUpdate.PeerIDs)
 	}
 	//setup the default gateway when change_default_gw set to true (after peers
 	//are on the interface so IGW monitor can resolve the exit peer).
 	if peerUpdate.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
-		//only update if the current gateway ip is not the same as desired
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		// After a TCP uplink WireGuard mode flip the iface was recreated and OS
+		// routes were dropped; always re-apply even if IGWMonitor still matches.
+		if tcpModeFlipped || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
@@ -873,14 +875,16 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		proxyuplink.RefreshTCPPeerRoutes()
 	}
 	proxyuplink.UpdatePeerIDs(pullResponse.PeerIDs)
-	if !maybeRestartForTCPUplink() {
+	tcpModeFlipped := maybeRestartForTCPUplink()
+	if !tcpModeFlipped {
 		reconcileTCPUplink(server, pullResponse.PeerIDs)
 	}
 	//setup the default gateway when change_default_gw set to true (after peers)
 	if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
-		//only update if the current gateway ip is not the same as desired
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		// After a TCP uplink WireGuard mode flip the iface was recreated and OS
+		// routes were dropped; always re-apply even if IGWMonitor still matches.
+		if tcpModeFlipped || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
