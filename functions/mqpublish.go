@@ -245,13 +245,32 @@ func PublishNodeUpdate(node *config.Node) error {
 	return nil
 }
 
-// publishPeerSignal - publishes peer signal
+// publishPeerSignal - publishes peer signal via MQTT when connected, REST fallback otherwise
 func publishPeerSignal(signal models.Signal) error {
-	hostServerUpdate(models.HostUpdate{
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return errors.New("server config not found")
+	}
+	hu := models.HostUpdate{
 		Action: models.SignalHost,
 		Signal: signal,
-	})
-	return nil
+	}
+	if Mqclient != nil && Mqclient.IsConnectionOpen() {
+		hostCfg := config.Netclient()
+		if hostCfg != nil {
+			hu.Host = hostCfg.Host
+			data, err := json.Marshal(buildHostUpdatePayload(hu))
+			if err == nil {
+				dest := fmt.Sprintf("host/serverupdate/%s/%s", server.Name, hostCfg.ID.String())
+				if err := publish(server.Name, dest, data, 1); err == nil {
+					return nil
+				} else {
+					slog.Debug("mqtt peer signal failed; falling back to rest", "error", err)
+				}
+			}
+		}
+	}
+	return hostUpdateWithServer(server, hu)
 }
 
 // PublishHostUpdate - publishes host updates to server

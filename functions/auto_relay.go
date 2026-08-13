@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,8 +33,14 @@ const (
 	minPeerConnectionCheckInterval = 30 * time.Second
 	signalThrottleMaxAttempts      = 3
 	signalThrottleBackoff          = 5 * time.Minute
-	relayLivenessProbeCount          = 1
+	relayLivenessProbeCount        = 1
+	autoRelayCacheEntryTTL         = 10 * time.Minute
 )
+
+type reachabilityState struct {
+	reachable bool
+	updatedAt time.Time
+}
 
 type signalThrottleEntry struct {
 	count        int
@@ -40,17 +49,17 @@ type signalThrottleEntry struct {
 }
 
 var (
-	autoRelayCacheMutex = &sync.Mutex{}
-	currentNodesCache   = make(map[string]models.Node)
-	autoRelayCache      = make(map[schema.NetworkID][]models.Node)
-	gwNodesCache        = make(map[schema.NetworkID][]models.Node)
+	autoRelayCacheMutex     = &sync.Mutex{}
+	currentNodesCache       = make(map[string]models.Node)
+	autoRelayCache          = make(map[schema.NetworkID][]models.Node)
+	gwNodesCache            = make(map[schema.NetworkID][]models.Node)
 	networkMetricsCache     = make(map[schema.NetworkID]map[string]int64)
 	networkMetricsFetchedAt = make(map[schema.NetworkID]time.Time)
 	autoRelayConnTicker     *time.Ticker
 	signalThrottleCache     = sync.Map{}
 	autoRelayMERecentCache  = sync.Map{} // key nodeID|peerNodeID|relayID -> time.Time
-	relayReachabilityCache  = make(map[string]bool) // key nodeID|relayID
-	gwReachabilityCache     = make(map[string]bool) // key nodeID|gwID
+	relayReachabilityCache  = make(map[string]reachabilityState)
+	gwReachabilityCache     = make(map[string]reachabilityState)
 	nodeHealthCheckLastRun  = make(map[string]time.Time)
 	peerWatchRunning        atomic.Bool
 )
@@ -110,36 +119,128 @@ func refreshNetworkMetrics(network schema.NetworkID, metricPort int) map[string]
 	return metrics
 }
 
+func autoRelaySetKey(nodes []models.Node) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	ids := make([]string, len(nodes))
+	for i := range nodes {
+		ids[i] = nodes[i].ID.String()
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
+}
+
 func setAutoRelayNodes(autoRelaynodes map[schema.NetworkID][]models.Node, gwNodes map[schema.NetworkID][]models.Node, currNodes []models.Node) {
+	server := config.GetServer(config.CurrServer)
+	metricPort := 51821
+	if server != nil && server.MetricsPort != 0 {
+		metricPort = server.MetricsPort
+	}
+
+	type pendingProbe struct {
+		network schema.NetworkID
+		nodes   []models.Node
+	}
+	var toProbe []pendingProbe
+
 	autoRelayCacheMutex.Lock()
-	defer autoRelayCacheMutex.Unlock()
+	for networkID, nodes := range autoRelaynodes {
+		if autoRelaySetKey(autoRelayCache[networkID]) != autoRelaySetKey(nodes) {
+			copied := make([]models.Node, len(nodes))
+			copy(copied, nodes)
+			toProbe = append(toProbe, pendingProbe{network: networkID, nodes: copied})
+		}
+	}
+	for networkID := range autoRelayCache {
+		if _, ok := autoRelaynodes[networkID]; !ok {
+			delete(networkMetricsCache, networkID)
+			delete(networkMetricsFetchedAt, networkID)
+		}
+	}
 	autoRelayCache = autoRelaynodes
 	gwNodesCache = gwNodes
 	currentNodesCache = make(map[string]models.Node)
 	for _, currNode := range currNodes {
 		currentNodesCache[currNode.ID.String()] = currNode
 	}
+	autoRelayCacheMutex.Unlock()
 
-	// Calculate and cache metrics for each network
-	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return
 	}
-	metricPort := server.MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
-	}
-
-	// Clear old metrics cache (peer update invalidates TTL)
-	networkMetricsCache = make(map[schema.NetworkID]map[string]int64)
-	networkMetricsFetchedAt = make(map[schema.NetworkID]time.Time)
 	now := time.Now()
+	for _, p := range toProbe {
+		if len(p.nodes) == 0 {
+			autoRelayCacheMutex.Lock()
+			delete(networkMetricsCache, p.network)
+			delete(networkMetricsFetchedAt, p.network)
+			autoRelayCacheMutex.Unlock()
+			continue
+		}
+		m := findNodeLatencies(p.nodes, metricPort)
+		autoRelayCacheMutex.Lock()
+		networkMetricsCache[p.network] = m
+		networkMetricsFetchedAt[p.network] = now
+		autoRelayCacheMutex.Unlock()
+	}
+}
 
-	// Calculate metrics for each network's auto relay nodes
-	for networkID, nodes := range autoRelaynodes {
-		if len(nodes) > 0 {
-			networkMetricsCache[networkID] = findNodeLatencies(nodes, metricPort)
-			networkMetricsFetchedAt[networkID] = now
+// jitteredPeerCheckInterval returns the peer-connection check interval with ±20% jitter
+// so a fleet of NAT hosts does not hit the server on the same tick.
+func jitteredPeerCheckInterval() time.Duration {
+	applyMinPeerCheckInterval()
+	base := networking.PeerConnectionCheckInterval
+	if base <= 0 {
+		base = minPeerConnectionCheckInterval
+	}
+	span := int64(base) * 2 / 5 // 40% total range → ±20%
+	if span <= 0 {
+		return base
+	}
+	offset := rand.Int64N(span+1) - span/2
+	interval := base + time.Duration(offset)
+	if interval < minPeerConnectionCheckInterval {
+		return minPeerConnectionCheckInterval
+	}
+	return interval
+}
+
+func evictStaleAutoRelayCaches() {
+	cutoff := time.Now().Add(-autoRelayCacheEntryTTL)
+	now := time.Now()
+	autoRelayMERecentCache.Range(func(k, v any) bool {
+		if t, ok := v.(time.Time); ok && t.Before(cutoff) {
+			autoRelayMERecentCache.Delete(k)
+		}
+		return true
+	})
+	signalThrottleCache.Range(func(k, v any) bool {
+		entry, ok := v.(signalThrottleEntry)
+		if !ok {
+			signalThrottleCache.Delete(k)
+			return true
+		}
+		if entry.lastAttempt.Before(cutoff) && now.After(entry.backoffUntil) {
+			signalThrottleCache.Delete(k)
+		}
+		return true
+	})
+	autoRelayCacheMutex.Lock()
+	defer autoRelayCacheMutex.Unlock()
+	for k, v := range relayReachabilityCache {
+		if v.updatedAt.Before(cutoff) {
+			delete(relayReachabilityCache, k)
+		}
+	}
+	for k, v := range gwReachabilityCache {
+		if v.updatedAt.Before(cutoff) {
+			delete(gwReachabilityCache, k)
+		}
+	}
+	for k, t := range nodeHealthCheckLastRun {
+		if t.Before(cutoff) {
+			delete(nodeHealthCheckLastRun, k)
 		}
 	}
 }
@@ -318,18 +419,15 @@ func shouldRunNodeHealthCheck(nodeID string) bool {
 }
 
 func peerRelayAlreadyActive(node models.Node, peerNodeID string) bool {
-	relayID, ok := node.AutoRelayedPeers[peerNodeID]
-	if !ok || relayID == "" {
+	if node.AutoRelayedPeers == nil {
 		return false
 	}
-	key := autoRelayMECacheKey(node.ID.String(), peerNodeID, relayID)
-	if v, ok := autoRelayMERecentCache.Load(key); ok {
-		return time.Since(v.(time.Time)) < autoRelayMECacheTTL
-	}
-	return false
+	relayID, ok := node.AutoRelayedPeers[peerNodeID]
+	return ok && relayID != ""
 }
 
 func runPeerConnectionWatchTick(ctx context.Context, server *config.Server, metricPort int) {
+	evictStaleAutoRelayCaches()
 	nodes := config.GetNodes()
 	if len(nodes) == 0 {
 		return
@@ -384,6 +482,9 @@ func runPeerConnectionWatchTick(ctx context.Context, server *config.Server, metr
 			if !ok {
 				continue
 			}
+			if currNode.ID.String() != "" && peerRelayAlreadyActive(currNode, peer.ID) {
+				continue
+			}
 			if shouldThrottlePeerSignal(peer.HostID) {
 				slog.Debug("throttle cache hit", "address", peer.Address)
 				continue
@@ -394,9 +495,6 @@ func runPeerConnectionWatchTick(ctx context.Context, server *config.Server, metr
 			}
 			connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, relayLivenessProbeCount)
 			if connected {
-				continue
-			}
-			if currNode.ID.String() != "" && peerRelayAlreadyActive(currNode, peer.ID) {
 				continue
 			}
 			s := models.Signal{
@@ -436,8 +534,7 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
 		}
 	}
-	applyMinPeerCheckInterval()
-	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
+	autoRelayConnTicker = time.NewTicker(jitteredPeerCheckInterval())
 	defer autoRelayConnTicker.Stop()
 
 	metricPort := server.MetricsPort
@@ -456,6 +553,11 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 			}
 			go func() {
 				defer peerWatchRunning.Store(false)
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("peer connection watch tick panicked", "panic", r)
+					}
+				}()
 				select {
 				case <-ctx.Done():
 					return
@@ -479,14 +581,17 @@ func relayReachabilityKey(nodeID, relayID string) string {
 func setRelayReachability(nodeID, relayID string, reachable bool) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
-	relayReachabilityCache[relayReachabilityKey(nodeID, relayID)] = reachable
+	relayReachabilityCache[relayReachabilityKey(nodeID, relayID)] = reachabilityState{
+		reachable: reachable,
+		updatedAt: time.Now(),
+	}
 }
 
 func wasRelayReachable(nodeID, relayID string) (bool, bool) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	v, ok := relayReachabilityCache[relayReachabilityKey(nodeID, relayID)]
-	return v, ok
+	return v.reachable, ok
 }
 
 func checkAutoRelayCtx(server *config.Server, node models.Node, peers models.PeerMap, autoRelayNodes []models.Node) {
@@ -535,14 +640,17 @@ func gwReachabilityKey(nodeID, gwID string) string {
 func setGwReachability(nodeID, gwID string, reachable bool) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
-	gwReachabilityCache[gwReachabilityKey(nodeID, gwID)] = reachable
+	gwReachabilityCache[gwReachabilityKey(nodeID, gwID)] = reachabilityState{
+		reachable: reachable,
+		updatedAt: time.Now(),
+	}
 }
 
 func wasGwReachable(nodeID, gwID string) (bool, bool) {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
 	v, ok := gwReachabilityCache[gwReachabilityKey(nodeID, gwID)]
-	return v, ok
+	return v.reachable, ok
 }
 
 func checkAssignGw(server *config.Server, node models.Node) {

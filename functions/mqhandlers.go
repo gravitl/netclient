@@ -206,7 +206,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if server.IsPro {
 		if autoRelayConnTicker != nil {
-			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+			autoRelayConnTicker.Reset(jitteredPeerCheckInterval())
 		}
 		if networking.PeerLocalEndpointConnTicker != nil {
 			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
@@ -945,6 +945,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
 	if server.IsPro {
+		setAutoRelayNodes(pullResponse.AutoRelayNodes, pullResponse.GwNodes, pullResponse.Nodes)
 		go networking.RefreshPeerInfoCache()
 	}
 }
