@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var serverMutex sync.RWMutex
@@ -195,7 +194,6 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 }
 
 func SwitchToRemainingServer() {
-	netclient := Netclient()
 	for _, name := range GetServers() {
 		srvCfg := GetServer(name)
 		if srvCfg == nil {
@@ -203,9 +201,7 @@ func SwitchToRemainingServer() {
 		}
 		_ = SetCurrServerCtxInFile(name)
 		CurrServer = name
-		netclient.ID = srvCfg.MQID
-		netclient.TenantID = srvCfg.TenantID
-		netclient.HostPeers = []wgtypes.PeerConfig{}
+		SetNetclientServerContext(srvCfg.MQID, srvCfg.TenantID)
 		slog.Info("switched netclient server context", "server", name)
 		return
 	}
@@ -213,5 +209,5 @@ func SwitchToRemainingServer() {
 	// no servers left to switch to; clear the stale context
 	_ = SetCurrServerCtxInFile("")
 	CurrServer = ""
-	netclient.TenantID = ""
+	SetNetclientServerContext(uuid.Nil, "")
 }
