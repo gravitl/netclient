@@ -217,10 +217,24 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 	if len(routes) == 1 {
 		return routes[0].Gw, nil
 	} else if len(routes) > 1 {
+		// Prefer IPv4 nexthop when dual-stack IGW routes are present.
+		var v6 net.IP
 		for _, r := range routes {
-			if r.Dst == nil {
+			if r.Dst != nil && !r.Dst.IP.Equal(net.ParseIP("0.0.0.0")) && !r.Dst.IP.Equal(net.ParseIP("::")) {
+				continue
+			}
+			if r.Gw == nil {
+				continue
+			}
+			if r.Gw.To4() != nil {
 				return r.Gw, nil
 			}
+			if v6 == nil {
+				v6 = r.Gw
+			}
+		}
+		if v6 != nil {
+			return v6, nil
 		}
 	}
 
@@ -244,12 +258,22 @@ func GetDefaultGatewayV6() (gwRoute netlink.Route, err error) {
 	}
 
 	gwRoutes := []netlink.Route{}
+	currGw6 := config.Netclient().CurrGwNmIP6
 
-	// get default gateway by filtering with dst==nil
+	// Default v6 routes may have Dst == nil or Dst == ::/0 (same as GetDefaultGateway).
+	// Skip our IGW table and current netmaker nexthop so we capture the real underlay GW.
 	for _, r := range routes {
-		if r.Dst == nil {
-			gwRoutes = append(gwRoutes, r)
+		if r.Table == RouteTableName {
+			continue
 		}
+		isDefault := r.Dst == nil || (r.Dst != nil && (r.Dst.IP.Equal(net.ParseIP("::")) || r.Dst.String() == "::/0"))
+		if !isDefault {
+			continue
+		}
+		if len(currGw6) > 0 && r.Gw != nil && r.Gw.Equal(currGw6) {
+			continue
+		}
+		gwRoutes = append(gwRoutes, r)
 	}
 
 	// in case that multiple default gateway in the route table, return the one with higher priority
@@ -267,6 +291,15 @@ func GetDefaultGatewayV6() (gwRoute netlink.Route, err error) {
 	}
 
 	return gwRoute, nil
+}
+
+// GetDefaultGatewayIp6 - get current default gateway IPv6 address
+func GetDefaultGatewayIp6() (ip net.IP, err error) {
+	gwRoute, err := GetDefaultGatewayV6()
+	if err != nil {
+		return nil, err
+	}
+	return gwRoute.Gw, nil
 }
 
 // GetDefaultGateway - get current default gateway
@@ -333,30 +366,51 @@ func getSourceIpv6(gw net.IP) (src net.IP) {
 	return src
 }
 
-// SetInternetGw - set a new default gateway and add rules to activate it
-func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
-	err = setDefaultRoutesOnHost(publicKey, networkIP)
-	if err == nil {
-		GetIGWMonitor().Monitor(publicKey, networkIP)
+// SetInternetGw - set a new default gateway and add rules to activate it.
+// Installs IPv4 and/or IPv6 OS default routes when the corresponding nexthop is present.
+func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
+	if IsZeroWGPublicKey(publicKey) {
+		return fmt.Errorf("internet gateway peer public key is empty")
 	}
-
+	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
+	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
+		if err != nil {
+			slog.Warn("internet gateway partially configured", "error", err.Error())
+		}
+		return nil
+	}
 	return err
 }
 
-func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
-	if ipv4 := networkIP.To4(); ipv4 != nil {
-		return setInternetGwV4(publicKey, networkIP)
-	} else {
-		return setInternetGwV6(publicKey, networkIP)
+func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
+	var firstErr error
+	if len(gw4) > 0 {
+		if err := setInternetGwV4(publicKey, gw4); err != nil {
+			slog.Error("failed to set IPv4 internet gateway", "error", err.Error())
+			firstErr = err
+		}
 	}
+	if len(gw6) > 0 {
+		if err := setInternetGwV6(publicKey, gw6); err != nil {
+			slog.Error("failed to set IPv6 internet gateway", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 // setInternetGwV6 - set a new default gateway and add rules to activate it
 func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
-	if ipv4 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv4 != nil {
-		ipv6, err := GetDefaultGatewayV6()
-		if err == nil && ipv6.Gw != nil {
-			config.Netclient().OriginalDefaultGatewayIp = ipv6.Gw
+	// Preserve original IPv4 gateway; track IPv6 original separately.
+	if len(config.Netclient().OriginalDefaultGatewayIp6) == 0 {
+		if ipv6, err := GetDefaultGatewayV6(); err == nil && ipv6.Gw != nil && ipv6.Gw.To4() == nil {
+			// Never store the netmaker overlay nexthop as the "original" underlay gateway.
+			if !ipv6.Gw.Equal(networkIP) {
+				config.Netclient().OriginalDefaultGatewayIp6 = ipv6.Gw
+			}
 		}
 	}
 
@@ -367,11 +421,8 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V6, &gwRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) > 0 {
-		err = resetDefaultRoutesOnHost()
-		if err != nil {
-			slog.Error("remove table "+fmt.Sprintf("%d", RouteTableName)+" failed", "error", err.Error())
-			return err
-		}
+		// Only clear existing IPv6 IGW state; do not wipe a just-installed IPv4 IGW.
+		_ = restoreInternetGwV6()
 	}
 
 	//set new default gateway
@@ -393,7 +444,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
 		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
+		_ = restoreInternetGwV6()
 		return err
 	}
 	//second rule :ip rule add table main suppress_prefixlength 0
@@ -405,50 +456,51 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	sRule.Priority = 2500
 	if err := netlink.RuleAdd(sRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", sRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
+		_ = restoreInternetGwV6()
 		return err
 	}
-	//third rule :ip rule add from 68.183.79.137 table main
-	lIp := config.Netclient().Host.EndpointIPv6
-
-	_, ipnet, err = net.ParseCIDR(lIp.String() + "/128")
-	if err != nil {
-		return err
-	}
-	mRule := netlink.NewRule()
-	mRule.Family = syscall.AF_INET6
-	mRule.Src = ipnet
-	mRule.Table = unix.RT_TABLE_MAIN
-	mRule.Priority = 2000
-	if err := netlink.RuleAdd(mRule); err != nil {
-		slog.Error("add new rule failed", "mRule: ", mRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
-		return err
+	//third rule : keep traffic from the host's public IPv6 endpoint on the main table.
+	// Skip when the client has no IPv6 endpoint (IPv4-only WAN) — still allow tunneled IPv6.
+	if lIp := config.Netclient().Host.EndpointIPv6; len(lIp) > 0 {
+		_, srcNet, parseErr := net.ParseCIDR(lIp.String() + "/128")
+		if parseErr != nil {
+			slog.Warn("skip IPv6 local-endpoint rule", "error", parseErr.Error())
+		} else {
+			mRule := netlink.NewRule()
+			mRule.Family = syscall.AF_INET6
+			mRule.Src = srcNet
+			mRule.Table = unix.RT_TABLE_MAIN
+			mRule.Priority = 2000
+			if err := netlink.RuleAdd(mRule); err != nil {
+				slog.Warn("add IPv6 local-endpoint rule failed", "mRule: ", mRule.String(), "error", err.Error())
+			}
+		}
 	}
 
 	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-	if err == nil {
-		// lookup route to the internet gateway using the main table.
+	if err == nil && igw.Endpoint != nil && igw.Endpoint.IP.To4() == nil {
+		// Only pin an IPv6 peer endpoint to the main table.
 		destinationIP, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/128")
 		if err != nil {
-			return err
-		}
-
-		destination.IP = destinationIP
-
-		gwRule := netlink.NewRule()
-		gwRule.Family = syscall.AF_INET6
-		gwRule.Dst = destination
-		gwRule.Table = unix.RT_TABLE_MAIN
-		gwRule.Priority = 2999
-		if err := netlink.RuleAdd(gwRule); err != nil {
-			slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
-			resetDefaultRoutesOnHost()
-			return err
+			slog.Warn("skip IPv6 peer-endpoint rule", "error", err.Error())
+		} else {
+			destination.IP = destinationIP
+			gwRule := netlink.NewRule()
+			gwRule.Family = syscall.AF_INET6
+			gwRule.Dst = destination
+			gwRule.Table = unix.RT_TABLE_MAIN
+			gwRule.Priority = 2999
+			if err := netlink.RuleAdd(gwRule); err != nil {
+				slog.Warn("add IPv6 peer-endpoint rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
+			}
 		}
 	}
 
-	config.Netclient().CurrGwNmIP = networkIP
+	config.Netclient().CurrGwNmIP6 = networkIP
+	// Keep CurrGwNmIP populated for single-stack IPv6 clients (DNS / legacy checks).
+	if len(config.Netclient().CurrGwNmIP) == 0 {
+		config.Netclient().CurrGwNmIP = networkIP
+	}
 	return config.WriteNetclientConfig()
 }
 
@@ -461,9 +513,9 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 	//Check if table ROUTE_TABLE_NAME existed
 	routes, _ := netlink.RouteListFiltered(netlink.FAMILY_V4, &defaultRoute, netlink.RT_FILTER_TABLE)
 	if len(routes) > 0 {
-		err = resetDefaultRoutesOnHost()
-		if err != nil {
-			slog.Error("remove table "+fmt.Sprintf("%d", RouteTableName)+" failed", "error", err.Error())
+		// Only clear existing IPv4 IGW state; do not wipe a just-installed/existing IPv6 IGW.
+		if err := restoreInternetGwV4(); err != nil {
+			slog.Error("remove IPv4 IGW routes failed", "error", err.Error())
 			return err
 		}
 	}
@@ -486,7 +538,7 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 	tRule.Priority = 3000
 	if err := netlink.RuleAdd(tRule); err != nil {
 		slog.Error("add new rule failed", "rule", tRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
+		_ = restoreInternetGwV4()
 		return err
 	}
 	//second rule :ip rule add table main suppress_prefixlength 0
@@ -497,7 +549,7 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 	sRule.Priority = 2500
 	if err := netlink.RuleAdd(sRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", sRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
+		_ = restoreInternetGwV4()
 		return err
 	}
 	//third rule :ip rule add from 68.183.79.137 table main
@@ -508,6 +560,7 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 
 	_, ipnet, err = net.ParseCIDR(lIp.String() + "/32")
 	if err != nil {
+		_ = restoreInternetGwV4()
 		return err
 	}
 	mRule := netlink.NewRule()
@@ -516,15 +569,16 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 	mRule.Priority = 2000
 	if err := netlink.RuleAdd(mRule); err != nil {
 		slog.Error("add new rule failed", "mRule: ", mRule.String(), "error", err.Error())
-		resetDefaultRoutesOnHost()
+		_ = restoreInternetGwV4()
 		return err
 	}
 
 	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-	if err == nil {
+	if err == nil && igw.Endpoint != nil {
 		// lookup route to the internet gateway using the main table.
 		destinationIP, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/32")
 		if err != nil {
+			_ = restoreInternetGwV4()
 			return err
 		}
 
@@ -536,7 +590,7 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 		gwRule.Priority = 2999
 		if err := netlink.RuleAdd(gwRule); err != nil {
 			slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
-			resetDefaultRoutesOnHost()
+			_ = restoreInternetGwV4()
 			return err
 		}
 	}
@@ -556,19 +610,33 @@ func RestoreInternetGw() (err error) {
 }
 
 func resetDefaultRoutesOnHost() error {
-	if ipv4 := config.Netclient().CurrGwNmIP.To4(); ipv4 != nil {
-		return restoreInternetGwV4()
-	} else {
-		return restoreInternetGwV6()
+	var firstErr error
+	curr := config.Netclient().CurrGwNmIP
+	curr6 := config.Netclient().CurrGwNmIP6
+	needV4 := len(curr) > 0 && curr.To4() != nil
+	needV6 := len(curr6) > 0 || (len(curr) > 0 && curr.To4() == nil)
+	if needV4 {
+		if err := restoreInternetGwV4(); err != nil {
+			firstErr = err
+		}
 	}
+	if needV6 {
+		if err := restoreInternetGwV6(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // restoreInternetGwV6 - delete the route in table ROUTE_TABLE_NAME and delet the rules
 func restoreInternetGwV6() (err error) {
-
-	srcIp := getSourceIpv6(config.Netclient().CurrGwNmIP)
+	gwIP := config.Netclient().CurrGwNmIP6
+	if len(gwIP) == 0 {
+		gwIP = config.Netclient().CurrGwNmIP // legacy single-stack IPv6
+	}
+	srcIp := getSourceIpv6(gwIP)
 	//build the default gateway route
-	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: config.Netclient().CurrGwNmIP, Table: RouteTableName, Priority: 1}
+	gwRoute := netlink.Route{Src: srcIp, Dst: nil, Gw: gwIP, Table: RouteTableName, Priority: 1}
 
 	//delete default gateway at first
 	if err := netlink.RouteDel(&gwRoute); err != nil {
@@ -604,22 +672,20 @@ func restoreInternetGwV6() (err error) {
 		slog.Warn("delete rule failed", "error", err.Error())
 		slog.Warn("please remove the rule manually", "rule: ", sRule.String())
 	}
-	//third rule :ip rule add from 68.183.79.137 table main
+	//third rule :ip rule add from local endpoint table main
 	lIp := config.Netclient().Host.EndpointIPv6
-
-	_, ipnet, err = net.ParseCIDR(lIp.String() + "/128")
-	if err != nil {
-		return err
-	}
-	mRule := netlink.NewRule()
-	mRule.Family = syscall.AF_INET6
-	mRule.Src = ipnet
-	mRule.Table = unix.RT_TABLE_MAIN
-	mRule.Priority = 2000
-	if err := netlink.RuleDel(mRule); err != nil {
-		slog.Warn("delete rule failed", "error", err.Error())
-		slog.Warn("please remove the rule manually", "rule: ", mRule.String())
-
+	if len(lIp) > 0 {
+		if _, ipnet, err = net.ParseCIDR(lIp.String() + "/128"); err == nil {
+			mRule := netlink.NewRule()
+			mRule.Family = syscall.AF_INET6
+			mRule.Src = ipnet
+			mRule.Table = unix.RT_TABLE_MAIN
+			mRule.Priority = 2000
+			if err := netlink.RuleDel(mRule); err != nil {
+				slog.Warn("delete rule failed", "error", err.Error())
+				slog.Warn("please remove the rule manually", "rule: ", mRule.String())
+			}
+		}
 	}
 
 	gwRule := netlink.NewRule()
@@ -631,13 +697,12 @@ func restoreInternetGwV6() (err error) {
 		slog.Warn("please remove the rule manually", "rule: ", gwRule.String())
 	}
 
-	config.Netclient().CurrGwNmIP = net.ParseIP("")
-	if ipv6 := config.Netclient().OriginalDefaultGatewayIp.To4(); ipv6 == nil {
-		ipv4, err := GetDefaultGateway()
-		if err == nil && ipv4.Gw != nil {
-			config.Netclient().OriginalDefaultGatewayIp = ipv4.Gw
-		}
+	config.Netclient().CurrGwNmIP6 = net.ParseIP("")
+	// Only clear CurrGwNmIP when it was the IPv6 nexthop (single-stack v6).
+	if curr := config.Netclient().CurrGwNmIP; curr != nil && curr.To4() == nil {
+		config.Netclient().CurrGwNmIP = net.ParseIP("")
 	}
+	// Do not clobber OriginalDefaultGatewayIp (IPv4); clear only the v6 original if needed by callers.
 
 	return config.WriteNetclientConfig()
 }

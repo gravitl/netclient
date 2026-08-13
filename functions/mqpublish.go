@@ -17,12 +17,50 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
+
+// buildHostUpdatePayload returns the payload to JSON-encode for either the
+// HTTP fallback PUT or the MQTT publish path.
+func buildHostUpdatePayload(hu models.HostUpdate) models.HostUpdate {
+	posture.ApplyIdentity(&hu.Host)
+	syncHostIdentityToConfig(hu.Host)
+	return hu
+}
+
+// syncHostIdentityToConfig mirrors freshly collected identity into netclient.json.
+func syncHostIdentityToConfig(host schema.Host) {
+	hostCfg := config.Netclient()
+	if hostCfg == nil {
+		return
+	}
+	updated := *hostCfg
+	changed := false
+	if host.EntraDeviceID != "" && updated.EntraDeviceID != host.EntraDeviceID {
+		updated.EntraDeviceID = host.EntraDeviceID
+		changed = true
+	}
+	if host.SerialNumber != "" && updated.SerialNumber != host.SerialNumber {
+		updated.SerialNumber = host.SerialNumber
+		changed = true
+	}
+	if host.HardwareUUID != "" && updated.HardwareUUID != host.HardwareUUID {
+		updated.HardwareUUID = host.HardwareUUID
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	config.UpdateNetclient(updated)
+	if err := config.WriteNetclientConfig(); err != nil {
+		slog.Warn("failed to persist host identity to config", "error", err)
+	}
+}
 
 const (
 	// ACK - acknowledgement signal for MQ
@@ -156,8 +194,31 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
-	_, err = ncutils.SendRequest(http.MethodPut, url, headers, hu)
+	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
+	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			logMDMDenialOnce()
+			return denyErr
+		}
+	}
 	return err
+}
+
+// mdmDenialOnce throttles MDM denial messaging so each check-in cycle does
+// not spam the user. The message is re-emitted at most every 10 minutes.
+var (
+	mdmDenialMu       sync.Mutex
+	mdmDenialLastShow time.Time
+)
+
+func logMDMDenialOnce() {
+	mdmDenialMu.Lock()
+	defer mdmDenialMu.Unlock()
+	if time.Since(mdmDenialLastShow) < 10*time.Minute {
+		return
+	}
+	mdmDenialLastShow = time.Now()
+	slog.Warn(MDMDeniedMessage)
 }
 
 // hostServerUpdate - used to send host updates to server via restful api
@@ -200,7 +261,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 		Action: hostAction,
 		Host:   hostCfg.Host,
 	}
-	data, err := json.Marshal(hostUpdate)
+	data, err := json.Marshal(buildHostUpdatePayload(hostUpdate))
 	if err != nil {
 		return err
 	}

@@ -62,8 +62,6 @@ func (o *openresolvManager) Configure(iface string, config Config) error {
 
 	confBytes := new(bytes.Buffer)
 
-	writeConfig(confBytes, config.Nameservers, config.SearchDomains)
-
 	var cmd *exec.Cmd
 	if config.SplitDNS {
 		// config is split dns, we want to seed the original config into the new one.

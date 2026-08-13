@@ -1,47 +1,54 @@
-# Netclient v1.5.1 Release Notes 🚀
+# Netclient v1.6.0 Release Notes 🚀
 
 ## 🚀 What’s New
 
-### 🔁 Firewall Mark Support
+### 🔁 Site-to-Site ACLs (Beta)
 
-Added support for configuring a **firewall mark** via the install command.
+Define ACL policies that permit traffic between egress endpoints across networks.
 
-### 🔁 Traffic Logs (Beta)
+- Build site-to-site rules between egress resources on different networks.
+- Combine egress resources, nodes, and specific IPs in a single policy.
+- Site-to-site rules are emitted alongside device-mesh rules without key collisions.
 
-Traffic Logs have now moved into **Beta**.
 
-- Traffic Logs are now enriched with relevant **domain tagging**, making network activity easier to audit and investigate.
+### 🛡️ Egress ACLs with IP Restriction
 
-### 🔌 Default Netclient Port Update
+ACL policies can now target **individual IPs** inside an egress range using the `ip` ACL target type.
 
-The default Netclient port has been changed to **51821/udp** (previously **443/udp**).
+- Restrict access to specific hosts within a larger egress CIDR.
+- Validate that selected IPs fall within the referenced egress range at policy create/update time.
+- Mix egress resources, nodes, tags, and individual IPs in the same policy.
+
+### 🔐 Registration & Join UX
+
+Host registration over OAuth/basic auth now returns **clear websocket close reasons** on failure (auth errors, missing access, posture violations, and server errors).
 
 ---
 
 ## 🧰 Improvements & Fixes
 
-### **Docker Netclient**
-- Updated the Netclient Docker deployment to run in the **foreground**, moving away from daemon management inside the container.
-
-### **Scalability Improvements**
-- Improved peer synchronization by **caching peer information** and only refreshing when a peer update is triggered.
-
-### **Windows**
-- Netclient now uses the **provided interface name** on Windows.
+### **Egress**
+- Added **LAN-to-VPN masquerade** rules for iptables and nftables egress endpoints.
+- Egress route filtering now applies only on **exact CIDR matches**, avoiding unintended route conflicts.
 
 ### **DNS**
-- Added a **Noop DNS Config Manager** fallback when DNS Manager initialization fails.
-- Added **Windows Active Directory compatibility mode**.
-
-### **Egress Routes**
-- Netclient now automatically avoids adding **conflicting routes** with local interfaces.
+- Fixed split-DNS handling across Linux DNS config managers (openresolv, resolvconf, and file-based).
+- Added fallback nameserver seeding when no DNS response is available.
+- Improved Windows DNS interface metric and configuration handling.
 
 ### **Internet Gateways**
-- Internet Gateways are now marked **unhealthy** when a node is disconnected or a peer is not found.
+- Internet Gateway health checks now validate pull data against the **IGW monitor IP**.
+- Fixed peer iteration to loop over **netclient peers** instead of device peers.
 
-### **CLI Commands**
-- Fixed missing `endpoint-ip6` flag name.
-- Removed the **MTU flag** from CLI configuration (this can now be configured via the control plane).
+### **Reliability**
+- Null-terminate network interfaces to prevent configuration edge cases.
+- Skip config reset when the WireGuard interface does not exist.
+- Endpoint caches are reset safely using `sync.Map.Clear()`.
+- Metrics collection is now triggered on demand.
+
+### **Schema Migration**
+- Updated for Netmaker v1.6.0 **nodes schema migration** compatibility.
+
 
 ---
 
@@ -55,3 +62,4 @@ The default Netclient port has been changed to **51821/udp** (previously **443/u
 
 - **systemd-resolved DNS limitation**  
   On systems using **systemd-resolved in uplink mode**, only the **first 3 entries** in `resolv.conf` are honored; additional entries are ignored. This may cause DNS resolution issues. **Stub mode is recommended**.
+

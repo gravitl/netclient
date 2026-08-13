@@ -3,14 +3,17 @@ package functions
 import (
 	b64 "encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -52,8 +55,14 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	posture.ApplyIdentity(&host.Host)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
+			logger.Log(0, "registration refused by server on MDM grounds")
+			os.Exit(2)
+		}
 		logger.FatalLog("error registering with server", err.Error())
 		return err
 	}
@@ -114,7 +123,7 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	config.UpdateHost(&registerResponse.RequestedHost)
+	UpdateHostFromServer(&registerResponse.RequestedHost)
 	config.SetCurrServerCtxInFile(server.Server)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())

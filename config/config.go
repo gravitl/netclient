@@ -92,8 +92,10 @@ type Config struct {
 	HostPeers         []wgtypes.PeerConfig `json:"-" yaml:"-"`
 	InitType          InitType             `json:"inittype" yaml:"inittype"`
 	//for Internet gateway
-	OriginalDefaultGatewayIp net.IP `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
-	CurrGwNmIP               net.IP `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
+	OriginalDefaultGatewayIp  net.IP `json:"original_default_gateway_ip_old" yaml:"original_default_gateway_ip_old"`
+	OriginalDefaultGatewayIp6 net.IP `json:"original_default_gateway_ip6_old" yaml:"original_default_gateway_ip6_old"`
+	CurrGwNmIP                net.IP `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
+	CurrGwNmIP6               net.IP `json:"curr_gw_nm_ip6" yaml:"curr_gw_nm_ip6"`
 	//for manage DNS
 	DNSManagerType string   `json:"dns_manager_type" yaml:"dns_manager_type"`
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
@@ -199,6 +201,10 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 
 	// store password before updating
 	host.HostPass = hostCfg.HostPass
+	// Posture identity is client-authoritative; never accept server copies.
+	host.EntraDeviceID = hostCfg.EntraDeviceID
+	host.SerialNumber = hostCfg.SerialNumber
+	host.HardwareUUID = hostCfg.HardwareUUID
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()

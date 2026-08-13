@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	//lint:ignore SA1019 Reason: will be switching to a alternative package
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
@@ -56,14 +58,21 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 		mu  sync.Mutex
 		sem = make(chan struct{}, probeConcurrency())
 	)
-	for i := range device.Peers {
-		currPeer := device.Peers[i]
-		info, ok := peerMap[currPeer.PublicKey.String()]
-		if !ok {
-			continue
+
+	wgPeers := make(map[string]int)
+	for i, peer := range device.Peers {
+		wgPeers[peer.PublicKey.String()] = i
+	}
+	for pubKey := range peerMap {
+		var wgPeer wgtypes.Peer
+		index, ok := wgPeers[pubKey]
+		if ok {
+			wgPeer = device.Peers[index]
 		}
-		if info.ID == "" || info.Address == "" {
-			logger.Log(0, "attempted to parse metrics for invalid peer from server", info.ID, info.Address)
+
+		peer := peerMap[pubKey]
+		if peer.ID == "" || peer.Address == "" {
+			logger.Log(0, "attempted to parse metrics for invalid peer from server", peer.ID, peer.Address)
 			continue
 		}
 
@@ -74,23 +83,23 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 			defer func() { <-sem }()
 
 			newMetric := models.Metric{
-				NodeName:      info.Name,
-				TotalReceived: currPeer.ReceiveBytes,
-				TotalSent:     currPeer.TransmitBytes,
+				NodeName:      peer.Name,
+				TotalReceived: wgPeer.ReceiveBytes,
+				TotalSent:     wgPeer.TransmitBytes,
 			}
-			if info.IsExtClient {
-				newMetric.Connected, newMetric.Latency = ExtPeerConnStatus(info.Address, 3)
+			if peer.IsExtClient {
+				newMetric.Connected, newMetric.Latency = ExtPeerConnStatus(peer.Address, 3)
 			} else {
-				newMetric.Connected, newMetric.Latency = PeerConnStatus(info.Address, metricPort, 4)
+				newMetric.Connected, newMetric.Latency = PeerConnStatus(peer.Address, metricPort, 4)
 			}
 			if newMetric.Connected {
 				newMetric.Uptime = int64(mi)
 			}
 			// fall back to recent-handshake heuristic if the active probe failed
 			if !newMetric.Connected {
-				if currPeer.ReceiveBytes > 0 &&
-					currPeer.TransmitBytes > 0 &&
-					time.Now().Before(currPeer.LastHandshakeTime.Add(time.Minute<<1)) {
+				if wgPeer.ReceiveBytes > 0 &&
+					wgPeer.TransmitBytes > 0 &&
+					time.Now().Before(wgPeer.LastHandshakeTime.Add(time.Minute<<1)) {
 					newMetric.Connected = true
 					newMetric.Uptime = int64(mi)
 				}
@@ -98,7 +107,7 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 			newMetric.TotalTime = int64(mi)
 
 			mu.Lock()
-			metrics.Connectivity[info.ID] = newMetric
+			metrics.Connectivity[peer.ID] = newMetric
 			mu.Unlock()
 		}()
 	}

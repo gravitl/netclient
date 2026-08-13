@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"os/exec"
 	"strconv"
 
@@ -130,4 +131,32 @@ func DeleteOldInterface(iface string) {
 	if _, err := ncutils.RunCmd(ifconfig+" "+iface+" destroy", true); err != nil {
 		logger.Log(0, "error removing interface", iface, err.Error())
 	}
+}
+
+// SetInternetGw is a no-op on FreeBSD (internet gateway OS routes unsupported).
+func SetInternetGw(publicKey string, gw4, gw6 net.IP) error {
+	return nil
+}
+
+// RestoreInternetGw is a no-op on FreeBSD.
+func RestoreInternetGw() error {
+	return nil
+}
+
+// GetDefaultGatewayIp is a no-op on FreeBSD.
+func GetDefaultGatewayIp() (net.IP, error) {
+	return nil, nil
+}
+
+// GetDefaultGatewayIp6 is a no-op on FreeBSD.
+func GetDefaultGatewayIp6() (net.IP, error) {
+	return nil, nil
+}
+
+func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
+	return nil
+}
+
+func resetDefaultRoutesOnHost() error {
+	return nil
 }

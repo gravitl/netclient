@@ -19,6 +19,71 @@ const (
 	IPv6Network = "::/0"
 )
 
+// FindInternetGwPeer picks the WireGuard peer that should carry internet-exit
+// traffic. Prefers a peer advertising 0.0.0.0/0 or ::/0; falls back to a peer
+// that includes the overlay nexthop. Skips Remove peers.
+func FindInternetGwPeer(peers []wgtypes.PeerConfig, gw4, gw6 net.IP) (wgtypes.PeerConfig, bool) {
+	var byNexthop wgtypes.PeerConfig
+	foundNexthop := false
+	for _, peer := range peers {
+		if peer.Remove {
+			continue
+		}
+		for _, peerIP := range peer.AllowedIPs {
+			s := peerIP.String()
+			if s == IPv4Network || s == IPv6Network {
+				return peer, true
+			}
+			if foundNexthop {
+				continue
+			}
+			if len(gw4) > 0 && peerIP.Contains(gw4) {
+				byNexthop = peer
+				foundNexthop = true
+			} else if len(gw6) > 0 && peerIP.Contains(gw6) {
+				byNexthop = peer
+				foundNexthop = true
+			}
+		}
+	}
+	return byNexthop, foundNexthop
+}
+
+// IsZeroWGPublicKey reports whether publicKey is empty or the all-zero WireGuard key.
+func IsZeroWGPublicKey(publicKey string) bool {
+	if publicKey == "" {
+		return true
+	}
+	k, err := wgtypes.ParseKey(publicKey)
+	if err != nil {
+		return true
+	}
+	var zero wgtypes.Key
+	return k == zero
+}
+
+// NormalizeIGWNexthops splits DefaultGwIp / DefaultGwIp6 into family-correct nexthops.
+// Legacy servers may place an IPv6 address in DefaultGwIp when the client has no EndpointIP.
+func NormalizeIGWNexthops(gwIP, gwIP6 net.IP) (gw4, gw6 net.IP) {
+	gw4, gw6 = gwIP, gwIP6
+	if len(gw4) > 0 && gw4.To4() == nil {
+		if len(gw6) == 0 {
+			gw6 = gw4
+		}
+		gw4 = nil
+	}
+	if len(gw6) > 0 && gw6.To4() != nil {
+		gw6 = nil
+	}
+	if len(gw4) == 0 {
+		gw4 = nil
+	}
+	if len(gw6) == 0 {
+		gw6 = nil
+	}
+	return gw4, gw6
+}
+
 var ErrPeerNotFound = fmt.Errorf("peer not found")
 
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced

@@ -107,24 +107,13 @@ func Daemon() {
 	}
 }
 
-// checkAndRestoreDefaultGateway -check if it needs to restore the default gateway
+// checkAndRestoreDefaultGateway - tear down IGW routes before a daemon reset.
 func checkAndRestoreDefaultGateway() {
-	if config.Netclient().CurrGwNmIP == nil {
+	if len(config.Netclient().CurrGwNmIP) == 0 && len(config.Netclient().CurrGwNmIP6) == 0 {
 		return
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-	//restore the default gateway when the current default gateway is not the same as the one in config
-	if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
-		err = wireguard.RestoreInternetGw()
-		if err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
-			return
-		}
+	if err := wireguard.RestoreInternetGw(); err != nil {
+		slog.Error("error restoring default gateway", "error", err.Error())
 	}
 }
 
@@ -258,6 +247,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		netclientCfg.OriginalDefaultGatewayIp = originalDefaultGwIP
 		updateConfig = true
 	}
+	if originalDefaultGwIP6, err := wireguard.GetDefaultGatewayIp6(); err == nil && len(originalDefaultGwIP6) > 0 {
+		// Only persist a real underlay IPv6 gateway, not the netmaker overlay nexthop.
+		if len(netclientCfg.CurrGwNmIP6) == 0 || !netclientCfg.CurrGwNmIP6.Equal(originalDefaultGwIP6) {
+			netclientCfg.OriginalDefaultGatewayIp6 = originalDefaultGwIP6
+			updateConfig = true
+		}
+	}
 
 	if updateConfig {
 		config.UpdateNetclient(*netclientCfg)
@@ -296,25 +292,18 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 
 	// check if default gw needs to be set
 	if pullErr == nil {
-		gwIP, err := wireguard.GetDefaultGatewayIp()
-		if err == nil {
-			if pullresp.ChangeDefaultGw && !pullresp.DefaultGwIp.Equal(gwIP) {
-				if !wireguard.GetIGWMonitor().IsCurrentIGW(gwIP) {
-					var igw wgtypes.PeerConfig
-					for _, peer := range pullresp.Peers {
-						for _, peerIP := range peer.AllowedIPs {
-							if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-								igw = peer
-								break
-							}
-						}
-					}
-
+		if pullresp.ChangeDefaultGw {
+			gw4, gw6 := wireguard.NormalizeIGWNexthops(pullresp.DefaultGwIp, pullresp.DefaultGwIp6)
+			if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+				igw, ok := wireguard.FindInternetGwPeer(pullresp.Peers, gw4, gw6)
+				if !ok {
+					slog.Warn("internet gateway peer not found in peer update; skipping default gateway setup")
+				} else {
 					// unlikely that the gwIP is netmaker IP, but still
 					// reset the igw.
 					_ = wireguard.RestoreInternetGw()
 
-					err = wireguard.SetInternetGw(igw.PublicKey.String(), pullresp.DefaultGwIp)
+					err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 					if err != nil {
 						slog.Warn("failed to set inet gw", "error", err)
 					}
@@ -339,6 +328,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
+	StartEgressDomainMonitor(ctx, wg)
+
+	if len(pullresp.EgressWithDomains) > 0 {
+		syncEgressDomains(pullresp.EgressWithDomains)
+	}
 
 	if server.ManageDNS {
 		if dns.GetDNSServerInstance().AddrStr == "" {

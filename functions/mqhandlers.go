@@ -261,53 +261,37 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.IPDetectionInterval = peerUpdate.IPDetectionInterval
 		saveServerConfig = true
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-
-	//setup the default gateway when change_default_gw set to true
-	if peerUpdate.ChangeDefaultGw {
-		//only update if the current gateway ip is not the same as desired
-		if !peerUpdate.DefaultGwIp.Equal(ip) {
-			if !wireguard.GetIGWMonitor().IsCurrentIGW(ip) {
-				var igw wgtypes.PeerConfig
-				for _, peer := range peerUpdate.Peers {
-					for _, peerIP := range peer.AllowedIPs {
-						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-							igw = peer
-							break
-						}
-					}
-				}
-
-				_ = wireguard.RestoreInternetGw()
-
-				err = wireguard.SetInternetGw(igw.PublicKey.String(), peerUpdate.DefaultGwIp)
-				if err != nil {
-					slog.Error("error setting default gateway", "error", err.Error())
-					return
-				}
-			}
-		}
-	} else {
-		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
-			err = wireguard.RestoreInternetGw()
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
-		}
-	}
 	if !peerUpdate.ServerConfig.EndpointDetection {
 		cache.EndpointCache.Clear()
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
+	//setup the default gateway when change_default_gw set to true (after peers
+	//are on the interface so IGW monitor can resolve the exit peer).
+	if peerUpdate.ChangeDefaultGw {
+		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
+		//only update if the current gateway ip is not the same as desired
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
+			if !ok {
+				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
+			} else {
+				_ = wireguard.RestoreInternetGw()
+				err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
+				if err != nil {
+					slog.Error("error setting default gateway", "error", err.Error())
+					// Continue applying peers even if IGW setup failed.
+				}
+			}
+		}
+	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		// Server cleared exit-node routing; remove any installed IGW routes.
+		err = wireguard.RestoreInternetGw()
+		if err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
+		}
+	}
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
@@ -318,10 +302,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
-	if len(peerUpdate.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(peerUpdate.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(peerUpdate.EgressWithDomains)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -519,7 +500,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.DeleteClientNodes()
 		restartDaemon = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)
+		resetInterface, restartDaemon, sendHostUpdate = UpdateHostFromServer(&hostUpdate.Host)
 		if sendHostUpdate {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				slog.Error("could not publish host update", err.Error())
@@ -848,53 +829,34 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.IPDetectionInterval = pullResponse.ServerConfig.IPDetectionInterval
 		saveServerConfig = true
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-
-	//setup the default gateway when change_default_gw set to true
-	if pullResponse.ChangeDefaultGw {
-		//only update if the current gateway ip is not the same as desired
-		if !pullResponse.DefaultGwIp.Equal(ip) {
-			if !wireguard.GetIGWMonitor().IsCurrentIGW(ip) {
-				var igw wgtypes.PeerConfig
-				for _, peer := range pullResponse.Peers {
-					for _, peerIP := range peer.AllowedIPs {
-						if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-							igw = peer
-							break
-						}
-					}
-				}
-
-				_ = wireguard.RestoreInternetGw()
-
-				err = wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
-				if err != nil {
-					slog.Error("error setting default gateway", "error", err.Error())
-					return
-				}
-			}
-		}
-	} else {
-		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
-			err = wireguard.RestoreInternetGw()
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
-		}
-	}
 	if !pullResponse.ServerConfig.EndpointDetection {
 		cache.EndpointCache.Clear()
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	//setup the default gateway when change_default_gw set to true (after peers)
+	if pullResponse.ChangeDefaultGw {
+		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
+		//only update if the current gateway ip is not the same as desired
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
+			if !ok {
+				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
+			} else {
+				_ = wireguard.RestoreInternetGw()
+				if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
+					slog.Error("error setting default gateway", "error", err.Error())
+					// Continue applying peers even if IGW setup failed.
+				}
+			}
+		}
+	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		// Server cleared exit-node routing; remove any installed IGW routes.
+		if err := wireguard.RestoreInternetGw(); err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
+		}
+	}
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
@@ -905,10 +867,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	}
-	if len(pullResponse.EgressWithDomains) > 0 {
-		wireguard.SetEgressDomains(pullResponse.EgressWithDomains)
-	}
-	go CheckEgressDomainUpdates()
+	syncEgressDomains(pullResponse.EgressWithDomains)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	var dnsOp string
 	const start string = "start"
@@ -1001,6 +960,11 @@ func CheckEgressDomainUpdates() {
 
 	slog.Info("processing egress domains", "count", len(egressDomains))
 	for _, domainI := range egressDomains {
+		if !isLocalEgressGateway(domainI) {
+			slog.Debug("skipping egress domain resolution on non-gateway host",
+				"domain", domainI.Domain, "gateway_host", domainI.Host.ID.String())
+			continue
+		}
 		slog.Debug("checking egress domain", "domain", domainI.Domain)
 		processEgressDomain(domainI, false)
 	}
@@ -1008,6 +972,11 @@ func CheckEgressDomainUpdates() {
 
 func processEgressDomain(domainI models.EgressDomain, forceUpdate bool) {
 	slog.Info("processing egress domain", "domain", domainI.Domain)
+
+	if !isLocalEgressGateway(domainI) {
+		slog.Debug("skipping egress domain update on non-gateway host", "domain", domainI.Domain)
+		return
+	}
 
 	// Resolve domain to IP addresses
 	ips, err := resolveDomainToIPs(domainI.Domain)
@@ -1152,43 +1121,29 @@ func checkIPConnectivity(ips []string) bool {
 	return false
 }
 
-// resolveDomainToIPs resolves a domain name to IP addresses using the existing DNS infrastructure
+// resolveDomainToIPs resolves a domain name to IP addresses via public DNS.
 func resolveDomainToIPs(domain string) ([]string, error) {
-	domain = strings.TrimSpace(domain)
-	if domain == "" {
-		return nil, fmt.Errorf("domain cannot be empty")
+	lookupDomain, err := dns.NormalizeEgressLookupDomain(domain)
+	if err != nil {
+		return nil, err
 	}
-
-	// net.LookupIP cannot resolve wildcard labels directly ("*.example.com").
-	// Normalize wildcard entries to their base domain so common configs are accepted.
-	lookupDomain := domain
-	if strings.HasPrefix(domain, "*.") {
-		lookupDomain = strings.TrimPrefix(domain, "*.")
-		if lookupDomain == "" || strings.Contains(lookupDomain, "*") {
-			return nil, fmt.Errorf("invalid wildcard domain %s", domain)
-		}
+	if strings.HasPrefix(strings.TrimSpace(domain), "*.") {
 		slog.Debug("normalized wildcard egress domain for lookup", "domain", domain, "lookup_domain", lookupDomain)
 	}
 
-	lookUpIPs, err := net.LookupIP(lookupDomain)
+	lookUpIPs, err := dns.LookupHostViaPublicDNS(lookupDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s): %w", domain, lookupDomain, err)
+		return nil, fmt.Errorf("failed to resolve domain %s (lookup %s via public DNS): %w", domain, lookupDomain, err)
 	}
 	if len(lookUpIPs) == 0 {
 		return nil, fmt.Errorf("no IP addresses found for domain %s (lookup %s)", domain, lookupDomain)
 	}
-	ips := lookUpIPs
-	// Filter out any invalid IPs and return unique IPs
-	uniqueIPs := make(map[string]string)
-	for _, ip := range ips {
-		if ip != nil {
-			uniqueIPs[ip.String()] = ip.String()
-		}
-	}
 
-	result := make([]string, 0, len(uniqueIPs))
-	for _, ip := range uniqueIPs {
-		result = append(result, ip)
+	result := make([]string, 0, len(lookUpIPs))
+	for _, ip := range lookUpIPs {
+		if ip != nil {
+			result = append(result, ip.String())
+		}
 	}
 	return result, nil
 }
