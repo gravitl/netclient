@@ -100,6 +100,9 @@ func deleteNodeFromServer(node *config.Node) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
+	if server.TenantID != node.TenantID {
+		return errors.New("node doesn't belong to current server")
+	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
