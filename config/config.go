@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -223,6 +224,16 @@ func UpdateHostPeers(peers []wgtypes.PeerConfig) {
 	netclientCfgMutex.Lock()
 	defer netclientCfgMutex.Unlock()
 	netclient.HostPeers = peers
+}
+
+func SetNetclientServerContext(id uuid.UUID, tenantID string) {
+	netclientCfgMutex.Lock()
+	defer netclientCfgMutex.Unlock()
+	if id != uuid.Nil {
+		netclient.ID = id
+	}
+	netclient.TenantID = tenantID
+	netclient.HostPeers = []wgtypes.PeerConfig{}
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server

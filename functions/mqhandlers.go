@@ -28,6 +28,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -494,6 +495,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
+		config.WriteNetclientConfig()
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
@@ -658,7 +660,11 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	wasActive := config.CurrServer == server
 	config.DeleteServer(server)
+	if wasActive {
+		config.SwitchToRemainingServer()
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {
@@ -719,6 +725,7 @@ func getServerBrokerStatus() (bool, error) {
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())

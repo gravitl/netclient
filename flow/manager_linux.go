@@ -109,10 +109,15 @@ func (m *Manager) Start(participantIdentifiers map[string]models.PeerIdentity) e
 				identity, found := m.participantIdentifiers[ipCidr]
 				if !found {
 					for addr := range m.participantIdentifiers {
+						if addr == "0.0.0.0/0" || addr == "::/0" {
+							continue
+						}
+
 						_, cidr, err := net.ParseCIDR(addr)
 						if err != nil {
 							continue
 						}
+
 						if cidr.Contains(net.ParseIP(ip)) {
 							identity, found = m.participantIdentifiers[addr]
 							break

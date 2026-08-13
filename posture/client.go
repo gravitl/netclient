@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/scope"
 )
 
 // FetchStatus queries the host-authenticated posture endpoint on the named
@@ -55,6 +56,7 @@ func postureGet(server *config.Server, host *config.Config) (*HostPostureStatus,
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		return nil, err

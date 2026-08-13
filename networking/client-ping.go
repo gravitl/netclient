@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 )
 
@@ -207,6 +208,7 @@ func fetchPeerInfo() (models.HostPeerInfo, error) {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk
