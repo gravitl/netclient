@@ -80,6 +80,9 @@ func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
 
 // FindBestEndpoint - requests against a given addr and port
 func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int) {
+	if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
+		return
+	}
 	connected := tryLocalConnect(peerIp, peerPubKey, metricsPort)
 	if connected {
 		addr := net.JoinHostPort(peerIp, fmt.Sprintf("%d", peerListenPort))

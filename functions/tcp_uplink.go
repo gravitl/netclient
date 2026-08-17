@@ -2,6 +2,7 @@ package functions
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 
@@ -134,6 +135,9 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 		return
 	}
 	slog.Debug("client: endpoint", "addr", addr)
+	wireguard.SetTCPUplinkHostRouteIPs(tcpUplinkHostIPsFromAddr(addr))
+	// Exit may already be up (IsCurrentIGW skips SetInternetGw); pin TCP proxy now.
+	wireguard.RefreshInternetGwHostPins()
 
 	if tcpClientMgr != nil && tcpClientMgr.Addr() == addr && tcpClientMgr.RelayPeerID() == node.RelayedBy {
 		slog.Debug("client: already running, refresh UDP endpoint only")
@@ -178,6 +182,7 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 // watchTCPClientHealth recovers after gateway restart/pull without requiring a client pull:
 //   - when TCP becomes Active again, restore HostPeers-based divert + uplink hook
 //   - if down too long, recreate the proxy client (resets reconnect/auth state)
+//
 // Divert stays keyed to the server-published HostPeers endpoint so a working LAN
 // address from endpoint detection (different UDP dest) naturally uses UDP instead of TCP.
 func watchTCPClientHealth(ctx context.Context, mgr *proxyuplink.Manager, relayPeerID string) {
@@ -250,22 +255,63 @@ func ensureClientRelayUDPEndpoint(relayPeerID string) {
 		slog.Debug("client: SetRelayUDPEndpoint error", "error", err)
 		slog.Warn("tcp uplink: set relay UDP endpoint", "endpoint", ep, "error", err)
 	}
+	// Keep the live WG peer on the HostPeers underlay endpoint so Bind.Send
+	// matches the TCP divert key (endpoint detection must not leave a 10.x dest).
+	wireguard.RestoreHostPeerEndpoint(ep)
 }
 
 func stopTCPClientLocked() {
 	if tcpClientMgr == nil {
+		wireguard.SetTCPUplinkHostRouteIPs(nil)
 		return
 	}
 	slog.Debug("client: stopping")
 	// Clear route first so Bind.Send falls back to UDP immediately.
 	wireguard.ClearClientRelay()
 	wireguard.SetRelayTCPUplink(nil)
+	wireguard.SetTCPUplinkHostRouteIPs(nil)
 	mgr := tcpClientMgr
 	tcpClientMgr = nil
 	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = mgr.Stop(stopCtx)
 	slog.Info("tcp uplink client stopped")
+}
+
+func tcpUplinkHostIPsFromAddr(addr string) []net.IP {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		slog.Debug("tcp uplink: resolve proxy host for IGW pin", "host", host, "error", err)
+		return nil
+	}
+	return ips
+}
+
+// registerTCPUplinkHostIPsFromConfig sets underlay pin candidates from the
+// server-published TCP proxy endpoint without starting the client. Used before
+// reinstalling 0.0.0.0/0 after a userspace mode flip so TLS is not blackholed.
+func registerTCPUplinkHostIPsFromConfig() {
+	node, ok := proxyuplink.FindUplinkClient()
+	if !ok {
+		wireguard.SetTCPUplinkHostRouteIPs(nil)
+		return
+	}
+	addr := proxyuplink.TcpProxyEndpointForRelay(node.RelayedBy)
+	if addr == "" {
+		wireguard.SetTCPUplinkHostRouteIPs(nil)
+		return
+	}
+	wireguard.SetTCPUplinkHostRouteIPs(tcpUplinkHostIPsFromAddr(addr))
 }
 
 func reconcileTCPUplinkServerLocked(ctx context.Context) {
@@ -351,6 +397,10 @@ func flipTCPUplinkWireGuardMode() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
 
+	// Hold off IGW health checks until the new iface is configured; a half-built
+	// device has no peers and would read as the exit peer going away.
+	defer wireguard.BeginIfaceRebuild()()
+
 	StopAllTCPUplink()
 
 	listenPort := 0
@@ -377,6 +427,9 @@ func flipTCPUplinkWireGuardMode() {
 		slog.Error("tcp uplink mode flip: set peers", "error", err)
 	}
 	wireguard.SetRoutesFromCache()
+	// StopAllTCPUplink cleared TCP host pins; register them again BEFORE
+	// reinstalling 0.0.0.0/0 so the subsequent TLS dial is not blackholed.
+	registerTCPUplinkHostIPsFromConfig()
 	// Closing the iface drops OS default routes used for exit-node traffic, but
 	// IGWMonitor still reports the old nexthop as current — force reinstall.
 	wireguard.ReapplyInternetGwAfterIfaceRecreate()

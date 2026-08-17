@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -29,7 +31,19 @@ func (nc *NCIface) Create() error {
 	// cannot host a custom conn.Bind, so divert traffic over TCP when required.
 	if relayTCPUserspaceNeeded() {
 		slog.Info("TCP uplink enabled: using userspace WireGuard (Wintun) for conn.Bind integration")
-		return nc.createUserSpaceWG()
+		// Measured before the adapter exists, as in the WireGuardNT path below, so
+		// netmaker itself can never be the interface that resolves.
+		var ifaceMetric uint32
+		if !nc.IsTestIface {
+			ifaceMetric, _ = cachedResolvingInterfaceMetric()
+		}
+		if err := nc.createUserSpaceWG(); err != nil {
+			return err
+		}
+		if err := nc.setInterfaceMetric(ifaceMetric); err != nil {
+			slog.Warn("failed to set userspace interface metric", "error", err)
+		}
+		return nil
 	}
 
 	wgMutex.Lock()
@@ -37,7 +51,7 @@ func (nc *NCIface) Create() error {
 
 	var ifaceMetric uint32
 	if !nc.IsTestIface {
-		ifaceMetric, _ = getResolvingInterfaceMetric()
+		ifaceMetric, _ = cachedResolvingInterfaceMetric()
 	}
 
 	adapter, err := driver.OpenAdapter(nc.Name)
@@ -85,14 +99,17 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 
-	if ifaceMetric != 0 {
-		_, err = runPSCommand(fmt.Sprintf("Set-NetIPInterface -InterfaceAlias '%s' -InterfaceMetric %d", nc.Name, ifaceMetric+1))
-		if err != nil {
-			return err
-		}
-	}
+	return nc.setInterfaceMetric(ifaceMetric)
+}
 
-	return nil
+// setInterfaceMetric puts the netmaker interface one step behind the interface
+// that resolves DNS, so Windows keeps preferring that one for resolution.
+func (nc *NCIface) setInterfaceMetric(resolvingMetric uint32) error {
+	if resolvingMetric == 0 {
+		return nil
+	}
+	_, err := runPSCommand(fmt.Sprintf("Set-NetIPInterface -InterfaceAlias '%s' -InterfaceMetric %d", nc.Name, resolvingMetric+1))
+	return err
 }
 
 // NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
@@ -134,17 +151,17 @@ func RemoveRoutes(addrs []ifaceAddress) {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {
-			slog.Info("removing ipv4 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-			cmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s nexthop=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active", addr.Metric)
+			slog.Info("removing ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=%s metric=%d",
+				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
 			_, err := ncutils.RunCmd(cmd, false)
 			if err != nil {
 				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
 			}
 		} else {
-			slog.Info("removing ipv6 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-			cmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s nexthop=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active", addr.Metric)
+			slog.Info("removing ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=%s metric=%d",
+				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
 			_, err := ncutils.RunCmd(cmd, false)
 			if err != nil {
 				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
@@ -153,7 +170,9 @@ func RemoveRoutes(addrs []ifaceAddress) {
 	}
 }
 
-// SetRoutes - sets additional routes to the interface
+// SetRoutes - sets additional routes to the interface.
+// Routes are on-link: an overlay nexthop would sit in Probe state forever
+// because the WireGuard adapter never answers neighbour discovery.
 func SetRoutes(addrs []ifaceAddress) error {
 	for _, addr := range addrs {
 		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
@@ -161,17 +180,17 @@ func SetRoutes(addrs []ifaceAddress) error {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {
-			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active", addr.Metric)
+			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s store=%s metric=%d",
+				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
 			out, err := ncutils.RunCmd(cmd, false)
 			if err != nil && !strings.Contains(out, "already exists") {
 				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
 			}
 		} else {
-			slog.Info("adding ipv6 route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-			cmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), addr.GwIP.String(), "active", addr.Metric)
+			slog.Info("adding ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
+			cmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=%s metric=%d",
+				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
 			out, err := ncutils.RunCmd(cmd, false)
 			if err != nil && !strings.Contains(out, "already exists") {
 				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
@@ -365,7 +384,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	gwRoute, err := getDefaultGateway("v6")
 	if err != nil || len(gwRoute) == 0 {
 		if err != nil {
-			slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
+			slog.Error("no default gateway found, please run command route -n to check in the route table", "error", errString(err))
 		}
 	} else {
 		//if default gateway metric is 0, then reset it to 50
@@ -389,9 +408,12 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 			}
 		}
 
-		igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-		if err == nil && igw.Endpoint != nil && igw.Endpoint.IP.To4() == nil {
-			destination := igw.Endpoint.IP.String() + "/128"
+		igwHostIPs := InternetGwHostIPs(publicKey)
+		for _, hostIP := range igwHostIPs {
+			if hostIP.To4() != nil {
+				continue
+			}
+			destination := hostIP.String() + "/128"
 			gwRouteCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
 			_, err = ncutils.RunCmd(gwRouteCmd, true)
 			if err != nil {
@@ -400,12 +422,13 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
-	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName(), networkIP.String())
+	//add new gateway route with metric 0 for setting to top priority, on-link so
+	//Windows does not wait for neighbour discovery on the overlay nexthop
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName())
 
-	_, err = ncutils.RunCmd(addGwCmd, true)
-	if err != nil {
-		slog.Error("Failed to add route table", "error", err.Error())
+	out, err := ncutils.RunCmd(addGwCmd, false)
+	if err != nil && !isNetshAlreadyExists(out) {
+		slog.Error("Failed to add route table", "error", err.Error(), "out", strings.TrimSpace(out))
 		return err
 	}
 
@@ -416,53 +439,136 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 	return config.WriteNetclientConfig()
 }
 
-// setInternetGwV4 - set a new default gateway and the route to Internet Gw's ip address
-func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
-
-	//get current default gateway route
-	gwRoute, err := getDefaultGateway("v4")
-	if err != nil || len(gwRoute) == 0 {
-		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
-	} else {
-		//if default gateway metric is 0, then reset it to 50
-		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
-		metric := strings.TrimSpace(gwRoute[2])
-		if metric == "0" && ipString != networkIP.String() {
-			//set the original gateway metric to 50
-			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPv4Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-
-			_, err = ncutils.RunCmd(setGwCmd, true)
-			if err != nil {
+// setInternetGwV4 - set a new default gateway and the route to Internet Gw's ip address.
+// Underlay pinning is best-effort: only failing to install 0.0.0.0/0 itself is
+// treated as an error, so a pin problem can never leave the host without exit
+// routing.
+func setInternetGwV4(publicKey string, networkIP net.IP) error {
+	if lan, ok := lanDefaultRouteV4(networkIP); ok {
+		if len(config.Netclient().OriginalDefaultGatewayIp) == 0 {
+			config.Netclient().OriginalDefaultGatewayIp = lan.gw
+		}
+		if lan.metric == "0" {
+			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPv4Network, lan.ifaceIdx, lan.gw)
+			if _, err := ncutils.RunCmd(setGwCmd, false); err != nil {
 				slog.Error("Failed to set original gateway route metric", "error", err.Error())
-				slog.Error("please change the metric to 50 manaull to avoid issue", "error")
-				slog.Error("netsh int ipv4 set route 0.0.0.0/0 interface=<Idx> nexthop=<192.168.1.1> store=active metric=50", "error")
 			}
 		}
-
-		igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-		if err == nil {
-			destination := igw.Endpoint.IP.String() + "/32"
-			gwRouteCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-			slog.Info(gwRouteCmd)
-			_, err = ncutils.RunCmd(gwRouteCmd, true)
-			if err != nil {
-				slog.Error("Failed to add route to gateway", "error", err.Error())
-			}
-		}
+		pinHostIPsViaLanV4(InternetGwHostIPs(publicKey), lan)
+	} else {
+		slog.Warn("no LAN default gateway found; exit-node underlay cannot be pinned",
+			"public_key_prefix", publicKey[:min(8, len(publicKey))])
 	}
 
-	//add new gateway route with metric 0 for setting to top priority
-	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, ncutils.GetInterfaceName(), networkIP.String())
-
-	_, err = ncutils.RunCmd(addGwCmd, true)
-	if err != nil {
-		slog.Error("Failed to add route table", "error", err.Error())
+	// On-link (no nexthop), like WireGuard for Windows installs its AllowedIPs
+	// routes. An overlay nexthop puts the route in Probe state forever — the
+	// WireGuard adapter never answers neighbour discovery — and Windows then
+	// ignores the route and keeps using the LAN default no matter its metric.
+	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s store=active metric=0", IPv4Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(addGwCmd, false)
+	if err != nil && !isNetshAlreadyExists(out) {
+		slog.Error("Failed to add route table", "error", err.Error(), "out", strings.TrimSpace(out))
 		return err
 	}
 
 	config.Netclient().CurrGwNmIP = networkIP
+	return config.WriteNetclientConfig()
+}
 
-	return nil
+// lanRouteV4 describes the pre-exit (underlay) IPv4 default route.
+type lanRouteV4 struct {
+	ifaceIdx string
+	gw       net.IP
+	metric   string
+}
+
+// pinHostIPsViaLanV4 adds /32 routes for exit underlay IPs via the LAN gateway.
+func pinHostIPsViaLanV4(hostIPs []net.IP, lan lanRouteV4) {
+	pinned := 0
+	for _, hostIP := range hostIPs {
+		if hostIP.To4() == nil {
+			continue
+		}
+		destination := hostIP.String() + "/32"
+		gwRouteCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=1", destination, lan.ifaceIdx, lan.gw)
+		out, err := ncutils.RunCmd(gwRouteCmd, false)
+		if err != nil && !isNetshAlreadyExists(out) {
+			slog.Error("Failed to pin exit-node underlay route", "destination", destination,
+				"error", err.Error(), "out", strings.TrimSpace(out))
+			continue
+		}
+		slog.Info("pinning exit-node underlay via LAN gateway", "cmd", gwRouteCmd)
+		pinned++
+	}
+	if pinned == 0 {
+		slog.Warn("no exit-node underlay host route pinned; WireGuard/TCP underlay may be blackholed",
+			"candidates", len(hostIPs))
+	}
+}
+
+// pinInternetGwHostRoutes adds LAN /32 routes for exit underlay IPs without
+// changing 0.0.0.0/0. Safe to call when exit routing is already installed.
+func pinInternetGwHostRoutes(publicKey string) {
+	lan, ok := lanDefaultRouteV4(config.Netclient().CurrGwNmIP)
+	if !ok {
+		slog.Debug("skip exit-node host pin refresh; LAN gateway not found")
+		return
+	}
+	pinHostIPsViaLanV4(InternetGwHostIPs(publicKey), lan)
+}
+
+// lanDefaultRouteV4 returns the underlay IPv4 default route, ignoring any
+// 0.0.0.0/0 row that belongs to the netmaker interface or points at the overlay
+// nexthop. Needed because once exit routing is installed the netmaker row has
+// the lowest metric and would otherwise be picked as the "LAN" gateway.
+func lanDefaultRouteV4(overlayGw net.IP) (lanRouteV4, bool) {
+	var best lanRouteV4
+	var bestMetric = math.MaxInt32
+	nmIdx := -1
+	if iface, err := net.InterfaceByName(ncutils.GetInterfaceName()); err == nil {
+		nmIdx = iface.Index
+	}
+	orig := config.Netclient().OriginalDefaultGatewayIp
+
+	input, err := ncutils.RunCmd("netsh int ipv4 show route", false)
+	if err != nil {
+		return best, false
+	}
+	lines := strings.FieldsFunc(input, func(r rune) bool { return r == '\r' || r == '\n' })
+	for _, l := range lines {
+		if !strings.Contains(l, IPv4Network) {
+			continue
+		}
+		fields := strings.Fields(l)
+		if len(fields) < 5 {
+			continue
+		}
+		gw := net.ParseIP(strings.TrimSpace(fields[len(fields)-1]))
+		// On-link rows carry an interface name here, not a usable nexthop.
+		if gw == nil || gw.To4() == nil {
+			continue
+		}
+		idx := strings.TrimSpace(fields[len(fields)-2])
+		if nmIdx >= 0 && idx == strconv.Itoa(nmIdx) {
+			continue
+		}
+		if len(overlayGw) > 0 && gw.Equal(overlayGw) {
+			continue
+		}
+		metric, convErr := strconv.Atoi(strings.TrimSpace(fields[2]))
+		if convErr != nil {
+			metric = math.MaxInt32 - 1
+		}
+		// The remembered original gateway always wins over metric ordering.
+		if len(orig) > 0 && gw.Equal(orig) {
+			return lanRouteV4{ifaceIdx: idx, gw: gw, metric: strings.TrimSpace(fields[2])}, true
+		}
+		if metric < bestMetric {
+			bestMetric = metric
+			best = lanRouteV4{ifaceIdx: idx, gw: gw, metric: strings.TrimSpace(fields[2])}
+		}
+	}
+	return best, best.gw != nil
 }
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's ip address
@@ -517,7 +623,7 @@ func restoreInternetGwV6() (err error) {
 	//get current default gateway route
 	gwRoute, err := getDefaultGateway("v6")
 	if err != nil || len(gwRoute) == 0 {
-		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
+		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", errString(err))
 	} else {
 		//if default gateway metric is 0, then reset it to 50
 		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
@@ -556,48 +662,56 @@ func restoreInternetGwV4() (err error) {
 
 	delCmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=active", IPv4Network, ncutils.GetInterfaceName())
 
-	_, err = ncutils.RunCmd(delCmd, true)
-	if err != nil {
-		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+	out, err := ncutils.RunCmd(delCmd, false)
+	if err != nil && !isNetshNotFound(err, out) {
+		slog.Error("Failed to delete route, please delete it manually", "error", err.Error(), "out", strings.TrimSpace(out))
 		return err
 	}
 
-	var destination string
+	var destinations []string
+	seen := map[string]struct{}{}
 	for _, peer := range config.Netclient().HostPeers {
+		hasDefault := false
 		for _, allowedIP := range peer.AllowedIPs {
 			if allowedIP.String() == IPv4Network {
-				destination = peer.Endpoint.IP.String() + "/32"
+				hasDefault = true
+				break
 			}
+		}
+		if !hasDefault {
+			continue
+		}
+		for _, ip := range InternetGwHostIPs(peer.PublicKey.String()) {
+			if ip.To4() == nil {
+				continue
+			}
+			d := ip.String() + "/32"
+			if _, ok := seen[d]; ok {
+				continue
+			}
+			seen[d] = struct{}{}
+			destinations = append(destinations, d)
 		}
 	}
 
-	//get current default gateway route
-	gwRoute, err := getDefaultGateway("v4")
-	if err != nil || len(gwRoute) == 0 {
-		slog.Error("no default gateway found, please run command route -n to check in the route table", "error", err.Error())
-	} else {
-		//if default gateway metric is 0, then reset it to 50
-		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
-		metric := strings.TrimSpace(gwRoute[2])
-		if metric == "50" {
-			//set the original gateway metric to 50
-			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-
-			_, err = ncutils.RunCmd(setGwCmd, true)
-			if err != nil {
-				slog.Error("Failed to set original gateway route metric", "error", err.Error())
-				slog.Error("please change the metric to 0 manually to avoid issue", "error")
-				slog.Error("netsh int ipv4 set route 0.0.0.0/0 interface=<Idx> nexthop=<192.168.1.1> store=active metric=0", "error")
-			}
+	// Restore the LAN default route to metric 0 (exit setup demoted it to 50).
+	if lan, ok := lanDefaultRouteV4(config.Netclient().CurrGwNmIP); ok && lan.metric != "0" {
+		setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, lan.ifaceIdx, lan.gw)
+		if _, setErr := ncutils.RunCmd(setGwCmd, false); setErr != nil {
+			slog.Error("Failed to restore original gateway route metric", "error", setErr.Error())
+			slog.Error("please change the metric to 0 manually to avoid issue", "cmd", setGwCmd)
 		}
+	}
 
-		if destination != "" {
-			delCmd := fmt.Sprintf("netsh int ipv4 delete route %s %s store=active", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]))
-			_, err = ncutils.RunCmd(delCmd, true)
-			if err != nil {
-				slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
-				return err
-			}
+	// Delete pins without an interface filter: once 0.0.0.0/0 is on netmaker,
+	// getDefaultGateway returns the netmaker row, so an interface-scoped delete
+	// silently misses the pins and the next add fails with "already exists".
+	for _, destination := range destinations {
+		delCmd := fmt.Sprintf("netsh int ipv4 delete route %s store=active", destination)
+		out, delErr := ncutils.RunCmd(delCmd, false)
+		if delErr != nil && !isNetshNotFound(delErr, out) {
+			slog.Warn("Failed to delete exit-node host route", "destination", destination,
+				"error", delErr, "out", strings.TrimSpace(out))
 		}
 	}
 
@@ -645,9 +759,11 @@ func (nc *NCIface) SetMTU() error {
 		// TODO figure out how to change MTU of WireGuardNT adapter
 		return nil
 	}
-	cmd := fmt.Sprintf(`netsh interface ipv4 set subinterface "%s" mtu=%d store=active`, nc.Name, nc.MTU)
-	if _, err := ncutils.RunCmd(cmd, false); err != nil {
-		slog.Warn("failed to set userspace iface MTU", "error", err)
+	for _, family := range []string{"ipv4", "ipv6"} {
+		cmd := fmt.Sprintf(`netsh interface %s set subinterface "%s" mtu=%d store=active`, family, nc.Name, nc.MTU)
+		if _, err := ncutils.RunCmd(cmd, false); err != nil {
+			slog.Warn("failed to set userspace iface MTU", "family", family, "error", err)
+		}
 	}
 	return nil
 }
@@ -661,8 +777,74 @@ func DeleteOldInterface(iface string) {
 }
 
 func isEconnRefused(err error) bool {
+	if err == nil {
+		return false
+	}
 	var winerrno windows.Errno
-	return errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED)
+	if errors.As(err, &winerrno) && errors.Is(winerrno, windows.WSAECONNREFUSED) {
+		return true
+	}
+	// net.DialTimeout on Windows often wraps the errno so errors.As misses it.
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "connection refused") || strings.Contains(msg, "actively refused")
+}
+
+func isNetshElementNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "element not found") || strings.Contains(msg, "cannot find")
+}
+
+// isNetshNotFound reports whether netsh failed only because the route was absent.
+// RunCmd often returns err="exit status 1" with the real text only in stdout/stderr.
+func isNetshNotFound(err error, out string) bool {
+	if isNetshElementNotFound(err) {
+		return true
+	}
+	msg := strings.ToLower(out)
+	return strings.Contains(msg, "element not found") || strings.Contains(msg, "cannot find the file")
+}
+
+// isNetshAlreadyExists reports whether an add failed only because the route was
+// already present, which is equivalent to success for our purposes.
+func isNetshAlreadyExists(out string) bool {
+	return strings.Contains(strings.ToLower(out), "already exists")
+}
+
+// errString renders an error for logging without panicking on nil.
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// resolvingMetricTTL bounds how long a probed metric is reused. The probe spawns
+// a PowerShell process per DNS server and resolves through each one, which costs
+// tens of seconds on some hosts — far too long to repeat for every iface rebuild.
+const resolvingMetricTTL = 5 * time.Minute
+
+var resolvingMetric struct {
+	sync.Mutex
+	value uint32
+	at    time.Time
+}
+
+func cachedResolvingInterfaceMetric() (uint32, error) {
+	resolvingMetric.Lock()
+	defer resolvingMetric.Unlock()
+	if resolvingMetric.value != 0 && time.Since(resolvingMetric.at) < resolvingMetricTTL {
+		return resolvingMetric.value, nil
+	}
+	metric, err := getResolvingInterfaceMetric()
+	if err != nil {
+		return 0, err
+	}
+	resolvingMetric.value = metric
+	resolvingMetric.at = time.Now()
+	return metric, nil
 }
 
 func getResolvingInterfaceMetric() (uint32, error) {

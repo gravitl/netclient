@@ -16,6 +16,7 @@ import (
 type ServerManager struct {
 	mu         sync.Mutex
 	server     *uplink.Server
+	registry   *uplink.InMemoryRegistry
 	cancel     context.CancelFunc
 	nodeID     string
 	listenPort int
@@ -52,12 +53,14 @@ func (m *ServerManager) Start(ctx context.Context) error {
 	}
 
 	addr := fmt.Sprintf(":%d", m.listenPort)
+	reg := uplink.NewInMemoryRegistry()
 	srv, err := uplink.NewServer(uplink.ServerOptions{
-		ListenAddr:    addr,
-		TLSConfig:     tlsCfg,
-		Authenticator: &gatewayAuthenticator{gatewayNodeID: m.nodeID},
-		PacketHandler: &gatewayPacketHandler{},
-		Logger:        slogAdapter{},
+		ListenAddr:      addr,
+		TLSConfig:       tlsCfg,
+		Authenticator:   &gatewayAuthenticator{gatewayNodeID: m.nodeID},
+		PacketHandler:   &gatewayPacketHandler{},
+		SessionRegistry: reg,
+		Logger:          slogAdapter{},
 	})
 	if err != nil {
 		return err
@@ -67,6 +70,7 @@ func (m *ServerManager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	m.cancel = cancel
 	m.server = srv
+	m.registry = reg
 	m.mu.Unlock()
 
 	if err := srv.Start(runCtx); err != nil {
@@ -74,6 +78,7 @@ func (m *ServerManager) Start(ctx context.Context) error {
 		m.mu.Lock()
 		m.server = nil
 		m.cancel = nil
+		m.registry = nil
 		m.mu.Unlock()
 		return err
 	}
@@ -97,6 +102,7 @@ func (m *ServerManager) Stop(ctx context.Context) error {
 	srv := m.server
 	m.cancel = nil
 	m.server = nil
+	m.registry = nil
 	m.mu.Unlock()
 
 	if cancel != nil {
@@ -123,6 +129,34 @@ func (m *ServerManager) SendToPeer(ctx context.Context, peerID string, pkt []byt
 		return uplink.ErrServerClosed
 	}
 	return srv.SendToPeer(ctx, peerID, pkt)
+}
+
+// HasSession reports whether peerID currently has an attached TCP uplink session.
+// Bind.Send must only divert to TCP when this is true; otherwise UDP-only exit
+// clients never get handshake replies.
+func (m *ServerManager) HasSession(peerID string) bool {
+	if peerID == "" {
+		return false
+	}
+	m.mu.Lock()
+	reg := m.registry
+	m.mu.Unlock()
+	if reg == nil {
+		return false
+	}
+	_, ok := reg.Get(peerID)
+	return ok
+}
+
+// SessionPeerIDs returns peer IDs that currently have a live session.
+func (m *ServerManager) SessionPeerIDs() []string {
+	m.mu.Lock()
+	reg := m.registry
+	m.mu.Unlock()
+	if reg == nil {
+		return nil
+	}
+	return reg.PeerIDs()
 }
 
 // ListenPort returns the configured listen port.
@@ -214,23 +248,29 @@ func registerPeerEndpoint(peerID string) error {
 	return wireguard.SetTCPPeerRoute(peerID, placeholder)
 }
 
-// RefreshTCPPeerRoutes re-resolves gateway TCP peer routes from current HostPeers.
-// Call after SetPeers / iface reset so Bind.Send endpoint keys stay aligned.
+// RefreshTCPPeerRoutes re-resolves gateway TCP peer routes from current HostPeers
+// for peers that already have a divert mapping plus every peer with a live TCP
+// session. Session peers must be included because ClearAllTCPPeerRoutes (iface
+// reset / server stop) drops their mapping, which would leave gateway→client
+// traffic on UDP that a TCP-uplink client cannot receive.
+//
+// Do NOT register all RelayedNodes here — that forces Bind.Send onto TCP for
+// UDP-only exit clients that never open a TCP session, so they would never
+// complete a handshake.
 func RefreshTCPPeerRoutes() {
-	peerIDs := make(map[string]struct{})
-	for _, id := range wireguard.TCPRoutedPeerIDs() {
-		if id != "" {
-			peerIDs[id] = struct{}{}
-		}
+	ids := wireguard.TCPRoutedPeerIDs()
+	if srv := ActiveServer(); srv != nil {
+		ids = append(ids, srv.SessionPeerIDs()...)
 	}
-	for _, n := range config.GetNodes() {
-		for _, id := range n.RelayedNodes {
-			if id != "" {
-				peerIDs[id] = struct{}{}
-			}
+	done := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
 		}
-	}
-	for id := range peerIDs {
+		if _, dup := done[id]; dup {
+			continue
+		}
+		done[id] = struct{}{}
 		if err := registerPeerEndpoint(id); err != nil {
 			slog.Debug("tcp uplink: refresh peer route", "peer", id, "error", err)
 		}

@@ -100,12 +100,16 @@ func Daemon() {
 			config.FwClose()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
+			// checkAndRestoreDefaultGateway only stops the IGW monitor when the
+			// restore succeeds; keep health checks off across the whole rebuild.
+			rebuilt := wireguard.BeginIfaceRebuild()
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
 			fmt.Println("[listen-port-debug] daemon starting startGoRoutines after reset")
 			cancel = startGoRoutines(&wg)
+			rebuilt()
 		}
 	}
 }

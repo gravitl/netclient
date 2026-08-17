@@ -16,7 +16,7 @@ func Configure() error {
 		return errors.New("server not configured")
 	}
 
-	ip, err := getDnsIp()
+	ips, err := getDnsIps()
 	if err != nil {
 		return err
 	}
@@ -54,9 +54,11 @@ func Configure() error {
 	}
 
 	// AD domain nameservers should always be prioritized before gateway DNS.
-	if _, ok := nameserverIPsMap[ip]; !ok {
-		dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(ip))
-		nameserverIPsMap[ip] = true
+	for _, ip := range ips {
+		if _, ok := nameserverIPsMap[ip]; !ok {
+			dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(ip))
+			nameserverIPsMap[ip] = true
+		}
 	}
 
 	if config.Netclient().CurrGwNmIP != nil || matchAllDomains {
@@ -66,35 +68,70 @@ func Configure() error {
 	return configManager.Configure(ncutils.GetInterfaceName(), dnsConfig)
 }
 
-// getDnsIp return the ip address of the dns server
-func getDnsIp() (string, error) {
-	dnsIp := GetDNSServerInstance().AddrStr
-	if dnsIp == "" {
-		return "", errors.New("no listener is running")
+// getDnsIps returns every address the local DNS listener is serving on, in the
+// order they should be handed to the resolver. All of them must be published:
+// the listener binds whichever families the node has, and publishing only the
+// last one leaves dual-stack nodes with an IPv6-only nameserver that a host with
+// IPv6 restricted cannot reach at all.
+//
+// A loopback listener answers regardless of tunnel state, so it stays first
+// where one exists (macOS); otherwise IPv4 leads.
+func getDnsIps() ([]string, error) {
+	addrs := GetDNSServerInstance().AddrList
+	if len(addrs) == 0 {
+		return nil, errors.New("no listener is running")
 	}
 
 	if len(config.GetNodes()) == 0 {
-		return "", errors.New("no network joint")
+		return nil, errors.New("no network joint")
 	}
 
-	dnsIp = getIpFromServerString(dnsIp)
+	ips := orderListenerIPs(addrs)
+	if len(ips) == 0 {
+		return nil, errors.New("no usable listener address")
+	}
 
-	return dnsIp, nil
+	return ips, nil
+}
+
+// orderListenerIPs extracts the IPs from ip:port listener addresses, dropping
+// duplicates and anything unparseable.
+func orderListenerIPs(addrs []string) []string {
+	var loopback, v4, v6 []string
+	seen := make(map[string]bool)
+	for _, addr := range addrs {
+		ip := getIpFromServerString(addr)
+		if ip == "" || seen[ip] {
+			continue
+		}
+		seen[ip] = true
+
+		parsed := net.ParseIP(ip)
+		switch {
+		case parsed == nil:
+		case parsed.IsLoopback():
+			loopback = append(loopback, ip)
+		case parsed.To4() != nil:
+			v4 = append(v4, ip)
+		default:
+			v6 = append(v6, ip)
+		}
+	}
+
+	ips := make([]string, 0, len(loopback)+len(v4)+len(v6))
+	ips = append(ips, loopback...)
+	ips = append(ips, v4...)
+	ips = append(ips, v6...)
+
+	return ips
 }
 
 // getIpFromServerString returns ip address from the ip:port
 // address pair.
 func getIpFromServerString(addrStr string) string {
-	s := ""
-	s = addrStr[0:strings.LastIndex(addrStr, ":")]
-
-	if strings.Contains(s, "[") {
-		s = strings.ReplaceAll(s, "[", "")
+	if host, _, err := net.SplitHostPort(addrStr); err == nil {
+		return host
 	}
 
-	if strings.Contains(s, "]") {
-		s = strings.ReplaceAll(s, "]", "")
-	}
-
-	return s
+	return strings.Trim(addrStr, "[]")
 }

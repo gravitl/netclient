@@ -6,6 +6,7 @@ package wireguard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
@@ -117,12 +118,14 @@ type relayTCPBind struct {
 
 	mu sync.RWMutex
 	// client mode: single relay UDP endpoint
-	relayStr string
+	relayStr string // printable ip:port, also the inbound delivery key
+	relayKey string // wire address, matched against Send destinations
 	relayEp  conn.Endpoint
-	// gateway mode: peerID -> endpoint string; endpoint string -> peerID
-	peerToEp map[string]string
-	epToPeer map[string]string
-	epCache  map[string]conn.Endpoint
+	// gateway mode
+	peerToEp  map[string]string        // peerID -> printable ip:port
+	peerToKey map[string]string        // peerID -> wire address
+	keyToPeer map[string]string        // wire address -> peerID
+	epCache   map[string]conn.Endpoint // printable ip:port -> endpoint
 
 	inbound     chan inboundPkt
 	inboundOnce sync.Once
@@ -130,15 +133,46 @@ type relayTCPBind struct {
 
 func newRelayTCPBind(udp conn.Bind) *relayTCPBind {
 	return &relayTCPBind{
-		udp:      udp,
-		peerToEp: make(map[string]string),
-		epToPeer: make(map[string]string),
-		epCache:  make(map[string]conn.Endpoint),
+		udp:       udp,
+		peerToEp:  make(map[string]string),
+		peerToKey: make(map[string]string),
+		keyToPeer: make(map[string]string),
+		epCache:   make(map[string]conn.Endpoint),
 	}
 }
 
+// endpointKey identifies an endpoint by its wire address (IP plus port) rather
+// than by DstToString: wireguard-go's WinRingEndpoint drops the return value of
+// DstToString for IPv4, so on Windows every endpoint stringifies to "" and no
+// divert ever matched.
+func endpointKey(ep conn.Endpoint) string {
+	if ep == nil {
+		return ""
+	}
+	return string(ep.DstToBytes())
+}
+
+// resolveEndpoint parses addr and returns the endpoint together with the two
+// keys it is tracked under: the wire address for Send matching and a printable
+// address for inbound delivery.
+func (b *relayTCPBind) resolveEndpoint(addr string) (ep conn.Endpoint, epStr, key string, err error) {
+	ep, err = b.parseEndpoint(addr)
+	if err != nil {
+		return nil, "", "", err
+	}
+	key = endpointKey(ep)
+	if key == "" {
+		return nil, "", "", fmt.Errorf("tcp uplink: unsupported endpoint address %q", addr)
+	}
+	epStr = ep.DstToString()
+	if epStr == "" {
+		epStr = addr
+	}
+	return ep, epStr, key, nil
+}
+
 func (b *relayTCPBind) setClientRelay(addr string) error {
-	ep, err := b.udp.ParseEndpoint(addr)
+	ep, epStr, key, err := b.resolveEndpoint(addr)
 	if err != nil {
 		return err
 	}
@@ -148,8 +182,9 @@ func (b *relayTCPBind) setClientRelay(addr string) error {
 		delete(b.epCache, b.relayStr)
 	}
 	b.relayEp = ep
-	b.relayStr = ep.DstToString()
-	b.epCache[b.relayStr] = ep
+	b.relayStr = epStr
+	b.relayKey = key
+	b.epCache[epStr] = ep
 	return nil
 }
 
@@ -160,23 +195,21 @@ func (b *relayTCPBind) clearClientRelay() {
 		delete(b.epCache, b.relayStr)
 	}
 	b.relayStr = ""
+	b.relayKey = ""
 	b.relayEp = nil
 }
 
 func (b *relayTCPBind) setPeerRoute(peerID, addr string) error {
-	ep, err := b.udp.ParseEndpoint(addr)
+	ep, epStr, key, err := b.resolveEndpoint(addr)
 	if err != nil {
 		return err
 	}
-	epStr := ep.DstToString()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if old, ok := b.peerToEp[peerID]; ok {
-		delete(b.epToPeer, old)
-		delete(b.epCache, old)
-	}
+	b.dropPeerRouteLocked(peerID)
 	b.peerToEp[peerID] = epStr
-	b.epToPeer[epStr] = peerID
+	b.peerToKey[peerID] = key
+	b.keyToPeer[key] = peerID
 	b.epCache[epStr] = ep
 	return nil
 }
@@ -184,9 +217,16 @@ func (b *relayTCPBind) setPeerRoute(peerID, addr string) error {
 func (b *relayTCPBind) clearPeerRoute(peerID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if old, ok := b.peerToEp[peerID]; ok {
-		delete(b.epToPeer, old)
-		delete(b.epCache, old)
+	b.dropPeerRouteLocked(peerID)
+}
+
+func (b *relayTCPBind) dropPeerRouteLocked(peerID string) {
+	if key, ok := b.peerToKey[peerID]; ok {
+		delete(b.keyToPeer, key)
+		delete(b.peerToKey, peerID)
+	}
+	if epStr, ok := b.peerToEp[peerID]; ok {
+		delete(b.epCache, epStr)
 		delete(b.peerToEp, peerID)
 	}
 }
@@ -195,7 +235,8 @@ func (b *relayTCPBind) clearAllPeerRoutes() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.peerToEp = make(map[string]string)
-	b.epToPeer = make(map[string]string)
+	b.peerToKey = make(map[string]string)
+	b.keyToPeer = make(map[string]string)
 	// keep client relay endpoint in epCache if set
 	kept := make(map[string]conn.Endpoint)
 	if b.relayStr != "" && b.relayEp != nil {
@@ -210,31 +251,66 @@ func (b *relayTCPBind) peerEndpoint(peerID string) string {
 	return b.peerToEp[peerID]
 }
 
+// endpointFor resolves an inbound packet's endpoint string, parsing and caching
+// it when a live TCP session delivers packets before (or after) its route is
+// registered. Sessions outlive route registration across peer updates, so a
+// cache miss must not be treated as an error.
+func (b *relayTCPBind) endpointFor(epStr string) (conn.Endpoint, error) {
+	b.mu.RLock()
+	ep := b.epCache[epStr]
+	b.mu.RUnlock()
+	if ep != nil {
+		return ep, nil
+	}
+	parsed, err := b.parseEndpoint(epStr)
+	if err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if existing := b.epCache[epStr]; existing != nil {
+		return existing, nil
+	}
+	b.epCache[epStr] = parsed
+	return parsed, nil
+}
+
 func (b *relayTCPBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 	fns, actualPort, err := b.udp.Open(port)
 	if err != nil {
 		return nil, 0, err
 	}
-	b.inbound = make(chan inboundPkt, 256)
+	for i := range fns {
+		fns[i] = normalizeReceive(fns[i])
+	}
+	b.inbound = make(chan inboundPkt, tcpInQueueSize)
 	b.inboundOnce = sync.Once{}
 	inbound := b.inbound
 	registerRelayInbound(inbound)
 
+	// Only net.ErrClosed may be returned from here. wireguard-go's receive
+	// routine sleeps 1/3s on any other error and exits permanently after 10
+	// consecutive ones, which would silently kill all TCP-uplink ingress for the
+	// lifetime of the device. Bad packets are dropped and accounted instead.
 	recvTCP := func(buf []byte) (int, conn.Endpoint, error) {
-		// Use the channel captured at Open — never read b.inbound after Close nils it
-		// (receive on a nil channel blocks forever and freezes Device.Close / wg show).
-		pkt, ok := <-inbound
-		if !ok {
-			return 0, nil, net.ErrClosed
+		for {
+			// Use the channel captured at Open — never read b.inbound after Close nils it
+			// (receive on a nil channel blocks forever and freezes Device.Close / wg show).
+			pkt, ok := <-inbound
+			if !ok {
+				return 0, nil, net.ErrClosed
+			}
+			if len(pkt.data) > len(buf) {
+				tcpInOversizeDrops.note("tcp uplink: inbound packet larger than receive buffer, dropping")
+				continue
+			}
+			ep, err := b.endpointFor(pkt.epStr)
+			if err != nil {
+				tcpInEndpointDrops.note("tcp uplink: cannot resolve inbound endpoint, dropping")
+				continue
+			}
+			return copy(buf, pkt.data), ep, nil
 		}
-		n := copy(buf, pkt.data)
-		b.mu.RLock()
-		ep := b.epCache[pkt.epStr]
-		b.mu.RUnlock()
-		if ep == nil {
-			return 0, nil, errors.New("tcp uplink: inbound endpoint missing")
-		}
-		return n, ep, nil
 	}
 	return append(fns, recvTCP), actualPort, nil
 }
@@ -270,15 +346,15 @@ func (b *relayTCPBind) SetMark(mark uint32) error {
 }
 
 func (b *relayTCPBind) Send(p []byte, ep conn.Endpoint) error {
-	dst := ep.DstToString()
+	dst := endpointKey(ep)
 
 	b.mu.RLock()
-	relayStr := b.relayStr
-	peerID := b.epToPeer[dst]
+	relayKey := b.relayKey
+	peerID := b.keyToPeer[dst]
 	b.mu.RUnlock()
 
 	// Never block on TLS I/O here: WireGuard holds device.net.RLock across Bind.Send.
-	if relayStr != "" && dst == relayStr {
+	if relayKey != "" && dst == relayKey {
 		if u := activeRelayTCPUplink(); u != nil {
 			pkt := append([]byte(nil), p...)
 			return enqueueTCPOut(func() {
@@ -289,17 +365,30 @@ func (b *relayTCPBind) Send(p []byte, ep conn.Endpoint) error {
 
 	if peerID != "" {
 		if s := activeTCPUplinkServer(); s != nil {
-			pkt := append([]byte(nil), p...)
-			id := peerID
-			return enqueueTCPOut(func() {
-				_ = s.SendToPeer(context.Background(), id, pkt)
-			})
+			// Only divert peers with a live TCP session. Pre-registered RelayedNodes
+			// (or stale routes) must still use UDP so exit clients without UseTcpUplink
+			// can complete handshakes.
+			if s.HasSession(peerID) {
+				pkt := append([]byte(nil), p...)
+				id := peerID
+				return enqueueTCPOut(func() {
+					_ = s.SendToPeer(context.Background(), id, pkt)
+				})
+			}
 		}
 	}
 
-	return b.udp.Send(p, ep)
+	return b.udp.Send(p, rawEndpoint(ep))
 }
 
 func (b *relayTCPBind) ParseEndpoint(s string) (conn.Endpoint, error) {
-	return b.udp.ParseEndpoint(s)
+	return b.parseEndpoint(s)
+}
+
+func (b *relayTCPBind) parseEndpoint(s string) (conn.Endpoint, error) {
+	ep, err := b.udp.ParseEndpoint(s)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeEndpoint(ep), nil
 }

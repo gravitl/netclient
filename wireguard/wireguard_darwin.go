@@ -416,3 +416,5 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 
 	return config.WriteNetclientConfig()
 }
+
+func pinInternetGwHostRoutes(publicKey string) {}

@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
-
-	"golang.org/x/exp/slog"
 )
 
 // needTCPUplinkBind is set from proxyuplink.NeedsUserspaceWG before iface create.
@@ -21,7 +19,7 @@ func relayTCPUserspaceNeeded() bool {
 }
 
 type inboundPkt struct {
-	data []byte
+	data  []byte
 	epStr string
 }
 
@@ -30,9 +28,10 @@ type relayTCPUplink interface {
 	SendPacket(ctx context.Context, pkt []byte) error
 }
 
-// tcpUplinkServer is implemented by proxyuplink.ServerManager (SendToPeer).
+// tcpUplinkServer is implemented by proxyuplink.ServerManager.
 type tcpUplinkServer interface {
 	SendToPeer(ctx context.Context, peerID string, pkt []byte) error
+	HasSession(peerID string) bool
 }
 
 var (
@@ -84,8 +83,10 @@ func pushInbound(epStr string, pkt []byte) {
 	}
 	p := make([]byte, len(pkt))
 	copy(p, pkt)
-	relayInboundMu.Lock()
-	defer relayInboundMu.Unlock()
+	// Read lock only: this runs per packet, so an exclusive lock here serialises
+	// every inbound packet of the tunnel.
+	relayInboundMu.RLock()
+	defer relayInboundMu.RUnlock()
 	ch := relayInboundCh
 	if ch == nil {
 		return
@@ -93,7 +94,7 @@ func pushInbound(epStr string, pkt []byte) {
 	select {
 	case ch <- inboundPkt{data: p, epStr: epStr}:
 	default:
-		slog.Warn("tcp uplink: inbound queue full, dropping packet")
+		tcpInQueueDrops.note("tcp uplink: inbound queue full, dropping packet")
 	}
 }
 
@@ -101,7 +102,7 @@ func pushInbound(epStr string, pkt []byte) {
 func DeliverRelayTCPInbound(pkt []byte) {
 	epStr := clientRelayEndpoint()
 	if epStr == "" {
-		slog.Warn("tcp uplink: relay endpoint not set; dropping inbound")
+		tcpInEndpointDrops.note("tcp uplink: relay endpoint not set; dropping inbound")
 		return
 	}
 	pushInbound(epStr, pkt)

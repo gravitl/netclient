@@ -9,9 +9,20 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// tcpOutQueueSize bounds async uplink sends so Bind.Send never blocks on TLS I/O
-// while WireGuard holds device.net.RLock (which would freeze Close / wg show).
-const tcpOutQueueSize = 256
+const (
+	// tcpOutQueueSize bounds async uplink sends so Bind.Send never blocks on TLS I/O
+	// while WireGuard holds device.net.RLock (which would freeze Close / wg show).
+	//
+	// 1024 full-MTU packets is roughly 100ms of a 100Mbit link, enough to ride out
+	// a congested TLS write but under the tunnelled TCP's retransmit timeout, so a
+	// stall sheds packets instead of delivering ones the sender already gave up on.
+	// It also matches wireguard-go's own QueueOutboundSize, the stage feeding this
+	// one.
+	tcpOutQueueSize = 1024
+	// tcpInQueueSize bounds gateway→client ingress, the heavy direction for an
+	// exit node.
+	tcpInQueueSize = 1024
+)
 
 var (
 	errTCPOutQueueFull = errors.New("tcp uplink: outbound queue full")
@@ -20,7 +31,35 @@ var (
 	tcpOutCh       chan func()
 	tcpOutWG       sync.WaitGroup
 	tcpOutDraining atomic.Bool
+
+	tcpOutDrops        tcpDropStats
+	tcpInQueueDrops    tcpDropStats
+	tcpInEndpointDrops tcpDropStats
+	tcpInOversizeDrops tcpDropStats
 )
+
+// tcpDropStats counts dropped packets and logs at most once per interval.
+// Logging every drop at exit-node packet rates would flood the log and hide the
+// aggregate loss.
+type tcpDropStats struct {
+	count   atomic.Uint64
+	lastLog atomic.Int64
+}
+
+const tcpDropLogInterval = 5 * time.Second
+
+func (s *tcpDropStats) note(msg string) {
+	total := s.count.Add(1)
+	now := time.Now().UnixNano()
+	last := s.lastLog.Load()
+	if last != 0 && now-last < int64(tcpDropLogInterval) {
+		return
+	}
+	if !s.lastLog.CompareAndSwap(last, now) {
+		return
+	}
+	slog.Warn(msg, "dropped_total", total)
+}
 
 func ensureTCPOutWorkerLocked() {
 	if tcpOutCh != nil {
@@ -54,6 +93,7 @@ func enqueueTCPOut(fn func()) error {
 	case ch <- fn:
 		return nil
 	default:
+		tcpOutDrops.note("tcp uplink: outbound queue full, dropping packet")
 		return errTCPOutQueueFull
 	}
 }

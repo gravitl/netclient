@@ -77,8 +77,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gravitl/netmaker v1.6.1-0.20260807044727-4530fb0658d1 h1:GWs/nhEZU/vJo0IMQymCVEZN0IadoLF3WlE/Ipj/jPg=
 github.com/gravitl/netmaker v1.6.1-0.20260807044727-4530fb0658d1/go.mod h1:4DCWDpA7fGV1VImKMCn1GvnGEI89oadrhikJm7i371o=
-github.com/gravitl/proxy v0.0.0-20260811045013-80f6dd08b194 h1:YOpb4HvHpd1cT0g3CDlj2R96+Iev3VTrJN0c6NQ+0ik=
-github.com/gravitl/proxy v0.0.0-20260811045013-80f6dd08b194/go.mod h1:F/acMlR6kGZJ5+nj7CAyXGVCYi3XQSy0CyMGNutHamw=
+github.com/gravitl/proxy v0.0.0-20260817193335-c4003220f4eb h1:I8fr/G+p6hNWhnkZlqpBzriSY5CdNdgAnr7LzDhuYso=
+github.com/gravitl/proxy v0.0.0-20260817193335-c4003220f4eb/go.mod h1:F/acMlR6kGZJ5+nj7CAyXGVCYi3XQSy0CyMGNutHamw=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06 h1:g2fBXRNT9eiQohyHcoME3SVmeG7OKoJPWrs7A+009kU=
 github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06/go.mod h1:12iViYKWAzRPj5/oEGAaD7Wje+Nuz8M9eDJbV7qhKAA=
 github.com/hashicorp/go-cleanhttp v0.5.2 h1:035FKYIWjmULyFRBKPs8TBQoi0x6d9G4xc9neXJWAZQ=

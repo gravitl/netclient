@@ -285,9 +285,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	//are on the interface so IGW monitor can resolve the exit peer).
 	if peerUpdate.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
-		// After a TCP uplink WireGuard mode flip the iface was recreated and OS
-		// routes were dropped; always re-apply even if IGWMonitor still matches.
-		if tcpModeFlipped || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
@@ -299,6 +297,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 					// Continue applying peers even if IGW setup failed.
 				}
 			}
+		} else if tcpModeFlipped {
+			// Exit routes are already installed for this nexthop (mode flip
+			// reapplied them); re-running Restore+Set flaps the health monitor
+			// and briefly drops the underlay. Only top up host pins.
+			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		// Server cleared exit-node routing; remove any installed IGW routes.
@@ -594,6 +597,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func resetInterfaceFunc() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
+	// Hold off IGW health checks: until Configure runs, the device has no peers and
+	// the monitor would read that as the exit peer going away.
+	defer wireguard.BeginIfaceRebuild()()
 	// Drop TCP sessions before recreating userspace WG so clients reconnect cleanly
 	// against the new Bind (PrepareUserspaceTeardown alone leaves proxy sessions up).
 	StopAllTCPUplink()
@@ -639,6 +645,9 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 	}
 	for idx := range peers {
 		peerPubKey := peers[idx].PublicKey.String()
+		if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
+			continue
+		}
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
 			continue
 		}
@@ -882,9 +891,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	//setup the default gateway when change_default_gw set to true (after peers)
 	if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
-		// After a TCP uplink WireGuard mode flip the iface was recreated and OS
-		// routes were dropped; always re-apply even if IGWMonitor still matches.
-		if tcpModeFlipped || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
@@ -895,6 +902,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 					// Continue applying peers even if IGW setup failed.
 				}
 			}
+		} else if tcpModeFlipped {
+			// Already installed by the mode flip; avoid a Restore/Set flap.
+			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		// Server cleared exit-node routing; remove any installed IGW routes.

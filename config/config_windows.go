@@ -57,14 +57,13 @@ func CheckUID() {
 	if err != nil {
 		logger.FatalLog("could not read embedded Wintun driver: " + err.Error())
 	}
-	// System32 — LoadLibraryEx searches LOAD_LIBRARY_SEARCH_SYSTEM32.
+	// System32 — LoadLibraryEx searches LOAD_LIBRARY_SEARCH_SYSTEM32, so this copy
+	// is what a netclient started from outside its install directory loads.
 	ensureDLL(wintunSys32, wintunData, "Wintun driver")
-	// Application directory — preferred search path for wintun.dll.
-	if exe, err := os.Executable(); err == nil {
-		ensureDLL(filepath.Join(filepath.Dir(exe), "wintun.dll"), wintunData, "Wintun driver")
-	} else {
-		slog.Warn("could not resolve executable path for Wintun install", "error", err)
-	}
+	// Install directory — LOAD_LIBRARY_SEARCH_APPLICATION_DIR finds it here for the
+	// installed binary. Keyed to the install path rather than the running
+	// executable so ad-hoc runs do not drop a DLL wherever they happen to start.
+	ensureDLL(filepath.Join(GetNetclientPath(), "wintun.dll"), wintunData, "Wintun driver")
 
 	logger.Log(1, "finished checking for WireGuard / Wintun drivers!")
 }

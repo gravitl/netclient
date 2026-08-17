@@ -526,22 +526,26 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
-	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-	if err == nil && igw.Endpoint != nil && igw.Endpoint.IP.To4() == nil {
-		// Only pin an IPv6 peer endpoint to the main table.
-		destinationIP, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/128")
+	igwHostIPs := InternetGwHostIPs(publicKey)
+	for _, hostIP := range igwHostIPs {
+		if hostIP.To4() != nil {
+			continue
+		}
+		destinationIP, destination, err := net.ParseCIDR(hostIP.String() + "/128")
 		if err != nil {
-			slog.Warn("skip IPv6 peer-endpoint rule", "error", err.Error())
+			slog.Warn("skip IPv6 peer-endpoint rule", "ip", hostIP, "error", err)
+			continue
+		}
+		destination.IP = destinationIP
+		gwRule := netlink.NewRule()
+		gwRule.Family = syscall.AF_INET6
+		gwRule.Dst = destination
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if err := netlink.RuleAdd(gwRule); err != nil {
+			slog.Warn("add IPv6 peer-endpoint rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
 		} else {
-			destination.IP = destinationIP
-			gwRule := netlink.NewRule()
-			gwRule.Family = syscall.AF_INET6
-			gwRule.Dst = destination
-			gwRule.Table = unix.RT_TABLE_MAIN
-			gwRule.Priority = 2999
-			if err := netlink.RuleAdd(gwRule); err != nil {
-				slog.Warn("add IPv6 peer-endpoint rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
-			}
+			slog.Info("pinning exit-node IPv6 underlay via main table", "dst", destination.String())
 		}
 	}
 
@@ -555,6 +559,29 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 
 // setInternetGwV4 - set a new default gateway and add rules to activate it
 func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
+	// Pin underlay IPs BEFORE table-500 / "from all lookup IGW" rules. Otherwise
+	// handshake UDP to the exit public IP is selected into the IGW table and
+	// never leaves the host — no handshake. TCP uplink masks this by dialing
+	// TLS while the LAN default route still works (reconcile before SetInternetGw).
+	hostIPs := InternetGwHostIPs(publicKey)
+	var v4Pins []*net.IPNet
+	for _, hostIP := range hostIPs {
+		if hostIP.To4() == nil {
+			continue
+		}
+		destinationIP, destination, parseErr := net.ParseCIDR(hostIP.String() + "/32")
+		if parseErr != nil {
+			slog.Warn("skip IPv4 peer-endpoint rule", "ip", hostIP, "error", parseErr)
+			continue
+		}
+		destination.IP = destinationIP
+		v4Pins = append(v4Pins, destination)
+	}
+	if len(v4Pins) == 0 {
+		slog.Error("no underlay IP for exit peer; refusing IGW setup (would blackhole WireGuard UDP handshake)",
+			"public_key_prefix", publicKey[:min(8, len(publicKey))])
+		return errors.New("no underlay endpoint for internet gateway peer")
+	}
 
 	//build the gateway route, with Table ROUTE_TABLE_NAME, metric 1
 	defaultRoute := netlink.Route{Src: net.ParseIP("0.0.0.0"), Dst: nil, Gw: networkIP, Table: RouteTableName, Priority: 1}
@@ -569,15 +596,31 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
+	// Pin exit underlay to main first (priority 2999 beats 3000 IGW table lookup).
+	for _, destination := range v4Pins {
+		gwRule := netlink.NewRule()
+		gwRule.Dst = destination
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if err := netlink.RuleAdd(gwRule); err != nil {
+			slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
+			_ = restoreInternetGwV4()
+			return err
+		}
+		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
+	}
+
 	//set new default gateway
 	if err := netlink.RouteAdd(&defaultRoute); err != nil {
 		slog.Error("add new default gateway failed", "error", err.Error())
+		_ = restoreInternetGwV4()
 		return err
 	}
 
 	//add rules
 	_, ipnet, err := net.ParseCIDR(IPv4Network)
 	if err != nil {
+		_ = restoreInternetGwV4()
 		return err
 	}
 	//first rule :ip rule add from all table ROUTE_TABLE_NAME
@@ -620,28 +663,6 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 		slog.Error("add new rule failed", "mRule: ", mRule.String(), "error", err.Error())
 		_ = restoreInternetGwV4()
 		return err
-	}
-
-	igw, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
-	if err == nil && igw.Endpoint != nil {
-		// lookup route to the internet gateway using the main table.
-		destinationIP, destination, err := net.ParseCIDR(igw.Endpoint.IP.String() + "/32")
-		if err != nil {
-			_ = restoreInternetGwV4()
-			return err
-		}
-
-		destination.IP = destinationIP
-
-		gwRule := netlink.NewRule()
-		gwRule.Dst = destination
-		gwRule.Table = unix.RT_TABLE_MAIN
-		gwRule.Priority = 2999
-		if err := netlink.RuleAdd(gwRule); err != nil {
-			slog.Error("add new rule failed", "gwRule: ", gwRule.String(), "error", err.Error())
-			_ = restoreInternetGwV4()
-			return err
-		}
 	}
 
 	config.Netclient().CurrGwNmIP = networkIP
@@ -737,13 +758,25 @@ func restoreInternetGwV6() (err error) {
 		}
 	}
 
-	gwRule := netlink.NewRule()
-	gwRule.Family = syscall.AF_INET6
-	gwRule.Table = unix.RT_TABLE_MAIN
-	gwRule.Priority = 2999
-	if err := netlink.RuleDel(gwRule); err != nil {
-		slog.Warn("delete rule failed", "error", err.Error())
-		slog.Warn("please remove the rule manually", "rule: ", gwRule.String())
+	if rules, listErr := netlink.RuleList(netlink.FAMILY_V6); listErr == nil {
+		for _, r := range rules {
+			if r.Priority != 2999 || r.Table != unix.RT_TABLE_MAIN {
+				continue
+			}
+			rule := r
+			if err := netlink.RuleDel(&rule); err != nil {
+				slog.Warn("delete rule failed", "error", err.Error(), "rule", rule.String())
+			}
+		}
+	} else {
+		gwRule := netlink.NewRule()
+		gwRule.Family = syscall.AF_INET6
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if err := netlink.RuleDel(gwRule); err != nil {
+			slog.Warn("delete rule failed", "error", err.Error())
+			slog.Warn("please remove the rule manually", "rule: ", gwRule.String())
+		}
 	}
 
 	config.Netclient().CurrGwNmIP6 = net.ParseIP("")
@@ -813,16 +846,61 @@ func restoreInternetGwV4() (err error) {
 
 	}
 
-	gwRule := netlink.NewRule()
-	gwRule.Table = unix.RT_TABLE_MAIN
-	gwRule.Priority = 2999
-	if err := netlink.RuleDel(gwRule); err != nil {
-		slog.Warn("delete rule failed", "error", err.Error())
-		slog.Warn("please remove the rule manually", "rule: ", gwRule.String())
+	// Delete all priority-2999 underlay pins (may be more than one host IP).
+	if rules, listErr := netlink.RuleList(netlink.FAMILY_V4); listErr == nil {
+		for _, r := range rules {
+			if r.Priority != 2999 || r.Table != unix.RT_TABLE_MAIN {
+				continue
+			}
+			rule := r
+			if err := netlink.RuleDel(&rule); err != nil {
+				slog.Warn("delete rule failed", "error", err.Error(), "rule", rule.String())
+			}
+		}
+	} else {
+		gwRule := netlink.NewRule()
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if err := netlink.RuleDel(gwRule); err != nil {
+			slog.Warn("delete rule failed", "error", err.Error())
+			slog.Warn("please remove the rule manually", "rule: ", gwRule.String())
+		}
 	}
 
 	config.Netclient().CurrGwNmIP = net.ParseIP("")
 	return config.WriteNetclientConfig()
+}
+
+// pinInternetGwHostRoutes adds main-table rules for exit underlay IPs without
+// changing the IGW table default. Safe when exit routing is already active.
+func pinInternetGwHostRoutes(publicKey string) {
+	for _, hostIP := range InternetGwHostIPs(publicKey) {
+		var cidr string
+		family := netlink.FAMILY_V4
+		if hostIP.To4() != nil {
+			cidr = hostIP.String() + "/32"
+		} else {
+			cidr = hostIP.String() + "/128"
+			family = netlink.FAMILY_V6
+		}
+		destinationIP, destination, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		destination.IP = destinationIP
+		gwRule := netlink.NewRule()
+		gwRule.Dst = destination
+		gwRule.Table = unix.RT_TABLE_MAIN
+		gwRule.Priority = 2999
+		if family == netlink.FAMILY_V6 {
+			gwRule.Family = syscall.AF_INET6
+		}
+		if err := netlink.RuleAdd(gwRule); err != nil {
+			// Rule may already exist from SetInternetGw.
+			continue
+		}
+		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
+	}
 }
 
 // == private ==
