@@ -30,7 +30,7 @@ require (
 	golang.org/x/crypto v0.52.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.55.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.43.0
 	golang.org/x/text v0.38.0
 	golang.zx2c4.com/wireguard v0.0.0-20220920152132-bb719d3a6e2c
