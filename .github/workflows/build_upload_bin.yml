@@ -57,15 +57,6 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: Auth for private Go modules
-      run: |
-        git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
-        go env -w GOPRIVATE=github.com/gravitl/*
-        go env -w GONOSUMDB=github.com/gravitl/*
-        go env -w GONOPROXY=github.com/gravitl/*
-      env:
-        TOKEN: ${{ secrets.GH_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
-
     - name: Build
       id: build
       shell: bash
@@ -74,9 +65,6 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
         GOARM: ${{ matrix.goarm || '' }}
         CGO_ENABLED: 0
-        GOPRIVATE: github.com/gravitl/*
-        GONOSUMDB: github.com/gravitl/*
-        GONOPROXY: github.com/gravitl/*
       run: |
         go version
         go mod tidy
