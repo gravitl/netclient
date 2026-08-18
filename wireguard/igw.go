@@ -6,30 +6,73 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const (
-	// IGWDialTimeout is the timeout for dialing internet gateway.
-	IGWDialTimeout = time.Second * 5
+	// IGWDialTimeout is the timeout for dialing internet gateway. Kept well inside
+	// IGWMonitorInterval so a failing probe cannot stretch the sampling period.
+	IGWDialTimeout = time.Second * 3
 	// IGWMonitorInterval is the interval at which to check internet gateway's health.
-	IGWMonitorInterval = time.Second * 30
+	// While the exit node is down the host has no internet at all, so samples are
+	// taken often enough that IGWFailureThreshold of them is still seconds, not
+	// minutes.
+	IGWMonitorInterval = time.Second * 10
 	// IGWRecoveryThreshold is the number of consecutive successes before considering
 	// internet gateway is up.
 	IGWRecoveryThreshold = 3
 	// IGWFailureThreshold is the number of consecutive failures before considering
 	// internet gateway is down.
 	IGWFailureThreshold = 3
+	// IGWHandshakeFreshness is how recent a WireGuard handshake must be to count as
+	// proof of life on its own. It has to stay short: a handshake as old as
+	// WireGuard's rekey period would keep a gateway that died seconds ago looking
+	// healthy for minutes, which is exactly the outage this monitor exists to end.
+	IGWHandshakeFreshness = 90 * time.Second
+	// IGWStartupGrace skips failure counting briefly after monitor start so the
+	// first handshake can complete. It only has to cover monitor start through
+	// first handshake — BeginIfaceRebuild covers rebuilds — and it is re-armed
+	// after every rebuild, so a long grace compounds into real blindness.
+	IGWStartupGrace = 45 * time.Second
+	// defaultMetricsPort mirrors networking.InitialiseIfaceMetricsServer's fallback.
+	defaultMetricsPort = 51821
 )
 
 var (
 	igwMonitor *IGWMonitor
 	once       sync.Once
 )
+
+var (
+	// ifaceRebuilds is non-zero while the netmaker iface is being torn down and
+	// rebuilt. Between Create and Configure the device is up with no peers at all,
+	// which is indistinguishable from the exit peer vanishing, so health checks
+	// must not run.
+	ifaceRebuilds atomic.Int64
+	// igwRearmPending re-arms the startup grace on the first check after a rebuild.
+	igwRearmPending atomic.Bool
+)
+
+// BeginIfaceRebuild pauses internet gateway health checks for the duration of an
+// iface teardown and rebuild. The returned func must be called once the iface is
+// configured again; calling it more than once is safe.
+func BeginIfaceRebuild() func() {
+	ifaceRebuilds.Add(1)
+	var done sync.Once
+	return func() {
+		done.Do(func() {
+			if ifaceRebuilds.Add(-1) == 0 {
+				igwRearmPending.Store(true)
+			}
+		})
+	}
+}
 
 type IGWMonitor struct {
 	mu         sync.Mutex
@@ -44,6 +87,10 @@ type igwStatus struct {
 	isHealthy    bool
 	successCount int
 	failureCount int
+	startedAt    time.Time
+	// lastRx is the exit peer's receive counter at the previous sample, or -1 when
+	// no baseline has been taken yet.
+	lastRx int64
 }
 
 func GetIGWMonitor() *IGWMonitor {
@@ -71,6 +118,8 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 		gw6:       gw6,
 		publicKey: publicKey,
 		isHealthy: true, // Assume healthy initially
+		startedAt: time.Now(),
+		lastRx:    -1,
 	}
 	m.status = s
 	m.mu.Unlock()
@@ -87,6 +136,18 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 				logger.Log(0, "stopping health monitor for internet gateway")
 				return
 			case <-ticker.C:
+				if ifaceRebuilds.Load() > 0 {
+					logger.Log(2, "internet gateway health: iface rebuild in flight, skipping check")
+					continue
+				}
+				// Peers were just reapplied and no handshake has happened yet, so
+				// give the tunnel the same slack as a fresh monitor.
+				if igwRearmPending.Swap(false) {
+					s.startedAt = time.Now()
+					s.successCount = 0
+					s.failureCount = 0
+					s.lastRx = -1
+				}
 				logger.Log(2, "checking health of internet gateway...")
 				s.check()
 			}
@@ -144,24 +205,30 @@ func (s *igwStatus) check() {
 		logger.Log(0, "failed to get internet gateway peer:", err.Error())
 
 		if errors.Is(err, ErrPeerNotFound) {
-			pubKey, err := wgtypes.ParseKey(s.publicKey)
-			if err == nil {
-				s.setUnhealthy(wgtypes.Peer{
-					PublicKey: pubKey,
-				})
-			}
+			// A missing peer on a live device is usually an iface rebuild we did not
+			// see, so count it like any other failed sample rather than tearing exit
+			// routing down on one miss.
+			s.noteFailure(nil)
 		}
 
 		return
 	}
 
-	dialIP := s.dialIP()
-	if dialIP == nil || igw.Endpoint == nil {
+	// Take the rx baseline every tick, whether or not it ends up being the signal
+	// that decides this sample.
+	rxMoved := s.noteRx(igw.ReceiveBytes)
+
+	if s.dialIP() == nil && !rxMoved && !s.handshakeFresh(igw) {
+		// Nothing to probe and nothing has spoken: no evidence either way.
 		return
 	}
 
-	reachable := isHostReachable(dialIP, igw.Endpoint.Port)
-	if reachable {
+	// Cheapest evidence first, and each of these is proof on its own. Bytes
+	// decrypted from the exit peer can only have come from the peer, a recent
+	// handshake proves the underlay worked whatever it is (UDP or a TCP uplink),
+	// and the probe reaches the peer's endpoint-detection listener through the
+	// tunnel. The probe only runs when the passive signals are silent.
+	if rxMoved || s.handshakeFresh(igw) || s.probeGateway() {
 		logger.Log(2, "internet gateway detected up")
 
 		s.successCount++
@@ -170,15 +237,68 @@ func (s *igwStatus) check() {
 		if !s.isHealthy && s.successCount >= IGWRecoveryThreshold {
 			s.setHealthy(igw)
 		}
-	} else {
-		logger.Log(2, "internet gateway detected down")
+		return
+	}
 
-		s.failureCount++
-		s.successCount = 0
+	s.noteFailure(&igw)
+}
 
-		if s.isHealthy && s.failureCount >= IGWFailureThreshold {
-			s.setUnhealthy(igw)
-		}
+// handshakeFresh reports whether the exit peer completed a handshake recently
+// enough to count as proof of life.
+func (s *igwStatus) handshakeFresh(igw wgtypes.Peer) bool {
+	return !igw.LastHandshakeTime.IsZero() && time.Since(igw.LastHandshakeTime) <= IGWHandshakeFreshness
+}
+
+// noteRx records the exit peer's receive counter and reports whether it advanced
+// since the previous sample. Only the exit peer's key can produce those bytes, so
+// an advance is proof of life that needs nothing listening on the gateway.
+func (s *igwStatus) noteRx(rx int64) bool {
+	prev := s.lastRx
+	s.lastRx = rx
+	// No baseline yet, or a counter reset by an iface rebuild: not evidence either way.
+	if prev < 0 || rx < prev {
+		return false
+	}
+	return rx > prev
+}
+
+// probeGateway connects to the exit gateway's endpoint-detection listener over
+// the overlay, which every netclient runs, so a live gateway answers through the
+// tunnel. The old probe used the peer's WireGuard port, where nothing listens on
+// TCP: it could only ever succeed when the gateway's firewall happened to answer
+// with an RST, and timed out as a false failure otherwise.
+func (s *igwStatus) probeGateway() bool {
+	ip := s.dialIP()
+	if ip == nil {
+		return false
+	}
+	return isHostReachable(ip, igwProbePort())
+}
+
+// igwProbePort mirrors networking.InitialiseIfaceMetricsServer's port choice.
+func igwProbePort() int {
+	if server := config.GetServer(config.CurrServer); server != nil && server.MetricsPort > 0 {
+		return server.MetricsPort
+	}
+	return defaultMetricsPort
+}
+
+// noteFailure records one failed health sample, tearing down exit routes once
+// IGWFailureThreshold consecutive samples have failed. igw is nil when the exit
+// peer could not be read at all.
+func (s *igwStatus) noteFailure(igw *wgtypes.Peer) {
+	if time.Since(s.startedAt) < IGWStartupGrace {
+		logger.Log(2, "internet gateway health: still in startup grace, not counting failure")
+		return
+	}
+
+	logger.Log(2, "internet gateway detected down")
+
+	s.failureCount++
+	s.successCount = 0
+
+	if s.isHealthy && s.failureCount >= IGWFailureThreshold {
+		s.setUnhealthy(igw)
 	}
 }
 
@@ -204,7 +324,7 @@ func (s *igwStatus) setHealthy(igw wgtypes.Peer) {
 	}
 }
 
-func (s *igwStatus) setUnhealthy(igw wgtypes.Peer) {
+func (s *igwStatus) setUnhealthy(igw *wgtypes.Peer) {
 	if !s.isHealthy {
 		return
 	}
@@ -212,16 +332,19 @@ func (s *igwStatus) setUnhealthy(igw wgtypes.Peer) {
 	logger.Log(0, "setting internet gateway unhealthy")
 	s.isHealthy = false
 
-	logger.Log(0, "removing default routes for internet gateway")
-	// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
-	err := removeDefaultRoutesOnIGWPeer(igw)
-	if err != nil {
-		logger.Log(0, "failed to remove default routes for internet gateway:", err.Error())
+	// Only rewrite AllowedIPs from a peer that was actually read: a synthesized one
+	// carries no AllowedIPs, and replacing the list with an empty set would strip
+	// the exit peer of its overlay routes too.
+	if igw != nil {
+		logger.Log(0, "removing default routes for internet gateway")
+		// internet gateway is down, remove 0.0.0.0/0 and ::/0 routes
+		if err := removeDefaultRoutesOnIGWPeer(*igw); err != nil {
+			logger.Log(0, "failed to remove default routes for internet gateway:", err.Error())
+		}
 	}
 
 	logger.Log(0, "resetting default routes on host")
-	err = resetDefaultRoutesOnHost()
-	if err != nil {
+	if err := resetDefaultRoutesOnHost(); err != nil {
 		logger.Log(0, "failed to reset default routes on host:", err.Error())
 	}
 }

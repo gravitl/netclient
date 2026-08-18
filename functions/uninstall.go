@@ -81,6 +81,8 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 func resetInterfaceUninstall(faults []error) []error {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
+	// Hold off IGW health checks while the iface has no peers.
+	defer wireguard.BeginIfaceRebuild()()
 	nc := wireguard.GetInterface()
 	nc.Close()
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())

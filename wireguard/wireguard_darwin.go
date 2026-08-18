@@ -158,14 +158,23 @@ func (nc *NCIface) SetMTU() error {
 }
 
 func (nc *NCIface) Close() {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	err := nc.Iface.Close()
-	if err == nil {
-		sockPath := "/var/run/wireguard/" + nc.Name + ".sock"
-		if _, statErr := os.Stat(sockPath); statErr == nil {
-			os.Remove(sockPath)
+	// Must call closeUserspaceWg (own lock) — do not hold wgMutex across it.
+	// Skipping it leaves a stale Device/relayBind after SIGHUP (disconnect/connect).
+	if UserspaceWGActive() {
+		_ = nc.closeUserspaceWg()
+	} else {
+		wgMutex.Lock()
+		if nc.Iface != nil {
+			if err := nc.Iface.Close(); err != nil {
+				slog.Debug("error closing netclient interface", "error", err)
+			}
 		}
+		wgMutex.Unlock()
+	}
+
+	sockPath := "/var/run/wireguard/" + nc.Name + ".sock"
+	if _, statErr := os.Stat(sockPath); statErr == nil {
+		_ = os.Remove(sockPath)
 	}
 
 	if !nc.IsTestIface {
@@ -407,3 +416,5 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 
 	return config.WriteNetclientConfig()
 }
+
+func pinInternetGwHostRoutes(publicKey string) {}

@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/schema"
@@ -147,23 +149,39 @@ func GetInterfaces() ([]schema.Iface, error) {
 	return data, nil
 }
 
-// GetFreePort - gets free port of machine
+// GetFreePort - gets free port of machine.
+// When currListenPort is set, it is preferred: we retry briefly so a port that
+// our own WireGuard iface just released is not abandoned for curr+1 (e.g. 51821→51822).
 func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
+	_ = init
+	fmt.Println("[listen-port-debug] GetFreePort enter",
+		"rangestart=", rangestart,
+		"currListenPort=", currListenPort,
+		"init=", init)
 	if currListenPort > 0 {
-		// check if curr listen port is free
-		udpAddr := net.UDPAddr{
-			Port: currListenPort,
-		}
-		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
-		if udpErr == nil {
-			udpConn.Close()
+		busyBefore := !IsPortFree(currListenPort)
+		fmt.Println("[listen-port-debug] GetFreePort curr port busy before wait?", busyBefore, "port=", currListenPort)
+		waitStart := time.Now()
+		if WaitForUDPPortFree(currListenPort, 5*time.Second) {
+			fmt.Println("[listen-port-debug] GetFreePort keeping currListenPort=", currListenPort,
+				"waited=", time.Since(waitStart))
 			return currListenPort, nil
 		}
+		fmt.Println("[listen-port-debug] GetFreePort currListenPort STILL BUSY after wait; will scan",
+			"port=", currListenPort,
+			"waited=", time.Since(waitStart))
 	}
 	if rangestart == 0 {
 		rangestart = NetclientDefaultPort
 	}
-	for x := rangestart; x <= 65535; x++ {
+	// Prefer scanning from currListenPort+1 when current is still busy, so we
+	// do not immediately re-probe the same busy port at rangestart.
+	start := rangestart
+	if currListenPort >= rangestart {
+		start = currListenPort + 1
+	}
+	fmt.Println("[listen-port-debug] GetFreePort scanning from", start)
+	for x := start; x <= 65535; x++ {
 		udpAddr := net.UDPAddr{
 			Port: x,
 		}
@@ -172,6 +190,20 @@ func GetFreePort(rangestart, currListenPort int, init bool) (int, error) {
 			continue
 		}
 		udpConn.Close()
+		fmt.Println("[listen-port-debug] GetFreePort BUMPED to freeport=", x,
+			"old=", currListenPort)
+		return x, nil
+	}
+	// Wrap around below curr if needed (rare).
+	for x := rangestart; x < start && x <= 65535; x++ {
+		udpAddr := net.UDPAddr{Port: x}
+		udpConn, udpErr := net.ListenUDP("udp", &udpAddr)
+		if udpErr != nil {
+			continue
+		}
+		udpConn.Close()
+		fmt.Println("[listen-port-debug] GetFreePort BUMPED (wrap) to freeport=", x,
+			"old=", currListenPort)
 		return x, nil
 	}
 	return rangestart, errors.New("no free ports")
@@ -185,6 +217,24 @@ func IsPortFree(port int) (free bool) {
 		conn.Close()
 	}
 	return
+}
+
+// WaitForUDPPortFree polls until port is free or timeout elapses.
+// Used after WireGuard iface Close so GetFreePort does not bump ListenPort.
+func WaitForUDPPortFree(port int, timeout time.Duration) bool {
+	if port <= 0 {
+		return true
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if IsPortFree(port) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // Copy - copies a src file to dest
@@ -345,7 +395,7 @@ func SetVerbosity(logLevel int) {
 		level = slog.LevelInfo
 	case 2:
 		level = slog.LevelWarn
-	case 3:
+	case 3, 4:
 		level = slog.LevelDebug
 
 	default:
