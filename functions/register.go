@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 // Register - should be simple to register with a token
@@ -27,6 +28,10 @@ func Register(token string) error {
 	var serverData models.EnrollmentToken
 	if err = json.Unmarshal(data, &serverData); err != nil {
 		logger.FatalLog("could not read enrollment token")
+	}
+	if existing := config.GetServerByAPIHost(serverData.Server); existing != nil &&
+		existing.TenantID != "" && existing.TenantID != serverData.TenantID {
+		return fmt.Errorf("already joined to server %s under a different tenant; run `netclient server leave %s` before joining a different tenant on it", existing.Name, existing.Name)
 	}
 	host := config.Netclient()
 	ip, err := ncutils.GetInterfaces()
@@ -55,6 +60,7 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, serverData.TenantID)
 	posture.ApplyIdentity(&host.Host)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {

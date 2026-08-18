@@ -21,6 +21,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
@@ -194,6 +195,7 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {

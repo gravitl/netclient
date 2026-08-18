@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
+	"golang.org/x/exp/slog"
 )
 
 var serverMutex sync.RWMutex
@@ -108,6 +109,17 @@ func GetServer(name string) *Server {
 	return nil
 }
 
+func GetServerByAPIHost(apiHost string) *Server {
+	serverMutex.RLock()
+	defer serverMutex.RUnlock()
+	for _, server := range Servers {
+		if server.APIHost == apiHost {
+			return &server
+		}
+	}
+	return nil
+}
+
 // GetServers - gets all the server names host has registered to.
 func GetServers() (servers []string) {
 	serverMutex.RLock()
@@ -179,4 +191,23 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	server.MQID = netclient.ID
 	server.ServerConfig = *cfg
 	Servers[cfg.Server] = server
+}
+
+func SwitchToRemainingServer() {
+	for _, name := range GetServers() {
+		srvCfg := GetServer(name)
+		if srvCfg == nil {
+			continue
+		}
+		_ = SetCurrServerCtxInFile(name)
+		CurrServer = name
+		SetNetclientServerContext(srvCfg.MQID, srvCfg.TenantID)
+		slog.Info("switched netclient server context", "server", name)
+		return
+	}
+
+	// no servers left to switch to; clear the stale context
+	_ = SetCurrServerCtxInFile("")
+	CurrServer = ""
+	SetNetclientServerContext(uuid.Nil, "")
 }
