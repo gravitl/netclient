@@ -97,7 +97,7 @@ func InternetGwHostIPs(publicKey string) []net.IP {
 	seen := make(map[string]struct{})
 	var ips []net.IP
 	add := func(ip net.IP) {
-		if ip == nil || len(ip) == 0 || ip.IsUnspecified() {
+		if len(ip) == 0 || ip.IsUnspecified() {
 			return
 		}
 		// net.IP.String() returns "<nil>" for some empty values; never pin that.
@@ -160,7 +160,7 @@ func SetTCPUplinkHostRouteIPs(ips []net.IP) {
 	}
 	cp := make([]net.IP, 0, len(ips))
 	for _, ip := range ips {
-		if ip == nil || len(ip) == 0 || ip.IsUnspecified() || ip.String() == "<nil>" {
+		if len(ip) == 0 || ip.IsUnspecified() || ip.String() == "<nil>" {
 			continue
 		}
 		cp = append(cp, append(net.IP(nil), ip...))
