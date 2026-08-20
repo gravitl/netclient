@@ -151,7 +151,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					restart = true
 				}
 
-				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+				if ip6 != nil && ip6.To4() == nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
 					restart = true
@@ -168,7 +168,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					if ip4 != nil {
 						logger.Log(0, "new IPv4 detected: ", ip4.String())
 					}
-					if ip6 != nil {
+					if ip6 != nil && ip6.To4() == nil {
 						logger.Log(0, "new IPv6 detected: ", ip6.String())
 					}
 					daemon.HardRestart()
@@ -403,7 +403,11 @@ func UpdateHostSettings(fallback bool) error {
 	}
 
 	if !config.Netclient().IsStatic {
-		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
+		if config.HostPublicIP6 != nil && config.HostPublicIP6.To4() != nil {
+			// IPv4 was stored as endpoint6 when the family check used To16().
+			config.HostPublicIP6 = nil
+		}
+		if config.HostPublicIP6 != nil && config.HostPublicIP6.To4() == nil && !config.HostPublicIP6.IsUnspecified() {
 			if !config.Netclient().EndpointIPv6.Equal(config.HostPublicIP6) {
 				logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 				config.Netclient().EndpointIPv6 = config.HostPublicIP6

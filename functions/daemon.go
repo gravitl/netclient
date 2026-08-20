@@ -267,7 +267,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 		// IPV6
 		publicIP6, wgport, natType := holePunchWgPort(6, netclientCfg.ListenPort)
-		if publicIP6 != nil && !publicIP6.IsUnspecified() {
+		if publicIP6 != nil && publicIP6.To4() == nil && !publicIP6.IsUnspecified() {
 			netclientCfg.EndpointIPv6 = publicIP6
 			config.HostPublicIP6 = publicIP6
 			if config.HostPublicIP == nil {
@@ -692,6 +692,20 @@ func UpdateKeys() error {
 	return nil
 }
 
+func publicIPForProto(ip net.IP, proto int) net.IP {
+	if ip == nil || ip.IsUnspecified() {
+		return nil
+	}
+	if proto == 4 {
+		return ip.To4()
+	}
+	// IPv4 addresses have a non-nil To4(); real IPv6 does not.
+	if ip.To4() != nil {
+		return nil
+	}
+	return ip
+}
+
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {
 	defer func() {
 		//ncutils.TraceCaller()
@@ -722,6 +736,10 @@ func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType 
 		}
 		pubIP = publicIP
 		pubPort = portToStun
+	}
+	pubIP = publicIPForProto(pubIP, proto)
+	if pubIP == nil {
+		pubPort = 0
 	}
 	return
 }
