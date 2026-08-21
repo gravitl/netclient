@@ -92,9 +92,7 @@ func (dnsServer *DNSServer) Start() {
 					err := srv.ListenAndServe()
 					if err != nil {
 						slog.Error("error in starting dns server", "error", lIp, err.Error())
-						dnsServer.AddrStr = ""
-						dnsServer.AddrList = slices.Delete(dnsServer.AddrList, len(dnsServer.AddrList)-1, len(dnsServer.AddrList))
-						dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, len(dnsServer.DnsServer)-1, len(dnsServer.DnsServer))
+						dnsServer.dropListener(lIp)
 					}
 				}(dnsServer)
 			}
@@ -121,9 +119,7 @@ func (dnsServer *DNSServer) Start() {
 			err := srv.ListenAndServe()
 			if err != nil {
 				slog.Error("error in starting dns server", "error", lIp, err.Error())
-				dnsServer.AddrStr = ""
-				dnsServer.AddrList = slices.Delete(dnsServer.AddrList, len(dnsServer.AddrList)-1, len(dnsServer.AddrList))
-				dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, len(dnsServer.DnsServer)-1, len(dnsServer.DnsServer))
+				dnsServer.dropListener(lIp)
 			}
 		}(dnsServer)
 	}
@@ -139,7 +135,21 @@ func (dnsServer *DNSServer) Start() {
 		logger.Log(0, "error configuring dns settings:", err.Error())
 	}
 
-	slog.Info("DNS server listens on: ", "Info", dnsServer.AddrStr)
+	slog.Info("DNS server listens on: ", "Info", dnsServer.AddrList)
+}
+
+// dropListener forgets a listener that failed to bind. It removes by address
+// rather than by position because the listener that failed is not necessarily
+// the one appended last, and the surviving addresses are what get published to
+// the resolver.
+func (dnsServer *DNSServer) dropListener(addr string) {
+	dnsServer.AddrList = slices.DeleteFunc(dnsServer.AddrList, func(a string) bool { return a == addr })
+	dnsServer.DnsServer = slices.DeleteFunc(dnsServer.DnsServer, func(s *dns.Server) bool { return s.Addr == addr })
+
+	dnsServer.AddrStr = ""
+	if len(dnsServer.AddrList) > 0 {
+		dnsServer.AddrStr = dnsServer.AddrList[0]
+	}
 }
 
 // Stop the DNS listener

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gravitl/netclient/auth"
@@ -14,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 var pMutex = sync.Mutex{} // used to mutex functions for pull
@@ -52,8 +54,13 @@ func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (m
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
+			return models.HostPull{}, resetInterface, replacePeers, denyErr
+		}
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
@@ -98,6 +105,8 @@ func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (m
 	if server == nil {
 		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
 	}
+	UpdateHostFromServer(&pullResponse.Host)
+	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
 	fmt.Printf("completed pull for server %s\n", serverName)
 	config.UpdateServer(server.Name, *server)

@@ -15,6 +15,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 var (
@@ -67,6 +68,7 @@ func AuthenticateWithOptions(server *config.Server, host *config.Config, opts Au
 	url := fmt.Sprintf("https://%s/api/hosts/adm/authenticate", server.API)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, data)
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk
@@ -128,6 +130,12 @@ func cleanUpByServer(server *config.Server) error {
 	config.DeleteServer(server.Name)
 	if err := config.WriteServerConfig(); err != nil {
 		return err
+	}
+	if config.CurrServer == server.Name {
+		config.SwitchToRemainingServer()
+		if err := config.WriteNetclientConfig(); err != nil {
+			return err
+		}
 	}
 	_ = daemon.Restart()
 	return nil

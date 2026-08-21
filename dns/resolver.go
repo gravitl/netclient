@@ -257,7 +257,6 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer dnsUDPConnPool.put(serverAddr, conn)
 
 	dnsConn := &dns.Conn{
 		Conn:    conn,
@@ -266,7 +265,17 @@ func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {
 
 	client := &dns.Client{Net: "udp", Timeout: time.Second * 3}
 	resp, _, err := client.ExchangeWithConn(r, dnsConn)
-	return resp, err
+	if err != nil {
+		// A socket that just failed is not worth recycling: the netmaker iface is
+		// torn down and rebuilt on mode flips, which leaves sockets bound to a
+		// source address that no longer exists. Keeping them in the pool makes
+		// every later query through this server fail too.
+		_ = conn.Close()
+		return nil, err
+	}
+
+	dnsUDPConnPool.put(serverAddr, conn)
+	return resp, nil
 }
 
 func findBestMatch(domain string, nameservers []models.Nameserver) []models.Nameserver {

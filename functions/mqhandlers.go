@@ -21,6 +21,7 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/flow"
+	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -28,6 +29,7 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -260,51 +262,55 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		server.IPDetectionInterval = peerUpdate.IPDetectionInterval
 		saveServerConfig = true
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-
-	//setup the default gateway when change_default_gw set to true
-	if peerUpdate.ChangeDefaultGw {
-		//only update if the current gateway ip is not the same as desired
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(peerUpdate.DefaultGwIp) {
-			var igw wgtypes.PeerConfig
-			for _, peer := range peerUpdate.Peers {
-				for _, peerIP := range peer.AllowedIPs {
-					if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-						igw = peer
-						break
-					}
-				}
-			}
-
-			_ = wireguard.RestoreInternetGw()
-
-			err = wireguard.SetInternetGw(igw.PublicKey.String(), peerUpdate.DefaultGwIp)
-			if err != nil {
-				slog.Error("error setting default gateway", "error", err.Error())
-				return
-			}
-		}
-	} else {
-		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
-			err = wireguard.RestoreInternetGw()
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
-		}
-	}
 	if !peerUpdate.ServerConfig.EndpointDetection {
 		cache.EndpointCache.Clear()
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
+	if proxyuplink.ActiveServer() != nil {
+		proxyuplink.RefreshTCPPeerRoutes()
+	}
+	if len(peerUpdate.Nodes) > 0 {
+		config.SetNodes(peerUpdate.Nodes)
+		_ = config.WriteNodeConfig()
+	}
+	// Host carries TCP proxy listen settings; apply before uplink reconcile.
+	UpdateHostFromServer(&peerUpdate.Host)
+	proxyuplink.UpdatePeerIDs(peerUpdate.PeerIDs)
+	tcpModeFlipped := maybeRestartForTCPUplink()
+	if !tcpModeFlipped {
+		reconcileTCPUplink(server, peerUpdate.PeerIDs)
+	}
+	//setup the default gateway when change_default_gw set to true (after peers
+	//are on the interface so IGW monitor can resolve the exit peer).
+	if peerUpdate.ChangeDefaultGw {
+		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
+			if !ok {
+				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
+			} else {
+				_ = wireguard.RestoreInternetGw()
+				err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
+				if err != nil {
+					slog.Error("error setting default gateway", "error", err.Error())
+					// Continue applying peers even if IGW setup failed.
+				}
+			}
+		} else if tcpModeFlipped {
+			// Exit routes are already installed for this nexthop (mode flip
+			// reapplied them); re-running Restore+Set flaps the health monitor
+			// and briefly drops the underlay. Only top up host pins.
+			wireguard.RefreshInternetGwHostPins()
+		}
+	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		// Server cleared exit-node routing; remove any installed IGW routes.
+		err = wireguard.RestoreInternetGw()
+		if err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
+		}
+	}
 	if len(peerUpdate.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
@@ -508,16 +514,26 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		clearRetainedMsg(client, msg.Topic())
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
+		config.WriteNetclientConfig()
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
 		restartDaemon = true
 	case models.UpdateHost:
-		resetInterface, restartDaemon, sendHostUpdate = config.UpdateHost(&hostUpdate.Host)
+		resetInterface, restartDaemon, sendHostUpdate = UpdateHostFromServer(&hostUpdate.Host)
 		if sendHostUpdate {
 			if err := PublishHostUpdate(config.CurrServer, models.UpdateHost); err != nil {
 				slog.Error("could not publish host update", err.Error())
 			}
+		}
+		// Apply TcpProxyEnabled / TcpProxyListenPort without requiring a peer update.
+		// Listen-port-only changes reconcile the TCP server; mode flips recreate the WG iface in-process.
+		if !maybeRestartForTCPUplink() {
+			reconcileTCPUplink(server, nil)
+		} else {
+			// Mode change already flipped the iface; skip duplicate restart/reset below.
+			restartDaemon = false
+			resetInterface = false
 		}
 		clearMsg = true
 		writeToDisk = false
@@ -583,8 +599,21 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 func resetInterfaceFunc() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
+	// Hold off IGW health checks: until Configure runs, the device has no peers and
+	// the monitor would read that as the exit peer going away.
+	defer wireguard.BeginIfaceRebuild()()
+	// Drop TCP sessions before recreating userspace WG so clients reconnect cleanly
+	// against the new Bind (PrepareUserspaceTeardown alone leaves proxy sessions up).
+	StopAllTCPUplink()
+	listenPort := 0
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
 	nc := wireguard.GetInterface()
 	nc.Close()
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 5*time.Second) {
+		slog.Warn("WireGuard UDP listen port still busy after reset Close", "port", listenPort)
+	}
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Create()
 	if err := nc.Configure(); err != nil {
@@ -600,6 +629,8 @@ func resetInterfaceFunc() {
 	if server == nil {
 		return
 	}
+	// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
+	reconcileTCPUplink(server, nil)
 	if server.ManageDNS {
 		dns.GetDNSServerInstance().Stop()
 		dns.GetDNSServerInstance().Start()
@@ -621,6 +652,9 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 	}
 	for idx := range peers {
 		peerPubKey := peers[idx].PublicKey.String()
+		if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
+			continue
+		}
 		if wireguard.EndpointDetectedAlready(peerPubKey) {
 			continue
 		}
@@ -677,7 +711,11 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
+	wasActive := config.CurrServer == server
 	config.DeleteServer(server)
+	if wasActive {
+		config.SwitchToRemainingServer()
+	}
 }
 
 func parseNetworkFromTopic(topic string) string {
@@ -738,6 +776,7 @@ func getServerBrokerStatus() (bool, error) {
 	url := fmt.Sprintf("https://%s/api/server/status", server.API)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		logger.Log(1, "failed to read from server during metrics publish", err.Error())
@@ -847,51 +886,44 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		server.IPDetectionInterval = pullResponse.ServerConfig.IPDetectionInterval
 		saveServerConfig = true
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-
-	//setup the default gateway when change_default_gw set to true
-	if pullResponse.ChangeDefaultGw {
-		//only update if the current gateway ip is not the same as desired
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(pullResponse.DefaultGwIp) {
-			var igw wgtypes.PeerConfig
-			for _, peer := range pullResponse.Peers {
-				for _, peerIP := range peer.AllowedIPs {
-					if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-						igw = peer
-						break
-					}
-				}
-			}
-
-			_ = wireguard.RestoreInternetGw()
-
-			err = wireguard.SetInternetGw(igw.PublicKey.String(), pullResponse.DefaultGwIp)
-			if err != nil {
-				slog.Error("error setting default gateway", "error", err.Error())
-				return
-			}
-		}
-	} else {
-		//when change_default_gw set to false, check if it needs to restore to old gateway
-		if config.Netclient().OriginalDefaultGatewayIp != nil && !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) && config.Netclient().CurrGwNmIP != nil {
-			err = wireguard.RestoreInternetGw()
-			if err != nil {
-				slog.Error("error restoring default gateway", "error", err.Error())
-				return
-			}
-		}
-	}
 	if !pullResponse.ServerConfig.EndpointDetection {
 		cache.EndpointCache.Clear()
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	if proxyuplink.ActiveServer() != nil {
+		proxyuplink.RefreshTCPPeerRoutes()
+	}
+	proxyuplink.UpdatePeerIDs(pullResponse.PeerIDs)
+	tcpModeFlipped := maybeRestartForTCPUplink()
+	if !tcpModeFlipped {
+		reconcileTCPUplink(server, pullResponse.PeerIDs)
+	}
+	//setup the default gateway when change_default_gw set to true (after peers)
+	if pullResponse.ChangeDefaultGw {
+		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
+		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
+			if !ok {
+				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
+			} else {
+				_ = wireguard.RestoreInternetGw()
+				if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
+					slog.Error("error setting default gateway", "error", err.Error())
+					// Continue applying peers even if IGW setup failed.
+				}
+			}
+		} else if tcpModeFlipped {
+			// Already installed by the mode flip; avoid a Restore/Set flap.
+			wireguard.RefreshInternetGwHostPins()
+		}
+	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		// Server cleared exit-node routing; remove any installed IGW routes.
+		if err := wireguard.RestoreInternetGw(); err != nil {
+			slog.Error("error restoring default gateway", "error", err.Error())
+		}
+	}
 	if len(pullResponse.EgressRoutes) > 0 {
 		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)

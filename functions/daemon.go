@@ -26,6 +26,7 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/flow"
+	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
@@ -100,43 +101,43 @@ func Daemon() {
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
+			fmt.Println("[listen-port-debug] daemon received RESET (SIGHUP)")
 			slog.Info("received reset")
 			dns.GetDNSServerInstance().Stop()
 			_ = flow.GetManager().Stop()
 			config.FwClose()
 			//check if it needs to restore the default gateway
 			checkAndRestoreDefaultGateway()
+			// checkAndRestoreDefaultGateway only stops the IGW monitor when the
+			// restore succeeds; keep health checks off across the whole rebuild.
+			rebuilt := wireguard.BeginIfaceRebuild()
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
+			fmt.Println("[listen-port-debug] daemon starting startGoRoutines after reset")
 			cancel = startGoRoutines(&wg)
+			rebuilt()
 		}
 	}
 }
 
-// checkAndRestoreDefaultGateway -check if it needs to restore the default gateway
+// checkAndRestoreDefaultGateway - tear down IGW routes before a daemon reset.
 func checkAndRestoreDefaultGateway() {
-	if config.Netclient().CurrGwNmIP == nil {
+	if len(config.Netclient().CurrGwNmIP) == 0 && len(config.Netclient().CurrGwNmIP6) == 0 {
 		return
 	}
-	//get the current default gateway
-	ip, err := wireguard.GetDefaultGatewayIp()
-	if err != nil {
-		slog.Error("error loading current default gateway", "error", err.Error())
-		return
-	}
-	//restore the default gateway when the current default gateway is not the same as the one in config
-	if !config.Netclient().OriginalDefaultGatewayIp.Equal(ip) {
-		err = wireguard.RestoreInternetGw()
-		if err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
-			return
-		}
+	if err := wireguard.RestoreInternetGw(); err != nil {
+		slog.Error("error restoring default gateway", "error", err.Error())
 	}
 }
 
 func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
+	// Stop TCP uplink before cancelling daemon ctx / closing the iface so
+	// userspace Device.Close is not blocked on Bind.Send or proxy sessions.
+	fmt.Println("[listen-port-debug] closeRoutines: StopAllTCPUplink")
+	StopAllTCPUplink()
+
 	for i := range closers {
 		closers[i]()
 	}
@@ -152,8 +153,29 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	cache.EgressRouteCache = sync.Map{}
 	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
+	listenPort := 0
+	userspace := wireguard.UserspaceWGActive()
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
+	fmt.Println("[listen-port-debug] closeRoutines: before Close",
+		"listenPort=", listenPort,
+		"userspaceWG=", userspace,
+		"portFree=", ncutils.IsPortFree(listenPort))
 	iface := wireguard.GetInterface()
+	closeStart := time.Now()
 	iface.Close()
+	fmt.Println("[listen-port-debug] closeRoutines: after Close",
+		"elapsed=", time.Since(closeStart),
+		"portFree=", ncutils.IsPortFree(listenPort))
+	// Device.Close / LinkDel can release UDP asynchronously; wait so GetFreePort
+	// in startGoRoutines does not bump ListenPort (e.g. 51821 → 51822).
+	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 5*time.Second) {
+		fmt.Println("[listen-port-debug] closeRoutines: port STILL BUSY after wait", "port=", listenPort)
+		slog.Warn("WireGuard UDP listen port still busy after iface.Close", "port", listenPort)
+	} else if listenPort > 0 {
+		fmt.Println("[listen-port-debug] closeRoutines: port free after wait", "port=", listenPort)
+	}
 }
 
 // startGoRoutines starts the daemon goroutines
@@ -208,17 +230,31 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}
 	}
+	fmt.Println("[listen-port-debug] startGoRoutines: after Pull",
+		"ListenPort=", netclientCfg.ListenPort,
+		"pullErr=", pullErr)
 
 	if !netclientCfg.IsStaticPort {
+		fmt.Println("[listen-port-debug] startGoRoutines: before GetFreePort",
+			"ListenPort=", netclientCfg.ListenPort,
+			"IsStaticPort=", netclientCfg.IsStaticPort,
+			"portFree=", ncutils.IsPortFree(netclientCfg.ListenPort))
+		// After iface recreate, prefer the configured port (GetFreePort waits for release).
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
+			fmt.Println("[listen-port-debug] startGoRoutines: GetFreePort error=", err)
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != netclientCfg.ListenPort {
+			fmt.Println("[listen-port-debug] startGoRoutines: PORT CHANGED",
+				"old=", netclientCfg.ListenPort, "new=", freeport)
 			slog.Info("port has changed", "old port", netclientCfg.ListenPort, "new port", freeport)
 			netclientCfg.ListenPort = freeport
 			updateConfig = true
+		} else {
+			fmt.Println("[listen-port-debug] startGoRoutines: keeping ListenPort=", netclientCfg.ListenPort)
 		}
 
 	} else {
+		fmt.Println("[listen-port-debug] startGoRoutines: IsStaticPort=true, ListenPort=", netclientCfg.ListenPort)
 		netclientCfg.WgPublicListenPort = netclientCfg.ListenPort
 		updateConfig = true
 	}
@@ -270,6 +306,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		netclientCfg.OriginalDefaultGatewayIp = originalDefaultGwIP
 		updateConfig = true
 	}
+	if originalDefaultGwIP6, err := wireguard.GetDefaultGatewayIp6(); err == nil && len(originalDefaultGwIP6) > 0 {
+		// Only persist a real underlay IPv6 gateway, not the netmaker overlay nexthop.
+		if len(netclientCfg.CurrGwNmIP6) == 0 || !netclientCfg.CurrGwNmIP6.Equal(originalDefaultGwIP6) {
+			netclientCfg.OriginalDefaultGatewayIp6 = originalDefaultGwIP6
+			updateConfig = true
+		}
+	}
 
 	if updateConfig {
 		config.UpdateNetclient(*netclientCfg)
@@ -277,6 +320,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			slog.Warn("error writing endpoint/port netclient config file", "error", err)
 		}
 	}
+
+	initTCPUplinkContext(ctx)
+	if pullErr == nil {
+		proxyuplink.UpdatePeerIDs(pullresp.PeerIDs)
+	}
+	_ = prepareTCPUplinkWireGuard(false)
 
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
@@ -304,28 +353,35 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
+	slog.Debug("daemon calling reconcileTCPUplink", "pullErr", pullErr)
+	if pullErr == nil {
+		reconcileTCPUplink(server, pullresp.PeerIDs)
+	} else {
+		reconcileTCPUplink(server, nil)
+	}
+	if proxyuplink.ActiveServer() != nil {
+		proxyuplink.RefreshTCPPeerRoutes()
+	}
 	// set original default gw info
 
 	// check if default gw needs to be set
 	if pullErr == nil {
-		if pullresp.ChangeDefaultGw && !wireguard.GetIGWMonitor().IsCurrentIGW(pullresp.DefaultGwIp) {
-			var igw wgtypes.PeerConfig
-			for _, peer := range pullresp.Peers {
-				for _, peerIP := range peer.AllowedIPs {
-					if peerIP.String() == wireguard.IPv4Network || peerIP.String() == wireguard.IPv6Network {
-						igw = peer
-						break
+		if pullresp.ChangeDefaultGw {
+			gw4, gw6 := wireguard.NormalizeIGWNexthops(pullresp.DefaultGwIp, pullresp.DefaultGwIp6)
+			if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+				igw, ok := wireguard.FindInternetGwPeer(pullresp.Peers, gw4, gw6)
+				if !ok {
+					slog.Warn("internet gateway peer not found in peer update; skipping default gateway setup")
+				} else {
+					// unlikely that the gwIP is netmaker IP, but still
+					// reset the igw.
+					_ = wireguard.RestoreInternetGw()
+
+					err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
+					if err != nil {
+						slog.Warn("failed to set inet gw", "error", err)
 					}
 				}
-			}
-
-			// unlikely that the gwIP is netmaker IP, but still
-			// reset the igw.
-			_ = wireguard.RestoreInternetGw()
-
-			err = wireguard.SetInternetGw(igw.PublicKey.String(), pullresp.DefaultGwIp)
-			if err != nil {
-				slog.Warn("failed to set inet gw", "error", err)
 			}
 		}
 	}
