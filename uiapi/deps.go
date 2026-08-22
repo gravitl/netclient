@@ -5,7 +5,7 @@ import (
 )
 
 type HandlerDeps struct {
-	RegisterSession func(server, username, authToken, password string) error
+	RegisterSession func(server, username, authToken, password, tenantID string) error
 	ReleaseSession  func(clearServer bool) error
 	Connect         func(network string) error
 	Disconnect      func(network string) error
@@ -25,11 +25,11 @@ func SetHandlers(d HandlerDeps) {
 	deps = d
 }
 
-func registerSession(server, username, authToken, password string) error {
+func registerSession(server, username, authToken, password, tenantID string) error {
 	if deps.RegisterSession == nil {
 		return errHandlersNotConfigured
 	}
-	return deps.RegisterSession(server, username, authToken, password)
+	return deps.RegisterSession(server, username, authToken, password, tenantID)
 }
 
 func releaseSessionFn(clearServer bool) error {

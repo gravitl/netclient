@@ -39,6 +39,7 @@ type GetServerResponse struct {
 	Server       string                `json:"server"`
 	Username     string                `json:"username"`
 	AuthToken    string                `json:"auth_token"`
+	TenantID     string                `json:"tenant_id"`
 	Registered   bool                  `json:"registered"`
 	ServerConfig nmConfig.ServerConfig `json:"server_config"`
 }
@@ -46,6 +47,7 @@ type GetServerResponse struct {
 type ConfigureSessionRequest struct {
 	Username  string `json:"username"`
 	AuthToken string `json:"auth_token"`
+	TenantID  string `json:"tenant_id"`
 	Password  string `json:"password,omitempty"` // deprecated: ignored; use auth_token (user JWT) only
 }
 
@@ -67,13 +69,13 @@ const (
 )
 
 type Peer struct {
-	PublicKey           string `json:"public_key"`
+	PublicKey           string   `json:"public_key"`
 	AllowedIPs          []string `json:"allowed_ips"`
-	Endpoint            string `json:"endpoint"`
-	PersistentKeepalive string `json:"persistent_keepalive"`
-	LastHandshakeTime   string `json:"last_handshake_time"`
-	ReceiveBytes        int64  `json:"receive_bytes"`
-	SendBytes           int64  `json:"send_bytes"`
+	Endpoint            string   `json:"endpoint"`
+	PersistentKeepalive string   `json:"persistent_keepalive"`
+	LastHandshakeTime   string   `json:"last_handshake_time"`
+	ReceiveBytes        int64    `json:"receive_bytes"`
+	SendBytes           int64    `json:"send_bytes"`
 }
 
 type Connection struct {
@@ -86,17 +88,17 @@ type Connection struct {
 
 // DeviceNetworkView mirrors server device network entries for the desktop UI.
 type DeviceNetworkView struct {
-	NetworkID         string `json:"network_id"`
-	DisplayName       string `json:"display_name,omitempty"`
-	Joined            bool   `json:"joined"`
-	Connected         bool   `json:"connected"`
+	NetworkID           string `json:"network_id"`
+	DisplayName         string `json:"display_name,omitempty"`
+	Joined              bool   `json:"joined"`
+	Connected           bool   `json:"connected"`
 	Pending             bool   `json:"pending"`
 	Status              string `json:"status"`
 	ApprovalRequired    bool   `json:"approval_required"`
 	ApprovalRequestedAt *int64 `json:"approval_requested_at,omitempty"`
 	JITEnabled          bool   `json:"jit_enabled"`
-	JITAppliesToUser  bool   `json:"jit_applies_to_user"`
-	HasJITAccess      bool   `json:"has_jit_access"`
-	JITPendingRequest bool   `json:"jit_pending_request"`
-	JITExpiresAt      *int64 `json:"jit_expires_at,omitempty"`
+	JITAppliesToUser    bool   `json:"jit_applies_to_user"`
+	HasJITAccess        bool   `json:"has_jit_access"`
+	JITPendingRequest   bool   `json:"jit_pending_request"`
+	JITExpiresAt        *int64 `json:"jit_expires_at,omitempty"`
 }

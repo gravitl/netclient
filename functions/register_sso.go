@@ -75,7 +75,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 		return
 	}
 
-	posture.ApplyIdentity(&host.Host)
+	posture.ApplyIdentity(&host)
 	request := models.RegisterMsg{
 		RegisterHost: host,
 		User:         registerData.User,

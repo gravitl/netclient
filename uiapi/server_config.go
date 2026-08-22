@@ -7,9 +7,10 @@ import (
 	"net/http"
 
 	nmConfig "github.com/gravitl/netmaker/config"
+	"github.com/gravitl/netmaker/scope"
 )
 
-func fetchServerConfig(ctx context.Context, server, username, authToken string) (nmConfig.ServerConfig, error) {
+func fetchServerConfig(ctx context.Context, server, username, authToken, tenantID string) (nmConfig.ServerConfig, error) {
 	var cfg nmConfig.ServerConfig
 	if server == "" || authToken == "" {
 		return cfg, fmt.Errorf("server or auth token not configured")
@@ -21,6 +22,9 @@ func fetchServerConfig(ctx context.Context, server, username, authToken string) 
 	}
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	req.Header.Set("X-Application-Name", "netmaker-desktop")
+	if tenantID != "" {
+		req.Header.Set(scope.HeaderTenantID, tenantID)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return cfg, err

@@ -2,7 +2,7 @@ package uiapi
 
 import (
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"runtime"
@@ -38,12 +38,24 @@ func checkHealth(w http.ResponseWriter, r *http.Request) {
 func configureServer(w http.ResponseWriter, r *http.Request) {
 	var req SetServerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		respondConfigureServerError(w, "invalid request body")
 		return
 	}
 	server := normalizeServerHost(req.Server)
 	if server == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		if isSessionActive() {
+			respondConfigureServerError(w, "cannot clear server while session is active")
+			return
+		}
+		config.CurrServer = ""
+		if err := config.SetCurrServerCtxInFile(""); err != nil {
+			uiLog(0, "uiapi: failed to clear server context:", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+			return
+		}
+		uiLog(0, "uiapi: server context cleared")
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if key := config.ResolveServerKey(server); key != "" {
@@ -54,15 +66,25 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isSessionActive() {
-		w.WriteHeader(http.StatusBadRequest)
+		respondConfigureServerError(w, "cannot change server while session is active; log out first")
 		return
 	}
 	config.CurrServer = server
 	if err := config.SetCurrServerCtxInFile(server); err != nil {
+		uiLog(0, "uiapi: failed to persist server context:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
 	}
+	uiLog(0, fmt.Sprintf("uiapi: server set to %s", server))
 	w.WriteHeader(http.StatusOK)
+}
+
+func respondConfigureServerError(w http.ResponseWriter, message string) {
+	uiLog(0, "uiapi: POST /server rejected:", message)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: message})
 }
 
 func getServer(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +94,7 @@ func getServer(w http.ResponseWriter, r *http.Request) {
 		Server:     server,
 		Username:   username,
 		AuthToken:  authToken,
+		TenantID:   sessionTenantID(),
 		Registered: isRegistered(server),
 	}
 	if isSessionActive() {
@@ -79,7 +102,7 @@ func getServer(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.Error("uiapi: failed to encode server response", "error", err)
+		uiLog(0, "uiapi: failed to encode server response:", err.Error())
 	}
 }
 
@@ -91,6 +114,7 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	req.AuthToken = strings.TrimSpace(req.AuthToken)
+	req.TenantID = strings.TrimSpace(req.TenantID)
 	if req.Username == "" || req.AuthToken == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -108,25 +132,28 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	_, prevUser, _ := sessionToken()
-	if prevUser != "" && prevUser != req.Username {
+	prevTenant := sessionTenantID()
+	if prevUser != "" && (prevUser != req.Username || prevTenant != req.TenantID) {
 		if err := releaseSessionFn(false); err != nil {
-			slog.Warn("uiapi: failed to disconnect prior user before session handoff", "error", err)
+			uiLog(1, "uiapi: failed to disconnect prior session before handoff:", err.Error())
 		}
 	}
 
-	if err := registerSession(server, req.Username, req.AuthToken, req.Password); err != nil {
+	if err := registerSession(server, req.Username, req.AuthToken, req.Password, req.TenantID); err != nil {
+		uiLog(0, "uiapi: PUT /session register failed:", err.Error())
 		setStatus(Idle)
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
 	}
 
-	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken)
+	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
 	if err != nil {
-		slog.Warn("uiapi: failed to fetch server config", "error", err)
+		uiLog(1, "uiapi: failed to fetch server config:", err.Error())
 	}
-	setSession(req.Username, req.AuthToken, cfg)
+	setSession(req.Username, req.AuthToken, req.TenantID, cfg)
 	setStatus(Running)
+	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -134,10 +161,10 @@ func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
 	setStatus(Closing)
 	if err := releaseSessionFn(clearToken); err != nil {
-		slog.Warn("uiapi: error releasing session", "error", err)
+		uiLog(1, "uiapi: error releasing session:", err.Error())
 	}
 	if err := clearSession(clearToken); err != nil {
-		slog.Warn("uiapi: error clearing session", "error", err)
+		uiLog(1, "uiapi: error clearing session:", err.Error())
 	}
 	setStatus(Idle)
 	w.WriteHeader(http.StatusOK)
@@ -246,6 +273,7 @@ func isApprovalAccessError(err error) bool {
 
 func requireSession(w http.ResponseWriter) (server, token string, ok bool) {
 	if !isSessionActive() {
+		uiLog(0, "uiapi: session required but inactive (JWT expired or not logged in)")
 		w.WriteHeader(http.StatusUnauthorized)
 		return "", "", false
 	}
@@ -254,6 +282,7 @@ func requireSession(w http.ResponseWriter) (server, token string, ok bool) {
 		server = serverAddress()
 	}
 	if token == "" {
+		uiLog(0, "uiapi: session required but auth token missing")
 		w.WriteHeader(http.StatusUnauthorized)
 		return "", "", false
 	}
@@ -267,10 +296,12 @@ func listNetworksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	networks, err := fetchNetworks(server, token)
 	if err != nil {
+		uiLog(0, "uiapi: GET /networks device API failed:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
 	}
+	uiLog(0, fmt.Sprintf("uiapi: GET /networks ok server=%s count=%d", server, len(networks)))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(networks)
 }

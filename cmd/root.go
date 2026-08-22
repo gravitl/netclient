@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -66,6 +67,9 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	InitConfig(flags)
+	if isUninstallCommand() {
+		return
+	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
 	port := 0
@@ -428,7 +432,7 @@ func checkConfig() {
 	}
 	_ = config.ReadServerConf()
 	_ = config.ReadNodeConfig()
-	if config.CurrServer != "" {
+	if !isUninstallCommand() && config.CurrServer != "" {
 		server := config.GetServer(config.CurrServer)
 		if server == nil {
 			fail = true
@@ -444,4 +448,21 @@ func checkConfig() {
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
+}
+
+// isUninstallCommand reports whether the CLI was invoked as `netclient uninstall`.
+func isUninstallCommand() bool {
+	cmd, _, err := rootCmd.Find(os.Args[1:])
+	if err != nil {
+		for _, arg := range os.Args[1:] {
+			if arg == "uninstall" {
+				return true
+			}
+			if !strings.HasPrefix(arg, "-") {
+				break
+			}
+		}
+		return false
+	}
+	return cmd != nil && cmd.Name() == "uninstall"
 }

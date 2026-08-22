@@ -14,8 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 )
 
 const deviceHostIDHeader = "X-Host-ID"
@@ -44,16 +46,17 @@ type DeviceNetwork struct {
 	ApprovalRequired    bool   `json:"approval_required"`
 	ApprovalRequestedAt *int64 `json:"approval_requested_at,omitempty"`
 	JITEnabled          bool   `json:"jit_enabled"`
-	JITAppliesToUser  bool   `json:"jit_applies_to_user"`
-	HasJITAccess      bool   `json:"has_jit_access"`
-	JITPendingRequest bool   `json:"jit_pending_request"`
-	JITExpiresAt      *int64 `json:"jit_expires_at,omitempty"`
+	JITAppliesToUser    bool   `json:"jit_applies_to_user"`
+	HasJITAccess        bool   `json:"has_jit_access"`
+	JITPendingRequest   bool   `json:"jit_pending_request"`
+	JITExpiresAt        *int64 `json:"jit_expires_at,omitempty"`
 }
 
+// deviceSuccessResponse mirrors models.SuccessResponse JSON (capitalized keys, no tags).
 type deviceSuccessResponse struct {
-	Code     int             `json:"code"`
-	Message  string          `json:"message"`
-	Response json.RawMessage `json:"response"`
+	Code     int
+	Message  string
+	Response json.RawMessage
 }
 
 func deviceServerURL() (string, error) {
@@ -82,6 +85,9 @@ func deviceRequestWithHost(method, path, token string, body io.Reader, includeHo
 	if includeHost {
 		req.Header.Set(deviceHostIDHeader, config.Netclient().ID.String())
 	}
+	if tenantID := config.Netclient().TenantID; tenantID != "" {
+		req.Header.Set(scope.HeaderTenantID, tenantID)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -107,9 +113,17 @@ func decodeDeviceResponse(resp *http.Response, dest any) error {
 	}
 	var wrapped deviceSuccessResponse
 	if err := json.Unmarshal(data, &wrapped); err == nil && len(wrapped.Response) > 0 {
-		return json.Unmarshal(wrapped.Response, dest)
+		if err := json.Unmarshal(wrapped.Response, dest); err != nil {
+			logger.Log(0, "device api: failed to decode wrapped response:", err.Error())
+			return err
+		}
+		return nil
 	}
-	return json.Unmarshal(data, dest)
+	if err := json.Unmarshal(data, dest); err != nil {
+		logger.Log(0, "device api: failed to decode response:", err.Error())
+		return err
+	}
+	return nil
 }
 
 type deviceRegisterPayload struct {

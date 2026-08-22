@@ -20,9 +20,11 @@ func IsRegisteredToServer(server string) bool {
 
 // RegisterSession registers or refreshes a desktop UI session against a server.
 // password is ignored (legacy desktop clients may still send it); authToken must be the user JWT.
-func RegisterSession(server, username, authToken, password string) error {
+// tenantID may be empty for classic non-MSP on-prem; MSP/SaaS should pass the workspace tenant.
+func RegisterSession(server, username, authToken, password, tenantID string) error {
 	_ = password
 	server = strings.TrimPrefix(strings.TrimSpace(server), "https://")
+	tenantID = strings.TrimSpace(tenantID)
 	if server == "" {
 		return fmt.Errorf("server not configured")
 	}
@@ -40,18 +42,45 @@ func RegisterSession(server, username, authToken, password string) error {
 		config.CurrServer = server
 	}
 
-	//if !IsRegisteredToServer(server) {
-	if err := registerDeviceOnServerForSession(server, authToken); err != nil {
-		return err
-	}
-	//}
+	alreadyRegistered := IsRegisteredToServer(server)
+	tenantMatches := sessionTenantMatches(server, tenantID)
+	applySessionTenant(server, tenantID)
 
-	//if IsRegisteredToServer(server) {
+	if !alreadyRegistered || !tenantMatches {
+		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
+			return err
+		}
+	}
+
 	if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
 		return fmt.Errorf("failed to sync with server: %w", err)
 	}
-	//}
 	return nil
+}
+
+func applySessionTenant(server, tenantID string) {
+	host := config.Netclient()
+	if host != nil && host.TenantID != tenantID {
+		host.TenantID = tenantID
+		config.UpdateNetclient(*host)
+		_ = config.WriteNetclientConfig()
+	}
+	if srv := config.GetServer(server); srv != nil && srv.TenantID != tenantID {
+		srv.TenantID = tenantID
+		_ = config.SaveServer(server, *srv)
+	}
+}
+
+func sessionTenantMatches(server, tenantID string) bool {
+	hostTenant := config.Netclient().TenantID
+	if hostTenant != tenantID {
+		return false
+	}
+	if srv := config.GetServer(server); srv != nil {
+		// Empty stored tenant matches empty session tenant (classic on-prem).
+		return srv.TenantID == tenantID
+	}
+	return tenantID == ""
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.

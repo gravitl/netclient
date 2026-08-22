@@ -99,6 +99,7 @@ func setupTestSession(server, username, token string) {
 	session.mu.Lock()
 	session.username = username
 	session.authToken = token
+	session.tenantID = ""
 	session.expiresAt = time.Time{}
 	session.mu.Unlock()
 }
@@ -108,6 +109,7 @@ func clearSessionForTest() {
 	session.mu.Lock()
 	session.username = ""
 	session.authToken = ""
+	session.tenantID = ""
 	session.serverConfig = nmConfig.ServerConfig{}
 	session.expiresAt = time.Time{}
 	session.mu.Unlock()
@@ -125,7 +127,7 @@ func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 			assert.False(t, clearServer)
 			return nil
 		},
-		RegisterSession: func(server, username, authToken, password string) error {
+		RegisterSession: func(server, username, authToken, password, tenantID string) error {
 			registeredUser = username
 			assert.Equal(t, "api.example.com", server)
 			assert.Equal(t, "bob-token", authToken)
@@ -141,4 +143,54 @@ func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, released, "expected prior user networks to be disconnected before handoff")
 	assert.Equal(t, "bob", registeredUser)
+}
+
+func TestConfigureSessionHandoffOnTenantChange(t *testing.T) {
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "alice-token")
+	session.mu.Lock()
+	session.tenantID = "tenant-a"
+	session.mu.Unlock()
+
+	released := false
+	gotTenant := ""
+	SetHandlers(HandlerDeps{
+		ReleaseSession: func(clearServer bool) error {
+			released = true
+			return nil
+		},
+		RegisterSession: func(server, username, authToken, password, tenantID string) error {
+			gotTenant = tenantID
+			return nil
+		},
+	})
+
+	body := `{"username":"alice","auth_token":"alice-token","tenant_id":"tenant-b"}`
+	req := httptest.NewRequest(http.MethodPut, "/session", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureSession(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, released, "expected disconnect when tenant changes")
+	assert.Equal(t, "tenant-b", gotTenant)
+	assert.Equal(t, "tenant-b", sessionTenantID())
+}
+
+func TestGetServerIncludesTenantID(t *testing.T) {
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "token-123")
+	session.mu.Lock()
+	session.tenantID = "tenant-xyz"
+	session.status = Running
+	session.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/server", nil)
+	rec := httptest.NewRecorder()
+	getServer(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp GetServerResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "tenant-xyz", resp.TenantID)
+	assert.Equal(t, "alice", resp.Username)
 }

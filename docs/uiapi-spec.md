@@ -26,7 +26,7 @@ sequenceDiagram
     API-->>UI: daemon health
 
     UI->>API: POST /server { server }
-    UI->>API: PUT /session { username, auth_token }
+    UI->>API: PUT /session { username, auth_token, tenant_id }
     API->>NC: RegisterSession / Pull
     NC->>NM: register / sync
     API->>NM: GET /api/server/getconfig
@@ -75,7 +75,7 @@ Daemon persists **user** session state under the netclient config directory. **S
 
 On first load, netclient migrates `.uisession.json` from the legacy `netmaker-rac` directory if present. If still missing, user fields are migrated from legacy `ctx.json`; any server hostname in legacy files is written to `.serverctx`.
 
-User file fields: `username`, `auth_token`, `server_config` (UI cache from Netmaker `getconfig`).
+User file fields: `username`, `auth_token`, `tenant_id`, `server_config` (UI cache from Netmaker `getconfig`).
 
 On daemon restart, user session is restored from `.uisession.json`; server is restored from `.serverctx`. `GET /server` returns `status: "running"` if a valid (non-expired) JWT is present.
 
@@ -142,6 +142,7 @@ Current session and daemon status.
   "server": "api.netmaker.example.com",
   "username": "user@example.com",
   "auth_token": "<jwt>",
+  "tenant_id": "<uuid-or-empty>",
   "registered": true,
   "server_config": {}
 }
@@ -153,6 +154,7 @@ Current session and daemon status.
 | `server` | Registered/pending server from `.serverctx` / `servers.json` |
 | `username` | Logged-in user |
 | `auth_token` | JWT (present when session active) |
+| `tenant_id` | Workspace tenant for MSP/SaaS; empty for classic non-MSP on-prem |
 | `registered` | Whether the host is registered with the configured server (`servers.json`) |
 | `server_config` | Populated only when session is active; fetched from Netmaker |
 
@@ -169,7 +171,8 @@ Register or refresh the host against the configured server.
 ```json
 {
   "username": "user@example.com",
-  "auth_token": "<user-jwt-from-netmaker-auth>"
+  "auth_token": "<user-jwt-from-netmaker-auth>",
+  "tenant_id": "<uuid-or-empty>"
 }
 ```
 
@@ -177,6 +180,7 @@ Register or refresh the host against the configured server.
 |-------|----------|-------|
 | `username` | Yes | Trimmed |
 | `auth_token` | Yes | User JWT from Netmaker (`POST /api/users/adm/authenticate` or OAuth) |
+| `tenant_id` | No | Workspace tenant for MSP/SaaS; empty allowed for classic non-MSP on-prem |
 | `password` | No | **Deprecated, ignored.** Desktop must authenticate with Netmaker first and pass only the JWT |
 
 **Responses**
@@ -190,14 +194,15 @@ Register or refresh the host against the configured server.
 **Behavior**
 
 1. Sets status → `"loading"`.
-2. Calls `RegisterSession`:
-   - **Already registered** (`servers.json` contains the active server from `.serverctx`): align server context if needed, run `PullForDesktop` only — no host re-register.
-   - **Not registered** (no `servers.json` entry): `POST https://{server}/api/v1/device/register` with user JWT, then pull.
-3. Fetches server config from `https://{server}/api/server/getconfig` with `Authorization: Bearer {auth_token}` (best-effort; failure is logged but does not fail the request).
-4. Persists `username`, `auth_token`, and `server_config` (if fetched) to `.uisession.json` (user session only).
-5. Sets status → `"running"` on success, `"idle"` on registration failure.
+2. If username or `tenant_id` differs from the active session, disconnects prior networks (session handoff).
+3. Calls `RegisterSession`:
+   - **Already registered** (`servers.json` contains the active server) **and** host/server tenant matches `tenant_id`: align context if needed, run `PullForDesktop` only — no host re-register.
+   - **Not registered**, or registered under a **different tenant**: `POST https://{server}/api/v1/device/register` with user JWT and `X-Tenant-ID`, then pull.
+4. Fetches server config from `https://{server}/api/server/getconfig` with `Authorization: Bearer {auth_token}` and `X-Tenant-ID` when set (best-effort; failure is logged but does not fail the request).
+5. Persists `username`, `auth_token`, `tenant_id`, and `server_config` (if fetched) to `.uisession.json` (user session only).
+6. Sets status → `"running"` on success, `"idle"` on registration failure.
 
-**Note:** After **first** device registration only, the daemon may restart. Re-login when `servers.json` is intact should not re-register. Poll `GET /server` and `GET /healthz` until the API is back after first join.
+**Note:** After **first** device registration only, the daemon may restart. Re-login when `servers.json` is intact and tenant is unchanged should not re-register. Poll `GET /server` and `GET /healthz` until the API is back after first join.
 
 ---
 

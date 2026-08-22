@@ -46,7 +46,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\"\n}"
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
         },
         "url": "{{daemon}}/session"
       }
@@ -60,10 +60,10 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\"\n}"
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
         },
         "url": "{{daemon}}/session",
-        "description": "password field is ignored; use user JWT in auth_token only"
+        "description": "password field is ignored; use user JWT in auth_token only. tenant_id optional for classic on-prem."
       }
     },
     {
@@ -196,6 +196,7 @@
     { "key": "server", "value": "api.netmaker.example.com" },
     { "key": "username", "value": "user@example.com" },
     { "key": "auth_token", "value": "" },
+    { "key": "tenant_id", "value": "" },
     { "key": "password", "value": "" },
     { "key": "network", "value": "my-network" }
   ]

@@ -18,6 +18,7 @@ type persistedUserSession struct {
 	PendingServer string                `json:"pending_server,omitempty"`
 	Username      string                `json:"username"`
 	AuthToken     string                `json:"auth_token"`
+	TenantID      string                `json:"tenant_id"`
 	ServerConfig  nmConfig.ServerConfig `json:"server_config"`
 }
 
@@ -26,6 +27,7 @@ type sessionState struct {
 	status       Status
 	username     string
 	authToken    string
+	tenantID     string
 	serverConfig nmConfig.ServerConfig
 	expiresAt    time.Time
 }
@@ -122,11 +124,16 @@ func applyPersistedUserSession(stored persistedUserSession) {
 	defer session.mu.Unlock()
 	session.username = stored.Username
 	session.authToken = stored.AuthToken
+	session.tenantID = stored.TenantID
 	session.serverConfig = stored.ServerConfig
 	if session.authToken != "" {
-		session.status = Running
-		if exp, expired := tokenExpiry(session.authToken); !expired {
+		exp, expired := tokenExpiry(session.authToken)
+		if !expired {
 			session.expiresAt = exp
+			session.status = Running
+		} else if !exp.IsZero() {
+			session.expiresAt = exp
+			session.status = Idle
 		}
 	}
 }
@@ -136,6 +143,7 @@ func saveUserSession() error {
 	stored := persistedUserSession{
 		Username:     session.username,
 		AuthToken:    session.authToken,
+		TenantID:     session.tenantID,
 		ServerConfig: session.serverConfig,
 	}
 	session.mu.RUnlock()
@@ -157,6 +165,7 @@ func clearSession(clearServer bool) error {
 	session.status = Idle
 	session.username = ""
 	session.authToken = ""
+	session.tenantID = ""
 	session.serverConfig = nmConfig.ServerConfig{}
 	session.expiresAt = time.Time{}
 	session.mu.Unlock()
@@ -200,11 +209,12 @@ func tokenExpiry(tokenString string) (time.Time, bool) {
 	return claims.ExpiresAt.Time, false
 }
 
-func setSession(username, authToken string, serverConfig nmConfig.ServerConfig) {
+func setSession(username, authToken, tenantID string, serverConfig nmConfig.ServerConfig) {
 	exp, _ := tokenExpiry(authToken)
 	session.mu.Lock()
 	session.username = username
 	session.authToken = authToken
+	session.tenantID = strings.TrimSpace(tenantID)
 	session.serverConfig = serverConfig
 	session.expiresAt = exp
 	session.status = Running
@@ -218,6 +228,12 @@ func sessionToken() (server, username, authToken string) {
 	authToken = session.authToken
 	session.mu.RUnlock()
 	return activeServerAddress(), username, authToken
+}
+
+func sessionTenantID() string {
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	return session.tenantID
 }
 
 // SessionCredentials returns the active server and user token for device API calls.

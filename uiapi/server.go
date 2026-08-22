@@ -2,7 +2,7 @@ package uiapi
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -49,7 +49,7 @@ func Start(ctx context.Context) {
 
 	httpSrv = &http.Server{
 		Addr:              listenAddr,
-		Handler:           mux,
+		Handler:           loggingMiddleware(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	done := make(chan struct{})
@@ -57,9 +57,9 @@ func Start(ctx context.Context) {
 
 	go func() {
 		defer close(done)
-		slog.Info("uiapi: starting desktop API", "addr", listenAddr, "version", config.Version)
+		uiLog(0, fmt.Sprintf("uiapi: starting desktop API on %s (version %s)", listenAddr, config.Version))
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("uiapi: server error", "error", err)
+			uiLog(0, "uiapi: server error:", err.Error())
 		}
 	}()
 
@@ -101,7 +101,7 @@ func stopLocked() error {
 	}
 	httpSrv = nil
 	if err != nil {
-		slog.Warn("uiapi: shutdown error", "error", err)
+		uiLog(0, "uiapi: shutdown error:", err.Error())
 	}
 	return err
 }
