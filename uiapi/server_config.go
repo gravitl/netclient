@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gravitl/netclient/config"
 	nmConfig "github.com/gravitl/netmaker/config"
 	"github.com/gravitl/netmaker/scope"
 )
@@ -15,8 +16,18 @@ func fetchServerConfig(ctx context.Context, server, username, authToken, tenantI
 	if server == "" || authToken == "" {
 		return cfg, fmt.Errorf("server or auth token not configured")
 	}
-	host := normalizeServerHost(server)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+host+"/api/server/getconfig", nil)
+	api := ""
+	if srv := config.GetServer(server); srv != nil {
+		api = srv.API
+	}
+	if api == "" {
+		api = server
+	}
+	api = config.NormalizeServerAPI(api)
+	if api == "" {
+		return cfg, fmt.Errorf("server or auth token not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, config.APIBaseURL(api)+"/api/server/getconfig", nil)
 	if err != nil {
 		return cfg, err
 	}

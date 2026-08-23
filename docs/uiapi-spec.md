@@ -106,12 +106,12 @@ On daemon restart, user session is restored from `.uisession.json`; server is re
 
 ### `POST /server`
 
-Set the Netmaker server hostname **before** login. No scheme — e.g. `"api.netmaker.example.com"`.
+Set the Netmaker server **before** login. Accepts API host (`api.nm.example.com`) or SERVER_NAME (`nm.example.com`).
 
 **Request**
 
 ```json
-{ "server": "api.netmaker.example.com" }
+{ "server": "api.nm.example.com" }
 ```
 
 **Responses**
@@ -124,7 +124,8 @@ Set the Netmaker server hostname **before** login. No scheme — e.g. `"api.netm
 
 **Rules**
 
-- Writes `.serverctx` and sets `CurrServer` (netclient config dir). Does not store server in `.uisession.json`.
+- Writes `.serverctx` with **SERVER_NAME** (strips leading `api.`) and a partial `servers.json` entry: `Name` = base domain, `API` = `api.<domain>:443` (or the host:port from input when it already has `api.`).
+- Does not store server in `.uisession.json`.
 - Cannot change server while session is active.
 - Idempotent if the same server is submitted again.
 
@@ -132,14 +133,16 @@ Set the Netmaker server hostname **before** login. No scheme — e.g. `"api.netm
 
 ### `GET /server`
 
-Current session and daemon status.
+Current configured server and session status.
 
 **Response `200`**
 
 ```json
 {
   "status": "running",
-  "server": "api.netmaker.example.com",
+  "server": "nm.netmaker.example.com",
+  "api": "api.nm.netmaker.example.com:443",
+  "APIHost": "api.nm.netmaker.example.com",
   "username": "user@example.com",
   "auth_token": "<jwt>",
   "tenant_id": "<uuid-or-empty>",
@@ -151,7 +154,9 @@ Current session and daemon status.
 | Field | Description |
 |-------|-------------|
 | `status` | `"idle"` \| `"loading"` \| `"restoring"` \| `"running"` \| `"closing"` |
-| `server` | Registered/pending server from `.serverctx` / `servers.json` |
+| `server` | Current server identity from `.serverctx` (SERVER_NAME / base domain; used for MQTT context) |
+| `api` | HTTPS API host:port from `servers.json` (`Server.API`) |
+| `APIHost` | `servers.json` `Server.APIHost`. **Use this for Desktop Netmaker HTTP/auth — do not rewrite.** |
 | `username` | Logged-in user |
 | `auth_token` | JWT (present when session active) |
 | `tenant_id` | Workspace tenant for MSP/SaaS; empty for classic non-MSP on-prem |
@@ -159,6 +164,14 @@ Current session and daemon status.
 | `server_config` | Populated only when session is active; fetched from Netmaker |
 
 `server_config` is the Netmaker `config.ServerConfig` object (includes `rac_restrict_to_single_network`, `manage_dns`, `stun`, `default_domain`, etc.). Use `rac_restrict_to_single_network` to decide whether only one network can be connected at a time.
+
+---
+
+### `GET /session`
+
+Current UI session and server details. **Same JSON payload as `GET /server`.**
+
+Desktop should call this (or `GET /server`) and use **`APIHost`** for Netmaker HTTP — no client-side host rewriting.
 
 ---
 
@@ -287,6 +300,65 @@ Submit a JIT access request (proxied to server `POST /api/v1/jit_user/request?ne
 ```
 
 **Response `200`** on success.
+
+---
+
+### `GET /networks/{network}/exit_nodes`
+
+List internet egress exit nodes the device may select on this network (ACL-filtered). Requires an active session and that the device is joined to the network.
+
+Proxied to server `GET /api/v1/device/networks/{network}/exit_nodes`.
+
+**Response `200`** — array of exit nodes:
+
+```json
+[
+  {
+    "egress_id": "uuid",
+    "name": "us-east-exit",
+    "description": "Exit node",
+    "network": "my-network",
+    "routing_node_id": "node-uuid",
+    "routing_host_name": "gw-01",
+    "selected": true,
+    "status": true
+  }
+]
+```
+
+---
+
+### `GET /networks/{network}/exit_node`
+
+Return the currently selected exit node, or `null` if none. Requires an active session.
+
+Proxied to server `GET /api/v1/device/networks/{network}/exit_node`.
+
+**Response `200`** — exit node object or `null`.
+
+---
+
+### `PUT /networks/{network}/exit_node`
+
+Select or clear the exit node for this device on the network. Clearing uses an empty `egress_id`. Routing is applied by netclient when the server peer update arrives (`ChangeDefaultGw`); uiapi only proxies the selection.
+
+Proxied to server `PUT /api/v1/device/networks/{network}/exit_node`.
+
+**Request**
+
+```json
+{ "egress_id": "uuid-or-empty-to-clear" }
+```
+
+**Response `200`** — selected exit node, or `null` if cleared.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| `400` | Not joined, invalid egress, or routing node selecting itself |
+| `403` | No ACL access to the exit node |
+| `401` | No session |
 
 ---
 
@@ -504,6 +576,9 @@ GET    /networks                       → list device networks
 POST   /networks/{network}/join        → join network
 DELETE /networks/{network}/leave       → leave network
 POST   /networks/{network}/jit/request → request JIT access
+GET    /networks/{network}/exit_nodes   → list exit nodes
+GET    /networks/{network}/exit_node    → get selected exit node
+PUT    /networks/{network}/exit_node    → select/clear exit node
 POST   /sync                           → sync with server
 GET    /connections                    → list connections
 POST   /connections/{network}        → connect

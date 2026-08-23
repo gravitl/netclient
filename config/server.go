@@ -3,6 +3,8 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,7 +72,48 @@ func ReadServerConf() error {
 	if err = json.NewDecoder(f).Decode(&serversI); err != nil {
 		return err
 	}
+	serversI = migrateServersMapKeys(serversI)
 	return nil
+}
+
+// migrateServersMapKeys rewrites legacy host:port map keys to bare domain.
+func migrateServersMapKeys(in map[string]Server) map[string]Server {
+	if len(in) == 0 {
+		return in
+	}
+	out := make(map[string]Server, len(in))
+	for key, server := range in {
+		nk := NormalizeServerHost(key)
+		if nk == "" {
+			nk = key
+		}
+		server.Name = nk
+		if server.API != "" {
+			server.API = NormalizeServerAPI(server.API)
+		}
+		if server.Server != "" {
+			server.Server = NormalizeServerHost(server.Server)
+		}
+		if existing, ok := out[nk]; ok {
+			// Prefer the entry that is fully registered (Server set) or has more nodes.
+			if existing.Server != "" && server.Server == "" {
+				continue
+			}
+			if existing.Server == "" && server.Server != "" {
+				out[nk] = server
+				continue
+			}
+			if len(existing.Nodes) >= len(server.Nodes) {
+				if existing.API == "" && server.API != "" {
+					existing.API = server.API
+					out[nk] = existing
+				}
+				continue
+			}
+		}
+		out[nk] = server
+	}
+	return out
 }
 
 // WriteServerConfig writes server map to disk
@@ -113,17 +156,18 @@ func ResolveServerKey(id string) string {
 }
 
 // ResolveServer finds a server by map key or by API/Name/Server fields.
+// The returned key is always a bare domain (no port) for MQTT / .serverctx identity.
 func ResolveServer(id string) (*Server, string) {
 	id = normalizeServerID(id)
 	serverMutex.RLock()
 	defer serverMutex.RUnlock()
 	if id != "" {
 		if server, ok := Servers[id]; ok {
-			return copyServerPtr(server), id
+			return copyServerPtr(server), NormalizeServerHost(id)
 		}
 		for key, server := range Servers {
 			if serverIdentifierMatches(server, id) {
-				return copyServerPtr(server), key
+				return copyServerPtr(server), NormalizeServerHost(key)
 			}
 		}
 		if !strings.HasPrefix(id, "api.") {
@@ -134,7 +178,7 @@ func ResolveServer(id string) (*Server, string) {
 	}
 	if len(Servers) == 1 {
 		for key, server := range Servers {
-			return copyServerPtr(server), key
+			return copyServerPtr(server), NormalizeServerHost(key)
 		}
 	}
 	return nil, ""
@@ -145,17 +189,70 @@ func copyServerPtr(server Server) *Server {
 	return &s
 }
 
+// NormalizeServerHost returns a server identity with no scheme and no port.
+// Used for .serverctx, servers.json keys, Name, and MQTT topics.
+func NormalizeServerHost(id string) string {
+	id = stripServerInput(id)
+	if id == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(id); err == nil {
+		return host
+	}
+	if strings.HasPrefix(id, "[") && strings.HasSuffix(id, "]") {
+		return strings.Trim(id, "[]")
+	}
+	return id
+}
+
+// NormalizeServerAPI returns host:port for HTTPS API calls.
+// If the input has no port, :443 is appended.
+func NormalizeServerAPI(id string) string {
+	id = stripServerInput(id)
+	if id == "" {
+		return ""
+	}
+	if _, _, err := net.SplitHostPort(id); err == nil {
+		return id
+	}
+	if strings.HasPrefix(id, "[") && strings.HasSuffix(id, "]") {
+		return id + ":443"
+	}
+	return id + ":443"
+}
+
+// APIBaseURL returns https://<api> where api is host:port.
+func APIBaseURL(api string) string {
+	api = strings.TrimSpace(api)
+	api = strings.TrimPrefix(api, "https://")
+	api = strings.TrimPrefix(api, "http://")
+	if api == "" {
+		return ""
+	}
+	return "https://" + api
+}
+
+func stripServerInput(id string) string {
+	id = strings.TrimSpace(id)
+	id = strings.TrimPrefix(id, "https://")
+	id = strings.TrimPrefix(id, "http://")
+	if i := strings.Index(id, "/"); i >= 0 {
+		id = id[:i]
+	}
+	return strings.TrimSuffix(id, "/")
+}
+
 func normalizeServerID(id string) string {
-	return strings.TrimPrefix(strings.TrimSpace(id), "https://")
+	return NormalizeServerHost(id)
 }
 
 func serverIdentifierMatches(srv Server, id string) bool {
-	id = normalizeServerID(id)
+	id = NormalizeServerHost(id)
 	if id == "" {
 		return false
 	}
 	for _, candidate := range []string{srv.Name, srv.Server, srv.API} {
-		if normalizeServerID(candidate) == id {
+		if NormalizeServerHost(candidate) == id {
 			return true
 		}
 	}
@@ -164,11 +261,44 @@ func serverIdentifierMatches(srv Server, id string) bool {
 
 func canonicalServerKey(values ...string) string {
 	for _, value := range values {
-		if id := normalizeServerID(value); id != "" {
+		if id := NormalizeServerHost(value); id != "" {
 			return id
 		}
 	}
 	return ""
+}
+
+// UpsertPartialServer stores domain identity + API host:port before full registration.
+// Leaves ServerConfig.Server empty so IsRegisteredToServer stays false until register.
+// domain is stored without a leading "api." label (Name / map key); api keeps the full API host.
+func UpsertPartialServer(domain, api string) error {
+	domain = NormalizeServerHost(domain)
+	domain = strings.TrimPrefix(domain, "api.")
+	api = NormalizeServerAPI(api)
+	if domain == "" || api == "" {
+		return fmt.Errorf("server domain and API are required")
+	}
+	serverMutex.Lock()
+	existing, ok := Servers[domain]
+	if !ok {
+		existing = Server{Nodes: make(map[string]bool)}
+	}
+	existing.Name = domain
+	existing.API = api
+	if host, _, err := net.SplitHostPort(api); err == nil {
+		existing.APIHost = host
+	} else {
+		existing.APIHost = api
+	}
+	Servers[domain] = existing
+	// Drop legacy host:port keys for the same domain.
+	for key := range Servers {
+		if key != domain && NormalizeServerHost(key) == domain {
+			delete(Servers, key)
+		}
+	}
+	serverMutex.Unlock()
+	return WriteServerConfig()
 }
 
 // AlignCurrServer sets CurrServer to the resolved servers.json key when possible.
@@ -257,29 +387,42 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 	if cfg == nil {
 		return
 	}
-	key := canonicalServerKey(CurrServer, cfg.API, cfg.Server)
+	key := canonicalServerKey(CurrServer, cfg.Server, cfg.API)
 	if key == "" {
 		return
 	}
 	cfg.Server = key
-	if cfg.API == "" {
-		cfg.API = key
-	}
 	server, ok := Servers[key]
 	if !ok {
 		for existingKey, existing := range Servers {
-			if serverIdentifierMatches(existing, key) {
-				key = existingKey
-				server = existing
-				ok = true
-				break
+			if !serverIdentifierMatches(existing, key) {
+				continue
 			}
+			server = existing
+			ok = true
+			// Migrate off legacy host:port map keys.
+			if existingKey != key {
+				delete(Servers, existingKey)
+			}
+			break
 		}
 	}
 	if !ok {
 		server = Server{}
 		server.Nodes = make(map[string]bool)
 	}
+	api := NormalizeServerAPI(cfg.API)
+	if api == "" {
+		api = NormalizeServerAPI(server.API)
+	}
+	if api == "" {
+		api = NormalizeServerAPI(key)
+	}
+	// Prefer existing host:port when register response returns bare host.
+	if server.API != "" && NormalizeServerHost(server.API) == NormalizeServerHost(api) {
+		api = NormalizeServerAPI(server.API)
+	}
+	cfg.API = api
 	server.Name = key
 	server.MQID = netclient.ID
 	server.ServerConfig = *cfg

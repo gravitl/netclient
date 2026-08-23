@@ -50,7 +50,7 @@ func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (m
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
-	url := fmt.Sprintf("https://%s/api/v1/host?reset_failovered=%v", server.API, resetIfFailedOvered)
+	url := fmt.Sprintf("%s/api/v1/host?reset_failovered=%v", config.APIBaseURL(config.NormalizeServerAPI(server.API)), resetIfFailedOvered)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)

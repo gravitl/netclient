@@ -190,6 +190,12 @@ func isSessionActive() bool {
 func getStatus() Status {
 	session.mu.RLock()
 	defer session.mu.RUnlock()
+	if session.username == "" || session.authToken == "" {
+		return Idle
+	}
+	if !session.expiresAt.IsZero() && session.expiresAt.Before(time.Now()) {
+		return Idle
+	}
 	return session.status
 }
 

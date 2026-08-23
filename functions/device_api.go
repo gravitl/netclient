@@ -1,15 +1,11 @@
 package functions
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -52,6 +48,18 @@ type DeviceNetwork struct {
 	JITExpiresAt        *int64 `json:"jit_expires_at,omitempty"`
 }
 
+// DeviceExitNode mirrors the server device exit-node API entry.
+type DeviceExitNode struct {
+	EgressID        string `json:"egress_id"`
+	Name            string `json:"name"`
+	Description     string `json:"description,omitempty"`
+	Network         string `json:"network"`
+	RoutingNodeID   string `json:"routing_node_id,omitempty"`
+	RoutingHostName string `json:"routing_host_name,omitempty"`
+	Selected        bool   `json:"selected"`
+	Status          bool   `json:"status"`
+}
+
 // deviceSuccessResponse mirrors models.SuccessResponse JSON (capitalized keys, no tags).
 type deviceSuccessResponse struct {
 	Code     int
@@ -60,54 +68,47 @@ type deviceSuccessResponse struct {
 }
 
 func deviceServerURL() (string, error) {
-	server := config.CurrServer
-	if server == "" {
+	srv := config.GetServer(config.CurrServer)
+	api := ""
+	if srv != nil {
+		api = srv.API
+	}
+	if api == "" {
+		api = config.CurrServer
+	}
+	api = config.NormalizeServerAPI(api)
+	if api == "" {
 		return "", fmt.Errorf("server not configured")
 	}
-	return "https://" + strings.TrimPrefix(server, "https://"), nil
+	return config.APIBaseURL(api), nil
 }
 
-func deviceRequest(method, path, token string, body io.Reader) (*http.Response, error) {
-	return deviceRequestWithHost(method, path, token, body, true)
+func deviceRequest(method, path, token string, data any) ([]byte, error) {
+	return deviceRequestWithHost(method, path, token, data, true)
 }
 
-func deviceRequestWithHost(method, path, token string, body io.Reader, includeHost bool) (*http.Response, error) {
+func deviceRequestWithHost(method, path, token string, data any, includeHost bool) ([]byte, error) {
 	base, err := deviceServerURL()
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(method, base+path, body)
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+token)
+	headers.Set("X-Application-Name", desktopAppHeader)
+	if includeHost {
+		headers.Set(deviceHostIDHeader, config.Netclient().ID.String())
+	}
+	if tenantID := config.Netclient().TenantID; tenantID != "" {
+		headers.Set(scope.HeaderTenantID, tenantID)
+	}
+	respBytes, err := ncutils.SendRequest(method, base+path, headers, data)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Application-Name", desktopAppHeader)
-	if includeHost {
-		req.Header.Set(deviceHostIDHeader, config.Netclient().ID.String())
-	}
-	if tenantID := config.Netclient().TenantID; tenantID != "" {
-		req.Header.Set(scope.HeaderTenantID, tenantID)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	return client.Do(req)
+	return respBytes.Bytes(), nil
 }
 
-func decodeDeviceResponse(resp *http.Response, dest any) error {
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var errResp models.ErrorResponse
-		if json.Unmarshal(data, &errResp) == nil && errResp.Message != "" {
-			return fmt.Errorf("%s", errResp.Message)
-		}
-		return fmt.Errorf("device api error: %s", resp.Status)
-	}
+func decodeDeviceResponse(data []byte, dest any) error {
 	if dest == nil {
 		return nil
 	}
@@ -132,20 +133,7 @@ type deviceRegisterPayload struct {
 	Host          schema.Host         `json:"host"`
 }
 
-func decodeDeviceRegisterResponse(resp *http.Response) (models.RegisterResponse, error) {
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return models.RegisterResponse{}, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var errResp models.ErrorResponse
-		if json.Unmarshal(data, &errResp) == nil && errResp.Message != "" {
-			return models.RegisterResponse{}, fmt.Errorf("%s", errResp.Message)
-		}
-		return models.RegisterResponse{}, fmt.Errorf("device api error: %s", resp.Status)
-	}
-
+func decodeDeviceRegisterResponse(data []byte) (models.RegisterResponse, error) {
 	var payload deviceRegisterPayload
 	var wrapped deviceSuccessResponse
 	if err := json.Unmarshal(data, &wrapped); err == nil && len(wrapped.Response) > 0 {
@@ -167,11 +155,18 @@ func decodeDeviceRegisterResponse(resp *http.Response) (models.RegisterResponse,
 }
 
 func fetchModelsServerConfig(server, token string) (models.ServerConfig, error) {
-	host := strings.TrimPrefix(strings.TrimSpace(server), "https://")
-	if host == "" {
+	api := ""
+	if srv := config.GetServer(server); srv != nil {
+		api = srv.API
+	}
+	if api == "" {
+		api = server
+	}
+	api = config.NormalizeServerAPI(api)
+	if api == "" {
 		return models.ServerConfig{}, fmt.Errorf("server not configured")
 	}
-	url := fmt.Sprintf("https://%s/api/server/getserverinfo", host)
+	url := fmt.Sprintf("%s/api/server/getserverinfo", config.APIBaseURL(api))
 	headers := make(http.Header)
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set("X-Application-Name", desktopAppHeader)
@@ -190,32 +185,58 @@ func ensureRegisterServerConf(resp *models.RegisterResponse, server, token strin
 	if resp == nil {
 		return fmt.Errorf("empty register response")
 	}
+	domain := config.NormalizeServerHost(server)
+	if domain == "" {
+		domain = config.NormalizeServerHost(resp.ServerConf.API)
+	}
+	if domain == "" {
+		domain = config.NormalizeServerHost(resp.ServerConf.Server)
+	}
+	if domain == "" {
+		return fmt.Errorf("server not configured")
+	}
+
+	preservedAPI := ""
+	if existing := config.GetServer(domain); existing != nil && existing.API != "" {
+		preservedAPI = config.NormalizeServerAPI(existing.API)
+	}
+
 	if resp.ServerConf.API == "" || resp.ServerConf.Broker == "" {
-		fetched, err := fetchModelsServerConfig(server, token)
+		fetched, err := fetchModelsServerConfig(domain, token)
 		if err != nil {
 			return fmt.Errorf("failed to fetch server config: %w", err)
 		}
-		resp.ServerConf = fetched
+		if resp.ServerConf.Broker == "" {
+			resp.ServerConf.Broker = fetched.Broker
+		}
+		if resp.ServerConf.API == "" {
+			resp.ServerConf.API = fetched.API
+		}
+		// Keep other useful fields if missing.
+		if resp.ServerConf.Server == "" {
+			resp.ServerConf.Server = fetched.Server
+		}
 	}
-	canon := canonicalServerID(resp.ServerConf.API)
-	if canon == "" {
-		canon = canonicalServerID(server)
+
+	api := preservedAPI
+	if api == "" {
+		api = config.NormalizeServerAPI(resp.ServerConf.API)
 	}
-	if canon == "" {
-		return fmt.Errorf("server not configured")
+	if api == "" {
+		api = config.NormalizeServerAPI(domain)
 	}
-	resp.ServerConf.API = canon
-	resp.ServerConf.Server = canon
+	resp.ServerConf.API = api
+	resp.ServerConf.Server = domain
 	return nil
 }
 
 func canonicalServerID(id string) string {
-	return strings.TrimPrefix(strings.TrimSpace(id), "https://")
+	return config.NormalizeServerHost(id)
 }
 
 // RegisterDeviceOnServer registers the host via the device REST API using a user JWT.
 func RegisterDeviceOnServer(server, token string) error {
-	server = strings.TrimPrefix(strings.TrimSpace(server), "https://")
+	server = config.NormalizeServerHost(server)
 	if server != "" && config.CurrServer != server {
 		_ = config.SetCurrServerCtxInFile(server)
 		config.CurrServer = server
@@ -224,11 +245,7 @@ func RegisterDeviceOnServer(server, token string) error {
 	if err != nil {
 		return fmt.Errorf("error when checking host values - %w", err)
 	}
-	body, err := json.Marshal(host)
-	if err != nil {
-		return err
-	}
-	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/register", token, bytes.NewReader(body))
+	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/register", token, host)
 	if err != nil {
 		return err
 	}
@@ -306,18 +323,11 @@ func CancelDeviceNetworkJoinOnServer(network, token string) error {
 
 // RequestJITOnServer submits a JIT access request via the server user JIT API.
 func RequestJITOnServer(network, token, reason string) error {
-	body, err := json.Marshal(struct {
-		Reason string `json:"reason"`
-	}{Reason: reason})
-	if err != nil {
-		return err
-	}
 	path := "/api/v1/jit_user/request?network=" + url.QueryEscape(network)
-	resp, err := deviceRequestWithHost(http.MethodPost, path, token, bytes.NewReader(body), false)
-	if err != nil {
-		return err
-	}
-	return decodeDeviceResponse(resp, nil)
+	_, err := deviceRequestWithHost(http.MethodPost, path, token, struct {
+		Reason string `json:"reason"`
+	}{Reason: reason}, false)
+	return err
 }
 
 // SyncDeviceWithServer pulls local config and optionally nudges server sync.
@@ -328,6 +338,72 @@ func SyncDeviceWithServer(token string) error {
 	}
 	_, _, _, err = PullForDesktop(false, true)
 	return err
+}
+
+// ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
+func ListDeviceExitNodes(network, token string) ([]DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_nodes"
+	resp, err := deviceRequest(http.MethodGet, path, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var nodes []DeviceExitNode
+	if err := decodeDeviceResponse(resp, &nodes); err != nil {
+		return nil, err
+	}
+	if nodes == nil {
+		nodes = []DeviceExitNode{}
+	}
+	return nodes, nil
+}
+
+// GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
+func GetDeviceSelectedExitNode(network, token string) (*DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	resp, err := deviceRequest(http.MethodGet, path, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var node DeviceExitNode
+	if err := decodeDeviceResponse(resp, &node); err != nil {
+		return nil, err
+	}
+	if node.EgressID == "" {
+		return nil, nil
+	}
+	return &node, nil
+}
+
+// SelectDeviceExitNode selects or clears (empty egressID) the exit node for the device.
+// After the server records the selection, host config is pulled and applied in-process
+// (peers + default gateway). CLI `netclient pull` restarts the daemon to do the same.
+func SelectDeviceExitNode(network, token, egressID string) (*DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	resp, err := deviceRequest(http.MethodPut, path, token, struct {
+		EgressID string `json:"egress_id"`
+	}{EgressID: egressID})
+	if err != nil {
+		return nil, err
+	}
+	var node DeviceExitNode
+	if err := decodeDeviceResponse(resp, &node); err != nil {
+		return nil, err
+	}
+	// Apply peers/IGW after responding so the desktop UI is not blocked on pull.
+	go pullAndApplyExitNodeChange(network, egressID != "" && node.EgressID != "")
+	if egressID == "" || node.EgressID == "" {
+		return nil, nil
+	}
+	return &node, nil
 }
 
 // ConnectNetwork joins (if needed) then connects locally.

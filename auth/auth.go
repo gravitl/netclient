@@ -65,7 +65,7 @@ func AuthenticateWithOptions(server *config.Server, host *config.Config, opts Au
 		Password:   host.HostPass,
 	}
 
-	url := fmt.Sprintf("https://%s/api/hosts/adm/authenticate", server.API)
+	url := fmt.Sprintf("%s/api/hosts/adm/authenticate", config.APIBaseURL(config.NormalizeServerAPI(server.API)))
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set(scope.HeaderTenantID, host.TenantID)

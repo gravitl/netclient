@@ -23,7 +23,8 @@ func isRegisteredToServer() bool {
 	if server == "" {
 		return false
 	}
-	return config.ResolveServerKey(server) != ""
+	srv := config.GetServer(server)
+	return srv != nil && strings.TrimSpace(srv.Server) != ""
 }
 
 func listConnections() (map[string]*Connection, error) {

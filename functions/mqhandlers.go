@@ -161,6 +161,7 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	fmt.Println("=======> RECVD PEERUPDATE")
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(msg.Payload()) == 0 {

@@ -506,13 +506,13 @@ func setupMQTT(server *config.Server) error {
 // should be called for each server host is registered on.
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
+	server = config.NormalizeServerHost(server)
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
-	//clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
+	fmt.Println("=========> ###### subscribing to host peer updates", "host", hostID, "server", server, "topic", fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
-	//clearRetainedMsg(client, fmt.Sprintf("host/update/%s/%s", hostID.String(), server))
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
@@ -538,6 +538,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 // setDNSSubscriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setDNSSubscriptions(client mqtt.Client, node *config.Node, server string) {
+	server = config.NormalizeServerHost(server)
 	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s/%s", node.Network, server), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", "connection timeout")

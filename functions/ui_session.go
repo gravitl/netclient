@@ -13,9 +13,11 @@ var (
 	pullForDesktopForSession         = PullForDesktop
 )
 
-// IsRegisteredToServer reports whether netclient is registered to the given server.
+// IsRegisteredToServer reports whether netclient is fully registered to the given server.
+// A partial servers.json entry (API set, Server empty) from configureServer does not count.
 func IsRegisteredToServer(server string) bool {
-	return config.ResolveServerKey(server) != ""
+	srv := config.GetServer(server)
+	return srv != nil && strings.TrimSpace(srv.Server) != ""
 }
 
 // RegisterSession registers or refreshes a desktop UI session against a server.
@@ -23,7 +25,7 @@ func IsRegisteredToServer(server string) bool {
 // tenantID may be empty for classic non-MSP on-prem; MSP/SaaS should pass the workspace tenant.
 func RegisterSession(server, username, authToken, password, tenantID string) error {
 	_ = password
-	server = strings.TrimPrefix(strings.TrimSpace(server), "https://")
+	server = config.NormalizeServerHost(server)
 	tenantID = strings.TrimSpace(tenantID)
 	if server == "" {
 		return fmt.Errorf("server not configured")
@@ -52,8 +54,10 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 		}
 	}
 
-	if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
-		return fmt.Errorf("failed to sync with server: %w", err)
+	if IsRegisteredToServer(server) {
+		if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
+			return fmt.Errorf("failed to sync with server: %w", err)
+		}
 	}
 	return nil
 }

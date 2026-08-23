@@ -1,13 +1,11 @@
 package functions
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
-	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
 	"github.com/stretchr/testify/assert"
@@ -32,12 +30,8 @@ func TestDecodeDeviceNetworksWrappedResponse(t *testing.T) {
 			"jit_pending_request": false
 		}]
 	}`)
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(bytes.NewReader(body)),
-	}
 	var networks []DeviceNetwork
-	err := decodeDeviceResponse(resp, &networks)
+	err := decodeDeviceResponse(body, &networks)
 	require.NoError(t, err)
 	require.Len(t, networks, 1)
 	assert.Equal(t, "netmaker", networks[0].NetworkID)
@@ -57,11 +51,7 @@ func TestDecodeDeviceRegisterResponseWrappedHost(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(bytes.NewReader(body)),
-	}
-	registerResponse, err := decodeDeviceRegisterResponse(resp)
+	registerResponse, err := decodeDeviceRegisterResponse(body)
 	require.NoError(t, err)
 	assert.Equal(t, hostID, registerResponse.RequestedHost.ID)
 	assert.Equal(t, "test-host", registerResponse.RequestedHost.Name)
@@ -78,5 +68,28 @@ func TestEnsureRegisterServerConfFillsMissingFields(t *testing.T) {
 	err := ensureRegisterServerConf(&resp, "api.example.com", "token")
 	require.NoError(t, err)
 	assert.Equal(t, "api.example.com", resp.ServerConf.Server)
-	assert.Equal(t, "api.example.com", resp.ServerConf.API)
+	assert.Equal(t, "api.example.com:443", resp.ServerConf.API)
+}
+
+func TestEnsureRegisterServerConfPreservesPortedAPI(t *testing.T) {
+	config.Servers = map[string]config.Server{
+		"api.example.com": {
+			Name: "api.example.com",
+			ServerConfig: models.ServerConfig{
+				API: "api.example.com:8443",
+			},
+		},
+	}
+	t.Cleanup(func() { config.Servers = make(map[string]config.Server) })
+
+	resp := models.RegisterResponse{
+		ServerConf: models.ServerConfig{
+			API:    "api.example.com",
+			Broker: "broker.example.com",
+		},
+	}
+	err := ensureRegisterServerConf(&resp, "api.example.com", "token")
+	require.NoError(t, err)
+	assert.Equal(t, "api.example.com", resp.ServerConf.Server)
+	assert.Equal(t, "api.example.com:8443", resp.ServerConf.API)
 }

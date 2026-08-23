@@ -5,17 +5,20 @@ import (
 )
 
 type HandlerDeps struct {
-	RegisterSession func(server, username, authToken, password, tenantID string) error
-	ReleaseSession  func(clearServer bool) error
-	Connect         func(network string) error
-	Disconnect      func(network string) error
-	IsRegistered    func(server string) bool
-	FetchNetworks   func(server, token string) ([]DeviceNetworkView, error)
-	JoinNetwork     func(network, server, token string) (joinStatus string, err error)
-	LeaveNetwork    func(network, server, token string) error
-	CancelJoin      func(network, server, token string) error
-	RequestJIT      func(network, server, token, reason string) error
-	Sync            func(token string) error
+	RegisterSession     func(server, username, authToken, password, tenantID string) error
+	ReleaseSession      func(clearServer bool) error
+	Connect             func(network string) error
+	Disconnect          func(network string) error
+	IsRegistered        func(server string) bool
+	FetchNetworks       func(server, token string) ([]DeviceNetworkView, error)
+	JoinNetwork         func(network, server, token string) (joinStatus string, err error)
+	LeaveNetwork        func(network, server, token string) error
+	CancelJoin          func(network, server, token string) error
+	RequestJIT          func(network, server, token, reason string) error
+	Sync                func(token string) error
+	ListExitNodes       func(network, server, token string) ([]DeviceExitNodeView, error)
+	GetSelectedExitNode func(network, server, token string) (*DeviceExitNodeView, error)
+	SelectExitNode      func(network, server, token, egressID string) (*DeviceExitNodeView, error)
 }
 
 var deps HandlerDeps
@@ -93,6 +96,27 @@ func syncDevice(token string) error {
 		return errHandlersNotConfigured
 	}
 	return deps.Sync(token)
+}
+
+func listExitNodes(network, server, token string) ([]DeviceExitNodeView, error) {
+	if deps.ListExitNodes == nil {
+		return nil, errHandlersNotConfigured
+	}
+	return deps.ListExitNodes(network, server, token)
+}
+
+func getSelectedExitNode(network, server, token string) (*DeviceExitNodeView, error) {
+	if deps.GetSelectedExitNode == nil {
+		return nil, errHandlersNotConfigured
+	}
+	return deps.GetSelectedExitNode(network, server, token)
+}
+
+func selectExitNode(network, server, token, egressID string) (*DeviceExitNodeView, error) {
+	if deps.SelectExitNode == nil {
+		return nil, errHandlersNotConfigured
+	}
+	return deps.SelectExitNode(network, server, token, egressID)
 }
 
 func isRegistered(server string) bool {

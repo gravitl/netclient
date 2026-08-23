@@ -3,6 +3,7 @@ package uiapi
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os/exec"
 	"runtime"
@@ -41,10 +42,21 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		respondConfigureServerError(w, "invalid request body")
 		return
 	}
-	server := normalizeServerHost(req.Server)
-	if server == "" {
-		if isSessionActive() {
-			respondConfigureServerError(w, "cannot clear server while session is active")
+	// Name / map key = base domain (nm...); API keeps api.<domain>:port for HTTPS.
+	domain := config.NormalizeServerHost(req.Server)
+	domain = strings.TrimPrefix(domain, "api.")
+	api := config.NormalizeServerAPI(req.Server)
+	rawHost := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(req.Server), "https://"), "http://")
+	if i := strings.Index(rawHost, "/"); i >= 0 {
+		rawHost = rawHost[:i]
+	}
+	if h, _, err := net.SplitHostPort(rawHost); err == nil {
+		rawHost = h
+	}
+	if domain == "" {
+		if err := releaseSessionForServerChange("clear server"); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 			return
 		}
 		config.CurrServer = ""
@@ -58,25 +70,44 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if key := config.ResolveServerKey(server); key != "" {
-		server = key
+	// Self-hosted: API host is api.<SERVER_NAME>. Skip for tenant IDs (no dots).
+	if strings.Contains(domain, ".") && !strings.HasPrefix(rawHost, "api.") {
+		api = config.NormalizeServerAPI("api." + domain)
 	}
-	if isServerSet(server) {
+	if api == "" {
+		respondConfigureServerError(w, "invalid server")
+		return
+	}
+	if key := config.ResolveServerKey(domain); key != "" {
+		domain = strings.TrimPrefix(config.NormalizeServerHost(key), "api.")
+	}
+	if isServerSet(domain) {
+		// Refresh API endpoint even when domain is already selected.
+		_ = config.UpsertPartialServer(domain, api)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if isSessionActive() {
-		respondConfigureServerError(w, "cannot change server while session is active; log out first")
+	// Desktop may show Login while the daemon still has a JWT (logout/GUI desync).
+	// Release that session instead of forcing a manual logout dance.
+	if err := releaseSessionForServerChange("change server to " + domain); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
 	}
-	config.CurrServer = server
-	if err := config.SetCurrServerCtxInFile(server); err != nil {
+	config.CurrServer = domain
+	if err := config.SetCurrServerCtxInFile(domain); err != nil {
 		uiLog(0, "uiapi: failed to persist server context:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
 	}
-	uiLog(0, fmt.Sprintf("uiapi: server set to %s", server))
+	if err := config.UpsertPartialServer(domain, api); err != nil {
+		uiLog(0, "uiapi: failed to persist server API:", err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
+		return
+	}
+	uiLog(0, fmt.Sprintf("uiapi: server set to %s (api %s)", domain, api))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -87,11 +118,46 @@ func respondConfigureServerError(w http.ResponseWriter, message string) {
 	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: message})
 }
 
+// releaseSessionForServerChange drops an active UI session so POST /server can
+// proceed when the Desktop login/settings UI is out of sync with the daemon.
+func releaseSessionForServerChange(reason string) error {
+	if !isSessionActive() {
+		return nil
+	}
+	uiLog(0, "uiapi: releasing session before", reason)
+	setStatus(Closing)
+	if err := releaseSessionFn(false); err != nil {
+		uiLog(1, "uiapi: error releasing session before server change:", err.Error())
+	}
+	if err := clearSession(false); err != nil {
+		uiLog(0, "uiapi: error clearing session before server change:", err.Error())
+		setStatus(Idle)
+		return err
+	}
+	setStatus(Idle)
+	return nil
+}
+
 func getServer(w http.ResponseWriter, r *http.Request) {
+	writeCurrentServerResponse(w)
+}
+
+// getSession returns the current UI session and configured server details
+// (same payload as GET /server). Desktop should use APIHost for Netmaker HTTP.
+func getSession(w http.ResponseWriter, r *http.Request) {
+	writeCurrentServerResponse(w)
+}
+
+func writeCurrentServerResponse(w http.ResponseWriter) {
 	server, username, authToken := sessionToken()
+	if server == "" {
+		server = getCurrServerName()
+	}
 	resp := GetServerResponse{
 		Status:     getStatus(),
 		Server:     server,
+		API:        currentServerAPI(server),
+		APIHost:    currentServerAPIHost(server),
 		Username:   username,
 		AuthToken:  authToken,
 		TenantID:   sessionTenantID(),
@@ -102,8 +168,53 @@ func getServer(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		uiLog(0, "uiapi: failed to encode server response:", err.Error())
+		uiLog(0, "uiapi: failed to encode server/session response:", err.Error())
 	}
+}
+
+// currentServerAPI returns the API host:port from servers.json (Server.API).
+// Prefer servers.json; if missing for a self-hosted domain, return api.<server>.
+func currentServerAPI(server string) string {
+	if server == "" {
+		server = getCurrServerName()
+	}
+	if api := configuredServerAPI(server); api != "" {
+		return api
+	}
+	// Tenant IDs have no dots — leave empty so Desktop uses SaaS URL templates.
+	base := strings.TrimPrefix(strings.TrimSpace(server), "api.")
+	if base == "" || !strings.Contains(base, ".") {
+		return ""
+	}
+	return config.NormalizeServerAPI("api." + base)
+}
+
+// currentServerAPIHost returns servers.json Server.APIHost for Desktop HTTP.
+func currentServerAPIHost(server string) string {
+	if server == "" {
+		server = getCurrServerName()
+	}
+	srv := config.GetServer(server)
+	if srv == nil {
+		return ""
+	}
+	host := strings.TrimSpace(srv.APIHost)
+	host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
+}
+
+// configuredServerAPI returns servers.json API (host:port) for the current server context.
+func configuredServerAPI(server string) string {
+	if server == "" {
+		server = getCurrServerName()
+	}
+	if srv := config.GetServer(server); srv != nil && strings.TrimSpace(srv.API) != "" {
+		return config.NormalizeServerAPI(srv.API)
+	}
+	return ""
 }
 
 func configureSession(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +271,9 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
 	setStatus(Closing)
-	if err := releaseSessionFn(clearToken); err != nil {
+	// Never clear CurrServer / .serverctx on logout — Settings should keep
+	// the last saved server so the user does not re-enter it.
+	if err := releaseSessionFn(false); err != nil {
 		uiLog(1, "uiapi: error releasing session:", err.Error())
 	}
 	if err := clearSession(clearToken); err != nil {
@@ -172,7 +285,7 @@ func releaseSession(w http.ResponseWriter, r *http.Request) {
 
 func listConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 	if !isSessionActive() && !isRegistered(serverAddress()) {
-		w.WriteHeader(http.StatusBadRequest)
+		writeSessionRequired(w)
 		return
 	}
 	connections, err := listConnections()
@@ -271,10 +384,16 @@ func isApprovalAccessError(err error) bool {
 		strings.Contains(msg, "doesn't meet security requirements")
 }
 
+func writeSessionRequired(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "session required"})
+}
+
 func requireSession(w http.ResponseWriter) (server, token string, ok bool) {
 	if !isSessionActive() {
 		uiLog(0, "uiapi: session required but inactive (JWT expired or not logged in)")
-		w.WriteHeader(http.StatusUnauthorized)
+		writeSessionRequired(w)
 		return "", "", false
 	}
 	server, _, token = sessionToken()
@@ -283,7 +402,7 @@ func requireSession(w http.ResponseWriter) (server, token string, ok bool) {
 	}
 	if token == "" {
 		uiLog(0, "uiapi: session required but auth token missing")
-		w.WriteHeader(http.StatusUnauthorized)
+		writeSessionRequired(w)
 		return "", "", false
 	}
 	return server, token, true
@@ -300,6 +419,9 @@ func listNetworksHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
+	}
+	if networks == nil {
+		networks = []DeviceNetworkView{}
 	}
 	uiLog(0, fmt.Sprintf("uiapi: GET /networks ok server=%s count=%d", server, len(networks)))
 	w.Header().Set("Content-Type", "application/json")
@@ -416,4 +538,101 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func writeExitNodeErr(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "does not have access"),
+		strings.Contains(msg, "forbidden"):
+		status = http.StatusForbidden
+	case strings.Contains(msg, "not joined"),
+		strings.Contains(msg, "is required"),
+		strings.Contains(msg, "not found"),
+		strings.Contains(msg, "not an active internet"),
+		strings.Contains(msg, "cannot select itself"):
+		status = http.StatusBadRequest
+	}
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: msg})
+}
+
+func listExitNodesHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	nodes, err := listExitNodes(network, server, token)
+	if err != nil {
+		uiLog(0, "uiapi: GET /networks/"+network+"/exit_nodes failed:", err.Error())
+		writeExitNodeErr(w, err)
+		return
+	}
+	if nodes == nil {
+		nodes = []DeviceExitNodeView{}
+	}
+	uiLog(0, fmt.Sprintf("uiapi: GET /networks/%s/exit_nodes ok count=%d", network, len(nodes)))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(nodes)
+}
+
+func getExitNodeHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	node, err := getSelectedExitNode(network, server, token)
+	if err != nil {
+		writeExitNodeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if node == nil {
+		_ = json.NewEncoder(w).Encode(nil)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(node)
+}
+
+func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
+	network := r.PathValue("network")
+	if network == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
+		return
+	}
+	var req SelectExitNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "invalid request body"})
+		return
+	}
+	server, token, ok := requireSession(w)
+	if !ok {
+		return
+	}
+	node, err := selectExitNode(network, server, token, req.EgressID)
+	if err != nil {
+		writeExitNodeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if node == nil {
+		_ = json.NewEncoder(w).Encode(nil)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(node)
 }

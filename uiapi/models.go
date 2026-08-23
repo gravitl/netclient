@@ -37,6 +37,8 @@ type SetServerRequest struct {
 type GetServerResponse struct {
 	Status       Status                `json:"status"`
 	Server       string                `json:"server"`
+	API          string                `json:"api"`
+	APIHost      string                `json:"APIHost"`
 	Username     string                `json:"username"`
 	AuthToken    string                `json:"auth_token"`
 	TenantID     string                `json:"tenant_id"`
@@ -101,4 +103,21 @@ type DeviceNetworkView struct {
 	HasJITAccess        bool   `json:"has_jit_access"`
 	JITPendingRequest   bool   `json:"jit_pending_request"`
 	JITExpiresAt        *int64 `json:"jit_expires_at,omitempty"`
+}
+
+// DeviceExitNodeView mirrors server device exit-node entries for the desktop UI.
+type DeviceExitNodeView struct {
+	EgressID        string `json:"egress_id"`
+	Name            string `json:"name"`
+	Description     string `json:"description,omitempty"`
+	Network         string `json:"network"`
+	RoutingNodeID   string `json:"routing_node_id,omitempty"`
+	RoutingHostName string `json:"routing_host_name,omitempty"`
+	Selected        bool   `json:"selected"`
+	Status          bool   `json:"status"`
+}
+
+// SelectExitNodeRequest selects or clears an exit node for a network.
+type SelectExitNodeRequest struct {
+	EgressID string `json:"egress_id"`
 }

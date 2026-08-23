@@ -127,30 +127,35 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	if registerResponse == nil {
 		return
 	}
-	serverKey := canonicalServerID(registerResponse.ServerConf.API)
+	// Identity is bare domain; API stays host:port for HTTPS.
+	serverKey := canonicalServerID(registerResponse.ServerConf.Server)
 	if serverKey == "" {
-		serverKey = canonicalServerID(registerResponse.ServerConf.Server)
+		serverKey = canonicalServerID(registerResponse.ServerConf.API)
 	}
-	if config.CurrServer != "" {
-		if resolved := config.ResolveServerKey(config.CurrServer); resolved != "" {
-			serverKey = resolved
-		} else if canon := canonicalServerID(config.CurrServer); canon != "" {
-			serverKey = canon
-		}
-	}
-	if registerResponse.ServerConf.API == "" && serverKey != "" {
-		registerResponse.ServerConf.API = serverKey
-	}
-	if serverKey != "" {
-		registerResponse.ServerConf.Server = serverKey
+	if serverKey == "" {
+		serverKey = canonicalServerID(config.CurrServer)
 	}
 	if serverKey == "" {
 		logger.Log(0, "register response missing server identity")
 		return
 	}
 
-	config.UpdateServerConfig(&registerResponse.ServerConf)
+	preservedAPI := ""
+	if existing := config.GetServer(serverKey); existing != nil && existing.API != "" {
+		preservedAPI = config.NormalizeServerAPI(existing.API)
+	}
+	api := preservedAPI
+	if api == "" {
+		api = config.NormalizeServerAPI(registerResponse.ServerConf.API)
+	}
+	if api == "" {
+		api = config.NormalizeServerAPI(serverKey)
+	}
+	registerResponse.ServerConf.API = api
+	registerResponse.ServerConf.Server = serverKey
+
 	config.CurrServer = serverKey
+	config.UpdateServerConfig(&registerResponse.ServerConf)
 	server := config.GetServer(serverKey)
 	if server == nil {
 		logger.Log(0, "failed to save server: config not updated")
