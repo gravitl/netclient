@@ -650,7 +650,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			} else {
 				logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
 					egressInfo.EgressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
-				logger.Log(1, fmt.Sprintf("Virtual NAT not supported for nftables, falling back to regular NAT: virtual NAT is not supported for nftables - use iptables for virtual NAT functionality"))
+				logger.Log(1, "Virtual NAT not supported for nftables, falling back to regular NAT: virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
 				// Fall through to regular NAT processing
 				virtualNATApplied = false
 			}
