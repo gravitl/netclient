@@ -2,6 +2,8 @@ package uiapi
 
 import (
 	"errors"
+
+	"github.com/gravitl/netmaker/models"
 )
 
 type HandlerDeps struct {
@@ -10,15 +12,15 @@ type HandlerDeps struct {
 	Connect             func(network string) error
 	Disconnect          func(network string) error
 	IsRegistered        func(server string) bool
-	FetchNetworks       func(server, token string) ([]DeviceNetworkView, error)
+	FetchNetworks       func(server, token string) ([]models.DeviceNetwork, error)
 	JoinNetwork         func(network, server, token string) (joinStatus string, err error)
 	LeaveNetwork        func(network, server, token string) error
 	CancelJoin          func(network, server, token string) error
 	RequestJIT          func(network, server, token, reason string) error
 	Sync                func(token string) error
-	ListExitNodes       func(network, server, token string) ([]DeviceExitNodeView, error)
-	GetSelectedExitNode func(network, server, token string) (*DeviceExitNodeView, error)
-	SelectExitNode      func(network, server, token, egressID string) (*DeviceExitNodeView, error)
+	ListExitNodes       func(network, server, token string) ([]models.DeviceExitNode, error)
+	GetSelectedExitNode func(network, server, token string) (*models.DeviceExitNode, error)
+	SelectExitNode      func(network, server, token, egressID string) (*models.DeviceExitNode, error)
 }
 
 var deps HandlerDeps
@@ -56,7 +58,7 @@ func disconnectNetwork(network string) error {
 	return deps.Disconnect(network)
 }
 
-func fetchNetworks(server, token string) ([]DeviceNetworkView, error) {
+func fetchNetworks(server, token string) ([]models.DeviceNetwork, error) {
 	if deps.FetchNetworks == nil {
 		return nil, errHandlersNotConfigured
 	}
@@ -98,21 +100,21 @@ func syncDevice(token string) error {
 	return deps.Sync(token)
 }
 
-func listExitNodes(network, server, token string) ([]DeviceExitNodeView, error) {
+func listExitNodes(network, server, token string) ([]models.DeviceExitNode, error) {
 	if deps.ListExitNodes == nil {
 		return nil, errHandlersNotConfigured
 	}
 	return deps.ListExitNodes(network, server, token)
 }
 
-func getSelectedExitNode(network, server, token string) (*DeviceExitNodeView, error) {
+func getSelectedExitNode(network, server, token string) (*models.DeviceExitNode, error) {
 	if deps.GetSelectedExitNode == nil {
 		return nil, errHandlersNotConfigured
 	}
 	return deps.GetSelectedExitNode(network, server, token)
 }
 
-func selectExitNode(network, server, token, egressID string) (*DeviceExitNodeView, error) {
+func selectExitNode(network, server, token, egressID string) (*models.DeviceExitNode, error) {
 	if deps.SelectExitNode == nil {
 		return nil, errHandlersNotConfigured
 	}

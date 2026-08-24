@@ -31,35 +31,6 @@ var ErrApprovalRequired = errors.New("host approval required for network")
 // ErrDeviceBlocked is returned when posture checks block network access.
 var ErrDeviceBlocked = errors.New("access blocked: this device doesn't meet security requirements")
 
-// DeviceNetwork mirrors the server device API network entry.
-type DeviceNetwork struct {
-	NetworkID           string `json:"network_id"`
-	DisplayName         string `json:"display_name,omitempty"`
-	Joined              bool   `json:"joined"`
-	Connected           bool   `json:"connected"`
-	Pending             bool   `json:"pending"`
-	Status              string `json:"status"`
-	ApprovalRequired    bool   `json:"approval_required"`
-	ApprovalRequestedAt *int64 `json:"approval_requested_at,omitempty"`
-	JITEnabled          bool   `json:"jit_enabled"`
-	JITAppliesToUser    bool   `json:"jit_applies_to_user"`
-	HasJITAccess        bool   `json:"has_jit_access"`
-	JITPendingRequest   bool   `json:"jit_pending_request"`
-	JITExpiresAt        *int64 `json:"jit_expires_at,omitempty"`
-}
-
-// DeviceExitNode mirrors the server device exit-node API entry.
-type DeviceExitNode struct {
-	EgressID        string `json:"egress_id"`
-	Name            string `json:"name"`
-	Description     string `json:"description,omitempty"`
-	Network         string `json:"network"`
-	RoutingNodeID   string `json:"routing_node_id,omitempty"`
-	RoutingHostName string `json:"routing_host_name,omitempty"`
-	Selected        bool   `json:"selected"`
-	Status          bool   `json:"status"`
-}
-
 // deviceSuccessResponse mirrors models.SuccessResponse JSON (capitalized keys, no tags).
 type deviceSuccessResponse struct {
 	Code     int
@@ -263,11 +234,11 @@ func RegisterDeviceOnServer(server, token string) error {
 }
 
 // FetchDeviceNetworks returns networks visible to the user from the server device API.
-func FetchDeviceNetworks(server, token string) ([]DeviceNetwork, error) {
+func FetchDeviceNetworks(server, token string) ([]models.DeviceNetwork, error) {
 	return fetchDeviceNetworksImpl(server, token)
 }
 
-var fetchDeviceNetworksImpl = func(server, token string) ([]DeviceNetwork, error) {
+var fetchDeviceNetworksImpl = func(server, token string) ([]models.DeviceNetwork, error) {
 	if server != "" && config.CurrServer != server {
 		_ = config.SetCurrServerCtxInFile(server)
 		config.CurrServer = server
@@ -277,7 +248,7 @@ var fetchDeviceNetworksImpl = func(server, token string) ([]DeviceNetwork, error
 	if err != nil {
 		return nil, err
 	}
-	var networks []DeviceNetwork
+	var networks []models.DeviceNetwork
 	if err := decodeDeviceResponse(resp, &networks); err != nil {
 		return nil, err
 	}
@@ -291,9 +262,7 @@ func JoinDeviceNetworkOnServer(network, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var result struct {
-		Status string `json:"status"`
-	}
+	var result models.DeviceJoinResult
 	if err := decodeDeviceResponse(resp, &result); err != nil {
 		return "", err
 	}
@@ -341,7 +310,7 @@ func SyncDeviceWithServer(token string) error {
 }
 
 // ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
-func ListDeviceExitNodes(network, token string) ([]DeviceExitNode, error) {
+func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
@@ -350,18 +319,19 @@ func ListDeviceExitNodes(network, token string) ([]DeviceExitNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	var nodes []DeviceExitNode
+	var nodes []models.DeviceExitNode
 	if err := decodeDeviceResponse(resp, &nodes); err != nil {
 		return nil, err
 	}
 	if nodes == nil {
-		nodes = []DeviceExitNode{}
+		nodes = []models.DeviceExitNode{}
 	}
+	attachExitNodeLatencies(network, nodes)
 	return nodes, nil
 }
 
 // GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
-func GetDeviceSelectedExitNode(network, token string) (*DeviceExitNode, error) {
+func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
@@ -370,40 +340,49 @@ func GetDeviceSelectedExitNode(network, token string) (*DeviceExitNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	var node DeviceExitNode
+	var node models.DeviceExitNode
 	if err := decodeDeviceResponse(resp, &node); err != nil {
 		return nil, err
 	}
 	if node.EgressID == "" {
 		return nil, nil
 	}
-	return &node, nil
+	nodes := []models.DeviceExitNode{node}
+	attachExitNodeLatencies(network, nodes)
+	return &nodes[0], nil
 }
 
 // SelectDeviceExitNode selects or clears (empty egressID) the exit node for the device.
-// After the server records the selection, host config is pulled and applied in-process
-// (peers + default gateway). CLI `netclient pull` restarts the daemon to do the same.
-func SelectDeviceExitNode(network, token, egressID string) (*DeviceExitNode, error) {
+// Switching A→B is not done in one step: clear first (None), then assign. The server
+// rejects a direct switch while RelayedBy still points at the current gateway.
+func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
-	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
-	resp, err := deviceRequest(http.MethodPut, path, token, struct {
-		EgressID string `json:"egress_id"`
-	}{EgressID: egressID})
+	resp, err := putDeviceExitNode(network, token, egressID)
 	if err != nil {
 		return nil, err
 	}
-	var node DeviceExitNode
+	var node models.DeviceExitNode
 	if err := decodeDeviceResponse(resp, &node); err != nil {
 		return nil, err
 	}
-	// Apply peers/IGW after responding so the desktop UI is not blocked on pull.
-	go pullAndApplyExitNodeChange(network, egressID != "" && node.EgressID != "")
-	if egressID == "" || node.EgressID == "" {
+	wantGW := egressID != "" && node.EgressID != ""
+	// Wait for routing to apply so a later select is not blocked by RelayedBy.
+	pullAndApplyExitNodeChange(network, wantGW)
+	if !wantGW {
 		return nil, nil
 	}
-	return &node, nil
+	nodes := []models.DeviceExitNode{node}
+	attachExitNodeLatencies(network, nodes)
+	return &nodes[0], nil
+}
+
+func putDeviceExitNode(network, token, egressID string) ([]byte, error) {
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	return deviceRequest(http.MethodPut, path, token, models.DeviceExitNodeSelectionReq{
+		EgressID: egressID,
+	})
 }
 
 // ConnectNetwork joins (if needed) then connects locally.

@@ -3,6 +3,7 @@ package functions
 import (
 	"testing"
 
+	"github.com/gravitl/netmaker/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -11,8 +12,8 @@ func TestCheckDeviceNetworkAccess(t *testing.T) {
 	orig := fetchDeviceNetworksImpl
 	t.Cleanup(func() { fetchDeviceNetworksImpl = orig })
 
-	fetchDeviceNetworksImpl = func(_, _ string) ([]DeviceNetwork, error) {
-		return []DeviceNetwork{
+	fetchDeviceNetworksImpl = func(_, _ string) ([]models.DeviceNetwork, error) {
+		return []models.DeviceNetwork{
 			{NetworkID: "open-net", Status: "available"},
 			{NetworkID: "blocked-net", Status: "blocked"},
 			{
@@ -33,8 +34,8 @@ func TestCheckDeviceNetworkAccessJITRequiredStatus(t *testing.T) {
 	orig := fetchDeviceNetworksImpl
 	t.Cleanup(func() { fetchDeviceNetworksImpl = orig })
 
-	fetchDeviceNetworksImpl = func(_, _ string) ([]DeviceNetwork, error) {
-		return []DeviceNetwork{
+	fetchDeviceNetworksImpl = func(_, _ string) ([]models.DeviceNetwork, error) {
+		return []models.DeviceNetwork{
 			{NetworkID: "jit-required-net", Status: "jit_required"},
 		}, nil
 	}

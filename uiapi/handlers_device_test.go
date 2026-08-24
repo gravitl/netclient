@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	nmConfig "github.com/gravitl/netmaker/config"
+	"github.com/gravitl/netmaker/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,10 +21,10 @@ func TestListNetworksHandler(t *testing.T) {
 	setupTestSession("api.example.com", "alice", "token-123")
 
 	SetHandlers(HandlerDeps{
-		FetchNetworks: func(server, token string) ([]DeviceNetworkView, error) {
+		FetchNetworks: func(server, token string) ([]models.DeviceNetwork, error) {
 			assert.Equal(t, "api.example.com", server)
 			assert.Equal(t, "token-123", token)
-			return []DeviceNetworkView{{NetworkID: "net1", Status: "available"}}, nil
+			return []models.DeviceNetwork{{NetworkID: "net1", Status: "available"}}, nil
 		},
 	})
 
@@ -32,7 +33,7 @@ func TestListNetworksHandler(t *testing.T) {
 	listNetworksHandler(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var networks []DeviceNetworkView
+	var networks []models.DeviceNetwork
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &networks))
 	require.Len(t, networks, 1)
 	assert.Equal(t, "net1", networks[0].NetworkID)
@@ -114,11 +115,11 @@ func TestListExitNodesHandler(t *testing.T) {
 	setupTestSession("api.example.com", "alice", "token-123")
 
 	SetHandlers(HandlerDeps{
-		ListExitNodes: func(network, server, token string) ([]DeviceExitNodeView, error) {
+		ListExitNodes: func(network, server, token string) ([]models.DeviceExitNode, error) {
 			assert.Equal(t, "net1", network)
 			assert.Equal(t, "api.example.com", server)
 			assert.Equal(t, "token-123", token)
-			return []DeviceExitNodeView{{EgressID: "e1", Name: "exit-us", Selected: true}}, nil
+			return []models.DeviceExitNode{{EgressID: "e1", Name: "exit-us", Selected: true}}, nil
 		},
 	})
 
@@ -128,7 +129,7 @@ func TestListExitNodesHandler(t *testing.T) {
 	listExitNodesHandler(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var nodes []DeviceExitNodeView
+	var nodes []models.DeviceExitNode
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &nodes))
 	require.Len(t, nodes, 1)
 	assert.Equal(t, "e1", nodes[0].EgressID)
@@ -142,11 +143,11 @@ func TestSelectExitNodeHandler(t *testing.T) {
 
 	selected := false
 	SetHandlers(HandlerDeps{
-		SelectExitNode: func(network, server, token, egressID string) (*DeviceExitNodeView, error) {
+		SelectExitNode: func(network, server, token, egressID string) (*models.DeviceExitNode, error) {
 			assert.Equal(t, "net1", network)
 			assert.Equal(t, "e1", egressID)
 			selected = true
-			return &DeviceExitNodeView{EgressID: "e1", Name: "exit-us", Selected: true}, nil
+			return &models.DeviceExitNode{EgressID: "e1", Name: "exit-us", Selected: true}, nil
 		},
 	})
 
@@ -157,7 +158,7 @@ func TestSelectExitNodeHandler(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, selected)
-	var node DeviceExitNodeView
+	var node models.DeviceExitNode
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &node))
 	assert.Equal(t, "e1", node.EgressID)
 }

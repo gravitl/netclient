@@ -30,6 +30,20 @@ func UpdatePeerIDs(m models.PeerMap) {
 	lastPeerIDs = cp
 }
 
+// CachedPeerIDs returns a copy of PeerIDs from the last host pull / peer update.
+func CachedPeerIDs() models.PeerMap {
+	peerIDsMu.RLock()
+	defer peerIDsMu.RUnlock()
+	if len(lastPeerIDs) == 0 {
+		return nil
+	}
+	cp := make(models.PeerMap, len(lastPeerIDs))
+	for k, v := range lastPeerIDs {
+		cp[k] = v
+	}
+	return cp
+}
+
 // NeedsUserspaceWG reports whether TCP uplink client or gateway listen requires userspace WireGuard conn.Bind.
 func NeedsUserspaceWG() bool {
 	if h := config.Netclient(); h != nil && h.TcpProxyEnabled {

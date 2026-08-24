@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/models"
 )
 
 func checkHealth(w http.ResponseWriter, r *http.Request) {
@@ -421,7 +422,7 @@ func listNetworksHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if networks == nil {
-		networks = []DeviceNetworkView{}
+		networks = []models.DeviceNetwork{}
 	}
 	uiLog(0, fmt.Sprintf("uiapi: GET /networks ok server=%s count=%d", server, len(networks)))
 	w.Header().Set("Content-Type", "application/json")
@@ -576,7 +577,7 @@ func listExitNodesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if nodes == nil {
-		nodes = []DeviceExitNodeView{}
+		nodes = []models.DeviceExitNode{}
 	}
 	uiLog(0, fmt.Sprintf("uiapi: GET /networks/%s/exit_nodes ok count=%d", network, len(nodes)))
 	w.Header().Set("Content-Type", "application/json")
@@ -614,7 +615,7 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
 		return
 	}
-	var req SelectExitNodeRequest
+	var req models.DeviceExitNodeSelectionReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "invalid request body"})

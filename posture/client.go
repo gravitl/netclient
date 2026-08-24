@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/scope"
 )
 
@@ -16,7 +17,7 @@ import (
 // server. Pass an empty serverName to use the current server. The host's
 // JWT is obtained via auth.Authenticate; on 401 the cached token is purged
 // and the request is retried once.
-func FetchStatus(serverName string) (*HostPostureStatus, error) {
+func FetchStatus(serverName string) (*models.HostPostureStatus, error) {
 	if serverName == "" {
 		serverName = config.CurrServer
 	}
@@ -46,7 +47,7 @@ func FetchStatus(serverName string) (*HostPostureStatus, error) {
 	return nil, err
 }
 
-func postureGet(server *config.Server, host *config.Config) (*HostPostureStatus, error) {
+func postureGet(server *config.Server, host *config.Config) (*models.HostPostureStatus, error) {
 	token, err := auth.Authenticate(server, host)
 	if err != nil {
 		return nil, err
@@ -61,7 +62,7 @@ func postureGet(server *config.Server, host *config.Config) (*HostPostureStatus,
 	if err != nil {
 		return nil, err
 	}
-	var out HostPostureStatus
+	var out models.HostPostureStatus
 	if err := json.Unmarshal(respBytes.Bytes(), &out); err != nil {
 		return nil, fmt.Errorf("decode posture status: %w", err)
 	}

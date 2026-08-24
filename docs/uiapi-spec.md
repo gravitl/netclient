@@ -252,7 +252,7 @@ Pull latest config from the server and refresh local node state. Requires an act
 
 List networks visible to the logged-in user (membership, JIT flags, connection state). Requires an active session.
 
-**Response `200`** — array of `DeviceNetworkView`:
+**Response `200`** — array of device networks (`models.DeviceNetwork`):
 
 ```json
 [
@@ -320,11 +320,18 @@ Proxied to server `GET /api/v1/device/networks/{network}/exit_nodes`.
     "network": "my-network",
     "routing_node_id": "node-uuid",
     "routing_host_name": "gw-01",
+    "allowed_endpoints": ["203.0.113.10"],
+    "country_code": "US",
+    "location": "37.77,-122.42",
+    "latency_ms": 24,
+    "nearest": true,
     "selected": true,
     "status": true
   }
 ]
 ```
+
+`country_code` is the routing host ISO 3166-1 alpha-2 code (used for flags). `location` is `lat,lon` when known. `allowed_endpoints` are the routing host public IPs. `latency_ms` is measured to those IPs with ICMP and TCP 443/22 (same as remote-access gateway selection) and does not require the VPN to be up (`999` means the probe timed out). `nearest` is true for the lowest-latency exit, or the geographically closest one when latency is unavailable.
 
 ---
 
@@ -340,7 +347,7 @@ Proxied to server `GET /api/v1/device/networks/{network}/exit_node`.
 
 ### `PUT /networks/{network}/exit_node`
 
-Select or clear the exit node for this device on the network. Clearing uses an empty `egress_id`. Routing is applied by netclient when the server peer update arrives (`ChangeDefaultGw`); uiapi only proxies the selection.
+Select or clear the exit node for this device on the network. Clearing uses an empty `egress_id`. To switch exits, clear first then select the new one. Routing is applied by netclient after the server peer update (`ChangeDefaultGw`).
 
 Proxied to server `PUT /api/v1/device/networks/{network}/exit_node`.
 

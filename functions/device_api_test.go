@@ -30,7 +30,7 @@ func TestDecodeDeviceNetworksWrappedResponse(t *testing.T) {
 			"jit_pending_request": false
 		}]
 	}`)
-	var networks []DeviceNetwork
+	var networks []models.DeviceNetwork
 	err := decodeDeviceResponse(body, &networks)
 	require.NoError(t, err)
 	require.Len(t, networks, 1)

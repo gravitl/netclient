@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/posture"
+	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
 )
 
@@ -49,14 +50,14 @@ func PostureStatus(jsonOutput bool) (int, error) {
 	}
 
 	for _, n := range resp.Networks {
-		if n.Status == posture.StatusFail {
+		if n.Status == models.PostureStatusFail {
 			return 1, nil
 		}
 	}
 	return 0, nil
 }
 
-func renderPostureStatus(r *posture.HostPostureStatus) {
+func renderPostureStatus(r *models.HostPostureStatus) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	hostID := r.HostID
 	if hostID == "" {
