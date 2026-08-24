@@ -648,18 +648,11 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
 			} else {
-				wgInterface := ncutils.GetInterfaceName()
-				vnatRules, err := n.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
-				if err != nil {
-					logger.Log(1, fmt.Sprintf("Virtual NAT not supported for nftables, falling back to regular NAT: %v", err))
-					// Fall through to regular NAT processing
-					virtualNATApplied = false
-				} else {
-					egressGwRoutes = append(egressGwRoutes, vnatRules...)
-					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
-					n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
-					virtualNATApplied = true
-				}
+				logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
+					egressInfo.EgressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
+				logger.Log(1, "Virtual NAT not supported for nftables, falling back to regular NAT: virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
+				// Fall through to regular NAT processing
+				virtualNATApplied = false
 			}
 			// If virtual NAT was successfully applied, skip regular NAT processing
 			if virtualNATApplied {
@@ -2904,16 +2897,6 @@ func rulesEqual(rule1, rule2 *nftables.Rule) bool {
 	}
 
 	return false
-}
-
-// applyVirtualNATRules applies virtual NAT rules for an egress gateway
-// NOTE: Virtual NAT is currently disabled for nftables due to lack of prefix NAT support
-func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
-	// Virtual NAT is disabled for nftables - nftables doesn't support prefix NAT (CIDR-to-CIDR translation)
-	// like iptables NETMAP. Without prefix NAT support, we cannot preserve the host part during translation.
-	logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
-		egressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
-	return nil, fmt.Errorf("virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
 }
 
 func nullTerminatedString(s string) []byte {
