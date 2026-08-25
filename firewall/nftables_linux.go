@@ -1367,59 +1367,176 @@ func (n *nftablesManager) getExprForProto(proto models.Protocol, isv4 bool) []ex
 	}
 }
 
-func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
-	var e []expr.Any
+// expandPortList splits ACL port entries on commas so values like
+// "80,443" or "80,8000-9000" become individual port/range tokens.
+func expandPortList(ports []string) []string {
+	var expanded []string
+	for _, port := range ports {
+		for _, part := range strings.Split(port, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				expanded = append(expanded, part)
+			}
+		}
+	}
+	return expanded
+}
 
+func portToBytes(port uint16) []byte {
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, port)
+	return b
+}
+
+func parsePortToken(port string) (start, end uint16, ok bool) {
+	if strings.Contains(port, "-") {
+		parts := strings.Split(port, "-")
+		if len(parts) != 2 {
+			return 0, 0, false
+		}
+		startPortInt, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil || startPortInt < 0 || startPortInt > 65535 {
+			return 0, 0, false
+		}
+		endPortInt, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || endPortInt < 0 || endPortInt > 65535 {
+			return 0, 0, false
+		}
+		if startPortInt > endPortInt {
+			return 0, 0, false
+		}
+		return uint16(startPortInt), uint16(endPortInt), true
+	}
+	portInt, err := strconv.Atoi(port)
+	if err != nil || portInt < 0 || portInt > 65535 {
+		return 0, 0, false
+	}
+	p := uint16(portInt)
+	return p, p, true
+}
+
+func (n *nftablesManager) getExprForSinglePort(port string) []expr.Any {
 	ipTransPortHeader := &expr.Payload{
 		DestRegister: 1,
 		Base:         expr.PayloadBaseTransportHeader,
-		Offset:       2, // Offset for destination port in TCP header
+		Offset:       2, // Offset for destination port in TCP/UDP header
 		Len:          2, // Port field length
 	}
-	for _, port := range ports {
+	start, end, ok := parsePortToken(port)
+	if !ok {
+		return nil
+	}
+	if start != end {
+		return []expr.Any{
+			ipTransPortHeader,
+			&expr.Range{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				FromData: portToBytes(start),
+				ToData:   portToBytes(end),
+			},
+		}
+	}
+	return []expr.Any{
+		ipTransPortHeader,
+		&expr.Cmp{
+			Register: 1,
+			Op:       expr.CmpOpEq,
+			Data:     portToBytes(start),
+		},
+	}
+}
 
-		if strings.Contains(port, "-") {
-			// Destination port range (8000-9000)
-			ports := strings.Split(port, "-")
-			startPortStr := ports[0]
-			endPortStr := ports[1]
-			startPortInt, err := strconv.Atoi(startPortStr)
-			if err != nil {
-				continue
+// getExprForPort builds nftables expressions that match destination ports.
+// Multiple ports must use a set lookup (OR); chaining Cmp/Range expressions
+// would AND them and never match.
+func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
+	ports = expandPortList(ports)
+	if len(ports) == 0 {
+		return nil
+	}
+	if len(ports) == 1 {
+		return n.getExprForSinglePort(ports[0])
+	}
+
+	type portSpan struct{ start, end uint16 }
+	spans := make([]portSpan, 0, len(ports))
+	hasRange := false
+	for _, port := range ports {
+		start, end, ok := parsePortToken(port)
+		if !ok {
+			continue
+		}
+		if start != end {
+			hasRange = true
+		}
+		spans = append(spans, portSpan{start: start, end: end})
+	}
+	if len(spans) == 0 {
+		return nil
+	}
+
+	set := &nftables.Set{
+		Anonymous: true,
+		Constant:  true,
+		Table:     filterTable,
+		KeyType:   nftables.TypeInetService,
+	}
+	var elements []nftables.SetElement
+	if hasRange {
+		// Discrete ports are encoded as [p, p+1) so they can share an interval set
+		// with explicit ranges (e.g. "80,443,8000-9000").
+		set.Interval = true
+		// Anonymous interval sets need a leading "gap" marker from 0, matching nft(8).
+		elements = append(elements, nftables.SetElement{
+			Key:         portToBytes(0),
+			IntervalEnd: true,
+		})
+		for _, s := range spans {
+			elements = append(elements, nftables.SetElement{Key: portToBytes(s.start)})
+			if s.end < 65535 {
+				// Interval sets use a half-open range [start, endExclusive).
+				elements = append(elements, nftables.SetElement{
+					Key:         portToBytes(s.end + 1),
+					IntervalEnd: true,
+				})
 			}
-			endPortInt, err := strconv.Atoi(endPortStr)
-			if err != nil {
-				continue
-			}
-			startPort := uint16(startPortInt)
-			endPort := uint16(endPortInt)
-			startPortBytes := make([]byte, 2)
-			endPortBytes := make([]byte, 2)
-			binary.BigEndian.PutUint16(startPortBytes, startPort)
-			binary.BigEndian.PutUint16(endPortBytes, endPort)
-			e = append(e, ipTransPortHeader, &expr.Range{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				FromData: startPortBytes,
-				ToData:   endPortBytes,
-			})
-		} else {
-			portInt, err := strconv.Atoi(port)
-			if err != nil {
-				continue
-			}
-			dport := uint16(portInt)
-			dPortBytes := make([]byte, 2)
-			binary.BigEndian.PutUint16(dPortBytes, dport)
-			e = append(e, ipTransPortHeader, &expr.Cmp{
-				Register: 1,
-				Op:       expr.CmpOpEq,
-				Data:     dPortBytes, // Port in network byte order
-			})
+			// end == 65535: open-ended through the max port value (no IntervalEnd).
+		}
+	} else {
+		for _, s := range spans {
+			elements = append(elements, nftables.SetElement{Key: portToBytes(s.start)})
 		}
 	}
 
-	return e
+	if err := n.conn.AddSet(set, elements); err != nil {
+		slog.Error("failed to add nftables port set for ACL rule", "error", err, "ports", ports)
+		// Never-match expressions so a failed set does not open all ports.
+		return []expr.Any{
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			&expr.Cmp{Register: 1, Op: expr.CmpOpEq, Data: portToBytes(0)},
+			&expr.Cmp{Register: 1, Op: expr.CmpOpEq, Data: portToBytes(65535)},
+		}
+	}
+
+	return []expr.Any{
+		&expr.Payload{
+			DestRegister: 1,
+			Base:         expr.PayloadBaseTransportHeader,
+			Offset:       2,
+			Len:          2,
+		},
+		&expr.Lookup{
+			SourceRegister: 1,
+			SetName:        set.Name,
+			SetID:          set.ID,
+		},
+	}
 }
 
 func (n *nftablesManager) getRuleCnt(table *nftables.Table, chain *nftables.Chain) (cnt uint64) {
