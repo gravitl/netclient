@@ -1,4 +1,4 @@
-FROM gravitl/go-builder:latest as builder
+FROM gravitl/go-builder:1.26.0 as builder
 WORKDIR /app
 COPY . .
 RUN GOOS=linux CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags="-w -s" -o netclient-app .
