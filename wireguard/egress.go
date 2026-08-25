@@ -251,6 +251,21 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 						return
 					}
 					var haActiveRoutingPeer string
+					rangeIsDefault := egressRange == IPv4Network || egressRange == IPv6Network
+					skipExitIfAlternate := !rangeIsDefault
+					hasNonExitCandidate := false
+					if skipExitIfAlternate {
+						for _, candidate := range egressRoutingInfo {
+							devicePeer, ok := devicePeerMap[candidate.PeerKey]
+							if !ok {
+								continue
+							}
+							if !peerAdvertisesDefaultRoute(devicePeer) {
+								hasNonExitCandidate = true
+								break
+							}
+						}
+					}
 					for _, egressRouteI := range egressRoutingInfo {
 						// Check context before network calls
 						select {
@@ -261,6 +276,12 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 
 						devicePeer, ok := devicePeerMap[egressRouteI.PeerKey]
 						if !ok {
+							continue
+						}
+						if skipExitIfAlternate && hasNonExitCandidate && peerAdvertisesDefaultRoute(devicePeer) {
+							// Specific CIDRs must stay on the site egress peer. The
+							// internet-exit peer already has 0.0.0.0/0; HA must not
+							// steal the more-specific prefix onto the exit.
 							continue
 						}
 						var connected bool
@@ -345,6 +366,16 @@ func removeIP(slice []net.IPNet, item net.IPNet) []net.IPNet {
 		}
 	}
 	return result
+}
+
+func peerAdvertisesDefaultRoute(peer wgtypes.Peer) bool {
+	for _, allowedIP := range peer.AllowedIPs {
+		s := allowedIP.String()
+		if s == IPv4Network || s == IPv6Network {
+			return true
+		}
+	}
+	return false
 }
 
 func checkIfEgressHAPeer(peer *wgtypes.PeerConfig, haEgressData map[string][]egressPeer) bool {

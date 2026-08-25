@@ -299,10 +299,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 					// Continue applying peers even if IGW setup failed.
 				}
 			}
-		} else if tcpModeFlipped {
-			// Exit routes are already installed for this nexthop (mode flip
-			// reapplied them); re-running Restore+Set flaps the health monitor
-			// and briefly drops the underlay. Only top up host pins.
+		} else {
+			// Exit routes already installed for this nexthop. Refresh LAN pins so
+			// newly advertised site-egress (and other direct) peer underlays are
+			// not swallowed by 0.0.0.0/0.
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
@@ -915,8 +915,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 					// Continue applying peers even if IGW setup failed.
 				}
 			}
-		} else if tcpModeFlipped {
-			// Already installed by the mode flip; avoid a Restore/Set flap.
+		} else {
+			// Already installed; avoid a Restore/Set flap. Refresh LAN pins so
+			// site-egress peer underlays stay off the exit default route.
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {

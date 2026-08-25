@@ -382,6 +382,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 						slog.Warn("failed to set inet gw", "error", err)
 					}
 				}
+			} else {
+				wireguard.RefreshInternetGwHostPins()
 			}
 		}
 	}

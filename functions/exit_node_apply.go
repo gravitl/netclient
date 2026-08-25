@@ -99,6 +99,8 @@ func applyHostPullRouting(pull models.HostPull) error {
 				slog.Error("error setting default gateway after exit node change", "error", err)
 				return err
 			}
+		} else {
+			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		if err := wireguard.RestoreInternetGw(); err != nil {

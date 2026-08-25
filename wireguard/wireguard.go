@@ -20,6 +20,34 @@ const (
 	IPv6Network = "::/0"
 )
 
+// igwRoutingActive reports whether this host currently has an internet-exit
+// default route installed (CurrGwNmIP / CurrGwNmIP6).
+func igwRoutingActive() bool {
+	nc := config.Netclient()
+	if nc == nil {
+		return false
+	}
+	return len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0
+}
+
+// reapplyCachedEgressRoutes reinstalls specific egress CIDRs after IGW default
+// routes are (re)installed so those prefixes keep winning over 0.0.0.0/0.
+func reapplyCachedEgressRoutes() {
+	hostID := config.Netclient().Host.ID.String()
+	addrs, ok := cache.EgressRouteCache.Load(hostID)
+	if !ok {
+		return
+	}
+	cached, ok := addrs.([]ifaceAddress)
+	if !ok || len(cached) == 0 {
+		return
+	}
+	_ = SetRoutes(filterConflictingRoutes(cached))
+	if igwRoutingActive() {
+		RefreshInternetGwHostPins()
+	}
+}
+
 // FindInternetGwPeer picks the WireGuard peer that should carry internet-exit
 // traffic. Prefers a peer advertising 0.0.0.0/0 or ::/0; falls back to a peer
 // that includes the overlay nexthop. Skips Remove peers.
@@ -141,6 +169,141 @@ func InternetGwHostIPs(publicKey string) []net.IP {
 	}
 	tcpUplinkHostIPsMu.Unlock()
 	return ips
+}
+
+// NonExitPeerHostIPs returns underlay endpoints of WireGuard peers that are not
+// the internet exit. When 0.0.0.0/0 is on the exit, UDP to those peers (site
+// egress, bypassed CIDR gateways) would otherwise trombone through the exit.
+func NonExitPeerHostIPs(exitPublicKey string) []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	add := func(ip net.IP) {
+		if len(ip) == 0 || ip.IsUnspecified() {
+			return
+		}
+		s := ip.String()
+		if s == "" || s == "<nil>" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		ips = append(ips, append(net.IP(nil), ip...))
+	}
+
+	var exitPK wgtypes.Key
+	if exitPublicKey != "" {
+		if pk, err := wgtypes.ParseKey(exitPublicKey); err == nil {
+			exitPK = pk
+		}
+	}
+
+	if host := config.Netclient(); host != nil {
+		for _, p := range host.HostPeers {
+			if p.Remove || p.Endpoint == nil || p.Endpoint.IP == nil {
+				continue
+			}
+			if p.PublicKey == exitPK || peerConfigHasDefaultRoute(p) {
+				continue
+			}
+			add(p.Endpoint.IP)
+		}
+	}
+	if peers, err := GetPeersFromDevice(ncutils.GetInterfaceName()); err == nil {
+		for _, p := range peers {
+			if p.Endpoint == nil || p.Endpoint.IP == nil {
+				continue
+			}
+			if p.PublicKey == exitPK || peerAdvertisesDefaultRoute(p) {
+				continue
+			}
+			add(p.Endpoint.IP)
+		}
+	}
+	return ips
+}
+
+// IGWUnderlayPinIPs is the full set of host routes that must stay on the LAN
+// path while an internet exit is active: the exit itself and every direct
+// (non-exit) peer, including bypassed site-egress gateways.
+func IGWUnderlayPinIPs(exitPublicKey string) []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	addAll := func(list []net.IP) {
+		for _, ip := range list {
+			if len(ip) == 0 {
+				continue
+			}
+			s := ip.String()
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			ips = append(ips, ip)
+		}
+	}
+	addAll(InternetGwHostIPs(exitPublicKey))
+	addAll(NonExitPeerHostIPs(exitPublicKey))
+	return ips
+}
+
+// CollectUnderlayPinIPs returns LAN host routes for the active exit (exit
+// underlay plus every non-exit peer). Used when installing or tearing down pins.
+func CollectUnderlayPinIPs() []net.IP {
+	nc := config.Netclient()
+	if nc == nil {
+		return nil
+	}
+	gw4, gw6 := NormalizeIGWNexthops(nc.CurrGwNmIP, nc.CurrGwNmIP6)
+	if igw, ok := FindInternetGwPeer(nc.HostPeers, gw4, gw6); ok {
+		return IGWUnderlayPinIPs(igw.PublicKey.String())
+	}
+	return allKnownPeerUnderlayIPs()
+}
+
+func allKnownPeerUnderlayIPs() []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	add := func(ip net.IP) {
+		if len(ip) == 0 || ip.IsUnspecified() {
+			return
+		}
+		s := ip.String()
+		if s == "" || s == "<nil>" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		ips = append(ips, append(net.IP(nil), ip...))
+	}
+	if host := config.Netclient(); host != nil {
+		for _, p := range host.HostPeers {
+			if p.Endpoint != nil {
+				add(p.Endpoint.IP)
+			}
+		}
+	}
+	if peers, err := GetPeersFromDevice(ncutils.GetInterfaceName()); err == nil {
+		for _, p := range peers {
+			if p.Endpoint != nil {
+				add(p.Endpoint.IP)
+			}
+		}
+	}
+	return ips
+}
+
+func peerConfigHasDefaultRoute(p wgtypes.PeerConfig) bool {
+	for _, a := range p.AllowedIPs {
+		s := a.String()
+		if s == IPv4Network || s == IPv6Network {
+			return true
+		}
+	}
+	return false
 }
 
 var (

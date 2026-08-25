@@ -319,9 +319,10 @@ func ReapplyInternetGw(gw4, gw6 net.IP) {
 	}
 }
 
-// RefreshInternetGwHostPins adds LAN underlay pins for InternetGwHostIPs when
-// exit-node routing is already active (e.g. TCP proxy IP registered after
-// SetInternetGw). Does not move 0.0.0.0/0.
+// RefreshInternetGwHostPins adds LAN underlay pins for the exit and every
+// non-exit peer when internet-exit routing is already active. Needed so a
+// newly advertised site-egress endpoint is not swallowed by 0.0.0.0/0.
+// Does not move 0.0.0.0/0.
 func RefreshInternetGwHostPins() {
 	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
 	if gw4 == nil && gw6 == nil {
