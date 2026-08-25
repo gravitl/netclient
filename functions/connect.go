@@ -8,6 +8,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/uiapi"
+	"github.com/gravitl/netclient/wireguard"
 	"golang.org/x/exp/slog"
 )
 
@@ -76,6 +77,14 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
 	}
+	if !config.AnyNodeConnected() {
+		_ = wireguard.SetPeers(true)
+		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Warn("failed to restore default gateway after disconnect", "error", err)
+			}
+		}
+	}
 	if !restart {
 		return nil
 	}
@@ -109,6 +118,7 @@ func RestoreDesiredConnections(username, tenantID string) error {
 func ApplyDesiredConnectedFlags() {
 	if skipDesiredRestoreOnce.Swap(false) {
 		slog.Info("skipping desired connection restore after session release")
+		forceDisconnectAllNodes()
 		return
 	}
 	if !uiapi.IsSessionActive() {
@@ -187,4 +197,44 @@ func filterDesiredNetworks(desired []string, restrictSingle bool) []string {
 		out = out[len(out)-1:]
 	}
 	return out
+}
+
+func forceDisconnectAllNodes() {
+	changed := false
+	for network, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		node.Connected = false
+		config.UpdateNodeMap(network, node)
+		changed = true
+	}
+	if changed {
+		if err := config.WriteNodeConfig(); err != nil {
+			slog.Warn("failed to persist disconnected state after logout", "error", err)
+		}
+	}
+}
+
+func locallyDisconnectedNetworks() map[string]struct{} {
+	out := make(map[string]struct{})
+	for network, node := range config.GetNodes() {
+		if !node.Connected {
+			out[network] = struct{}{}
+		}
+	}
+	return out
+}
+
+func keepLocallyDisconnected(networks map[string]struct{}) {
+	if len(networks) == 0 {
+		return
+	}
+	for network, node := range config.GetNodes() {
+		if _, ok := networks[network]; !ok || !node.Connected {
+			continue
+		}
+		node.Connected = false
+		config.UpdateNodeMap(network, node)
+	}
 }

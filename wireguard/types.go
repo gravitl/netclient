@@ -33,7 +33,10 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := host.FwMark
-	peers := config.Netclient().HostPeers
+	var peers []wgtypes.PeerConfig
+	if anyNodeConnected(nodes) {
+		peers = config.Netclient().HostPeers
+	}
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
 		peers = nil
@@ -72,6 +75,15 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 		},
 	}
 	return &netmaker
+}
+
+func anyNodeConnected(nodes config.NodeMap) bool {
+	for _, node := range nodes {
+		if node.Connected {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {

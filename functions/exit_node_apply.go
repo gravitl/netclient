@@ -87,7 +87,7 @@ func applyHostPullRouting(pull models.HostPull) error {
 		proxyuplink.RefreshTCPPeerRoutes()
 	}
 	user, tenant := uiapi.SessionIdentity()
-	if pull.ChangeDefaultGw {
+	if pull.ChangeDefaultGw && config.AnyNodeConnected() {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pull.DefaultGwIp, pull.DefaultGwIp6)
 		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pull.Peers, gw4, gw6)
@@ -232,6 +232,9 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 }
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
+	if !config.AnyNodeConnected() {
+		return
+	}
 	user, tenant := uiapi.SessionIdentity()
 	wantIGW := config.GetDesiredWantIGW(user, tenant)
 	if pullErr == nil && pull.ChangeDefaultGw {

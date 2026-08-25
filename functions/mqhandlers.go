@@ -269,13 +269,15 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
+	if len(peerUpdate.Nodes) > 0 {
+		keepDisconnected := locallyDisconnectedNetworks()
+		config.SetNodes(peerUpdate.Nodes)
+		keepLocallyDisconnected(keepDisconnected)
+		_ = config.WriteNodeConfig()
+	}
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	if proxyuplink.ActiveServer() != nil {
 		proxyuplink.RefreshTCPPeerRoutes()
-	}
-	if len(peerUpdate.Nodes) > 0 {
-		config.SetNodes(peerUpdate.Nodes)
-		_ = config.WriteNodeConfig()
 	}
 	// Host carries TCP proxy listen settings; apply before uplink reconcile.
 	UpdateHostFromServer(&peerUpdate.Host)
@@ -286,7 +288,15 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	//setup the default gateway when change_default_gw set to true (after peers
 	//are on the interface so IGW monitor can resolve the exit peer).
-	if peerUpdate.ChangeDefaultGw {
+	if !config.AnyNodeConnected() {
+		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
+		}
+		wireguard.RemoveEgressRoutes()
+		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	} else if peerUpdate.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
 		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
@@ -316,12 +326,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			slog.Error("error restoring default gateway", "error", err.Error())
 		}
 	}
-	if len(peerUpdate.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
-	} else {
-		wireguard.RemoveEgressRoutes()
-		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	if config.AnyNodeConnected() {
+		if len(peerUpdate.EgressRoutes) > 0 {
+			wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+			wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+		}
 	}
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
@@ -906,7 +918,15 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		reconcileTCPUplink(server, pullResponse.PeerIDs)
 	}
 	//setup the default gateway when change_default_gw set to true (after peers)
-	if pullResponse.ChangeDefaultGw {
+	if !config.AnyNodeConnected() {
+		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
+		}
+		wireguard.RemoveEgressRoutes()
+		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	} else if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
 		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
@@ -933,12 +953,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			slog.Error("error restoring default gateway", "error", err.Error())
 		}
 	}
-	if len(pullResponse.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
-	} else {
-		wireguard.RemoveEgressRoutes()
-		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	if config.AnyNodeConnected() {
+		if len(pullResponse.EgressRoutes) > 0 {
+			wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+			wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+		}
 	}
 	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)

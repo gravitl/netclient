@@ -380,6 +380,13 @@ func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 func SetPeers(replace bool) error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	if !config.AnyNodeConnected() {
+		GetInterface().Config.Peers = nil
+		return apply(&wgtypes.Config{
+			ReplacePeers: true,
+			Peers:        nil,
+		})
+	}
 	peers := config.Netclient().HostPeers
 	server := config.GetServer(config.CurrServer)
 	if server == nil {

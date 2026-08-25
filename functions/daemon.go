@@ -345,15 +345,22 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
-	if len(pullresp.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
+	if config.AnyNodeConnected() {
+		if len(pullresp.EgressRoutes) > 0 {
+			wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+		}
+		applyInternetGwAfterReconnect(pullresp, pullErr)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Warn("failed to restore default gateway while disconnected", "error", err)
+			}
+		}
 	}
-	// Install exit routes as soon as peers are on the iface. Waiting until
-	// after TCP reconcile / MQTT start leaves internet on the LAN after reboot.
-	applyInternetGwAfterReconnect(pullresp, pullErr)
 	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
 	if pullErr == nil && pullresp.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
