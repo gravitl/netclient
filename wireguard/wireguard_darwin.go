@@ -371,6 +371,14 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 	}
 
 	peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+	if err != nil || peer.Endpoint == nil {
+		// Right after iface recreate the live device may not have the exit
+		// peer yet. HostPeers still has the underlay endpoint for pinning.
+		if ep := internetGwPeerEndpoint(publicKey); ep != nil {
+			peer.Endpoint = ep
+			err = nil
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to get peer: %w", err)
 	}

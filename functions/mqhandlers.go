@@ -25,6 +25,7 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -297,6 +298,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				if err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					// Continue applying peers even if IGW setup failed.
+				} else {
+					user, tenant := uiapi.SessionIdentity()
+					_ = config.SetDesiredWantIGW(user, tenant, true)
 				}
 			}
 		} else {
@@ -913,6 +917,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 				if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					// Continue applying peers even if IGW setup failed.
+				} else {
+					user, tenant := uiapi.SessionIdentity()
+					_ = config.SetDesiredWantIGW(user, tenant, true)
 				}
 			}
 		} else {

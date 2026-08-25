@@ -6,6 +6,8 @@ import (
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/uiapi"
+	"golang.org/x/exp/slog"
 )
 
 var (
@@ -88,6 +90,8 @@ func sessionTenantMatches(server, tenantID string) bool {
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.
+// Currently connected networks are saved so the next login (or reboot with an
+// active session) can restore them.
 func ReleaseSession(clearServer bool) error {
 	networks := make([]string, 0, len(config.GetNodes()))
 	for network, node := range config.GetNodes() {
@@ -95,8 +99,18 @@ func ReleaseSession(clearServer bool) error {
 			networks = append(networks, network)
 		}
 	}
-	for _, network := range networks {
-		if err := Disconnect(network); err != nil {
+	if len(networks) > 0 {
+		nc := config.Netclient()
+		wantIGW := nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0)
+		user, tenant := uiapi.SessionIdentity()
+		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW); err != nil {
+			slog.Warn("failed to persist connected networks before logout", "error", err)
+		}
+		skipNextDesiredRestore()
+	}
+	for i, network := range networks {
+		restart := i == len(networks)-1
+		if err := disconnectNetwork(network, restart, false); err != nil {
 			return err
 		}
 	}

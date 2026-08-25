@@ -264,6 +264,10 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		uiLog(1, "uiapi: failed to fetch server config:", err.Error())
 	}
 	setSession(req.Username, req.AuthToken, req.TenantID, cfg)
+	setStatus(Restoring)
+	if err := restoreDesiredConnections(req.Username, req.TenantID); err != nil {
+		uiLog(1, "uiapi: failed to restore previous connections:", err.Error())
+	}
 	setStatus(Running)
 	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
 	w.WriteHeader(http.StatusOK)

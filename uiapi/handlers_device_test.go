@@ -204,6 +204,34 @@ func TestGetStatusReportsIdleWhenSessionExpired(t *testing.T) {
 	assert.Equal(t, Idle, getStatus())
 }
 
+func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
+	clearSessionForTest()
+	config.CurrServer = "api.example.com"
+
+	restoredUser := ""
+	restoredTenant := ""
+	SetHandlers(HandlerDeps{
+		RegisterSession: func(server, username, authToken, password, tenantID string) error {
+			return nil
+		},
+		RestoreDesiredConnections: func(username, tenantID string) error {
+			restoredUser = username
+			restoredTenant = tenantID
+			return nil
+		},
+	})
+
+	body := `{"username":"alice","auth_token":"tok","tenant_id":"tenant-a"}`
+	req := httptest.NewRequest(http.MethodPut, "/session", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureSession(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "alice", restoredUser)
+	assert.Equal(t, "tenant-a", restoredTenant)
+	assert.Equal(t, Running, getStatus())
+}
+
 func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 	clearSessionForTest()
 	setupTestSession("api.example.com", "alice", "alice-token")

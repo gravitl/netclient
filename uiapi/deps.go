@@ -7,20 +7,21 @@ import (
 )
 
 type HandlerDeps struct {
-	RegisterSession     func(server, username, authToken, password, tenantID string) error
-	ReleaseSession      func(clearServer bool) error
-	Connect             func(network string) error
-	Disconnect          func(network string) error
-	IsRegistered        func(server string) bool
-	FetchNetworks       func(server, token string) ([]models.DeviceNetwork, error)
-	JoinNetwork         func(network, server, token string) (joinStatus string, err error)
-	LeaveNetwork        func(network, server, token string) error
-	CancelJoin          func(network, server, token string) error
-	RequestJIT          func(network, server, token, reason string) error
-	Sync                func(token string) error
-	ListExitNodes       func(network, server, token string) ([]models.DeviceExitNode, error)
-	GetSelectedExitNode func(network, server, token string) (*models.DeviceExitNode, error)
-	SelectExitNode      func(network, server, token, egressID string) (*models.DeviceExitNode, error)
+	RegisterSession           func(server, username, authToken, password, tenantID string) error
+	ReleaseSession            func(clearServer bool) error
+	Connect                   func(network string) error
+	Disconnect                func(network string) error
+	IsRegistered              func(server string) bool
+	FetchNetworks             func(server, token string) ([]models.DeviceNetwork, error)
+	JoinNetwork               func(network, server, token string) (joinStatus string, err error)
+	LeaveNetwork              func(network, server, token string) error
+	CancelJoin                func(network, server, token string) error
+	RequestJIT                func(network, server, token, reason string) error
+	Sync                      func(token string) error
+	ListExitNodes             func(network, server, token string) ([]models.DeviceExitNode, error)
+	GetSelectedExitNode       func(network, server, token string) (*models.DeviceExitNode, error)
+	SelectExitNode            func(network, server, token, egressID string) (*models.DeviceExitNode, error)
+	RestoreDesiredConnections func(username, tenantID string) error
 }
 
 var deps HandlerDeps
@@ -119,6 +120,13 @@ func selectExitNode(network, server, token, egressID string) (*models.DeviceExit
 		return nil, errHandlersNotConfigured
 	}
 	return deps.SelectExitNode(network, server, token, egressID)
+}
+
+func restoreDesiredConnections(username, tenantID string) error {
+	if deps.RestoreDesiredConnections == nil {
+		return nil
+	}
+	return deps.RestoreDesiredConnections(username, tenantID)
 }
 
 func isRegistered(server string) bool {

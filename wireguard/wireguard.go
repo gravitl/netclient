@@ -171,6 +171,25 @@ func InternetGwHostIPs(publicKey string) []net.IP {
 	return ips
 }
 
+func internetGwPeerEndpoint(publicKey string) *net.UDPAddr {
+	if pk, err := wgtypes.ParseKey(publicKey); err == nil {
+		if host := config.Netclient(); host != nil {
+			for _, p := range host.HostPeers {
+				if p.PublicKey == pk && p.Endpoint != nil && p.Endpoint.IP != nil {
+					return p.Endpoint
+				}
+			}
+		}
+	}
+	if peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey); err == nil && peer.Endpoint != nil {
+		return peer.Endpoint
+	}
+	if ep, ok := GetBetterEndpoint(publicKey); ok && ep != nil {
+		return ep
+	}
+	return nil
+}
+
 // NonExitPeerHostIPs returns underlay endpoints of WireGuard peers that are not
 // the internet exit. When 0.0.0.0/0 is on the exit, UDP to those peers (site
 // egress, bypassed CIDR gateways) would otherwise trombone through the exit.

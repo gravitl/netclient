@@ -7,20 +7,21 @@ import (
 
 func init() {
 	uiapi.SetHandlers(uiapi.HandlerDeps{
-		RegisterSession:     RegisterSession,
-		ReleaseSession:      ReleaseSession,
-		Connect:             connectWithJoin,
-		Disconnect:          Disconnect,
-		IsRegistered:        IsRegisteredToServer,
-		FetchNetworks:       FetchDeviceNetworks,
-		JoinNetwork:         joinNetworkForUI,
-		LeaveNetwork:        leaveNetworkForUI,
-		CancelJoin:          cancelJoinForUI,
-		RequestJIT:          requestJITForUI,
-		Sync:                SyncDeviceWithServer,
-		ListExitNodes:       listExitNodesForUI,
-		GetSelectedExitNode: getSelectedExitNodeForUI,
-		SelectExitNode:      selectExitNodeForUI,
+		RegisterSession:           RegisterSession,
+		ReleaseSession:            ReleaseSession,
+		Connect:                   connectWithJoin,
+		Disconnect:                Disconnect,
+		IsRegistered:              IsRegisteredToServer,
+		FetchNetworks:             FetchDeviceNetworks,
+		JoinNetwork:               joinNetworkForUI,
+		LeaveNetwork:              leaveNetworkForUI,
+		CancelJoin:                cancelJoinForUI,
+		RequestJIT:                requestJITForUI,
+		Sync:                      SyncDeviceWithServer,
+		ListExitNodes:             listExitNodesForUI,
+		GetSelectedExitNode:       getSelectedExitNodeForUI,
+		SelectExitNode:            selectExitNodeForUI,
+		RestoreDesiredConnections: RestoreDesiredConnections,
 	})
 }
 

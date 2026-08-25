@@ -175,6 +175,23 @@ func clearSession(clearServer bool) error {
 	return saveUserSession()
 }
 
+// IsSessionActive reports whether a non-expired desktop UI session is loaded.
+func IsSessionActive() bool {
+	return isSessionActive()
+}
+
+// SessionIdentity returns the logged-in username and tenant for auto-reconnect.
+func SessionIdentity() (username, tenantID string) {
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	return session.username, session.tenantID
+}
+
+// RestrictToSingleNetwork reports the RAC setting from the persisted session.
+func RestrictToSingleNetwork() bool {
+	return racRestrictToSingleNetwork()
+}
+
 func isSessionActive() bool {
 	session.mu.RLock()
 	defer session.mu.RUnlock()

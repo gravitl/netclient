@@ -327,6 +327,16 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	_ = prepareTCPUplinkWireGuard(false)
 
+	// Re-apply last connected networks after Pull so logout-cleared server
+	// state does not keep the iface down across reboot / daemon reset.
+	ApplyDesiredConnectedFlags()
+	if server != nil && server.API != "" {
+		pullresp, pullErr = refreshHostPullAfterReconnect(pullresp, pullErr)
+		if pullErr != nil {
+			slog.Error("fail to refresh config after reconnect", "error", pullErr.Error())
+		}
+	}
+
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
@@ -341,6 +351,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	} else {
 		wireguard.RemoveEgressRoutes()
 	}
+	// Install exit routes as soon as peers are on the iface. Waiting until
+	// after TCP reconcile / MQTT start leaves internet on the LAN after reboot.
+	applyInternetGwAfterReconnect(pullresp, pullErr)
 	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
 	if pullErr == nil && pullresp.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
@@ -361,31 +374,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if proxyuplink.ActiveServer() != nil {
 		proxyuplink.RefreshTCPPeerRoutes()
-	}
-	// set original default gw info
-
-	// check if default gw needs to be set
-	if pullErr == nil {
-		if pullresp.ChangeDefaultGw {
-			gw4, gw6 := wireguard.NormalizeIGWNexthops(pullresp.DefaultGwIp, pullresp.DefaultGwIp6)
-			if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
-				igw, ok := wireguard.FindInternetGwPeer(pullresp.Peers, gw4, gw6)
-				if !ok {
-					slog.Warn("internet gateway peer not found in peer update; skipping default gateway setup")
-				} else {
-					// unlikely that the gwIP is netmaker IP, but still
-					// reset the igw.
-					_ = wireguard.RestoreInternetGw()
-
-					err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
-					if err != nil {
-						slog.Warn("failed to set inet gw", "error", err)
-					}
-				}
-			} else {
-				wireguard.RefreshInternetGwHostPins()
-			}
-		}
 	}
 
 	wg.Add(1)
