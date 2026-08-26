@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"net"
 	"testing"
 	"time"
 )
@@ -73,5 +74,26 @@ func TestBeginIfaceRebuildGatesChecks(t *testing.T) {
 	}
 	if !igwRearmPending.Load() {
 		t.Error("startup grace not re-armed after the rebuild finished")
+	}
+}
+
+// After the monitor tears down OS exit routes (unhealthy), peer updates must not
+// treat the gateway as "already installed" or traffic stays off-exit until pull.
+func TestIsCurrentIGWRequiresHealthy(t *testing.T) {
+	m := &IGWMonitor{}
+	gw4 := net.ParseIP("10.0.0.1")
+
+	if m.IsCurrentIGW(gw4, nil) {
+		t.Fatal("empty monitor reported current IGW")
+	}
+
+	m.status = &igwStatus{gw4: gw4, isHealthy: true}
+	if !m.IsCurrentIGW(gw4, nil) {
+		t.Fatal("healthy monitor with matching nexthop should be current")
+	}
+
+	m.status.isHealthy = false
+	if m.IsCurrentIGW(gw4, nil) {
+		t.Fatal("unhealthy monitor must not report current IGW (forces SetInternetGw reapply)")
 	}
 }

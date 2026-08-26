@@ -177,12 +177,16 @@ func ipEqual(a, b net.IP) bool {
 	return a.Equal(b)
 }
 
-// IsCurrentIGW returns true if the configured nexthops match the current internet gateway.
+// IsCurrentIGW returns true if the configured nexthops match the current internet
+// gateway and that gateway is still considered healthy. An unhealthy monitor has
+// already torn down OS default routes (e.g. after ACL briefly removed 0.0.0.0/0
+// from the exit peer); returning true here would skip SetInternetGw on the next
+// peer update and leave internet traffic off-exit until a pull/restart.
 func (m *IGWMonitor) IsCurrentIGW(gw4, gw6 net.IP) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.status == nil {
+	if m.status == nil || !m.status.isHealthy {
 		return false
 	}
 
