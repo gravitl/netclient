@@ -204,6 +204,9 @@ func (m *ServerManager) SessionPeerIDs() []string {
 // ListenPort returns the configured listen port.
 func (m *ServerManager) ListenPort() int { return m.listenPort }
 
+// ListenAddr returns the configured bind address (empty = all interfaces).
+func (m *ServerManager) ListenAddr() string { return m.listenAddr }
+
 // TLSMode returns the configured TLS mode.
 func (m *ServerManager) TLSMode() uplink.TLSMode { return m.tlsMode }
 

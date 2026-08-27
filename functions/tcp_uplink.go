@@ -331,7 +331,7 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 	slog.Debug("server: found gateway", "node", node.ID.String(), "port", port, "tls_mode", gw.TLSMode)
 
 	if tcpServerMgr != nil && tcpServerMgr.NodeID() == node.ID.String() && tcpServerMgr.ListenPort() == port &&
-		string(tcpServerMgr.TLSMode()) == gw.TLSMode {
+		tcpServerMgr.ListenAddr() == gw.ListenAddr && string(tcpServerMgr.TLSMode()) == gw.TLSMode {
 		// Listener may still be up after PrepareUserspaceTeardown cleared the bind hook
 		// and peer routes (e.g. resetInterfaceFunc). Re-hook and refresh routes.
 		slog.Debug("server: already running; re-hook and refresh peer routes")
