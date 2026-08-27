@@ -149,12 +149,13 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 	stopTCPClientLocked()
 
 	opts := proxyuplink.Options{
-		Addr:          addr,
-		TLSServerName: proxyuplink.TLSServerNameFromAddr(addr),
-		NodeID:        node.ID.String(),
-		RelayPeerID:   node.RelayedBy,
-		NetworkID:     node.Network,
-		InboundToWG:   wireguard.DeliverRelayTCPInbound,
+		Addr:            addr,
+		TLSServerName:   proxyuplink.TLSServerNameFromAddr(addr),
+		CertFingerprint: proxyuplink.TcpProxyCertFingerprintForRelay(node.RelayedBy),
+		NodeID:          node.ID.String(),
+		RelayPeerID:     node.RelayedBy,
+		NetworkID:       node.Network,
+		InboundToWG:     wireguard.DeliverRelayTCPInbound,
 	}
 	mgr, err := proxyuplink.NewManager(opts)
 	if err != nil {
@@ -176,7 +177,7 @@ func reconcileTCPUplinkClientLocked(ctx context.Context, server *config.Server) 
 	ensureClientRelayUDPEndpoint(node.RelayedBy)
 	go watchTCPClientHealth(ctx, mgr, node.RelayedBy)
 	slog.Debug("client: STARTED ok", "state", mgr.State())
-	slog.Info("tcp uplink client started", "addr", addr, "relay", node.RelayedBy, "node", node.ID.String())
+	slog.Info("uplink: client started", "transport", "wss", "url", addr, "relay", node.RelayedBy, "node", node.ID.String())
 }
 
 // watchTCPClientHealth recovers after gateway restart/pull without requiring a client pull:
@@ -279,9 +280,13 @@ func stopTCPClientLocked() {
 }
 
 func tcpUplinkHostIPsFromAddr(addr string) []net.IP {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
+	host := proxyuplink.TLSServerNameFromAddr(addr)
+	if host == "" {
+		var err error
+		host, _, err = net.SplitHostPort(addr)
+		if err != nil {
+			host = addr
+		}
 	}
 	if host == "" {
 		return nil
@@ -315,15 +320,18 @@ func registerTCPUplinkHostIPsFromConfig() {
 }
 
 func reconcileTCPUplinkServerLocked(ctx context.Context) {
-	node, port, ok := proxyuplink.FindTCPGateway()
+	gw, ok := proxyuplink.FindTCPGateway()
 	if !ok {
 		slog.Debug("server: no local gateway with tcp_proxy_enabled")
 		stopTCPServerLocked()
 		return
 	}
-	slog.Debug("server: found gateway", "node", node.ID.String(), "port", port)
+	node := gw.Node
+	port := gw.ListenPort
+	slog.Debug("server: found gateway", "node", node.ID.String(), "port", port, "tls_mode", gw.TLSMode)
 
-	if tcpServerMgr != nil && tcpServerMgr.NodeID() == node.ID.String() && tcpServerMgr.ListenPort() == port {
+	if tcpServerMgr != nil && tcpServerMgr.NodeID() == node.ID.String() && tcpServerMgr.ListenPort() == port &&
+		string(tcpServerMgr.TLSMode()) == gw.TLSMode {
 		// Listener may still be up after PrepareUserspaceTeardown cleared the bind hook
 		// and peer routes (e.g. resetInterfaceFunc). Re-hook and refresh routes.
 		slog.Debug("server: already running; re-hook and refresh peer routes")
@@ -342,13 +350,18 @@ func reconcileTCPUplinkServerLocked(ctx context.Context) {
 
 	stopTCPServerLocked()
 
-	mgr, err := proxyuplink.NewServerManager(node.ID.String(), port)
+	mgr, err := proxyuplink.NewServerManager(proxyuplink.ServerManagerOptions{
+		GatewayNodeID: node.ID.String(),
+		ListenPort:    port,
+		ListenAddr:    gw.ListenAddr,
+		TLSMode:       gw.TLSMode,
+	})
 	if err != nil {
 		slog.Debug("server: NewServerManager error", "error", err)
 		slog.Error("tcp uplink server", "error", err)
 		return
 	}
-	slog.Debug("server: starting listen", "port", port)
+	slog.Debug("server: starting listen", "port", port, "tls_mode", gw.TLSMode)
 	if err := mgr.Start(ctx); err != nil {
 		slog.Debug("server: Start FAILED", "error", err)
 		slog.Error("tcp uplink server start", "error", err)

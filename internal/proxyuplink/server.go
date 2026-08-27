@@ -20,6 +20,9 @@ type ServerManager struct {
 	cancel     context.CancelFunc
 	nodeID     string
 	listenPort int
+	listenAddr string
+	tlsMode    uplink.TLSMode
+	certFP     string
 }
 
 var (
@@ -34,34 +37,69 @@ func ActiveServer() *ServerManager {
 	return serverActive
 }
 
-// NewServerManager prepares a gateway TCP uplink listener (Start creates the server).
-func NewServerManager(gatewayNodeID string, listenPort int) (*ServerManager, error) {
-	if gatewayNodeID == "" {
+// ServerManagerOptions configures the gateway uplink listener.
+type ServerManagerOptions struct {
+	GatewayNodeID string
+	ListenPort    int
+	ListenAddr    string // optional bind host (e.g. 127.0.0.1); empty = all interfaces
+	TLSMode       string // selfsigned|proxy; empty = selfsigned
+}
+
+// NewServerManager prepares a gateway uplink listener (Start creates the server).
+func NewServerManager(opts ServerManagerOptions) (*ServerManager, error) {
+	if opts.GatewayNodeID == "" {
 		return nil, errors.New("proxyuplink: gateway node ID required")
 	}
+	listenPort := opts.ListenPort
 	if listenPort <= 0 {
 		listenPort = DefaultListenPort
 	}
-	return &ServerManager{nodeID: gatewayNodeID, listenPort: listenPort}, nil
+	mode, err := ParseTLSMode(opts.TLSMode)
+	if err != nil {
+		return nil, err
+	}
+	return &ServerManager{
+		nodeID:     opts.GatewayNodeID,
+		listenPort: listenPort,
+		listenAddr: opts.ListenAddr,
+		tlsMode:    mode,
+	}, nil
 }
 
-// Start listens for TCP/TLS uplink clients.
+// Start listens for WSS (or WS in proxy mode) uplink clients.
 func (m *ServerManager) Start(ctx context.Context) error {
-	tlsCfg, err := LoadOrCreateServerTLS()
-	if err != nil {
-		return fmt.Errorf("proxyuplink server tls: %w", err)
+	addr := fmt.Sprintf(":%d", m.listenPort)
+	if m.listenAddr != "" {
+		addr = fmt.Sprintf("%s:%d", m.listenAddr, m.listenPort)
 	}
 
-	addr := fmt.Sprintf(":%d", m.listenPort)
+	srvOpts := uplink.ServerOptions{
+		ListenAddr:    addr,
+		TLSMode:       m.tlsMode,
+		Authenticator: &gatewayAuthenticator{gatewayNodeID: m.nodeID},
+		PacketHandler: &gatewayPacketHandler{},
+		Logger:        slogAdapter{},
+	}
+
+	if m.tlsMode == uplink.TLSModeSelfSigned {
+		tlsCfg, fp, err := LoadOrCreateServerTLS()
+		if err != nil {
+			return fmt.Errorf("proxyuplink server tls: %w", err)
+		}
+		srvOpts.TLSConfig = tlsCfg
+		m.certFP = fp
+		// Persist fingerprint onto local host config for control-plane publish.
+		if h := config.Netclient(); h != nil && h.TcpProxyCertFingerprint != fp {
+			h.TcpProxyCertFingerprint = fp
+			h.TcpProxyTLSMode = string(m.tlsMode)
+			config.UpdateNetclient(*h)
+			_ = config.WriteNetclientConfig()
+		}
+	}
+
 	reg := uplink.NewInMemoryRegistry()
-	srv, err := uplink.NewServer(uplink.ServerOptions{
-		ListenAddr:      addr,
-		TLSConfig:       tlsCfg,
-		Authenticator:   &gatewayAuthenticator{gatewayNodeID: m.nodeID},
-		PacketHandler:   &gatewayPacketHandler{},
-		SessionRegistry: reg,
-		Logger:          slogAdapter{},
-	})
+	srvOpts.SessionRegistry = reg
+	srv, err := uplink.NewServer(srvOpts)
 	if err != nil {
 		return err
 	}
@@ -88,7 +126,13 @@ func (m *ServerManager) Start(ctx context.Context) error {
 	serverActiveMu.Unlock()
 
 	wireguard.SetTCPUplinkServer(m)
-	slog.Info("tcp uplink server started", "listen", addr, "gateway_node", m.nodeID)
+	slog.Info("uplink: server started",
+		"transport", "wss",
+		"listen", addr,
+		"gateway_node", m.nodeID,
+		"tls_mode", string(m.tlsMode),
+		"path", uplink.UplinkWSPath,
+	)
 	return nil
 }
 
@@ -132,8 +176,6 @@ func (m *ServerManager) SendToPeer(ctx context.Context, peerID string, pkt []byt
 }
 
 // HasSession reports whether peerID currently has an attached TCP uplink session.
-// Bind.Send must only divert to TCP when this is true; otherwise UDP-only exit
-// clients never get handshake replies.
 func (m *ServerManager) HasSession(peerID string) bool {
 	if peerID == "" {
 		return false
@@ -162,6 +204,12 @@ func (m *ServerManager) SessionPeerIDs() []string {
 // ListenPort returns the configured listen port.
 func (m *ServerManager) ListenPort() int { return m.listenPort }
 
+// TLSMode returns the configured TLS mode.
+func (m *ServerManager) TLSMode() uplink.TLSMode { return m.tlsMode }
+
+// CertFingerprint returns the self-signed cert fingerprint when applicable.
+func (m *ServerManager) CertFingerprint() string { return m.certFP }
+
 // NodeID returns the gateway node ID.
 func (m *ServerManager) NodeID() string { return m.nodeID }
 
@@ -172,11 +220,11 @@ type gatewayAuthenticator struct {
 func (a *gatewayAuthenticator) ValidateClientHello(ctx context.Context, hello uplink.ClientHello) (*uplink.AuthResult, error) {
 	_ = ctx
 	if hello.RelayPeerID != a.gatewayNodeID {
-		slog.Warn("tcp uplink auth: relay_peer_id mismatch", "got", hello.RelayPeerID, "want", a.gatewayNodeID)
+		slog.Warn("uplink: auth relay_peer_id mismatch", "got", hello.RelayPeerID, "want", a.gatewayNodeID)
 		return nil, uplink.ErrAuthFailed
 	}
 	if err := validateWGHelloProof(hello); err != nil {
-		slog.Warn("tcp uplink auth: wg proof failed", "node", hello.NodeID, "error", err)
+		slog.Warn("uplink: auth wg proof failed", "node", hello.NodeID, "error", err)
 		return nil, uplink.ErrAuthFailed
 	}
 	gatewayFound := false
@@ -250,13 +298,7 @@ func registerPeerEndpoint(peerID string) error {
 
 // RefreshTCPPeerRoutes re-resolves gateway TCP peer routes from current HostPeers
 // for peers that already have a divert mapping plus every peer with a live TCP
-// session. Session peers must be included because ClearAllTCPPeerRoutes (iface
-// reset / server stop) drops their mapping, which would leave gateway→client
-// traffic on UDP that a TCP-uplink client cannot receive.
-//
-// Do NOT register all RelayedNodes here — that forces Bind.Send onto TCP for
-// UDP-only exit clients that never open a TCP session, so they would never
-// complete a handshake.
+// session.
 func RefreshTCPPeerRoutes() {
 	ids := wireguard.TCPRoutedPeerIDs()
 	if srv := ActiveServer(); srv != nil {

@@ -206,6 +206,10 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 	host.EntraDeviceID = hostCfg.EntraDeviceID
 	host.SerialNumber = hostCfg.SerialNumber
 	host.HardwareUUID = hostCfg.HardwareUUID
+	// Preserve locally generated uplink cert fingerprint until the server echoes it.
+	if host.TcpProxyCertFingerprint == "" {
+		host.TcpProxyCertFingerprint = hostCfg.TcpProxyCertFingerprint
+	}
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()

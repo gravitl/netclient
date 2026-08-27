@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 )
 
 const DefaultListenPort = 443
@@ -54,14 +55,26 @@ func FindUplinkClient() (config.Node, bool) {
 	return config.Node{}, false
 }
 
+// GatewayListenConfig is returned by FindTCPGateway.
+type GatewayListenConfig struct {
+	Node       config.Node
+	ListenPort int
+	ListenAddr string
+	TLSMode    string
+}
+
 // FindTCPGateway returns the first local gateway node that should listen for TCP uplinks.
-// Listen enable/port are host-level (peer update Host); node TcpProxy* is a fallback for older servers.
-func FindTCPGateway() (node config.Node, listenPort int, ok bool) {
+// Listen enable/port/mode are host-level (peer update Host); node TcpProxy* is a fallback.
+func FindTCPGateway() (cfg GatewayListenConfig, ok bool) {
 	host := config.Netclient()
 	hostEnabled := host != nil && host.TcpProxyEnabled
 	hostPort := 0
+	hostAddr := ""
+	hostMode := ""
 	if host != nil {
 		hostPort = host.TcpProxyListenPort
+		hostAddr = host.TcpProxyListenAddr
+		hostMode = host.TcpProxyTLSMode
 	}
 	for _, n := range config.GetNodes() {
 		if !(n.IsGw || n.IsRelay || n.IsIngressGateway) {
@@ -77,12 +90,24 @@ func FindTCPGateway() (node config.Node, listenPort int, ok bool) {
 		if port <= 0 {
 			port = DefaultListenPort
 		}
-		return n, port, true
+		mode := hostMode
+		if mode == "" {
+			mode = n.TcpProxyTLSMode
+		}
+		if mode == "" {
+			mode = schema.TcpProxyTLSModeSelfSigned
+		}
+		return GatewayListenConfig{
+			Node:       n,
+			ListenPort: port,
+			ListenAddr: hostAddr,
+			TLSMode:    mode,
+		}, true
 	}
-	return config.Node{}, 0, false
+	return GatewayListenConfig{}, false
 }
 
-// TcpProxyEndpointForRelay returns host:port for the gateway node ID from cached PeerIDs.
+// TcpProxyEndpointForRelay returns the WSS URL (or legacy host:port) for the gateway node ID.
 func TcpProxyEndpointForRelay(relayNodeID string) string {
 	if relayNodeID == "" {
 		return ""
@@ -92,6 +117,21 @@ func TcpProxyEndpointForRelay(relayNodeID string) string {
 	for _, ida := range lastPeerIDs {
 		if ida.ID == relayNodeID && ida.TcpProxyEndpoint != "" {
 			return ida.TcpProxyEndpoint
+		}
+	}
+	return ""
+}
+
+// TcpProxyCertFingerprintForRelay returns the published cert fingerprint for the gateway.
+func TcpProxyCertFingerprintForRelay(relayNodeID string) string {
+	if relayNodeID == "" {
+		return ""
+	}
+	peerIDsMu.RLock()
+	defer peerIDsMu.RUnlock()
+	for _, ida := range lastPeerIDs {
+		if ida.ID == relayNodeID {
+			return ida.TcpProxyCertFingerprint
 		}
 	}
 	return ""

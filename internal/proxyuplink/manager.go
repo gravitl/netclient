@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/gravitl/netclient/config"
@@ -11,7 +13,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// Manager owns a TCP/TLS uplink.Client to the gateway.
+// Manager owns a WSS uplink.Client to the gateway.
 type Manager struct {
 	mu     sync.RWMutex
 	client *uplink.Client
@@ -34,10 +36,12 @@ func Active() *Manager {
 
 // Options configures the uplink from server-published settings.
 type Options struct {
-	// Addr is host:port of the gateway TCP/TLS listener (required).
+	// Addr is the WSS endpoint URL (wss://host:port/uplink/v1) or legacy host:port.
 	Addr string
-	// TLSServerName is TLS SNI (optional).
+	// TLSServerName is TLS SNI (optional; derived from URL when empty).
 	TLSServerName string
+	// CertFingerprint is the expected SHA-256 hex of the gateway leaf cert (selfsigned).
+	CertFingerprint string
 	// NodeID is this client's network node ID (ClientHello.node_id).
 	NodeID string
 	// RelayPeerID is the gateway/relay node ID (required).
@@ -62,7 +66,7 @@ func NewManager(opts Options) (*Manager, error) {
 	return &Manager{addr: opts.Addr, relay: opts.RelayPeerID}, nil
 }
 
-// Addr returns the dial address.
+// Addr returns the dial address / URL.
 func (m *Manager) Addr() string {
 	return m.addr
 }
@@ -72,17 +76,21 @@ func (m *Manager) RelayPeerID() string {
 	return m.relay
 }
 
-// Start dials the gateway and runs the framed session until ctx is cancelled or Stop.
+// Start dials the gateway over WSS and runs the framed session until ctx is cancelled or Stop.
 func (m *Manager) Start(ctx context.Context, server *config.Server, host *config.Config, opts Options) error {
 	_ = server // retained for call-site compatibility; uplink auth uses WG keys, not API JWT
 	if host == nil {
 		return errors.New("proxyuplink: host config missing")
 	}
 
-	tlsCfg := ClientTLSConfig(opts.TLSServerName)
+	sni := opts.TLSServerName
+	if sni == "" {
+		sni = TLSServerNameFromAddr(opts.Addr)
+	}
+	tlsCfg := ClientTLSConfig(sni, opts.CertFingerprint)
 	c, err := uplink.NewClient(uplink.ClientOptions{
 		Addr:       opts.Addr,
-		ServerName: opts.TLSServerName,
+		ServerName: sni,
 		TLSConfig:  tlsCfg,
 		HelloFactory: func() (uplink.ClientHello, error) {
 			return buildClientHello(host, opts)
@@ -113,13 +121,20 @@ func (m *Manager) Start(ctx context.Context, server *config.Server, host *config
 		m.mu.Unlock()
 		return err
 	}
+
 	activeMu.Lock()
 	active = m
 	activeMu.Unlock()
+	slog.Info("uplink: client started",
+		"transport", "wss",
+		"url", opts.Addr,
+		"relay", opts.RelayPeerID,
+		"node", opts.NodeID,
+	)
 	return nil
 }
 
-// Stop ends the uplink session.
+// Stop shuts down the client.
 func (m *Manager) Stop(ctx context.Context) error {
 	m.mu.Lock()
 	cancel := m.cancel
@@ -127,36 +142,38 @@ func (m *Manager) Stop(ctx context.Context) error {
 	m.cancel = nil
 	m.client = nil
 	m.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
+
 	activeMu.Lock()
 	if active == m {
 		active = nil
 	}
 	activeMu.Unlock()
-	if c != nil {
-		return c.Stop(ctx)
+
+	if cancel != nil {
+		cancel()
 	}
-	return nil
+	if c == nil {
+		return nil
+	}
+	return c.Stop(ctx)
 }
 
-// SendPacket sends framed WireGuard ciphertext to the gateway.
+// SendPacket sends a WG packet to the gateway.
 func (m *Manager) SendPacket(ctx context.Context, pkt []byte) error {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	c := m.client
+	m.mu.RUnlock()
 	if c == nil {
 		return uplink.ErrClientClosed
 	}
 	return c.SendPacket(ctx, pkt)
 }
 
-// State returns the proxy client state.
+// State returns the uplink client state.
 func (m *Manager) State() uplink.ClientState {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	c := m.client
+	m.mu.RUnlock()
 	if c == nil {
 		return uplink.StateDisconnected
 	}
@@ -170,8 +187,16 @@ func (slogAdapter) Info(msg string, kv ...any)  { slog.Info(msg, kv...) }
 func (slogAdapter) Warn(msg string, kv ...any)  { slog.Warn(msg, kv...) }
 func (slogAdapter) Error(msg string, kv ...any) { slog.Error(msg, kv...) }
 
-// TLSServerNameFromAddr returns the host part of addr for SNI.
+// TLSServerNameFromAddr returns the host part of a WSS URL or host:port for SNI.
 func TLSServerNameFromAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if strings.Contains(addr, "://") {
+		u, err := url.Parse(addr)
+		if err != nil {
+			return ""
+		}
+		return u.Hostname()
+	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return ""
