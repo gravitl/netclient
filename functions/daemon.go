@@ -240,53 +240,85 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		} else {
 			fmt.Println("[listen-port-debug] startGoRoutines: keeping ListenPort=", netclientCfg.ListenPort)
 		}
-
 	} else {
 		fmt.Println("[listen-port-debug] startGoRoutines: IsStaticPort=true, ListenPort=", netclientCfg.ListenPort)
 		netclientCfg.WgPublicListenPort = netclientCfg.ListenPort
+		config.WgPublicListenPort = netclientCfg.ListenPort
 		updateConfig = true
 	}
 
-	if !netclientCfg.IsStatic {
-		// IPV4
-		config.HostPublicIP, config.WgPublicListenPort, config.HostNatType = holePunchWgPort(4, netclientCfg.ListenPort)
-		slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
-		if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
-			netclientCfg.EndpointIP = config.HostPublicIP
-			updateConfig = true
-		} else {
-			slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
-			if netclientCfg.EndpointIP != nil {
-				config.HostPublicIP = netclientCfg.EndpointIP
-				slog.Info("seeded HostPublicIP from stored endpoint", "ip", netclientCfg.EndpointIP)
+	// Hole punch only when at least one of endpoint/port is dynamic. Apply STUN
+	// results independently: static endpoint keeps configured IPs; static port
+	// keeps ListenPort as the public port (already set above).
+	needEndpointUpdate := !netclientCfg.IsStatic
+	needPortUpdate := !netclientCfg.IsStaticPort
+	if needEndpointUpdate || needPortUpdate {
+		pubIP4, pubPort4, natType4 := holePunchWgPort(4, netclientCfg.ListenPort)
+		pubIP6, pubPort6, natType6 := holePunchWgPort(6, netclientCfg.ListenPort)
+
+		if needPortUpdate {
+			if pubPort4 != 0 {
+				config.WgPublicListenPort = pubPort4
+				config.HostNatType = natType4
+			} else if pubPort6 != 0 {
+				config.WgPublicListenPort = pubPort6
+				config.HostNatType = natType6
 			}
-		}
-		if netclientCfg.NatType == "" {
-			netclientCfg.NatType = config.HostNatType
-			updateConfig = true
-		}
-		// IPV6
-		publicIP6, wgport, natType := holePunchWgPort(6, netclientCfg.ListenPort)
-		if publicIP6 != nil && publicIP6.To4() == nil && !publicIP6.IsUnspecified() {
-			netclientCfg.EndpointIPv6 = publicIP6
-			config.HostPublicIP6 = publicIP6
-			if config.HostPublicIP == nil {
-				config.WgPublicListenPort = wgport
-				config.HostNatType = natType
+			slog.Info("wireguard public listen port: ", "port", config.WgPublicListenPort)
+			if config.WgPublicListenPort != 0 && netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
+				netclientCfg.WgPublicListenPort = config.WgPublicListenPort
+				updateConfig = true
 			}
-			updateConfig = true
-		} else {
-			slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
-			if netclientCfg.EndpointIPv6 != nil {
-				config.HostPublicIP6 = netclientCfg.EndpointIPv6
-				slog.Info("seeded HostPublicIP6 from stored endpoint", "ip", netclientCfg.EndpointIPv6)
-			}
-		}
-		if netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
-			netclientCfg.WgPublicListenPort = config.WgPublicListenPort
-			updateConfig = true
 		}
 
+		if needEndpointUpdate {
+			config.HostPublicIP = pubIP4
+			if config.HostPublicIP != nil && !config.HostPublicIP.IsUnspecified() {
+				netclientCfg.EndpointIP = config.HostPublicIP
+				updateConfig = true
+			} else {
+				slog.Warn("GetPublicIPv4 error:", "Warn", "no ipv4 found")
+				if netclientCfg.EndpointIP != nil {
+					config.HostPublicIP = netclientCfg.EndpointIP
+					slog.Info("seeded HostPublicIP from stored endpoint", "ip", netclientCfg.EndpointIP)
+				}
+			}
+			if netclientCfg.NatType == "" && config.HostNatType != "" {
+				netclientCfg.NatType = config.HostNatType
+				updateConfig = true
+			} else if netclientCfg.NatType == "" && natType4 != "" {
+				netclientCfg.NatType = natType4
+				config.HostNatType = natType4
+				updateConfig = true
+			}
+			if pubIP6 != nil && pubIP6.To4() == nil && !pubIP6.IsUnspecified() {
+				netclientCfg.EndpointIPv6 = pubIP6
+				config.HostPublicIP6 = pubIP6
+				if config.HostPublicIP == nil && needPortUpdate && pubPort6 != 0 {
+					config.WgPublicListenPort = pubPort6
+					config.HostNatType = natType6
+					if netclientCfg.WgPublicListenPort != config.WgPublicListenPort {
+						netclientCfg.WgPublicListenPort = config.WgPublicListenPort
+					}
+				}
+				updateConfig = true
+			} else {
+				slog.Warn("GetPublicIPv6 Warn: ", "Warn", "no ipv6 found")
+				if netclientCfg.EndpointIPv6 != nil {
+					config.HostPublicIP6 = netclientCfg.EndpointIPv6
+					slog.Info("seeded HostPublicIP6 from stored endpoint", "ip", netclientCfg.EndpointIPv6)
+				}
+			}
+		} else {
+			// Endpoint is static: seed in-memory public IPs from configured endpoints
+			// so other paths (check-in, metrics) still see the admin-set values.
+			if netclientCfg.EndpointIP != nil {
+				config.HostPublicIP = netclientCfg.EndpointIP
+			}
+			if netclientCfg.EndpointIPv6 != nil {
+				config.HostPublicIP6 = netclientCfg.EndpointIPv6
+			}
+		}
 	}
 
 	originalDefaultGwIP, err := wireguard.GetDefaultGatewayIp()
