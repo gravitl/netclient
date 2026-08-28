@@ -284,9 +284,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	//setup the default gateway when change_default_gw set to true (after peers
 	//are on the interface so IGW monitor can resolve the exit peer).
+	// ReplacePeers (e.g. ACL policy changes) forces a reinstall so OS exit routes
+	// are restored even if the IGW monitor still reports the same nexthop.
 	if peerUpdate.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		if peerUpdate.ReplacePeers || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
@@ -895,10 +897,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if !tcpModeFlipped {
 		reconcileTCPUplink(server, pullResponse.PeerIDs)
 	}
-	//setup the default gateway when change_default_gw set to true (after peers)
+	//setup the default gateway when change_default_gw set to true (after peers).
+	// ReplacePeers forces a reinstall so OS exit routes are restored after ACL
+	// (or other full-replace) updates even if the IGW monitor nexthop is unchanged.
 	if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
-		if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		if replacePeers || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
