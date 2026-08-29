@@ -360,6 +360,21 @@ func SetVerbosity(logLevel int) {
 
 }
 
+// IPsEqual compares two IP addresses, normalizing IPv4 and IPv6 representations.
+func IPsEqual(a, b net.IP) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	a16, b16 := a.To16(), b.To16()
+	if a16 == nil || b16 == nil {
+		return a.Equal(b)
+	}
+	return a16.Equal(b16)
+}
+
 func TraceCaller() {
 	// Skip 1 frame to get the caller of this function
 	pc, file, line, ok := runtime.Caller(2)
