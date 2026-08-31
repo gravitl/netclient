@@ -1,53 +1,59 @@
-# Netclient v1.6.0 Release Notes 🚀
+# Netclient v1.7.0 Release Notes 🚀
 
 ## 🚀 What’s New
 
-### 🔁 Site-to-Site ACLs (Beta)
+### 🏢 Multi-Tenancy Support
 
-Define ACL policies that permit traffic between egress endpoints across networks.
+Netclient is tenant-aware for Netmaker MSP / multi-tenant deployments.
 
-- Build site-to-site rules between egress resources on different networks.
-- Combine egress resources, nodes, and specific IPs in a single policy.
-- Site-to-site rules are emitted alongside device-mesh rules without key collisions.
+- Sends `X-Tenant-ID` on API requests so host actions are scoped to the correct tenant.
+- Prevents registering into a different tenant on a server the host is already joined to.
+- Uninstall, leave, and host cleanup use the correct token and tenant context; switching servers updates tenant state cleanly.
 
+### 🔌 TCP Proxy / WSS Uplink
 
-### 🛡️ Egress ACLs with IP Restriction
+Reach the mesh when UDP is blocked by tunneling WireGuard over a **TCP/WSS uplink** to a gateway.
 
-ACL policies can now target **individual IPs** inside an egress range using the `ip` ACL target type.
+- Gateways can enable a TCP proxy listener (`tcp_proxy_enabled`, listen port/addr, TLS mode).
+- Relayed clients dial the gateway over WSS (`wss://…/uplink/v1`) and authenticate with WireGuard key proofs.
+- Supports **self-signed** and **reverse-proxy / externally terminated TLS** modes.
+- Userspace WireGuard bind routes uplink peers through the proxy; disabling TCP uplink returns to kernel WireGuard without hanging.
 
-- Restrict access to specific hosts within a larger egress CIDR.
-- Validate that selected IPs fall within the referenced egress range at policy create/update time.
-- Mix egress resources, nodes, tags, and individual IPs in the same policy.
+### 📱 MDM Posture Collection
 
-### 🔐 Registration & Join UX
+Netclient collects device identity for **MDM posture checks** and reports compliance status.
 
-Host registration over OAuth/basic auth now returns **clear websocket close reasons** on failure (auth errors, missing access, posture violations, and server errors).
+- Gathers hostname, serial, hardware UUID, and Entra device ID (platform-specific collectors for Linux, macOS, and Windows).
+- Sets MDM posture fields on registration and publishes identity for server-side Intune / Jamf / JumpCloud / Iru evaluation.
+- New CLI: `netclient posture status` (server-evaluated results) and `netclient posture identity` (local identity snapshot).
+
+### 🌐 Dual-Stack Exit Node Routing
+
+Internet / exit-node routing now supports **IPv4 and IPv6** together.
+
+- Dual-stack default routes and per-family gateway detection (including Windows default-gateway lookup by IP family).
+- Exit-node UI/API fields wired through for dual-stack internet gateways.
+- IPv6 NAT / masquerade rules for iptables and nftables egress endpoints.
+
 
 ---
 
 ## 🧰 Improvements & Fixes
 
-### **Egress**
-- Added **LAN-to-VPN masquerade** rules for iptables and nftables egress endpoints.
-- Egress route filtering now applies only on **exact CIDR matches**, avoiding unintended route conflicts.
+### **Internet Gateways / Exit Routes**
+- Reapply exit routes after IGW monitor goes unhealthy and on `ReplacePeers` peer updates.
+- Improved IGW monitor status management and thread safety; don’t start the monitor with an empty gateway peer.
 
-### **DNS**
-- Fixed split-DNS handling across Linux DNS config managers (openresolv, resolvconf, and file-based).
-- Added fallback nameserver seeding when no DNS response is available.
-- Improved Windows DNS interface metric and configuration handling.
+### **Egress / Firewall**
+- Fixed nftables port rules and restored egress MASQUERADE on the default interface (keep primary masquerade; skip only LAN-to-VPN SNAT when egress uses the WAN iface).
+- IPv6 NAT handling for iptables and nftables.
 
-### **Internet Gateways**
-- Internet Gateway health checks now validate pull data against the **IGW monitor IP**.
-- Fixed peer iteration to loop over **netclient peers** instead of device peers.
+### **Endpoint / Listen Port**
+- Refresh the public listen port independently of a static endpoint (STUN for dynamic port even when the endpoint is static, and vice versa).
+- Skip hole punch only when both endpoint and port are static.
 
-### **Reliability**
-- Null-terminate network interfaces to prevent configuration edge cases.
-- Skip config reset when the WireGuard interface does not exist.
-- Endpoint caches are reset safely using `sync.Map.Clear()`.
-- Metrics collection is now triggered on demand.
-
-### **Schema Migration**
-- Updated for Netmaker v1.6.0 **nodes schema migration** compatibility.
+### **Build**
+- Go toolchain updated to **1.26.0**.
 
 
 ---
@@ -62,4 +68,3 @@ Host registration over OAuth/basic auth now returns **clear websocket close reas
 
 - **systemd-resolved DNS limitation**  
   On systems using **systemd-resolved in uplink mode**, only the **first 3 entries** in `resolv.conf` are honored; additional entries are ignored. This may cause DNS resolution issues. **Stub mode is recommended**.
-
