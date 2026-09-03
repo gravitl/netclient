@@ -240,6 +240,26 @@ func SetNetclientServerContext(id uuid.UUID, tenantID string) {
 	netclient.HostPeers = []wgtypes.PeerConfig{}
 }
 
+func SyncTenantID(hostID uuid.UUID, tenantID string) bool {
+	if tenantID == "" || hostID == uuid.Nil {
+		return false
+	}
+	netclientCfgMutex.Lock()
+	if hostID != netclient.ID {
+		netclientCfgMutex.Unlock()
+		return false
+	}
+	changed := netclient.TenantID != tenantID
+	if changed {
+		netclient.TenantID = tenantID
+	}
+	netclientCfgMutex.Unlock()
+	if changed {
+		_ = WriteNetclientConfig()
+	}
+	return changed
+}
+
 // DeleteServerHostPeerCfg - deletes the host peers for the server
 func DeleteServerHostPeerCfg() {
 	netclientCfgMutex.Lock()
