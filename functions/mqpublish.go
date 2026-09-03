@@ -17,12 +17,51 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 	"github.com/gravitl/netmaker/utils"
 	"golang.org/x/exp/slog"
 )
+
+// buildHostUpdatePayload returns the payload to JSON-encode for either the
+// HTTP fallback PUT or the MQTT publish path.
+func buildHostUpdatePayload(hu models.HostUpdate) models.HostUpdate {
+	posture.ApplyIdentity(&hu.Host)
+	syncHostIdentityToConfig(hu.Host)
+	return hu
+}
+
+// syncHostIdentityToConfig mirrors freshly collected identity into netclient.json.
+func syncHostIdentityToConfig(host schema.Host) {
+	hostCfg := config.Netclient()
+	if hostCfg == nil {
+		return
+	}
+	updated := *hostCfg
+	changed := false
+	if host.EntraDeviceID != "" && updated.EntraDeviceID != host.EntraDeviceID {
+		updated.EntraDeviceID = host.EntraDeviceID
+		changed = true
+	}
+	if host.SerialNumber != "" && updated.SerialNumber != host.SerialNumber {
+		updated.SerialNumber = host.SerialNumber
+		changed = true
+	}
+	if host.HardwareUUID != "" && updated.HardwareUUID != host.HardwareUUID {
+		updated.HardwareUUID = host.HardwareUUID
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	config.UpdateNetclient(updated)
+	if err := config.WriteNetclientConfig(); err != nil {
+		slog.Warn("failed to persist host identity to config", "error", err)
+	}
+}
 
 const (
 	// ACK - acknowledgement signal for MQ
@@ -93,15 +132,25 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				slog.Warn("failed to update host settings", err.Error())
 			}
 		case <-ipTicker.C:
-			// this ticker is used to detect network changes, and publish new public ip to peers
-			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
-			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
-				restart := false
-				ip4, _, _ := holePunchWgPort(4, 0)
-				ip6, _, _ := holePunchWgPort(6, 0)
-				if ip4 == nil && ip6 == nil {
-					continue
-				}
+			// Detect underlay changes. Endpoint discovery is skipped when static endpoint
+			// is set; public listen port is still refreshed when the port is dynamic.
+			if config.Netclient().CurrGwNmIP != nil {
+				continue
+			}
+			needEndpointUpdate := !config.Netclient().IsStatic
+			needPortUpdate := !config.Netclient().IsStaticPort
+			if !needEndpointUpdate && !needPortUpdate {
+				continue
+			}
+			restart := false
+			publishOnly := false
+			listenPort := config.Netclient().ListenPort
+			ip4, port4, _ := holePunchWgPort(4, listenPort)
+			ip6, port6, _ := holePunchWgPort(6, listenPort)
+			if ip4 == nil && ip6 == nil && port4 == 0 && port6 == 0 {
+				continue
+			}
+			if needEndpointUpdate {
 				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
 					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 					config.HostPublicIP = ip4
@@ -112,7 +161,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					restart = true
 				}
 
-				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+				if ip6 != nil && ip6.To4() == nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 					config.HostPublicIP6 = ip6
 					restart = true
@@ -121,19 +170,32 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 					config.HostPublicIP6 = nil
 					restart = true
 				}
-				if restart {
-					if err := UpdateHostSettings(true); err != nil {
-						slog.Warn("failed to update host settings", err.Error())
-					}
-					logger.Log(0, "restarting netclient due to network changes...")
-					if ip4 != nil {
-						logger.Log(0, "new IPv4 detected: ", ip4.String())
-					}
-					if ip6 != nil {
-						logger.Log(0, "new IPv6 detected: ", ip6.String())
-					}
-					daemon.HardRestart()
+			}
+			if needPortUpdate {
+				pubPort := port4
+				if pubPort == 0 {
+					pubPort = port6
 				}
+				if pubPort != 0 && config.WgPublicListenPort != pubPort {
+					slog.Debug("PORT CHECKIN", "old", config.WgPublicListenPort, "new", pubPort)
+					config.WgPublicListenPort = pubPort
+					publishOnly = true
+				}
+			}
+			if restart || publishOnly {
+				if err := UpdateHostSettings(true); err != nil {
+					slog.Warn("failed to update host settings", err.Error())
+				}
+			}
+			if restart {
+				logger.Log(0, "restarting netclient due to network changes...")
+				if ip4 != nil {
+					logger.Log(0, "new IPv4 detected: ", ip4.String())
+				}
+				if ip6 != nil && ip6.To4() == nil {
+					logger.Log(0, "new IPv6 detected: ", ip6.String())
+				}
+				daemon.HardRestart()
 			}
 		}
 
@@ -156,8 +218,32 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
-	_, err = ncutils.SendRequest(http.MethodPut, url, headers, hu)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
+	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
+	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			logMDMDenialOnce()
+			return denyErr
+		}
+	}
 	return err
+}
+
+// mdmDenialOnce throttles MDM denial messaging so each check-in cycle does
+// not spam the user. The message is re-emitted at most every 10 minutes.
+var (
+	mdmDenialMu       sync.Mutex
+	mdmDenialLastShow time.Time
+)
+
+func logMDMDenialOnce() {
+	mdmDenialMu.Lock()
+	defer mdmDenialMu.Unlock()
+	if time.Since(mdmDenialLastShow) < 10*time.Minute {
+		return
+	}
+	mdmDenialLastShow = time.Now()
+	slog.Warn(MDMDeniedMessage)
 }
 
 // hostServerUpdate - used to send host updates to server via restful api
@@ -200,7 +286,7 @@ func PublishHostUpdate(server string, hostAction models.HostMqAction) error {
 		Action: hostAction,
 		Host:   hostCfg.Host,
 	}
-	data, err := json.Marshal(hostUpdate)
+	data, err := json.Marshal(buildHostUpdatePayload(hostUpdate))
 	if err != nil {
 		return err
 	}
@@ -340,7 +426,11 @@ func UpdateHostSettings(fallback bool) error {
 	}
 
 	if !config.Netclient().IsStatic {
-		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
+		if config.HostPublicIP6 != nil && config.HostPublicIP6.To4() != nil {
+			// IPv4 was stored as endpoint6 when the family check used To16().
+			config.HostPublicIP6 = nil
+		}
+		if config.HostPublicIP6 != nil && config.HostPublicIP6.To4() == nil && !config.HostPublicIP6.IsUnspecified() {
 			if !config.Netclient().EndpointIPv6.Equal(config.HostPublicIP6) {
 				logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 				config.Netclient().EndpointIPv6 = config.HostPublicIP6

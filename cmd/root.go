@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
@@ -415,6 +416,9 @@ func checkConfig() {
 	if config.FirewallHasChanged() {
 		saveRequired = true
 		config.SetFirewall()
+	}
+	if posture.ApplyIdentityIfChanged(&netclient.Host) {
+		saveRequired = true
 	}
 	if saveRequired {
 		logger.Log(3, "saving netclient configuration")

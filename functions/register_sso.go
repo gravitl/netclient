@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -68,6 +69,7 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 		return
 	}
 
+	posture.ApplyIdentity(&host.Host)
 	request := models.RegisterMsg{
 		RegisterHost: host.Host,
 		User:         registerData.User,

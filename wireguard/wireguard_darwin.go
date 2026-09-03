@@ -158,14 +158,23 @@ func (nc *NCIface) SetMTU() error {
 }
 
 func (nc *NCIface) Close() {
-	wgMutex.Lock()
-	defer wgMutex.Unlock()
-	err := nc.Iface.Close()
-	if err == nil {
-		sockPath := "/var/run/wireguard/" + nc.Name + ".sock"
-		if _, statErr := os.Stat(sockPath); statErr == nil {
-			os.Remove(sockPath)
+	// Must call closeUserspaceWg (own lock) — do not hold wgMutex across it.
+	// Skipping it leaves a stale Device/relayBind after SIGHUP (disconnect/connect).
+	if UserspaceWGActive() {
+		_ = nc.closeUserspaceWg()
+	} else {
+		wgMutex.Lock()
+		if nc.Iface != nil {
+			if err := nc.Iface.Close(); err != nil {
+				slog.Debug("error closing netclient interface", "error", err)
+			}
 		}
+		wgMutex.Unlock()
+	}
+
+	sockPath := "/var/run/wireguard/" + nc.Name + ".sock"
+	if _, statErr := os.Stat(sockPath); statErr == nil {
+		_ = os.Remove(sockPath)
 	}
 
 	if !nc.IsTestIface {
@@ -239,6 +248,11 @@ func GetDefaultGatewayIp() (ip net.IP, err error) {
 		return gwDef, nil
 	}
 	return nil, fmt.Errorf("default gateway not found")
+}
+
+// GetDefaultGatewayIp6 - get current default gateway IPv6 address
+func GetDefaultGatewayIp6() (ip net.IP, err error) {
+	return getRouteGateway("-inet6", "default")
 }
 
 func getRouteGateway(args ...string) (ip net.IP, err error) {
@@ -319,25 +333,52 @@ func resetDefaultRoutesOnHost() error {
 		}
 	}
 	config.Netclient().CurrGwNmIP = nil
+	config.Netclient().CurrGwNmIP6 = nil
 	config.Netclient().OriginalDefaultGatewayIp = nil
+	config.Netclient().OriginalDefaultGatewayIp6 = nil
 	return config.WriteNetclientConfig()
 }
 
-// SetInternetGw - set a new default gateway
-func SetInternetGw(publicKey string, networkIP net.IP) (err error) {
-	err = setDefaultRoutesOnHost(publicKey, networkIP)
-	if err == nil {
-		GetIGWMonitor().Monitor(publicKey, networkIP)
+// SetInternetGw - set a new default gateway.
+// Installs IPv4 and/or IPv6 OS default routes when the corresponding nexthop is present.
+func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
+	if IsZeroWGPublicKey(publicKey) {
+		return fmt.Errorf("internet gateway peer public key is empty")
+	}
+	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
+	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
+		if err != nil {
+			slog.Warn("internet gateway partially configured", "error", err.Error())
+		}
+		return nil
 	}
 	return err
 }
 
-func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
-	gw, err := getRouteGateway("default")
-	if err != nil {
-		return fmt.Errorf("failed to get current gateway: %w", err)
+func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
+	if len(gw4) > 0 {
+		if gw, err := getRouteGateway("default"); err == nil {
+			config.Netclient().OriginalDefaultGatewayIp = gw
+		}
 	}
-	config.Netclient().OriginalDefaultGatewayIp = gw
+	if len(gw6) > 0 {
+		if gw6Orig, err := getRouteGateway("-inet6", "default"); err == nil {
+			config.Netclient().OriginalDefaultGatewayIp6 = gw6Orig
+		} else if gw, err := getRouteGateway("default"); err == nil && gw.To4() == nil {
+			config.Netclient().OriginalDefaultGatewayIp6 = gw
+		}
+	}
+
+	gw := config.Netclient().OriginalDefaultGatewayIp
+	if len(gw) == 0 {
+		var err error
+		gw, err = getRouteGateway("default")
+		if err != nil {
+			return fmt.Errorf("failed to get current gateway: %w", err)
+		}
+		config.Netclient().OriginalDefaultGatewayIp = gw
+	}
 
 	peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
 	if err != nil {
@@ -358,12 +399,22 @@ func setDefaultRoutesOnHost(publicKey string, networkIP net.IP) error {
 		}
 	}
 
-	run("add", "-net", "-inet", "0.0.0.0/1", "-interface", iface)
-	run("add", "-net", "-inet", "128.0.0.0/1", "-interface", iface)
+	if len(gw4) > 0 {
+		run("add", "-net", "-inet", "0.0.0.0/1", "-interface", iface)
+		run("add", "-net", "-inet", "128.0.0.0/1", "-interface", iface)
+		config.Netclient().CurrGwNmIP = gw4
+	}
 
-	run("add", "-net", "-inet6", "::/1", "-interface", iface)
-	run("add", "-net", "-inet6", "8000::/1", "-interface", iface)
+	if len(gw6) > 0 {
+		run("add", "-net", "-inet6", "::/1", "-interface", iface)
+		run("add", "-net", "-inet6", "8000::/1", "-interface", iface)
+		config.Netclient().CurrGwNmIP6 = gw6
+		if len(config.Netclient().CurrGwNmIP) == 0 {
+			config.Netclient().CurrGwNmIP = gw6
+		}
+	}
 
-	config.Netclient().CurrGwNmIP = networkIP
 	return config.WriteNetclientConfig()
 }
+
+func pinInternetGwHostRoutes(publicKey string) {}

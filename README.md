@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/gravitl/netmaker/releases">
-    <img src="https://img.shields.io/badge/Version-1.6.0-informational?style=flat-square" />
+    <img src="https://img.shields.io/badge/Version-1.7.0-informational?style=flat-square" />
   </a>
   <a href="https://hub.docker.com/r/gravitl/netclient/tags">
     <img src="https://img.shields.io/docker/pulls/gravitl/netclient?label=downloads" />
@@ -82,6 +82,15 @@ Flags:
 
 Use "netclient [command] --help" for more information about a command.
 ```
+
+## TCP uplink (server-driven)
+
+When the Netmaker control plane enables TCP uplink:
+
+- **Gateway** (`tcp_proxy_enabled`): netclient listens with TLS for framed WireGuard uplinks (`tcp_proxy_listen_port`, default 443). Uses a local self-signed cert under the netclient config directory.
+- **Assigned node** (`use_tcp_uplink`): netclient dials the gateway’s `tcp_proxy_endpoint` from peer updates and carries WireGuard ciphertext over TCP/TLS instead of UDP to that gateway.
+
+On Linux this forces **userspace WireGuard** so traffic can be diverted via `conn.Bind`. Windows TCP uplink Bind is not supported yet.
 
 ## Disclaimer
  [WireGuard](https://wireguard.com/) is a registered trademark of Jason A. Donenfeld.

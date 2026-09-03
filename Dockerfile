@@ -1,4 +1,4 @@
-FROM gravitl/go-builder:1.25.3 AS builder
+FROM gravitl/go-builder:1.26.0 AS builder
 WORKDIR /app
 
 COPY . . 

@@ -597,25 +597,23 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					continue
 				}
 				// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
-				// This keeps return path traffic SNATed for egress-ranged destinations.
-				if isAddrIpv4(egressGwRange.Network) {
-					additionalRuleSpec := []string{
-						"-s", egressGwRange.Network,
-						"-o", ncutils.GetInterfaceName(),
-						"-j", "MASQUERADE",
-					}
-					additionalRuleSpec = appendNetmakerCommentToRule(additionalRuleSpec)
-					iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, additionalRuleSpec...)
-					err = iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, additionalRuleSpec...)
-					if err != nil {
-						logger.Log(1, fmt.Sprintf("failed to add additional egress NAT rule: %v, Err: %v ", additionalRuleSpec, err.Error()))
-					} else {
-						egressGwRoutes = append(egressGwRoutes, ruleInfo{
-							table: defaultNatTable,
-							chain: nattablePRTChain,
-							rule:  additionalRuleSpec,
-						})
-					}
+				// This keeps return path traffic SNATed for egress-ranged destinations (IPv4 and IPv6).
+				additionalRuleSpec := []string{
+					"-s", egressGwRange.Network,
+					"-o", ncutils.GetInterfaceName(),
+					"-j", "MASQUERADE",
+				}
+				additionalRuleSpec = appendNetmakerCommentToRule(additionalRuleSpec)
+				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, additionalRuleSpec...)
+				err = iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, additionalRuleSpec...)
+				if err != nil {
+					logger.Log(1, fmt.Sprintf("failed to add additional egress NAT rule: %v, Err: %v ", additionalRuleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						table: defaultNatTable,
+						chain: nattablePRTChain,
+						rule:  additionalRuleSpec,
+					})
 				}
 
 			}

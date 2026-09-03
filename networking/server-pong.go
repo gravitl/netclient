@@ -73,6 +73,10 @@ func handleRequest(c net.Conn) {
 }
 
 func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
+	if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
+		logger.Log(0, "skipping endpoint detection for exit/tcp-relay peer", peerPubKey)
+		return nil
+	}
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Endpoint: endpoint,
 	}
@@ -86,6 +90,10 @@ func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 }
 
 func SetPeerEndpoint(peerPubKey string, value cache.EndpointCacheValue) error {
+	if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
+		logger.Log(0, "skipping endpoint detection for exit/tcp-relay peer", peerPubKey)
+		return nil
+	}
 
 	currentServerPeers := config.Netclient().HostPeers
 	for i := range currentServerPeers {
