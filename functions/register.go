@@ -125,6 +125,7 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	config.UpdateServerConfig(&registerResponse.ServerConf)
+	config.SyncTenantID(registerResponse.RequestedHost.ID, registerResponse.ServerConf.TenantID)
 	server := config.GetServer(registerResponse.ServerConf.Server)
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
