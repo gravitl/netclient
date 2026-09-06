@@ -20,6 +20,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.9.0
 	github.com/kr/pretty v0.3.1
+	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42
 	github.com/miekg/dns v1.1.73
 	github.com/minio/selfupdate v0.6.0
 	github.com/pkg/sftp v1.13.11
@@ -75,7 +76,6 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.44 // indirect
 	github.com/mdlayher/genetlink v1.2.0 // indirect
-	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
