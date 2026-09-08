@@ -12,7 +12,7 @@ require (
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v1.7.0
+	github.com/gravitl/netmaker v1.7.1-0.20260907184350-54b1870ec18e
 	github.com/gravitl/proxy v1.0.0
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/hashicorp/go-retryablehttp v0.7.8
@@ -98,5 +98,3 @@ require (
 	gorm.io/driver/sqlite v1.6.0 // indirect
 	gorm.io/gorm v1.31.1 // indirect
 )
-
-replace github.com/gravitl/netmaker => ../netmaker
