@@ -85,6 +85,7 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
+	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
 	config.SetNodes(pullResponse.Nodes)
 	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)

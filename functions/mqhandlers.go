@@ -239,6 +239,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	saveServerConfig := false
+	if peerUpdate.ServerConfig.TenantID != "" && peerUpdate.ServerConfig.TenantID != server.TenantID &&
+		peerUpdate.Host.ID == config.Netclient().ID {
+		slog.Info("tenant id changed by server", "from", server.TenantID, "to", peerUpdate.ServerConfig.TenantID)
+		server.TenantID = peerUpdate.ServerConfig.TenantID
+		saveServerConfig = true
+		config.SyncTenantID(peerUpdate.Host.ID, peerUpdate.ServerConfig.TenantID)
+	}
 	if peerUpdate.ServerVersion != server.Version {
 		slog.Info("updating server version", "server", serverName, "version", peerUpdate.ServerVersion)
 		server.Version = peerUpdate.ServerVersion

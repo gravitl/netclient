@@ -93,7 +93,7 @@ func Daemon() {
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
-			fmt.Println("[listen-port-debug] daemon received RESET (SIGHUP)")
+			slog.Debug("daemon received RESET (SIGHUP)")
 			slog.Info("received reset")
 			dns.GetDNSServerInstance().Stop()
 			_ = flow.GetManager().Stop()
@@ -107,7 +107,7 @@ func Daemon() {
 				cancel,
 			}, &wg)
 			slog.Info("resetting daemon")
-			fmt.Println("[listen-port-debug] daemon starting startGoRoutines after reset")
+			slog.Debug("daemon starting startGoRoutines after reset")
 			cancel = startGoRoutines(&wg)
 			rebuilt()
 		}
@@ -127,7 +127,7 @@ func checkAndRestoreDefaultGateway() {
 func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	// Stop TCP uplink before cancelling daemon ctx / closing the iface so
 	// userspace Device.Close is not blocked on Bind.Send or proxy sessions.
-	fmt.Println("[listen-port-debug] closeRoutines: StopAllTCPUplink")
+	slog.Debug("closeRoutines: StopAllTCPUplink")
 	StopAllTCPUplink()
 
 	for i := range closers {
@@ -150,23 +150,23 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	if cfg := config.Netclient(); cfg != nil {
 		listenPort = cfg.ListenPort
 	}
-	fmt.Println("[listen-port-debug] closeRoutines: before Close",
-		"listenPort=", listenPort,
-		"userspaceWG=", userspace,
-		"portFree=", ncutils.IsPortFree(listenPort))
+	slog.Debug("closeRoutines: before Close",
+		"listenPort", listenPort,
+		"userspaceWG", userspace,
+		"portFree", ncutils.IsPortFree(listenPort))
 	iface := wireguard.GetInterface()
 	closeStart := time.Now()
 	iface.Close()
-	fmt.Println("[listen-port-debug] closeRoutines: after Close",
-		"elapsed=", time.Since(closeStart),
-		"portFree=", ncutils.IsPortFree(listenPort))
+	slog.Debug("closeRoutines: after Close",
+		"elapsed", time.Since(closeStart),
+		"portFree", ncutils.IsPortFree(listenPort))
 	// Device.Close / LinkDel can release UDP asynchronously; wait so GetFreePort
 	// in startGoRoutines does not bump ListenPort (e.g. 51821 → 51822).
 	if listenPort > 0 && !ncutils.WaitForUDPPortFree(listenPort, 5*time.Second) {
-		fmt.Println("[listen-port-debug] closeRoutines: port STILL BUSY after wait", "port=", listenPort)
+		slog.Debug("closeRoutines: port STILL BUSY after wait", "port", listenPort)
 		slog.Warn("WireGuard UDP listen port still busy after iface.Close", "port", listenPort)
 	} else if listenPort > 0 {
-		fmt.Println("[listen-port-debug] closeRoutines: port free after wait", "port=", listenPort)
+		slog.Debug("closeRoutines: port free after wait", "port", listenPort)
 	}
 }
 
@@ -218,30 +218,30 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}
 	}
-	fmt.Println("[listen-port-debug] startGoRoutines: after Pull",
-		"ListenPort=", netclientCfg.ListenPort,
-		"pullErr=", pullErr)
+	slog.Debug("startGoRoutines: after Pull",
+		"ListenPort", netclientCfg.ListenPort,
+		"pullErr", pullErr)
 
 	if !netclientCfg.IsStaticPort {
-		fmt.Println("[listen-port-debug] startGoRoutines: before GetFreePort",
-			"ListenPort=", netclientCfg.ListenPort,
-			"IsStaticPort=", netclientCfg.IsStaticPort,
-			"portFree=", ncutils.IsPortFree(netclientCfg.ListenPort))
+		slog.Debug("startGoRoutines: before GetFreePort",
+			"ListenPort", netclientCfg.ListenPort,
+			"IsStaticPort", netclientCfg.IsStaticPort,
+			"portFree", ncutils.IsPortFree(netclientCfg.ListenPort))
 		// After iface recreate, prefer the configured port (GetFreePort waits for release).
 		if freeport, err := ncutils.GetFreePort(ncutils.NetclientDefaultPort, netclientCfg.ListenPort, false); err != nil {
-			fmt.Println("[listen-port-debug] startGoRoutines: GetFreePort error=", err)
+			slog.Debug("startGoRoutines: GetFreePort error", "error", err)
 			slog.Warn("no free ports available for use by netclient", "error", err.Error())
 		} else if freeport != netclientCfg.ListenPort {
-			fmt.Println("[listen-port-debug] startGoRoutines: PORT CHANGED",
-				"old=", netclientCfg.ListenPort, "new=", freeport)
+			slog.Debug("startGoRoutines: PORT CHANGED",
+				"old", netclientCfg.ListenPort, "new", freeport)
 			slog.Info("port has changed", "old port", netclientCfg.ListenPort, "new port", freeport)
 			netclientCfg.ListenPort = freeport
 			updateConfig = true
 		} else {
-			fmt.Println("[listen-port-debug] startGoRoutines: keeping ListenPort=", netclientCfg.ListenPort)
+			slog.Debug("startGoRoutines: keeping ListenPort", "ListenPort", netclientCfg.ListenPort)
 		}
 	} else {
-		fmt.Println("[listen-port-debug] startGoRoutines: IsStaticPort=true, ListenPort=", netclientCfg.ListenPort)
+		slog.Debug("startGoRoutines: IsStaticPort=true", "ListenPort", netclientCfg.ListenPort)
 		netclientCfg.WgPublicListenPort = netclientCfg.ListenPort
 		config.WgPublicListenPort = netclientCfg.ListenPort
 		updateConfig = true
