@@ -72,48 +72,7 @@ func ReadServerConf() error {
 	if err = json.NewDecoder(f).Decode(&serversI); err != nil {
 		return err
 	}
-	serversI = migrateServersMapKeys(serversI)
 	return nil
-}
-
-// migrateServersMapKeys rewrites legacy host:port map keys to bare domain.
-func migrateServersMapKeys(in map[string]Server) map[string]Server {
-	if len(in) == 0 {
-		return in
-	}
-	out := make(map[string]Server, len(in))
-	for key, server := range in {
-		nk := NormalizeServerHost(key)
-		if nk == "" {
-			nk = key
-		}
-		server.Name = nk
-		if server.API != "" {
-			server.API = NormalizeServerAPI(server.API)
-		}
-		if server.Server != "" {
-			server.Server = NormalizeServerHost(server.Server)
-		}
-		if existing, ok := out[nk]; ok {
-			// Prefer the entry that is fully registered (Server set) or has more nodes.
-			if existing.Server != "" && server.Server == "" {
-				continue
-			}
-			if existing.Server == "" && server.Server != "" {
-				out[nk] = server
-				continue
-			}
-			if len(existing.Nodes) >= len(server.Nodes) {
-				if existing.API == "" && server.API != "" {
-					existing.API = server.API
-					out[nk] = existing
-				}
-				continue
-			}
-		}
-		out[nk] = server
-	}
-	return out
 }
 
 // WriteServerConfig writes server map to disk
