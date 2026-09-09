@@ -82,15 +82,15 @@ func (w *windowsManager) FetchRuleTable(server, ruleTableName string) ruletable 
 	case aclTable:
 		table = w.aclRules
 	default:
-		return ruletable{}
+		return make(ruletable)
 	}
 	if table == nil {
-		return ruletable{}
+		return make(ruletable)
 	}
 	if rt, ok := table[server]; ok {
 		return rt
 	}
-	return ruletable{}
+	return make(ruletable)
 }
 
 func (w *windowsManager) SaveRules(server, ruleTableName string, ruleTable ruletable) {
