@@ -58,7 +58,3 @@ func activeServerAddress() string {
 func serverAddress() string {
 	return activeServerAddress()
 }
-
-func currentNetclientServer() string {
-	return getCurrServerName()
-}

@@ -11,7 +11,29 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+// internetGwPeerEndpoint resolves the exit peer's underlay UDP endpoint from
+// HostPeers / better-endpoint cache when the live device peer is not ready yet.
+func internetGwPeerEndpoint(publicKey string) *net.UDPAddr {
+	if pk, err := wgtypes.ParseKey(publicKey); err == nil {
+		if host := config.Netclient(); host != nil {
+			for _, p := range host.HostPeers {
+				if p.PublicKey == pk && p.Endpoint != nil && p.Endpoint.IP != nil {
+					return p.Endpoint
+				}
+			}
+		}
+	}
+	if peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey); err == nil && peer.Endpoint != nil {
+		return peer.Endpoint
+	}
+	if ep, ok := GetBetterEndpoint(publicKey); ok && ep != nil {
+		return ep
+	}
+	return nil
+}
 
 // NCIface.Create - makes a new Wireguard interface for darwin users (userspace)
 func (nc *NCIface) Create() error {

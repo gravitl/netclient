@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 )
 
 func getCurrServerName() string {
@@ -48,19 +47,6 @@ func listConnections() (map[string]*Connection, error) {
 		result[network] = conn
 	}
 	return result, nil
-}
-
-func connectedNetworkCount(except string) int {
-	count := 0
-	for network, node := range config.GetNodes() {
-		if network == except {
-			continue
-		}
-		if node.Connected {
-			count++
-		}
-	}
-	return count
 }
 
 func nodeHasInternetGateway(network string) bool {
@@ -131,12 +117,4 @@ func wouldConnectAsIGW(network string) bool {
 		}
 	}
 	return false
-}
-
-func interfaceName() string {
-	name := ncutils.GetInterfaceName()
-	if name == "" {
-		name = "netmaker"
-	}
-	return strings.TrimSpace(name)
 }
