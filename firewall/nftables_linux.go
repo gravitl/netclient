@@ -648,18 +648,11 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
 			} else {
-				wgInterface := ncutils.GetInterfaceName()
-				vnatRules, err := n.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
-				if err != nil {
-					logger.Log(1, fmt.Sprintf("Virtual NAT not supported for nftables, falling back to regular NAT: %v", err))
-					// Fall through to regular NAT processing
-					virtualNATApplied = false
-				} else {
-					egressGwRoutes = append(egressGwRoutes, vnatRules...)
-					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
-					n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
-					virtualNATApplied = true
-				}
+				logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
+					egressInfo.EgressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
+				logger.Log(1, "Virtual NAT not supported for nftables, falling back to regular NAT: virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
+				// Fall through to regular NAT processing
+				virtualNATApplied = false
 			}
 			// If virtual NAT was successfully applied, skip regular NAT processing
 			if virtualNATApplied {
@@ -804,42 +797,76 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			defaultIface := config.Netclient().DefaultInterface
 			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
 				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
-			} else if isAddrIpv4(egressGwRange.Network) {
+			} else {
 				lanCIDR := config.ToIPNet(egressGwRange.Network)
 				additionalRuleSpec := []string{
 					"-s", egressGwRange.Network,
 					"-o", ncutils.GetInterfaceName(),
 					"-j", "MASQUERADE",
 				}
-				additionalExp := []expr.Any{
-					&expr.Payload{
-						DestRegister: 1,
-						Base:         expr.PayloadBaseNetworkHeader,
-						Offset:       12, // Source address offset in IPv4 header
-						Len:          4,
-					},
-					&expr.Bitwise{
-						SourceRegister: 1,
-						DestRegister:   1,
-						Len:            4,
-						Mask:           lanCIDR.Mask,
-						Xor:            []byte{0, 0, 0, 0},
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     lanCIDR.IP.To4(),
-					},
-					&expr.Meta{
-						Key:      expr.MetaKeyOIFNAME,
-						Register: 1,
-					},
-					&expr.Cmp{
-						Op:       expr.CmpOpEq,
-						Register: 1,
-						Data:     nullTerminatedString(ncutils.GetInterfaceName()),
-					},
-					&expr.Masq{},
+				var additionalExp []expr.Any
+				if isAddrIpv4(egressGwRange.Network) {
+					additionalExp = []expr.Any{
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       12, // Source address offset in IPv4 header
+							Len:          4,
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            4,
+							Mask:           lanCIDR.Mask,
+							Xor:            []byte{0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     lanCIDR.IP.To4(),
+						},
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+						},
+						&expr.Masq{},
+					}
+				} else {
+					additionalExp = []expr.Any{
+						&expr.Payload{
+							DestRegister: 1,
+							Base:         expr.PayloadBaseNetworkHeader,
+							Offset:       8,  // Source address offset in IPv6 header
+							Len:          16, // Length of IPv6 address
+						},
+						&expr.Bitwise{
+							SourceRegister: 1,
+							DestRegister:   1,
+							Len:            16,
+							Mask:           lanCIDR.Mask,
+							Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     lanCIDR.IP.To16(),
+						},
+						&expr.Meta{
+							Key:      expr.MetaKeyOIFNAME,
+							Register: 1,
+						},
+						&expr.Cmp{
+							Op:       expr.CmpOpEq,
+							Register: 1,
+							Data:     nullTerminatedString(ncutils.GetInterfaceName()),
+						},
+						&expr.Masq{},
+					}
 				}
 				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(additionalRuleSpec...))
 				additionalRule := &nftables.Rule{
@@ -1340,59 +1367,176 @@ func (n *nftablesManager) getExprForProto(proto models.Protocol, isv4 bool) []ex
 	}
 }
 
-func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
-	var e []expr.Any
+// expandPortList splits ACL port entries on commas so values like
+// "80,443" or "80,8000-9000" become individual port/range tokens.
+func expandPortList(ports []string) []string {
+	var expanded []string
+	for _, port := range ports {
+		for _, part := range strings.Split(port, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				expanded = append(expanded, part)
+			}
+		}
+	}
+	return expanded
+}
 
+func portToBytes(port uint16) []byte {
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, port)
+	return b
+}
+
+func parsePortToken(port string) (start, end uint16, ok bool) {
+	if strings.Contains(port, "-") {
+		parts := strings.Split(port, "-")
+		if len(parts) != 2 {
+			return 0, 0, false
+		}
+		startPortInt, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil || startPortInt < 0 || startPortInt > 65535 {
+			return 0, 0, false
+		}
+		endPortInt, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || endPortInt < 0 || endPortInt > 65535 {
+			return 0, 0, false
+		}
+		if startPortInt > endPortInt {
+			return 0, 0, false
+		}
+		return uint16(startPortInt), uint16(endPortInt), true
+	}
+	portInt, err := strconv.Atoi(port)
+	if err != nil || portInt < 0 || portInt > 65535 {
+		return 0, 0, false
+	}
+	p := uint16(portInt)
+	return p, p, true
+}
+
+func (n *nftablesManager) getExprForSinglePort(port string) []expr.Any {
 	ipTransPortHeader := &expr.Payload{
 		DestRegister: 1,
 		Base:         expr.PayloadBaseTransportHeader,
-		Offset:       2, // Offset for destination port in TCP header
+		Offset:       2, // Offset for destination port in TCP/UDP header
 		Len:          2, // Port field length
 	}
-	for _, port := range ports {
+	start, end, ok := parsePortToken(port)
+	if !ok {
+		return nil
+	}
+	if start != end {
+		return []expr.Any{
+			ipTransPortHeader,
+			&expr.Range{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				FromData: portToBytes(start),
+				ToData:   portToBytes(end),
+			},
+		}
+	}
+	return []expr.Any{
+		ipTransPortHeader,
+		&expr.Cmp{
+			Register: 1,
+			Op:       expr.CmpOpEq,
+			Data:     portToBytes(start),
+		},
+	}
+}
 
-		if strings.Contains(port, "-") {
-			// Destination port range (8000-9000)
-			ports := strings.Split(port, "-")
-			startPortStr := ports[0]
-			endPortStr := ports[1]
-			startPortInt, err := strconv.Atoi(startPortStr)
-			if err != nil {
-				continue
+// getExprForPort builds nftables expressions that match destination ports.
+// Multiple ports must use a set lookup (OR); chaining Cmp/Range expressions
+// would AND them and never match.
+func (n *nftablesManager) getExprForPort(ports []string) []expr.Any {
+	ports = expandPortList(ports)
+	if len(ports) == 0 {
+		return nil
+	}
+	if len(ports) == 1 {
+		return n.getExprForSinglePort(ports[0])
+	}
+
+	type portSpan struct{ start, end uint16 }
+	spans := make([]portSpan, 0, len(ports))
+	hasRange := false
+	for _, port := range ports {
+		start, end, ok := parsePortToken(port)
+		if !ok {
+			continue
+		}
+		if start != end {
+			hasRange = true
+		}
+		spans = append(spans, portSpan{start: start, end: end})
+	}
+	if len(spans) == 0 {
+		return nil
+	}
+
+	set := &nftables.Set{
+		Anonymous: true,
+		Constant:  true,
+		Table:     filterTable,
+		KeyType:   nftables.TypeInetService,
+	}
+	var elements []nftables.SetElement
+	if hasRange {
+		// Discrete ports are encoded as [p, p+1) so they can share an interval set
+		// with explicit ranges (e.g. "80,443,8000-9000").
+		set.Interval = true
+		// Anonymous interval sets need a leading "gap" marker from 0, matching nft(8).
+		elements = append(elements, nftables.SetElement{
+			Key:         portToBytes(0),
+			IntervalEnd: true,
+		})
+		for _, s := range spans {
+			elements = append(elements, nftables.SetElement{Key: portToBytes(s.start)})
+			if s.end < 65535 {
+				// Interval sets use a half-open range [start, endExclusive).
+				elements = append(elements, nftables.SetElement{
+					Key:         portToBytes(s.end + 1),
+					IntervalEnd: true,
+				})
 			}
-			endPortInt, err := strconv.Atoi(endPortStr)
-			if err != nil {
-				continue
-			}
-			startPort := uint16(startPortInt)
-			endPort := uint16(endPortInt)
-			startPortBytes := make([]byte, 2)
-			endPortBytes := make([]byte, 2)
-			binary.BigEndian.PutUint16(startPortBytes, startPort)
-			binary.BigEndian.PutUint16(endPortBytes, endPort)
-			e = append(e, ipTransPortHeader, &expr.Range{
-				Op:       expr.CmpOpEq,
-				Register: 1,
-				FromData: startPortBytes,
-				ToData:   endPortBytes,
-			})
-		} else {
-			portInt, err := strconv.Atoi(port)
-			if err != nil {
-				continue
-			}
-			dport := uint16(portInt)
-			dPortBytes := make([]byte, 2)
-			binary.BigEndian.PutUint16(dPortBytes, dport)
-			e = append(e, ipTransPortHeader, &expr.Cmp{
-				Register: 1,
-				Op:       expr.CmpOpEq,
-				Data:     dPortBytes, // Port in network byte order
-			})
+			// end == 65535: open-ended through the max port value (no IntervalEnd).
+		}
+	} else {
+		for _, s := range spans {
+			elements = append(elements, nftables.SetElement{Key: portToBytes(s.start)})
 		}
 	}
 
-	return e
+	if err := n.conn.AddSet(set, elements); err != nil {
+		slog.Error("failed to add nftables port set for ACL rule", "error", err, "ports", ports)
+		// Never-match expressions so a failed set does not open all ports.
+		return []expr.Any{
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			&expr.Cmp{Register: 1, Op: expr.CmpOpEq, Data: portToBytes(0)},
+			&expr.Cmp{Register: 1, Op: expr.CmpOpEq, Data: portToBytes(65535)},
+		}
+	}
+
+	return []expr.Any{
+		&expr.Payload{
+			DestRegister: 1,
+			Base:         expr.PayloadBaseTransportHeader,
+			Offset:       2,
+			Len:          2,
+		},
+		&expr.Lookup{
+			SourceRegister: 1,
+			SetName:        set.Name,
+			SetID:          set.ID,
+		},
+	}
 }
 
 func (n *nftablesManager) getRuleCnt(table *nftables.Table, chain *nftables.Chain) (cnt uint64) {
@@ -2870,16 +3014,6 @@ func rulesEqual(rule1, rule2 *nftables.Rule) bool {
 	}
 
 	return false
-}
-
-// applyVirtualNATRules applies virtual NAT rules for an egress gateway
-// NOTE: Virtual NAT is currently disabled for nftables due to lack of prefix NAT support
-func (n *nftablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
-	// Virtual NAT is disabled for nftables - nftables doesn't support prefix NAT (CIDR-to-CIDR translation)
-	// like iptables NETMAP. Without prefix NAT support, we cannot preserve the host part during translation.
-	logger.Log(1, fmt.Sprintf("Virtual NAT is disabled for nftables (no prefix NAT support). Egress %s requested virtual NAT: virtual=%s, real=%s",
-		egressID, vnatInfo.virtualRange.String(), vnatInfo.realRange.String()))
-	return nil, fmt.Errorf("virtual NAT is not supported for nftables - use iptables for virtual NAT functionality")
 }
 
 func nullTerminatedString(s string) []byte {

@@ -3,16 +3,20 @@ package functions
 import (
 	b64 "encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 // Register - should be simple to register with a token
@@ -24,6 +28,10 @@ func Register(token string) error {
 	var serverData models.EnrollmentToken
 	if err = json.Unmarshal(data, &serverData); err != nil {
 		logger.FatalLog("could not read enrollment token")
+	}
+	if existing := config.GetServerByAPIHost(serverData.Server); existing != nil &&
+		existing.TenantID != "" && existing.TenantID != serverData.TenantID {
+		return fmt.Errorf("already joined to server %s under a different tenant; run `netclient server leave %s` before joining a different tenant on it", existing.Name, existing.Name)
 	}
 	host := config.Netclient()
 	ip, err := ncutils.GetInterfaces()
@@ -52,8 +60,15 @@ func Register(token string) error {
 	url := fmt.Sprintf("https://%s/api/v1/host/register/%s", serverData.Server, token)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
+	headers.Set(scope.HeaderTenantID, serverData.TenantID)
+	posture.ApplyIdentity(&host.Host)
 	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, host)
 	if err != nil {
+		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
+			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
+			logger.Log(0, "registration refused by server on MDM grounds")
+			os.Exit(2)
+		}
 		logger.FatalLog("error registering with server", err.Error())
 		return err
 	}
@@ -110,11 +125,12 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	config.UpdateServerConfig(&registerResponse.ServerConf)
+	config.SyncTenantID(registerResponse.RequestedHost.ID, registerResponse.ServerConf.TenantID)
 	server := config.GetServer(registerResponse.ServerConf.Server)
 	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	config.UpdateHost(&registerResponse.RequestedHost)
+	UpdateHostFromServer(&registerResponse.RequestedHost)
 	config.SetCurrServerCtxInFile(server.Server)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())

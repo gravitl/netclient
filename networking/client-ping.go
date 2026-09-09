@@ -19,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 )
 
@@ -80,6 +81,9 @@ func tryLocalConnect(peerIp, peerPubKey string, metricsPort int) bool {
 
 // FindBestEndpoint - requests against a given addr and port
 func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int) {
+	if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
+		return
+	}
 	connected := tryLocalConnect(peerIp, peerPubKey, metricsPort)
 	if connected {
 		addr := net.JoinHostPort(peerIp, fmt.Sprintf("%d", peerListenPort))
@@ -207,6 +211,7 @@ func fetchPeerInfo() (models.HostPeerInfo, error) {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk

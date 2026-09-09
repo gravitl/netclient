@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/scope"
 )
 
 // Uninstall - uninstalls networks from client
@@ -21,10 +22,17 @@ func Uninstall() ([]error, error) {
 	allfaults := []error{}
 	var err error
 
+	netclient := config.Netclient()
+	activeTenantID := netclient.TenantID
+
 	for _, v := range config.Servers {
-		v := v
-		hostUpdateWithServer(&v, models.HostUpdate{Action: models.DeleteHost})
+		netclient.TenantID = v.TenantID
+		auth.CleanJwtToken()
+		if err := hostUpdateWithServer(&v, models.HostUpdate{Action: models.DeleteHost}); err != nil {
+			allfaults = append(allfaults, fmt.Errorf("failed to delete host on server %s: %w", v.Name, err))
+		}
 	}
+	netclient.TenantID = activeTenantID
 
 	if err = daemon.CleanUp(); err != nil {
 		allfaults = append(allfaults, err)
@@ -73,6 +81,8 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 func resetInterfaceUninstall(faults []error) []error {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
+	// Hold off IGW health checks while the iface has no peers.
+	defer wireguard.BeginIfaceRebuild()()
 	nc := wireguard.GetInterface()
 	nc.Close()
 	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
@@ -92,6 +102,9 @@ func deleteNodeFromServer(node *config.Node) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
+	if server.TenantID != node.TenantID {
+		return errors.New("node doesn't belong to current server")
+	}
 	token, err := auth.Authenticate(server, config.Netclient())
 	if err != nil {
 		return fmt.Errorf("unable to authenticate %w", err)
@@ -102,6 +115,7 @@ func deleteNodeFromServer(node *config.Node) error {
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set("requestfrom", "node")
+	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 	if err != nil {
 		return fmt.Errorf("error deleting node from network %s on server: %v", node.Network, err)

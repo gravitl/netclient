@@ -282,25 +282,56 @@ func SetRoutesFromCache() {
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
-	//inetGW route
-	gwIp := config.Netclient().CurrGwNmIP
-	if gwIp != nil {
-		if !GetIGWMonitor().IsCurrentIGW(gwIp) {
-			var igw wgtypes.PeerConfig
-			for _, peer := range config.Netclient().HostPeers {
-				for _, peerIP := range peer.AllowedIPs {
-					if peerIP.String() == IPv4Network || peerIP.String() == IPv6Network {
-						igw = peer
-						break
-					}
-				}
-			}
-
-			_ = RestoreInternetGw()
-
-			SetInternetGw(igw.PublicKey.String(), gwIp)
+	//inetGW route — only when monitor thinks routes are missing (iface recreate
+	// must call ReapplyInternetGwAfterIfaceRecreate instead; IsCurrentIGW stays
+	// true across Close even though OS routes are gone).
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 != nil || gw6 != nil {
+		if !GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			ReapplyInternetGw(gw4, gw6)
 		}
 	}
+}
+
+// ReapplyInternetGwAfterIfaceRecreate reinstalls OS default routes for an active
+// exit nexthop after the netmaker iface was torn down. Closing the iface drops
+// those routes while IGWMonitor may still report IsCurrentIGW=true, so callers
+// must not gate on IsCurrentIGW.
+func ReapplyInternetGwAfterIfaceRecreate() {
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 == nil && gw6 == nil {
+		return
+	}
+	ReapplyInternetGw(gw4, gw6)
+}
+
+// ReapplyInternetGw restores then sets the host default route via the exit peer.
+func ReapplyInternetGw(gw4, gw6 net.IP) {
+	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+	if !ok {
+		slog.Warn("exit peer not found; OS default routes not restored",
+			"gw4", gw4, "gw6", gw6)
+		return
+	}
+	_ = RestoreInternetGw()
+	if err := SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
+		slog.Error("failed to reapply internet gateway routes", "error", err)
+	}
+}
+
+// RefreshInternetGwHostPins adds LAN underlay pins for InternetGwHostIPs when
+// exit-node routing is already active (e.g. TCP proxy IP registered after
+// SetInternetGw). Does not move 0.0.0.0/0.
+func RefreshInternetGwHostPins() {
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 == nil && gw6 == nil {
+		return
+	}
+	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+	if !ok {
+		return
+	}
+	pinInternetGwHostRoutes(igw.PublicKey.String())
 }
 
 // checkEgressRoutes - check if the addr are the same ones

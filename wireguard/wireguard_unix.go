@@ -1,19 +1,19 @@
-//go:build linux || darwin || freebsd
-// +build linux darwin freebsd
+//go:build linux || darwin || freebsd || windows
+// +build linux darwin freebsd windows
 
 package wireguard
 
 import (
-	"errors"
+	"fmt"
 	"net"
 	"sync"
-	"syscall"
+	"sync/atomic"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"golang.org/x/exp/slog"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/ipc"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
@@ -23,16 +23,53 @@ var tunDevice *device.Device
 var wg sync.WaitGroup
 var uapi net.Listener
 
+// userspaceWGActive is true while a userspace Device from createUserSpaceWG is live.
+// Close must consult this — not relayTCPUserspaceNeeded() — because disable flips the
+// desired mode before iface.Close(); using the desired flag skips Device.Close and
+// leaves UAPI hung (wg show blocks forever).
+// Atomic so callers holding wgMutex (e.g. Configure → ApplyAddrs) can read safely.
+var userspaceWGActive atomic.Bool
+
+// UserspaceWGActive reports whether the current netmaker iface is userspace WireGuard.
+func UserspaceWGActive() bool {
+	return userspaceWGActive.Load()
+}
+
 func (nc *NCIface) createUserSpaceWG() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 
-	tunIface, err := tun.CreateTUN(nc.Name, config.Netclient().MTU)
+	prepareUserspaceTUN(nc)
+
+	// wintun.CreateAdapter panics if wintun.dll cannot be loaded (Windows).
+	var tunIface tun.Device
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("userspace TUN create panic (is wintun.dll installed?): %v", r)
+			}
+		}()
+		tunIface, err = tun.CreateTUN(nc.Name, config.Netclient().MTU)
+	}()
 	if err != nil {
 		return err
 	}
 	nc.Iface = tunIface
-	tunDevice = device.NewDevice(tunIface, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, "[netclient] "))
+	var bind conn.Bind
+	if relayTCPUserspaceNeeded() {
+		rb := newRelayTCPBind(conn.NewDefaultBind())
+		relayBindMu.Lock()
+		relayBind = rb
+		relayBindMu.Unlock()
+		bind = rb
+	} else {
+		relayBindMu.Lock()
+		relayBind = nil
+		relayBindMu.Unlock()
+		bind = conn.NewDefaultBind()
+	}
+	tunDevice = device.NewDevice(tunIface, bind, device.NewLogger(device.LogLevelSilent, "[netclient] "))
 	err = tunDevice.Up()
 	if err != nil {
 		return err
@@ -41,54 +78,138 @@ func (nc *NCIface) createUserSpaceWG() error {
 	if err != nil {
 		return err
 	}
+	userspaceWGActive.Store(true)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		dev := tunDevice
+		listener := uapi
 		for {
+			if dev == nil || listener == nil {
+				return
+			}
 			select {
-			case <-tunDevice.Wait():
+			case <-dev.Wait():
 				slog.Debug("tunDevice.Wait() returned")
 				return
 			default:
-				uapiConn, uapiErr := uapi.Accept()
+				uapiConn, uapiErr := listener.Accept()
 				if uapiErr != nil {
-					slog.Debug("uapi error:", "error", uapiErr)
-					continue
+					// Listener closed or device shutting down — exit instead of spinning.
+					select {
+					case <-dev.Wait():
+						return
+					default:
+						slog.Debug("uapi error:", "error", uapiErr)
+						return
+					}
 				}
-				go tunDevice.IpcHandle(uapiConn)
+				go dev.IpcHandle(uapiConn)
 			}
 		}
 	}()
 	return nil
 }
 
-func getUAPIByInterface(iface string) (net.Listener, error) {
-	tunSock, err := ipc.UAPIOpen(iface)
-	if err != nil {
-		return nil, err
-	}
-	return ipc.UAPIListen(iface, tunSock)
-}
-
 func (nc *NCIface) closeUserspaceWg() error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	listenPort := 0
+	if cfg := config.Netclient(); cfg != nil {
+		listenPort = cfg.ListenPort
+	}
+	slog.Debug("closeUserspaceWg: start",
+		"iface", nc.Name, "listenPort", listenPort)
 	slog.Debug("Closing userspace WireGuard interface", "interface", nc.Name)
 
-	if tunDevice != nil {
-		tunDevice.Close()
-	}
+	// Belt-and-suspenders if caller skipped StopAllTCPUplink.
+	PrepareUserspaceTeardown()
+	// Unblock TCP ReceiveFunc before Device.Close (closes inbound chan once).
+	closeRelayTCPInbound()
+
+	// Unblock UAPI Accept before Device.Close so the accept loop can observe Wait().
 	if uapi != nil {
-		uapi.Close()
+		_ = uapi.Close()
+		uapi = nil
 	}
-	wg.Wait()
+	if tunDevice != nil {
+		done := make(chan struct{})
+		closeStart := time.Now()
+		go func(dev *device.Device) {
+			dev.Close()
+			close(done)
+		}(tunDevice)
+		tunDevice = nil
+		select {
+		case <-done:
+			slog.Debug("closeUserspaceWg: Device.Close done",
+				"elapsed", time.Since(closeStart),
+				"portFree", portFreeDebug(listenPort))
+		case <-time.After(15 * time.Second):
+			slog.Debug("closeUserspaceWg: Device.Close TIMEOUT",
+				"elapsed", time.Since(closeStart),
+				"portFree", portFreeDebug(listenPort))
+			slog.Error("userspace WireGuard Device.Close timed out; continuing shutdown")
+		}
+	} else {
+		slog.Debug("closeUserspaceWg: tunDevice was nil")
+	}
+	relayBindMu.Lock()
+	relayBind = nil
+	relayBindMu.Unlock()
+	userspaceWGActive.Store(false)
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(3 * time.Second):
+		slog.Debug("closeUserspaceWg: UAPI accept loop wait TIMEOUT")
+		slog.Warn("userspace WireGuard UAPI accept loop wait timed out")
+	}
+
+	// Ensure the previous UDP listen port is released before callers run GetFreePort.
+	if listenPort > 0 {
+		waitStart := time.Now()
+		ok := waitUDPPortFree(listenPort, 5*time.Second)
+		slog.Debug("closeUserspaceWg: after port wait",
+			"port", listenPort, "free", ok, "waited", time.Since(waitStart))
+		if !ok {
+			slog.Warn("WireGuard UDP listen port still busy after Device.Close", "port", listenPort)
+		}
+	}
 
 	slog.Debug("Closed userspace WireGuard interface", "interface", nc.Name)
 
 	return nil
 }
 
-func isEconnRefused(err error) bool {
-	var errno syscall.Errno
-	return errors.As(err, &errno) && errors.Is(errno, syscall.ECONNREFUSED)
+func portFreeDebug(port int) bool {
+	if port <= 0 {
+		return true
+	}
+	c, err := net.ListenUDP("udp", &net.UDPAddr{Port: port})
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
+}
+
+func waitUDPPortFree(port int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		c, err := net.ListenUDP("udp", &net.UDPAddr{Port: port})
+		if err == nil {
+			_ = c.Close()
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

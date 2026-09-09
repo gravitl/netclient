@@ -184,6 +184,7 @@ func (c *FlowTracker) handleEvent(event ct.Event) error {
 
 	return c.flowExporter.Export(&pbflow.FlowEvent{
 		Type:        eventType,
+		TenantId:    config.Netclient().TenantID,
 		FlowId:      flowID,
 		HostId:      c.hostIDStr,
 		HostName:    config.Netclient().Name,

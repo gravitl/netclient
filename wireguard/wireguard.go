@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -19,7 +20,153 @@ const (
 	IPv6Network = "::/0"
 )
 
+// FindInternetGwPeer picks the WireGuard peer that should carry internet-exit
+// traffic. Prefers a peer advertising 0.0.0.0/0 or ::/0; falls back to a peer
+// that includes the overlay nexthop. Skips Remove peers.
+func FindInternetGwPeer(peers []wgtypes.PeerConfig, gw4, gw6 net.IP) (wgtypes.PeerConfig, bool) {
+	var byNexthop wgtypes.PeerConfig
+	foundNexthop := false
+	for _, peer := range peers {
+		if peer.Remove {
+			continue
+		}
+		for _, peerIP := range peer.AllowedIPs {
+			s := peerIP.String()
+			if s == IPv4Network || s == IPv6Network {
+				return peer, true
+			}
+			if foundNexthop {
+				continue
+			}
+			if len(gw4) > 0 && peerIP.Contains(gw4) {
+				byNexthop = peer
+				foundNexthop = true
+			} else if len(gw6) > 0 && peerIP.Contains(gw6) {
+				byNexthop = peer
+				foundNexthop = true
+			}
+		}
+	}
+	return byNexthop, foundNexthop
+}
+
+// IsZeroWGPublicKey reports whether publicKey is empty or the all-zero WireGuard key.
+func IsZeroWGPublicKey(publicKey string) bool {
+	if publicKey == "" {
+		return true
+	}
+	k, err := wgtypes.ParseKey(publicKey)
+	if err != nil {
+		return true
+	}
+	var zero wgtypes.Key
+	return k == zero
+}
+
+// NormalizeIGWNexthops splits DefaultGwIp / DefaultGwIp6 into family-correct nexthops.
+// Legacy servers may place an IPv6 address in DefaultGwIp when the client has no EndpointIP.
+func NormalizeIGWNexthops(gwIP, gwIP6 net.IP) (gw4, gw6 net.IP) {
+	gw4, gw6 = gwIP, gwIP6
+	if len(gw4) > 0 && gw4.To4() == nil {
+		if len(gw6) == 0 {
+			gw6 = gw4
+		}
+		gw4 = nil
+	}
+	if len(gw6) > 0 && gw6.To4() != nil {
+		gw6 = nil
+	}
+	if len(gw4) == 0 {
+		gw4 = nil
+	}
+	if len(gw6) == 0 {
+		gw6 = nil
+	}
+	return gw4, gw6
+}
+
 var ErrPeerNotFound = fmt.Errorf("peer not found")
+
+// InternetGwHostIPs returns underlay IPs that must stay reachable via the
+// original LAN path when 0.0.0.0/0 is moved onto WireGuard (exit-node client).
+// Without an OS pin, underlay traffic to the exit peer (UDP handshake and/or
+// TCP uplink TLS) is routed into the tunnel and breaks. Collects HostPeers,
+// endpoint cache, live GetPeer, and any TCP-proxy host IPs registered by the
+// uplink client.
+func InternetGwHostIPs(publicKey string) []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	add := func(ip net.IP) {
+		if len(ip) == 0 || ip.IsUnspecified() {
+			return
+		}
+		// net.IP.String() returns "<nil>" for some empty values; never pin that.
+		s := ip.String()
+		if s == "" || s == "<nil>" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		ips = append(ips, append(net.IP(nil), ip...))
+	}
+
+	if pk, err := wgtypes.ParseKey(publicKey); err == nil {
+		if host := config.Netclient(); host != nil {
+			for _, p := range host.HostPeers {
+				if p.PublicKey != pk || p.Endpoint == nil {
+					continue
+				}
+				add(p.Endpoint.IP)
+			}
+		}
+	}
+	// When TCP uplink is active, ignore private live/cache endpoints from
+	// detection — divert and underlay pins must stay on HostPeers / TCP-proxy.
+	tcpActive := activeRelayTCPUplink() != nil
+	if peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey); err == nil && peer.Endpoint != nil {
+		if !tcpActive || !peer.Endpoint.IP.IsPrivate() {
+			add(peer.Endpoint.IP)
+		}
+	}
+	if ep, ok := GetBetterEndpoint(publicKey); ok && ep != nil {
+		if !tcpActive || !ep.IP.IsPrivate() {
+			add(ep.IP)
+		}
+	}
+	tcpUplinkHostIPsMu.Lock()
+	for _, ip := range tcpUplinkHostIPs {
+		add(ip)
+	}
+	tcpUplinkHostIPsMu.Unlock()
+	return ips
+}
+
+var (
+	tcpUplinkHostIPsMu sync.Mutex
+	tcpUplinkHostIPs   []net.IP
+)
+
+// SetTCPUplinkHostRouteIPs registers underlay IPs of the TCP proxy endpoint so
+// Windows/Linux exit-node setup can pin them via the LAN gateway before
+// 0.0.0.0/0 moves onto netmaker. Pass nil/empty to clear.
+func SetTCPUplinkHostRouteIPs(ips []net.IP) {
+	tcpUplinkHostIPsMu.Lock()
+	defer tcpUplinkHostIPsMu.Unlock()
+	if len(ips) == 0 {
+		tcpUplinkHostIPs = nil
+		return
+	}
+	cp := make([]net.IP, 0, len(ips))
+	for _, ip := range ips {
+		if len(ip) == 0 || ip.IsUnspecified() || ip.String() == "<nil>" {
+			continue
+		}
+		cp = append(cp, append(net.IP(nil), ip...))
+	}
+	tcpUplinkHostIPs = cp
+}
 
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
 func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
@@ -111,6 +258,12 @@ func apply(c *wgtypes.Config) error {
 // returns if better endpoint has been calculated for this peer already
 // if so sets it and returns true
 func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
+	if peer == nil {
+		return false
+	}
+	if ShouldSkipEndpointDetection(peer.PublicKey.String()) {
+		return false
+	}
 	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok && endpoint != nil {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
@@ -133,10 +286,79 @@ func GetBetterEndpoint(peerKey string) (*net.UDPAddr, bool) {
 	return nil, false
 }
 
+// RestoreHostPeerEndpoint resets the live WG peer endpoint to the given
+// host:port (typically the server-published HostPeers underlay address) so
+// TCP-uplink divert keys stay aligned after endpoint detection.
+func RestoreHostPeerEndpoint(endpoint string) {
+	if endpoint == "" {
+		return
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp", endpoint)
+	if err != nil || udpAddr == nil || udpAddr.IP == nil {
+		return
+	}
+	host := config.Netclient()
+	if host == nil {
+		return
+	}
+	for _, p := range host.HostPeers {
+		if p.Remove || p.Endpoint == nil || p.Endpoint.String() != endpoint {
+			continue
+		}
+		_ = UpdatePeer(&wgtypes.PeerConfig{
+			PublicKey:                   p.PublicKey,
+			Endpoint:                    udpAddr,
+			AllowedIPs:                  p.AllowedIPs,
+			PersistentKeepaliveInterval: p.PersistentKeepaliveInterval,
+			ReplaceAllowedIPs:           true,
+			UpdateOnly:                  true,
+		})
+		cache.EndpointCache.Delete(p.PublicKey.String())
+		return
+	}
+}
+
 // EndpointDetectedAlready - checks if better endpoint has been detected already
 func EndpointDetectedAlready(peerPubKey string) bool {
 	if endpoint, ok := cache.EndpointCache.Load(peerPubKey); ok && endpoint != nil {
 		return true
+	}
+	return false
+}
+
+// ShouldSkipEndpointDetection returns true for peers that must keep their
+// server-published underlay endpoint: internet-exit peers (0.0.0.0/0 / ::/0)
+// and the active TCP-uplink relay. Endpoint detection often picks private
+// 10.x addresses that break TCP divert and blackhole UDP after IGW install.
+func ShouldSkipEndpointDetection(peerPubKey string) bool {
+	if peerPubKey == "" {
+		return false
+	}
+	host := config.Netclient()
+	if host == nil {
+		return false
+	}
+	pk, err := wgtypes.ParseKey(peerPubKey)
+	if err != nil {
+		return false
+	}
+	for _, p := range host.HostPeers {
+		if p.PublicKey != pk || p.Remove {
+			continue
+		}
+		for _, a := range p.AllowedIPs {
+			s := a.String()
+			if s == IPv4Network || s == IPv6Network {
+				return true
+			}
+		}
+	}
+	if ep := clientRelayEndpoint(); ep != "" {
+		for _, p := range host.HostPeers {
+			if p.PublicKey == pk && p.Endpoint != nil && p.Endpoint.String() == ep {
+				return true
+			}
+		}
 	}
 	return false
 }
