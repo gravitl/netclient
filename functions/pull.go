@@ -99,6 +99,7 @@ func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (m
 	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
+	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
 	config.SetNodes(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)

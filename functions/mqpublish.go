@@ -132,47 +132,49 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 				slog.Warn("failed to update host settings", err.Error())
 			}
 		case <-ipTicker.C:
-			// this ticker is used to detect network changes, and publish new public ip to peers
-			// if config.Netclient().CurrGwNmIP is not nil, it's an InetClient, then it skips the network change detection
-			if !config.Netclient().IsStatic && config.Netclient().CurrGwNmIP == nil {
-				restart := false
-				ip4, _, _ := holePunchWgPort(4, 0)
-				ip6, _, _ := holePunchWgPort(6, 0)
-				if ip4 == nil && ip6 == nil {
-					continue
-				}
-				if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
-					slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
-					config.HostPublicIP = ip4
-					restart = true
-				} else if ip4 == nil && config.HostPublicIP != nil {
-					slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
-					config.HostPublicIP = nil
-					restart = true
-				}
+			// Detect underlay IP changes via STUN on an ephemeral port. Do not STUN on
+			// ListenPort here — WireGuard already owns it, so binding would fail.
+			// Public listen port is only discovered at iface create (startGoRoutines).
+			if config.Netclient().IsStatic || config.Netclient().CurrGwNmIP != nil {
+				continue
+			}
+			restart := false
+			ip4, _, _ := holePunchWgPort(4, 0)
+			ip6, _, _ := holePunchWgPort(6, 0)
+			if ip4 == nil && ip6 == nil {
+				continue
+			}
+			if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
+				slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+				config.HostPublicIP = ip4
+				restart = true
+			} else if ip4 == nil && config.HostPublicIP != nil {
+				slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
+				config.HostPublicIP = nil
+				restart = true
+			}
 
-				if ip6 != nil && ip6.To16() != nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
-					slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
-					config.HostPublicIP6 = ip6
-					restart = true
-				} else if ip6 == nil && config.HostPublicIP6 != nil {
-					slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
-					config.HostPublicIP6 = nil
-					restart = true
+			if ip6 != nil && ip6.To4() == nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
+				slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+				config.HostPublicIP6 = ip6
+				restart = true
+			} else if ip6 == nil && config.HostPublicIP6 != nil {
+				slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+				config.HostPublicIP6 = nil
+				restart = true
+			}
+			if restart {
+				if err := UpdateHostSettings(true); err != nil {
+					slog.Warn("failed to update host settings", err.Error())
 				}
-				if restart {
-					if err := UpdateHostSettings(true); err != nil {
-						slog.Warn("failed to update host settings", err.Error())
-					}
-					logger.Log(0, "restarting netclient due to network changes...")
-					if ip4 != nil {
-						logger.Log(0, "new IPv4 detected: ", ip4.String())
-					}
-					if ip6 != nil {
-						logger.Log(0, "new IPv6 detected: ", ip6.String())
-					}
-					daemon.HardRestart()
+				logger.Log(0, "restarting netclient due to network changes...")
+				if ip4 != nil {
+					logger.Log(0, "new IPv4 detected: ", ip4.String())
 				}
+				if ip6 != nil && ip6.To4() == nil {
+					logger.Log(0, "new IPv6 detected: ", ip6.String())
+				}
+				daemon.HardRestart()
 			}
 		}
 
@@ -403,7 +405,11 @@ func UpdateHostSettings(fallback bool) error {
 	}
 
 	if !config.Netclient().IsStatic {
-		if config.HostPublicIP6 != nil && !config.HostPublicIP6.IsUnspecified() {
+		if config.HostPublicIP6 != nil && config.HostPublicIP6.To4() != nil {
+			// IPv4 was stored as endpoint6 when the family check used To16().
+			config.HostPublicIP6 = nil
+		}
+		if config.HostPublicIP6 != nil && config.HostPublicIP6.To4() == nil && !config.HostPublicIP6.IsUnspecified() {
 			if !config.Netclient().EndpointIPv6.Equal(config.HostPublicIP6) {
 				logger.Log(0, "endpoint6 has changed from", config.Netclient().EndpointIPv6.String(), "to", config.HostPublicIP6.String())
 				config.Netclient().EndpointIPv6 = config.HostPublicIP6

@@ -206,6 +206,10 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 	host.EntraDeviceID = hostCfg.EntraDeviceID
 	host.SerialNumber = hostCfg.SerialNumber
 	host.HardwareUUID = hostCfg.HardwareUUID
+	// Preserve locally generated uplink cert fingerprint until the server echoes it.
+	if host.TcpProxyCertFingerprint == "" {
+		host.TcpProxyCertFingerprint = hostCfg.TcpProxyCertFingerprint
+	}
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
@@ -234,6 +238,26 @@ func SetNetclientServerContext(id uuid.UUID, tenantID string) {
 	}
 	netclient.TenantID = tenantID
 	netclient.HostPeers = []wgtypes.PeerConfig{}
+}
+
+func SyncTenantID(hostID uuid.UUID, tenantID string) bool {
+	if tenantID == "" || hostID == uuid.Nil {
+		return false
+	}
+	netclientCfgMutex.Lock()
+	if hostID != netclient.ID {
+		netclientCfgMutex.Unlock()
+		return false
+	}
+	changed := netclient.TenantID != tenantID
+	if changed {
+		netclient.TenantID = tenantID
+	}
+	netclientCfgMutex.Unlock()
+	if changed {
+		_ = WriteNetclientConfig()
+	}
+	return changed
 }
 
 // DeleteServerHostPeerCfg - deletes the host peers for the server

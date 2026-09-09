@@ -129,7 +129,7 @@ func (n *NCIface) Close() {
 	// SIGHUP; consulting useKernelWireGuard() here skips LinkDel and leaves the
 	// kernel UDP listen port busy (GetFreePort then bumps 51821→51822).
 	if UserspaceWGActive() {
-		fmt.Println("[listen-port-debug] Close: userspace path")
+		slog.Debug("Close: userspace path")
 		n.closeUserspaceWg()
 		// Best-effort remove leftover TUN/link name so kernel WG can recreate it.
 		if l, err := netlink.LinkByName(n.Name); err == nil && l != nil {
@@ -138,16 +138,16 @@ func (n *NCIface) Close() {
 		return
 	}
 	if l, err := netlink.LinkByName(n.Name); err == nil && l != nil {
-		fmt.Println("[listen-port-debug] Close: deleting netlink iface",
-			"name=", n.Name, "type=", l.Type(),
-			"desiredUserspace=", relayTCPUserspaceNeeded())
+		slog.Debug("Close: deleting netlink iface",
+			"name", n.Name, "type", l.Type(),
+			"desiredUserspace", relayTCPUserspaceNeeded())
 		if err := netlink.LinkDel(l); err != nil {
 			slog.Warn("failed to delete netmaker link on Close", "error", err)
 		}
 		return
 	}
-	fmt.Println("[listen-port-debug] Close: no userspace device and no netlink iface",
-		"name=", n.Name, "desiredUserspace=", relayTCPUserspaceNeeded())
+	slog.Debug("Close: no userspace device and no netlink iface",
+		"name", n.Name, "desiredUserspace", relayTCPUserspaceNeeded())
 }
 
 // netLink.Close - required function to close linux interface

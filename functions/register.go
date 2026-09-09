@@ -156,6 +156,7 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 
 	config.CurrServer = serverKey
 	config.UpdateServerConfig(&registerResponse.ServerConf)
+	config.SyncTenantID(registerResponse.RequestedHost.ID, registerResponse.ServerConf.TenantID)
 	server := config.GetServer(serverKey)
 	if server == nil {
 		logger.Log(0, "failed to save server: config not updated")
