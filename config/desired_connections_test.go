@@ -55,26 +55,38 @@ func TestSetDesiredNetworksEmptyPreservesFileForOtherUsers(t *testing.T) {
 	assert.Equal(t, []string{"net2"}, GetDesiredNetworks("bob", "t1"))
 }
 
-func TestSkipWriteWithoutUserSession(t *testing.T) {
+func TestSkipWriteWithoutUsername(t *testing.T) {
 	desiredConnectionsDir = t.TempDir()
 	t.Cleanup(func() { desiredConnectionsDir = "" })
 
 	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"netmaker"}, false))
 	require.NoError(t, RememberDesiredNetwork("", "t1", "cli-net"))
-	require.NoError(t, RememberDesiredNetwork("alice", "", "cli-net"))
 	require.NoError(t, SetDesiredWantIGW("", "", true))
 	require.NoError(t, SnapshotDesiredState("", "", []string{"cli-net"}, true))
 
 	assert.Equal(t, []string{"netmaker"}, GetDesiredNetworks("alice", "t1"))
 	assert.False(t, GetDesiredWantIGW("alice", "t1"))
 	assert.Empty(t, GetDesiredNetworks("", ""))
-	assert.Empty(t, GetDesiredNetworks("alice", ""))
 	_, err := os.Stat(filepath.Join(desiredConnectionsDir, desiredConnectionsFile))
 	require.NoError(t, err)
 	data, err := os.ReadFile(filepath.Join(desiredConnectionsDir, desiredConnectionsFile))
 	require.NoError(t, err)
-	assert.NotContains(t, string(data), `"_local"`)
 	assert.NotContains(t, string(data), `"cli-net"`)
+}
+
+func TestEmptyTenantDesiredState(t *testing.T) {
+	desiredConnectionsDir = t.TempDir()
+	t.Cleanup(func() { desiredConnectionsDir = "" })
+
+	require.NoError(t, RememberDesiredNetwork("alice", "", "net1"))
+	require.NoError(t, SetDesiredWantIGW("alice", "", true))
+	assert.Equal(t, []string{"net1"}, GetDesiredNetworks("alice", ""))
+	assert.True(t, GetDesiredWantIGW("alice", ""))
+	assert.Empty(t, GetDesiredNetworks("alice", "t1"), "empty tenant must not collide with MSP tenant")
+
+	require.NoError(t, SnapshotDesiredState("alice", "", []string{"net2"}, false))
+	assert.Equal(t, []string{"net2"}, GetDesiredNetworks("alice", ""))
+	assert.False(t, GetDesiredWantIGW("alice", ""))
 }
 
 func TestCLIDoesNotCreateDesiredConnectionsFile(t *testing.T) {

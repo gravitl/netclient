@@ -11,7 +11,9 @@ This document describes how the Netmaker desktop app integrates with the localho
 | **Availability** | Started when the netclient daemon starts (including before first registration) |
 | **Source** | `uiapi/` package, wired in `functions/uiapi_init.go` |
 
-The desktop UI is a **thin client**: it handles login UX and network toggles; netclient owns WireGuard, registration, MQTT sync, and daemon lifecycle.
+The desktop UI is a **thin client**: it handles login UX and network toggles; netclient owns WireGuard, registration, MQTT sync, session persistence, reconnect state, and daemon lifecycle.
+
+**Do not** store VPN/session truth in the UI (JWT, server URL as source of truth, connected networks, exit-node selection, host/node config). Query uiapi for state (`GET /session`, `/networks`, `/connections`, exit-node routes). The UI may keep presentation-only prefs (theme, window size). On boot, if `.uisession.json` still has a non-expired JWT, the daemon restores prior networks and exit-node intent from `desired_connections.json` without UI involvement.
 
 ## Architecture
 
@@ -75,9 +77,9 @@ Daemon persists **user** session state under the netclient config directory. **S
 
 On first load, netclient migrates `.uisession.json` from the legacy `netmaker-rac` directory if present. If still missing, user fields are migrated from legacy `ctx.json`; any server hostname in legacy files is written to `.serverctx`.
 
-User file fields: `username`, `auth_token`, `tenant_id`, `server_config` (UI cache from Netmaker `getconfig`).
+User file fields: `username`, `auth_token`, `tenant_id`, `server_config` (daemon cache of Netmaker `getconfig`, returned to the UI via `GET /session` / `GET /server` — not a separate UI config file).
 
-On daemon restart, user session is restored from `.uisession.json`; server is restored from `.serverctx`. `GET /server` returns `status: "running"` if a valid (non-expired) JWT is present.
+On daemon restart, user session is restored from `.uisession.json`; server is restored from `.serverctx`. Connected networks and exit-node intent are restored from `desired_connections.json` when the session is still active (`tenant_id` may be empty for classic on-prem). `GET /server` returns `status: "running"` if a valid (non-expired) JWT is present.
 
 ## API Reference
 
@@ -545,7 +547,8 @@ Netmaker server config (`server_config`) exposes auth-related fields (`authprovi
 | Topic | Detail |
 |-------|--------|
 | Netclient config dir | Linux: `/etc/netclient/`, macOS: `/Applications/Netclient/`, Windows: `C:\Program Files (x86)\Netclient\` |
-| UI user session | `.uisession.json` — username, JWT, UI `server_config` cache |
+| UI user session | `.uisession.json` — username, JWT, tenant, `server_config` (daemon-owned; UI reads via API) |
+| Desired reconnect | `desired_connections.json` — per user(+tenant) networks and `want_igw` |
 | Daemon server context | `.serverctx`, `servers.json` |
 | Legacy desktop dir | Linux: `/opt/netmaker-rac/`, macOS: `/Users/Shared/netmaker-rac/`, Windows: `C:\Users\Public\netmaker-rac\` (migrated on first load) |
 | Daemon install | `netclient install` registers OS service |

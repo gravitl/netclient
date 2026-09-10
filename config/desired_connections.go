@@ -39,10 +39,13 @@ func desiredConnectionsLockPath() string {
 	return filepath.Join(os.TempDir(), desiredConnectionsLockfile)
 }
 
+// sessionUserTenant normalizes identity for desired-state keys.
+// Username is required (desktop UI session). Tenant may be empty for classic
+// non-MSP on-prem so reboot restore does not depend on UI-side config.
 func sessionUserTenant(username, tenantID string) (string, string, bool) {
 	username = strings.TrimSpace(username)
 	tenantID = strings.TrimSpace(tenantID)
-	if username == "" || tenantID == "" {
+	if username == "" {
 		return "", "", false
 	}
 	return username, tenantID, true
