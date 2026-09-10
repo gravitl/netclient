@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/uiapi"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
@@ -355,6 +358,7 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 // SelectDeviceExitNode selects or clears (empty egressID) the exit node for the device.
 // Switching A→B is not done in one step: clear first (None), then assign. The server
 // rejects a direct switch while RelayedBy still points at the current gateway.
+// Peer/IGW routes are applied by the MQTT peer update; we do not pull here.
 func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
@@ -368,14 +372,21 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 		return nil, err
 	}
 	wantGW := egressID != "" && node.EgressID != ""
-	// Wait for routing to apply so a later select is not blocked by RelayedBy.
-	pullAndApplyExitNodeChange(network, wantGW)
+	user, tenant := uiapi.SessionIdentity()
 	if !wantGW {
+		// Restore LAN default routes immediately; MQTT will converge peers next.
+		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway after exit node clear", "error", err)
+			} else {
+				reconfigureDNSAfterRouting()
+			}
+		}
+		_ = config.SetDesiredWantIGW(user, tenant, false)
 		return nil, nil
 	}
-	nodes := []models.DeviceExitNode{node}
-	attachExitNodeLatencies(network, nodes)
-	return &nodes[0], nil
+	_ = config.SetDesiredWantIGW(user, tenant, true)
+	return &node, nil
 }
 
 func putDeviceExitNode(network, token, egressID string) ([]byte, error) {
