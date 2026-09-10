@@ -438,11 +438,11 @@ func checkConfig() {
 		if server == nil {
 			fail = true
 			logger.Log(0, "configuration for", config.CurrServer, "is missing")
-		} else {
-			if server.MQID != netclient.ID {
-				fail = true
-				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-			}
+		} else if server.MQID != uuid.Nil && server.MQID != netclient.ID {
+			// Partial Desktop POST /server entries keep MQID nil until host
+			// registration; only fail once an enrolled MQID disagrees with host id.
+			fail = true
+			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
 	}
 

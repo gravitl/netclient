@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
@@ -119,7 +120,21 @@ func applyHostPullRouting(pull models.HostPull) error {
 		wireguard.RemoveEgressRoutes()
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
+	// Split vs full DNS depends on CurrGwNmIP; always re-apply after IGW changes.
+	reconfigureDNSAfterRouting()
 	return nil
+}
+
+// reconfigureDNSAfterRouting re-runs OS DNS setup when the local listener is up.
+// Needed after exit-node select/clear because SplitDNS flips with CurrGwNmIP even
+// when nameserver lists are unchanged (mqhandlers previously skipped Configure).
+func reconfigureDNSAfterRouting() {
+	if dns.GetDNSServerInstance().AddrStr == "" {
+		return
+	}
+	if err := dns.Configure(); err != nil {
+		slog.Warn("failed to reconfigure dns after routing change", "error", err)
+	}
 }
 
 var pullForReconnect = PullForDesktop
@@ -302,6 +317,7 @@ func forceApplyInternetGw(pull models.HostPull) error {
 	if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 		return err
 	}
+	reconfigureDNSAfterRouting()
 	return nil
 }
 

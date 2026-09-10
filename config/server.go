@@ -116,6 +116,11 @@ func ResolveServerKey(id string) string {
 
 // ResolveServer finds a server by map key or by API/Name/Server fields.
 // The returned key is always a bare domain (no port) for MQTT / .serverctx identity.
+//
+// When id is empty, a single configured server is returned (current-context
+// lookup). A non-empty id that does not match must not fall back to that
+// single server — otherwise POST /server for a new host rewrites the existing
+// entry's API while leaving .serverctx unchanged.
 func ResolveServer(id string) (*Server, string) {
 	id = normalizeServerID(id)
 	serverMutex.RLock()
@@ -134,6 +139,7 @@ func ResolveServer(id string) (*Server, string) {
 				return copyServerPtr(server), "api." + id
 			}
 		}
+		return nil, ""
 	}
 	if len(Servers) == 1 {
 		for key, server := range Servers {

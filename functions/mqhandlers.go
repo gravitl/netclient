@@ -405,11 +405,12 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Start()
 		case stop:
 			dns.GetDNSServerInstance().Stop()
-		case update:
-			if dns.GetDNSServerInstance().AddrStr != "" {
-				_ = dns.Configure()
-			}
 		}
+	}
+	// Always re-apply OS DNS when listening: SplitDNS depends on CurrGwNmIP
+	// (exit node), not only on nameserver list / ManageDNS flips.
+	if dnsOp != stop {
+		reconfigureDNSAfterRouting()
 	}
 
 	if peerUpdate.Host.EnableFlowLogs {
@@ -1034,11 +1035,12 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			dns.GetDNSServerInstance().Start()
 		case stop:
 			dns.GetDNSServerInstance().Stop()
-		case update:
-			if dns.GetDNSServerInstance().AddrStr != "" {
-				_ = dns.Configure()
-			}
 		}
+	}
+	// Always re-apply OS DNS when listening: SplitDNS depends on CurrGwNmIP
+	// (exit node), not only on nameserver list / ManageDNS flips.
+	if dnsOp != stop {
+		reconfigureDNSAfterRouting()
 	}
 
 	if pullResponse.Host.EnableFlowLogs {

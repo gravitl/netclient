@@ -80,7 +80,12 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if key := config.ResolveServerKey(domain); key != "" {
-		domain = strings.TrimPrefix(config.NormalizeServerHost(key), "api.")
+		resolved := strings.TrimPrefix(config.NormalizeServerHost(key), "api.")
+		// Only canonicalize aliases for the same logical host. Never adopt an
+		// unrelated servers.json entry (e.g. sole "comms" when saving a new domain).
+		if resolved == domain {
+			domain = resolved
+		}
 	}
 	if isServerSet(domain) {
 		// Refresh API endpoint even when domain is already selected.
