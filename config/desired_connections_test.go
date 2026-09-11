@@ -33,15 +33,20 @@ func TestSnapshotDesiredStateRecordsWantIGW(t *testing.T) {
 	desiredConnectionsDir = t.TempDir()
 	t.Cleanup(func() { desiredConnectionsDir = "" })
 
-	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"net1"}, true))
+	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"net1"}, true, "eg-1", "net1"))
 	assert.Equal(t, []string{"net1"}, GetDesiredNetworks("alice", "t1"))
 	assert.True(t, GetDesiredWantIGW("alice", "t1"))
+	assert.Equal(t, "eg-1", GetDesiredEgressID("alice", "t1"))
+	assert.Equal(t, "net1", GetDesiredExitNetwork("alice", "t1"))
 
 	require.NoError(t, SetDesiredNetworks("alice", "t1", []string{"net1", "net2"}))
 	assert.True(t, GetDesiredWantIGW("alice", "t1"), "updating networks must keep want_igw")
+	assert.Equal(t, "eg-1", GetDesiredEgressID("alice", "t1"), "updating networks must keep egress")
 
 	require.NoError(t, SetDesiredWantIGW("alice", "t1", false))
 	assert.False(t, GetDesiredWantIGW("alice", "t1"))
+	assert.Empty(t, GetDesiredEgressID("alice", "t1"))
+	assert.Empty(t, GetDesiredExitNetwork("alice", "t1"))
 }
 
 func TestSetDesiredNetworksEmptyPreservesFileForOtherUsers(t *testing.T) {
@@ -59,10 +64,10 @@ func TestSkipWriteWithoutUsername(t *testing.T) {
 	desiredConnectionsDir = t.TempDir()
 	t.Cleanup(func() { desiredConnectionsDir = "" })
 
-	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"netmaker"}, false))
+	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"netmaker"}, false, "", ""))
 	require.NoError(t, RememberDesiredNetwork("", "t1", "cli-net"))
 	require.NoError(t, SetDesiredWantIGW("", "", true))
-	require.NoError(t, SnapshotDesiredState("", "", []string{"cli-net"}, true))
+	require.NoError(t, SnapshotDesiredState("", "", []string{"cli-net"}, true, "eg", "cli-net"))
 
 	assert.Equal(t, []string{"netmaker"}, GetDesiredNetworks("alice", "t1"))
 	assert.False(t, GetDesiredWantIGW("alice", "t1"))
@@ -84,7 +89,7 @@ func TestEmptyTenantDesiredState(t *testing.T) {
 	assert.True(t, GetDesiredWantIGW("alice", ""))
 	assert.Empty(t, GetDesiredNetworks("alice", "t1"), "empty tenant must not collide with MSP tenant")
 
-	require.NoError(t, SnapshotDesiredState("alice", "", []string{"net2"}, false))
+	require.NoError(t, SnapshotDesiredState("alice", "", []string{"net2"}, false, "", ""))
 	assert.Equal(t, []string{"net2"}, GetDesiredNetworks("alice", ""))
 	assert.False(t, GetDesiredWantIGW("alice", ""))
 }
@@ -103,7 +108,7 @@ func TestWritesNestedUserTenantShape(t *testing.T) {
 	desiredConnectionsDir = t.TempDir()
 	t.Cleanup(func() { desiredConnectionsDir = "" })
 
-	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"net1"}, true))
+	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"net1"}, true, "eg-1", "net1"))
 
 	data, err := os.ReadFile(filepath.Join(desiredConnectionsDir, desiredConnectionsFile))
 	require.NoError(t, err)
@@ -111,7 +116,9 @@ func TestWritesNestedUserTenantShape(t *testing.T) {
 		"alice": {
 			"t1": {
 				"networks": ["net1"],
-				"want_igw": true
+				"want_igw": true,
+				"egress_id": "eg-1",
+				"exit_network": "net1"
 			}
 		}
 	}`, string(data))

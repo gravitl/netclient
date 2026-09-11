@@ -241,6 +241,7 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	server := configuredServer()
+	cancelSessionRestore()
 	setStatus(Loading)
 	defer func() {
 		if getStatus() == Loading {
@@ -269,17 +270,23 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		uiLog(1, "uiapi: failed to fetch server config:", err.Error())
 	}
 	setSession(req.Username, req.AuthToken, req.TenantID, cfg)
+	// Return immediately so the GUI can navigate; reconnect in the background.
 	setStatus(Restoring)
-	if err := restoreDesiredConnections(req.Username, req.TenantID); err != nil {
-		uiLog(1, "uiapi: failed to restore previous connections:", err.Error())
-	}
-	setStatus(Running)
+	restoreGen := beginSessionRestore()
+	username, tenantID := req.Username, req.TenantID
+	go func(gen uint64, username, tenantID string) {
+		if err := restoreDesiredConnections(username, tenantID); err != nil {
+			uiLog(1, "uiapi: failed to restore previous connections:", err.Error())
+		}
+		finishSessionRestore(gen)
+	}(restoreGen, username, tenantID)
 	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
 	w.WriteHeader(http.StatusOK)
 }
 
 func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
+	cancelSessionRestore()
 	setStatus(Closing)
 	// Never clear CurrServer / .serverctx on logout — Settings should keep
 	// the last saved server so the user does not re-enter it.

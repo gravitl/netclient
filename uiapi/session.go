@@ -6,12 +6,60 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gravitl/netclient/config"
 	nmConfig "github.com/gravitl/netmaker/config"
 )
+
+// sessionRestoreGen invalidates in-flight restore goroutines when a newer
+// session is configured (or the session is released).
+var sessionRestoreGen atomic.Uint64
+
+// sessionRestoreAbort is set on logout/handoff so restoreDesiredConnections
+// can stop between steps even while the HTTP session is still active.
+var sessionRestoreAbort atomic.Bool
+
+// beginSessionRestore marks a new async restore generation and returns its id.
+func beginSessionRestore() uint64 {
+	sessionRestoreAbort.Store(false)
+	return sessionRestoreGen.Add(1)
+}
+
+// finishSessionRestore sets Running only if this restore generation is still
+// current and the session is still in Restoring.
+func finishSessionRestore(gen uint64) {
+	if sessionRestoreGen.Load() != gen {
+		return
+	}
+	if getStatus() == Restoring {
+		setStatus(Running)
+	}
+}
+
+// cancelSessionRestore invalidates any in-flight restore (logout / handoff).
+func cancelSessionRestore() {
+	sessionRestoreAbort.Store(true)
+	sessionRestoreGen.Add(1)
+}
+
+// SessionAuthToken returns the active desktop session JWT, or empty if none.
+func SessionAuthToken() string {
+	_, _, token := sessionToken()
+	return token
+}
+
+// ShouldAbortSessionRestore is true when logout/handoff cancelled restore or
+// the session is no longer usable.
+func ShouldAbortSessionRestore() bool {
+	if sessionRestoreAbort.Load() {
+		return true
+	}
+	st := getStatus()
+	return st == Closing || st == Idle
+}
 
 type persistedUserSession struct {
 	// PendingServer is read only for one-time migration from older session files.

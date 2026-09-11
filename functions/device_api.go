@@ -382,10 +382,10 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 				reconfigureDNSAfterRouting()
 			}
 		}
-		_ = config.SetDesiredWantIGW(user, tenant, false)
+		_ = config.ClearDesiredExitNode(user, tenant)
 		return nil, nil
 	}
-	_ = config.SetDesiredWantIGW(user, tenant, true)
+	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
 	return &node, nil
 }
 

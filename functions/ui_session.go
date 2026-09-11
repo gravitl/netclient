@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/uiapi"
+	"github.com/gravitl/netclient/wireguard"
 	"golang.org/x/exp/slog"
 )
 
@@ -90,8 +91,9 @@ func sessionTenantMatches(server, tenantID string) bool {
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.
-// Currently connected networks are saved so the next login (or reboot with an
-// active session) can restore them.
+// Currently connected networks (and exit selection) are saved so the next login
+// can restore them. Local default routes are restored before disconnect so
+// logout does not wait on a daemon restart for internet to return.
 func ReleaseSession(clearServer bool) error {
 	networks := make([]string, 0, len(config.GetNodes()))
 	for network, node := range config.GetNodes() {
@@ -104,19 +106,58 @@ func ReleaseSession(clearServer bool) error {
 		// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
 		// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
 		wantIGW := config.GetDesiredWantIGW(user, tenant)
+		egressID := config.GetDesiredEgressID(user, tenant)
+		exitNetwork := config.GetDesiredExitNetwork(user, tenant)
 		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
 			wantIGW = true
 		}
-		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW); err != nil {
+		token := uiapi.SessionAuthToken()
+		if wantIGW && egressID == "" && token != "" {
+			for _, network := range networks {
+				sel, err := GetDeviceSelectedExitNode(network, token)
+				if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
+					continue
+				}
+				egressID = sel.EgressID
+				exitNetwork = network
+				break
+			}
+		}
+		if egressID != "" {
+			wantIGW = true
+			if exitNetwork == "" {
+				exitNetwork = networks[len(networks)-1]
+			}
+		}
+		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, egressID, exitNetwork); err != nil {
 			slog.Warn("failed to persist connected networks before logout", "error", err)
 		}
 		skipNextDesiredRestore()
-	}
-	for i, network := range networks {
-		restart := i == len(networks)-1
-		if err := disconnectNetwork(network, restart, false); err != nil {
-			return err
+
+		// Bring LAN back immediately; do not wait for disconnect + daemon restart.
+		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Warn("failed to restore default gateway before logout disconnect", "error", err)
+			} else {
+				reconfigureDNSAfterRouting()
+			}
 		}
+		// Clear server exit only when we persisted an egress id to put back later.
+		// Otherwise leave server selection intact so restore can still recover it.
+		if egressID != "" && exitNetwork != "" && token != "" {
+			if _, err := putDeviceExitNode(exitNetwork, token, ""); err != nil {
+				slog.Warn("failed to clear server exit node on logout", "network", exitNetwork, "error", err)
+			}
+		}
+
+		for _, network := range networks {
+			// Skip daemon restart per network — iface cleanup below is enough and
+			// avoids the long SIGHUP path that made logout with exit feel stuck.
+			if err := disconnectNetwork(network, false, false); err != nil {
+				return err
+			}
+		}
+		_ = wireguard.SetPeers(true)
 	}
 	if clearServer {
 		config.CurrServer = ""

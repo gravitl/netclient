@@ -15,8 +15,10 @@ const (
 
 // DesiredState is the reconnect record for one user+tenant on this host.
 type DesiredState struct {
-	Networks []string `json:"networks"`
-	WantIGW  bool     `json:"want_igw"`
+	Networks    []string `json:"networks"`
+	WantIGW     bool     `json:"want_igw"`
+	EgressID    string   `json:"egress_id,omitempty"`
+	ExitNetwork string   `json:"exit_network,omitempty"`
 }
 
 // desiredConnectionsStore is username → tenant ID → network state.
@@ -101,15 +103,23 @@ func SetDesiredNetworks(username, tenantID string, networks []string) error {
 	return writeDesiredConnectionsLocked(store)
 }
 
-// SnapshotDesiredState records networks to restore and whether an exit node
-// was active, so login/reboot can wait for ChangeDefaultGw before applying routes.
-func SnapshotDesiredState(username, tenantID string, networks []string, wantIGW bool) error {
+// SnapshotDesiredState records networks to restore and exit-node intent
+// (want_igw + optional egress id) so login can re-select and apply routes.
+func SnapshotDesiredState(username, tenantID string, networks []string, wantIGW bool, egressID, exitNetwork string) error {
 	desiredConnectionsMu.Lock()
 	defer desiredConnectionsMu.Unlock()
 	store := readDesiredConnectionsLocked()
+	egressID = strings.TrimSpace(egressID)
+	exitNetwork = strings.TrimSpace(exitNetwork)
+	if !wantIGW {
+		egressID = ""
+		exitNetwork = ""
+	}
 	if !putUserState(store, username, tenantID, DesiredState{
-		Networks: uniqueNetworks(networks),
-		WantIGW:  wantIGW,
+		Networks:    uniqueNetworks(networks),
+		WantIGW:     wantIGW,
+		EgressID:    egressID,
+		ExitNetwork: exitNetwork,
 	}) {
 		return nil
 	}
@@ -124,13 +134,64 @@ func GetDesiredWantIGW(username, tenantID string) bool {
 	return userState(store, username, tenantID).WantIGW
 }
 
+// GetDesiredEgressID returns the exit node egress id to re-select on restore.
+func GetDesiredEgressID(username, tenantID string) string {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	return userState(store, username, tenantID).EgressID
+}
+
+// GetDesiredExitNetwork returns the network where the exit node was selected.
+func GetDesiredExitNetwork(username, tenantID string) string {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	return userState(store, username, tenantID).ExitNetwork
+}
+
+// SetDesiredExitNode records exit selection for restore (sets want_igw).
+func SetDesiredExitNode(username, tenantID, network, egressID string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.WantIGW = true
+	state.EgressID = strings.TrimSpace(egressID)
+	state.ExitNetwork = strings.TrimSpace(network)
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// ClearDesiredExitNode clears exit restore intent for a user+tenant.
+func ClearDesiredExitNode(username, tenantID string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.WantIGW = false
+	state.EgressID = ""
+	state.ExitNetwork = ""
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
 // SetDesiredWantIGW updates only the exit-restore flag for a user+tenant.
+// Clearing want_igw also drops a stored egress id.
 func SetDesiredWantIGW(username, tenantID string, wantIGW bool) error {
 	desiredConnectionsMu.Lock()
 	defer desiredConnectionsMu.Unlock()
 	store := readDesiredConnectionsLocked()
 	state := userState(store, username, tenantID)
 	state.WantIGW = wantIGW
+	if !wantIGW {
+		state.EgressID = ""
+		state.ExitNetwork = ""
+	}
 	if !putUserState(store, username, tenantID, state) {
 		return nil
 	}

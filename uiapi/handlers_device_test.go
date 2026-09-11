@@ -210,6 +210,8 @@ func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
 
 	restoredUser := ""
 	restoredTenant := ""
+	started := make(chan struct{})
+	unblock := make(chan struct{})
 	SetHandlers(HandlerDeps{
 		RegisterSession: func(server, username, authToken, password, tenantID string) error {
 			return nil
@@ -217,6 +219,8 @@ func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
 		RestoreDesiredConnections: func(username, tenantID string) error {
 			restoredUser = username
 			restoredTenant = tenantID
+			close(started)
+			<-unblock
 			return nil
 		},
 	})
@@ -227,9 +231,17 @@ func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
 	configureSession(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "alice", restoredUser)
-	assert.Equal(t, "tenant-a", restoredTenant)
-	assert.Equal(t, Running, getStatus())
+	// PUT returns while restore is still in flight.
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("restore did not start")
+	}
+	assert.Equal(t, Restoring, getStatus())
+	close(unblock)
+	assert.Eventually(t, func() bool {
+		return restoredUser == "alice" && restoredTenant == "tenant-a" && getStatus() == Running
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
