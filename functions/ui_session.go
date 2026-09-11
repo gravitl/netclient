@@ -100,9 +100,13 @@ func ReleaseSession(clearServer bool) error {
 		}
 	}
 	if len(networks) > 0 {
-		nc := config.Netclient()
-		wantIGW := nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0)
 		user, tenant := uiapi.SessionIdentity()
+		// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
+		// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
+		wantIGW := config.GetDesiredWantIGW(user, tenant)
+		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+			wantIGW = true
+		}
 		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW); err != nil {
 			slog.Warn("failed to persist connected networks before logout", "error", err)
 		}

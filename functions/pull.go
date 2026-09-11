@@ -94,7 +94,12 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
+	keepDisconnected := locallyDisconnectedNetworks()
+	keepConnected := locallyConnectedNetworks()
 	config.SetNodes(pullResponse.Nodes)
+	keepLocallyDisconnected(keepDisconnected)
+	keepLocallyConnected(keepConnected)
+	reassertDesiredConnectedFlags()
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)
 	if server == nil {

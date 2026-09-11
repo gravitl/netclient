@@ -278,8 +278,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	config.UpdateHostPeers(peerUpdate.Peers)
 	if len(peerUpdate.Nodes) > 0 {
 		keepDisconnected := locallyDisconnectedNetworks()
+		keepConnected := locallyConnectedNetworks()
 		config.SetNodes(peerUpdate.Nodes)
 		keepLocallyDisconnected(keepDisconnected)
+		keepLocallyConnected(keepConnected)
+		reassertDesiredConnectedFlags()
 		_ = config.WriteNodeConfig()
 	}
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)

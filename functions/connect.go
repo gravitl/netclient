@@ -238,3 +238,57 @@ func keepLocallyDisconnected(networks map[string]struct{}) {
 		config.UpdateNodeMap(network, node)
 	}
 }
+
+func locallyConnectedNetworks() map[string]struct{} {
+	out := make(map[string]struct{})
+	for network, node := range config.GetNodes() {
+		if node.Connected {
+			out[network] = struct{}{}
+		}
+	}
+	return out
+}
+
+// keepLocallyConnected restores Connected=true after a server node sync that still
+// reports Connected=false (common right after reconnect/login before the server
+// processes PublishNodeUpdate). Without this, AnyNodeConnected() is false and
+// peer/pull handlers clear egress and internet-exit routes.
+func keepLocallyConnected(networks map[string]struct{}) {
+	if len(networks) == 0 {
+		return
+	}
+	changed := false
+	for network, node := range config.GetNodes() {
+		if _, ok := networks[network]; !ok || node.Connected {
+			continue
+		}
+		node.Connected = true
+		config.UpdateNodeMap(network, node)
+		changed = true
+		slog.Info("preserving local connection after server node sync", "network", network)
+	}
+	if changed {
+		if err := config.WriteNodeConfig(); err != nil {
+			slog.Warn("failed to persist preserved connections", "error", err)
+		}
+	}
+}
+
+// reassertDesiredConnectedFlags forces Connected=true for networks in desired
+// state. Covers login restore races where a peer update arrives before/without
+// a prior local Connected=true snapshot.
+func reassertDesiredConnectedFlags() {
+	if !uiapi.IsSessionActive() {
+		return
+	}
+	user, tenant := uiapi.SessionIdentity()
+	desired := filterDesiredNetworks(config.GetDesiredNetworks(user, tenant), uiapi.RestrictToSingleNetwork())
+	if len(desired) == 0 {
+		return
+	}
+	keep := make(map[string]struct{}, len(desired))
+	for _, network := range desired {
+		keep[network] = struct{}{}
+	}
+	keepLocallyConnected(keep)
+}
