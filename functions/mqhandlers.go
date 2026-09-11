@@ -584,7 +584,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		response, resetInterface, replacePeers, err := Pull(false, false)
+		response, resetInterface, replacePeers, err := Pull(false, false, false)
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
@@ -844,7 +844,7 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
 			//auth.CleanJwtToken()
-			response, resetInterface, replacePeers, err := Pull(false, false)
+			response, resetInterface, replacePeers, err := Pull(false, false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {

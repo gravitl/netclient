@@ -38,7 +38,7 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, _, _, err = PullForDesktop(false, true)
+	_, _, _, err = Pull(false, true, false)
 	if err != nil {
 		return "", err
 	}

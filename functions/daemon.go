@@ -225,7 +225,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var pullresp models.HostPull
 	var pullErr error
 	if server != nil && server.API != "" {
-		pullresp, _, _, pullErr = PullForDesktop(false, true)
+		// refresh=true: ask server to recompute host peer cache on daemon startup.
+		pullresp, _, _, pullErr = Pull(false, true, true)
 		if pullErr != nil {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}

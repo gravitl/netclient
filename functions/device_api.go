@@ -308,7 +308,7 @@ func SyncDeviceWithServer(token string) error {
 	if err == nil {
 		_ = decodeDeviceResponse(resp, nil)
 	}
-	_, _, _, err = PullForDesktop(false, true)
+	_, _, _, err = Pull(false, true, false)
 	return err
 }
 
@@ -415,7 +415,7 @@ func ConnectNetwork(network, server, token string) error {
 		if status != "joined" && status != "" {
 			return fmt.Errorf("unexpected join status: %s", status)
 		}
-		if _, _, _, err := PullForDesktop(false, true); err != nil {
+		if _, _, _, err := Pull(false, true, false); err != nil {
 			return fmt.Errorf("failed to sync after join: %w", err)
 		}
 	}

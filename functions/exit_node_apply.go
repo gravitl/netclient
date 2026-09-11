@@ -26,7 +26,7 @@ func reconfigureDNSAfterRouting() {
 	}
 }
 
-var pullForReconnect = PullForDesktop
+var pullForReconnect = Pull
 
 const (
 	reconnectPullTimeout  = 10 * time.Second
@@ -73,7 +73,7 @@ func waitForReconnectHostPull(networks []string, wantIGW bool) (models.HostPull,
 	var lastErr error
 	deadline := time.Now().Add(reconnectPullTimeout)
 	for attempt := 1; ; attempt++ {
-		resp, _, _, err := pullForReconnect(false, true)
+		resp, _, _, err := pullForReconnect(false, true, false)
 		if err != nil {
 			lastErr = err
 			slog.Warn("failed to pull after reconnect", "attempt", attempt, "error", err)
@@ -151,7 +151,7 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 	for attempt := 1; attempt <= 12; attempt++ {
 		if attempt > 1 {
 			time.Sleep(150 * time.Millisecond)
-			if p, _, _, err := pullForReconnect(false, true); err == nil {
+			if p, _, _, err := pullForReconnect(false, true, false); err == nil {
 				resp = p
 				config.UpdateHostPeers(p.Peers)
 				_ = wireguard.SetPeers(true)

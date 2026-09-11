@@ -20,17 +20,10 @@ import (
 
 var pMutex = sync.Mutex{} // used to mutex functions for pull
 
-// Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
-	return pull(restart, resetIfFailedOvered, true)
-}
-
-// PullForDesktop pulls like Pull but does not delete servers.json on host auth 401.
-func PullForDesktop(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
-	return pull(restart, resetIfFailedOvered, false)
-}
-
-func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (models.HostPull, bool, bool, error) {
+// Pull pulls the latest config from the server.
+// refresh asks the server to recompute host peer cache on demand (startup only).
+// A 401 does not delete local server registration (servers.json).
+func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
 	resetInterface := false
@@ -44,13 +37,14 @@ func pull(restart bool, resetIfFailedOvered bool, cleanupOnUnauthorized bool) (m
 		_ = config.SetCurrServerCtxInFile(serverName)
 	}
 	token, err := auth.AuthenticateWithOptions(server, config.Netclient(), auth.AuthenticateOptions{
-		CleanupOnUnauthorized: cleanupOnUnauthorized,
+		CleanupOnUnauthorized: false,
 	})
 	if err != nil {
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
-	url := fmt.Sprintf("%s/api/v1/host?reset_failovered=%v", config.APIBaseURL(config.NormalizeServerAPI(server.API)), resetIfFailedOvered)
+	url := fmt.Sprintf("%s/api/v1/host?reset_failovered=%v&refresh=%v",
+		config.APIBaseURL(config.NormalizeServerAPI(server.API)), resetIfFailedOvered, refresh)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)

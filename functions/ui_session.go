@@ -12,7 +12,7 @@ import (
 
 var (
 	registerDeviceOnServerForSession = RegisterDeviceOnServer
-	pullForDesktopForSession         = PullForDesktop
+	pullForSession                   = Pull
 )
 
 // IsRegisteredToServer reports whether netclient is fully registered to the given server.
@@ -57,7 +57,7 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	}
 
 	if IsRegisteredToServer(server) {
-		if _, _, _, err := pullForDesktopForSession(false, true); err != nil {
+		if _, _, _, err := pullForSession(false, true, false); err != nil {
 			return fmt.Errorf("failed to sync with server: %w", err)
 		}
 	}

@@ -44,7 +44,7 @@ func TestWaitForReconnectHostPullReturnsWhenIGWReady(t *testing.T) {
 	assert.NoError(t, err)
 	n := 0
 	orig := pullForReconnect
-	pullForReconnect = func(bool, bool) (models.HostPull, bool, bool, error) {
+	pullForReconnect = func(bool, bool, bool) (models.HostPull, bool, bool, error) {
 		n++
 		if n < 3 {
 			return models.HostPull{
