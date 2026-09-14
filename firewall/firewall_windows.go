@@ -25,6 +25,10 @@ const (
 	testIPv6    = "2606:4700:4700::1111"
 	ipv4Network = "0.0.0.0/0"
 	ipv6Network = "::/0"
+
+	// Legacy Defender Firewall group/names — removed on upgrade; kept for cleanup only.
+	winFwACLGroup       = "Netmaker-ACL"
+	winFwDNSUDPRuleName = "Netmaker-DNS-UDP"
 )
 
 // windowsManager implements egress via Hyper-V NetNat + IP forwarding, and
