@@ -64,6 +64,18 @@ func GetNodes() NodeMap {
 	return Nodes
 }
 
+// AnyNodeConnected reports whether any network is locally marked connected.
+func AnyNodeConnected() bool {
+	nodeMutex.RLock()
+	defer nodeMutex.RUnlock()
+	for _, node := range Nodes {
+		if node.Connected {
+			return true
+		}
+	}
+	return false
+}
+
 // GetNode returns returns the node configuation of the specified network name
 func GetNode(k string) Node {
 	nodeMutex.RLock()

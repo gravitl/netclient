@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -66,6 +67,9 @@ func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
 	InitConfig(flags)
+	if isUninstallCommand() {
+		return
+	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
 	port := 0
@@ -281,6 +285,7 @@ func setupLogging(flags *viper.Viper) {
 func checkConfig() {
 	fail := false
 	saveRequired := false
+	skipServerValidation := isUninstallCommand()
 	sysInfo := logic.GetOSInfo()
 	netclient := config.Netclient()
 	if netclient.OS != sysInfo.OS {
@@ -428,20 +433,37 @@ func checkConfig() {
 	}
 	_ = config.ReadServerConf()
 	_ = config.ReadNodeConfig()
-	if config.CurrServer != "" {
+	if config.CurrServer != "" && !skipServerValidation {
 		server := config.GetServer(config.CurrServer)
 		if server == nil {
 			fail = true
 			logger.Log(0, "configuration for", config.CurrServer, "is missing")
-		} else {
-			if server.MQID != netclient.ID {
-				fail = true
-				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-			}
+		} else if server.MQID != uuid.Nil && server.MQID != netclient.ID {
+			// Partial Desktop POST /server entries keep MQID nil until host
+			// registration; only fail once an enrolled MQID disagrees with host id.
+			fail = true
+			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
 		}
 	}
 
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
+}
+
+// isUninstallCommand reports whether the CLI was invoked as `netclient uninstall`.
+func isUninstallCommand() bool {
+	cmd, _, err := rootCmd.Find(os.Args[1:])
+	if err != nil {
+		for _, arg := range os.Args[1:] {
+			if arg == "uninstall" {
+				return true
+			}
+			if !strings.HasPrefix(arg, "-") {
+				break
+			}
+		}
+		return false
+	}
+	return cmd != nil && cmd.Name() == "uninstall"
 }

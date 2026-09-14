@@ -14,6 +14,7 @@ import (
 	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 )
 
 // RegisterSSO - payload to register via SSO
@@ -24,6 +25,30 @@ type RegisterSSO struct {
 	Network     string
 	UsingSSO    bool
 	AllNetworks bool
+}
+
+func prepareRegistrationHost() (schema.Host, error) {
+	host := config.Netclient()
+	ip, err := ncutils.GetInterfaces()
+	if err != nil {
+		logger.Log(0, "failed to retrieve local interfaces", err.Error())
+	} else if ip != nil {
+		host.Interfaces = ip
+	}
+	defaultInterface, err := getDefaultInterface()
+	if err != nil {
+		logger.Log(0, "default gateway not found", err.Error())
+	} else {
+		host.DefaultInterface = defaultInterface
+	}
+	shouldUpdateHost, err := doubleCheck(host)
+	if err != nil {
+		return schema.Host{}, err
+	}
+	if shouldUpdateHost {
+		host = config.Netclient()
+	}
+	return host.Host, nil
 }
 
 // RegisterWithSSO - register with user credentials with a netmaker server
@@ -37,28 +62,9 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 		}
 	} // end validation
 
-	host := config.Netclient()
-	ip, err := ncutils.GetInterfaces()
+	host, err := prepareRegistrationHost()
 	if err != nil {
-		logger.Log(0, "failed to retrieve local interfaces", err.Error())
-	} else {
-		// just in case getInterfaces() returned nil, nil
-		if ip != nil {
-			host.Interfaces = ip
-		}
-	}
-	defaultInterface, err := getDefaultInterface()
-	if err != nil {
-		logger.Log(0, "default gateway not found", err.Error())
-	} else {
-		host.DefaultInterface = defaultInterface
-	}
-	shouldUpdateHost, err := doubleCheck(host)
-	if err != nil {
-		logger.FatalLog(fmt.Sprintf("error when checking host values - %v", err.Error()))
-	}
-	if shouldUpdateHost { // get most up to date values before submitting to server
-		host = config.Netclient()
+		return fmt.Errorf("error when checking host values - %w", err)
 	}
 
 	socketUrl := fmt.Sprintf("wss://%s/api/v1/auth-register/host", registerData.API)
@@ -69,9 +75,9 @@ func RegisterWithSSO(registerData *RegisterSSO) (err error) {
 		return
 	}
 
-	posture.ApplyIdentity(&host.Host)
+	posture.ApplyIdentity(&host)
 	request := models.RegisterMsg{
-		RegisterHost: host.Host,
+		RegisterHost: host,
 		User:         registerData.User,
 		Password:     registerData.Pass,
 		Network:      registerData.Network,

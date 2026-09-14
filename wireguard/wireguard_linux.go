@@ -222,6 +222,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 		}); err != nil {
 			slog.Warn("error removing route", "error", err.Error())
 		}
+		removeSpecificRouteFromIGWTable(l, addr)
 	}
 }
 
@@ -252,8 +253,42 @@ func SetRoutes(addrs []ifaceAddress) error {
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Warn("error adding route", "error", err.Error())
 		}
+		addSpecificRouteToIGWTable(l, addr, metric)
 	}
 	return nil
+}
+
+// addSpecificRouteToIGWTable installs a more-specific egress CIDR in table 111 so
+// it wins over the IGW default (0.0.0.0/0) when policy routing looks up that table.
+func addSpecificRouteToIGWTable(l netlink.Link, addr ifaceAddress, metric int) {
+	if l == nil || !igwRoutingActive() || addr.Network.IP == nil {
+		return
+	}
+	dst := addr.Network
+	r := netlink.Route{
+		LinkIndex: l.Attrs().Index,
+		Dst:       &dst,
+		Table:     RouteTableName,
+		Priority:  metric,
+	}
+	if err := netlink.RouteAdd(&r); err != nil && !strings.Contains(err.Error(), "file exists") {
+		slog.Warn("error adding IGW-table egress route", "network", addr.Network.String(), "error", err.Error())
+	}
+}
+
+func removeSpecificRouteFromIGWTable(l netlink.Link, addr ifaceAddress) {
+	if l == nil || addr.Network.IP == nil {
+		return
+	}
+	dst := addr.Network
+	r := netlink.Route{
+		LinkIndex: l.Attrs().Index,
+		Dst:       &dst,
+		Table:     RouteTableName,
+	}
+	if err := netlink.RouteDel(&r); err != nil && !strings.Contains(err.Error(), "no such process") {
+		slog.Debug("remove IGW-table egress route", "network", addr.Network.String(), "error", err.Error())
+	}
 }
 
 // GetDefaultGatewayIp - get current default gateway
@@ -448,6 +483,7 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 			}
 		}
 	}
+	reapplyCachedEgressRoutes()
 	return firstErr
 }
 
@@ -526,7 +562,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
-	igwHostIPs := InternetGwHostIPs(publicKey)
+	igwHostIPs := IGWUnderlayPinIPs(publicKey)
 	for _, hostIP := range igwHostIPs {
 		if hostIP.To4() != nil {
 			continue
@@ -609,6 +645,9 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 		}
 		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
 	}
+	// Site-egress (and other direct) peer underlays must also stay on main;
+	// otherwise UDP to those hosts matches table-111 0.0.0.0/0 and trombones.
+	pinInternetGwHostRoutes(publicKey)
 
 	//set new default gateway
 	if err := netlink.RouteAdd(&defaultRoute); err != nil {
@@ -871,10 +910,11 @@ func restoreInternetGwV4() (err error) {
 	return config.WriteNetclientConfig()
 }
 
-// pinInternetGwHostRoutes adds main-table rules for exit underlay IPs without
-// changing the IGW table default. Safe when exit routing is already active.
+// pinInternetGwHostRoutes adds main-table rules for exit and non-exit peer
+// underlay IPs without changing the IGW table default. Safe when exit routing
+// is already active.
 func pinInternetGwHostRoutes(publicKey string) {
-	for _, hostIP := range InternetGwHostIPs(publicKey) {
+	for _, hostIP := range IGWUnderlayPinIPs(publicKey) {
 		var cidr string
 		family := netlink.FAMILY_V4
 		if hostIP.To4() != nil {

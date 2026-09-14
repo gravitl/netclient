@@ -73,7 +73,7 @@ func LeaveServer(s string) error {
 	auth.CleanJwtToken()
 	token, err := auth.Authenticate(server, &scopedHost)
 	if err == nil {
-		url := fmt.Sprintf("https://%s/api/hosts/%s?force=true", server.API, scopedHost.ID.String())
+		url := fmt.Sprintf("%s/api/hosts/%s?force=true", config.APIBaseURL(config.NormalizeServerAPI(server.API)), scopedHost.ID.String())
 		headers := make(http.Header)
 		headers.Set("Content-Type", "application/json")
 		headers.Set("Authorization", "Bearer "+token)

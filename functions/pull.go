@@ -20,23 +20,31 @@ import (
 
 var pMutex = sync.Mutex{} // used to mutex functions for pull
 
-// Pull - pulls the latest config from the server, if manual it will overwrite
-func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, error) {
+// Pull pulls the latest config from the server.
+// refresh asks the server to recompute host peer cache on demand (startup only).
+// A 401 does not delete local server registration (servers.json).
+func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
 	resetInterface := false
 	replacePeers := false
-	serverName := config.CurrServer
-	server := config.GetServer(serverName)
+	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
 		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
 	}
-	token, err := auth.Authenticate(server, config.Netclient())
+	if serverName != config.CurrServer {
+		config.CurrServer = serverName
+		_ = config.SetCurrServerCtxInFile(serverName)
+	}
+	token, err := auth.AuthenticateWithOptions(server, config.Netclient(), auth.AuthenticateOptions{
+		CleanupOnUnauthorized: false,
+	})
 	if err != nil {
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
-	url := fmt.Sprintf("https://%s/api/v1/host?reset_failovered=%v", server.API, resetIfFailedOvered)
+	url := fmt.Sprintf("%s/api/v1/host?reset_failovered=%v&refresh=%v",
+		config.APIBaseURL(config.NormalizeServerAPI(server.API)), resetIfFailedOvered, refresh)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
@@ -86,7 +94,17 @@ func Pull(restart bool, resetIfFailedOvered bool) (models.HostPull, bool, bool, 
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
 	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
+	keepDisconnected := locallyDisconnectedNetworks()
+	keepConnected := locallyConnectedNetworks()
 	config.SetNodes(pullResponse.Nodes)
+	keepLocallyDisconnected(keepDisconnected)
+	keepLocallyConnected(keepConnected)
+	reassertDesiredConnectedFlags()
+	config.UpdateHost(&pullResponse.Host)
+	server, serverName = config.ResolveServer(serverName)
+	if server == nil {
+		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
+	}
 	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
