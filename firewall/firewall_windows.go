@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -26,8 +27,8 @@ const (
 	ipv6Network = "::/0"
 )
 
-// windowsManager implements Direct NAT egress via Hyper-V NetNat + IP forwarding.
-// ACL / FORWARD filtering is best-effort in v1 (server ACLs still gate who receives routes).
+// windowsManager implements egress via Hyper-V NetNat + IP forwarding, and
+// peer/host + egress ACLs via the Windows Filtering Platform (WFP).
 type windowsManager struct {
 	mux          sync.Mutex
 	engressRules serverrulestable
@@ -36,8 +37,7 @@ type windowsManager struct {
 }
 
 func newFirewall() (firewallController, error) {
-	logger.Log(0, "using Windows NetNat to manage egress NAT rules...")
-	slog.Warn("windows egress ACL filtering is not enforced in v1; only Direct NAT + IP forwarding are applied")
+	logger.Log(0, "using Windows NetNat + Defender Firewall ACLs...")
 	if cfg := config.Netclient(); cfg != nil {
 		cfg.FirewallInUse = schema.FIREWALL_NETNAT
 	}
@@ -48,28 +48,21 @@ func newFirewall() (firewallController, error) {
 	}, nil
 }
 
-func (w *windowsManager) CreateChains() error { return nil }
-func (w *windowsManager) ForwardRule() error  { return nil }
-func (w *windowsManager) AddDropRules([]ruleInfo) {
+func (w *windowsManager) CreateChains() error {
+	ensureWindowsACLBootstrap()
+	return nil
 }
-func (w *windowsManager) ChangeACLInTarget(string)  {}
-func (w *windowsManager) ChangeACLFwdTarget(string) {}
+
+func (w *windowsManager) ForwardRule() error {
+	ensureWindowsACLBootstrap()
+	return nil
+}
+
+func (w *windowsManager) AddDropRules([]ruleInfo) {}
 
 func (w *windowsManager) InsertIngressRoutingRules(server string, ingressInfo models.IngressInfo) error {
 	return nil
 }
-
-func (w *windowsManager) AddAclRules(server string, aclRules map[string]models.AclRule) {}
-func (w *windowsManager) UpsertAclRule(server string, aclRule models.AclRule)           {}
-func (w *windowsManager) DeleteAclRule(server, aclID string)                             {}
-
-func (w *windowsManager) AddAclEgressRules(server string, egressInfo models.EgressInfo) {
-	slog.Debug("windows: skipping egress ACL rules (v1)", "egress", egressInfo.EgressID)
-}
-func (w *windowsManager) DeleteAclEgressRule(server, nodeID, aclID string)                  {}
-func (w *windowsManager) UpsertAclEgressRule(server, nodeID string, aclRule models.AclRule) {}
-func (w *windowsManager) DeleteAllAclEgressRules(server, egressID string)                   {}
-
 func (w *windowsManager) FetchRuleTable(server, ruleTableName string) ruletable {
 	w.mux.Lock()
 	defer w.mux.Unlock()
@@ -184,11 +177,11 @@ func (w *windowsManager) InsertEgressRoutingRules(server string, egressInfo mode
 		if natApplied {
 			continue
 		}
-		meshPrefix := egressInfo.Network.String()
+		meshPrefix := normalizeNetNatPrefix(egressInfo.Network.String())
 		if !isIPv4CIDR(egressGwRange.Network) && egressInfo.Network6.IP != nil {
-			meshPrefix = egressInfo.Network6.String()
+			meshPrefix = normalizeNetNatPrefix(egressInfo.Network6.String())
 		}
-		if meshPrefix == "" || meshPrefix == "<nil>" {
+		if meshPrefix == "" {
 			slog.Warn("windows: missing mesh network prefix for NetNat", "egress", egressInfo.EgressID)
 			continue
 		}
@@ -196,8 +189,10 @@ func (w *windowsManager) InsertEgressRoutingRules(server string, egressInfo mode
 		if err := ensureNetNat(name, meshPrefix); err != nil {
 			slog.Error("windows: failed to create NetNat for egress",
 				"egress", egressInfo.EgressID, "name", name, "prefix", meshPrefix, "error", err)
-			return fmt.Errorf("NetNat create failed (is Hyper-V / NetNat available?): %w", err)
+			return fmt.Errorf("NetNat create failed: %w", err)
 		}
+		// Exit-node clients forward DNS here; keep WFP bootstrap allows present.
+		ensureWindowsACLBootstrap()
 		egressGwRoutes = append(egressGwRoutes, ruleInfo{
 			rule:  []string{"netnat", name, meshPrefix},
 			table: "windows",
@@ -228,8 +223,20 @@ func (w *windowsManager) RemoveRoutingRules(server, ruletableName, peerKey strin
 	}
 	for _, rules := range cfg.rulesMap {
 		for _, rule := range rules {
-			if len(rule.rule) >= 2 && rule.rule[0] == "netnat" {
+			if len(rule.rule) < 2 {
+				continue
+			}
+			switch rule.rule[0] {
+			case "netnat":
 				_ = removeNetNat(rule.rule[1])
+			case "wfp":
+				if wfpEngine != nil {
+					if id, err := strconv.ParseUint(rule.rule[1], 10, 64); err == nil {
+						wfpEngine.DeleteFilters([]uint64{id})
+					}
+				}
+			case "winfw":
+				_ = removeWindowsFirewallRule(rule.rule[1])
 			}
 		}
 	}
@@ -252,15 +259,19 @@ func (w *windowsManager) CleanRoutingRules(server, tableName string) {
 func (w *windowsManager) FlushAll() {
 	w.mux.Lock()
 	defer w.mux.Unlock()
-	slog.Info("windows: flushing netmaker NetNat rules")
+	slog.Info("windows: flushing netmaker NetNat and WFP ACL filters")
+	closeWFPEngine()
+	if err := removeAllNetmakerACLFirewallRules(); err != nil {
+		slog.Warn("windows: failed removing leftover Defender ACL rules", "error", err)
+	}
 	names, err := listNetmakerNetNats()
 	if err != nil {
 		slog.Warn("windows: failed listing NetNats during flush", "error", err)
-		return
-	}
-	for _, name := range names {
-		if err := removeNetNat(name); err != nil {
-			slog.Warn("windows: failed removing NetNat", "name", name, "error", err)
+	} else {
+		for _, name := range names {
+			if err := removeNetNat(name); err != nil {
+				slog.Warn("windows: failed removing NetNat", "name", name, "error", err)
+			}
 		}
 	}
 	w.engressRules = make(serverrulestable)
@@ -290,20 +301,116 @@ func getWindowsInterfaceName(dstCIDR string) (string, error) {
 	return alias, nil
 }
 
-func ensureNetNat(name, internalPrefix string) error {
-	escapedName := strings.ReplaceAll(name, "'", "''")
-	escapedPrefix := strings.ReplaceAll(internalPrefix, "'", "''")
-	// Remove existing NetNat with same name to avoid prefix conflicts, then create.
-	ps := fmt.Sprintf(`
-$ErrorActionPreference = 'Stop'
-$name = '%s'
-$prefix = '%s'
-$existing = Get-NetNat -Name $name -ErrorAction SilentlyContinue
-if ($null -ne $existing) {
-  Remove-NetNat -Name $name -Confirm:$false
+// removeWindowsFirewallRule deletes a leftover Defender rule by name (migration cleanup).
+func removeWindowsFirewallRule(name string) error {
+	escaped := strings.ReplaceAll(name, "'", "''")
+	ps := fmt.Sprintf(`Get-NetFirewallRule -Name '%s' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue`, escaped)
+	_, err := runPS(ps)
+	return err
 }
-New-NetNat -Name $name -InternalIPInterfaceAddressPrefix $prefix | Out-Null
-`, escapedName, escapedPrefix)
+
+// removeAllNetmakerACLFirewallRules clears Defender rules from the prior ACL implementation.
+func removeAllNetmakerACLFirewallRules() error {
+	ps := fmt.Sprintf(`
+Get-NetFirewallRule -Group '%s' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -like 'nm-acl-*' -or $_.Name -eq '%s'
+} | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+`, strings.ReplaceAll(winFwACLGroup, "'", "''"), strings.ReplaceAll(winFwDNSUDPRuleName, "'", "''"))
+	_, err := runPS(ps)
+	return err
+}
+
+type netNatEntry struct {
+	Name   string
+	Prefix string
+}
+
+// ensureNetNat makes sure a WinNAT exists for the mesh prefix.
+// Windows supports only one internal NetNat prefix system-wide, so foreign NATs
+// (Docker/WSL/Hyper-V) are reported clearly instead of the opaque Error 52.
+func ensureNetNat(name, internalPrefix string) error {
+	prefix := normalizeNetNatPrefix(internalPrefix)
+	if prefix == "" {
+		return fmt.Errorf("empty NetNat internal prefix")
+	}
+
+	entries, err := listAllNetNats()
+	if err != nil {
+		return fmt.Errorf("list NetNat: %w", err)
+	}
+
+	var ours *netNatEntry
+	var foreign []netNatEntry
+	var staleNetmaker []string
+	for i := range entries {
+		e := &entries[i]
+		switch {
+		case e.Name == name:
+			ours = e
+		case isNetmakerNetNatName(e.Name):
+			staleNetmaker = append(staleNetmaker, e.Name)
+		default:
+			foreign = append(foreign, *e)
+		}
+	}
+
+	if ours != nil && netNatPrefixesEqual(ours.Prefix, prefix) {
+		slog.Debug("windows: NetNat already present", "name", name, "prefix", prefix)
+		return nil
+	}
+
+	// Foreign WinNAT blocks creation; Error 52 ("duplicate name") is misleading here.
+	if len(foreign) > 0 {
+		return foreignNetNatConflictError(foreign, name, prefix)
+	}
+
+	if ours != nil {
+		if err := removeNetNat(ours.Name); err != nil {
+			return fmt.Errorf("remove existing NetNat %q: %w", ours.Name, err)
+		}
+	}
+	for _, stale := range staleNetmaker {
+		if err := removeNetNat(stale); err != nil {
+			slog.Warn("windows: failed removing stale NetNat", "name", stale, "error", err)
+		}
+	}
+
+	if err := createNetNat(name, prefix); err != nil {
+		return wrapNetNatCreateError(err, name, prefix)
+	}
+	return nil
+}
+
+func foreignNetNatConflictError(foreign []netNatEntry, wantName, wantPrefix string) error {
+	parts := make([]string, 0, len(foreign))
+	for _, e := range foreign {
+		p := e.Prefix
+		if p == "" {
+			p = "unknown prefix"
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", e.Name, p))
+	}
+	return fmt.Errorf("WinNAT already in use by %s; Windows supports only one NetNat — remove the conflicting NAT (often Docker/WSL/Hyper-V) before creating %s for %s",
+		strings.Join(parts, ", "), wantName, wantPrefix)
+}
+
+func wrapNetNatCreateError(err error, name, prefix string) error {
+	msg := err.Error()
+	if strings.Contains(msg, "duplicate name") ||
+		strings.Contains(msg, "System Error 52") ||
+		strings.Contains(msg, "Error 52") {
+		return fmt.Errorf("create NetNat %q for %s failed (another WinNAT/HNS NAT likely owns the prefix even if Get-NetNat is empty — check Docker/WSL/Hyper-V or reboot): %w",
+			name, prefix, err)
+	}
+	return fmt.Errorf("create NetNat %q for %s: %w", name, prefix, err)
+}
+
+func createNetNat(name, prefix string) error {
+	escapedName := strings.ReplaceAll(name, "'", "''")
+	escapedPrefix := strings.ReplaceAll(prefix, "'", "''")
+	ps := fmt.Sprintf(`$ErrorActionPreference = 'Stop'; New-NetNat -Name '%s' -InternalIPInterfaceAddressPrefix '%s' | Out-Null`,
+		escapedName, escapedPrefix)
 	_, err := runPS(ps)
 	return err
 }
@@ -315,17 +422,44 @@ func removeNetNat(name string) error {
 	return err
 }
 
-func listNetmakerNetNats() ([]string, error) {
-	ps := `Get-NetNat -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name`
+func listAllNetNats() ([]netNatEntry, error) {
+	// Use '|' as a delimiter — NetNat names/prefixes do not contain it.
+	ps := `Get-NetNat -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}' -f $_.Name, $_.InternalIPInterfaceAddressPrefix }`
 	out, err := runPS(ps)
 	if err != nil {
 		return nil, err
 	}
-	var names []string
+	var entries []netNatEntry
 	for _, line := range strings.Split(out, "\n") {
-		name := strings.TrimSpace(line)
-		if isNetmakerNetNatName(name) {
-			names = append(names, name)
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, prefix, ok := strings.Cut(line, "|")
+		if !ok {
+			name = line
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		entries = append(entries, netNatEntry{
+			Name:   name,
+			Prefix: strings.TrimSpace(prefix),
+		})
+	}
+	return entries, nil
+}
+
+func listNetmakerNetNats() ([]string, error) {
+	entries, err := listAllNetNats()
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if isNetmakerNetNatName(e.Name) {
+			names = append(names, e.Name)
 		}
 	}
 	return names, nil
