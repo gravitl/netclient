@@ -304,16 +304,6 @@ func allKnownPeerUnderlayIPs() []net.IP {
 	return ips
 }
 
-func peerConfigHasDefaultRoute(p wgtypes.PeerConfig) bool {
-	for _, a := range p.AllowedIPs {
-		s := a.String()
-		if s == IPv4Network || s == IPv6Network {
-			return true
-		}
-	}
-	return false
-}
-
 var (
 	tcpUplinkHostIPsMu sync.Mutex
 	tcpUplinkHostIPs   []net.IP
