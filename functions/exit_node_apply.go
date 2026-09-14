@@ -31,6 +31,11 @@ var pullForReconnect = Pull
 const (
 	reconnectPullTimeout  = 10 * time.Second
 	reconnectPullInterval = 250 * time.Millisecond
+	// Shorter waits during session restore so login isn't blocked on slow server convergence.
+	restoreConnectedTimeout = 4 * time.Second
+	restoreIGWTimeout       = 4 * time.Second
+	exitReselectAttempts    = 8
+	exitReselectInterval    = 300 * time.Millisecond
 )
 
 func hostPullHasConnectedNetworks(pull models.HostPull, networks []string) bool {
@@ -69,9 +74,16 @@ func hostPullReadyForReconnect(pull models.HostPull, networks []string, wantIGW 
 }
 
 func waitForReconnectHostPull(networks []string, wantIGW bool) (models.HostPull, error) {
+	return waitForReconnectHostPullTimeout(networks, wantIGW, reconnectPullTimeout)
+}
+
+func waitForReconnectHostPullTimeout(networks []string, wantIGW bool, timeout time.Duration) (models.HostPull, error) {
 	var last models.HostPull
 	var lastErr error
-	deadline := time.Now().Add(reconnectPullTimeout)
+	if timeout <= 0 {
+		timeout = reconnectPullTimeout
+	}
+	deadline := time.Now().Add(timeout)
 	for attempt := 1; ; attempt++ {
 		resp, _, _, err := pullForReconnect(false, true, false)
 		if err != nil {

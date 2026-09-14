@@ -25,6 +25,7 @@ var sessionRestoreAbort atomic.Bool
 // beginSessionRestore marks a new async restore generation and returns its id.
 func beginSessionRestore() uint64 {
 	sessionRestoreAbort.Store(false)
+	SetRestorePhase(RestorePhaseNetworks)
 	return sessionRestoreGen.Add(1)
 }
 
@@ -34,6 +35,7 @@ func finishSessionRestore(gen uint64) {
 	if sessionRestoreGen.Load() != gen {
 		return
 	}
+	SetRestorePhase("")
 	if getStatus() == Restoring {
 		setStatus(Running)
 	}
@@ -43,6 +45,31 @@ func finishSessionRestore(gen uint64) {
 func cancelSessionRestore() {
 	sessionRestoreAbort.Store(true)
 	sessionRestoreGen.Add(1)
+	SetRestorePhase("")
+}
+
+// Restore phase values exposed on GET /server while status=restoring.
+const (
+	RestorePhaseNetworks = "networks"
+	RestorePhaseExit     = "exit"
+	RestorePhaseRoutes   = "routes"
+)
+
+var sessionRestorePhase atomic.Value // string
+
+// SetRestorePhase records what session restore is doing for the GUI.
+func SetRestorePhase(phase string) {
+	sessionRestorePhase.Store(phase)
+}
+
+// GetRestorePhase returns the current restore phase, or empty when idle.
+func GetRestorePhase() string {
+	if v := sessionRestorePhase.Load(); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // SessionAuthToken returns the active desktop session JWT, or empty if none.

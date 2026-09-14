@@ -27,6 +27,20 @@ func TestPublicProbeHostsDedupes(t *testing.T) {
 	}))
 }
 
+func TestExitNodeEndpointIPs(t *testing.T) {
+	got := exitNodeEndpointIPs([]models.DeviceExitNode{
+		{AllowedEndpoints: []string{"203.0.113.10", "203.0.113.10:51821", "127.0.0.1"}},
+		{AllowedEndpoints: []string{"2001:db8::1"}},
+	})
+	assert.Equal(t, []string{"203.0.113.10", "2001:db8::1"}, func() []string {
+		out := make([]string, len(got))
+		for i := range got {
+			out[i] = got[i].String()
+		}
+		return out
+	}())
+}
+
 func TestMeasurePublicLatencyEmpty(t *testing.T) {
 	assert.Equal(t, int64(0), measurePublicLatency(nil))
 	assert.Equal(t, int64(0), measurePublicLatency([]string{"127.0.0.1"}))

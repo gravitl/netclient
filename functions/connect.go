@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -137,6 +138,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	if uiapi.ShouldAbortSessionRestore() {
 		return nil
 	}
+	uiapi.SetRestorePhase(uiapi.RestorePhaseNetworks)
 	changed := false
 	for _, network := range desired {
 		if uiapi.ShouldAbortSessionRestore() {
@@ -166,11 +168,10 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		return nil
 	}
 
-	// Wait for networks to be Connected on the server before exit re-select.
-	// PUT /exit_node often fails if the device node is still disconnected.
-	pull, err := waitForReconnectHostPull(desired, false)
+	// Brief wait for Connected — do not burn the full 10s before exit re-select.
+	pull, err := waitForReconnectHostPullTimeout(desired, false, restoreConnectedTimeout)
 	if err != nil {
-		slog.Warn("host pull after reconnect still stale; applying with last pull", "error", err)
+		slog.Warn("host pull after reconnect still stale; continuing restore", "error", err)
 	}
 	if uiapi.ShouldAbortSessionRestore() {
 		return nil
@@ -178,12 +179,12 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	reassertDesiredConnected(desired)
 
 	if wantIGW {
+		uiapi.SetRestorePhase(uiapi.RestorePhaseExit)
 		if exitNetwork == "" {
 			exitNetwork = desired[len(desired)-1]
 		}
 		token := uiapi.SessionAuthToken()
 		if egressID == "" && token != "" {
-			// Older snapshots only had want_igw; recover egress from server if still set.
 			if sel, selErr := GetDeviceSelectedExitNode(exitNetwork, token); selErr == nil && sel != nil {
 				egressID = strings.TrimSpace(sel.EgressID)
 			}
@@ -200,24 +201,35 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 			}
 		}
 		if egressID != "" && token != "" {
-			if _, selErr := SelectDeviceExitNode(exitNetwork, token, egressID); selErr != nil {
+			var selErr error
+			for attempt := 1; attempt <= exitReselectAttempts; attempt++ {
+				if uiapi.ShouldAbortSessionRestore() {
+					return nil
+				}
+				if _, selErr = SelectDeviceExitNode(exitNetwork, token, egressID); selErr == nil {
+					slog.Info("re-selected exit node during session restore",
+						"network", exitNetwork, "egress_id", egressID, "attempt", attempt)
+					_ = config.SetDesiredExitNode(username, tenantID, exitNetwork, egressID)
+					break
+				}
+				slog.Info("exit re-select not ready yet",
+					"network", exitNetwork, "attempt", attempt, "error", selErr)
+				time.Sleep(exitReselectInterval)
+			}
+			if selErr != nil {
 				slog.Warn("failed to re-select exit node during restore",
 					"network", exitNetwork, "egress_id", egressID, "error", selErr)
 			} else {
-				slog.Info("re-selected exit node during session restore",
-					"network", exitNetwork, "egress_id", egressID)
-				_ = config.SetDesiredExitNode(username, tenantID, exitNetwork, egressID)
-			}
-			// Wait again so ChangeDefaultGw reflects the re-selection.
-			if igwPull, igwErr := waitForReconnectHostPull(desired, true); igwErr != nil {
-				slog.Warn("host pull after exit re-select still stale", "error", igwErr)
-				if pull.ChangeDefaultGw {
-					// keep earlier pull
+				uiapi.SetRestorePhase(uiapi.RestorePhaseRoutes)
+				// Short wait for ChangeDefaultGw; peer updates may finish routes after we return.
+				if igwPull, igwErr := waitForReconnectHostPullTimeout(desired, true, restoreIGWTimeout); igwErr != nil {
+					slog.Warn("host pull after exit re-select still stale", "error", igwErr)
+					if !pull.ChangeDefaultGw {
+						pull = igwPull
+					}
 				} else {
 					pull = igwPull
 				}
-			} else {
-				pull = igwPull
 			}
 		} else {
 			slog.Warn("cannot re-select exit node during restore; missing egress id or session token",
@@ -228,6 +240,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	if uiapi.ShouldAbortSessionRestore() {
 		return nil
 	}
+	uiapi.SetRestorePhase(uiapi.RestorePhaseRoutes)
 	// Apply in-process. A SIGHUP restart tears down routes and re-hole-punches
 	// before IGW can be reinstalled, which is the login delay users see.
 	if err := applyReconnectInProcess(pull, wantIGW); err != nil {

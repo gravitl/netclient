@@ -159,6 +159,7 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 	if server == "" {
 		server = getCurrServerName()
 	}
+	tenantID := sessionTenantID()
 	resp := GetServerResponse{
 		Status:     getStatus(),
 		Server:     server,
@@ -166,11 +167,17 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 		APIHost:    currentServerAPIHost(server),
 		Username:   username,
 		AuthToken:  authToken,
-		TenantID:   sessionTenantID(),
+		TenantID:   tenantID,
 		Registered: isRegistered(server),
 	}
 	if isSessionActive() {
 		resp.ServerConfig = serverConfig()
+		if getStatus() == Restoring {
+			resp.RestorePhase = GetRestorePhase()
+		}
+		resp.WantIGW = config.GetDesiredWantIGW(username, tenantID)
+		resp.DesiredEgressID = config.GetDesiredEgressID(username, tenantID)
+		resp.DesiredExitNetwork = config.GetDesiredExitNetwork(username, tenantID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

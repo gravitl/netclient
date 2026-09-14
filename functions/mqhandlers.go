@@ -327,8 +327,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		} else {
 			// Exit routes already installed for this nexthop. Refresh LAN pins so
-			// newly advertised site-egress (and other direct) peer underlays are
-			// not swallowed by 0.0.0.0/0.
+			// newly advertised site-egress and alternate internet-exit peer
+			// underlays are not swallowed by 0.0.0.0/0.
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
@@ -959,7 +959,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			}
 		} else {
 			// Already installed; avoid a Restore/Set flap. Refresh LAN pins so
-			// site-egress peer underlays stay off the exit default route.
+			// site-egress and alternate internet-exit peer underlays stay off
+			// the exit default route.
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {

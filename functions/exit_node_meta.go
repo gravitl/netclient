@@ -12,6 +12,7 @@ import (
 	//lint:ignore SA1019 Reason: same ICMP probe used for remote-access gateway latency
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
@@ -26,6 +27,15 @@ func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
 	if len(nodes) == 0 {
 		return
 	}
+	// While an internet exit owns 0.0.0.0/0, pin every exit's public endpoints
+	// on the LAN (same idea as site-egress underlay pins) so ICMP/TCP latency
+	// probes and WG to alternate exits do not trombone through the tunnel.
+	pinIPs := exitNodeEndpointIPs(nodes)
+	wireguard.SetExitNodeUnderlayPinIPs(pinIPs)
+	if len(pinIPs) > 0 {
+		wireguard.RefreshInternetGwHostPins()
+	}
+
 	var wg sync.WaitGroup
 	resolved := 0
 	for i := range nodes {
@@ -51,6 +61,26 @@ func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
 		"nodes", len(nodes),
 		"resolved_endpoints", resolved,
 	)
+}
+
+func exitNodeEndpointIPs(nodes []models.DeviceExitNode) []net.IP {
+	seen := map[string]struct{}{}
+	var out []net.IP
+	for i := range nodes {
+		for _, host := range publicProbeHosts(nodes[i].AllowedEndpoints) {
+			ip := net.ParseIP(host)
+			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() {
+				continue
+			}
+			s := ip.String()
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			out = append(out, ip)
+		}
+	}
+	return out
 }
 
 // measurePublicLatency races ICMP and TCP 443/22 against public endpoints,
