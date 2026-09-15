@@ -1,5 +1,5 @@
-//go:build !linux
-// +build !linux
+//go:build darwin || freebsd
+// +build darwin freebsd
 
 package firewall
 
