@@ -14,12 +14,14 @@ import (
 )
 
 // SetIPForwardingWindows enables IP forwarding on the netmaker interface and
-// all other IPv4/IPv6 interfaces (required for Windows egress / internet exit).
+// all other connected interfaces (required for Windows egress / internet exit
+// and mesh gateway hairpin relay).
 func SetIPForwardingWindows() error {
 	ifaces := []string{ncutils.GetInterfaceName()}
 	if err := EnableForwardingOnInterfaces(ifaces...); err != nil {
+		// Interface may not exist yet at early daemon start; Create() re-applies.
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
-		return err
+		slog.Warn("windows: netmaker forwarding not applied yet (iface may be down)", "error", err)
 	}
 	// Also enable forwarding globally so LAN/WAN ifaces used for egress NAT work
 	// even before InsertEgressRoutingRules discovers them.
@@ -30,18 +32,45 @@ func SetIPForwardingWindows() error {
 }
 
 // EnableForwardingOnInterfaces enables forwarding on the given interface aliases.
+// For the netmaker adapter it also enables WeakHostSend/Receive so same-interface
+// (gateway/relay hairpin) forwarding works on Windows.
 func EnableForwardingOnInterfaces(aliases ...string) error {
 	var lastErr error
+	nm := ncutils.GetInterfaceName()
 	for _, alias := range aliases {
 		alias = strings.TrimSpace(alias)
 		if alias == "" {
 			continue
 		}
 		escaped := strings.ReplaceAll(alias, "'", "''")
-		cmd := fmt.Sprintf(`Set-NetIPInterface -InterfaceAlias '%s' -Forwarding Enabled -ErrorAction Stop`, escaped)
+		hairpin := strings.EqualFold(alias, nm)
+		var cmd string
+		if hairpin {
+			// Apply to every AddressFamily row (IPv4 + IPv6). WeakHost* is required
+			// for netmaker→netmaker relay; Forwarding alone is not enough.
+			cmd = fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+$ifaces = Get-NetIPInterface -InterfaceAlias '%s' -ErrorAction Stop
+if ($null -eq $ifaces) { throw 'interface not found' }
+$ifaces | ForEach-Object {
+  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled -WeakHostSend Enabled -WeakHostReceive Enabled -ErrorAction Stop
+}
+`, escaped)
+		} else {
+			cmd = fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+$ifaces = Get-NetIPInterface -InterfaceAlias '%s' -ErrorAction Stop
+if ($null -eq $ifaces) { throw 'interface not found' }
+$ifaces | ForEach-Object {
+  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled -ErrorAction Stop
+}
+`, escaped)
+		}
 		if _, err := runPowerShell(cmd); err != nil {
-			slog.Warn("failed to enable forwarding on interface", "iface", alias, "error", err)
+			slog.Warn("failed to enable forwarding on interface", "iface", alias, "hairpin", hairpin, "error", err)
 			lastErr = err
+		} else if hairpin {
+			slog.Info("enabled forwarding + weak host on netmaker iface", "iface", alias)
 		} else {
 			slog.Debug("enabled IP forwarding on interface", "iface", alias)
 		}

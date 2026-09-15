@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
@@ -42,6 +43,9 @@ func (nc *NCIface) Create() error {
 		}
 		if err := nc.setInterfaceMetric(ifaceMetric); err != nil {
 			slog.Warn("failed to set userspace interface metric", "error", err)
+		}
+		if err := local.EnableForwardingOnInterfaces(nc.Name); err != nil {
+			slog.Warn("failed to enable forwarding/weak-host on userspace netmaker iface", "error", err)
 		}
 		return nil
 	}
@@ -99,7 +103,15 @@ func (nc *NCIface) Create() error {
 		return err
 	}
 
-	return nc.setInterfaceMetric(ifaceMetric)
+	if err := nc.setInterfaceMetric(ifaceMetric); err != nil {
+		return err
+	}
+	// Re-apply after iface is up — early daemon SetIPForwarding often runs before
+	// the adapter exists, leaving Forwarding/WeakHost disabled (breaks GW relay).
+	if err := local.EnableForwardingOnInterfaces(nc.Name); err != nil {
+		slog.Warn("failed to enable forwarding/weak-host on netmaker iface", "error", err)
+	}
+	return nil
 }
 
 // setInterfaceMetric puts the netmaker interface one step behind the interface
