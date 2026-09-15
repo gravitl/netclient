@@ -25,6 +25,7 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -399,6 +400,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		_ = flow.GetManager().Start(peerUpdate.AddressIdentityMap)
 	} else {
 		_ = flow.GetManager().Stop()
+	}
+
+	if peerUpdate.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(peerUpdate.AddressIdentityMap, peerUpdate.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 
 	if reloadStun {
@@ -1009,6 +1018,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		_ = flow.GetManager().Start(pullResponse.AddressIdentityMap)
 	} else {
 		_ = flow.GetManager().Stop()
+	}
+
+	if pullResponse.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(pullResponse.AddressIdentityMap, pullResponse.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 
 	if reloadStun {
