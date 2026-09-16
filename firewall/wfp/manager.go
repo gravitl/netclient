@@ -24,6 +24,8 @@ import (
 )
 
 const (
+	// FWP_UINT8 filter weights are only valid in 0..15; higher values make
+	// FwpmFilterAdd0 fail with ERROR_INVALID_PARAMETER.
 	weightAllowSpecific uint8 = 15
 	weightBootstrap     uint8 = 14
 	weightAllowAll      uint8 = 10
@@ -62,16 +64,20 @@ type Engine struct {
 	session   uintptr
 	base      *baseObjects
 	ifaceLUID uint64
+	ifaceIdx  uint32 // ifIndex for IPFORWARD SOURCE_INTERFACE_INDEX
 
-	inAllowAllIDs   []uint64
-	fwdAllowAllIDs  []uint64
-	defaultBlockIDs []uint64
-	bootstrapIDs    []uint64
+	inAllowAllIDs    []uint64
+	fwdAllowAllIDs   []uint64
+	defaultBlockIDs  []uint64
+	inDefaultDenyOK  bool
+	fwdDefaultDenyOK bool
+	bootstrapIDs     []uint64
 }
 
 var (
 	modIphlpapi                     = windows.NewLazySystemDLL("iphlpapi.dll")
 	procConvertInterfaceAliasToLuid = modIphlpapi.NewProc("ConvertInterfaceAliasToLuid")
+	procConvertInterfaceLuidToIndex = modIphlpapi.NewProc("ConvertInterfaceLuidToIndex")
 )
 
 // Open starts a dynamic WFP session and registers the Netmaker provider/sublayer.
@@ -117,6 +123,8 @@ func (e *Engine) Close() {
 	e.inAllowAllIDs = nil
 	e.fwdAllowAllIDs = nil
 	e.defaultBlockIDs = nil
+	e.inDefaultDenyOK = false
+	e.fwdDefaultDenyOK = false
 	e.bootstrapIDs = nil
 }
 
@@ -129,13 +137,18 @@ func (e *Engine) SetInterfaceAlias(alias string) error {
 	}
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
-		return nil
+		return errors.New("empty interface alias")
 	}
 	luid, err := interfaceLUIDByAlias(alias)
 	if err != nil {
 		return err
 	}
+	idx, err := interfaceIndexByLUID(luid)
+	if err != nil {
+		return fmt.Errorf("resolve ifIndex for %s: %w", alias, err)
+	}
 	e.ifaceLUID = luid
+	e.ifaceIdx = idx
 	return e.installDefaultBlocksLocked()
 }
 
@@ -149,7 +162,8 @@ func (e *Engine) SetInboundDefaultAccept(accept bool) error {
 	e.deleteIDsLocked(e.inAllowAllIDs)
 	e.inAllowAllIDs = nil
 	if !accept {
-		return nil
+		// DROP: allow-all removed; default deny must already be bound to the iface.
+		return e.ensureDefaultBlocksLocked()
 	}
 	ids, err := e.addPermitAllLocked(LayerInboundACL, weightAllowAll, "Netmaker ACL IN allow-all")
 	if err != nil {
@@ -169,13 +183,32 @@ func (e *Engine) SetForwardDefaultAccept(accept bool) error {
 	e.deleteIDsLocked(e.fwdAllowAllIDs)
 	e.fwdAllowAllIDs = nil
 	if !accept {
-		return nil
+		// DROP: removing allow-all alone is not enough if Init ran before the
+		// adapter existed (no default IPFORWARD block → egress ACLs never deny).
+		return e.ensureDefaultBlocksLocked()
 	}
 	ids, err := e.addPermitAllLocked(LayerForwardACL, weightAllowAll, "Netmaker ACL FWD allow-all")
 	if err != nil {
 		return err
 	}
 	e.fwdAllowAllIDs = ids
+	return nil
+}
+
+func (e *Engine) ensureDefaultBlocksLocked() error {
+	if e.ifaceLUID == 0 {
+		return errors.New("wfp: netmaker iface LUID not set; default deny inactive")
+	}
+	if e.inDefaultDenyOK && e.fwdDefaultDenyOK {
+		return nil
+	}
+	err := e.installDefaultBlocksLocked()
+	if !e.fwdDefaultDenyOK {
+		if err != nil {
+			return fmt.Errorf("wfp IPFORWARD default deny missing: %w", err)
+		}
+		return errors.New("wfp IPFORWARD default deny missing")
+	}
 	return nil
 }
 
@@ -274,19 +307,40 @@ func registerBaseObjects(session uintptr) (*baseObjects, error) {
 func (e *Engine) installDefaultBlocksLocked() error {
 	e.deleteIDsLocked(e.defaultBlockIDs)
 	e.defaultBlockIDs = nil
+	e.inDefaultDenyOK = false
+	e.fwdDefaultDenyOK = false
 	if e.ifaceLUID == 0 {
 		return nil
 	}
-	ids, err := e.addBlockAllLocked(LayerInboundACL, weightDefaultBlock, "Netmaker ACL IN default block")
-	if err != nil {
-		return err
+	var all []uint64
+	var errs []error
+	for _, layer := range []Layer{LayerInboundACL, LayerForwardACL} {
+		name := "Netmaker ACL IN default block"
+		if layer == LayerForwardACL {
+			name = "Netmaker ACL FWD default block"
+		}
+		ids, err := e.addBlockAllLocked(layer, weightDefaultBlock, name)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			continue
+		}
+		all = append(all, ids...)
+		if layer == LayerInboundACL {
+			e.inDefaultDenyOK = true
+		} else {
+			e.fwdDefaultDenyOK = true
+		}
 	}
-	fwdIDs, err := e.addBlockAllLocked(LayerForwardACL, weightDefaultBlock, "Netmaker ACL FWD default block")
-	if err != nil {
-		e.deleteIDsLocked(ids)
-		return err
+	e.defaultBlockIDs = all
+	if !e.fwdDefaultDenyOK {
+		if len(errs) > 0 {
+			return fmt.Errorf("wfp default deny install failed: %v", errs)
+		}
+		return errors.New("wfp IPFORWARD default deny not installed")
 	}
-	e.defaultBlockIDs = append(ids, fwdIDs...)
+	if len(errs) > 0 {
+		return fmt.Errorf("wfp default deny partial: %v", errs)
+	}
 	return nil
 }
 
@@ -306,17 +360,26 @@ func (e *Engine) addPermitAllLocked(layer Layer, weight uint8, name string) ([]u
 func (e *Engine) addBlockAllLocked(layer Layer, weight uint8, name string) ([]uint64, error) {
 	layers := layerKeys(layer)
 	var ids []uint64
+	var lastErr error
 	for _, lk := range layers {
 		conds := make([]wtFwpmFilterCondition0, 0, 1)
-		if e.ifaceLUID != 0 {
-			conds = append(conds, ifaceCondition(layer, &e.ifaceLUID))
+		cond, ok := e.ifaceCondition(layer)
+		if !ok {
+			return nil, errors.New("missing interface binding for default deny")
 		}
+		conds = append(conds, cond)
 		id, err := e.addRawFilter(name, lk, weight, cFWP_ACTION_BLOCK, conds, &e.ifaceLUID)
 		if err != nil {
-			e.deleteIDsLocked(ids)
-			return nil, err
+			lastErr = err
+			continue
 		}
 		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, errors.New("no block filters added")
 	}
 	return ids, nil
 }
@@ -335,6 +398,8 @@ func (e *Engine) addFilterLocked(spec FilterSpec, weight uint8) ([]uint64, error
 	var ids []uint64
 	// Keep condition value backing memory alive for the syscall.
 	var keepAlive []any
+	var lastErr error
+	attempted := 0
 
 	for _, lk := range layers {
 		isV6 := lk == cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6 || lk == cFWPM_LAYER_IPFORWARD_V6
@@ -346,19 +411,28 @@ func (e *Engine) addFilterLocked(spec FilterSpec, weight uint8) ([]uint64, error
 				if dst.IP != nil && (dst.IP.To4() == nil) != isV6 {
 					continue
 				}
+				attempted++
 				conds, alive := e.buildConditions(spec, src, dst, isV6)
 				keepAlive = append(keepAlive, alive...)
 				id, err := e.addRawFilter(spec.Name, lk, weight, cFWP_ACTION_PERMIT, conds, &e.ifaceLUID)
 				if err != nil {
-					e.deleteIDsLocked(ids)
-					runtime.KeepAlive(keepAlive)
-					return nil, err
+					lastErr = err
+					continue
 				}
 				ids = append(ids, id)
 			}
 		}
 	}
 	runtime.KeepAlive(keepAlive)
+	if len(ids) == 0 {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		if attempted == 0 {
+			return nil, nil
+		}
+		return nil, errors.New("no permit filters added")
+	}
 	return ids, nil
 }
 
@@ -366,8 +440,13 @@ func (e *Engine) buildConditions(spec FilterSpec, src, dst net.IPNet, isV6 bool)
 	var conds []wtFwpmFilterCondition0
 	var alive []any
 
-	if e.ifaceLUID != 0 {
-		conds = append(conds, ifaceCondition(spec.Layer, &e.ifaceLUID))
+	// Host ALE: bind to netmaker LUID. IPFORWARD allows: no iface condition —
+	// src/dst IPs are enough, and Bi reverse rules arrive on the LAN iface.
+	// IPFORWARD default deny uses SOURCE_INTERFACE_INDEX via addBlockAllLocked.
+	if spec.Layer != LayerForwardACL {
+		if cond, ok := e.ifaceCondition(spec.Layer); ok {
+			conds = append(conds, cond)
+		}
 	}
 
 	if src.IP != nil {
@@ -462,18 +541,35 @@ func layerKeys(layer Layer) []windows.GUID {
 	}
 }
 
-func ifaceCondition(layer Layer, luid *uint64) wtFwpmFilterCondition0 {
-	field := cFWPM_CONDITION_IP_LOCAL_INTERFACE
-	if layer == LayerForwardACL {
-		field = cFWPM_CONDITION_IP_ARRIVAL_INTERFACE
-	}
-	return wtFwpmFilterCondition0{
-		fieldKey:  field,
-		matchType: cFWP_MATCH_EQUAL,
-		conditionValue: wtFwpConditionValue0{
-			_type: cFWP_UINT64,
-			value: uintptr(unsafe.Pointer(luid)),
-		},
+func (e *Engine) ifaceCondition(layer Layer) (wtFwpmFilterCondition0, bool) {
+	switch layer {
+	case LayerForwardACL:
+		// IP_LOCAL_INTERFACE on IPFORWARD is "iface of local IP", not arrival —
+		// transit mesh→LAN never matched, so denies were inert. Match source
+		// ifIndex instead (Linux ACL-FWD "-i netmaker").
+		if e.ifaceIdx == 0 {
+			return wtFwpmFilterCondition0{}, false
+		}
+		return wtFwpmFilterCondition0{
+			fieldKey:  cFWPM_CONDITION_SOURCE_INTERFACE_INDEX,
+			matchType: cFWP_MATCH_EQUAL,
+			conditionValue: wtFwpConditionValue0{
+				_type: cFWP_UINT32,
+				value: uintptr(e.ifaceIdx),
+			},
+		}, true
+	default:
+		if e.ifaceLUID == 0 {
+			return wtFwpmFilterCondition0{}, false
+		}
+		return wtFwpmFilterCondition0{
+			fieldKey:  cFWPM_CONDITION_IP_LOCAL_INTERFACE,
+			matchType: cFWP_MATCH_EQUAL,
+			conditionValue: wtFwpConditionValue0{
+				_type: cFWP_UINT64,
+				value: uintptr(unsafe.Pointer(&e.ifaceLUID)),
+			},
+		}, true
 	}
 }
 
@@ -545,6 +641,18 @@ func interfaceLUIDByAlias(alias string) (uint64, error) {
 		return 0, syscall.Errno(r1)
 	}
 	return luid, nil
+}
+
+func interfaceIndexByLUID(luid uint64) (uint32, error) {
+	var idx uint32
+	r1, _, _ := syscall.SyscallN(procConvertInterfaceLuidToIndex.Addr(), uintptr(unsafe.Pointer(&luid)), uintptr(unsafe.Pointer(&idx)))
+	if r1 != 0 {
+		return 0, syscall.Errno(r1)
+	}
+	if idx == 0 {
+		return 0, errors.New("ifIndex is zero")
+	}
+	return idx, nil
 }
 
 // ProtocolTCP/UDP helpers for callers.

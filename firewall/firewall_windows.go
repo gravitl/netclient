@@ -41,7 +41,7 @@ type windowsManager struct {
 }
 
 func newFirewall() (firewallController, error) {
-	logger.Log(0, "using Windows NetNat + Defender Firewall ACLs...")
+	logger.Log(0, "using Windows NetNat + WFP ACLs...")
 	if cfg := config.Netclient(); cfg != nil {
 		cfg.FirewallInUse = schema.FIREWALL_NETNAT
 	}

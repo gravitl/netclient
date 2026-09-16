@@ -261,12 +261,20 @@ var cFWPM_CONDITION_IP_DESTINATION_ADDRESS = windows.GUID{
 	Data4: [8]byte{0x86, 0x99, 0xac, 0xac, 0xea, 0xaf, 0xed, 0x33},
 }
 
-// 618a9b6d-386b-4136-ad6e-b51587cfb1cd
+// 618a9b6d-386b-4136-ad6e-b51587cfb1cd — valid on ALE/inbound layers, NOT on IPFORWARD.
 var cFWPM_CONDITION_IP_ARRIVAL_INTERFACE = windows.GUID{
 	Data1: 0x618a9b6d,
 	Data2: 0x386b,
 	Data3: 0x4136,
 	Data4: [8]byte{0xad, 0x6e, 0xb5, 0x15, 0x87, 0xcf, 0xb1, 0xcd},
+}
+
+// 2311334d-c92d-45bf-9496-edf447820e2d — source (arrival) ifIndex on IPFORWARD.
+var cFWPM_CONDITION_SOURCE_INTERFACE_INDEX = windows.GUID{
+	Data1: 0x2311334d,
+	Data2: 0xc92d,
+	Data3: 0x45bf,
+	Data4: [8]byte{0x94, 0x96, 0xed, 0xf4, 0x47, 0x82, 0x0e, 0x2d},
 }
 
 // 94c44912-9d6f-4ebf-b995-05ab8a088d1b

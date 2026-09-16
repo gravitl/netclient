@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/firewall"
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
@@ -47,6 +48,7 @@ func (nc *NCIface) Create() error {
 		if err := local.EnableForwardingOnInterfaces(nc.Name); err != nil {
 			slog.Warn("failed to enable forwarding/weak-host on userspace netmaker iface", "error", err)
 		}
+		firewall.RefreshACLInterface()
 		return nil
 	}
 
@@ -111,6 +113,9 @@ func (nc *NCIface) Create() error {
 	if err := local.EnableForwardingOnInterfaces(nc.Name); err != nil {
 		slog.Warn("failed to enable forwarding/weak-host on netmaker iface", "error", err)
 	}
+	// Same timing hole for WFP: Init binds before the adapter exists, so default
+	// IPFORWARD deny never installs and egress IP restrictions do not block.
+	firewall.RefreshACLInterface()
 	return nil
 }
 

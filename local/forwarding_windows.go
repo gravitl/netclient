@@ -5,6 +5,7 @@ package local
 
 import (
 	"fmt"
+	"net"
 	"os/exec"
 	"strings"
 
@@ -17,11 +18,15 @@ import (
 // all other connected interfaces (required for Windows egress / internet exit
 // and mesh gateway hairpin relay).
 func SetIPForwardingWindows() error {
-	ifaces := []string{ncutils.GetInterfaceName()}
-	if err := EnableForwardingOnInterfaces(ifaces...); err != nil {
-		// Interface may not exist yet at early daemon start; Create() re-applies.
+	nm := ncutils.GetInterfaceName()
+	// This runs before the adapter exists on a normal start; wireguard Create()
+	// applies Forwarding/WeakHost* once it is up. Only warn when the adapter is
+	// present and the call still fails, so the warning always means something.
+	if _, err := net.InterfaceByName(nm); err != nil {
+		slog.Debug("windows: netmaker iface not up yet; forwarding applied at iface create", "iface", nm)
+	} else if err := EnableForwardingOnInterfaces(nm); err != nil {
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
-		slog.Warn("windows: netmaker forwarding not applied yet (iface may be down)", "error", err)
+		slog.Warn("windows: failed to enable forwarding on netmaker iface", "iface", nm, "error", err)
 	}
 	// Also enable forwarding globally so LAN/WAN ifaces used for egress NAT work
 	// even before InsertEgressRoutingRules discovers them.

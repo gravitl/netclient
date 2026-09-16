@@ -37,13 +37,35 @@ func closeWFPEngine() {
 	}
 }
 
-func refreshWFPInterface() {
+func refreshWFPInterface() error {
 	if wfpEngine == nil {
+		return nil
+	}
+	alias := ncutils.GetInterfaceName()
+	if err := wfpEngine.SetInterfaceAlias(alias); err != nil {
+		slog.Warn("windows: netmaker iface LUID not ready for WFP yet (default deny inactive)",
+			"iface", alias, "error", err)
+		return err
+	}
+	return nil
+}
+
+// RefreshACLInterface rebinds WFP to the netmaker adapter and installs default
+// deny filters. Call after the iface is created — Init often runs too early,
+// leaving the ACL layers without their default deny.
+func RefreshACLInterface() {
+	if err := ensureWFPEngine(); err != nil {
+		slog.Warn("windows: WFP unavailable for ACL iface refresh", "error", err)
 		return
 	}
-	if err := wfpEngine.SetInterfaceAlias(ncutils.GetInterfaceName()); err != nil {
-		slog.Debug("windows: netmaker iface LUID not ready for WFP yet", "error", err)
+	alias := ncutils.GetInterfaceName()
+	if err := wfpEngine.SetInterfaceAlias(alias); err != nil {
+		slog.Warn("windows: WFP ACL iface bind failed (ACLs not enforced until retry)",
+			"iface", alias, "error", err)
+		logger.Log(0, "windows: WFP ACL iface bind failed: ", err.Error())
+		return
 	}
+	slog.Debug("windows: WFP ACL bound to netmaker iface", "iface", alias)
 }
 
 func ensureWindowsACLBootstrap() {
@@ -51,7 +73,7 @@ func ensureWindowsACLBootstrap() {
 		slog.Warn("windows: failed to open WFP engine for ACLs", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	metricsPort := 0
 	if server := config.GetServer(config.CurrServer); server != nil {
 		metricsPort = server.MetricsPort
@@ -71,7 +93,7 @@ func (w *windowsManager) ChangeACLInTarget(target string) {
 		slog.Warn("windows: WFP unavailable for ACL IN target", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	if err := wfpEngine.SetInboundDefaultAccept(target == targetAccept); err != nil {
 		slog.Warn("windows: failed to set WFP ACL IN target", "target", target, "error", err)
 	}
@@ -84,7 +106,7 @@ func (w *windowsManager) ChangeACLFwdTarget(target string) {
 		slog.Warn("windows: WFP unavailable for ACL FWD target", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	if err := wfpEngine.SetForwardDefaultAccept(target == targetAccept); err != nil {
 		slog.Warn("windows: failed to set WFP ACL FWD target", "target", target, "error", err)
 	}
@@ -102,7 +124,7 @@ func (w *windowsManager) AddAclRules(server string, aclRules map[string]models.A
 		slog.Warn("windows: WFP unavailable for AddAclRules", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	for _, aclRule := range aclRules {
 		rules := w.installWFPAclRules(aclRule, wfp.LayerInboundACL)
 		if len(rules) == 0 {
@@ -127,7 +149,7 @@ func (w *windowsManager) UpsertAclRule(server string, aclRule models.AclRule) {
 		slog.Warn("windows: WFP unavailable for UpsertAclRule", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	rules := w.installWFPAclRules(aclRule, wfp.LayerInboundACL)
 	if len(rules) == 0 {
 		delete(ruleTable, aclRule.ID)
@@ -164,7 +186,7 @@ func (w *windowsManager) AddAclEgressRules(server string, egressInfo models.Egre
 		slog.Warn("windows: WFP unavailable for egress ACLs", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	slog.Info("windows: applying egress ACL rules via WFP IPFORWARD",
 		"egress", egressInfo.EgressID, "rules", len(egressInfo.EgressFwRules))
 
@@ -174,6 +196,7 @@ func (w *windowsManager) AddAclEgressRules(server string, egressInfo models.Egre
 	for _, aclRule := range aclRules {
 		rules := w.installWFPAclRules(aclRule, wfp.LayerForwardACL)
 		if len(rules) == 0 {
+			slog.Warn("windows: egress ACL produced no WFP filters", "acl", aclRule.ID, "egress", egressInfo.EgressID)
 			continue
 		}
 		rCfg.rulesMap[aclRule.ID] = rules
@@ -205,7 +228,7 @@ func (w *windowsManager) UpsertAclEgressRule(server, egressID string, aclRule mo
 		slog.Warn("windows: WFP unavailable for UpsertAclEgressRule", "error", err)
 		return
 	}
-	refreshWFPInterface()
+	_ = refreshWFPInterface()
 	rules := w.installWFPAclRules(aclRule, wfp.LayerForwardACL)
 	if len(rules) == 0 {
 		delete(rCfg.rulesMap, aclRule.ID)
