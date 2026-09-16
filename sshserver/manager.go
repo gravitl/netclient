@@ -37,8 +37,8 @@ type Manager struct {
 	mu                   sync.RWMutex
 	identityMap          map[string]models.PeerIdentity
 	authorizedIdentities map[string]models.SSHAuthorizedIdentity
-	running              bool
 	server               *gliderssh.Server
+	listeners            map[string]net.Listener // keyed by IP string, one per bound WireGuard address
 	sessions             map[string]*liveSession
 }
 
@@ -67,14 +67,17 @@ func (m *Manager) Start(identityMap map[string]models.PeerIdentity, authorizedId
 	m.identityMap = identityMap
 	m.authorizedIdentities = authorizedIdentities
 	m.revokeStaleSessionsLocked()
-	if m.running {
-		return nil
+
+	if m.server == nil {
+		srv, err := m.buildServer()
+		if err != nil {
+			return err
+		}
+		m.server = srv
+		m.listeners = make(map[string]net.Listener)
 	}
-	if err := m.start(); err != nil {
-		return err
-	}
-	m.running = true
-	return nil
+
+	return m.syncListenersLocked()
 }
 
 // revokeStaleSessionsLocked cancels every live session whose peer/OS-user
@@ -92,22 +95,16 @@ func (m *Manager) revokeStaleSessionsLocked() {
 	}
 }
 
-func (m *Manager) start() error {
-	wgAddrs := wireguardAddresses()
-	if len(wgAddrs) == 0 {
-		// No network joined yet (or no tunnel address assigned). Not an
-		// error the caller needs to see as fatal - Start()'s running flag
-		// stays false, so the next peer update (e.g. once a network join
-		// hands us a tunnel address) retries automatically.
-		return errors.New("sshserver: no WireGuard tunnel address available yet")
-	}
-
+// buildServer constructs the (unstarted) gliderssh.Server - the host key
+// and handler wiring are one-time setup, done once per Manager lifetime and
+// then reused across every listener syncListenersLocked binds or drops.
+func (m *Manager) buildServer() (*gliderssh.Server, error) {
 	signer, err := loadOrCreateHostKey()
 	if err != nil {
-		return fmt.Errorf("sshserver: failed to prepare host key: %w", err)
+		return nil, fmt.Errorf("sshserver: failed to prepare host key: %w", err)
 	}
 
-	srv := &gliderssh.Server{
+	return &gliderssh.Server{
 		Handler:     m.handleSession,
 		HostSigners: []gliderssh.Signer{signer},
 		SubsystemHandlers: map[string]gliderssh.SubsystemHandler{
@@ -121,24 +118,42 @@ func (m *Manager) start() error {
 			}
 			return conn
 		},
+	}, nil
+}
+
+// syncListenersLocked reconciles m.listeners against the host's current
+// WireGuard addresses.
+func (m *Manager) syncListenersLocked() error {
+	wanted := make(map[string]net.IP)
+	for _, ip := range wireguardAddresses() {
+		wanted[ip.String()] = ip
 	}
 
-	listeners := make([]net.Listener, 0, len(wgAddrs))
-	for _, ip := range wgAddrs {
+	for key, ln := range m.listeners {
+		if _, ok := wanted[key]; ok {
+			continue
+		}
+		slog.Info("[sshserver] closing listener: address no longer assigned to this host", "addr", ln.Addr().String())
+		_ = ln.Close()
+		delete(m.listeners, key)
+	}
+
+	var firstErr error
+	for key, ip := range wanted {
+		if _, ok := m.listeners[key]; ok {
+			continue
+		}
 		addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", DefaultPort))
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
-			for _, l := range listeners {
-				_ = l.Close()
+			slog.Error("[sshserver] failed to listen on new address", "addr", addr, "error", err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("sshserver: failed to listen on %s: %w", addr, err)
 			}
-			return fmt.Errorf("sshserver: failed to listen on %s: %w", addr, err)
+			continue
 		}
-		listeners = append(listeners, ln)
-	}
-
-	m.server = srv
-	for _, ln := range listeners {
-		ln := ln
+		m.listeners[key] = ln
+		srv := m.server
 		go func() {
 			slog.Info("[sshserver] starting embedded SSH/SCP/SFTP server", "addr", ln.Addr().String())
 			if err := srv.Serve(ln); err != nil && !errors.Is(err, gliderssh.ErrServerClosed) {
@@ -146,7 +161,12 @@ func (m *Manager) start() error {
 			}
 		}()
 	}
-	return nil
+
+	if len(m.listeners) == 0 {
+		return errors.New("sshserver: no WireGuard tunnel address available yet")
+	}
+
+	return firstErr
 }
 
 // wireguardAddresses returns the current set of WireGuard tunnel addresses
@@ -183,7 +203,7 @@ func (m *Manager) Stop() error {
 	slog.Info("[sshserver] stopping embedded SSH server")
 	err := m.server.Close()
 	m.server = nil
-	m.running = false
+	m.listeners = nil
 	return err
 }
 
