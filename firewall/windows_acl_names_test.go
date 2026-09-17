@@ -21,13 +21,63 @@ func TestWinAclIDHash(t *testing.T) {
 }
 
 func TestParsePortRange(t *testing.T) {
-	lo, hi := parsePortRange("80-90")
-	if lo != 80 || hi != 90 {
-		t.Fatalf("got %d-%d", lo, hi)
+	for _, tc := range []struct {
+		in     string
+		lo, hi uint16
+		ok     bool
+	}{
+		{in: "80-90", lo: 80, hi: 90, ok: true},
+		{in: "443", lo: 443, ok: true},
+		{in: "80:90", lo: 80, hi: 90, ok: true},
+		{in: " 8080 - 8081 ", lo: 8080, hi: 8081, ok: true},
+		// Degenerate range collapses to a single-port match.
+		{in: "443-443", lo: 443, ok: true},
+		// All invalid: a portless spec would allow every port, so these must
+		// be rejected rather than coerced to 0.
+		{in: "abc", ok: false},
+		{in: "8080-abc", ok: false},
+		{in: "90-80", ok: false},
+		{in: "0", ok: false},
+		{in: "0-100", ok: false},
+		{in: "70000", ok: false},
+		// Empty means "all ports" and is legitimate.
+		{in: "", ok: true},
+	} {
+		lo, hi, ok := parsePortRange(tc.in)
+		if ok != tc.ok || lo != tc.lo || hi != tc.hi {
+			t.Errorf("parsePortRange(%q) = %d, %d, %v; want %d, %d, %v",
+				tc.in, lo, hi, ok, tc.lo, tc.hi, tc.ok)
+		}
 	}
-	lo, hi = parsePortRange("443")
-	if lo != 443 || hi != 0 {
-		t.Fatalf("got %d-%d", lo, hi)
+}
+
+func TestAclToFilterSpecsDropsInvalidPorts(t *testing.T) {
+	_, src, _ := net.ParseCIDR("10.0.0.1/32")
+	acl := models.AclRule{
+		ID:              "rule-c",
+		IPList:          []net.IPNet{*src},
+		AllowedProtocol: schema.TCP,
+		AllowedPorts:    []string{"bogus"},
+	}
+	if specs := aclToFilterSpecs(acl, aclLayerInbound); len(specs) != 0 {
+		t.Fatalf("expected no specs for unparsable port, got %+v", specs)
+	}
+}
+
+func TestAclToFilterSpecsRange(t *testing.T) {
+	_, src, _ := net.ParseCIDR("10.0.0.1/32")
+	acl := models.AclRule{
+		ID:              "rule-d",
+		IPList:          []net.IPNet{*src},
+		AllowedProtocol: schema.TCP,
+		AllowedPorts:    []string{"8080-8081"},
+	}
+	specs := aclToFilterSpecs(acl, aclLayerInbound)
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 spec, got %d", len(specs))
+	}
+	if specs[0].DstPort != 8080 || specs[0].DstPortMax != 8081 {
+		t.Fatalf("unexpected bounds: %+v", specs[0])
 	}
 }
 

@@ -472,24 +472,21 @@ func (e *Engine) buildConditions(spec FilterSpec, src, dst net.IPNet, isV6 bool)
 	// Ports only on ALE inbound layers (not available on IPFORWARD).
 	if spec.Layer == LayerInboundACL && spec.DstPort != 0 {
 		if spec.DstPortMax > spec.DstPort {
-			conds = append(conds,
-				wtFwpmFilterCondition0{
-					fieldKey:  cFWPM_CONDITION_IP_LOCAL_PORT,
-					matchType: cFWP_MATCH_GREATER_OR_EQUAL,
-					conditionValue: wtFwpConditionValue0{
-						_type: cFWP_UINT16,
-						value: uintptr(spec.DstPort),
-					},
+			// One FWP_MATCH_RANGE condition, not a >=/<= pair: WFP ORs
+			// conditions that share a fieldKey, so a pair matches every port.
+			r := &wtFwpRange0{
+				valueLow:  wtFwpValue0{_type: cFWP_UINT16, value: uintptr(spec.DstPort)},
+				valueHigh: wtFwpValue0{_type: cFWP_UINT16, value: uintptr(spec.DstPortMax)},
+			}
+			conds = append(conds, wtFwpmFilterCondition0{
+				fieldKey:  cFWPM_CONDITION_IP_LOCAL_PORT,
+				matchType: cFWP_MATCH_RANGE,
+				conditionValue: wtFwpConditionValue0{
+					_type: cFWP_RANGE_TYPE,
+					value: uintptr(unsafe.Pointer(r)),
 				},
-				wtFwpmFilterCondition0{
-					fieldKey:  cFWPM_CONDITION_IP_LOCAL_PORT,
-					matchType: cFWP_MATCH_LESS_OR_EQUAL,
-					conditionValue: wtFwpConditionValue0{
-						_type: cFWP_UINT16,
-						value: uintptr(spec.DstPortMax),
-					},
-				},
-			)
+			})
+			alive = append(alive, r)
 		} else {
 			conds = append(conds, wtFwpmFilterCondition0{
 				fieldKey:  cFWPM_CONDITION_IP_LOCAL_PORT,

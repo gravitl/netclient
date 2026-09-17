@@ -58,7 +58,12 @@ func aclToFilterSpecs(acl models.AclRule, layer int) []aclFilterSpec {
 			continue
 		}
 		for _, port := range ports {
-			lo, hi := parsePortRange(port)
+			lo, hi, ok := parsePortRange(port)
+			if !ok {
+				slog.Warn("windows: skipping ACL port spec that cannot be parsed",
+					"acl", acl.ID, "port", port)
+				continue
+			}
 			name := fmt.Sprintf("nm-acl-%s-%d", winAclIDHash(acl.ID), idx)
 			idx++
 			specs = append(specs, aclFilterSpec{
@@ -88,18 +93,30 @@ func aclProtocol(p models.Protocol) uint8 {
 	}
 }
 
-func parsePortRange(port string) (uint16, uint16) {
+// parsePortRange returns inclusive bounds for a port spec; hi is 0 for a single
+// port. An empty spec means "all ports" and is valid. ok is false for anything
+// unparsable, which callers must drop: a spec with no port condition allows
+// every port, so guessing here would widen the rule instead of narrowing it.
+func parsePortRange(port string) (uint16, uint16, bool) {
 	port = strings.TrimSpace(port)
 	if port == "" {
-		return 0, 0
+		return 0, 0, true
 	}
 	port = strings.ReplaceAll(port, ":", "-")
-	if strings.Contains(port, "-") {
-		parts := strings.SplitN(port, "-", 2)
-		lo, _ := strconv.ParseUint(parts[0], 10, 16)
-		hi, _ := strconv.ParseUint(parts[1], 10, 16)
-		return uint16(lo), uint16(hi)
+	if loStr, hiStr, isRange := strings.Cut(port, "-"); isRange {
+		lo, loErr := strconv.ParseUint(strings.TrimSpace(loStr), 10, 16)
+		hi, hiErr := strconv.ParseUint(strings.TrimSpace(hiStr), 10, 16)
+		if loErr != nil || hiErr != nil || lo == 0 || hi < lo {
+			return 0, 0, false
+		}
+		if hi == lo {
+			return uint16(lo), 0, true
+		}
+		return uint16(lo), uint16(hi), true
 	}
-	v, _ := strconv.ParseUint(port, 10, 16)
-	return uint16(v), 0
+	v, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || v == 0 {
+		return 0, 0, false
+	}
+	return uint16(v), 0, true
 }

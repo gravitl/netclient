@@ -368,6 +368,14 @@ type wtFwpValue0 struct {
 	value uintptr
 }
 
+// FWP_RANGE0 defined in fwptypes.h
+// (https://docs.microsoft.com/en-us/windows/desktop/api/fwptypes/ns-fwptypes-fwp_range0_).
+// Bounds are inclusive.
+type wtFwpRange0 struct {
+	valueLow  wtFwpValue0
+	valueHigh wtFwpValue0
+}
+
 // FWPM_DISPLAY_DATA0 defined in fwptypes.h
 // (https://docs.microsoft.com/en-us/windows/desktop/api/fwptypes/ns-fwptypes-fwpm_display_data0).
 type wtFwpmDisplayData0 struct {
