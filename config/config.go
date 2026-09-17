@@ -552,6 +552,10 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 // Respects user's explicit choice if that firewall is still available;
 // only auto-detects when no valid firewall has been configured.
 func SetFirewall() {
+	if ncutils.IsWindows() {
+		netclient.FirewallInUse = schema.FIREWALL_NETNAT
+		return
+	}
 	if !ncutils.IsLinux() {
 		netclient.FirewallInUse = schema.FIREWALL_NONE
 		return
@@ -580,6 +584,9 @@ func SetFirewall() {
 // FirewallHasChanged - checks if the configured firewall still matches
 // what is available on the system.
 func FirewallHasChanged() bool {
+	if ncutils.IsWindows() {
+		return netclient.FirewallInUse != schema.FIREWALL_NETNAT
+	}
 	if !ncutils.IsLinux() {
 		// non-Linux should always be FIREWALL_NONE; flag if not set
 		return netclient.FirewallInUse != schema.FIREWALL_NONE

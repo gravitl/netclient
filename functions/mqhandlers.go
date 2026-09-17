@@ -756,6 +756,8 @@ func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
 }
 
 func handleFwUpdate(server string, payload *models.FwUpdate) {
+	// Rebind WFP after iface up (Init often runs too early for default deny).
+	firewall.RefreshACLInterface()
 
 	if payload.IsEgressGw {
 		firewall.SetEgressRoutes(server, payload.EgressInfo)
