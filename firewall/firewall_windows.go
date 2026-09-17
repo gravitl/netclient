@@ -189,6 +189,14 @@ func (w *windowsManager) InsertEgressRoutingRules(server string, egressInfo mode
 			slog.Warn("windows: missing mesh network prefix for NetNat", "egress", egressInfo.EgressID)
 			continue
 		}
+		// Hyper-V NetNat only accepts an IPv4 InternalIPInterfaceAddressPrefix.
+		// Skip rather than hand New-NetNat a v6 prefix it cannot use; a v4 range
+		// on the same egress still gets its NetNat since natApplied stays false.
+		if !isIPv4CIDR(meshPrefix) {
+			slog.Warn("windows: IPv6 egress NAT is unsupported (NetNat is IPv4-only); skipping NAT for this range",
+				"egress", egressInfo.EgressID, "range", egressGwRange.Network, "meshPrefix", meshPrefix)
+			continue
+		}
 		name := netNatName(egressInfo.EgressID)
 		if err := ensureNetNat(name, meshPrefix); err != nil {
 			slog.Error("windows: failed to create NetNat for egress",
@@ -285,7 +293,12 @@ func (w *windowsManager) FlushAll() {
 
 func getWindowsInterfaceName(dstCIDR string) (string, error) {
 	ip := dstCIDR
-	if dstCIDR == ipv4Network || dstCIDR == ipv6Network || dstCIDR == "*" {
+	// Default routes carry no address to probe, so substitute a well-known
+	// off-link host of the matching family: a v4 probe would resolve ::/0 to the
+	// v4 exit interface.
+	if dstCIDR == ipv6Network {
+		ip = testIPv6
+	} else if dstCIDR == ipv4Network || dstCIDR == "*" {
 		ip = testIPv4
 	} else if host, _, err := net.ParseCIDR(dstCIDR); err == nil {
 		ip = host.String()
