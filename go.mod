@@ -12,7 +12,7 @@ require (
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/gravitl/netmaker v1.7.1-0.20260909142940-1bbd4274b411
+	github.com/gravitl/netmaker v1.7.1-0.20260918090820-c13cbcc9c408
 	github.com/gravitl/proxy v1.0.0
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/hashicorp/go-retryablehttp v0.7.8
