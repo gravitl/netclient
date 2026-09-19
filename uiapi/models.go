@@ -35,19 +35,20 @@ type SetServerRequest struct {
 }
 
 type GetServerResponse struct {
-	Status              Status                `json:"status"`
-	Server              string                `json:"server"`
-	API                 string                `json:"api"`
-	APIHost             string                `json:"APIHost"`
-	Username            string                `json:"username"`
-	AuthToken           string                `json:"auth_token"`
-	TenantID            string                `json:"tenant_id"`
-	Registered          bool                  `json:"registered"`
-	ServerConfig        nmConfig.ServerConfig `json:"server_config"`
-	RestorePhase        string                `json:"restore_phase,omitempty"`
-	WantIGW             bool                  `json:"want_igw,omitempty"`
-	DesiredEgressID     string                `json:"desired_egress_id,omitempty"`
-	DesiredExitNetwork  string                `json:"desired_exit_network,omitempty"`
+	Status             Status                `json:"status"`
+	Server             string                `json:"server"`
+	API                string                `json:"api"`
+	APIHost            string                `json:"APIHost"`
+	Username           string                `json:"username"`
+	AuthToken          string                `json:"auth_token"`
+	TenantID           string                `json:"tenant_id"`
+	Registered         bool                  `json:"registered"`
+	ServerConfig       nmConfig.ServerConfig `json:"server_config"`
+	RestorePhase       string                `json:"restore_phase,omitempty"`
+	WantIGW            bool                  `json:"want_igw,omitempty"`
+	AutoExit           bool                  `json:"auto_exit,omitempty"`
+	DesiredEgressID    string                `json:"desired_egress_id,omitempty"`
+	DesiredExitNetwork string                `json:"desired_exit_network,omitempty"`
 }
 
 type ConfigureSessionRequest struct {

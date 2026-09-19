@@ -21,6 +21,7 @@ type HandlerDeps struct {
 	ListExitNodes             func(network, server, token string) ([]models.DeviceExitNode, error)
 	GetSelectedExitNode       func(network, server, token string) (*models.DeviceExitNode, error)
 	SelectExitNode            func(network, server, token, egressID string) (*models.DeviceExitNode, error)
+	SelectNearestExitNode     func(network, server, token string) (*models.DeviceExitNode, error)
 	RestoreDesiredConnections func(username, tenantID string) error
 }
 
@@ -120,6 +121,13 @@ func selectExitNode(network, server, token, egressID string) (*models.DeviceExit
 		return nil, errHandlersNotConfigured
 	}
 	return deps.SelectExitNode(network, server, token, egressID)
+}
+
+func selectNearestExitNode(network, server, token string) (*models.DeviceExitNode, error) {
+	if deps.SelectNearestExitNode == nil {
+		return nil, errHandlersNotConfigured
+	}
+	return deps.SelectNearestExitNode(network, server, token)
 }
 
 func restoreDesiredConnections(username, tenantID string) error {

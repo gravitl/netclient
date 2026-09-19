@@ -67,3 +67,29 @@ func TestMarkNearestExitNodesByGeo(t *testing.T) {
 	assert.False(t, nodes[0].Nearest)
 	assert.True(t, nodes[1].Nearest)
 }
+
+func TestPickNearestAvailableExitNode(t *testing.T) {
+	_, ok := pickNearestAvailableExitNode(nil)
+	assert.False(t, ok)
+
+	pick, ok := pickNearestAvailableExitNode([]models.DeviceExitNode{
+		{EgressID: "down-near", Status: false, Nearest: true, LatencyMs: 5},
+		{EgressID: "up-far", Status: true, LatencyMs: 80},
+		{EgressID: "up-near", Status: true, Nearest: false, LatencyMs: 12},
+	})
+	assert.True(t, ok)
+	assert.Equal(t, "up-near", pick.EgressID, "prefer lowest-latency up node when Nearest is down")
+
+	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
+		{EgressID: "up-far", Status: true, LatencyMs: 80},
+		{EgressID: "up-nearest", Status: true, Nearest: true, LatencyMs: 12},
+	})
+	assert.True(t, ok)
+	assert.Equal(t, "up-nearest", pick.EgressID)
+
+	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
+		{EgressID: "only-down", Status: false, Nearest: true},
+	})
+	assert.True(t, ok)
+	assert.Equal(t, "only-down", pick.EgressID, "fall back to Nearest when none are up")
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
 
@@ -75,6 +76,9 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		if err := config.ForgetDesiredNetwork(user, tenant, network); err != nil {
 			slog.Warn("failed to clear desired connection", "network", network, "error", err)
 		}
+		// User disconnect must clear exit intent for this network (logout already does).
+		// Leaving want_igw/auto_exit + server exit lets peer updates reinstall IGW.
+		clearExitAfterDisconnect(user, tenant, network)
 	}
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
@@ -84,6 +88,8 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
 			if err := wireguard.RestoreInternetGw(); err != nil {
 				slog.Warn("failed to restore default gateway after disconnect", "error", err)
+			} else {
+				reconfigureDNSAfterRouting()
 			}
 		}
 	}
@@ -97,6 +103,43 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		}
 	}
 	return nil
+}
+
+// clearExitAfterDisconnect drops exit restore intent and server selection when the
+// user disconnects the exit network or the last connected network.
+func clearExitAfterDisconnect(username, tenantID, network string) {
+	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
+	wantIGW := config.GetDesiredWantIGW(username, tenantID)
+	autoExit := config.GetDesiredAutoExit(username, tenantID)
+	egressID := strings.TrimSpace(config.GetDesiredEgressID(username, tenantID))
+	if !wantIGW && !autoExit && egressID == "" && exitNetwork == "" {
+		return
+	}
+	lastNetwork := !config.AnyNodeConnected()
+	if exitNetwork != "" && exitNetwork != network && !lastNetwork {
+		return
+	}
+	clearNet := exitNetwork
+	if clearNet == "" {
+		clearNet = network
+	}
+	if err := config.ClearDesiredExitNode(username, tenantID); err != nil {
+		slog.Warn("failed to clear desired exit after disconnect", "error", err)
+	}
+	token := uiapi.SessionAuthToken()
+	if token != "" && clearNet != "" {
+		if _, err := putDeviceExitNode(clearNet, token, ""); err != nil {
+			slog.Warn("failed to clear server exit after disconnect",
+				"network", clearNet, "error", err)
+		}
+	}
+	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+		if err := wireguard.RestoreInternetGw(); err != nil {
+			slog.Warn("failed to restore default gateway after exit clear", "error", err)
+		} else {
+			reconfigureDNSAfterRouting()
+		}
+	}
 }
 
 // skipDesiredRestoreOnce is set before logout/handoff disconnect restarts the
@@ -163,7 +206,8 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	}
 	egressID := strings.TrimSpace(config.GetDesiredEgressID(username, tenantID))
 	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
-	wantIGW := config.GetDesiredWantIGW(username, tenantID) || egressID != ""
+	autoExit := config.GetDesiredAutoExit(username, tenantID)
+	wantIGW := config.GetDesiredWantIGW(username, tenantID) || egressID != "" || autoExit
 	if !changed && !wantIGW {
 		return nil
 	}
@@ -184,56 +228,89 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 			exitNetwork = desired[len(desired)-1]
 		}
 		token := uiapi.SessionAuthToken()
-		if egressID == "" && token != "" {
-			if sel, selErr := GetDeviceSelectedExitNode(exitNetwork, token); selErr == nil && sel != nil {
-				egressID = strings.TrimSpace(sel.EgressID)
-			}
-			if egressID == "" {
-				for _, network := range desired {
-					sel, selErr := GetDeviceSelectedExitNode(network, token)
-					if selErr != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
-						continue
-					}
-					egressID = strings.TrimSpace(sel.EgressID)
-					exitNetwork = network
-					break
-				}
-			}
-		}
-		if egressID != "" && token != "" {
-			var selErr error
+		var selErr error
+		if token != "" && autoExit {
 			for attempt := 1; attempt <= exitReselectAttempts; attempt++ {
 				if uiapi.ShouldAbortSessionRestore() {
 					return nil
 				}
-				if _, selErr = SelectDeviceExitNode(exitNetwork, token, egressID); selErr == nil {
-					slog.Info("re-selected exit node during session restore",
+				var node *models.DeviceExitNode
+				node, selErr = SelectNearestDeviceExitNode(exitNetwork, token)
+				if selErr != nil {
+					for _, network := range desired {
+						if network == exitNetwork {
+							continue
+						}
+						node, selErr = SelectNearestDeviceExitNode(network, token)
+						if selErr == nil {
+							exitNetwork = network
+							break
+						}
+					}
+				}
+				if selErr == nil && node != nil {
+					egressID = strings.TrimSpace(node.EgressID)
+					slog.Info("auto-selected nearest exit node during session restore",
 						"network", exitNetwork, "egress_id", egressID, "attempt", attempt)
-					_ = config.SetDesiredExitNode(username, tenantID, exitNetwork, egressID)
+					_ = config.SetDesiredAutoExitNode(username, tenantID, exitNetwork, egressID)
 					break
 				}
-				slog.Info("exit re-select not ready yet",
+				slog.Info("auto exit select not ready yet",
 					"network", exitNetwork, "attempt", attempt, "error", selErr)
 				time.Sleep(exitReselectInterval)
 			}
-			if selErr != nil {
-				slog.Warn("failed to re-select exit node during restore",
-					"network", exitNetwork, "egress_id", egressID, "error", selErr)
-			} else {
-				uiapi.SetRestorePhase(uiapi.RestorePhaseRoutes)
-				// Short wait for ChangeDefaultGw; peer updates may finish routes after we return.
-				if igwPull, igwErr := waitForReconnectHostPullTimeout(desired, true, restoreIGWTimeout); igwErr != nil {
-					slog.Warn("host pull after exit re-select still stale", "error", igwErr)
-					if !pull.ChangeDefaultGw {
-						pull = igwPull
+		} else {
+			if egressID == "" && token != "" {
+				if sel, err := GetDeviceSelectedExitNode(exitNetwork, token); err == nil && sel != nil {
+					egressID = strings.TrimSpace(sel.EgressID)
+				}
+				if egressID == "" {
+					for _, network := range desired {
+						sel, err := GetDeviceSelectedExitNode(network, token)
+						if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
+							continue
+						}
+						egressID = strings.TrimSpace(sel.EgressID)
+						exitNetwork = network
+						break
 					}
-				} else {
-					pull = igwPull
 				}
 			}
-		} else {
+			if egressID != "" && token != "" {
+				for attempt := 1; attempt <= exitReselectAttempts; attempt++ {
+					if uiapi.ShouldAbortSessionRestore() {
+						return nil
+					}
+					if _, selErr = SelectDeviceExitNode(exitNetwork, token, egressID); selErr == nil {
+						slog.Info("re-selected exit node during session restore",
+							"network", exitNetwork, "egress_id", egressID, "attempt", attempt)
+						_ = config.SetDesiredExitNode(username, tenantID, exitNetwork, egressID)
+						break
+					}
+					slog.Info("exit re-select not ready yet",
+						"network", exitNetwork, "attempt", attempt, "error", selErr)
+					time.Sleep(exitReselectInterval)
+				}
+			}
+		}
+		if token == "" || (egressID == "" && !autoExit) {
 			slog.Warn("cannot re-select exit node during restore; missing egress id or session token",
-				"want_igw", wantIGW, "egress_id", egressID, "exit_network", exitNetwork, "has_token", token != "")
+				"want_igw", wantIGW, "auto_exit", autoExit, "egress_id", egressID,
+				"exit_network", exitNetwork, "has_token", token != "")
+		} else if selErr != nil {
+			slog.Warn("failed to re-select exit node during restore",
+				"network", exitNetwork, "auto_exit", autoExit, "egress_id", egressID, "error", selErr)
+		} else {
+			uiapi.SetRestorePhase(uiapi.RestorePhaseRoutes)
+			// Short wait for ChangeDefaultGw; peer updates may finish routes after we return.
+			if igwPull, igwErr := waitForReconnectHostPullTimeout(desired, true, restoreIGWTimeout); igwErr != nil {
+				slog.Warn("host pull after exit re-select still stale", "error", igwErr)
+				if !pull.ChangeDefaultGw {
+					pull = igwPull
+				}
+			} else {
+				pull = igwPull
+			}
 		}
 	}
 
@@ -339,9 +416,34 @@ func locallyConnectedNetworks() map[string]struct{} {
 // reports Connected=false (common right after reconnect/login before the server
 // processes PublishNodeUpdate). Without this, AnyNodeConnected() is false and
 // peer/pull handlers clear egress and internet-exit routes.
+//
+// With an active desktop session, only networks still in desired state are
+// preserved — otherwise an in-flight peer/pull snapshot taken before user
+// disconnect can revive Connected=true and reinstall the exit node.
 func keepLocallyConnected(networks map[string]struct{}) {
 	if len(networks) == 0 {
 		return
+	}
+	if uiapi.IsSessionActive() {
+		user, tenant := uiapi.SessionIdentity()
+		desired := filterDesiredNetworks(config.GetDesiredNetworks(user, tenant), uiapi.RestrictToSingleNetwork())
+		if len(desired) == 0 {
+			return
+		}
+		allowed := make(map[string]struct{}, len(desired))
+		for _, network := range desired {
+			allowed[network] = struct{}{}
+		}
+		filtered := make(map[string]struct{}, len(networks))
+		for network := range networks {
+			if _, ok := allowed[network]; ok {
+				filtered[network] = struct{}{}
+			}
+		}
+		networks = filtered
+		if len(networks) == 0 {
+			return
+		}
 	}
 	changed := false
 	for network, node := range config.GetNodes() {

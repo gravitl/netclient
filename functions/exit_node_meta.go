@@ -244,6 +244,45 @@ func markNearestExitNodes(nodes []models.DeviceExitNode, origin string) {
 	}
 }
 
+// pickNearestAvailableExitNode returns the best exit to auto-connect.
+// Prefers Status=true nodes marked Nearest, then lowest LatencyMs among up nodes,
+// then Nearest among all, then the first entry.
+func pickNearestAvailableExitNode(nodes []models.DeviceExitNode) (models.DeviceExitNode, bool) {
+	if len(nodes) == 0 {
+		return models.DeviceExitNode{}, false
+	}
+	var bestUp *models.DeviceExitNode
+	for i := range nodes {
+		n := &nodes[i]
+		if !n.Status {
+			continue
+		}
+		if n.Nearest {
+			return *n, true
+		}
+		if bestUp == nil {
+			bestUp = n
+			continue
+		}
+		lat := n.LatencyMs
+		bestLat := bestUp.LatencyMs
+		if lat > exitNodeLatencyNone && lat < exitNodeLatencyTO {
+			if bestLat <= exitNodeLatencyNone || bestLat >= exitNodeLatencyTO || lat < bestLat {
+				bestUp = n
+			}
+		}
+	}
+	if bestUp != nil {
+		return *bestUp, true
+	}
+	for i := range nodes {
+		if nodes[i].Nearest {
+			return nodes[i], true
+		}
+	}
+	return nodes[0], true
+}
+
 func parseLatLon(s string) (lat, lon float64, ok bool) {
 	parts := strings.Split(s, ",")
 	if len(parts) != 2 {

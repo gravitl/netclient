@@ -21,6 +21,7 @@ func init() {
 		ListExitNodes:             listExitNodesForUI,
 		GetSelectedExitNode:       getSelectedExitNodeForUI,
 		SelectExitNode:            selectExitNodeForUI,
+		SelectNearestExitNode:     selectNearestExitNodeForUI,
 		RestoreDesiredConnections: RestoreDesiredConnections,
 	})
 }
@@ -70,6 +71,10 @@ func getSelectedExitNodeForUI(network, server, token string) (*models.DeviceExit
 
 func selectExitNodeForUI(network, server, token, egressID string) (*models.DeviceExitNode, error) {
 	return SelectDeviceExitNode(network, token, egressID)
+}
+
+func selectNearestExitNodeForUI(network, server, token string) (*models.DeviceExitNode, error) {
+	return SelectNearestDeviceExitNode(network, token)
 }
 
 func sessionCredentials() (server, token string) {

@@ -176,6 +176,7 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 			resp.RestorePhase = GetRestorePhase()
 		}
 		resp.WantIGW = config.GetDesiredWantIGW(username, tenantID)
+		resp.AutoExit = config.GetDesiredAutoExit(username, tenantID)
 		resp.DesiredEgressID = config.GetDesiredEgressID(username, tenantID)
 		resp.DesiredExitNetwork = config.GetDesiredExitNetwork(username, tenantID)
 	}
@@ -638,7 +639,10 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "network is required"})
 		return
 	}
-	var req models.DeviceExitNodeSelectionReq
+	var req struct {
+		EgressID string `json:"egress_id"`
+		Auto     bool   `json:"auto"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "invalid request body"})
@@ -648,7 +652,15 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	node, err := selectExitNode(network, server, token, req.EgressID)
+	var (
+		node *models.DeviceExitNode
+		err  error
+	)
+	if req.Auto {
+		node, err = selectNearestExitNode(network, server, token)
+	} else {
+		node, err = selectExitNode(network, server, token, req.EgressID)
+	}
 	if err != nil {
 		writeExitNodeErr(w, err)
 		return

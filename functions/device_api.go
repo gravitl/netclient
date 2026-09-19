@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -387,6 +388,49 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	}
 	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
 	return &node, nil
+}
+
+// SelectNearestDeviceExitNode lists exits, picks the nearest available one, and selects it.
+// Persists auto_exit so session restore re-picks nearest rather than a fixed egress id.
+// Switching A→B clears the current selection first (server rejects direct switch).
+func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	nodes, err := ListDeviceExitNodes(network, token)
+	if err != nil {
+		return nil, err
+	}
+	pick, ok := pickNearestAvailableExitNode(nodes)
+	if !ok || strings.TrimSpace(pick.EgressID) == "" {
+		return nil, fmt.Errorf("no available exit nodes on network %s", network)
+	}
+	current, err := GetDeviceSelectedExitNode(network, token)
+	if err != nil {
+		slog.Warn("failed to read current exit before auto-select", "network", network, "error", err)
+	}
+	if current != nil && strings.TrimSpace(current.EgressID) != "" && current.EgressID != pick.EgressID {
+		if _, err := putDeviceExitNode(network, token, ""); err != nil {
+			return nil, err
+		}
+	}
+	if current == nil || current.EgressID != pick.EgressID {
+		resp, err := putDeviceExitNode(network, token, pick.EgressID)
+		if err != nil {
+			return nil, err
+		}
+		var node models.DeviceExitNode
+		if err := decodeDeviceResponse(resp, &node); err != nil {
+			return nil, err
+		}
+		if node.EgressID == "" {
+			return nil, fmt.Errorf("server did not select exit node %s", pick.EgressID)
+		}
+		pick = node
+	}
+	user, tenant := uiapi.SessionIdentity()
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
+	return &pick, nil
 }
 
 func putDeviceExitNode(network, token, egressID string) ([]byte, error) {

@@ -164,6 +164,10 @@ Current configured server and session status.
 | `tenant_id` | Workspace tenant for MSP/SaaS; empty for classic non-MSP on-prem |
 | `registered` | Whether the host is registered with the configured server (`servers.json`) |
 | `server_config` | Populated only when session is active; fetched from Netmaker |
+| `want_igw` | Session active: restore internet-exit routing intent |
+| `auto_exit` | Session active: restore should auto-pick nearest available exit |
+| `desired_egress_id` | Session active: last selected egress id (display / fixed restore) |
+| `desired_exit_network` | Session active: network of the desired exit |
 
 `server_config` is the Netmaker `config.ServerConfig` object (includes `rac_restrict_to_single_network`, `manage_dns`, `stun`, `default_domain`, etc.). Use `rac_restrict_to_single_network` to decide whether only one network can be connected at a time.
 
@@ -351,12 +355,20 @@ Proxied to server `GET /api/v1/device/networks/{network}/exit_node`.
 
 Select or clear the exit node for this device on the network. Clearing uses an empty `egress_id`. To switch exits, clear first then select the new one. Routing is applied by netclient after the server peer update (`ChangeDefaultGw`).
 
-Proxied to server `PUT /api/v1/device/networks/{network}/exit_node`.
+Set `"auto": true` to select the **nearest available** exit (lowest latency, else geo) and persist `auto_exit` so session restore re-picks nearest rather than a fixed egress id. A manual `egress_id` clears `auto_exit`. Clearing (`egress_id: ""` without `auto`) clears both selection and auto intent.
+
+Proxied to server `PUT /api/v1/device/networks/{network}/exit_node` (except `auto`, which is resolved client-side).
 
 **Request**
 
 ```json
 { "egress_id": "uuid-or-empty-to-clear" }
+```
+
+Auto-nearest:
+
+```json
+{ "auto": true }
 ```
 
 **Response `200`** — selected exit node, or `null` if cleared.
@@ -365,7 +377,7 @@ Proxied to server `PUT /api/v1/device/networks/{network}/exit_node`.
 
 | Status | Meaning |
 |--------|---------|
-| `400` | Not joined, invalid egress, or routing node selecting itself |
+| `400` | Not joined, invalid egress, no available exits (auto), or routing node selecting itself |
 | `403` | No ACL access to the exit node |
 | `401` | No session |
 
@@ -548,7 +560,7 @@ Netmaker server config (`server_config`) exposes auth-related fields (`authprovi
 |-------|--------|
 | Netclient config dir | Linux: `/etc/netclient/`, macOS: `/Applications/Netclient/`, Windows: `C:\Program Files (x86)\Netclient\` |
 | UI user session | `.uisession.json` — username, JWT, tenant, `server_config` (daemon-owned; UI reads via API) |
-| Desired reconnect | `desired_connections.json` — per user(+tenant) networks and `want_igw` |
+| Desired reconnect | `desired_connections.json` — per user(+tenant) networks, `want_igw`, `auto_exit`, egress |
 | Daemon server context | `.serverctx`, `servers.json` |
 | Legacy desktop dir | Linux: `/opt/netmaker-rac/`, macOS: `/Users/Shared/netmaker-rac/`, Windows: `C:\Users\Public\netmaker-rac\` (migrated on first load) |
 | Daemon install | `netclient install` registers OS service |

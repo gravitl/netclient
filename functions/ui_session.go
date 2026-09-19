@@ -106,13 +106,14 @@ func ReleaseSession(clearServer bool) error {
 		// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
 		// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
 		wantIGW := config.GetDesiredWantIGW(user, tenant)
+		autoExit := config.GetDesiredAutoExit(user, tenant)
 		egressID := config.GetDesiredEgressID(user, tenant)
 		exitNetwork := config.GetDesiredExitNetwork(user, tenant)
 		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
 			wantIGW = true
 		}
 		token := uiapi.SessionAuthToken()
-		if wantIGW && egressID == "" && token != "" {
+		if wantIGW && egressID == "" && !autoExit && token != "" {
 			for _, network := range networks {
 				sel, err := GetDeviceSelectedExitNode(network, token)
 				if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
@@ -123,13 +124,13 @@ func ReleaseSession(clearServer bool) error {
 				break
 			}
 		}
-		if egressID != "" {
+		if egressID != "" || autoExit {
 			wantIGW = true
 			if exitNetwork == "" {
 				exitNetwork = networks[len(networks)-1]
 			}
 		}
-		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, egressID, exitNetwork); err != nil {
+		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, autoExit, egressID, exitNetwork); err != nil {
 			slog.Warn("failed to persist connected networks before logout", "error", err)
 		}
 		skipNextDesiredRestore()
@@ -142,9 +143,9 @@ func ReleaseSession(clearServer bool) error {
 				reconfigureDNSAfterRouting()
 			}
 		}
-		// Clear server exit only when we persisted an egress id to put back later.
+		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
-		if egressID != "" && exitNetwork != "" && token != "" {
+		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
 			if _, err := putDeviceExitNode(exitNetwork, token, ""); err != nil {
 				slog.Warn("failed to clear server exit node on logout", "network", exitNetwork, "error", err)
 			}
