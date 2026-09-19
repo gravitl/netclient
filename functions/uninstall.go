@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -129,6 +130,8 @@ func deleteLocalNetwork(node *config.Node) error {
 	if nodetodelete.Network == "" {
 		return errors.New("no such network")
 	}
+	user, tenant := uiapi.SessionIdentity()
+	_ = config.ForgetDesiredNetwork(user, tenant, node.Network)
 	//remove node from nodes map
 	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)

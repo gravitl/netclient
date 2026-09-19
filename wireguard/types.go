@@ -33,7 +33,10 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := host.FwMark
-	peers := config.Netclient().HostPeers
+	var peers []wgtypes.PeerConfig
+	if anyNodeConnected(nodes) {
+		peers = config.Netclient().HostPeers
+	}
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
 		peers = nil
@@ -72,6 +75,15 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 		},
 	}
 	return &netmaker
+}
+
+func anyNodeConnected(nodes config.NodeMap) bool {
+	for _, node := range nodes {
+		if node.Connected {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
@@ -319,9 +331,10 @@ func ReapplyInternetGw(gw4, gw6 net.IP) {
 	}
 }
 
-// RefreshInternetGwHostPins adds LAN underlay pins for InternetGwHostIPs when
-// exit-node routing is already active (e.g. TCP proxy IP registered after
-// SetInternetGw). Does not move 0.0.0.0/0.
+// RefreshInternetGwHostPins adds LAN underlay pins for the selected exit and
+// every other direct peer (site egress + alternate internet exits) when
+// internet-exit routing is already active. Needed so newly advertised peer
+// endpoints are not swallowed by 0.0.0.0/0. Does not move 0.0.0.0/0.
 func RefreshInternetGwHostPins() {
 	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
 	if gw4 == nil && gw6 == nil {
