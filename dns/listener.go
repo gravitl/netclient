@@ -157,6 +157,14 @@ func (dnsServer *DNSServer) startListenerLocked(lIp string) bool {
 		dnsServer.AddrStr = lIp
 		dnsServer.AddrList = append(dnsServer.AddrList, lIp)
 		dnsServer.DnsServer = append(dnsServer.DnsServer, srv)
+		// Keep watching: an overlay listener dies when its address goes away
+		// with the tunnel, and a dead address must not stay published.
+		go func() {
+			if err := <-errCh; err != nil {
+				logger.Log(0, "dns listener exited on", lIp+":", err.Error())
+			}
+			dnsServer.dropListener(srv)
+		}()
 		return true
 	case err := <-errCh:
 		logger.Log(0, "error in starting dns server on", lIp+":", err.Error())
@@ -180,15 +188,20 @@ func (dnsServer *DNSServer) hasLoopbackListener() bool {
 	return false
 }
 
-// dropListener forgets a listener that failed to bind. It removes by address
-// rather than by position because the listener that failed is not necessarily
-// the one appended last, and the surviving addresses are what get published to
-// the resolver.
-func (dnsServer *DNSServer) dropListener(addr string) {
+// dropListener forgets a listener whose serve loop has exited, so its address
+// is no longer published to the resolver. It matches on the server pointer
+// rather than the address: a Stop/Start cycle can rebind the same address, and
+// a late watcher from the previous generation must not remove the new listener.
+func (dnsServer *DNSServer) dropListener(srv *dns.Server) {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
+	idx := slices.Index(dnsServer.DnsServer, srv)
+	if idx < 0 {
+		return
+	}
+	addr := srv.Addr
+	dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, idx, idx+1)
 	dnsServer.AddrList = slices.DeleteFunc(dnsServer.AddrList, func(a string) bool { return a == addr })
-	dnsServer.DnsServer = slices.DeleteFunc(dnsServer.DnsServer, func(s *dns.Server) bool { return s.Addr == addr })
 
 	dnsServer.AddrStr = ""
 	if len(dnsServer.AddrList) > 0 {
