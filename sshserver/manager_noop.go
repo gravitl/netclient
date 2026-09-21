@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package sshserver
 
@@ -13,12 +13,12 @@ func GetManager() *Manager {
 	return manager
 }
 
-// Start is a no-op outside Linux.
+// Start is a no-op on platforms without an embedded SSH server.
 func (m *Manager) Start(_ map[string]models.PeerIdentity, _ map[string]models.SSHAuthorizedIdentity) error {
 	return nil
 }
 
-// Stop is a no-op outside Linux.
+// Stop is a no-op on platforms without an embedded SSH server.
 func (m *Manager) Stop() error {
 	return nil
 }

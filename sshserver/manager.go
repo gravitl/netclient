@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package sshserver
 
@@ -85,7 +85,7 @@ func (m *Manager) Start(identityMap map[string]models.PeerIdentity, authorizedId
 func (m *Manager) revokeStaleSessionsLocked() {
 	for id, sess := range m.sessions {
 		osUsers, ok := m.authorizedOsUsersLocked(sess.remoteAddr)
-		if ok && (slices.Contains(osUsers, "*") || slices.Contains(osUsers, sess.osUser)) {
+		if ok && osUserAllowed(osUsers, sess.osUser) {
 			continue
 		}
 		slog.Info("[sshserver] revoking session: grant no longer authorized",
@@ -93,6 +93,10 @@ func (m *Manager) revokeStaleSessionsLocked() {
 		sess.cancel()
 		delete(m.sessions, id)
 	}
+}
+
+func osUserAllowed(osUsers []string, requested string) bool {
+	return slices.Contains(osUsers, "*") || slices.Contains(osUsers, requested)
 }
 
 // buildServer constructs the (unstarted) gliderssh.Server - the host key
@@ -309,10 +313,7 @@ func (m *Manager) handleSession(s gliderssh.Session) {
 // isn't authorized, rejects the session and returns false.
 func isGrantedOsUser(m *Manager, s gliderssh.Session) bool {
 	osUsers, ok := m.authorizedOsUsers(s.RemoteAddr())
-	// "*" means the grant didn't restrict to specific OS users - any
-	// requested login is authorized, matching how netmaker's resolver
-	// treats an empty SSHUsers list on a Managed SSH policy.
-	if ok && (slices.Contains(osUsers, "*") || slices.Contains(osUsers, s.User())) {
+	if ok && osUserAllowed(osUsers, s.User()) {
 		return true
 	}
 	slog.Warn("[sshserver] rejected session: os user not granted",
@@ -323,7 +324,13 @@ func isGrantedOsUser(m *Manager, s gliderssh.Session) bool {
 }
 
 func runShell(ctx context.Context, s gliderssh.Session, ptyReq gliderssh.Pty, winCh <-chan gliderssh.Window) {
-	cmd, err := loginShellCmd(s.User())
+	var cmd *exec.Cmd
+	var err error
+	if raw := s.RawCommand(); raw != "" {
+		cmd, err = execCmd(s.User(), raw)
+	} else {
+		cmd, err = loginShellCmd(s.User())
+	}
 	if err != nil {
 		fmt.Fprintln(s, err)
 		_ = s.Exit(1)
