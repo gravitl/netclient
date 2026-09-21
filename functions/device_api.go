@@ -13,7 +13,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/uiapi"
-	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
@@ -364,26 +363,37 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
+	user, tenant := uiapi.SessionIdentity()
+	egressID = strings.TrimSpace(egressID)
+
+	// Persist desired intent BEFORE the server PUT. MQTT peer updates can arrive
+	// immediately; if want_igw is still false a ChangeDefaultGw=false update will
+	// RestoreInternetGw and wipe CurrGw/DNS right after SetInternetGw.
+	if egressID == "" {
+		_ = config.ClearDesiredExitNode(user, tenant)
+	} else {
+		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
+	}
+
 	resp, err := putDeviceExitNode(network, token, egressID)
 	if err != nil {
+		if egressID != "" {
+			_ = config.ClearDesiredExitNode(user, tenant)
+		}
 		return nil, err
 	}
 	var node models.DeviceExitNode
 	if err := decodeDeviceResponse(resp, &node); err != nil {
+		if egressID != "" {
+			_ = config.ClearDesiredExitNode(user, tenant)
+		}
 		return nil, err
 	}
 	wantGW := egressID != "" && node.EgressID != ""
-	user, tenant := uiapi.SessionIdentity()
 	if !wantGW {
-		// Restore LAN default routes immediately; MQTT will converge peers next.
-		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
-			if err := wireguard.RestoreInternetGw(); err != nil {
-				slog.Error("error restoring default gateway after exit node clear", "error", err)
-			} else {
-				reconfigureDNSAfterRouting()
-			}
-		}
 		_ = config.ClearDesiredExitNode(user, tenant)
+		// Restore LAN routes and OS DNS immediately; MQTT will converge peers next.
+		restoreInternetGwAndDNS()
 		return nil, nil
 	}
 	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
@@ -405,30 +415,36 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 	if !ok || strings.TrimSpace(pick.EgressID) == "" {
 		return nil, fmt.Errorf("no available exit nodes on network %s", network)
 	}
+	user, tenant := uiapi.SessionIdentity()
 	current, err := GetDeviceSelectedExitNode(network, token)
 	if err != nil {
 		slog.Warn("failed to read current exit before auto-select", "network", network, "error", err)
 	}
 	if current != nil && strings.TrimSpace(current.EgressID) != "" && current.EgressID != pick.EgressID {
+		_ = config.ClearDesiredExitNode(user, tenant)
 		if _, err := putDeviceExitNode(network, token, ""); err != nil {
 			return nil, err
 		}
 	}
+	// Mark auto-exit desired before PUT so peer updates won't wipe CurrGw/DNS.
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
 	if current == nil || current.EgressID != pick.EgressID {
 		resp, err := putDeviceExitNode(network, token, pick.EgressID)
 		if err != nil {
+			_ = config.ClearDesiredExitNode(user, tenant)
 			return nil, err
 		}
 		var node models.DeviceExitNode
 		if err := decodeDeviceResponse(resp, &node); err != nil {
+			_ = config.ClearDesiredExitNode(user, tenant)
 			return nil, err
 		}
 		if node.EgressID == "" {
+			_ = config.ClearDesiredExitNode(user, tenant)
 			return nil, fmt.Errorf("server did not select exit node %s", pick.EgressID)
 		}
 		pick = node
 	}
-	user, tenant := uiapi.SessionIdentity()
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
 	return &pick, nil
 }

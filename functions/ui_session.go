@@ -135,14 +135,8 @@ func ReleaseSession(clearServer bool) error {
 		}
 		skipNextDesiredRestore()
 
-		// Bring LAN back immediately; do not wait for disconnect + daemon restart.
-		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-			if err := wireguard.RestoreInternetGw(); err != nil {
-				slog.Warn("failed to restore default gateway before logout disconnect", "error", err)
-			} else {
-				reconfigureDNSAfterRouting()
-			}
-		}
+		// Bring LAN + OS DNS back immediately; do not wait for disconnect + daemon restart.
+		restoreInternetGwAndDNS()
 		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {

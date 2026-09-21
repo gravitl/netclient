@@ -127,6 +127,7 @@ func checkAndRestoreDefaultGateway() {
 	if len(config.Netclient().CurrGwNmIP) == 0 && len(config.Netclient().CurrGwNmIP6) == 0 {
 		return
 	}
+	slog.Info("tearing down internet gateway", "src", "daemon-reset")
 	if err := wireguard.RestoreInternetGw(); err != nil {
 		slog.Error("error restoring default gateway", "error", err.Error())
 	}
@@ -388,11 +389,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		applyInternetGwAfterReconnect(pullresp, pullErr)
 	} else {
 		wireguard.RemoveEgressRoutes()
-		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-			if err := wireguard.RestoreInternetGw(); err != nil {
-				slog.Warn("failed to restore default gateway while disconnected", "error", err)
-			}
-		}
+		restoreInternetGwAndDNS()
 	}
 	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
 	if pullErr == nil && pullresp.ServerConfig.EndpointDetection {

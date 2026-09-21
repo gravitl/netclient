@@ -76,22 +76,15 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		if err := config.ForgetDesiredNetwork(user, tenant, network); err != nil {
 			slog.Warn("failed to clear desired connection", "network", network, "error", err)
 		}
-		// User disconnect must clear exit intent for this network (logout already does).
-		// Leaving want_igw/auto_exit + server exit lets peer updates reinstall IGW.
-		clearExitAfterDisconnect(user, tenant, network)
+		// Keep exit-node selection (desired + server). Disconnect only drops local
+		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
 	}
 	if !config.AnyNodeConnected() {
 		_ = wireguard.SetPeers(true)
-		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-			if err := wireguard.RestoreInternetGw(); err != nil {
-				slog.Warn("failed to restore default gateway after disconnect", "error", err)
-			} else {
-				reconfigureDNSAfterRouting()
-			}
-		}
+		restoreInternetGwAndDNS()
 	}
 	if !restart {
 		return nil
@@ -103,43 +96,6 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		}
 	}
 	return nil
-}
-
-// clearExitAfterDisconnect drops exit restore intent and server selection when the
-// user disconnects the exit network or the last connected network.
-func clearExitAfterDisconnect(username, tenantID, network string) {
-	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
-	wantIGW := config.GetDesiredWantIGW(username, tenantID)
-	autoExit := config.GetDesiredAutoExit(username, tenantID)
-	egressID := strings.TrimSpace(config.GetDesiredEgressID(username, tenantID))
-	if !wantIGW && !autoExit && egressID == "" && exitNetwork == "" {
-		return
-	}
-	lastNetwork := !config.AnyNodeConnected()
-	if exitNetwork != "" && exitNetwork != network && !lastNetwork {
-		return
-	}
-	clearNet := exitNetwork
-	if clearNet == "" {
-		clearNet = network
-	}
-	if err := config.ClearDesiredExitNode(username, tenantID); err != nil {
-		slog.Warn("failed to clear desired exit after disconnect", "error", err)
-	}
-	token := uiapi.SessionAuthToken()
-	if token != "" && clearNet != "" {
-		if _, err := putDeviceExitNode(clearNet, token, ""); err != nil {
-			slog.Warn("failed to clear server exit after disconnect",
-				"network", clearNet, "error", err)
-		}
-	}
-	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-		if err := wireguard.RestoreInternetGw(); err != nil {
-			slog.Warn("failed to restore default gateway after exit clear", "error", err)
-		} else {
-			reconfigureDNSAfterRouting()
-		}
-	}
 }
 
 // skipDesiredRestoreOnce is set before logout/handoff disconnect restarts the
@@ -331,6 +287,9 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 			}
 		}
 	}
+	// Ensure system-wide DNS after exit restore even if Start ran earlier in
+	// SplitDNS mode (listener already up; Configure must run again with CurrGw).
+	reconfigureDNSAfterRouting()
 	return nil
 }
 

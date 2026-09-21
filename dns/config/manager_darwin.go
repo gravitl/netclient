@@ -39,10 +39,9 @@ func NewManager(opts ...ManagerOption) (Manager, error) {
 	}
 
 	if options.cleanupResidual && len(options.residualInterfaces) > 0 {
-		err = d.resetConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to cleanup config: %v", err)
-		}
+		// Best-effort: a single networksetup failure must not disable the
+		// manager entirely (callers used to fall back to NoopManager).
+		_ = d.resetConfig()
 	}
 
 	return d, nil

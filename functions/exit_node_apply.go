@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -14,16 +15,81 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
-// reconfigureDNSAfterRouting re-runs OS DNS setup when the local listener is up.
-// Needed after exit-node select/clear because SplitDNS flips with CurrGwNmIP even
-// when nameserver lists are unchanged (mqhandlers previously skipped Configure).
+// reconfigureDNSAfterRouting re-runs OS DNS setup after exit-node routing changes.
+// SplitDNS flips with CurrGwNmIP even when nameserver lists are unchanged.
+// Always call this after clearing an exit — even if CurrGwNmIP was already nil —
+// so system DNS is not left pointing at the Netmaker listener.
 func reconfigureDNSAfterRouting() {
+	// Exit apply often runs before DNS Start during daemon bring-up.
 	if dns.GetDNSServerInstance().AddrStr == "" {
+		if server := config.GetServer(config.CurrServer); server != nil && server.ManageDNS {
+			dns.GetDNSServerInstance().Start()
+		}
+	}
+	if dns.GetDNSServerInstance().AddrStr == "" {
+		// Listener still down: strip any leftover full-DNS we installed.
+		if err := dns.ResetOSConfig(); err != nil {
+			slog.Warn("failed to reset os dns after routing change", "error", err)
+		}
+		dns.FlushCache()
 		return
 	}
+	// Listener already up: Configure refreshes SplitDNS↔full from CurrGwNmIP
+	// (Start is a no-op for bind when AddrStr is set).
 	if err := dns.Configure(); err != nil {
+		// Do not ResetOSConfig here — a transient Configure failure would wipe
+		// working DNS, especially on macOS where only loopback is published.
 		slog.Warn("failed to reconfigure dns after routing change", "error", err)
+		return
 	}
+	dns.FlushCache()
+}
+
+// exitRoutingStillDesired reports whether local desired state still wants an
+// internet exit. Used to avoid peer/pull updates with a transient
+// ChangeDefaultGw=false wiping CurrGw (and full DNS) during session restore.
+func exitRoutingStillDesired() bool {
+	if !uiapi.IsSessionActive() {
+		return false
+	}
+	user, tenant := uiapi.SessionIdentity()
+	if config.GetDesiredWantIGW(user, tenant) || config.GetDesiredAutoExit(user, tenant) {
+		return true
+	}
+	return strings.TrimSpace(config.GetDesiredEgressID(user, tenant)) != ""
+}
+
+// logIGWDecision records the inputs that decide whether exit routing survives an
+// update, so a teardown can be traced to a specific branch from the logs.
+func logIGWDecision(src string, changeDefaultGw bool) {
+	nc := config.Netclient()
+	var currGw string
+	if nc != nil {
+		currGw = fmt.Sprintf("%v/%v", nc.CurrGwNmIP, nc.CurrGwNmIP6)
+	}
+	user, tenant := uiapi.SessionIdentity()
+	slog.Info("igw decision",
+		"src", src,
+		"any_node_connected", config.AnyNodeConnected(),
+		"change_default_gw", changeDefaultGw,
+		"curr_gw", currGw,
+		"session_active", uiapi.IsSessionActive(),
+		"want_igw", config.GetDesiredWantIGW(user, tenant),
+		"auto_exit", config.GetDesiredAutoExit(user, tenant),
+		"desired_egress", config.GetDesiredEgressID(user, tenant),
+	)
+}
+
+// restoreInternetGwAndDNS restores LAN default routes (if still installed) and
+// always re-applies OS DNS so exit-node full DNS cannot stick after clear/disconnect.
+func restoreInternetGwAndDNS() {
+	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+		slog.Info("tearing down internet gateway", "src", "restoreInternetGwAndDNS")
+		if err := wireguard.RestoreInternetGw(); err != nil {
+			slog.Warn("failed to restore default gateway", "error", err)
+		}
+	}
+	reconfigureDNSAfterRouting()
 }
 
 var pullForReconnect = Pull
@@ -144,6 +210,9 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 	if wantIGW || pull.ChangeDefaultGw {
 		applyInternetGwAfterReconnect(pull, nil)
 	}
+	// Always refresh OS DNS after reconnect apply — exit restore may have just
+	// set CurrGw (full DNS) or listeners may have started after an earlier no-op.
+	reconfigureDNSAfterRouting()
 	return nil
 }
 
@@ -214,7 +283,9 @@ func forceApplyInternetGw(pull models.HostPull) error {
 	if !ok {
 		return fmt.Errorf("internet gateway peer not found")
 	}
-	_ = wireguard.RestoreInternetGw()
+	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+		_ = wireguard.RestoreInternetGw()
+	}
 	if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 		return err
 	}
