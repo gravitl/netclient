@@ -127,7 +127,7 @@ func checkAndRestoreDefaultGateway() {
 	if len(config.Netclient().CurrGwNmIP) == 0 && len(config.Netclient().CurrGwNmIP6) == 0 {
 		return
 	}
-	slog.Info("tearing down internet gateway", "src", "daemon-reset")
+	logger.Log(0, "tearing down internet gateway (daemon reset)")
 	if err := wireguard.RestoreInternetGw(); err != nil {
 		slog.Error("error restoring default gateway", "error", err.Error())
 	}

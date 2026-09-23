@@ -11,6 +11,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
@@ -39,9 +40,10 @@ func connectNetwork(network string, restart bool) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	user, tenant := uiapi.SessionIdentity()
-	if err := config.RememberDesiredNetwork(user, tenant, network); err != nil {
-		slog.Warn("failed to persist desired connection", "network", network, "error", err)
+	if user, tenant, ok := desktopSessionIdentity(); ok {
+		if err := config.RememberDesiredNetwork(user, tenant, network); err != nil {
+			slog.Warn("failed to persist desired connection", "network", network, "error", err)
+		}
 	}
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
@@ -72,9 +74,10 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		return fmt.Errorf("error writing node config %w", err)
 	}
 	if forgetDesired {
-		user, tenant := uiapi.SessionIdentity()
-		if err := config.ForgetDesiredNetwork(user, tenant, network); err != nil {
-			slog.Warn("failed to clear desired connection", "network", network, "error", err)
+		if user, tenant, ok := desktopSessionIdentity(); ok {
+			if err := config.ForgetDesiredNetwork(user, tenant, network); err != nil {
+				slog.Warn("failed to clear desired connection", "network", network, "error", err)
+			}
 		}
 		// Keep exit-node selection (desired + server). Disconnect only drops local
 		// IGW routes/DNS below; reconnect/session restore re-applies exit.
@@ -98,6 +101,26 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 	return nil
 }
 
+// desktopSessionIdentity returns the desktop session identity and whether
+// desired-state should be tracked at all.
+//
+// Desired state exists only to restore what a desktop user had connected across
+// login and reboot. Headless netclient (CLI, container, server install) has no
+// UI session, so desired-state mutations are skipped: there is no user to key
+// the record under, and nothing ever reads it back. The restore paths already
+// gate on IsSessionActive, so gating writes on the same predicate keeps the two
+// halves consistent.
+func desktopSessionIdentity() (username, tenantID string, ok bool) {
+	if !uiapi.IsSessionActive() {
+		return "", "", false
+	}
+	username, tenantID = uiapi.SessionIdentity()
+	if strings.TrimSpace(username) == "" {
+		return "", "", false
+	}
+	return username, tenantID, true
+}
+
 // skipDesiredRestoreOnce is set before logout/handoff disconnect restarts the
 // daemon. ApplyDesiredConnectedFlags must not undo that disconnect: the UI
 // session is still active until the HTTP handler clears it.
@@ -107,9 +130,30 @@ func skipNextDesiredRestore() {
 	skipDesiredRestoreOnce.Store(true)
 }
 
+// sessionReleased latches from logout until the next session is configured.
+//
+// keepLocallyConnected only applies its desired-state filter while a session is
+// active, so once logout clears the session that guard disappears: a peer update
+// captured before the disconnect revives Connected=true for everything, the
+// iface keeps its peers, and the tunnel stays up after logout. Desired state
+// cannot arbitrate here either — logout deliberately snapshots the networks so
+// the next login can restore them.
+var sessionReleased atomic.Bool
+
+// beginSessionRelease suppresses Connected revival and exit reconcile for the
+// logout teardown and everything after it, until a new session is configured.
+func beginSessionRelease() {
+	sessionReleased.Store(true)
+}
+
+func endSessionRelease() {
+	sessionReleased.Store(false)
+}
+
 // RestoreDesiredConnections reconnects networks this user last had connected.
 // Used after desktop login. Restarts the daemon once if anything changes.
 func RestoreDesiredConnections(username, tenantID string) error {
+	endSessionRelease()
 	return restoreDesiredConnections(username, tenantID, uiapi.RestrictToSingleNetwork(), true)
 }
 
@@ -185,10 +229,29 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		}
 		token := uiapi.SessionAuthToken()
 		var selErr error
+		// A peer update can install the exit while restore is still working. Once
+		// routing is live there is nothing to re-select, and continuing would hold
+		// the GUI on "Reconnecting exit node" long after the tunnel is usable.
+		exitDeadline := time.Now().Add(exitPhaseDeadline)
+		exitPhaseDone := func() bool {
+			if wireguard.IGWRoutingActive() {
+				logger.Log(0, "exit re-select short-circuited: exit routing already active")
+				return true
+			}
+			if time.Now().After(exitDeadline) {
+				logger.Log(0, "exit re-select deadline reached; continuing restore")
+				return true
+			}
+			return false
+		}
 		if token != "" && autoExit {
 			for attempt := 1; attempt <= exitReselectAttempts; attempt++ {
 				if uiapi.ShouldAbortSessionRestore() {
 					return nil
+				}
+				if exitPhaseDone() {
+					selErr = nil
+					break
 				}
 				var node *models.DeviceExitNode
 				node, selErr = SelectNearestDeviceExitNode(exitNetwork, token)
@@ -236,6 +299,10 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 				for attempt := 1; attempt <= exitReselectAttempts; attempt++ {
 					if uiapi.ShouldAbortSessionRestore() {
 						return nil
+					}
+					if exitPhaseDone() {
+						selErr = nil
+						break
 					}
 					if _, selErr = SelectDeviceExitNode(exitNetwork, token, egressID); selErr == nil {
 						slog.Info("re-selected exit node during session restore",
@@ -381,6 +448,11 @@ func locallyConnectedNetworks() map[string]struct{} {
 // disconnect can revive Connected=true and reinstall the exit node.
 func keepLocallyConnected(networks map[string]struct{}) {
 	if len(networks) == 0 {
+		return
+	}
+	// Post-logout there is no session to filter against, and reviving here would
+	// undo the disconnect that logout just performed.
+	if sessionReleased.Load() {
 		return
 	}
 	if uiapi.IsSessionActive() {

@@ -91,6 +91,10 @@ type igwStatus struct {
 	// lastRx is the exit peer's receive counter at the previous sample, or -1 when
 	// no baseline has been taken yet.
 	lastRx int64
+	// probeEverSucceeded records that this gateway has answered a probe at least
+	// once, which means it is a gateway whose silence is meaningful. Gateways that
+	// never answer (no metrics listener, firewalled) stay on passive evidence.
+	probeEverSucceeded bool
 }
 
 func GetIGWMonitor() *IGWMonitor {
@@ -217,30 +221,74 @@ func (s *igwStatus) check() {
 	// Take the rx baseline every tick, whether or not it ends up being the signal
 	// that decides this sample.
 	rxMoved := s.noteRx(igw.ReceiveBytes)
+	canProbe := s.dialIP() != nil
 
-	if s.dialIP() == nil && !rxMoved && !s.handshakeFresh(igw) {
+	// Every passive signal below is measured on the underlay: handshakes and
+	// keepalives keep completing against the peer's endpoint even when the tunnel
+	// cannot carry a single packet. Without a local overlay address there is
+	// nothing to source traffic from, so the exit path is broken no matter how
+	// alive the peer looks. This has to be checked before the probe, because the
+	// probe can never succeed in this state either — leaving probeEverSucceeded
+	// false and pinning the gateway on passive evidence forever, which is how a
+	// dead exit once held the default route indefinitely.
+	//
+	// Iface rebuilds pass through here with no address; the rebuild counter and
+	// the re-armed startup grace above keep those windows from counting.
+	if !ifaceHasSourceAddr() {
+		logger.Log(0, "internet gateway unusable: netmaker interface has no address to source traffic from")
+		s.noteFailure(&igw)
+		return
+	}
+
+	// The probe is the only signal that tests the path *through* the tunnel: it
+	// reaches the gateway's endpoint-detection listener over the overlay. The
+	// passive signals are weaker than they look — WireGuard keepalives and rekeys
+	// keep both the receive counter and the handshake timestamp moving while the
+	// exit has stopped forwarding, so trusting them let a black-holed exit look
+	// healthy indefinitely while the host had no internet at all.
+	//
+	// So probe first, every sample. Once a gateway has answered a probe we know it
+	// answers, and from then on its silence is real evidence of a broken path that
+	// no passive counter may vouch for.
+	if canProbe {
+		if s.probeGateway() {
+			s.probeEverSucceeded = true
+			s.noteSuccess(igw)
+			return
+		}
+		if s.probeEverSucceeded {
+			logger.Log(2, "internet gateway probe failed on a gateway that has answered before")
+			s.noteFailure(&igw)
+			return
+		}
+	}
+
+	// Either there is nothing to probe, or this gateway has never answered one
+	// (no metrics listener, firewalled). Passive evidence is all we have, and
+	// tearing exit routing down on its absence alone would be wrong here.
+	if rxMoved || s.handshakeFresh(igw) {
+		s.noteSuccess(igw)
+		return
+	}
+	if !canProbe {
 		// Nothing to probe and nothing has spoken: no evidence either way.
 		return
 	}
 
-	// Cheapest evidence first, and each of these is proof on its own. Bytes
-	// decrypted from the exit peer can only have come from the peer, a recent
-	// handshake proves the underlay worked whatever it is (UDP or a TCP uplink),
-	// and the probe reaches the peer's endpoint-detection listener through the
-	// tunnel. The probe only runs when the passive signals are silent.
-	if rxMoved || s.handshakeFresh(igw) || s.probeGateway() {
-		logger.Log(2, "internet gateway detected up")
-
-		s.successCount++
-		s.failureCount = 0
-
-		if !s.isHealthy && s.successCount >= IGWRecoveryThreshold {
-			s.setHealthy(igw)
-		}
-		return
-	}
-
 	s.noteFailure(&igw)
+}
+
+// noteSuccess records one healthy sample, restoring exit routes once
+// IGWRecoveryThreshold consecutive samples have passed.
+func (s *igwStatus) noteSuccess(igw wgtypes.Peer) {
+	logger.Log(2, "internet gateway detected up")
+
+	s.successCount++
+	s.failureCount = 0
+
+	if !s.isHealthy && s.successCount >= IGWRecoveryThreshold {
+		s.setHealthy(igw)
+	}
 }
 
 // handshakeFresh reports whether the exit peer completed a handshake recently

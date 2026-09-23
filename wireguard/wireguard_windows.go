@@ -381,11 +381,39 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 				firstErr = err
 			}
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		if err := blockIPv6LeakOnIGW(); err != nil {
+			slog.Error("failed to divert IPv6 off ISP for IPv4-only exit", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 	// Reinstall more-specific egress CIDRs so they win over on-link 0.0.0.0/0
 	// after IGW install or monitor recovery.
 	reapplyCachedEgressRoutes()
 	return firstErr
+}
+
+// blockIPv6LeakOnIGW pulls IPv6 off the ISP when the exit is IPv4-only.
+// On-link ::/0 via netmaker wins over the LAN default; without peer ::/0
+// AllowedIPs traffic fails closed and apps fall back to IPv4 via the exit.
+func blockIPv6LeakOnIGW() error {
+	logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(addGwCmd, false)
+	if err != nil && !isNetshAlreadyExists(out) {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
+	}
+	return nil
+}
+
+func clearIPv6LeakOnIGW() {
+	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPv6Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(delCmd, false)
+	if err != nil && !isNetshNotFound(err, out) {
+		slog.Warn("failed to clear IPv6 leak-block route", "error", err, "out", strings.TrimSpace(out))
+	}
 }
 
 // setInternetGwV6 - set a new default gateway and the route to Internet Gw's ip address
@@ -610,6 +638,12 @@ func resetDefaultRoutesOnHost() error {
 	if needV4 {
 		if err := restoreInternetGwV4(); err != nil {
 			firstErr = err
+		}
+		// IPv4-only exit may have installed IPv6 divert with no CurrGwNmIP6.
+		// When a real gw6 was also set, restoreInternetGwV6 removes the same
+		// on-link ::/0 — clearIPv6LeakOnIGW is idempotent either way.
+		if !needV6 {
+			clearIPv6LeakOnIGW()
 		}
 	}
 	if needV6 {

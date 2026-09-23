@@ -18,6 +18,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/posture"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
@@ -135,13 +136,22 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			// Detect underlay IP changes via STUN on an ephemeral port. Do not STUN on
 			// ListenPort here — WireGuard already owns it, so binding would fail.
 			// Public listen port is only discovered at iface create (startGoRoutines).
-			if config.Netclient().IsStatic || config.Netclient().CurrGwNmIP != nil {
+			if config.Netclient().IsStatic || wireguard.IGWRoutingActive() {
 				continue
 			}
 			restart := false
 			ip4, _, _ := holePunchWgPort(4, 0)
 			ip6, _, _ := holePunchWgPort(6, 0)
 			if ip4 == nil && ip6 == nil {
+				continue
+			}
+			// Re-check: an exit node can be selected while the STUN above is in
+			// flight, in which case the reply egressed through the exit and
+			// reports its public IP. Adopting it publishes the exit as this
+			// host's endpoint and triggers a spurious HardRestart.
+			if wireguard.IGWRoutingActive() {
+				logger.Log(0, fmt.Sprintf(
+					"discarding STUN result; exit routing came up mid-detection (ipv4=%v ipv6=%v)", ip4, ip6))
 				continue
 			}
 			if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {

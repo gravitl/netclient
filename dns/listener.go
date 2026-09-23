@@ -2,7 +2,6 @@ package dns
 
 import (
 	"context"
-	"net"
 	"os/exec"
 	"runtime"
 	"slices"
@@ -19,6 +18,11 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slog"
 )
+
+// darwinDNSLoopbackAddr is the lo0 alias the DNS listener binds on macOS. It is
+// the only address published as an OS nameserver there, because it keeps
+// answering regardless of tunnel state.
+const darwinDNSLoopbackAddr = "127.51.8.21"
 
 var dnsMutex = sync.Mutex{} // used to mutex functions of the DNS
 
@@ -77,34 +81,33 @@ func (dnsServer *DNSServer) Start() {
 		return
 	}
 
-	// On macOS, ensure lo0 alias then bind loopback first. Exit-node mode
-	// publishes this address system-wide (SplitDNS=false / networksetup).
+	// macOS listens on the loopback alias only. Overlay WG addresses are never
+	// published as OS nameservers there (see nameserversForOS), and they cannot
+	// bind until the tunnel is up, so attempting them only logs bind failures.
+	// Exit-node mode publishes this address system-wide (SplitDNS=false).
 	if runtime.GOOS == "darwin" {
 		ensureDarwinDNSLoopbackAlias()
-		if !dnsServer.startListenerLocked("127.51.8.21:53") {
-			logger.Log(0, "dns: failed to bind macOS loopback listener 127.51.8.21:53")
+		if !dnsServer.startListenerLocked(darwinDNSLoopbackAddr + ":53") {
+			logger.Log(0, "dns: failed to bind macOS loopback listener", darwinDNSLoopbackAddr+":53")
 		}
-	}
-
-	for _, v := range config.GetNodes() {
-		node := v
-		if !v.Connected {
-			continue
-		}
-		if node.Address.IP != nil {
-			dnsServer.startListenerLocked(node.Address.IP.String() + ":53")
-		}
-		if node.Address6.IP != nil {
-			dnsServer.startListenerLocked("[" + node.Address6.IP.String() + "]:53")
+	} else {
+		for _, v := range config.GetNodes() {
+			node := v
+			if !v.Connected {
+				continue
+			}
+			if node.Address.IP != nil {
+				dnsServer.startListenerLocked(node.Address.IP.String() + ":53")
+			}
+			if node.Address6.IP != nil {
+				dnsServer.startListenerLocked("[" + node.Address6.IP.String() + "]:53")
+			}
 		}
 	}
 
 	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
 		logger.Log(0, "dns start aborted: no listeners bound")
 		return
-	}
-	if runtime.GOOS == "darwin" && !dnsServer.hasLoopbackListener() {
-		logger.Log(0, "dns: macOS loopback listener not up; OS DNS may fall back to overlay addresses")
 	}
 
 	err := Configure()
@@ -117,10 +120,10 @@ func (dnsServer *DNSServer) Start() {
 	slog.Info("DNS server listens on: ", "Info", dnsServer.AddrList)
 }
 
-// ensureDarwinDNSLoopbackAlias adds 127.51.8.21 on lo0 so the DNS listener can bind
-// before WireGuard Create has run (or after the alias was dropped).
+// ensureDarwinDNSLoopbackAlias adds the loopback alias on lo0 so the DNS listener
+// can bind before WireGuard Create has run (or after the alias was dropped).
 func ensureDarwinDNSLoopbackAlias() {
-	cmd := exec.Command("ifconfig", "lo0", "alias", "127.51.8.21")
+	cmd := exec.Command("ifconfig", "lo0", "alias", darwinDNSLoopbackAddr)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Alias may already exist; only log unexpected failures.
 		slog.Debug("lo0 dns alias", "error", err, "output", string(out))
@@ -176,16 +179,6 @@ func (dnsServer *DNSServer) startListenerLocked(lIp string) bool {
 		cancel()
 		return false
 	}
-}
-
-func (dnsServer *DNSServer) hasLoopbackListener() bool {
-	for _, addr := range dnsServer.AddrList {
-		ip := getIpFromServerString(addr)
-		if parsed := net.ParseIP(ip); parsed != nil && parsed.IsLoopback() {
-			return true
-		}
-	}
-	return false
 }
 
 // dropListener forgets a listener whose serve loop has exited, so its address

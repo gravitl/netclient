@@ -340,8 +340,8 @@ func resetDefaultRoutesOnHost() error {
 	iface := ncutils.GetInterfaceName()
 	exec.Command("route", "delete", "-net", "-inet", "0.0.0.0/1", "-interface", iface).Run()
 	exec.Command("route", "delete", "-net", "-inet", "128.0.0.0/1", "-interface", iface).Run()
-	exec.Command("route", "delete", "-net", "-inet6", "::/1", "-interface", iface).Run()
-	exec.Command("route", "delete", "-net", "-inet6", "8000::/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface).Run()
 
 	unpinDarwinHostRoutes()
 	config.Netclient().CurrGwNmIP = nil
@@ -429,12 +429,19 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 	}
 
 	if len(gw6) > 0 {
-		run("add", "-net", "-inet6", "::/1", "-interface", iface)
-		run("add", "-net", "-inet6", "8000::/1", "-interface", iface)
+		run("add", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface)
+		run("add", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface)
 		config.Netclient().CurrGwNmIP6 = gw6
 		if len(config.Netclient().CurrGwNmIP) == 0 {
 			config.Netclient().CurrGwNmIP = gw6
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		// IPv4-only exit on a dual-stack host: pull IPv6 off the ISP so Happy
+		// Eyeballs cannot leak. No CurrGwNmIP6 and no peer ::/0 — packets hit
+		// the iface and drop via cryptokey routing; apps fall back to IPv4.
+		logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+		run("add", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface)
+		run("add", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface)
 	}
 
 	// Reinstall more-specific egress CIDRs so they win over 0.0.0.0/1 after IGW

@@ -18,11 +18,27 @@ import (
 const (
 	IPv4Network = "0.0.0.0/0"
 	IPv6Network = "::/0"
+	// IPv6 half-defaults used to divert traffic off the ISP without replacing ::/0.
+	ipv6HalfDefaultLow  = "::/1"
+	ipv6HalfDefaultHigh = "8000::/1"
 )
 
-// igwRoutingActive reports whether this host currently has an internet-exit
+// shouldBlockIPv6Leak reports whether an IPv4-only exit must pull host IPv6 off
+// the ISP. Leaving the LAN ::/0 in place lets Happy Eyeballs prefer AAAA and
+// bypass the exit. Divert routes point at the netmaker iface without adding
+// peer ::/0 AllowedIPs, so IPv6 fails closed and apps fall back to IPv4 via
+// the exit.
+func shouldBlockIPv6Leak(gw4, gw6 net.IP) bool {
+	return len(gw4) > 0 && len(gw6) == 0
+}
+
+// IGWRoutingActive reports whether this host currently has an internet-exit
 // default route installed (CurrGwNmIP / CurrGwNmIP6).
-func igwRoutingActive() bool {
+//
+// Callers outside this package use it to suppress public-IP/STUN detection:
+// while the exit default route is up, outbound probes egress through the exit
+// node, so any address they report is the exit's, not this host's underlay.
+func IGWRoutingActive() bool {
 	nc := config.Netclient()
 	if nc == nil {
 		return false
@@ -43,7 +59,7 @@ func reapplyCachedEgressRoutes() {
 		return
 	}
 	_ = SetRoutes(filterConflictingRoutes(cached))
-	if igwRoutingActive() {
+	if IGWRoutingActive() {
 		RefreshInternetGwHostPins()
 	}
 }

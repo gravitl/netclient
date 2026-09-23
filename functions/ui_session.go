@@ -95,6 +95,9 @@ func sessionTenantMatches(server, tenantID string) bool {
 // can restore them. Local default routes are restored before disconnect so
 // logout does not wait on a daemon restart for internet to return.
 func ReleaseSession(clearServer bool) error {
+	// Latch before any teardown so peer updates that land mid-logout cannot
+	// revive Connected or re-select the exit we are about to clear.
+	beginSessionRelease()
 	networks := make([]string, 0, len(config.GetNodes()))
 	for network, node := range config.GetNodes() {
 		if node.Connected {
@@ -145,14 +148,23 @@ func ReleaseSession(clearServer bool) error {
 			}
 		}
 
+		var disconnectErr error
 		for _, network := range networks {
 			// Skip daemon restart per network — iface cleanup below is enough and
 			// avoids the long SIGHUP path that made logout with exit feel stuck.
 			if err := disconnectNetwork(network, false, false); err != nil {
-				return err
+				// Do not return: one failed network must not skip the peer flush
+				// below, which is what actually takes the tunnel down.
+				slog.Warn("failed to disconnect network on logout", "network", network, "error", err)
+				if disconnectErr == nil {
+					disconnectErr = err
+				}
 			}
 		}
 		_ = wireguard.SetPeers(true)
+		if disconnectErr != nil {
+			return disconnectErr
+		}
 	}
 	if clearServer {
 		config.CurrServer = ""

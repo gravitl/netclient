@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -45,20 +47,6 @@ func reconfigureDNSAfterRouting() {
 	dns.FlushCache()
 }
 
-// exitRoutingStillDesired reports whether local desired state still wants an
-// internet exit. Used to avoid peer/pull updates with a transient
-// ChangeDefaultGw=false wiping CurrGw (and full DNS) during session restore.
-func exitRoutingStillDesired() bool {
-	if !uiapi.IsSessionActive() {
-		return false
-	}
-	user, tenant := uiapi.SessionIdentity()
-	if config.GetDesiredWantIGW(user, tenant) || config.GetDesiredAutoExit(user, tenant) {
-		return true
-	}
-	return strings.TrimSpace(config.GetDesiredEgressID(user, tenant)) != ""
-}
-
 // logIGWDecision records the inputs that decide whether exit routing survives an
 // update, so a teardown can be traced to a specific branch from the logs.
 func logIGWDecision(src string, changeDefaultGw bool) {
@@ -67,24 +55,26 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 	if nc != nil {
 		currGw = fmt.Sprintf("%v/%v", nc.CurrGwNmIP, nc.CurrGwNmIP6)
 	}
-	user, tenant := uiapi.SessionIdentity()
-	slog.Info("igw decision",
-		"src", src,
-		"any_node_connected", config.AnyNodeConnected(),
-		"change_default_gw", changeDefaultGw,
-		"curr_gw", currGw,
-		"session_active", uiapi.IsSessionActive(),
-		"want_igw", config.GetDesiredWantIGW(user, tenant),
-		"auto_exit", config.GetDesiredAutoExit(user, tenant),
-		"desired_egress", config.GetDesiredEgressID(user, tenant),
-	)
+	desired := "desktop_session=false"
+	// Each desired-state getter re-reads the JSON store, so skip them headless
+	// where they can only ever report the zero value.
+	if user, tenant, ok := desktopSessionIdentity(); ok {
+		desired = fmt.Sprintf("want_igw=%v auto_exit=%v desired_egress=%s",
+			config.GetDesiredWantIGW(user, tenant),
+			config.GetDesiredAutoExit(user, tenant),
+			config.GetDesiredEgressID(user, tenant))
+	}
+	// logger.Log, not slog.Info: slog runs at Warn unless verbosity is raised
+	// (cmd/root.go), which silently discarded these when they were needed.
+	logger.Log(0, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
+		src, config.AnyNodeConnected(), changeDefaultGw, currGw, desired))
 }
 
 // restoreInternetGwAndDNS restores LAN default routes (if still installed) and
 // always re-applies OS DNS so exit-node full DNS cannot stick after clear/disconnect.
 func restoreInternetGwAndDNS() {
 	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-		slog.Info("tearing down internet gateway", "src", "restoreInternetGwAndDNS")
+		logger.Log(0, "tearing down internet gateway (restore requested)")
 		if err := wireguard.RestoreInternetGw(); err != nil {
 			slog.Warn("failed to restore default gateway", "error", err)
 		}
@@ -102,6 +92,11 @@ const (
 	restoreIGWTimeout       = 4 * time.Second
 	exitReselectAttempts    = 8
 	exitReselectInterval    = 300 * time.Millisecond
+	// exitPhaseDeadline bounds the whole exit re-select phase in wall-clock time.
+	// The attempt counter alone does not: each device API call retries internally,
+	// so on a degraded link (which is normal mid-exit-switchover) eight attempts
+	// can run for minutes while the GUI sits on "Reconnecting exit node".
+	exitPhaseDeadline = 20 * time.Second
 )
 
 func hostPullHasConnectedNetworks(pull models.HostPull, networks []string) bool {
@@ -218,13 +213,21 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 	if !config.AnyNodeConnected() {
+		logger.Log(0, "exit apply skipped after reconnect: no node connected")
 		return
 	}
-	user, tenant := uiapi.SessionIdentity()
-	wantIGW := config.GetDesiredWantIGW(user, tenant)
+	// Headless has no desired state: only a server-advertised exit applies below.
+	user, tenant, hasSession := desktopSessionIdentity()
+	wantIGW := hasSession && config.GetDesiredWantIGW(user, tenant)
 	if pullErr == nil && pull.ChangeDefaultGw {
 		// Server already advertised an exit; reinstall OS routes after iface recreate.
 	} else if !(wantIGW && locallyConnectedDesired()) {
+		// Silent here once cost a full session of "connected but no exit": the
+		// restore finished clean while the server still advertised no gateway.
+		logger.Log(0, fmt.Sprintf(
+			"exit apply skipped after reconnect: change_default_gw=%v pull_err=%v want_igw=%v locally_connected_desired=%v",
+			pull.ChangeDefaultGw, pullErr != nil, wantIGW, locallyConnectedDesired()))
+		reconcileDesiredExit()
 		return
 	}
 	var lastErr error
@@ -244,13 +247,85 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 				"attempt", attempt, "error", err)
 			continue
 		}
-		_ = config.SetDesiredWantIGW(user, tenant, true)
+		if hasSession {
+			_ = config.SetDesiredWantIGW(user, tenant, true)
+		}
 		kickInternetGwHandshake(resp)
 		return
 	}
 	if lastErr != nil {
-		slog.Warn("failed to apply exit-node routes after reconnect", "error", lastErr)
+		logger.Log(0, "failed to apply exit-node routes after reconnect:", lastErr.Error())
+		reconcileDesiredExit()
 	}
+}
+
+// exitReconcileInterval bounds how often the client may re-drive the server exit
+// selection, so a server that simply has no exit available is not hammered.
+const exitReconcileInterval = 30 * time.Second
+
+var lastExitReconcile atomic.Int64
+
+// reconcileDesiredExit re-selects the exit node on the server when local desired
+// state still wants one but the server keeps advertising none.
+//
+// Logout clears the server selection and login re-selects it. When that PUT is
+// lost, or the server has not converged by the time restore gives up, peer
+// updates keep arriving with ChangeDefaultGw=false and nothing ever asks again:
+// the host sits connected with no exit and split DNS, which reads to the user as
+// "DNS was not switched to Netmaker".
+//
+// This re-drives the *selection* rather than pinning routes locally. Holding a
+// local default route against the server is what black-holed traffic when an
+// exit genuinely went away; asking the server again keeps it authoritative.
+func reconcileDesiredExit() {
+	// Logout snapshots want_igw for the next login, so desired state still asks
+	// for an exit while the teardown runs. Re-selecting here would undo the
+	// server-side clear that logout just issued.
+	if sessionReleased.Load() {
+		return
+	}
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok {
+		return
+	}
+	if wireguard.IGWRoutingActive() {
+		return
+	}
+	if !config.GetDesiredWantIGW(user, tenant) {
+		return
+	}
+	autoExit := config.GetDesiredAutoExit(user, tenant)
+	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	network := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	token := uiapi.SessionAuthToken()
+	if token == "" || network == "" || (egressID == "" && !autoExit) {
+		return
+	}
+
+	now := time.Now().UnixNano()
+	last := lastExitReconcile.Load()
+	if last != 0 && time.Duration(now-last) < exitReconcileInterval {
+		return
+	}
+	if !lastExitReconcile.CompareAndSwap(last, now) {
+		return
+	}
+
+	go func() {
+		if autoExit && egressID == "" {
+			logger.Log(0, "exit reconcile: re-selecting nearest exit on "+network)
+			if _, err := SelectNearestDeviceExitNode(network, token); err != nil {
+				logger.Log(0, "exit reconcile: nearest re-select failed:", err.Error())
+			}
+			return
+		}
+		logger.Log(0, fmt.Sprintf(
+			"exit reconcile: server advertises no exit while %s is desired on %s; re-selecting",
+			egressID, network))
+		if _, err := SelectDeviceExitNode(network, token, egressID); err != nil {
+			logger.Log(0, "exit reconcile: re-select failed:", err.Error())
+		}
+	}()
 }
 
 func locallyConnectedDesired() bool {
