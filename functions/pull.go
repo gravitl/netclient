@@ -87,7 +87,13 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	if config.Netclient().ListenPort != pullResponse.Host.ListenPort {
 		resetInterface = true
 	}
-	if server.MetricsPort != pullResponse.ServerConfig.MetricsPort {
+	// Only a real change needs the metrics listener rebound. 0 means the server
+	// did not say, matching every other reader of MetricsPort; without that
+	// guard an unset port restarted the daemon on every pull, and on Windows a
+	// restart is a service bounce that takes the desktop API down with it.
+	if pullResponse.ServerConfig.MetricsPort != 0 && pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
+		logger.Log(0, fmt.Sprintf("metrics port changed from %d to %d",
+			server.MetricsPort, pullResponse.ServerConfig.MetricsPort))
 		restart = true
 	}
 	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
@@ -114,7 +120,7 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	_ = config.WriteNetclientConfig()
 	_ = config.WriteNodeConfig()
 	if restart {
-		logger.Log(3, "restarting daemon")
+		logger.Log(0, "restarting daemon after pull")
 		return models.HostPull{}, resetInterface, replacePeers, daemon.Restart()
 	}
 	return pullResponse, resetInterface, replacePeers, nil

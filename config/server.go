@@ -388,6 +388,13 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 		api = NormalizeServerAPI(server.API)
 	}
 	cfg.API = api
+	// A payload that omits the metrics port must not clobber a known-good one.
+	// Register responses carry no port, and every consumer reads 0 as "unset"
+	// and falls back to 51821, so storing the 0 makes the next pull see a port
+	// change that was never made.
+	if cfg.MetricsPort == 0 {
+		cfg.MetricsPort = server.MetricsPort
+	}
 	server.Name = key
 	server.MQID = netclient.ID
 	server.ServerConfig = *cfg
