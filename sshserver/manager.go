@@ -16,8 +16,11 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	gliderssh "github.com/gliderlabs/ssh"
@@ -463,11 +466,43 @@ func loginShell() string {
 	return "/bin/sh"
 }
 
+var (
+	utilLinuxLoginOnce sync.Once
+	utilLinuxLogin     bool
+)
+
+// isUtilLinuxLogin reports whether loginPath is util-linux's login, as
+// opposed to shadow-utils' or busybox's. Only meaningful on Linux.
+func isUtilLinuxLogin(loginPath string) bool {
+	utilLinuxLoginOnce.Do(func() {
+		if runtime.GOOS != "linux" {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, loginPath, "--version").CombinedOutput()
+		utilLinuxLogin = err == nil && strings.Contains(string(out), "util-linux")
+	})
+	return utilLinuxLogin
+}
+
 func loginShellCmd(osUser string) (*exec.Cmd, error) {
 	if path, err := exec.LookPath("login"); err == nil {
 		// -f: already authenticated (by the WireGuard/grant check), skip
 		// login's own password prompt.
-		return exec.Command(path, "-f", osUser), nil
+		args := []string{"-f", osUser}
+		if !isUtilLinuxLogin(path) {
+			return exec.Command(path, args...), nil
+		}
+		// util-linux login calls vhangup() on its terminal, which hangs it up
+		// before the shell starts when it is the session leader, as it is
+		// under pty.Start (Debian bug 1078023). setsid -c gives it a session
+		// of its own that takes the pty as its controlling terminal; -w
+		// waits so the exit status still propagates.
+		if setsid, err := exec.LookPath("setsid"); err == nil {
+			return exec.Command(setsid, append([]string{"-w", "-c", path}, args...)...), nil
+		}
+		// Without setsid that login would just hang up; use su instead.
 	}
 	if path, err := exec.LookPath("su"); err == nil {
 		return exec.Command(path, "-", osUser), nil
