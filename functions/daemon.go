@@ -436,7 +436,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if server.ManageDNS {
-		if dns.GetDNSServerInstance().AddrStr == "" {
+		if dns.GetDNSServerInstance().ListenerAddr() == "" {
 			dns.GetDNSServerInstance().Start()
 		}
 	} else {

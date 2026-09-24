@@ -335,7 +335,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 						_ = config.SetDesiredWantIGW(user, tenant, true)
 					}
 					// Apply system-wide DNS as soon as CurrGw is set (exit restore).
-					reconfigureDNSAfterRouting()
+					scheduleDNSReconfigure()
 				}
 			}
 		} else {
@@ -435,7 +435,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// Always re-apply OS DNS when listening: SplitDNS depends on CurrGwNmIP
 	// (exit node), not only on nameserver list / ManageDNS flips.
 	if dnsOp != stop {
-		reconfigureDNSAfterRouting()
+		scheduleDNSReconfigure()
 	}
 
 	if peerUpdate.Host.EnableFlowLogs {
@@ -985,7 +985,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 					if user, tenant, ok := desktopSessionIdentity(); ok {
 						_ = config.SetDesiredWantIGW(user, tenant, true)
 					}
-					reconfigureDNSAfterRouting()
+					scheduleDNSReconfigure()
 				}
 			}
 		} else {
@@ -1078,7 +1078,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	// Always re-apply OS DNS when listening: SplitDNS depends on CurrGwNmIP
 	// (exit node), not only on nameserver list / ManageDNS flips.
 	if dnsOp != stop {
-		reconfigureDNSAfterRouting()
+		scheduleDNSReconfigure()
 	}
 
 	if pullResponse.Host.EnableFlowLogs {

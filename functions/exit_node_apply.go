@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,33 +18,96 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+// logElapsed returns a function that logs how long the labelled phase took.
+// Only used on the interactive connect/disconnect/exit paths, where a slow step
+// is something the user waits on.
+func logElapsed(label string) func() {
+	start := time.Now()
+	return func() {
+		logger.Log(0, fmt.Sprintf("%s took %s", label, time.Since(start).Round(time.Millisecond)))
+	}
+}
+
+var (
+	dnsApplyMu      sync.Mutex
+	dnsApplyPending bool
+	dnsApplyRunning bool
+)
+
+// scheduleDNSReconfigure applies OS DNS off the caller's goroutine, coalescing
+// bursts into a single pass over the latest state.
+//
+// Installing OS DNS on macOS shells out to networksetup for every network
+// service, and we necessarily do it while the network stack is mid-reconfigure —
+// right after exit routes move. Measured there a single pass costs 7-15s, against
+// 0.12s on an idle system, and connect/disconnect/logout blocked on it for their
+// whole duration. Desired state is recomputed inside the apply, so coalescing
+// converges on the final state instead of replaying intermediate ones.
+//
+// Callers that must observe DNS installed before returning should still call
+// reconfigureDNSAfterRouting directly.
+func scheduleDNSReconfigure() {
+	dnsApplyMu.Lock()
+	defer dnsApplyMu.Unlock()
+	dnsApplyPending = true
+	if dnsApplyRunning {
+		return
+	}
+	dnsApplyRunning = true
+	go func() {
+		for {
+			dnsApplyMu.Lock()
+			if !dnsApplyPending {
+				dnsApplyRunning = false
+				dnsApplyMu.Unlock()
+				return
+			}
+			dnsApplyPending = false
+			dnsApplyMu.Unlock()
+			reconfigureDNSAfterRouting()
+		}
+	}()
+}
+
 // reconfigureDNSAfterRouting re-runs OS DNS setup after exit-node routing changes.
 // SplitDNS flips with CurrGwNmIP even when nameserver lists are unchanged.
 // Always call this after clearing an exit — even if CurrGwNmIP was already nil —
 // so system DNS is not left pointing at the Netmaker listener.
 func reconfigureDNSAfterRouting() {
+	defer logElapsed("dns reconfigure")()
 	// Exit apply often runs before DNS Start during daemon bring-up.
-	if dns.GetDNSServerInstance().AddrStr == "" {
+	if dns.GetDNSServerInstance().ListenerAddr() == "" {
 		if server := config.GetServer(config.CurrServer); server != nil && server.ManageDNS {
 			dns.GetDNSServerInstance().Start()
 		}
 	}
-	if dns.GetDNSServerInstance().AddrStr == "" {
+	if dns.GetDNSServerInstance().ListenerAddr() == "" {
 		// Listener still down: strip any leftover full-DNS we installed.
-		if err := dns.ResetOSConfig(); err != nil {
+		done := logElapsed("os dns reset")
+		err := dns.ResetOSConfig()
+		done()
+		if err != nil {
 			slog.Warn("failed to reset os dns after routing change", "error", err)
 		}
-		dns.FlushCache()
+		flushDNSCacheTimed()
 		return
 	}
 	// Listener already up: Configure refreshes SplitDNS↔full from CurrGwNmIP
 	// (Start is a no-op for bind when AddrStr is set).
-	if err := dns.Configure(); err != nil {
+	done := logElapsed("os dns configure")
+	err := dns.Configure()
+	done()
+	if err != nil {
 		// Do not ResetOSConfig here — a transient Configure failure would wipe
 		// working DNS, especially on macOS where only loopback is published.
 		slog.Warn("failed to reconfigure dns after routing change", "error", err)
 		return
 	}
+	flushDNSCacheTimed()
+}
+
+func flushDNSCacheTimed() {
+	defer logElapsed("dns cache flush")()
 	dns.FlushCache()
 }
 
@@ -75,11 +139,13 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 func restoreInternetGwAndDNS() {
 	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
 		logger.Log(0, "tearing down internet gateway (restore requested)")
+		done := logElapsed("internet gateway teardown")
 		if err := wireguard.RestoreInternetGw(); err != nil {
 			slog.Warn("failed to restore default gateway", "error", err)
 		}
+		done()
 	}
-	reconfigureDNSAfterRouting()
+	scheduleDNSReconfigure()
 }
 
 var pullForReconnect = Pull
@@ -97,6 +163,11 @@ const (
 	// so on a degraded link (which is normal mid-exit-switchover) eight attempts
 	// can run for minutes while the GUI sits on "Reconnecting exit node".
 	exitPhaseDeadline = 20 * time.Second
+	// Bounds on reinstalling exit routes after an iface rebuild. The deadline is
+	// what actually holds: attempts are cheap only when the server answers fast.
+	igwApplyAttempts = 12
+	igwApplyInterval = 150 * time.Millisecond
+	igwApplyDeadline = 10 * time.Second
 )
 
 func hostPullHasConnectedNetworks(pull models.HostPull, networks []string) bool {
@@ -203,11 +274,60 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	}
 	if wantIGW || pull.ChangeDefaultGw {
+		done := logElapsed("exit route apply")
 		applyInternetGwAfterReconnect(pull, nil)
+		done()
 	}
 	// Always refresh OS DNS after reconnect apply — exit restore may have just
 	// set CurrGw (full DNS) or listeners may have started after an earlier no-op.
-	reconfigureDNSAfterRouting()
+	scheduleDNSReconfigure()
+	return nil
+}
+
+// applyConnectionChangeInProcess rebuilds the live interface, peers, routes and
+// DNS for the node set left by a connect or disconnect.
+//
+// This replaces daemon.Restart() on those paths. The restart was only ever
+// rebuilding the interface: MQ subscriptions are set up for every joined node
+// regardless of Connected, so flipping that flag changes nothing about them.
+// Paying for a full service cycle is especially bad on Windows, where Restart()
+// is a WinSW stop/start that costs about a minute before peers can handshake.
+func applyConnectionChangeInProcess() error {
+	// Connect and disconnect block the UI for the whole apply, so keep the phase
+	// costs visible: the expensive parts are network-dependent and only show up
+	// on real links.
+	defer logElapsed("connection change apply")()
+
+	var pull models.HostPull
+	// Only pull when something is still connected. Tearing the last network down
+	// has nothing left to converge, and the request would block the UI while
+	// routes and DNS are mid-flux — which is most of what made disconnect slow.
+	if config.AnyNodeConnected() {
+		done := logElapsed("connection change pull")
+		p, _, _, err := pullForReconnect(false, true, false)
+		done()
+		if err != nil {
+			// Cached peers are still enough to rebuild; routes for a newly
+			// connected network catch up on the next peer update.
+			logger.Log(0, "pull after connection change failed; applying from cached config:", err.Error())
+		} else {
+			pull = p
+		}
+	}
+	wantIGW := false
+	if user, tenant, ok := desktopSessionIdentity(); ok {
+		wantIGW = config.GetDesiredWantIGW(user, tenant)
+	}
+	if err := applyReconnectInProcess(pull, wantIGW); err != nil {
+		return err
+	}
+	// After the iface is configured, not before: on Linux and Windows the
+	// listener binds overlay node addresses, which do not exist yet at entry.
+	dns.SyncForNodeChange()
+	// Listener binds just changed, so OS DNS has to follow — but off this
+	// goroutine. Disconnecting to zero nodes leaves the entries pointing at
+	// listeners that are gone until this runs.
+	scheduleDNSReconfigure()
 	return nil
 }
 
@@ -232,9 +352,18 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 	}
 	var lastErr error
 	resp := pull
-	for attempt := 1; attempt <= 12; attempt++ {
+	deadline := time.Now().Add(igwApplyDeadline)
+	for attempt := 1; attempt <= igwApplyAttempts; attempt++ {
 		if attempt > 1 {
-			time.Sleep(150 * time.Millisecond)
+			// Attempts alone do not bound this loop: every retry re-pulls (which
+			// retries internally) and forceApplyInternetGw tears the routes down
+			// and reinstalls them, so on a slow link the full attempt budget can
+			// hold an interactive connect for a minute.
+			if time.Now().After(deadline) {
+				logger.Log(0, fmt.Sprintf("exit apply deadline reached after %d attempts", attempt-1))
+				break
+			}
+			time.Sleep(igwApplyInterval)
 			if p, _, _, err := pullForReconnect(false, true, false); err == nil {
 				resp = p
 				config.UpdateHostPeers(p.Peers)
@@ -364,7 +493,7 @@ func forceApplyInternetGw(pull models.HostPull) error {
 	if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 		return err
 	}
-	reconfigureDNSAfterRouting()
+	scheduleDNSReconfigure()
 	return nil
 }
 

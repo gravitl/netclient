@@ -95,6 +95,7 @@ func sessionTenantMatches(server, tenantID string) bool {
 // can restore them. Local default routes are restored before disconnect so
 // logout does not wait on a daemon restart for internet to return.
 func ReleaseSession(clearServer bool) error {
+	defer logElapsed("logout")()
 	// Latch before any teardown so peer updates that land mid-logout cannot
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
@@ -117,15 +118,18 @@ func ReleaseSession(clearServer bool) error {
 		}
 		token := uiapi.SessionAuthToken()
 		if wantIGW && egressID == "" && !autoExit && token != "" {
-			for _, network := range networks {
-				sel, err := GetDeviceSelectedExitNode(network, token)
-				if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
-					continue
+			func() {
+				defer logElapsed("logout exit selection lookup")()
+				for _, network := range networks {
+					sel, err := GetDeviceSelectedExitNode(network, token)
+					if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
+						continue
+					}
+					egressID = sel.EgressID
+					exitNetwork = network
+					break
 				}
-				egressID = sel.EgressID
-				exitNetwork = network
-				break
-			}
+			}()
 		}
 		if egressID != "" || autoExit {
 			wantIGW = true
@@ -143,7 +147,10 @@ func ReleaseSession(clearServer bool) error {
 		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
-			if _, err := putDeviceExitNode(exitNetwork, token, ""); err != nil {
+			done := logElapsed("logout server exit clear")
+			_, err := putDeviceExitNode(exitNetwork, token, "")
+			done()
+			if err != nil {
 				slog.Warn("failed to clear server exit node on logout", "network", exitNetwork, "error", err)
 			}
 		}

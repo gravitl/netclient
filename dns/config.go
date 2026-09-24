@@ -99,7 +99,7 @@ func Configure() error {
 // addresses keep working only while the tunnel is up and cause DNS breakage
 // after exit-node / disconnect; loopback answers regardless of tunnel state.
 func getDnsIps() ([]string, error) {
-	addrs := GetDNSServerInstance().AddrList
+	addrs := GetDNSServerInstance().ListenerAddrs()
 	if len(addrs) == 0 {
 		return nil, errors.New("no listener is running")
 	}

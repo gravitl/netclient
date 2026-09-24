@@ -6,17 +6,30 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
 	netmakerResolverFileMarker = "# Managed by netmaker\n"
+	// reassertInterval forces a reapply even when the desired state has not
+	// changed, so DNS altered behind our back (System Settings, another VPN) is
+	// still corrected.
+	reassertInterval = 60 * time.Second
 )
 
 type darwinManager struct {
 	config map[string]Config
 	mu     sync.Mutex
+	// lastSig / lastApplied collapse bursts of identical Configure calls.
+	// setupFullDNS runs two networksetup commands for every network service on
+	// the machine, and networksetup costs hundreds of milliseconds each, so a
+	// single connect/disconnect was spending seconds re-applying DNS it had
+	// already applied moments earlier.
+	lastSig     string
+	lastApplied time.Time
 }
 
 type nameserver struct {
@@ -108,12 +121,49 @@ func (d *darwinManager) Configure(iface string, config Config) error {
 		}
 	}
 
-	err := d.setupSplitDNS(domainNameservers)
-	if err != nil {
+	sig := desiredSignature(domainNameservers, globalNameservers, globalSearchDomains)
+	if sig == d.lastSig && time.Since(d.lastApplied) < reassertInterval {
+		return nil
+	}
+
+	if err := d.setupSplitDNS(domainNameservers); err != nil {
+		// Leave the signature unset so the next call retries rather than
+		// assuming this state was installed.
+		d.lastSig = ""
 		return err
 	}
 
-	return d.setupFullDNS(globalNameservers, globalSearchDomains)
+	if err := d.setupFullDNS(globalNameservers, globalSearchDomains); err != nil {
+		d.lastSig = ""
+		return err
+	}
+
+	d.lastSig = sig
+	d.lastApplied = time.Now()
+	return nil
+}
+
+// desiredSignature is a stable rendering of what Configure is about to install,
+// used only to detect "nothing changed since last time".
+func desiredSignature(matchDomains map[string]*nameserver, globalNameservers, globalSearchDomains []string) string {
+	var b strings.Builder
+	domains := make([]string, 0, len(matchDomains))
+	for domain := range matchDomains {
+		domains = append(domains, domain)
+	}
+	sort.Strings(domains)
+	for _, domain := range domains {
+		ns := matchDomains[domain]
+		ips := append([]string(nil), ns.ips...)
+		sort.Strings(ips)
+		fmt.Fprintf(&b, "split|%s|%t|%s\n", domain, ns.isSearchDomain, strings.Join(ips, ","))
+	}
+	full := append([]string(nil), globalNameservers...)
+	sort.Strings(full)
+	search := append([]string(nil), globalSearchDomains...)
+	sort.Strings(search)
+	fmt.Fprintf(&b, "full|%s|%s", strings.Join(full, ","), strings.Join(search, ","))
+	return b.String()
 }
 
 func (d *darwinManager) setupSplitDNS(matchDomains map[string]*nameserver) error {

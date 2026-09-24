@@ -51,9 +51,18 @@ func connectNetwork(network string, restart bool) error {
 	if !restart {
 		return nil
 	}
-	if err := daemon.Restart(); err != nil {
-		if err := daemon.Start(); err != nil {
-			return fmt.Errorf("daemon restart failed %w", err)
+	return applyConnectionChange("connect")
+}
+
+// applyConnectionChange brings the live interface in line with the new node set
+// without bouncing the daemon, falling back to a restart only if that fails.
+func applyConnectionChange(op string) error {
+	if err := applyConnectionChangeInProcess(); err != nil {
+		slog.Warn("in-process apply failed; falling back to daemon restart", "op", op, "error", err)
+		if err := daemon.Restart(); err != nil {
+			if err := daemon.Start(); err != nil {
+				return fmt.Errorf("daemon restart failed %w", err)
+			}
 		}
 	}
 	return nil
@@ -82,7 +91,10 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		// Keep exit-node selection (desired + server). Disconnect only drops local
 		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
-	if err := PublishNodeUpdate(&node); err != nil {
+	done := logElapsed("disconnect node update publish")
+	err := PublishNodeUpdate(&node)
+	done()
+	if err != nil {
 		return err
 	}
 	if !config.AnyNodeConnected() {
@@ -92,13 +104,7 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 	if !restart {
 		return nil
 	}
-	if err := daemon.Restart(); err != nil {
-		fmt.Println("daemon restart failed", err)
-		if err := daemon.Start(); err != nil {
-			fmt.Println("daemon failed to start", err)
-		}
-	}
-	return nil
+	return applyConnectionChange("disconnect")
 }
 
 // desktopSessionIdentity returns the desktop session identity and whether
@@ -356,7 +362,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	}
 	// Ensure system-wide DNS after exit restore even if Start ran earlier in
 	// SplitDNS mode (listener already up; Configure must run again with CurrGw).
-	reconfigureDNSAfterRouting()
+	scheduleDNSReconfigure()
 	return nil
 }
 
