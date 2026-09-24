@@ -124,16 +124,57 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 }
 
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
+	if registerResponse == nil {
+		return
+	}
+	// Identity is bare domain; API stays host:port for HTTPS.
+	serverKey := canonicalServerID(registerResponse.ServerConf.Server)
+	if serverKey == "" {
+		serverKey = canonicalServerID(registerResponse.ServerConf.API)
+	}
+	if serverKey == "" {
+		serverKey = canonicalServerID(config.CurrServer)
+	}
+	if serverKey == "" {
+		logger.Log(0, "register response missing server identity")
+		return
+	}
+
+	preservedAPI := ""
+	if existing := config.GetServer(serverKey); existing != nil && existing.API != "" {
+		preservedAPI = config.NormalizeServerAPI(existing.API)
+	}
+	api := preservedAPI
+	if api == "" {
+		api = config.NormalizeServerAPI(registerResponse.ServerConf.API)
+	}
+	if api == "" {
+		api = config.NormalizeServerAPI(serverKey)
+	}
+	registerResponse.ServerConf.API = api
+	registerResponse.ServerConf.Server = serverKey
+
+	config.CurrServer = serverKey
 	config.UpdateServerConfig(&registerResponse.ServerConf)
 	config.SyncTenantID(registerResponse.RequestedHost.ID, registerResponse.ServerConf.TenantID)
-	server := config.GetServer(registerResponse.ServerConf.Server)
-	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
+	server := config.GetServer(serverKey)
+	if server == nil {
+		logger.Log(0, "failed to save server: config not updated")
+		return
+	}
+	if err := config.SaveServer(serverKey, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
+	config.UpdateHost(&registerResponse.RequestedHost)
+	if err := config.WriteNetclientConfig(); err != nil {
+		logger.Log(0, "failed to save netclient config after register", err.Error())
+	}
+	if err := config.SetCurrServerCtxInFile(serverKey); err != nil {
+		logger.Log(0, "failed to save server context", err.Error())
+	}
 	UpdateHostFromServer(&registerResponse.RequestedHost)
-	config.SetCurrServerCtxInFile(server.Server)
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}
-	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
+	fmt.Printf("registered with server %s\n", serverKey)
 }

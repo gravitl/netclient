@@ -129,6 +129,9 @@ func deleteLocalNetwork(node *config.Node) error {
 	if nodetodelete.Network == "" {
 		return errors.New("no such network")
 	}
+	if user, tenant, ok := desktopSessionIdentity(); ok {
+		_ = config.ForgetDesiredNetwork(user, tenant, node.Network)
+	}
 	//remove node from nodes map
 	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)

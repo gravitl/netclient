@@ -1,16 +1,28 @@
 package stun
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
 	nmmodels "github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 	"gortc.io/stun"
+)
+
+const (
+	// stunRTO is the per-attempt wait when UDP STUN is unreachable.
+	// Paired with WithNoRetransmit so each server costs ~stunRTO, not ~8s.
+	stunRTO = 500 * time.Millisecond
+	// stunUnavailableBackoff skips further STUN attempts after a timeout,
+	// avoiding long restart / IP-check loops in UDP-blocked environments.
+	stunUnavailableBackoff = 5 * time.Minute
 )
 
 var (
@@ -20,6 +32,9 @@ var (
 		{Domain: "stun3.l.google.com", Port: 19302},
 		{Domain: "stun4.l.google.com", Port: 19302},
 	}
+
+	stunMu               sync.Mutex
+	stunUnavailableUntil time.Time
 )
 
 // StunServer - struct to hold data required for using stun server
@@ -78,6 +93,26 @@ func DoesIPExistLocally(ip net.IP) bool {
 	return false
 }
 
+func stunIsUnavailable() bool {
+	stunMu.Lock()
+	defer stunMu.Unlock()
+	return time.Now().Before(stunUnavailableUntil)
+}
+
+func markStunUnavailable() {
+	stunMu.Lock()
+	defer stunMu.Unlock()
+	stunUnavailableUntil = time.Now().Add(stunUnavailableBackoff)
+	slog.Warn("udp stun appears blocked; skipping further stun attempts",
+		"backoff", stunUnavailableBackoff.String())
+}
+
+func markStunAvailable() {
+	stunMu.Lock()
+	defer stunMu.Unlock()
+	stunUnavailableUntil = time.Time{}
+}
+
 // HolePunch - performs udp hole punching on the given port
 func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType string) {
 	server := config.GetServer(config.CurrServer)
@@ -89,24 +124,29 @@ func HolePunch(portToStun, proto int) (publicIP net.IP, publicPort int, natType 
 	if !server.Stun {
 		return
 	}
+	if stunIsUnavailable() {
+		slog.Debug("skipping hole punch; stun marked unavailable after recent timeout")
+		return
+	}
+
+	network := "udp4"
+	if proto != 4 {
+		network = "udp6"
+	}
 
 	for _, stunServer := range StunServers {
-		var err4 error
-		var err6 error
-		if proto == 4 {
-			publicIP, publicPort, natType, err4 = callHolePunch(stunServer, portToStun, "udp4")
-			if err4 != nil {
-				slog.Warn("callHolePunch udp4 error", err4.Error())
+		var err error
+		publicIP, publicPort, natType, err = callHolePunch(stunServer, portToStun, network)
+		if err != nil {
+			slog.Warn("callHolePunch error", "network", network, "server", stunServer.Domain, "error", err.Error())
+			// UDP blocked / no reply: other STUN servers will fail the same way.
+			if errors.Is(err, stun.ErrTransactionTimeOut) {
+				markStunUnavailable()
+				break
 			}
-		} else {
-			publicIP, publicPort, natType, err6 = callHolePunch(stunServer, portToStun, "udp6")
-			if err6 != nil {
-				slog.Warn("callHolePunch udp6 error", err6.Error())
-			}
-		}
-		if err4 != nil || err6 != nil {
 			continue
 		}
+		markStunAvailable()
 		break
 	}
 	slog.Debug("hole punching complete", "public ip", publicIP.String(), "public port", strconv.Itoa(publicPort), "nat type", natType)
@@ -157,7 +197,8 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		}
 	}()
 	defer conn.Close()
-	c, err := stun.NewClient(conn)
+	// Short single-shot timeout: blocked UDP should fail in ~stunRTO, not ~8s.
+	c, err := stun.NewClient(conn, stun.WithRTO(stunRTO), stun.WithNoRetransmit)
 	if err != nil {
 		logger.Log(1, "failed to create stun client: ", err.Error())
 		return
@@ -176,7 +217,7 @@ func doStunTransaction(lAddr, rAddr *net.UDPAddr) (publicIP net.IP, publicPort i
 		// Decoding XOR-MAPPED-ADDRESS attribute from message.
 		var xorAddr stun.XORMappedAddress
 		if err := xorAddr.GetFrom(res.Message); err != nil {
-			logger.Log(1, "1:stun error: ", res.Error.Error())
+			logger.Log(1, "1:stun error: ", err.Error())
 			return
 		}
 		publicIP = xorAddr.IP

@@ -18,7 +18,51 @@ import (
 const (
 	IPv4Network = "0.0.0.0/0"
 	IPv6Network = "::/0"
+	// IPv6 half-defaults used to divert traffic off the ISP without replacing ::/0.
+	ipv6HalfDefaultLow  = "::/1"
+	ipv6HalfDefaultHigh = "8000::/1"
 )
+
+// shouldBlockIPv6Leak reports whether an IPv4-only exit must pull host IPv6 off
+// the ISP. Leaving the LAN ::/0 in place lets Happy Eyeballs prefer AAAA and
+// bypass the exit. Divert routes point at the netmaker iface without adding
+// peer ::/0 AllowedIPs, so IPv6 fails closed and apps fall back to IPv4 via
+// the exit.
+func shouldBlockIPv6Leak(gw4, gw6 net.IP) bool {
+	return len(gw4) > 0 && len(gw6) == 0
+}
+
+// IGWRoutingActive reports whether this host currently has an internet-exit
+// default route installed (CurrGwNmIP / CurrGwNmIP6).
+//
+// Callers outside this package use it to suppress public-IP/STUN detection:
+// while the exit default route is up, outbound probes egress through the exit
+// node, so any address they report is the exit's, not this host's underlay.
+func IGWRoutingActive() bool {
+	nc := config.Netclient()
+	if nc == nil {
+		return false
+	}
+	return len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0
+}
+
+// reapplyCachedEgressRoutes reinstalls specific egress CIDRs after IGW default
+// routes are (re)installed so those prefixes keep winning over 0.0.0.0/0.
+func reapplyCachedEgressRoutes() {
+	hostID := config.Netclient().Host.ID.String()
+	addrs, ok := cache.EgressRouteCache.Load(hostID)
+	if !ok {
+		return
+	}
+	cached, ok := addrs.([]ifaceAddress)
+	if !ok || len(cached) == 0 {
+		return
+	}
+	_ = SetRoutes(filterConflictingRoutes(cached))
+	if IGWRoutingActive() {
+		RefreshInternetGwHostPins()
+	}
+}
 
 // FindInternetGwPeer picks the WireGuard peer that should carry internet-exit
 // traffic. Prefers a peer advertising 0.0.0.0/0 or ::/0; falls back to a peer
@@ -143,9 +187,145 @@ func InternetGwHostIPs(publicKey string) []net.IP {
 	return ips
 }
 
+// NonExitPeerHostIPs returns underlay endpoints of WireGuard peers that are not
+// the selected internet exit. When 0.0.0.0/0 is on the exit, UDP/ICMP to those
+// peers would otherwise trombone through the tunnel. Includes:
+//   - bypassed site-egress / CIDR gateway peers
+//   - alternate internet-exit routing nodes (server keeps them as direct peers)
+//
+// Only the selected exit public key is skipped; its underlay is pinned via
+// InternetGwHostIPs. Peers that still advertise a default route are still pinned
+// so a mis-tagged alternate exit remains reachable on the LAN.
+func NonExitPeerHostIPs(exitPublicKey string) []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	add := func(ip net.IP) {
+		if len(ip) == 0 || ip.IsUnspecified() {
+			return
+		}
+		s := ip.String()
+		if s == "" || s == "<nil>" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		ips = append(ips, append(net.IP(nil), ip...))
+	}
+
+	var exitPK wgtypes.Key
+	if exitPublicKey != "" {
+		if pk, err := wgtypes.ParseKey(exitPublicKey); err == nil {
+			exitPK = pk
+		}
+	}
+
+	if host := config.Netclient(); host != nil {
+		for _, p := range host.HostPeers {
+			if p.Remove || p.Endpoint == nil || p.Endpoint.IP == nil {
+				continue
+			}
+			if p.PublicKey == exitPK {
+				continue
+			}
+			add(p.Endpoint.IP)
+		}
+	}
+	if peers, err := GetPeersFromDevice(ncutils.GetInterfaceName()); err == nil {
+		for _, p := range peers {
+			if p.Endpoint == nil || p.Endpoint.IP == nil {
+				continue
+			}
+			if p.PublicKey == exitPK {
+				continue
+			}
+			add(p.Endpoint.IP)
+		}
+	}
+	return ips
+}
+
+// IGWUnderlayPinIPs is the full set of host routes that must stay on the LAN
+// path while an internet exit is active: the selected exit itself, every other
+// direct peer (site egress + alternate exits), and any registered exit-probe
+// public endpoints.
+func IGWUnderlayPinIPs(exitPublicKey string) []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	addAll := func(list []net.IP) {
+		for _, ip := range list {
+			if len(ip) == 0 {
+				continue
+			}
+			s := ip.String()
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			ips = append(ips, ip)
+		}
+	}
+	addAll(InternetGwHostIPs(exitPublicKey))
+	addAll(NonExitPeerHostIPs(exitPublicKey))
+	addAll(exitNodeUnderlayPinIPs())
+	return ips
+}
+
+// CollectUnderlayPinIPs returns LAN host routes for the active exit (exit
+// underlay plus every non-exit peer). Used when installing or tearing down pins.
+func CollectUnderlayPinIPs() []net.IP {
+	nc := config.Netclient()
+	if nc == nil {
+		return nil
+	}
+	gw4, gw6 := NormalizeIGWNexthops(nc.CurrGwNmIP, nc.CurrGwNmIP6)
+	if igw, ok := FindInternetGwPeer(nc.HostPeers, gw4, gw6); ok {
+		return IGWUnderlayPinIPs(igw.PublicKey.String())
+	}
+	return allKnownPeerUnderlayIPs()
+}
+
+func allKnownPeerUnderlayIPs() []net.IP {
+	seen := make(map[string]struct{})
+	var ips []net.IP
+	add := func(ip net.IP) {
+		if len(ip) == 0 || ip.IsUnspecified() {
+			return
+		}
+		s := ip.String()
+		if s == "" || s == "<nil>" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		ips = append(ips, append(net.IP(nil), ip...))
+	}
+	if host := config.Netclient(); host != nil {
+		for _, p := range host.HostPeers {
+			if p.Endpoint != nil {
+				add(p.Endpoint.IP)
+			}
+		}
+	}
+	if peers, err := GetPeersFromDevice(ncutils.GetInterfaceName()); err == nil {
+		for _, p := range peers {
+			if p.Endpoint != nil {
+				add(p.Endpoint.IP)
+			}
+		}
+	}
+	return ips
+}
+
 var (
 	tcpUplinkHostIPsMu sync.Mutex
 	tcpUplinkHostIPs   []net.IP
+
+	exitNodeUnderlayPinIPsMu sync.Mutex
+	exitNodeUnderlayPins     []net.IP
 )
 
 // SetTCPUplinkHostRouteIPs registers underlay IPs of the TCP proxy endpoint so
@@ -166,6 +346,46 @@ func SetTCPUplinkHostRouteIPs(ips []net.IP) {
 		cp = append(cp, append(net.IP(nil), ip...))
 	}
 	tcpUplinkHostIPs = cp
+}
+
+// SetExitNodeUnderlayPinIPs registers public endpoints of internet exit nodes
+// (AllowedEndpoints) so latency probes and WG to alternate exits stay on the
+// LAN while 0.0.0.0/0 is on the selected exit. Pass nil/empty to clear.
+func SetExitNodeUnderlayPinIPs(ips []net.IP) {
+	exitNodeUnderlayPinIPsMu.Lock()
+	defer exitNodeUnderlayPinIPsMu.Unlock()
+	if len(ips) == 0 {
+		exitNodeUnderlayPins = nil
+		return
+	}
+	seen := make(map[string]struct{}, len(ips))
+	cp := make([]net.IP, 0, len(ips))
+	for _, ip := range ips {
+		if len(ip) == 0 || ip.IsUnspecified() || ip.IsLoopback() {
+			continue
+		}
+		s := ip.String()
+		if s == "" || s == "<nil>" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		cp = append(cp, append(net.IP(nil), ip...))
+	}
+	exitNodeUnderlayPins = cp
+}
+
+func exitNodeUnderlayPinIPs() []net.IP {
+	exitNodeUnderlayPinIPsMu.Lock()
+	defer exitNodeUnderlayPinIPsMu.Unlock()
+	if len(exitNodeUnderlayPins) == 0 {
+		return nil
+	}
+	out := make([]net.IP, len(exitNodeUnderlayPins))
+	copy(out, exitNodeUnderlayPins)
+	return out
 }
 
 // ShouldReplace - checks curr peers and incoming peers to see if the peers should be replaced
@@ -198,6 +418,13 @@ func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 func SetPeers(replace bool) error {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	if !config.AnyNodeConnected() {
+		GetInterface().Config.Peers = nil
+		return apply(&wgtypes.Config{
+			ReplacePeers: true,
+			Peers:        nil,
+		})
+	}
 	peers := config.Netclient().HostPeers
 	server := config.GetServer(config.CurrServer)
 	if server == nil {

@@ -8,6 +8,7 @@ import (
 
 	dnscache "github.com/gravitl/netclient/dns/cache"
 	dnsconfig "github.com/gravitl/netclient/dns/config"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/miekg/dns"
@@ -18,6 +19,27 @@ var (
 	cacheManager  dnscache.Manager
 	dnsSyncMutex  sync.Mutex // used to mutex functions of the DNS
 )
+
+// ResetOSConfig removes Netmaker OS DNS settings. Use when the local listener
+// is down (or after exit-node full DNS) so system DNS is not left pointing at us.
+func ResetOSConfig() error {
+	if configManager == nil {
+		return nil
+	}
+	return configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
+		Remove: true,
+	})
+}
+
+// FlushCache flushes the OS DNS cache when supported.
+func FlushCache() {
+	if cacheManager == nil {
+		return
+	}
+	if err := cacheManager.Flush(); err != nil {
+		logger.Log(4, "error flushing dns cache:", err.Error())
+	}
+}
 
 type dnsRecord struct {
 	Name string

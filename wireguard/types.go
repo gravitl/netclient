@@ -33,7 +33,10 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := host.FwMark
-	peers := config.Netclient().HostPeers
+	var peers []wgtypes.PeerConfig
+	if anyNodeConnected(nodes) {
+		peers = config.Netclient().HostPeers
+	}
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
 		peers = nil
@@ -72,6 +75,112 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 		},
 	}
 	return &netmaker
+}
+
+// EnsureNodeAddrs re-applies interface addresses when the live interface is
+// missing one belonging to a connected node, and reports whether it repaired
+// anything. NewNCIface only takes addresses from connected nodes, so a startup
+// where the node map is still empty (failed Pull) leaves the interface
+// unaddressed; nodes then arrive over MQ with nothing to re-configure the
+// interface. An unaddressed interface drops every packet while routes and DNS
+// still read as correctly configured, which is indistinguishable from a dead
+// exit node.
+func EnsureNodeAddrs() bool {
+	nodes := config.GetNodes()
+	var want []net.IP
+	for _, node := range nodes {
+		if !node.Connected {
+			continue
+		}
+		if node.Address.IP != nil {
+			want = append(want, node.Address.IP)
+		}
+		if node.Address6.IP != nil {
+			want = append(want, node.Address6.IP)
+		}
+	}
+	if len(want) == 0 {
+		return false
+	}
+	live, err := liveIfaceIPs()
+	if err != nil {
+		slog.Warn("could not read netmaker interface addresses", "error", err)
+		return false
+	}
+	var missing []string
+	for _, ip := range want {
+		found := false
+		for _, l := range live {
+			if l.Equal(ip) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, ip.String())
+		}
+	}
+	if len(missing) == 0 {
+		return false
+	}
+	logger.Log(0, fmt.Sprintf("netmaker interface is missing node addresses %v; re-applying", missing))
+	if err := NewNCIface(config.Netclient(), nodes).Configure(); err != nil {
+		slog.Error("failed to re-apply netmaker interface addresses", "error", err)
+		return false
+	}
+	return true
+}
+
+// ifaceHasSourceAddr reports whether the netmaker interface carries an address
+// that tunnel traffic can be sourced from. Link-local and loopback addresses do
+// not count: they cannot originate overlay packets.
+func ifaceHasSourceAddr() bool {
+	ips, err := liveIfaceIPs()
+	if err != nil {
+		// Cannot tell — never manufacture a verdict out of a failed lookup.
+		return true
+	}
+	return anySourceAddr(ips)
+}
+
+// anySourceAddr reports whether any address can originate overlay traffic.
+func anySourceAddr(ips []net.IP) bool {
+	for _, ip := range ips {
+		if ip.IsGlobalUnicast() {
+			return true
+		}
+	}
+	return false
+}
+
+func liveIfaceIPs() ([]net.IP, error) {
+	iface, err := net.InterfaceByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return nil, err
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		switch v := a.(type) {
+		case *net.IPNet:
+			ips = append(ips, v.IP)
+		case *net.IPAddr:
+			ips = append(ips, v.IP)
+		}
+	}
+	return ips, nil
+}
+
+func anyNodeConnected(nodes config.NodeMap) bool {
+	for _, node := range nodes {
+		if node.Connected {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
@@ -319,9 +428,10 @@ func ReapplyInternetGw(gw4, gw6 net.IP) {
 	}
 }
 
-// RefreshInternetGwHostPins adds LAN underlay pins for InternetGwHostIPs when
-// exit-node routing is already active (e.g. TCP proxy IP registered after
-// SetInternetGw). Does not move 0.0.0.0/0.
+// RefreshInternetGwHostPins adds LAN underlay pins for the selected exit and
+// every other direct peer (site egress + alternate internet exits) when
+// internet-exit routing is already active. Needed so newly advertised peer
+// endpoints are not swallowed by 0.0.0.0/0. Does not move 0.0.0.0/0.
 func RefreshInternetGwHostPins() {
 	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
 	if gw4 == nil && gw6 == nil {

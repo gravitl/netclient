@@ -381,8 +381,39 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 				firstErr = err
 			}
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		if err := blockIPv6LeakOnIGW(); err != nil {
+			slog.Error("failed to divert IPv6 off ISP for IPv4-only exit", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
+	// Reinstall more-specific egress CIDRs so they win over on-link 0.0.0.0/0
+	// after IGW install or monitor recovery.
+	reapplyCachedEgressRoutes()
 	return firstErr
+}
+
+// blockIPv6LeakOnIGW pulls IPv6 off the ISP when the exit is IPv4-only.
+// On-link ::/0 via netmaker wins over the LAN default; without peer ::/0
+// AllowedIPs traffic fails closed and apps fall back to IPv4 via the exit.
+func blockIPv6LeakOnIGW() error {
+	logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(addGwCmd, false)
+	if err != nil && !isNetshAlreadyExists(out) {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
+	}
+	return nil
+}
+
+func clearIPv6LeakOnIGW() {
+	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPv6Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(delCmd, false)
+	if err != nil && !isNetshNotFound(err, out) {
+		slog.Warn("failed to clear IPv6 leak-block route", "error", err, "out", strings.TrimSpace(out))
+	}
 }
 
 // setInternetGwV6 - set a new default gateway and the route to Internet Gw's ip address
@@ -425,7 +456,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 			}
 		}
 
-		igwHostIPs := InternetGwHostIPs(publicKey)
+		igwHostIPs := IGWUnderlayPinIPs(publicKey)
 		for _, hostIP := range igwHostIPs {
 			if hostIP.To4() != nil {
 				continue
@@ -471,7 +502,7 @@ func setInternetGwV4(publicKey string, networkIP net.IP) error {
 				slog.Error("Failed to set original gateway route metric", "error", err.Error())
 			}
 		}
-		pinHostIPsViaLanV4(InternetGwHostIPs(publicKey), lan)
+		pinHostIPsViaLanV4(IGWUnderlayPinIPs(publicKey), lan)
 	} else {
 		slog.Warn("no LAN default gateway found; exit-node underlay cannot be pinned",
 			"public_key_prefix", publicKey[:min(8, len(publicKey))])
@@ -531,7 +562,7 @@ func pinInternetGwHostRoutes(publicKey string) {
 		slog.Debug("skip exit-node host pin refresh; LAN gateway not found")
 		return
 	}
-	pinHostIPsViaLanV4(InternetGwHostIPs(publicKey), lan)
+	pinHostIPsViaLanV4(IGWUnderlayPinIPs(publicKey), lan)
 }
 
 // lanDefaultRouteV4 returns the underlay IPv4 default route, ignoring any
@@ -608,6 +639,12 @@ func resetDefaultRoutesOnHost() error {
 		if err := restoreInternetGwV4(); err != nil {
 			firstErr = err
 		}
+		// IPv4-only exit may have installed IPv6 divert with no CurrGwNmIP6.
+		// When a real gw6 was also set, restoreInternetGwV6 removes the same
+		// on-link ::/0 — clearIPv6LeakOnIGW is idempotent either way.
+		if !needV6 {
+			clearIPv6LeakOnIGW()
+		}
 	}
 	if needV6 {
 		if err := restoreInternetGwV6(); err != nil && firstErr == nil {
@@ -628,13 +665,18 @@ func restoreInternetGwV6() (err error) {
 		return err
 	}
 
-	var destination string
-	for _, peer := range config.Netclient().HostPeers {
-		for _, allowedIP := range peer.AllowedIPs {
-			if allowedIP.String() == IPv6Network {
-				destination = peer.Endpoint.IP.String() + "/128"
-			}
+	var destinations []string
+	seen := map[string]struct{}{}
+	for _, ip := range CollectUnderlayPinIPs() {
+		if ip.To4() != nil {
+			continue
 		}
+		d := ip.String() + "/128"
+		if _, ok := seen[d]; ok {
+			continue
+		}
+		seen[d] = struct{}{}
+		destinations = append(destinations, d)
 	}
 
 	//get current default gateway route
@@ -656,14 +698,14 @@ func restoreInternetGwV6() (err error) {
 				slog.Error("netsh int ipv6 set route ::/0 interface=<Idx> nexthop=<ipv6 address> store=active metric=0", "error")
 			}
 		}
+	}
 
-		if destination != "" {
-			delCmd := fmt.Sprintf("netsh int ipv6 delete route %s %s store=active", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]))
-			_, err = ncutils.RunCmd(delCmd, true)
-			if err != nil {
-				slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
-				return err
-			}
+	for _, destination := range destinations {
+		delCmd := fmt.Sprintf("netsh int ipv6 delete route %s store=active", destination)
+		out, delErr := ncutils.RunCmd(delCmd, false)
+		if delErr != nil && !isNetshNotFound(delErr, out) {
+			slog.Warn("Failed to delete exit-node host route", "destination", destination,
+				"error", delErr, "out", strings.TrimSpace(out))
 		}
 	}
 
@@ -687,28 +729,16 @@ func restoreInternetGwV4() (err error) {
 
 	var destinations []string
 	seen := map[string]struct{}{}
-	for _, peer := range config.Netclient().HostPeers {
-		hasDefault := false
-		for _, allowedIP := range peer.AllowedIPs {
-			if allowedIP.String() == IPv4Network {
-				hasDefault = true
-				break
-			}
-		}
-		if !hasDefault {
+	for _, ip := range CollectUnderlayPinIPs() {
+		if ip.To4() == nil {
 			continue
 		}
-		for _, ip := range InternetGwHostIPs(peer.PublicKey.String()) {
-			if ip.To4() == nil {
-				continue
-			}
-			d := ip.String() + "/32"
-			if _, ok := seen[d]; ok {
-				continue
-			}
-			seen[d] = struct{}{}
-			destinations = append(destinations, d)
+		d := ip.String() + "/32"
+		if _, ok := seen[d]; ok {
+			continue
 		}
+		seen[d] = struct{}{}
+		destinations = append(destinations, d)
 	}
 
 	// Restore the LAN default route to metric 0 (exit setup demoted it to 50).
