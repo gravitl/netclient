@@ -17,7 +17,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +32,12 @@ import (
 const (
 	DefaultPort = 22022
 	hostKeyFile = "ssh_host_ed25519_key"
+)
+
+const (
+	sshUserAny    = "nm:any"    // any OS user
+	sshUserRoot   = "nm:root"   // only uid 0 accounts
+	sshUserNoRoot = "nm:noroot" // any account except uid 0
 )
 
 // Manager owns the lifecycle of the embedded SSH server.
@@ -99,7 +104,33 @@ func (m *Manager) revokeStaleSessionsLocked() {
 }
 
 func osUserAllowed(osUsers []string, requested string) bool {
-	return slices.Contains(osUsers, "*") || slices.Contains(osUsers, requested)
+	for _, granted := range osUsers {
+		switch granted {
+		case sshUserAny:
+			return true
+		case sshUserRoot:
+			if uid, ok := accountUID(requested); ok && uid == "0" {
+				return true
+			}
+		case sshUserNoRoot:
+			if uid, ok := accountUID(requested); ok && uid != "0" {
+				return true
+			}
+		default:
+			if granted == requested {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func accountUID(name string) (uid string, ok bool) {
+	u, err := user.Lookup(name)
+	if err != nil {
+		return "", false
+	}
+	return u.Uid, true
 }
 
 // buildServer constructs the (unstarted) gliderssh.Server - the host key
