@@ -15,15 +15,7 @@ const (
 type DaemonStatus string
 
 const (
-	DaemonStatusOK                  DaemonStatus = "ok"
-	DaemonStatusMissingDependencies DaemonStatus = "missing_dependencies"
-)
-
-type WireGuardUtil string
-
-const (
-	WGQuick             WireGuardUtil = "wg-quick"
-	WireGuardExecutable WireGuardUtil = "wireguard.exe"
+	DaemonStatusOK DaemonStatus = "ok"
 )
 
 type ErrorResponse struct {
@@ -59,13 +51,11 @@ type ConfigureSessionRequest struct {
 }
 
 type DaemonHealthStatus struct {
-	Status                   DaemonStatus  `json:"status"`
-	CurrentVersion           string        `json:"current_version"`
-	LatestVersion            string        `json:"latest_version"`
-	OS                       string        `json:"os"`
-	Arch                     string        `json:"arch"`
-	WireGuardUtil            WireGuardUtil `json:"wireguard_util"`
-	IsWireGuardUtilInstalled bool          `json:"is_wireguard_util_installed"`
+	Status         DaemonStatus `json:"status"`
+	CurrentVersion string       `json:"current_version"`
+	LatestVersion  string       `json:"latest_version"`
+	OS             string       `json:"os"`
+	Arch           string       `json:"arch"`
 }
 
 type InterfaceStatus string

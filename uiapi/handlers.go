@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os/exec"
 	"runtime"
 	"strings"
 
@@ -14,24 +13,12 @@ import (
 )
 
 func checkHealth(w http.ResponseWriter, r *http.Request) {
-	status := DaemonStatusOK
-	wgUtil := WGQuick
-	if runtime.GOOS == "windows" {
-		wgUtil = WireGuardExecutable
-	}
-	installed := true
-	if _, err := exec.LookPath(string(wgUtil)); err != nil {
-		status = DaemonStatusMissingDependencies
-		installed = false
-	}
 	resp := DaemonHealthStatus{
-		Status:                   status,
-		CurrentVersion:           config.Version,
-		LatestVersion:            config.Version,
-		OS:                       runtime.GOOS,
-		Arch:                     runtime.GOARCH,
-		WireGuardUtil:            wgUtil,
-		IsWireGuardUtilInstalled: installed,
+		Status:         DaemonStatusOK,
+		CurrentVersion: config.Version,
+		LatestVersion:  config.Version,
+		OS:             runtime.GOOS,
+		Arch:           runtime.GOARCH,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
