@@ -25,6 +25,7 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -606,6 +607,22 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		UpdateKeys()
 		writeToDisk = false
 	case models.RequestPull:
+		// Login publishes REQ_PULL. Restarting the daemon to perform that pull
+		// stops the Windows service and drops the desktop API out from under
+		// the GUI. A logged-in desktop session pulls in-process instead.
+		// Headless clients keep the restart.
+		if uiapi.IsSessionActive() {
+			logger.Log(0, "host update REQ_PULL: pulling in-process (desktop session)")
+			clearRetainedMsg(client, msg.Topic())
+			response, resetInterface, replacePeers, err := Pull(false, false, false)
+			if err != nil {
+				slog.Error("pull failed", "error", err)
+			} else {
+				mqFallbackPull(response, resetInterface, replacePeers)
+			}
+			writeToDisk = false
+			break
+		}
 		clearMsg = true
 		restartDaemon = true
 		writeToDisk = false
