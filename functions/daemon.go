@@ -63,6 +63,10 @@ type cachedMessage struct {
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
 	daemon.SetDaemonMode()
+	if daemon.MigrateWindowsService() {
+		logger.Log(0, "windows service retargeted; exiting so Program Files can start")
+		return
+	}
 	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
