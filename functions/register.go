@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
@@ -173,9 +174,45 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 		logger.Log(0, "failed to save server context", err.Error())
 	}
 	UpdateHostFromServer(&registerResponse.RequestedHost)
-	logger.Log(0, "restart trigger: device registration")
-	if err := daemon.Restart(); err != nil {
-		logger.Log(3, "daemon restart failed:", err.Error())
+	// First desktop login registers before PUT /session can answer. Restarting
+	// the Windows service here kills that request. Defer an in-process reset
+	// until the login response is written. A CLI registration is another
+	// process and still restarts the service.
+	if daemon.IsDaemonProcess() {
+		registrationResetPending.Store(true)
+		logger.Log(0, "device registration: reset deferred until login response")
+	} else {
+		logger.Log(0, "restart trigger: device registration")
+		if err := daemon.Restart(); err != nil {
+			logger.Log(3, "daemon restart failed:", err.Error())
+		}
 	}
 	fmt.Printf("registered with server %s\n", serverKey)
+}
+
+var registrationResetPending atomic.Bool
+
+// RegistrationResetPending reports that a desktop registration finished and
+// the daemon still needs to pick up the new server. The GUI uses this window
+// to show a registration transition instead of treating login as failed.
+func RegistrationResetPending() bool {
+	return registrationResetPending.Load()
+}
+
+// ApplyPendingRegistrationReset rebuilds the daemon in place after the login
+// response has been written. The returned channel is closed when that rebuild
+// finishes. Nil means nothing was pending.
+func ApplyPendingRegistrationReset() <-chan struct{} {
+	if !registrationResetPending.CompareAndSwap(true, false) {
+		return nil
+	}
+	logger.Log(0, "device registration: resetting in-process")
+	done := daemon.RequestInProcessReset()
+	if done == nil {
+		logger.Log(0, "restart trigger: device registration")
+		if err := daemon.Restart(); err != nil {
+			logger.Log(3, "daemon restart failed:", err.Error())
+		}
+	}
+	return done
 }

@@ -81,6 +81,17 @@ func Daemon() {
 	defer uiapiCancel()
 	uiapi.Start(uiapiCtx)
 
+	inProcessReset := make(chan chan struct{}, 1)
+	daemon.SetInProcessReset(func(done chan struct{}) {
+		select {
+		case inProcessReset <- done:
+		default:
+			if done != nil {
+				close(done)
+			}
+		}
+	})
+
 	cancel := startGoRoutines(&wg)
 
 	for {
@@ -102,24 +113,33 @@ func Daemon() {
 			return
 		case <-reset:
 			slog.Debug("daemon received RESET (SIGHUP)")
-			slog.Info("received reset")
-			dns.GetDNSServerInstance().Stop()
-			_ = flow.GetManager().Stop()
-			config.FwClose()
-			//check if it needs to restore the default gateway
-			checkAndRestoreDefaultGateway()
-			// checkAndRestoreDefaultGateway only stops the IGW monitor when the
-			// restore succeeds; keep health checks off across the whole rebuild.
-			rebuilt := wireguard.BeginIfaceRebuild()
-			closeRoutines([]context.CancelFunc{
-				cancel,
-			}, &wg)
-			slog.Info("resetting daemon")
-			slog.Debug("daemon starting startGoRoutines after reset")
-			cancel = startGoRoutines(&wg)
-			rebuilt()
+			cancel = resetDaemonInProcess(cancel, &wg)
+		case done := <-inProcessReset:
+			logger.Log(0, "daemon in-process reset")
+			cancel = resetDaemonInProcess(cancel, &wg)
+			if done != nil {
+				close(done)
+			}
 		}
 	}
+}
+
+// resetDaemonInProcess rebuilds daemon goroutines without exiting, so the
+// desktop API keeps serving the GUI during first-time registration.
+func resetDaemonInProcess(cancel context.CancelFunc, wg *sync.WaitGroup) context.CancelFunc {
+	slog.Info("received reset")
+	dns.GetDNSServerInstance().Stop()
+	_ = flow.GetManager().Stop()
+	config.FwClose()
+	checkAndRestoreDefaultGateway()
+	rebuilt := wireguard.BeginIfaceRebuild()
+	closeRoutines([]context.CancelFunc{
+		cancel,
+	}, wg)
+	slog.Info("resetting daemon")
+	cancel = startGoRoutines(wg)
+	rebuilt()
+	return cancel
 }
 
 // checkAndRestoreDefaultGateway - tear down IGW routes before a daemon reset.

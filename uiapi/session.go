@@ -50,6 +50,7 @@ func cancelSessionRestore() {
 
 // Restore phase values exposed on GET /server while status=restoring.
 const (
+	RestorePhaseRegister = "register"
 	RestorePhaseNetworks = "networks"
 	RestorePhaseExit     = "exit"
 	RestorePhaseRoutes   = "routes"

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
@@ -23,6 +24,39 @@ var isDaemonProcess bool
 // SetDaemonMode marks the current process as the running daemon.
 func SetDaemonMode() {
 	isDaemonProcess = true
+}
+
+// IsDaemonProcess reports whether this process is the long-running daemon.
+func IsDaemonProcess() bool {
+	return isDaemonProcess
+}
+
+var (
+	inProcessResetMu sync.Mutex
+	inProcessResetFn func(done chan struct{})
+)
+
+// SetInProcessReset registers the function the daemon uses to rebuild its
+// goroutines without exiting. The callback receives a channel to close when
+// the rebuild has finished. A Windows service restart drops the desktop API.
+func SetInProcessReset(fn func(done chan struct{})) {
+	inProcessResetMu.Lock()
+	inProcessResetFn = fn
+	inProcessResetMu.Unlock()
+}
+
+// RequestInProcessReset asks the daemon to rebuild in place and reports when
+// that rebuild has finished. Nil means no daemon is listening.
+func RequestInProcessReset() <-chan struct{} {
+	inProcessResetMu.Lock()
+	fn := inProcessResetFn
+	inProcessResetMu.Unlock()
+	if fn == nil {
+		return nil
+	}
+	done := make(chan struct{})
+	fn(done)
+	return done
 }
 
 // Install - Calls the correct function to install the netclient as a daemon service on the given operating system.

@@ -9,6 +9,8 @@ func init() {
 	uiapi.SetHandlers(uiapi.HandlerDeps{
 		RegisterSession:           RegisterSession,
 		ReleaseSession:            ReleaseSession,
+		ApplyRegistrationReset:    ApplyPendingRegistrationReset,
+		RegistrationResetPending:  RegistrationResetPending,
 		Connect:                   connectWithJoin,
 		Disconnect:                Disconnect,
 		IsRegistered:              IsRegisteredToServer,

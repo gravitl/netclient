@@ -278,18 +278,31 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		uiLog(1, "uiapi: failed to fetch server config:", err.Error())
 	}
 	setSession(req.Username, req.AuthToken, req.TenantID, cfg)
-	// Return immediately so the GUI can navigate; reconnect in the background.
+	// Return immediately so the GUI can show a registration transition.
+	// The daemon rebuild runs after this response is flushed, and reconnect
+	// waits for that rebuild so it does not race a half-torn interface.
 	setStatus(Restoring)
 	restoreGen := beginSessionRestore()
+	resetting := registrationResetPending()
+	if resetting {
+		SetRestorePhase(RestorePhaseRegister)
+	}
 	username, tenantID := req.Username, req.TenantID
-	go func(gen uint64, username, tenantID string) {
+	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
+	w.WriteHeader(http.StatusOK)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	resetDone := applyRegistrationReset()
+	go func(gen uint64, username, tenantID string, resetDone <-chan struct{}) {
+		if resetDone != nil {
+			<-resetDone
+		}
 		if err := restoreDesiredConnections(username, tenantID); err != nil {
 			uiLog(1, "uiapi: failed to restore previous connections:", err.Error())
 		}
 		finishSessionRestore(gen)
-	}(restoreGen, username, tenantID)
-	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
-	w.WriteHeader(http.StatusOK)
+	}(restoreGen, username, tenantID, resetDone)
 }
 
 func releaseSession(w http.ResponseWriter, r *http.Request) {

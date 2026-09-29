@@ -9,6 +9,8 @@ import (
 type HandlerDeps struct {
 	RegisterSession           func(server, username, authToken, password, tenantID string) error
 	ReleaseSession            func(clearServer bool) error
+	ApplyRegistrationReset    func() <-chan struct{}
+	RegistrationResetPending  func() bool
 	Connect                   func(network string) error
 	Disconnect                func(network string) error
 	IsRegistered              func(server string) bool
@@ -44,6 +46,20 @@ func releaseSessionFn(clearServer bool) error {
 		return errHandlersNotConfigured
 	}
 	return deps.ReleaseSession(clearServer)
+}
+
+func applyRegistrationReset() <-chan struct{} {
+	if deps.ApplyRegistrationReset == nil {
+		return nil
+	}
+	return deps.ApplyRegistrationReset()
+}
+
+func registrationResetPending() bool {
+	if deps.RegistrationResetPending == nil {
+		return false
+	}
+	return deps.RegistrationResetPending()
 }
 
 func connectNetwork(network string) error {
