@@ -3,12 +3,14 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
@@ -30,7 +32,7 @@ func Install() error {
 
 // Restart - restarts a system daemon
 func Restart() error {
-	ncutils.TraceCaller()
+	logRestartRequest("restart")
 	return restart()
 }
 
@@ -41,8 +43,22 @@ func Start() error {
 
 // HardRestart - restarts system daemon using init system
 func HardRestart() error {
-	ncutils.TraceCaller()
+	logRestartRequest("hard restart")
 	return hardRestart()
+}
+
+// logRestartRequest names the caller at level 0. TraceCaller writes slog.Debug,
+// which the Windows service log drops, so a restart otherwise looks spontaneous.
+func logRestartRequest(kind string) {
+	caller := "unknown"
+	if pc, file, line, ok := runtime.Caller(2); ok {
+		name := "unknown"
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			name = fn.Name()
+		}
+		caller = fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
+	}
+	logger.Log(0, fmt.Sprintf("daemon %s requested by %s", kind, caller))
 }
 
 // Stop - stops a system daemon

@@ -173,6 +173,7 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 		logger.Log(0, "failed to save server context", err.Error())
 	}
 	UpdateHostFromServer(&registerResponse.RequestedHost)
+	logger.Log(0, "restart trigger: device registration")
 	if err := daemon.Restart(); err != nil {
 		logger.Log(3, "daemon restart failed:", err.Error())
 	}

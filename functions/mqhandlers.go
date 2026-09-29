@@ -253,7 +253,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 	}
 	if peerUpdate.MetricsPort != 0 && peerUpdate.MetricsPort != server.MetricsPort {
-		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
+		logger.Log(0, fmt.Sprintf("restart trigger: peer update metrics port %d -> %d", server.MetricsPort, peerUpdate.MetricsPort))
 		server.MetricsPort = peerUpdate.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
@@ -408,11 +408,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 	reloadStun := false
 	if peerUpdate.Stun != server.Stun {
+		logger.Log(0, fmt.Sprintf("restart trigger: peer update stun %t -> %t", server.Stun, peerUpdate.Stun))
 		server.Stun = peerUpdate.Stun
 		saveServerConfig = true
 		reloadStun = true
 	}
 	if peerUpdate.StunServers != server.StunServers {
+		logger.Log(0, fmt.Sprintf("restart trigger: peer update stun servers %q -> %q", server.StunServers, peerUpdate.StunServers))
 		server.StunServers = peerUpdate.StunServers
 		saveServerConfig = true
 		reloadStun = true
@@ -635,6 +637,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if restartDaemon {
+		logger.Log(0, fmt.Sprintf("restart trigger: host update action %v", hostUpdate.Action))
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
 		}
@@ -930,7 +933,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		config.WriteServerConfig()
 	}
 	if pullResponse.ServerConfig.MetricsPort != 0 && pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
-		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		logger.Log(0, fmt.Sprintf("restart trigger: mq fallback metrics port %d -> %d", server.MetricsPort, pullResponse.ServerConfig.MetricsPort))
 		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
@@ -1051,11 +1054,13 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 	reloadStun := false
 	if pullResponse.ServerConfig.Stun != server.Stun {
+		logger.Log(0, fmt.Sprintf("restart trigger: mq fallback stun %t -> %t", server.Stun, pullResponse.ServerConfig.Stun))
 		server.Stun = pullResponse.ServerConfig.Stun
 		saveServerConfig = true
 		reloadStun = true
 	}
 	if pullResponse.ServerConfig.StunServers != server.StunServers {
+		logger.Log(0, fmt.Sprintf("restart trigger: mq fallback stun servers %q -> %q", server.StunServers, pullResponse.ServerConfig.StunServers))
 		server.StunServers = pullResponse.ServerConfig.StunServers
 		saveServerConfig = true
 		reloadStun = true
