@@ -26,15 +26,15 @@ func WindowsShouldCopyState(name string) bool {
 	}
 }
 
-// CopyWindowsLegacyState copies config from the pre-split Program Files (x86)
-// directory into ProgramData. Existing destination files are left alone.
+// CopyWindowsLegacyState copies config from Program Files (x86)\Netclient into
+// Program Files\Netclient. Existing destination files are left alone.
 // A no-op when there is nothing to copy, including on non-Windows hosts.
 func CopyWindowsLegacyState() error {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
 	legacy := strings.TrimRight(WindowsLegacyDir, `\/`)
-	dest := strings.TrimRight(WindowsDataPath, `\/`)
+	dest := strings.TrimRight(WindowsInstallDir, `\/`)
 	if !legacyHasState(legacy) {
 		return nil
 	}

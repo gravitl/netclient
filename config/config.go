@@ -30,11 +30,9 @@ const (
 	LinuxAppDataPath = "/etc/netclient/"
 	// MacAppDataPath - mac path
 	MacAppDataPath = "/Applications/Netclient/"
-	// WindowsDataPath is machine-wide mutable state (config, session, logs).
-	WindowsDataPath = `C:\ProgramData\Netclient\`
-	// WindowsInstallDir holds the 64-bit binary, WinSW wrapper, and wintun.dll.
+	// WindowsInstallDir holds the 64-bit binary, WinSW, config, and logs.
 	WindowsInstallDir = `C:\Program Files\Netclient\`
-	// WindowsLegacyDir is the pre-split layout that mixed the binary and config.
+	// WindowsLegacyDir is the previous install under Program Files (x86).
 	WindowsLegacyDir = `C:\Program Files (x86)\Netclient\`
 	// Timeout timelimit for obtaining/releasing lockfile
 	Timeout = time.Second * 5
@@ -362,7 +360,7 @@ func WriteNetclientConfig() error {
 // GetNetclientPath - returns path to netclient config directory
 func GetNetclientPath() string {
 	if runtime.GOOS == "windows" {
-		return WindowsDataPath
+		return WindowsInstallDir
 	} else if runtime.GOOS == "darwin" {
 		return MacAppDataPath
 	} else {

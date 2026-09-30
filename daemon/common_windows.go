@@ -28,9 +28,6 @@ func install() error {
 	if err := os.MkdirAll(config.GetNetclientInstallDir(), 0755); err != nil {
 		return fmt.Errorf("failed to create installation directory: %w", err)
 	}
-	if err := os.MkdirAll(config.GetNetclientPath(), 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
 	stopLegacyService()
 	if err := writeServiceConfig(); err != nil {
 		os.Exit(3)
@@ -167,7 +164,7 @@ func cleanUp() error {
 	for _, dir := range dirs {
 		err := removeInstallTree(dir)
 		// The install folder is still locked by this process. The delayed sweep
-		// removes it. A failed ProgramData delete is a real error.
+		// removes it. A failed config-directory delete is a real error.
 		if err != nil && strings.TrimRight(dir, `\/`) == dataDir {
 			allErrors = append(allErrors, err.Error())
 		}

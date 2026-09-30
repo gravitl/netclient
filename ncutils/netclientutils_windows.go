@@ -14,7 +14,7 @@ import (
 //go:embed windowsdaemon/winsw.exe
 var winswContent embed.FS
 
-// WIN_PATH is the 64-bit install directory. Config lives in ProgramData; see config.WindowsDataPath.
+// WIN_PATH is the 64-bit install directory. Config and logs live here too.
 const WIN_PATH = `C:\Program Files\Netclient\`
 
 // RunCmd - runs a local command
