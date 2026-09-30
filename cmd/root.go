@@ -213,6 +213,11 @@ func migrateConfigFiles() error {
 
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
+	// Before the first read: a missing Program Files netclient.json is created
+	// empty, which would hide the legacy Program Files (x86) host.
+	if err := config.CopyWindowsLegacyState(); err != nil {
+		logger.Log(0, "failed to copy legacy windows config:", err.Error())
+	}
 	config.CheckUID()
 	daemon.RemoveAllLockFiles()
 	err := migrateConfigFiles()

@@ -73,7 +73,7 @@ Daemon persists **user** session state under the netclient config directory. **S
 |----------|-------------------|
 | Linux | `/etc/netclient/.uisession.json` |
 | macOS | `/Applications/Netclient/.uisession.json` |
-| Windows | `C:\Program Files (x86)\Netclient\.uisession.json` |
+| Windows | `C:\Program Files\Netclient\.uisession.json` |
 
 On first load, netclient migrates `.uisession.json` from the legacy `netmaker-rac` directory if present. If still missing, user fields are migrated from legacy `ctx.json`; any server hostname in legacy files is written to `.serverctx`.
 
@@ -558,7 +558,7 @@ Netmaker server config (`server_config`) exposes auth-related fields (`authprovi
 
 | Topic | Detail |
 |-------|--------|
-| Netclient config dir | Linux: `/etc/netclient/`, macOS: `/Applications/Netclient/`, Windows: `C:\Program Files (x86)\Netclient\` |
+| Netclient config dir | Linux: `/etc/netclient/`, macOS: `/Applications/Netclient/`, Windows: `C:\Program Files\Netclient\` |
 | UI user session | `.uisession.json` — username, JWT, tenant, `server_config` (daemon-owned; UI reads via API) |
 | Desired reconnect | `desired_connections.json` — per user(+tenant) networks, `want_igw`, `auto_exit`, egress |
 | Daemon server context | `.serverctx`, `servers.json` |
