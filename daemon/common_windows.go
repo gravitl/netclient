@@ -68,22 +68,14 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	// Always try to stop and uninstall existing service before installing
-	// This prevents "service already exists" errors
-	slog.Info("ensuring any existing service is stopped and uninstalled before installation")
-	_ = runWinSWCMD("stop")
-	time.Sleep(time.Second * 2)
-	_ = runWinSWCMD("uninstall")
-	time.Sleep(time.Second * 2)
+	// The existing service may still be the old WinSW under Program Files (x86).
+	// The new wrapper cannot stop that registration (error 1061), and then
+	// install fails because the service id is taken (error 1073).
+	deleteWindowsService()
 
-	// Now install the service
 	if err = runWinSWCMD("install"); err != nil {
-		// If install still fails, try one more time with stop/uninstall
-		slog.Warn("service install failed, retrying after stop/uninstall", "error", err)
-		_ = runWinSWCMD("stop")
-		time.Sleep(time.Second * 2)
-		_ = runWinSWCMD("uninstall")
-		time.Sleep(time.Second * 2)
+		slog.Warn("service install failed, retrying after removing the existing service", "error", err)
+		deleteWindowsService()
 		if err = runWinSWCMD("install"); err != nil {
 			return fmt.Errorf("failed to install service: %w", err)
 		}
@@ -326,6 +318,30 @@ func runWinSWCMD(command string) error {
 		logger.Log(1, "successfully ran "+command+" of Windows Netclient daemon")
 	}
 	return err
+}
+
+// deleteWindowsService removes the netclient service by name, including one
+// registered by the old Program Files (x86) WinSW.
+func deleteWindowsService() {
+	slog.Info("removing existing netclient service if present")
+	stopOut, stopErr := exec.Command("sc.exe", "stop", "netclient").CombinedOutput()
+	if stopErr != nil && !serviceControlBenign(stopOut, stopErr) {
+		logger.Log(0, "sc stop netclient:", strings.TrimSpace(string(stopOut)))
+	}
+	time.Sleep(time.Second * 2)
+	delOut, delErr := exec.Command("sc.exe", "delete", "netclient").CombinedOutput()
+	if delErr != nil && !serviceControlBenign(delOut, delErr) {
+		logger.Log(0, "sc delete netclient:", strings.TrimSpace(string(delOut)))
+	}
+	time.Sleep(time.Second)
+}
+
+func serviceControlBenign(out []byte, err error) bool {
+	msg := strings.ToLower(string(out) + " " + err.Error())
+	return strings.Contains(msg, "1060") ||
+		strings.Contains(msg, "1062") ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "has not been started")
 }
 
 // stopLegacyService removes the WinSW registration that still lives under
