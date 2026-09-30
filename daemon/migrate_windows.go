@@ -1,3 +1,5 @@
+//go:build windows
+
 package daemon
 
 import (
@@ -57,7 +59,7 @@ func MigrateWindowsService() bool {
 		return false
 	}
 	winsw := filepath.Join(installDir, "winsw.exe")
-	if err := exec.Command("sc.exe", "config", "netclient", "binPath=", winsw).Run(); err != nil {
+	if err := exec.Command("sc.exe", "config", "netclient", "binPath=\""+winsw+"\"").Run(); err != nil {
 		logger.Log(0, "windows layout: cannot retarget service:", err.Error())
 		return false
 	}

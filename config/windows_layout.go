@@ -10,6 +10,8 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
+const windowsStateMigratedMarker = ".state-migrated"
+
 // WindowsShouldCopyState reports whether a legacy install file is config
 // rather than a binary. Executables, driver DLLs, and the WinSW xml stay in
 // the install directory.
@@ -19,6 +21,7 @@ func WindowsShouldCopyState(name string) bool {
 	case strings.HasSuffix(lower, ".exe"),
 		strings.HasSuffix(lower, ".dll"),
 		lower == "winsw.xml",
+		lower == windowsStateMigratedMarker,
 		strings.HasSuffix(lower, ".tmp"):
 		return false
 	default:
@@ -26,9 +29,18 @@ func WindowsShouldCopyState(name string) bool {
 	}
 }
 
+func requiredLegacyState(name string) bool {
+	switch strings.ToLower(filepath.Base(name)) {
+	case "netclient.json", "servers.json":
+		return true
+	default:
+		return false
+	}
+}
+
 // CopyWindowsLegacyState copies config from Program Files (x86)\Netclient into
-// Program Files\Netclient. Existing destination files are left alone.
-// A no-op when there is nothing to copy, including on non-Windows hosts.
+// Program Files\Netclient. The copy is finished only after .state-migrated is
+// written. A no-op when there is nothing to copy, including on non-Windows hosts.
 func CopyWindowsLegacyState() error {
 	if runtime.GOOS != "windows" {
 		return nil
@@ -38,14 +50,18 @@ func CopyWindowsLegacyState() error {
 	if !legacyHasState(legacy) {
 		return nil
 	}
-	if _, err := os.Stat(filepath.Join(dest, "netclient.json")); err == nil {
+	marker := filepath.Join(dest, windowsStateMigratedMarker)
+	if _, err := os.Stat(marker); err == nil {
 		return nil
 	}
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
 	logger.Log(0, "copying netclient state from", legacy, "to", dest)
-	return copyStateTree(legacy, dest)
+	if err := copyStateTree(legacy, dest); err != nil {
+		return err
+	}
+	return os.WriteFile(marker, nil, 0600)
 }
 
 func legacyHasState(dir string) bool {
@@ -65,12 +81,13 @@ func copyStateTree(src, dst string) error {
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
+	var failed error
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
 		if entry.IsDir() {
 			if err := copyStateTree(srcPath, dstPath); err != nil {
-				return err
+				failed = err
 			}
 			continue
 		}
@@ -81,10 +98,14 @@ func copyStateTree(src, dst string) error {
 			continue
 		}
 		if err := copyStateFile(srcPath, dstPath); err != nil {
-			return err
+			_ = os.Remove(dstPath)
+			logger.Log(0, "legacy state copy failed:", dstPath, err.Error())
+			if requiredLegacyState(entry.Name()) {
+				failed = err
+			}
 		}
 	}
-	return nil
+	return failed
 }
 
 func copyStateFile(src, dst string) error {
