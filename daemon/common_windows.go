@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -134,6 +136,9 @@ func cleanUp() error {
 		}
 	}
 
+	// The service may still be the pre-split WinSW under Program Files (x86).
+	stopLegacyService()
+
 	// Stop the service first
 	slog.Info("stopping netclient service")
 	if err := runWinSWCMD("stop"); err != nil {
@@ -161,15 +166,21 @@ func cleanUp() error {
 	// Wait a bit more to ensure all file handles are released
 	time.Sleep(time.Second * 2)
 
-	for _, dir := range []string{
+	dirs := []string{
 		config.GetNetclientPath(),
 		config.GetNetclientInstallDir(),
 		config.WindowsLegacyDir,
-	} {
-		if err := removeInstallTree(dir); err != nil {
+	}
+	dataDir := strings.TrimRight(config.GetNetclientPath(), `\/`)
+	for _, dir := range dirs {
+		err := removeInstallTree(dir)
+		// The install folder is still locked by this process. The delayed sweep
+		// removes it. A failed ProgramData delete is a real error.
+		if err != nil && strings.TrimRight(dir, `\/`) == dataDir {
 			allErrors = append(allErrors, err.Error())
 		}
 	}
+	scheduleTreeRemoval(dirs...)
 
 	if len(allErrors) > 0 {
 		return fmt.Errorf("uninstall completed with errors: %s", strings.Join(allErrors, "; "))
@@ -329,6 +340,24 @@ func stopLegacyService() {
 	time.Sleep(time.Second * 2)
 	_, _ = ncutils.RunCmdFormatted(fmt.Sprintf(`"%s" uninstall`, winsw), false)
 	time.Sleep(time.Second * 2)
+}
+
+// scheduleTreeRemoval deletes leftover install folders after this process
+// exits. The uninstall command itself is running from Program Files\Netclient.
+func scheduleTreeRemoval(dirs ...string) {
+	script := "timeout /t 8 /nobreak >nul"
+	for _, dir := range dirs {
+		dir = strings.TrimRight(dir, `\/`)
+		if dir == "" {
+			continue
+		}
+		script += fmt.Sprintf(` & if exist "%s" rd /s /q "%s"`, dir, dir)
+	}
+	cmd := exec.Command("cmd.exe", "/C", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008}
+	if err := cmd.Start(); err != nil {
+		slog.Warn("failed to schedule leftover folder removal", "error", err)
+	}
 }
 
 func removeInstallTree(dir string) error {
