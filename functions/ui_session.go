@@ -49,9 +49,17 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 
 	alreadyRegistered := IsRegisteredToServer(server)
 	tenantMatches := sessionTenantMatches(server, tenantID)
+	// The host on this machine is owned by whoever registered it. A different
+	// user must re-register so the server rebinds the device; otherwise join
+	// fails with "host does not belong to user".
+	owner := ""
+	if host := config.Netclient(); host != nil {
+		owner = strings.TrimSpace(host.OwnerUsername)
+	}
+	ownerMatches := owner == "" || owner == username
 	applySessionTenant(server, tenantID)
 
-	if !alreadyRegistered || !tenantMatches {
+	if !alreadyRegistered || !tenantMatches || !ownerMatches {
 		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
 			return err
 		}
