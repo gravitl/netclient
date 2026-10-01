@@ -194,6 +194,39 @@ func TestSelectExitNodeHandlerAuto(t *testing.T) {
 	assert.Equal(t, "e-near", node.EgressID)
 }
 
+func TestSelectExitNodeHandlerEnforcedAuto(t *testing.T) {
+	setStatus(Idle)
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "token-123")
+
+	auto := false
+	SetHandlers(HandlerDeps{
+		NetworkRequiresAutoExit: func(network, server, token string) (bool, error) {
+			assert.Equal(t, "net1", network)
+			return true, nil
+		},
+		SelectNearestExitNode: func(network, server, token string) (*models.DeviceExitNode, error) {
+			auto = true
+			return &models.DeviceExitNode{EgressID: "e-near", Name: "nearest", Selected: true}, nil
+		},
+		SelectExitNode: func(network, server, token, egressID string) (*models.DeviceExitNode, error) {
+			t.Fatal("clear must not opt out when auto exit is required")
+			return nil, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/networks/net1/exit_node", strings.NewReader(`{"egress_id":""}`))
+	req.SetPathValue("network", "net1")
+	rec := httptest.NewRecorder()
+	selectExitNodeHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, auto)
+	var node models.DeviceExitNode
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &node))
+	assert.Equal(t, "e-near", node.EgressID)
+}
+
 func TestSelectExitNodeHandlerRequiresSession(t *testing.T) {
 	clearSessionForTest()
 	req := httptest.NewRequest(http.MethodPut, "/networks/net1/exit_node", strings.NewReader(`{"egress_id":"e1"}`))

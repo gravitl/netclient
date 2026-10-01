@@ -656,7 +656,11 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 		node *models.DeviceExitNode
 		err  error
 	)
-	if req.Auto {
+	enforced, enfErr := networkRequiresAutoExit(network, server, token)
+	if enfErr != nil {
+		uiLog(0, "uiapi: exit auto-select requirement check failed:", enfErr.Error())
+	}
+	if req.Auto || enforced {
 		node, err = selectNearestExitNode(network, server, token)
 	} else {
 		node, err = selectExitNode(network, server, token, req.EgressID)

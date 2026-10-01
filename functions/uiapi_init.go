@@ -24,6 +24,7 @@ func init() {
 		GetSelectedExitNode:       getSelectedExitNodeForUI,
 		SelectExitNode:            selectExitNodeForUI,
 		SelectNearestExitNode:     selectNearestExitNodeForUI,
+		NetworkRequiresAutoExit:   NetworkRequiresAutoExit,
 		RestoreDesiredConnections: RestoreDesiredConnections,
 	})
 }

@@ -35,6 +35,11 @@ func connectNetwork(network string, restart bool) error {
 	if node.Connected {
 		return errors.New("node already connected")
 	}
+	if token := uiapi.SessionAuthToken(); token != "" {
+		if err := applyEnforcedAutoExit(network, token); err != nil {
+			slog.Warn("auto exit select on connect failed", "network", network, "error", err)
+		}
+	}
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {

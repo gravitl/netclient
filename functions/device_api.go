@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -238,7 +239,82 @@ func RegisterDeviceOnServer(server, token string) error {
 
 // FetchDeviceNetworks returns networks visible to the user from the server device API.
 func FetchDeviceNetworks(server, token string) ([]models.DeviceNetwork, error) {
-	return fetchDeviceNetworksImpl(server, token)
+	networks, err := fetchDeviceNetworksImpl(server, token)
+	if err != nil {
+		return nil, err
+	}
+	enforceAutoExitForConnected(networks, token)
+	return networks, nil
+}
+
+var autoExitEnforced sync.Map
+
+// networkAutoSelectExit reports whether the server requires auto exit selection.
+// Tests replace this.
+var networkAutoSelectExit = func(network, server, token string) (bool, error) {
+	networks, err := fetchDeviceNetworksImpl(server, token)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range networks {
+		if n.NetworkID == network {
+			return n.AutoSelectExitNode, nil
+		}
+	}
+	return false, nil
+}
+
+// selectNearestExitNode selects the nearest exit. Tests replace this.
+var selectNearestExitNode = SelectNearestDeviceExitNode
+
+// NetworkRequiresAutoExit reports whether the network forces auto exit selection.
+func NetworkRequiresAutoExit(network, server, token string) (bool, error) {
+	if strings.TrimSpace(token) == "" || network == "" {
+		return false, nil
+	}
+	return networkAutoSelectExit(network, server, token)
+}
+
+// applyEnforcedAutoExit selects the nearest exit before a connect is published
+// when the network requires it. Missing exits do not fail the connect.
+func applyEnforcedAutoExit(network, token string) error {
+	if strings.TrimSpace(token) == "" {
+		return nil
+	}
+	required, err := networkAutoSelectExit(network, config.CurrServer, token)
+	if err != nil || !required {
+		return err
+	}
+	if _, err := selectNearestExitNode(network, token); err != nil {
+		return err
+	}
+	autoExitEnforced.Store(network, struct{}{})
+	return nil
+}
+
+func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) {
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	nodes := config.GetNodes()
+	for _, n := range networks {
+		if !n.AutoSelectExitNode {
+			autoExitEnforced.Delete(n.NetworkID)
+			continue
+		}
+		if _, done := autoExitEnforced.Load(n.NetworkID); done {
+			continue
+		}
+		node, ok := nodes[n.NetworkID]
+		if !ok || !node.Connected {
+			continue
+		}
+		autoExitEnforced.Store(n.NetworkID, struct{}{})
+		if _, err := selectNearestExitNode(n.NetworkID, token); err != nil {
+			autoExitEnforced.Delete(n.NetworkID)
+			slog.Warn("auto exit select for connected network failed", "network", n.NetworkID, "error", err)
+		}
+	}
 }
 
 var fetchDeviceNetworksImpl = func(server, token string) ([]models.DeviceNetwork, error) {
