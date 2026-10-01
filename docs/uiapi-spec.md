@@ -48,17 +48,6 @@ sequenceDiagram
 
 Install and start via `netclient install`. The desktop API starts as soon as the daemon process is up — including on first run before any server is registered.
 
-### WireGuard dependency
-
-`GET /healthz` reports whether the platform WireGuard utility is installed:
-
-| OS | Utility checked |
-|----|-----------------|
-| Linux/macOS | `wg-quick` |
-| Windows | `wireguard.exe` |
-
-If missing, `status` is `"missing_dependencies"`. The UI should block connect actions and prompt the user to install WireGuard.
-
 ## Security
 
 The API binds to `127.0.0.1:61820` only. No request authentication header is required — localhost access is the security boundary.
@@ -93,16 +82,11 @@ On daemon restart, user session is restored from `.uisession.json`; server is re
   "current_version": "1.6.0",
   "latest_version": "1.6.0",
   "os": "darwin",
-  "arch": "arm64",
-  "wireguard_util": "wg-quick",
-  "is_wireguard_util_installed": true
+  "arch": "arm64"
 }
 ```
 
-| Field | Values |
-|-------|--------|
-| `status` | `"ok"` \| `"missing_dependencies"` |
-| `wireguard_util` | `"wg-quick"` \| `"wireguard.exe"` |
+`status` is `"ok"` when the daemon API is reachable.
 
 ---
 
@@ -474,12 +458,11 @@ Disconnect from a network.
 ```
 1. Ensure netclient daemon is installed and running (netclient install)
 2. Poll GET /healthz until reachable (or show "daemon not running")
-3. If healthz.status == "missing_dependencies" → prompt WireGuard install
-4. POST /server { server: "<hostname>" }
-5. User authenticates with Netmaker (SSO in browser / embedded webview)
-6. PUT /session { username, auth_token: <jwt> }
-7. Poll GET /server until status == "running"
-8. GET /connections → render network list
+3. POST /server { server: "<hostname>" }
+4. User authenticates with Netmaker (SSO in browser / embedded webview)
+5. PUT /session { username, auth_token: <jwt> }
+6. Poll GET /server until status == "running"
+7. GET /connections → render network list
 ```
 
 ### Returning user
