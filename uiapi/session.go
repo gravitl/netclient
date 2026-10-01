@@ -251,6 +251,12 @@ func clearSession(clearServer bool) error {
 	return saveUserSession()
 }
 
+// EnsureSessionLoaded reads the persisted desktop session into memory.
+// The CLI is a separate process from the daemon and otherwise sees no login.
+func EnsureSessionLoaded() {
+	loadSession()
+}
+
 // IsSessionActive reports whether a non-expired desktop UI session is loaded.
 func IsSessionActive() bool {
 	return isSessionActive()
