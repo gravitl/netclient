@@ -97,6 +97,3 @@ require (
 	gorm.io/driver/sqlite v1.6.0 // indirect
 	gorm.io/gorm v1.31.1 // indirect
 )
-
-// Use the local server so auto_select_exit_node is on models.DeviceNetwork.
-replace github.com/gravitl/netmaker => ../netmaker
