@@ -3,7 +3,9 @@ package uiapi
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,7 +55,7 @@ func Start(ctx context.Context) {
 
 	httpSrv = &http.Server{
 		Addr:              listenAddr,
-		Handler:           loggingMiddleware(mux),
+		Handler:           loggingMiddleware(localhostOnly(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	done := make(chan struct{})
@@ -108,4 +110,33 @@ func stopLocked() error {
 		uiLog(0, "uiapi: shutdown error:", err.Error())
 	}
 	return err
+}
+
+// localhostOnly rejects requests whose Host is not this loopback listener.
+// A DNS-rebinding page connects to 127.0.0.1 but sends Host: <attacker>.
+func localhostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackAPIHost(r.Host) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isLoopbackAPIHost(hostport string) bool {
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+		port = ""
+	}
+	if port != "" && port != "61820" {
+		return false
+	}
+	switch strings.ToLower(strings.Trim(host, "[]")) {
+	case "127.0.0.1", "localhost", "::1":
+		return true
+	default:
+		return false
+	}
 }
