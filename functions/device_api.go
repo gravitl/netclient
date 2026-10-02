@@ -342,6 +342,12 @@ var fetchDeviceNetworksImpl = func(server, token string) ([]models.DeviceNetwork
 func JoinDeviceNetworkOnServer(network, token string) (string, error) {
 	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/networks/"+network+"/join", token, nil)
 	if err != nil {
+		// Device approval answers with 202 and "host approval pending". That is
+		// the request succeeding, not a failed join.
+		var statusErr ncutils.ErrStatusNotOk
+		if errors.As(err, &statusErr) && statusErr.Status == http.StatusAccepted {
+			return models.DeviceJoinStatusPending, nil
+		}
 		return "", err
 	}
 	var result models.DeviceJoinResult

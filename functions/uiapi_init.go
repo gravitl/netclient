@@ -42,6 +42,9 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if status == models.DeviceJoinStatusPending {
+		return status, nil
+	}
 	_, _, _, err = Pull(false, true, false)
 	if err != nil {
 		return "", err
