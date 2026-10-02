@@ -420,7 +420,7 @@ Returns the `Connection` object for that network.
 
 **Behavior**
 
-1. Validates internet-gateway rules (only one IGW connection allowed).
+1. Connects the network. If another connected network already has an exit node, this network is connected without one (any selected exit on it is cleared, and auto-exit is not applied).
 2. If `server_config.rac_restrict_to_single_network` is true, disconnects all other connected networks first.
 3. Calls `Connect()` → updates node config, publishes to server, **restarts daemon**.
 4. Status transitions: `"loading"` → `"running"`.
@@ -430,7 +430,7 @@ Returns the `Connection` object for that network.
 | Code | Example message |
 |------|-----------------|
 | `400` | No session / not registered |
-| `500` | `"no such network"`, `"node already connected"`, `"can have only one active connection to internet gateway"` |
+| `500` | `"no such network"`, `"node already connected"` |
 
 **UI guidance:** Show a spinner while `GET /server` reports `"loading"`. Connect can take several seconds due to daemon restart.
 
@@ -522,7 +522,7 @@ Common operational errors from connect/disconnect:
 
 - `"no such network"` — host not joined to that network
 - `"node already connected"` / `"node is already disconnected"` — refresh connections list
-- `"can have only one active connection to internet gateway"` — disconnect existing IGW network first
+- `"Exit node selection failed for <network> because <other> is already using an exit node. <network> will remain connected without one"` — selecting an exit on a second network is refused while one is already connected. Connecting that network still succeeds, without an exit node.
 
 ## User authentication (desktop)
 

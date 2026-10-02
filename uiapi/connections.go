@@ -1,7 +1,6 @@
 package uiapi
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/gravitl/netclient/config"
@@ -49,47 +48,7 @@ func listConnections() (map[string]*Connection, error) {
 	return result, nil
 }
 
-func nodeHasInternetGateway(network string) bool {
-	node := config.GetNode(network)
-	if !node.Connected {
-		return false
-	}
-	for _, peer := range config.Netclient().HostPeers {
-		for _, cidr := range peer.AllowedIPs {
-			if cidr.String() == "0.0.0.0/0" || cidr.String() == "::/0" {
-				return true
-			}
-		}
-	}
-	_ = node
-	return config.Netclient().CurrGwNmIP != nil
-}
-
-func connectedInternetGatewayNetwork(except string) string {
-	for network := range config.GetNodes() {
-		if network == except {
-			continue
-		}
-		if nodeHasInternetGateway(network) {
-			return network
-		}
-	}
-	return ""
-}
-
-func validateConnect(network string) error {
-	if igwNet := connectedInternetGatewayNetwork(network); igwNet != "" {
-		if wouldConnectAsIGW(network) {
-			return fmt.Errorf("can have only one active connection to internet gateway")
-		}
-	}
-	return nil
-}
-
 func prepareConnect(network string) ([]string, error) {
-	if err := validateConnect(network); err != nil {
-		return nil, err
-	}
 	if !racRestrictToSingleNetwork() {
 		return nil, nil
 	}
@@ -103,15 +62,42 @@ func prepareConnect(network string) ([]string, error) {
 	return disconnect, nil
 }
 
-func wouldConnectAsIGW(network string) bool {
-	server := config.GetServer(config.CurrServer)
-	if server == nil {
+// ActiveExitNetwork is another connected network that already owns the default
+// route. The network being connected is not treated as that gateway.
+func ActiveExitNetwork(except string) string {
+	if !hostHasDefaultRoute() {
+		return ""
+	}
+	user, tenant := SessionIdentity()
+	if config.GetDesiredWantIGW(user, tenant) {
+		name := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+		if name == except {
+			return ""
+		}
+		if name != "" && config.GetNode(name).Connected {
+			return name
+		}
+	}
+	for name, node := range config.GetNodes() {
+		if name == except || !node.Connected {
+			continue
+		}
+		return name
+	}
+	return ""
+}
+
+func hostHasDefaultRoute() bool {
+	nc := config.Netclient()
+	if nc == nil {
 		return false
 	}
-	// conservative check: if host already has default gw set, another IGW connect is blocked
-	if config.Netclient().CurrGwNmIP != nil {
-		for _, node := range config.GetNodes() {
-			if node.Network != network && node.Connected {
+	if len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0 {
+		return true
+	}
+	for _, peer := range nc.HostPeers {
+		for _, cidr := range peer.AllowedIPs {
+			if cidr.String() == "0.0.0.0/0" || cidr.String() == "::/0" {
 				return true
 			}
 		}

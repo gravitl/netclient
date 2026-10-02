@@ -36,7 +36,13 @@ func connectNetwork(network string, restart bool) error {
 		return errors.New("node already connected")
 	}
 	if token := uiapi.SessionAuthToken(); token != "" {
-		if err := applyEnforcedAutoExit(network, token); err != nil {
+		if other := uiapi.ActiveExitNetwork(network); other != "" {
+			// Another network already has the exit. Join this one without one.
+			if err := DropNetworkExitSelection(network, token); err != nil {
+				slog.Warn("failed to clear exit so network can connect without one",
+					"network", network, "active_exit_network", other, "error", err)
+			}
+		} else if err := applyEnforcedAutoExit(network, token); err != nil {
 			slog.Warn("auto exit select on connect failed", "network", network, "error", err)
 		}
 	}

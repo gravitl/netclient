@@ -309,6 +309,9 @@ func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) 
 		if !ok || !node.Connected {
 			continue
 		}
+		if uiapi.ActiveExitNetwork(n.NetworkID) != "" {
+			continue
+		}
 		autoExitEnforced.Store(n.NetworkID, struct{}{})
 		if _, err := selectNearestExitNode(n.NetworkID, token); err != nil {
 			autoExitEnforced.Delete(n.NetworkID)
@@ -523,6 +526,16 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 	}
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
 	return &pick, nil
+}
+
+// DropNetworkExitSelection clears the server exit on one network and leaves the
+// saved exit for any other network in place.
+func DropNetworkExitSelection(network, token string) error {
+	if strings.TrimSpace(network) == "" || strings.TrimSpace(token) == "" {
+		return nil
+	}
+	_, err := putDeviceExitNode(network, token, "")
+	return err
 }
 
 func putDeviceExitNode(network, token, egressID string) ([]byte, error) {

@@ -660,6 +660,16 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 	if enfErr != nil {
 		uiLog(0, "uiapi: exit auto-select requirement check failed:", enfErr.Error())
 	}
+	selectingExit := req.Auto || enforced || strings.TrimSpace(req.EgressID) != ""
+	if selectingExit {
+		if igwNet := ActiveExitNetwork(network); igwNet != "" {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: fmt.Sprintf(
+				"Exit node selection failed for %s because %s is already using an exit node. %s will remain connected without one",
+				network, igwNet, network)})
+			return
+		}
+	}
 	if req.Auto || enforced {
 		node, err = selectNearestExitNode(network, server, token)
 	} else {
