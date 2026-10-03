@@ -431,19 +431,28 @@ func SetPeers(replace bool) error {
 		return errors.New("server config not found")
 	}
 	data := getHAEgressDataForProcessing(server.MetricsPort)
+	// Relayed/auto-relayed peers are published with a nil endpoint so WireGuard
+	// can learn the NAT mapping from the first handshake. Incremental peer
+	// updates must not clear that learned address; ReplacePeers intentionally
+	// rebuilds the peer table and may disrupt (caller expects that).
+	var livePeers map[string]wgtypes.Peer
+	if !replace {
+		livePeers, _ = GetPeersFromDevice(ncutils.GetInterfaceName())
+	}
 	for i := range peers {
 		peer := peers[i]
-		if peer.Endpoint != nil && peer.Endpoint.IP == nil {
-			peers[i].Endpoint = nil
+		if peer.Endpoint != nil && (peer.Endpoint.IP == nil || peer.Endpoint.IP.IsUnspecified()) {
+			peer.Endpoint = nil
 		}
-		if !peer.Remove && checkForBetterEndpoint(&peer) {
-			peers[i] = peer
+		if !replace && !peer.Remove {
+			preserveLearnedEndpoint(&peer, livePeers)
 		}
-		// set egress routes on correct peer
-		if !peer.Remove && checkIfEgressHAPeer(&peer, data) {
-			peers[i] = peer
+		if !peer.Remove {
+			_ = checkForBetterEndpoint(&peer)
+			// set egress routes on correct peer
+			_ = checkIfEgressHAPeer(&peer, data)
 		}
-
+		peers[i] = peer
 	}
 
 	GetInterface().Config.Peers = peers
@@ -456,6 +465,30 @@ func SetPeers(replace bool) error {
 		Peers:        peers,
 	}
 	return apply(&config)
+}
+
+// preserveLearnedEndpoint keeps the live WireGuard endpoint when the server
+// omitted one (typical for relayed peers behind NAT). Re-applying a nil
+// endpoint on incremental updates clears that mapping and causes a temporary
+// outage until the next handshake.
+func preserveLearnedEndpoint(peer *wgtypes.PeerConfig, live map[string]wgtypes.Peer) {
+	if peer == nil || peer.Remove || len(live) == 0 {
+		return
+	}
+	if hasExplicitEndpoint(peer.Endpoint) {
+		return
+	}
+	lp, ok := live[peer.PublicKey.String()]
+	if !ok || !hasExplicitEndpoint(lp.Endpoint) {
+		peer.Endpoint = nil
+		return
+	}
+	ep := *lp.Endpoint
+	peer.Endpoint = &ep
+}
+
+func hasExplicitEndpoint(ep *net.UDPAddr) bool {
+	return ep != nil && ep.IP != nil && !ep.IP.IsUnspecified()
 }
 
 // == private ==
