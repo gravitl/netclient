@@ -45,7 +45,12 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 			return err
 		}
 		config.CurrServer = server
+		config.MarkServerContextChanged()
 	}
+
+	// Host JWT is process-global and keyed only by expiry — never reuse a token
+	// minted against a previous CurrServer after a GUI server switch.
+	auth.CleanJwtToken()
 
 	alreadyRegistered := IsRegisteredToServer(server)
 	tenantMatches := sessionTenantMatches(server, tenantID)
@@ -69,6 +74,13 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 		if _, _, _, err := pullForSession(false, true, false); err != nil {
 			return fmt.Errorf("failed to sync with server: %w", err)
 		}
+	}
+	// After POST /server, MQTT may still be on the previous broker. First-time
+	// register already defers an in-process reset; re-login to a known server
+	// must do the same so the daemon picks up the new context (manual
+	// `netclient pull` restarts and masks this).
+	if config.ConsumeServerContextChanged() {
+		registrationResetPending.Store(true)
 	}
 	return nil
 }

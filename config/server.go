@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
@@ -21,6 +22,21 @@ var serverCtxFile = ".serverctx"
 
 // CurrServer - holds the value of current server of client
 var CurrServer string
+
+// serverContextChanged is set when the GUI/CLI switches CurrServer so login can
+// drop a stale host JWT and rebuild MQTT against the new broker.
+var serverContextChanged atomic.Bool
+
+// MarkServerContextChanged records that CurrServer was changed outside of a
+// full register/pull cycle (e.g. desktop POST /server).
+func MarkServerContextChanged() {
+	serverContextChanged.Store(true)
+}
+
+// ConsumeServerContextChanged reports and clears the server-switch flag.
+func ConsumeServerContextChanged() bool {
+	return serverContextChanged.CompareAndSwap(true, false)
+}
 
 // Servers is map of servers indexed by server name
 var Servers map[string]Server

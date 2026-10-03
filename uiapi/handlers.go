@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 )
@@ -47,6 +48,8 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 			return
 		}
+		auth.CleanJwtToken()
+		config.MarkServerContextChanged()
 		config.CurrServer = ""
 		if err := config.SetCurrServerCtxInFile(""); err != nil {
 			uiLog(0, "uiapi: failed to clear server context:", err.Error())
@@ -87,6 +90,11 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
 	}
+	// Drop any cached host JWT from the previous server. Without an active UI
+	// session ReleaseSession never runs, so Pull during the next login would
+	// reuse the old token against the new API ("login fails until netclient pull").
+	auth.CleanJwtToken()
+	config.MarkServerContextChanged()
 	config.CurrServer = domain
 	if err := config.SetCurrServerCtxInFile(domain); err != nil {
 		uiLog(0, "uiapi: failed to persist server context:", err.Error())
