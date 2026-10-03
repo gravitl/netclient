@@ -17,14 +17,16 @@ const (
 )
 
 type windowsManager struct {
-	configs      map[string]Config
-	nrptRuleName string
-	mu           sync.Mutex
+	configs        map[string]Config
+	nrptRuleName   string
+	ifaceGUIDCache map[string]string
+	mu             sync.Mutex
 }
 
 func NewManager(opts ...ManagerOption) (Manager, error) {
 	w := &windowsManager{
-		configs: make(map[string]Config),
+		configs:        make(map[string]Config),
+		ifaceGUIDCache: make(map[string]string),
 	}
 	var options ManagerOptions
 	for _, opt := range opts {
@@ -602,6 +604,14 @@ func (w *windowsManager) getLocalNrptRuleRegistryKey() (registry.Key, error) {
 }
 
 func (w *windowsManager) getInterfaceGUID(name string) (string, error) {
+	if w.ifaceGUIDCache == nil {
+		w.ifaceGUIDCache = make(map[string]string)
+	}
+	if guid, ok := w.ifaceGUIDCache[name]; ok && guid != "" {
+		return guid, nil
+	}
+	// PowerShell cold-start is multi-second on Windows; cache so exit flap /
+	// connect DNS reconfigure does not pay that cost every time.
 	getAdapterCmd := fmt.Sprintf("(Get-NetAdapter -Name '%s').InterfaceGuid", name)
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", getAdapterCmd)
 	output, err := cmd.Output()
@@ -610,5 +620,9 @@ func (w *windowsManager) getInterfaceGUID(name string) (string, error) {
 	}
 
 	guid := strings.TrimSpace(string(output))
+	if guid == "" {
+		return "", fmt.Errorf("empty interface guid for %s", name)
+	}
+	w.ifaceGUIDCache[name] = guid
 	return guid, nil
 }

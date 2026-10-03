@@ -42,8 +42,11 @@ func connectNetwork(network string, restart bool) error {
 				slog.Warn("failed to clear exit so network can connect without one",
 					"network", network, "active_exit_network", other, "error", err)
 			}
-		} else if err := applyEnforcedAutoExit(network, token); err != nil {
-			slog.Warn("auto exit select on connect failed", "network", network, "error", err)
+		} else {
+			// Nearest-exit selection probes every endpoint and does clear→PUT.
+			// Doing that before connect made Auto Exit feel like a hang; run it
+			// after the tunnel is up so peer updates install the exit shortly.
+			scheduleEnforcedAutoExit(network, token)
 		}
 	}
 	node.Connected = true

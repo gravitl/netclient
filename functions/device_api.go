@@ -275,8 +275,9 @@ func NetworkRequiresAutoExit(network, server, token string) (bool, error) {
 	return networkAutoSelectExit(network, server, token)
 }
 
-// applyEnforcedAutoExit selects the nearest exit before a connect is published
-// when the network requires it. Missing exits do not fail the connect.
+// applyEnforcedAutoExit selects the nearest exit when the network requires it.
+// Missing exits do not fail the caller. Concurrent calls for the same network
+// coalesce so connect + network-list refresh do not double-select.
 func applyEnforcedAutoExit(network, token string) error {
 	if strings.TrimSpace(token) == "" {
 		return nil
@@ -285,11 +286,28 @@ func applyEnforcedAutoExit(network, token string) error {
 	if err != nil || !required {
 		return err
 	}
+	if _, loaded := autoExitEnforced.LoadOrStore(network, struct{}{}); loaded {
+		return nil
+	}
 	if _, err := selectNearestExitNode(network, token); err != nil {
+		autoExitEnforced.Delete(network)
 		return err
 	}
-	autoExitEnforced.Store(network, struct{}{})
 	return nil
+}
+
+// scheduleEnforcedAutoExit starts auto-exit selection without blocking connect.
+func scheduleEnforcedAutoExit(network, token string) {
+	network = strings.TrimSpace(network)
+	token = strings.TrimSpace(token)
+	if network == "" || token == "" {
+		return
+	}
+	go func() {
+		if err := applyEnforcedAutoExit(network, token); err != nil {
+			slog.Warn("auto exit select on connect failed", "network", network, "error", err)
+		}
+	}()
 }
 
 func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) {
@@ -312,9 +330,7 @@ func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) 
 		if uiapi.ActiveExitNetwork(n.NetworkID) != "" {
 			continue
 		}
-		autoExitEnforced.Store(n.NetworkID, struct{}{})
-		if _, err := selectNearestExitNode(n.NetworkID, token); err != nil {
-			autoExitEnforced.Delete(n.NetworkID)
+		if err := applyEnforcedAutoExit(n.NetworkID, token); err != nil {
 			slog.Warn("auto exit select for connected network failed", "network", n.NetworkID, "error", err)
 		}
 	}
@@ -420,6 +436,10 @@ func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error)
 
 // GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
 func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, error) {
+	return getDeviceSelectedExitNode(network, token, true)
+}
+
+func getDeviceSelectedExitNode(network, token string, withLatency bool) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
@@ -435,14 +455,17 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 	if node.EgressID == "" {
 		return nil, nil
 	}
-	nodes := []models.DeviceExitNode{node}
-	attachExitNodeLatencies(network, nodes)
-	return &nodes[0], nil
+	if withLatency {
+		nodes := []models.DeviceExitNode{node}
+		attachExitNodeLatencies(network, nodes)
+		return &nodes[0], nil
+	}
+	return &node, nil
 }
 
 // SelectDeviceExitNode selects or clears (empty egressID) the exit node for the device.
-// Switching A→B is not done in one step: clear first (None), then assign. The server
-// rejects a direct switch while RelayedBy still points at the current gateway.
+// Switching A→B clears first without restoring LAN routes between the two PUTs —
+// the server rejects a direct switch while RelayedBy still points at the current gateway.
 // Peer/IGW routes are applied by the MQTT peer update; we do not pull here.
 func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNode, error) {
 	if network == "" {
@@ -451,13 +474,23 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	user, tenant := uiapi.SessionIdentity()
 	egressID = strings.TrimSpace(egressID)
 
-	// Persist desired intent BEFORE the server PUT. MQTT peer updates can arrive
-	// immediately; if want_igw is still false a ChangeDefaultGw=false update will
-	// RestoreInternetGw and wipe CurrGw/DNS right after SetInternetGw.
-	if egressID == "" {
-		_ = config.ClearDesiredExitNode(user, tenant)
-	} else {
+	if egressID != "" {
+		// Persist desired intent BEFORE any server PUT. MQTT peer updates can
+		// arrive as soon as we clear the old exit; want_igw must already point
+		// at the new egress so ChangeDefaultGw=false does not restore LAN DNS.
 		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
+		current, err := getDeviceSelectedExitNode(network, token, false)
+		if err != nil {
+			slog.Warn("failed to read current exit before switch", "network", network, "error", err)
+		}
+		if current != nil && strings.TrimSpace(current.EgressID) != "" && current.EgressID != egressID {
+			if _, err := putDeviceExitNode(network, token, ""); err != nil {
+				_ = config.ClearDesiredExitNode(user, tenant)
+				return nil, err
+			}
+		}
+	} else {
+		_ = config.ClearDesiredExitNode(user, tenant)
 	}
 
 	resp, err := putDeviceExitNode(network, token, egressID)
@@ -501,7 +534,7 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 		return nil, fmt.Errorf("no available exit nodes on network %s", network)
 	}
 	user, tenant := uiapi.SessionIdentity()
-	current, err := GetDeviceSelectedExitNode(network, token)
+	current, err := getDeviceSelectedExitNode(network, token, false)
 	if err != nil {
 		slog.Warn("failed to read current exit before auto-select", "network", network, "error", err)
 	}

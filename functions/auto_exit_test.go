@@ -36,6 +36,13 @@ func TestApplyEnforcedAutoExit(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("expected nearest select before connect, calls=%d", calls)
 	}
+	// Second call coalesces while already marked.
+	if err := applyEnforcedAutoExit("net", "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("duplicate apply must not re-select, calls=%d", calls)
+	}
 
 	networkAutoSelectExit = func(string, string, string) (bool, error) { return false, nil }
 	if err := applyEnforcedAutoExit("other", "tok"); err != nil {
