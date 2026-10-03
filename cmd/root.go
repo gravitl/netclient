@@ -340,7 +340,9 @@ func checkConfig() {
 		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
-	if netclient.Location == "" || netclient.CountryCode == "" {
+	// Skip geo while exit routing is up — GetGeoInfo would report the exit node.
+	if !wireguard.IGWRoutingActive() &&
+		(netclient.Location == "" || netclient.CountryCode == "") {
 		geoInfo, err := utils.GetGeoInfo()
 		if err == nil {
 			if netclient.Location != geoInfo.Location {

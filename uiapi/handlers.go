@@ -350,6 +350,17 @@ func activateConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := connectNetwork(network); err != nil {
 		setStatus(Running)
+		// Join-on-connect can pull a node that is already Connected.
+		if err.Error() == "node already connected" {
+			conn, listErr := listConnections()
+			if listErr != nil {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(conn[network])
+			return
+		}
 		if isJITAccessError(err) {
 			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})

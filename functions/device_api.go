@@ -574,7 +574,13 @@ func ConnectNetwork(network, server, token string) error {
 			return fmt.Errorf("failed to sync after join: %w", err)
 		}
 	}
-	return Connect(network)
+	if err := Connect(network); err != nil {
+		if err.Error() == "node already connected" {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func checkDeviceNetworkAccess(network, server, token string) error {

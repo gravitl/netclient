@@ -475,8 +475,11 @@ func UpdateHostSettings(fallback bool) error {
 		config.SetFirewall()
 		publishMsg = true
 	}
-	if config.Netclient().Location == "" ||
-		config.Netclient().CountryCode == "" || endpointHasChanged {
+	// Skip geo while exit routing is up — GetGeoInfo egresses through the exit
+	// and would overwrite this host's location with the exit node's.
+	if !wireguard.IGWRoutingActive() &&
+		(config.Netclient().Location == "" ||
+			config.Netclient().CountryCode == "" || endpointHasChanged) {
 		geoInfo, err := utils.GetGeoInfo()
 		if err == nil {
 			if config.Netclient().Location != geoInfo.Location {
