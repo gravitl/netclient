@@ -17,3 +17,7 @@ launch.json
 backup/*
 dist/*
 /.idea
+scripts/deploy-netclient.sh
+scripts/hosts.example.txt
+hosts.txt
+scripts/hosts.txt

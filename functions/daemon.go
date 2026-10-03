@@ -31,6 +31,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/stun"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
@@ -62,6 +63,10 @@ type cachedMessage struct {
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
 	daemon.SetDaemonMode()
+	if daemon.MigrateWindowsService() {
+		logger.Log(0, "windows service retargeted; exiting so Program Files can start")
+		return
+	}
 	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
@@ -76,6 +81,21 @@ func Daemon() {
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
 
+	uiapiCtx, uiapiCancel := context.WithCancel(context.Background())
+	defer uiapiCancel()
+	uiapi.Start(uiapiCtx)
+
+	inProcessReset := make(chan chan struct{}, 1)
+	daemon.SetInProcessReset(func(done chan struct{}) {
+		select {
+		case inProcessReset <- done:
+		default:
+			if done != nil {
+				close(done)
+			}
+		}
+	})
+
 	cancel := startGoRoutines(&wg)
 
 	for {
@@ -89,29 +109,41 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
+			if err := uiapi.Stop(); err != nil {
+				slog.Warn("uiapi: error stopping desktop API", "error", err)
+			}
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
 			slog.Debug("daemon received RESET (SIGHUP)")
-			slog.Info("received reset")
-			dns.GetDNSServerInstance().Stop()
-			_ = flow.GetManager().Stop()
-			config.FwClose()
-			//check if it needs to restore the default gateway
-			checkAndRestoreDefaultGateway()
-			// checkAndRestoreDefaultGateway only stops the IGW monitor when the
-			// restore succeeds; keep health checks off across the whole rebuild.
-			rebuilt := wireguard.BeginIfaceRebuild()
-			closeRoutines([]context.CancelFunc{
-				cancel,
-			}, &wg)
-			slog.Info("resetting daemon")
-			slog.Debug("daemon starting startGoRoutines after reset")
-			cancel = startGoRoutines(&wg)
-			rebuilt()
+			cancel = resetDaemonInProcess(cancel, &wg)
+		case done := <-inProcessReset:
+			logger.Log(0, "daemon in-process reset")
+			cancel = resetDaemonInProcess(cancel, &wg)
+			if done != nil {
+				close(done)
+			}
 		}
 	}
+}
+
+// resetDaemonInProcess rebuilds daemon goroutines without exiting, so the
+// desktop API keeps serving the GUI during first-time registration.
+func resetDaemonInProcess(cancel context.CancelFunc, wg *sync.WaitGroup) context.CancelFunc {
+	slog.Info("received reset")
+	dns.GetDNSServerInstance().Stop()
+	_ = flow.GetManager().Stop()
+	config.FwClose()
+	checkAndRestoreDefaultGateway()
+	rebuilt := wireguard.BeginIfaceRebuild()
+	closeRoutines([]context.CancelFunc{
+		cancel,
+	}, wg)
+	slog.Info("resetting daemon")
+	cancel = startGoRoutines(wg)
+	rebuilt()
+	return cancel
 }
 
 // checkAndRestoreDefaultGateway - tear down IGW routes before a daemon reset.
@@ -119,6 +151,7 @@ func checkAndRestoreDefaultGateway() {
 	if len(config.Netclient().CurrGwNmIP) == 0 && len(config.Netclient().CurrGwNmIP6) == 0 {
 		return
 	}
+	logger.Log(0, "tearing down internet gateway (daemon reset)")
 	if err := wireguard.RestoreInternetGw(); err != nil {
 		slog.Error("error restoring default gateway", "error", err.Error())
 	}
@@ -191,11 +224,15 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	updateConfig := false
 
 	config.SetServerCtx()
-	server := config.GetServer(config.CurrServer)
+	uiapi.Refresh()
+	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
 		server.Stun = true
 		server.StunServers = ""
+	} else if serverName != config.CurrServer {
+		config.CurrServer = serverName
+		_ = config.SetCurrServerCtxInFile(serverName)
 	}
 
 	if server.Stun && server.StunServers != "" {
@@ -213,7 +250,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var pullresp models.HostPull
 	var pullErr error
 	if server != nil && server.API != "" {
-		pullresp, _, _, pullErr = Pull(false, true)
+		// refresh=true: ask server to recompute host peer cache on daemon startup.
+		pullresp, _, _, pullErr = Pull(false, true, true)
 		if pullErr != nil {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}
@@ -347,6 +385,16 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	_ = prepareTCPUplinkWireGuard(false)
 
+	// Re-apply last connected networks after Pull so logout-cleared server
+	// state does not keep the iface down across reboot / daemon reset.
+	ApplyDesiredConnectedFlags()
+	if server != nil && server.API != "" {
+		pullresp, pullErr = refreshHostPullAfterReconnect(pullresp, pullErr)
+		if pullErr != nil {
+			slog.Error("fail to refresh config after reconnect", "error", pullErr.Error())
+		}
+	}
+
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
@@ -355,14 +403,20 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
-	if len(pullresp.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
+	if config.AnyNodeConnected() {
+		if len(pullresp.EgressRoutes) > 0 {
+			wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+		}
+		applyInternetGwAfterReconnect(pullresp, pullErr)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		restoreInternetGwAndDNS()
 	}
 	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
-	if pullErr == nil && pullresp.EndpointDetection {
+	if pullErr == nil && pullresp.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {
 		cache.EndpointCache = sync.Map{}
@@ -381,29 +435,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	if proxyuplink.ActiveServer() != nil {
 		proxyuplink.RefreshTCPPeerRoutes()
-	}
-	// set original default gw info
-
-	// check if default gw needs to be set
-	if pullErr == nil {
-		if pullresp.ChangeDefaultGw {
-			gw4, gw6 := wireguard.NormalizeIGWNexthops(pullresp.DefaultGwIp, pullresp.DefaultGwIp6)
-			if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
-				igw, ok := wireguard.FindInternetGwPeer(pullresp.Peers, gw4, gw6)
-				if !ok {
-					slog.Warn("internet gateway peer not found in peer update; skipping default gateway setup")
-				} else {
-					// unlikely that the gwIP is netmaker IP, but still
-					// reset the igw.
-					_ = wireguard.RestoreInternetGw()
-
-					err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
-					if err != nil {
-						slog.Warn("failed to set inet gw", "error", err)
-					}
-				}
-			}
-		}
 	}
 
 	wg.Add(1)
@@ -429,7 +460,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if server.ManageDNS {
-		if dns.GetDNSServerInstance().AddrStr == "" {
+		if dns.GetDNSServerInstance().ListenerAddr() == "" {
 			dns.GetDNSServerInstance().Start()
 		}
 	} else {
@@ -526,13 +557,13 @@ func setupMQTT(server *config.Server) error {
 // should be called for each server host is registered on.
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
+	server = config.NormalizeServerHost(server)
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
-	//clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
+	fmt.Println("=========> ###### subscribing to host peer updates", "host", hostID, "server", server, "topic", fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
 	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
-	//clearRetainedMsg(client, fmt.Sprintf("host/update/%s/%s", hostID.String(), server))
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
@@ -558,6 +589,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 // setDNSSubscriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setDNSSubscriptions(client mqtt.Client, node *config.Node, server string) {
+	server = config.NormalizeServerHost(server)
 	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s/%s", node.Network, server), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", "connection timeout")

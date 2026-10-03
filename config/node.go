@@ -57,11 +57,28 @@ func ReadNodeConfig() error {
 	return nil
 }
 
-// GetNodes returns a copy of the NodeMap
+// GetNodes returns a shallow copy of the node map.
+// Callers can range the result while UpdateNodeMap replaces the live map.
 func GetNodes() NodeMap {
 	nodeMutex.RLock()
 	defer nodeMutex.RUnlock()
-	return Nodes
+	out := make(NodeMap, len(Nodes))
+	for network, node := range Nodes {
+		out[network] = node
+	}
+	return out
+}
+
+// AnyNodeConnected reports whether any network is locally marked connected.
+func AnyNodeConnected() bool {
+	nodeMutex.RLock()
+	defer nodeMutex.RUnlock()
+	for _, node := range Nodes {
+		if node.Connected {
+			return true
+		}
+	}
+	return false
 }
 
 // GetNode returns returns the node configuation of the specified network name

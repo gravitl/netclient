@@ -222,6 +222,7 @@ func RemoveRoutes(addrs []ifaceAddress) {
 		}); err != nil {
 			slog.Warn("error removing route", "error", err.Error())
 		}
+		removeSpecificRouteFromIGWTable(l, addr)
 	}
 }
 
@@ -252,8 +253,42 @@ func SetRoutes(addrs []ifaceAddress) error {
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Warn("error adding route", "error", err.Error())
 		}
+		addSpecificRouteToIGWTable(l, addr, metric)
 	}
 	return nil
+}
+
+// addSpecificRouteToIGWTable installs a more-specific egress CIDR in table 111 so
+// it wins over the IGW default (0.0.0.0/0) when policy routing looks up that table.
+func addSpecificRouteToIGWTable(l netlink.Link, addr ifaceAddress, metric int) {
+	if l == nil || !IGWRoutingActive() || addr.Network.IP == nil {
+		return
+	}
+	dst := addr.Network
+	r := netlink.Route{
+		LinkIndex: l.Attrs().Index,
+		Dst:       &dst,
+		Table:     RouteTableName,
+		Priority:  metric,
+	}
+	if err := netlink.RouteAdd(&r); err != nil && !strings.Contains(err.Error(), "file exists") {
+		slog.Warn("error adding IGW-table egress route", "network", addr.Network.String(), "error", err.Error())
+	}
+}
+
+func removeSpecificRouteFromIGWTable(l netlink.Link, addr ifaceAddress) {
+	if l == nil || addr.Network.IP == nil {
+		return
+	}
+	dst := addr.Network
+	r := netlink.Route{
+		LinkIndex: l.Attrs().Index,
+		Dst:       &dst,
+		Table:     RouteTableName,
+	}
+	if err := netlink.RouteDel(&r); err != nil && !strings.Contains(err.Error(), "no such process") {
+		slog.Debug("remove IGW-table egress route", "network", addr.Network.String(), "error", err.Error())
+	}
 }
 
 // GetDefaultGatewayIp - get current default gateway
@@ -447,8 +482,53 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 				firstErr = err
 			}
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		if err := blockIPv6LeakOnIGW(); err != nil {
+			slog.Error("failed to divert IPv6 off ISP for IPv4-only exit", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
+	reapplyCachedEgressRoutes()
 	return firstErr
+}
+
+// blockIPv6LeakOnIGW pulls IPv6 off the ISP when the exit is IPv4-only.
+// Half-default routes via the netmaker device win over LAN ::/0; without peer
+// ::/0 AllowedIPs the packets fail closed and Happy Eyeballs falls back to IPv4.
+func blockIPv6LeakOnIGW() error {
+	link, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return err
+	}
+	logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+	for _, cidr := range []string{ipv6HalfDefaultLow, ipv6HalfDefaultHigh} {
+		_, dst, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return err
+		}
+		r := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+		if err := netlink.RouteReplace(&r); err != nil {
+			return fmt.Errorf("add %s via %s: %w", cidr, link.Attrs().Name, err)
+		}
+	}
+	return nil
+}
+
+func clearIPv6LeakOnIGW() {
+	link, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return
+	}
+	for _, cidr := range []string{ipv6HalfDefaultLow, ipv6HalfDefaultHigh} {
+		_, dst, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		r := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+		_ = netlink.RouteDel(&r)
+	}
 }
 
 // setInternetGwV6 - set a new default gateway and add rules to activate it
@@ -526,7 +606,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
-	igwHostIPs := InternetGwHostIPs(publicKey)
+	igwHostIPs := IGWUnderlayPinIPs(publicKey)
 	for _, hostIP := range igwHostIPs {
 		if hostIP.To4() != nil {
 			continue
@@ -609,6 +689,9 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 		}
 		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
 	}
+	// Site-egress (and other direct) peer underlays must also stay on main;
+	// otherwise UDP to those hosts matches table-111 0.0.0.0/0 and trombones.
+	pinInternetGwHostRoutes(publicKey)
 
 	//set new default gateway
 	if err := netlink.RouteAdd(&defaultRoute); err != nil {
@@ -689,6 +772,8 @@ func resetDefaultRoutesOnHost() error {
 		if err := restoreInternetGwV4(); err != nil {
 			firstErr = err
 		}
+		// IPv4-only exit may have installed IPv6 divert routes with no CurrGwNmIP6.
+		clearIPv6LeakOnIGW()
 	}
 	if needV6 {
 		if err := restoreInternetGwV6(); err != nil && firstErr == nil {
@@ -871,10 +956,11 @@ func restoreInternetGwV4() (err error) {
 	return config.WriteNetclientConfig()
 }
 
-// pinInternetGwHostRoutes adds main-table rules for exit underlay IPs without
-// changing the IGW table default. Safe when exit routing is already active.
+// pinInternetGwHostRoutes adds main-table rules for exit and non-exit peer
+// underlay IPs without changing the IGW table default. Safe when exit routing
+// is already active.
 func pinInternetGwHostRoutes(publicKey string) {
-	for _, hostIP := range InternetGwHostIPs(publicKey) {
+	for _, hostIP := range IGWUnderlayPinIPs(publicKey) {
 		var cidr string
 		family := netlink.FAMILY_V4
 		if hostIP.To4() != nil {

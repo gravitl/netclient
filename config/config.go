@@ -30,8 +30,10 @@ const (
 	LinuxAppDataPath = "/etc/netclient/"
 	// MacAppDataPath - mac path
 	MacAppDataPath = "/Applications/Netclient/"
-	// WindowsAppDataPath - windows path
-	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
+	// WindowsInstallDir holds the 64-bit binary, WinSW, config, and logs.
+	WindowsInstallDir = `C:\Program Files\Netclient\`
+	// WindowsLegacyDir is the previous install under Program Files (x86).
+	WindowsLegacyDir = `C:\Program Files (x86)\Netclient\`
 	// Timeout timelimit for obtaining/releasing lockfile
 	Timeout = time.Second * 5
 	// ConfigLockfile lockfile to control access to config file
@@ -358,7 +360,7 @@ func WriteNetclientConfig() error {
 // GetNetclientPath - returns path to netclient config directory
 func GetNetclientPath() string {
 	if runtime.GOOS == "windows" {
-		return WindowsAppDataPath
+		return WindowsInstallDir
 	} else if runtime.GOOS == "darwin" {
 		return MacAppDataPath
 	} else {
@@ -366,11 +368,20 @@ func GetNetclientPath() string {
 	}
 }
 
+// GetNetclientInstallDir returns the directory that holds the Windows binary
+// and WinSW files. It is empty on other platforms.
+func GetNetclientInstallDir() string {
+	if runtime.GOOS == "windows" {
+		return WindowsInstallDir
+	}
+	return ""
+}
+
 // GetNetclientInstallPath returns the full path where netclient should be installed based on OS
 func GetNetclientInstallPath() string {
 	switch runtime.GOOS {
 	case "windows":
-		return GetNetclientPath() + "netclient.exe"
+		return WindowsInstallDir + "netclient.exe"
 	case "macos":
 		return "/usr/local/bin/netclient"
 	default:

@@ -12,9 +12,10 @@ import (
 
 // uninstallCmd represents the uninstall command
 var uninstallCmd = &cobra.Command{
-	Use:   "uninstall",
-	Short: "uninstall netclient",
-	Long:  `uninstall netclient and all files:`,
+	Use:     "uninstall",
+	Short:   "uninstall netclient",
+	Long:    `uninstall netclient and all files:`,
+	PreRunE: refuseIfDesktopSession,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("\nremoving netclient binary and supporting files")
