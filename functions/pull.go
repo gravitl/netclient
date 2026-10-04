@@ -99,6 +99,9 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	replacePeers = wireguard.ShouldReplace(pullResponse.Peers)
 	config.UpdateHostPeers(pullResponse.Peers)
 	config.UpdateServerConfig(&pullResponse.ServerConfig)
+	if srv := config.GetServer(serverName); srv != nil {
+		_ = config.RefreshControlPlaneEndpoints(srv)
+	}
 	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
 	keepDisconnected := locallyDisconnectedNetworks()
 	keepConnected := locallyConnectedNetworks()

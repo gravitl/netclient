@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -101,6 +102,22 @@ func TestIGWUnderlayPinIPsIncludesRegisteredExitEndpoints(t *testing.T) {
 	}
 	config.UpdateNetclient(nc)
 
+	config.SetLookupControlPlaneIPsForTest(func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("203.0.113.90")}, nil
+	})
+	t.Cleanup(func() { config.SetLookupControlPlaneIPsForTest(nil) })
+	prevServer := config.CurrServer
+	t.Cleanup(func() {
+		config.CurrServer = prevServer
+		config.DeleteServer("pin-cp-test")
+	})
+	config.CurrServer = "pin-cp-test"
+	config.UpdateServerConfig(&models.ServerConfig{
+		Server: "pin-cp-test",
+		API:    "api.pin.test:443",
+	})
+	_ = config.RefreshControlPlaneEndpoints(config.GetServer("pin-cp-test"))
+
 	got := IGWUnderlayPinIPs(selected.PublicKey().String())
 	gotStr := make([]string, 0, len(got))
 	for _, ip := range got {
@@ -108,4 +125,5 @@ func TestIGWUnderlayPinIPsIncludesRegisteredExitEndpoints(t *testing.T) {
 	}
 	assert.Contains(t, gotStr, "198.51.100.1")
 	assert.Contains(t, gotStr, "203.0.113.50")
+	assert.Contains(t, gotStr, "203.0.113.90", "control-plane API IP must be underlay-pinned")
 }

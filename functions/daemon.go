@@ -215,6 +215,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	// Seed last-known API/broker IPs for underlay pins + scoped DNS fallback.
+	config.SeedControlPlaneEndpointsFromServers()
 	// initialize firewall manager
 	var err error
 	config.FwClose, err = firewall.Init()
@@ -239,6 +241,12 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		stun.LoadStunServers(server.StunServers)
 	} else {
 		stun.SetDefaultStunServers()
+	}
+	// Resolve control-plane IPs while system DNS still works (before exit).
+	if server != nil && (server.API != "" || server.Broker != "") {
+		if config.RefreshControlPlaneEndpoints(server) {
+			_ = config.WriteServerConfig()
+		}
 	}
 	netclientCfg := config.Netclient()
 

@@ -53,6 +53,10 @@ type Server struct {
 	AccessKey      string              `json:"accesskey" yaml:"accesskey"`
 	NameServers    []string            `json:"name_servers"`
 	DnsNameservers []models.Nameserver `json:"dns_nameservers"`
+	// CachedAPIAddrs / CachedBrokerAddrs are last-known control-plane IPs used
+	// for LAN underlay pins (and DNS answers) while an internet exit is active.
+	CachedAPIAddrs    []string `json:"cached_api_addrs,omitempty"`
+	CachedBrokerAddrs []string `json:"cached_broker_addrs,omitempty"`
 }
 
 // TurnConfig - struct to hold turn server config

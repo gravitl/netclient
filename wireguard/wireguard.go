@@ -248,8 +248,8 @@ func NonExitPeerHostIPs(exitPublicKey string) []net.IP {
 
 // IGWUnderlayPinIPs is the full set of host routes that must stay on the LAN
 // path while an internet exit is active: the selected exit itself, every other
-// direct peer (site egress + alternate exits), and any registered exit-probe
-// public endpoints.
+// direct peer (site egress + alternate exits), registered exit-probe public
+// endpoints, and Netmaker control-plane (API / broker) IPs.
 func IGWUnderlayPinIPs(exitPublicKey string) []net.IP {
 	seen := make(map[string]struct{})
 	var ips []net.IP
@@ -269,7 +269,23 @@ func IGWUnderlayPinIPs(exitPublicKey string) []net.IP {
 	addAll(InternetGwHostIPs(exitPublicKey))
 	addAll(NonExitPeerHostIPs(exitPublicKey))
 	addAll(exitNodeUnderlayPinIPs())
+	addAll(config.ControlPlanePinIPs())
 	return ips
+}
+
+// SyncControlPlaneUnderlayPins ensures control-plane IPs are available for
+// underlay pinning. Prefer the startup/pull cache — never block SetInternetGw
+// on a slow/broken DNS lookup or servers.json write (that delayed exit apply).
+func SyncControlPlaneUnderlayPins() {
+	if len(config.ControlPlanePinIPs()) > 0 {
+		return
+	}
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	// Best-effort only; persistence is owned by daemon startup / pull.
+	_ = config.RefreshControlPlaneEndpoints(server)
 }
 
 // CollectUnderlayPinIPs returns LAN host routes for the active exit (exit

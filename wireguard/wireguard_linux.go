@@ -456,6 +456,8 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 	if IsZeroWGPublicKey(publicKey) {
 		return fmt.Errorf("internet gateway peer public key is empty")
 	}
+	// Resolve+pin API/broker on LAN before 0.0.0.0/0 moves onto the exit.
+	SyncControlPlaneUnderlayPins()
 	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
 	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		GetIGWMonitor().Monitor(publicKey, gw4, gw6)

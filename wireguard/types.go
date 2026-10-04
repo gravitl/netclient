@@ -441,6 +441,7 @@ func RefreshInternetGwHostPins() {
 	if !ok {
 		return
 	}
+	SyncControlPlaneUnderlayPins()
 	pinInternetGwHostRoutes(igw.PublicKey.String())
 }
 
