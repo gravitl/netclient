@@ -441,10 +441,27 @@ func reconcileDesiredExit() {
 	}
 
 	go func() {
-		if autoExit && egressID == "" {
-			logger.Log(0, "exit reconcile: re-selecting nearest exit on "+network)
-			if _, err := SelectNearestDeviceExitNode(network, token); err != nil {
-				logger.Log(0, "exit reconcile: nearest re-select failed:", err.Error())
+		// Auto mode must never call SelectDeviceExitNode: that persists a fixed
+		// egress and clears auto_exit. Re-pick nearest using the failure
+		// blacklist only — do not mark the in-flight desired id as failed
+		// (clear→assign windows would otherwise exclude the exit we just chose).
+		if autoExit {
+			logger.Log(0, "exit reconcile: auto-exit re-picking nearest on "+network)
+			exclude := failedEgressExcludeSet()
+			if cur := strings.TrimSpace(egressID); cur != "" {
+				exclude[cur] = struct{}{}
+			}
+			if _, err := selectNearestDeviceExitNodeExcluding(network, token, nil, exclude); err != nil {
+				logger.Log(0, "exit reconcile: auto-exit re-pick failed:", err.Error())
+				// Soft retry: only exclude the current id so a full blacklist
+				// cannot leave the host with no exit when another is up.
+				soft := map[string]struct{}{}
+				if cur := strings.TrimSpace(egressID); cur != "" {
+					soft[cur] = struct{}{}
+				}
+				if _, err2 := selectNearestDeviceExitNodeExcluding(network, token, nil, soft); err2 != nil {
+					logger.Log(0, "exit reconcile: nearest fallback failed:", err2.Error())
+				}
 			}
 			return
 		}

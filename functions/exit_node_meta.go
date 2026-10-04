@@ -1,54 +1,60 @@
 package functions
 
 import (
-	"errors"
 	"math"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
-	//lint:ignore SA1019 Reason: same ICMP probe used for remote-access gateway latency
-	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
 
 const (
-	exitNodeProbeTimeout = time.Second
-	exitNodeLatencyNone  = int64(0)
-	exitNodeLatencyTO    = int64(999)
+	exitNodeLatencyNone = int64(0)
+	exitNodeLatencyTO   = int64(999)
+	defaultMetricsPort  = 51821
 )
 
 func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
 	if len(nodes) == 0 {
 		return
 	}
-	// While an internet exit owns 0.0.0.0/0, pin every exit's public endpoints
-	// on the LAN (same idea as site-egress underlay pins) so ICMP/TCP latency
-	// probes and WG to alternate exits do not trombone through the tunnel.
+	// Keep public underlay pins so WG/control-plane traffic to alternate exits
+	// does not trombone through the current 0.0.0.0/0. Ranking uses overlay
+	// metrics-port probes only (same path as mesh metrics collection).
 	pinIPs := exitNodeEndpointIPs(nodes)
 	wireguard.SetExitNodeUnderlayPinIPs(pinIPs)
 	if len(pinIPs) > 0 {
 		wireguard.RefreshInternetGwHostPins()
 	}
 
+	port := exitNodeMetricsPort()
 	var wg sync.WaitGroup
-	resolved := 0
+	probed := 0
 	for i := range nodes {
-		endpoints := publicProbeHosts(nodes[i].AllowedEndpoints)
-		if len(endpoints) == 0 {
+		addr := exitNodeOverlayProbeAddr(nodes[i])
+		if addr == "" {
 			continue
 		}
-		resolved++
+		probed++
 		wg.Add(1)
-		go func(i int, endpoints []string) {
+		go func(i int, addr string) {
 			defer wg.Done()
-			nodes[i].LatencyMs = measurePublicLatency(endpoints)
-		}(i, endpoints)
+			ok, latency := metrics.PeerConnStatus(addr, port, 1)
+			if ok {
+				nodes[i].LatencyMs = latency
+				return
+			}
+			// Overlay unreachable: do not rank or auto-select this exit even if
+			// the server still reports the routing node Connected.
+			nodes[i].LatencyMs = exitNodeLatencyTO
+			nodes[i].Status = false
+		}(i, addr)
 	}
 	wg.Wait()
 	origin := ""
@@ -59,8 +65,32 @@ func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
 	slog.Info("exit node latencies attached",
 		"network", network,
 		"nodes", len(nodes),
-		"resolved_endpoints", resolved,
+		"overlay_probed", probed,
+		"metrics_port", port,
 	)
+}
+
+func exitNodeMetricsPort() int {
+	if server := config.GetServer(config.CurrServer); server != nil && server.MetricsPort > 0 {
+		return server.MetricsPort
+	}
+	return defaultMetricsPort
+}
+
+// exitNodeOverlayProbeAddr prefers the routing node's IPv4 overlay address,
+// then IPv6 — the same preference PeerConnStatus uses for mesh metrics.
+func exitNodeOverlayProbeAddr(n models.DeviceExitNode) string {
+	if addr := strings.TrimSpace(n.Address); addr != "" {
+		if ip := net.ParseIP(addr); ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() {
+			return ip.String()
+		}
+	}
+	if addr := strings.TrimSpace(n.Address6); addr != "" {
+		if ip := net.ParseIP(addr); ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() {
+			return ip.String()
+		}
+	}
+	return ""
 }
 
 func exitNodeEndpointIPs(nodes []models.DeviceExitNode) []net.IP {
@@ -81,95 +111,6 @@ func exitNodeEndpointIPs(nodes []models.DeviceExitNode) []net.IP {
 		}
 	}
 	return out
-}
-
-// measurePublicLatency races ICMP and TCP 443/22 against public endpoints,
-// matching the remote-access gateway picker. Returns the lowest successful RTT
-// within one second, or 999 on timeout.
-func measurePublicLatency(endpoints []string) int64 {
-	hosts := publicProbeHosts(endpoints)
-	if len(hosts) == 0 {
-		return exitNodeLatencyNone
-	}
-
-	type probe struct {
-		ms  int64
-		err error
-	}
-	n := 3 * len(hosts)
-	ch := make(chan probe, n)
-	for _, host := range hosts {
-		go func(host string) {
-			ms, err := tryICMP(host)
-			ch <- probe{ms, err}
-		}(host)
-		go func(host string) {
-			ms, err := tryTCP(host, 443)
-			ch <- probe{ms, err}
-		}(host)
-		go func(host string) {
-			ms, err := tryTCP(host, 22)
-			ch <- probe{ms, err}
-		}(host)
-	}
-
-	timeout := time.After(exitNodeProbeTimeout)
-	best := exitNodeLatencyTO
-	got := false
-	for i := 0; i < n; i++ {
-		select {
-		case r := <-ch:
-			if r.err == nil && r.ms > 0 && r.ms < best {
-				best = r.ms
-				got = true
-			}
-		case <-timeout:
-			if got {
-				return best
-			}
-			return exitNodeLatencyTO
-		}
-	}
-	if got {
-		return best
-	}
-	return exitNodeLatencyTO
-}
-
-func tryICMP(host string) (int64, error) {
-	pinger, err := ping.NewPinger(host)
-	if err != nil {
-		return 0, err
-	}
-	pinger.Count = 1
-	pinger.Timeout = exitNodeProbeTimeout
-	pinger.SetPrivileged(true)
-	if err := pinger.Run(); err != nil {
-		return 0, err
-	}
-	stats := pinger.Statistics()
-	if stats == nil || stats.PacketsRecv == 0 {
-		return 0, errors.New("no icmp reply")
-	}
-	return positiveMS(stats.AvgRtt), nil
-}
-
-func tryTCP(host string, port int) (int64, error) {
-	start := time.Now()
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), exitNodeProbeTimeout)
-	if err != nil {
-		return 0, err
-	}
-	_ = conn.Close()
-	return positiveMS(time.Since(start)), nil
-}
-
-func positiveMS(d time.Duration) int64 {
-	ms := d.Milliseconds()
-	if ms <= 0 {
-		return 1
-	}
-	return ms
 }
 
 func publicProbeHosts(endpoints []string) []string {
@@ -213,6 +154,9 @@ func markNearestExitNodes(nodes []models.DeviceExitNode, origin string) {
 	bestLat := int64(1 << 30)
 	for i := range nodes {
 		nodes[i].Nearest = false
+		if !nodes[i].Status {
+			continue
+		}
 		lat := nodes[i].LatencyMs
 		if lat > 0 && lat < exitNodeLatencyTO && lat < bestLat {
 			bestLat = lat
@@ -229,6 +173,9 @@ func markNearestExitNodes(nodes []models.DeviceExitNode, origin string) {
 	}
 	bestDist := math.MaxFloat64
 	for i, n := range nodes {
+		if !n.Status {
+			continue
+		}
 		lat, lon, ok := parseLatLon(n.Location)
 		if !ok {
 			continue
@@ -245,15 +192,26 @@ func markNearestExitNodes(nodes []models.DeviceExitNode, origin string) {
 }
 
 // pickNearestAvailableExitNode returns the best exit to auto-connect.
-// Prefers Status=true nodes marked Nearest, then lowest LatencyMs among up nodes,
-// then Nearest among all, then the first entry.
-func pickNearestAvailableExitNode(nodes []models.DeviceExitNode) (models.DeviceExitNode, bool) {
+// Prefers Status=true nodes marked Nearest, then lowest LatencyMs among up
+// nodes. Never selects Status=false (unreachable / disconnected) exits.
+// Egress IDs in exclude are skipped.
+func pickNearestAvailableExitNode(nodes []models.DeviceExitNode, exclude map[string]struct{}) (models.DeviceExitNode, bool) {
 	if len(nodes) == 0 {
 		return models.DeviceExitNode{}, false
+	}
+	excluded := func(id string) bool {
+		if id == "" || len(exclude) == 0 {
+			return false
+		}
+		_, ok := exclude[id]
+		return ok
 	}
 	var bestUp *models.DeviceExitNode
 	for i := range nodes {
 		n := &nodes[i]
+		if excluded(n.EgressID) {
+			continue
+		}
 		if !n.Status {
 			continue
 		}
@@ -275,12 +233,7 @@ func pickNearestAvailableExitNode(nodes []models.DeviceExitNode) (models.DeviceE
 	if bestUp != nil {
 		return *bestUp, true
 	}
-	for i := range nodes {
-		if nodes[i].Nearest {
-			return nodes[i], true
-		}
-	}
-	return nodes[0], true
+	return models.DeviceExitNode{}, false
 }
 
 func parseLatLon(s string) (lat, lon float64, ok bool) {

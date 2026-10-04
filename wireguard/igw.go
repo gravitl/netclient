@@ -49,6 +49,11 @@ var (
 	once       sync.Once
 )
 
+// OnIGWUnhealthy is invoked after exit default routes are torn down because the
+// IGW health monitor marked the gateway unhealthy. Optional; the functions
+// package registers auto-exit failover here. Called asynchronously.
+var OnIGWUnhealthy func(publicKey string)
+
 var (
 	// ifaceRebuilds is non-zero while the netmaker iface is being torn down and
 	// rebuilt. Between Create and Configure the device is up with no peers at all,
@@ -394,6 +399,12 @@ func (s *igwStatus) setUnhealthy(igw *wgtypes.Peer) {
 	logger.Log(0, "resetting default routes on host")
 	if err := resetDefaultRoutesOnHost(); err != nil {
 		logger.Log(0, "failed to reset default routes on host:", err.Error())
+	}
+
+	// LAN is restored — auto-exit failover (if registered) can reach the API.
+	if hook := OnIGWUnhealthy; hook != nil {
+		pk := s.publicKey
+		go hook(pk)
 	}
 }
 

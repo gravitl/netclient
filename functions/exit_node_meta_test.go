@@ -41,16 +41,23 @@ func TestExitNodeEndpointIPs(t *testing.T) {
 	}())
 }
 
-func TestMeasurePublicLatencyEmpty(t *testing.T) {
-	assert.Equal(t, int64(0), measurePublicLatency(nil))
-	assert.Equal(t, int64(0), measurePublicLatency([]string{"127.0.0.1"}))
+func TestExitNodeOverlayProbeAddr(t *testing.T) {
+	assert.Equal(t, "", exitNodeOverlayProbeAddr(models.DeviceExitNode{}))
+	assert.Equal(t, "", exitNodeOverlayProbeAddr(models.DeviceExitNode{Address: "127.0.0.1"}))
+	assert.Equal(t, "10.101.0.5", exitNodeOverlayProbeAddr(models.DeviceExitNode{
+		Address:  "10.101.0.5",
+		Address6: "fd00::5",
+	}))
+	assert.Equal(t, "fd00::5", exitNodeOverlayProbeAddr(models.DeviceExitNode{
+		Address6: "fd00::5",
+	}))
 }
 
 func TestMarkNearestExitNodesByLatency(t *testing.T) {
 	nodes := []models.DeviceExitNode{
-		{EgressID: "far", LatencyMs: 80},
-		{EgressID: "near", LatencyMs: 12},
-		{EgressID: "dead", LatencyMs: 999},
+		{EgressID: "far", Status: true, LatencyMs: 80},
+		{EgressID: "near", Status: true, LatencyMs: 12},
+		{EgressID: "dead", Status: false, LatencyMs: 999},
 	}
 	markNearestExitNodes(nodes, "")
 	assert.False(t, nodes[0].Nearest)
@@ -58,10 +65,20 @@ func TestMarkNearestExitNodesByLatency(t *testing.T) {
 	assert.False(t, nodes[2].Nearest)
 }
 
+func TestMarkNearestExitNodesSkipsDown(t *testing.T) {
+	nodes := []models.DeviceExitNode{
+		{EgressID: "down-fast", Status: false, LatencyMs: 1},
+		{EgressID: "up-slow", Status: true, LatencyMs: 80},
+	}
+	markNearestExitNodes(nodes, "")
+	assert.False(t, nodes[0].Nearest)
+	assert.True(t, nodes[1].Nearest)
+}
+
 func TestMarkNearestExitNodesByGeo(t *testing.T) {
 	nodes := []models.DeviceExitNode{
-		{EgressID: "us", Location: "40.7,-74.0"},
-		{EgressID: "sg", Location: "1.3,103.8"},
+		{EgressID: "us", Status: true, Location: "40.7,-74.0"},
+		{EgressID: "sg", Status: true, Location: "1.3,103.8"},
 	}
 	markNearestExitNodes(nodes, "1.35,103.85")
 	assert.False(t, nodes[0].Nearest)
@@ -69,27 +86,38 @@ func TestMarkNearestExitNodesByGeo(t *testing.T) {
 }
 
 func TestPickNearestAvailableExitNode(t *testing.T) {
-	_, ok := pickNearestAvailableExitNode(nil)
+	_, ok := pickNearestAvailableExitNode(nil, nil)
 	assert.False(t, ok)
 
 	pick, ok := pickNearestAvailableExitNode([]models.DeviceExitNode{
 		{EgressID: "down-near", Status: false, Nearest: true, LatencyMs: 5},
 		{EgressID: "up-far", Status: true, LatencyMs: 80},
 		{EgressID: "up-near", Status: true, Nearest: false, LatencyMs: 12},
-	})
+	}, nil)
 	assert.True(t, ok)
 	assert.Equal(t, "up-near", pick.EgressID, "prefer lowest-latency up node when Nearest is down")
 
 	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
 		{EgressID: "up-far", Status: true, LatencyMs: 80},
 		{EgressID: "up-nearest", Status: true, Nearest: true, LatencyMs: 12},
-	})
+	}, nil)
 	assert.True(t, ok)
 	assert.Equal(t, "up-nearest", pick.EgressID)
 
-	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
+	_, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
 		{EgressID: "only-down", Status: false, Nearest: true},
-	})
+	}, nil)
+	assert.False(t, ok, "never pick Status=false")
+
+	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
+		{EgressID: "failed", Status: true, Nearest: true, LatencyMs: 5},
+		{EgressID: "next", Status: true, LatencyMs: 20},
+	}, map[string]struct{}{"failed": {}})
 	assert.True(t, ok)
-	assert.Equal(t, "only-down", pick.EgressID, "fall back to Nearest when none are up")
+	assert.Equal(t, "next", pick.EgressID, "skip excluded failed exit")
+
+	_, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
+		{EgressID: "only", Status: true, Nearest: true},
+	}, map[string]struct{}{"only": {}})
+	assert.False(t, ok, "all excluded → no pick")
 }

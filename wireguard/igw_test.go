@@ -6,6 +6,28 @@ import (
 	"time"
 )
 
+func TestSetUnhealthyInvokesOnIGWUnhealthyHook(t *testing.T) {
+	prev := OnIGWUnhealthy
+	t.Cleanup(func() { OnIGWUnhealthy = prev })
+
+	done := make(chan string, 1)
+	OnIGWUnhealthy = func(pk string) { done <- pk }
+
+	s := &igwStatus{isHealthy: true, publicKey: "peer-key-abc"}
+	s.setUnhealthy(nil)
+	if s.isHealthy {
+		t.Fatal("expected unhealthy")
+	}
+	select {
+	case pk := <-done:
+		if pk != "peer-key-abc" {
+			t.Fatalf("hook public key = %q", pk)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnIGWUnhealthy was not called")
+	}
+}
+
 // A single failed sample must never tear exit routing down: every iface rebuild
 // has a window where the device is up with no peers configured yet.
 func TestNoteFailureRespectsGraceAndThreshold(t *testing.T) {

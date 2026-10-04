@@ -557,6 +557,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		Pull(false, false, true)
+		if err != nil {
+			slog.Error("failed to pull", "error", err)
+		}
 		slog.Info("added node to network", "network", hostUpdate.Node.Network, "server", serverName)
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {

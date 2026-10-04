@@ -496,36 +496,64 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 	if err != nil {
 		return nil, err
 	}
-	pick, ok := pickNearestAvailableExitNode(nodes)
+	return selectNearestDeviceExitNodeExcluding(network, token, nodes, nil)
+}
+
+// selectNearestDeviceExitNodeExcluding picks the nearest exit not in exclude and
+// selects it (clear-first when switching). Callers that already listed nodes
+// pass them in; otherwise pass nil to list.
+//
+// Never ClearDesiredExitNode here: that drops auto_exit/want_igw and races with
+// peer updates / reconcile into "manual + dead exit + ISP routing".
+func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.DeviceExitNode, exclude map[string]struct{}) (*models.DeviceExitNode, error) {
+	var err error
+	if nodes == nil {
+		nodes, err = ListDeviceExitNodes(network, token)
+		if err != nil {
+			return nil, err
+		}
+	}
+	pick, ok := pickNearestAvailableExitNode(nodes, exclude)
 	if !ok || strings.TrimSpace(pick.EgressID) == "" {
 		return nil, fmt.Errorf("no available exit nodes on network %s", network)
 	}
 	user, tenant := uiapi.SessionIdentity()
+	prevEgress := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	prevNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if prevNetwork == "" {
+		prevNetwork = network
+	}
+	restoreAutoDesired := func() {
+		_ = config.SetDesiredAutoExitNode(user, tenant, prevNetwork, prevEgress)
+	}
+
+	// Keep auto intent for the whole clear→assign window so MQTT/reconcile do
+	// not treat this as a manual fixed egress (or as exit-off).
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
+
 	current, err := GetDeviceSelectedExitNode(network, token)
 	if err != nil {
 		slog.Warn("failed to read current exit before auto-select", "network", network, "error", err)
 	}
 	if current != nil && strings.TrimSpace(current.EgressID) != "" && current.EgressID != pick.EgressID {
-		_ = config.ClearDesiredExitNode(user, tenant)
 		if _, err := putDeviceExitNode(network, token, ""); err != nil {
+			restoreAutoDesired()
 			return nil, err
 		}
 	}
-	// Mark auto-exit desired before PUT so peer updates won't wipe CurrGw/DNS.
-	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
 	if current == nil || current.EgressID != pick.EgressID {
 		resp, err := putDeviceExitNode(network, token, pick.EgressID)
 		if err != nil {
-			_ = config.ClearDesiredExitNode(user, tenant)
+			restoreAutoDesired()
 			return nil, err
 		}
 		var node models.DeviceExitNode
 		if err := decodeDeviceResponse(resp, &node); err != nil {
-			_ = config.ClearDesiredExitNode(user, tenant)
+			restoreAutoDesired()
 			return nil, err
 		}
 		if node.EgressID == "" {
-			_ = config.ClearDesiredExitNode(user, tenant)
+			restoreAutoDesired()
 			return nil, fmt.Errorf("server did not select exit node %s", pick.EgressID)
 		}
 		pick = node
