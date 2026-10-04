@@ -168,7 +168,7 @@ func ReleaseSession(clearServer bool) error {
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
 			done := logElapsed("logout server exit clear")
-			_, err := putDeviceExitNode(exitNetwork, token, "")
+			_, err := putDeviceExitNode(exitNetwork, token, "", false)
 			done()
 			if err != nil {
 				slog.Warn("failed to clear server exit node on logout", "network", exitNetwork, "error", err)

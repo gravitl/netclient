@@ -32,20 +32,21 @@ func init() {
 }
 
 // handleIGWUnhealthyAutoExit is the IGW monitor hook: when the current exit is
-// marked unhealthy and the user is in auto-exit mode, pick the next nearest
-// available exit (excluding the failed one).
+// marked unhealthy and auto-exit is active (local AUTO or server-required
+// auto_select_exit_node), pick the next nearest available exit.
 func handleIGWUnhealthyAutoExit(publicKey string) {
 	if sessionReleased.Load() {
 		return
 	}
 	user, tenant, ok := desktopSessionIdentity()
-	if !ok || !config.GetDesiredAutoExit(user, tenant) {
+	if !ok {
 		return
 	}
-	network := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
 	token := uiapi.SessionAuthToken()
-	if network == "" || token == "" {
-		slog.Debug("auto-exit failover skipped: missing network or token")
+	network := resolveAutoExitNetwork(user, tenant, token)
+	if token == "" || network == "" || !autoExitModeActive(user, tenant, network, token) {
+		slog.Debug("auto-exit failover skipped: not in auto mode or missing network/token",
+			"network", network)
 		return
 	}
 
@@ -78,7 +79,46 @@ func handleIGWUnhealthyAutoExit(publicKey string) {
 	autoExitFailoverMu.Unlock()
 }
 
+// autoExitModeActive is true for local AUTO desired state or when the server
+// network requires auto_select_exit_node.
+func autoExitModeActive(user, tenant, network, token string) bool {
+	if config.GetDesiredAutoExit(user, tenant) {
+		return true
+	}
+	network = strings.TrimSpace(network)
+	if network == "" || strings.TrimSpace(token) == "" {
+		return false
+	}
+	required, err := NetworkRequiresAutoExit(network, config.CurrServer, token)
+	return err == nil && required
+}
+
+// resolveAutoExitNetwork prefers the stored exit network, then any connected
+// network that requires server-enforced auto exit.
+func resolveAutoExitNetwork(user, tenant, token string) string {
+	if n := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant)); n != "" {
+		return n
+	}
+	if strings.TrimSpace(token) == "" {
+		return ""
+	}
+	for name, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		required, err := NetworkRequiresAutoExit(name, config.CurrServer, token)
+		if err == nil && required {
+			return name
+		}
+	}
+	return ""
+}
+
 func failoverAutoExit(network, token, failedPublicKey string) error {
+	// Brief settle after LAN restore so overlay metrics probes to alternate
+	// exits are less likely to time out and rank a worse peer first.
+	time.Sleep(500 * time.Millisecond)
+
 	nodes, err := ListDeviceExitNodes(network, token)
 	if err != nil {
 		return err
@@ -153,19 +193,25 @@ func failedEgressExcludeSet() map[string]struct{} {
 }
 
 // egressIDsForPeerKey maps a WireGuard peer public key to exit egress IDs by
-// matching the peer's underlay endpoint against AllowedEndpoints.
+// matching overlay Address/Address6 or the peer's underlay AllowedEndpoints.
 func egressIDsForPeerKey(publicKey string, nodes []models.DeviceExitNode) []string {
 	publicKey = strings.TrimSpace(publicKey)
 	if publicKey == "" || wireguard.IsZeroWGPublicKey(publicKey) {
 		return nil
 	}
 	peer, err := wireguard.GetPeer(ncutils.GetInterfaceName(), publicKey)
-	if err != nil || peer.Endpoint == nil {
+	if err != nil {
 		return nil
 	}
-	host := publicProbeHost(peer.Endpoint.IP.String())
-	if host == "" {
-		return nil
+	overlayHosts := map[string]struct{}{}
+	for _, ipn := range peer.AllowedIPs {
+		if ip := ipn.IP; ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() {
+			overlayHosts[ip.String()] = struct{}{}
+		}
+	}
+	underlayHost := ""
+	if peer.Endpoint != nil {
+		underlayHost = publicProbeHost(peer.Endpoint.IP.String())
 	}
 	var ids []string
 	seen := map[string]struct{}{}
@@ -174,17 +220,35 @@ func egressIDsForPeerKey(publicKey string, nodes []models.DeviceExitNode) []stri
 		if id == "" {
 			continue
 		}
-		for _, ep := range nodes[i].AllowedEndpoints {
-			if publicProbeHost(ep) != host {
-				continue
+		match := false
+		if addr := strings.TrimSpace(nodes[i].Address); addr != "" {
+			if _, ok := overlayHosts[addr]; ok {
+				match = true
 			}
-			if _, ok := seen[id]; ok {
-				break
-			}
-			seen[id] = struct{}{}
-			ids = append(ids, id)
-			break
 		}
+		if !match {
+			if addr := strings.TrimSpace(nodes[i].Address6); addr != "" {
+				if _, ok := overlayHosts[addr]; ok {
+					match = true
+				}
+			}
+		}
+		if !match && underlayHost != "" {
+			for _, ep := range nodes[i].AllowedEndpoints {
+				if publicProbeHost(ep) == underlayHost {
+					match = true
+					break
+				}
+			}
+		}
+		if !match {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
 	}
 	return ids
 }

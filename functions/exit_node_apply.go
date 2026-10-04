@@ -420,13 +420,15 @@ func reconcileDesiredExit() {
 	if wireguard.IGWRoutingActive() {
 		return
 	}
-	if !config.GetDesiredWantIGW(user, tenant) {
+	token := uiapi.SessionAuthToken()
+	network := resolveAutoExitNetwork(user, tenant, token)
+	autoExit := autoExitModeActive(user, tenant, network, token)
+	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	// Server-required auto exit must reconcile even when local want_igw was
+	// never set (exit assigned only via EnsureAutoExitNode).
+	if !config.GetDesiredWantIGW(user, tenant) && !autoExit {
 		return
 	}
-	autoExit := config.GetDesiredAutoExit(user, tenant)
-	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
-	network := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
-	token := uiapi.SessionAuthToken()
 	if token == "" || network == "" || (egressID == "" && !autoExit) {
 		return
 	}

@@ -98,6 +98,13 @@ func TestPickNearestAvailableExitNode(t *testing.T) {
 	assert.Equal(t, "up-near", pick.EgressID, "prefer lowest-latency up node when Nearest is down")
 
 	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
+		{EgressID: "up-far", Status: true, Nearest: true, LatencyMs: 80},
+		{EgressID: "up-near", Status: true, Nearest: false, LatencyMs: 12},
+	}, nil)
+	assert.True(t, ok)
+	assert.Equal(t, "up-near", pick.EgressID, "lowest latency beats stale Nearest flag")
+
+	pick, ok = pickNearestAvailableExitNode([]models.DeviceExitNode{
 		{EgressID: "up-far", Status: true, LatencyMs: 80},
 		{EgressID: "up-nearest", Status: true, Nearest: true, LatencyMs: 12},
 	}, nil)

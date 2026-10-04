@@ -277,6 +277,7 @@ func NetworkRequiresAutoExit(network, server, token string) (bool, error) {
 
 // applyEnforcedAutoExit selects the nearest exit before a connect is published
 // when the network requires it. Missing exits do not fail the connect.
+// Always arms local auto_exit desired state so IGW failover can switch exits.
 func applyEnforcedAutoExit(network, token string) error {
 	if strings.TrimSpace(token) == "" {
 		return nil
@@ -285,11 +286,31 @@ func applyEnforcedAutoExit(network, token string) error {
 	if err != nil || !required {
 		return err
 	}
-	if _, err := selectNearestExitNode(network, token); err != nil {
+	node, err := selectNearestExitNode(network, token)
+	if err != nil {
+		// Still arm auto mode so a later reconcile/failover can pick one up.
+		armEnforcedAutoExitDesired(network, "")
 		return err
 	}
+	egressID := ""
+	if node != nil {
+		egressID = node.EgressID
+	}
+	armEnforcedAutoExitDesired(network, egressID)
 	autoExitEnforced.Store(network, struct{}{})
 	return nil
+}
+
+func armEnforcedAutoExitDesired(network, egressID string) {
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok {
+		return
+	}
+	egressID = strings.TrimSpace(egressID)
+	if egressID == "" {
+		egressID = strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	}
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, egressID)
 }
 
 func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) {
@@ -302,20 +323,29 @@ func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) 
 			autoExitEnforced.Delete(n.NetworkID)
 			continue
 		}
-		if _, done := autoExitEnforced.Load(n.NetworkID); done {
-			continue
-		}
 		node, ok := nodes[n.NetworkID]
 		if !ok || !node.Connected {
 			continue
 		}
+		// Always arm local AUTO so failover works even when the server already
+		// assigned an exit (EnsureAutoExitNode) without a client select.
+		armEnforcedAutoExitDesired(n.NetworkID, "")
+		if _, done := autoExitEnforced.Load(n.NetworkID); done {
+			continue
+		}
 		if uiapi.ActiveExitNetwork(n.NetworkID) != "" {
+			autoExitEnforced.Store(n.NetworkID, struct{}{})
 			continue
 		}
 		autoExitEnforced.Store(n.NetworkID, struct{}{})
-		if _, err := selectNearestExitNode(n.NetworkID, token); err != nil {
+		picked, err := selectNearestExitNode(n.NetworkID, token)
+		if err != nil {
 			autoExitEnforced.Delete(n.NetworkID)
 			slog.Warn("auto exit select for connected network failed", "network", n.NetworkID, "error", err)
+			continue
+		}
+		if picked != nil {
+			armEnforcedAutoExitDesired(n.NetworkID, picked.EgressID)
 		}
 	}
 }
@@ -460,7 +490,7 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
 	}
 
-	resp, err := putDeviceExitNode(network, token, egressID)
+	resp, err := putDeviceExitNode(network, token, egressID, false)
 	if err != nil {
 		if egressID != "" {
 			_ = config.ClearDesiredExitNode(user, tenant)
@@ -536,13 +566,15 @@ func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.
 		slog.Warn("failed to read current exit before auto-select", "network", network, "error", err)
 	}
 	if current != nil && strings.TrimSpace(current.EgressID) != "" && current.EgressID != pick.EgressID {
-		if _, err := putDeviceExitNode(network, token, ""); err != nil {
+		// force=true bypasses auto_select_exit_node's ban on clearing so the
+		// usual clear→assign switch can drop RelayedBy before selecting B.
+		if _, err := putDeviceExitNode(network, token, "", true); err != nil {
 			restoreAutoDesired()
 			return nil, err
 		}
 	}
 	if current == nil || current.EgressID != pick.EgressID {
-		resp, err := putDeviceExitNode(network, token, pick.EgressID)
+		resp, err := putDeviceExitNode(network, token, pick.EgressID, false)
 		if err != nil {
 			restoreAutoDesired()
 			return nil, err
@@ -568,14 +600,15 @@ func DropNetworkExitSelection(network, token string) error {
 	if strings.TrimSpace(network) == "" || strings.TrimSpace(token) == "" {
 		return nil
 	}
-	_, err := putDeviceExitNode(network, token, "")
+	_, err := putDeviceExitNode(network, token, "", false)
 	return err
 }
 
-func putDeviceExitNode(network, token, egressID string) ([]byte, error) {
+func putDeviceExitNode(network, token, egressID string, force bool) ([]byte, error) {
 	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
 	return deviceRequest(http.MethodPut, path, token, models.DeviceExitNodeSelectionReq{
 		EgressID: egressID,
+		Force:    force,
 	})
 }
 

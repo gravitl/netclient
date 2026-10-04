@@ -38,6 +38,21 @@ func TestHandleIGWUnhealthyAutoExitSkipsManualMode(t *testing.T) {
 	handleIGWUnhealthyAutoExit("unused-key")
 }
 
+func TestAutoExitModeActiveIncludesServerRequired(t *testing.T) {
+	prev := networkAutoSelectExit
+	t.Cleanup(func() { networkAutoSelectExit = prev })
+
+	networkAutoSelectExit = func(network, server, token string) (bool, error) {
+		return network == "forced-net", nil
+	}
+	if autoExitModeActive("u", "t", "other", "tok") {
+		t.Fatal("non-required network without local auto should be inactive")
+	}
+	if !autoExitModeActive("u", "t", "forced-net", "tok") {
+		t.Fatal("server-required network should activate auto mode")
+	}
+}
+
 func TestHandleIGWUnhealthyRespectsCooldown(t *testing.T) {
 	resetAutoExitFailoverStateForTest()
 	t.Cleanup(resetAutoExitFailoverStateForTest)

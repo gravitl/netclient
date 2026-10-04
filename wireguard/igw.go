@@ -18,12 +18,12 @@ import (
 const (
 	// IGWDialTimeout is the timeout for dialing internet gateway. Kept well inside
 	// IGWMonitorInterval so a failing probe cannot stretch the sampling period.
-	IGWDialTimeout = time.Second * 3
+	IGWDialTimeout = time.Second * 2
 	// IGWMonitorInterval is the interval at which to check internet gateway's health.
-	// While the exit node is down the host has no internet at all, so samples are
-	// taken often enough that IGWFailureThreshold of them is still seconds, not
-	// minutes.
-	IGWMonitorInterval = time.Second * 10
+	// With IGWFailureThreshold samples this is ~15s to declare the exit unhealthy
+	// and trigger auto-exit failover — fast enough for UX, slow enough to ride
+	// out brief wifi blips.
+	IGWMonitorInterval = time.Second * 5
 	// IGWRecoveryThreshold is the number of consecutive successes before considering
 	// internet gateway is up.
 	IGWRecoveryThreshold = 3

@@ -223,7 +223,16 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	}
 	egressID := strings.TrimSpace(config.GetDesiredEgressID(username, tenantID))
 	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
-	autoExit := config.GetDesiredAutoExit(username, tenantID)
+	token := uiapi.SessionAuthToken()
+	autoExit := autoExitModeActive(username, tenantID, exitNetwork, token)
+	if !autoExit && token != "" {
+		// Desired exit network may be empty while a connected network still
+		// requires auto exit — arm restore for that case too.
+		if n := resolveAutoExitNetwork(username, tenantID, token); n != "" {
+			exitNetwork = n
+			autoExit = true
+		}
+	}
 	wantIGW := config.GetDesiredWantIGW(username, tenantID) || egressID != "" || autoExit
 	if !changed && !wantIGW {
 		return nil
@@ -244,7 +253,6 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		if exitNetwork == "" {
 			exitNetwork = desired[len(desired)-1]
 		}
-		token := uiapi.SessionAuthToken()
 		var selErr error
 		// A peer update can install the exit while restore is still working. Once
 		// routing is live there is nothing to re-select, and continuing would hold

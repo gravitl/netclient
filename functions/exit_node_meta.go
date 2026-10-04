@@ -46,6 +46,12 @@ func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
 		go func(i int, addr string) {
 			defer wg.Done()
 			ok, latency := metrics.PeerConnStatus(addr, port, 1)
+			if !ok {
+				// One retry: right after IGW tear-down / path change the first
+				// overlay probe often times out on an otherwise healthy exit,
+				// which made failover pick a worse peer and the GUI re-pick later.
+				ok, latency = metrics.PeerConnStatus(addr, port, 1)
+			}
 			if ok {
 				nodes[i].LatencyMs = latency
 				return
@@ -192,8 +198,8 @@ func markNearestExitNodes(nodes []models.DeviceExitNode, origin string) {
 }
 
 // pickNearestAvailableExitNode returns the best exit to auto-connect.
-// Prefers Status=true nodes marked Nearest, then lowest LatencyMs among up
-// nodes. Never selects Status=false (unreachable / disconnected) exits.
+// Always prefers the lowest measured LatencyMs among Status=true nodes.
+// Nearest is only a tie-breaker. Never selects Status=false exits.
 // Egress IDs in exclude are skipped.
 func pickNearestAvailableExitNode(nodes []models.DeviceExitNode, exclude map[string]struct{}) (models.DeviceExitNode, bool) {
 	if len(nodes) == 0 {
@@ -209,31 +215,43 @@ func pickNearestAvailableExitNode(nodes []models.DeviceExitNode, exclude map[str
 	var bestUp *models.DeviceExitNode
 	for i := range nodes {
 		n := &nodes[i]
-		if excluded(n.EgressID) {
+		if excluded(n.EgressID) || !n.Status {
 			continue
 		}
-		if !n.Status {
-			continue
-		}
-		if n.Nearest {
-			return *n, true
-		}
-		if bestUp == nil {
+		if bestUp == nil || exitNodeBetterLatency(n, bestUp) {
 			bestUp = n
-			continue
-		}
-		lat := n.LatencyMs
-		bestLat := bestUp.LatencyMs
-		if lat > exitNodeLatencyNone && lat < exitNodeLatencyTO {
-			if bestLat <= exitNodeLatencyNone || bestLat >= exitNodeLatencyTO || lat < bestLat {
-				bestUp = n
-			}
 		}
 	}
 	if bestUp != nil {
 		return *bestUp, true
 	}
 	return models.DeviceExitNode{}, false
+}
+
+// exitNodeBetterLatency reports whether a is a better auto-pick than b.
+// Measured RTTs win over missing/timeout; lower RTT wins; Nearest breaks ties.
+func exitNodeBetterLatency(a, b *models.DeviceExitNode) bool {
+	if a == nil {
+		return false
+	}
+	if b == nil {
+		return true
+	}
+	aOK := a.LatencyMs > exitNodeLatencyNone && a.LatencyMs < exitNodeLatencyTO
+	bOK := b.LatencyMs > exitNodeLatencyNone && b.LatencyMs < exitNodeLatencyTO
+	switch {
+	case aOK && bOK:
+		if a.LatencyMs != b.LatencyMs {
+			return a.LatencyMs < b.LatencyMs
+		}
+		return a.Nearest && !b.Nearest
+	case aOK && !bOK:
+		return true
+	case !aOK && bOK:
+		return false
+	default:
+		return a.Nearest && !b.Nearest
+	}
 }
 
 func parseLatLon(s string) (lat, lon float64, ok bool) {
