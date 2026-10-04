@@ -35,7 +35,8 @@ func connectNetwork(network string, restart bool) error {
 	if node.Connected {
 		return errors.New("node already connected")
 	}
-	if token := uiapi.SessionAuthToken(); token != "" {
+	token := uiapi.SessionAuthToken()
+	if token != "" {
 		if other := uiapi.ActiveExitNetwork(network); other != "" {
 			// Another network already has the exit. Join this one without one.
 			if err := DropNetworkExitSelection(network, token); err != nil {
@@ -60,9 +61,20 @@ func connectNetwork(network string, restart bool) error {
 		return err
 	}
 	if !restart {
+		if token != "" {
+			applyDeferredAutoExitAfterConnect(network, token)
+		}
 		return nil
 	}
-	return applyConnectionChange("connect")
+	if err := applyConnectionChange("connect"); err != nil {
+		return err
+	}
+	// Voluntary Auto chosen while disconnected is only persisted until the mesh
+	// is up; pick nearest now that overlay probes can succeed.
+	if token != "" {
+		applyDeferredAutoExitAfterConnect(network, token)
+	}
+	return nil
 }
 
 // applyConnectionChange brings the live interface in line with the new node set

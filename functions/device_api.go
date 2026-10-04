@@ -313,6 +313,37 @@ func armEnforcedAutoExitDesired(network, egressID string) {
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, egressID)
 }
 
+// applyDeferredAutoExitAfterConnect selects nearest when Auto was chosen while
+// disconnected (or enforced pick failed before the overlay was up).
+func applyDeferredAutoExitAfterConnect(network, token string) {
+	if strings.TrimSpace(token) == "" || strings.TrimSpace(network) == "" {
+		return
+	}
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok || !config.GetDesiredAutoExit(user, tenant) {
+		return
+	}
+	exitNet := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if exitNet != "" && exitNet != network {
+		return
+	}
+	if other := uiapi.ActiveExitNetwork(network); other != "" {
+		return
+	}
+	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) != "" {
+		_ = config.SetDesiredAutoExitNode(user, tenant, network, cur.EgressID)
+		return
+	}
+	node, err := selectNearestExitNode(network, token)
+	if err != nil {
+		slog.Warn("deferred auto exit select after connect failed", "network", network, "error", err)
+		return
+	}
+	if node != nil {
+		_ = config.SetDesiredAutoExitNode(user, tenant, network, node.EgressID)
+	}
+}
+
 func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) {
 	if strings.TrimSpace(token) == "" {
 		return
@@ -515,6 +546,14 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	return &node, nil
 }
 
+func networkLocallyConnected(network string) bool {
+	if network == "" {
+		return false
+	}
+	node, ok := config.GetNodes()[network]
+	return ok && node.Connected
+}
+
 // SelectNearestDeviceExitNode lists exits, picks the nearest available one, and selects it.
 // Persists auto_exit so session restore re-picks nearest rather than a fixed egress id.
 // Switching A→B clears the current selection first (server rejects direct switch).
@@ -545,6 +584,16 @@ func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.
 	}
 	pick, ok := pickNearestAvailableExitNode(nodes, exclude)
 	if !ok || strings.TrimSpace(pick.EgressID) == "" {
+		// While disconnected, overlay probes mark every exit unhealthy. Persist
+		// Auto intent so connect/restore can pick nearest once the mesh is up.
+		if !networkLocallyConnected(network) {
+			user, tenant := uiapi.SessionIdentity()
+			if err := config.SetDesiredAutoExitNode(user, tenant, network, ""); err != nil {
+				return nil, err
+			}
+			slog.Info("auto exit deferred until network is connected", "network", network)
+			return nil, nil
+		}
 		return nil, fmt.Errorf("no available exit nodes on network %s", network)
 	}
 	user, tenant := uiapi.SessionIdentity()
