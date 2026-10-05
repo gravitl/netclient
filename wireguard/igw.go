@@ -54,6 +54,14 @@ var (
 // package registers auto-exit failover here. Called asynchronously.
 var OnIGWUnhealthy func(publicKey string)
 
+// OnIGWRoutingChanged is invoked after the health monitor installs or removes
+// exit default routes. OS DNS follows CurrGwNmIP (system-wide while an exit is
+// up, split otherwise), so it has to be reapplied on every flip or the host
+// keeps sending all queries to a resolver that no longer forwards them.
+// Optional; the functions package registers the DNS reapply here. Runs before
+// OnIGWUnhealthy, on the same goroutine, because failover needs working DNS.
+var OnIGWRoutingChanged func()
+
 var (
 	// ifaceRebuilds is non-zero while the netmaker iface is being torn down and
 	// rebuilt. Between Create and Configure the device is up with no peers at all,
@@ -375,6 +383,10 @@ func (s *igwStatus) setHealthy(igw wgtypes.Peer) {
 	if err != nil {
 		logger.Log(0, "failed to set default routes on host:", err.Error())
 	}
+
+	if hook := OnIGWRoutingChanged; hook != nil {
+		go hook()
+	}
 }
 
 func (s *igwStatus) setUnhealthy(igw *wgtypes.Peer) {
@@ -401,11 +413,21 @@ func (s *igwStatus) setUnhealthy(igw *wgtypes.Peer) {
 		logger.Log(0, "failed to reset default routes on host:", err.Error())
 	}
 
-	// LAN is restored — auto-exit failover (if registered) can reach the API.
-	if hook := OnIGWUnhealthy; hook != nil {
-		pk := s.publicKey
-		go hook(pk)
+	// LAN is restored — auto-exit failover (if registered) can reach the API
+	// once DNS has dropped back to split mode.
+	routingHook, unhealthyHook := OnIGWRoutingChanged, OnIGWUnhealthy
+	if routingHook == nil && unhealthyHook == nil {
+		return
 	}
+	pk := s.publicKey
+	go func() {
+		if routingHook != nil {
+			routingHook()
+		}
+		if unhealthyHook != nil {
+			unhealthyHook(pk)
+		}
+	}()
 }
 
 // restoreDefaultRoutesOnIGWPeer restores default routes (0.0.0.0/0,::/0)

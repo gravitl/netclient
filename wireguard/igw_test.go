@@ -28,6 +28,29 @@ func TestSetUnhealthyInvokesOnIGWUnhealthyHook(t *testing.T) {
 	}
 }
 
+// Failover talks to the API, which needs DNS switched back to split mode first.
+func TestSetUnhealthyReappliesDNSBeforeFailover(t *testing.T) {
+	prevRouting, prevUnhealthy := OnIGWRoutingChanged, OnIGWUnhealthy
+	t.Cleanup(func() { OnIGWRoutingChanged, OnIGWUnhealthy = prevRouting, prevUnhealthy })
+
+	order := make(chan string, 2)
+	OnIGWRoutingChanged = func() { order <- "dns" }
+	OnIGWUnhealthy = func(string) { order <- "failover" }
+
+	s := &igwStatus{isHealthy: true, publicKey: "peer-key-abc"}
+	s.setUnhealthy(nil)
+	for _, want := range []string{"dns", "failover"} {
+		select {
+		case got := <-order:
+			if got != want {
+				t.Fatalf("hook order: got %q, want %q", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("hook %q was not called", want)
+		}
+	}
+}
+
 // A single failed sample must never tear exit routing down: every iface rebuild
 // has a window where the device is up with no peers configured yet.
 func TestNoteFailureRespectsGraceAndThreshold(t *testing.T) {

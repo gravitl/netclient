@@ -84,23 +84,8 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		}
 
-		// Control-plane only: if exit DNS yields no answers, use pin-cache A/AAAA
-		// or public resolvers for API/broker hostnames. Other names stay on exit DNS.
-		if len(reply.Answer) == 0 && config.IsControlPlaneHostname(qName) {
-			if local := controlPlaneAnswers(r); len(local) > 0 {
-				logger.Log(4, fmt.Sprintf("resolved control-plane %s from underlay pin cache", qName))
-				reply.Rcode = dns.RcodeSuccess
-				reply.Answer = append(reply.Answer, local...)
-				reply.Authoritative = true
-			} else if publicResp, pubErr := resolveViaPublicDNSServers(r); pubErr != nil {
-				logger.Log(4, fmt.Sprintf("control-plane public DNS fallback failed for %s: %v", qName, pubErr))
-			} else if publicResp != nil && len(publicResp.Answer) > 0 {
-				logger.Log(4, fmt.Sprintf("resolved control-plane %s via public DNS fallback", qName))
-				reply.Rcode = dns.RcodeSuccess
-				reply.Authoritative = publicResp.Authoritative
-				reply.Answer = append(reply.Answer, publicResp.Answer...)
-			}
-		}
+		// Only API/broker names may leave exit DNS; everything else stays on it.
+		resolveControlPlaneFallback(r, reply)
 	} else {
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
 		currServer := config.GetServer(config.CurrServer)
@@ -211,6 +196,9 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 				}
 			}
 		}
+		// OS DNS can still be in system-wide mode for a moment after an exit is
+		// torn down, sending names here that no match domain covers.
+		resolveControlPlaneFallback(r, reply)
 	}
 
 	if ipv4OnlyInternetExit() {
@@ -319,6 +307,37 @@ func internetGwDNSServer() string {
 		return nc.CurrGwNmIP6.String()
 	}
 	return ""
+}
+
+// resolveControlPlaneFallback answers API/broker hostnames from the underlay pin
+// cache, then public resolvers, when nothing else produced an answer. Losing
+// these names strands the client: it cannot reach the server to repair routing.
+func resolveControlPlaneFallback(r *dns.Msg, reply *dns.Msg) {
+	if len(reply.Answer) > 0 || len(r.Question) == 0 {
+		return
+	}
+	qName := r.Question[0].Name
+	if !config.IsControlPlaneHostname(qName) {
+		return
+	}
+	if local := controlPlaneAnswers(r); len(local) > 0 {
+		logger.Log(4, fmt.Sprintf("resolved control-plane %s from underlay pin cache", qName))
+		reply.Rcode = dns.RcodeSuccess
+		reply.Answer = append(reply.Answer, local...)
+		reply.Authoritative = true
+		return
+	}
+	publicResp, err := resolveViaPublicDNSServers(r)
+	if err != nil {
+		logger.Log(4, fmt.Sprintf("control-plane public DNS fallback failed for %s: %v", qName, err))
+		return
+	}
+	if publicResp != nil && len(publicResp.Answer) > 0 {
+		logger.Log(4, fmt.Sprintf("resolved control-plane %s via public DNS fallback", qName))
+		reply.Rcode = dns.RcodeSuccess
+		reply.Authoritative = publicResp.Authoritative
+		reply.Answer = append(reply.Answer, publicResp.Answer...)
+	}
 }
 
 // controlPlaneAnswers builds A/AAAA RRs from cached control-plane underlay IPs.

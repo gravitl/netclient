@@ -28,6 +28,7 @@ var (
 )
 
 func init() {
+	wireguard.OnIGWRoutingChanged = reconfigureDNSAfterRouting
 	wireguard.OnIGWUnhealthy = handleIGWUnhealthyAutoExit
 }
 
