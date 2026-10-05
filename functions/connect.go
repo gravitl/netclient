@@ -212,6 +212,8 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	}
 	uiapi.SetRestorePhase(uiapi.RestorePhaseNetworks)
 	changed := false
+	token := uiapi.SessionAuthToken()
+	server := config.CurrServer
 	for _, network := range desired {
 		if uiapi.ShouldAbortSessionRestore() {
 			return nil
@@ -220,6 +222,14 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		node, ok := nodes[network]
 		if !ok || node.Connected {
 			continue
+		}
+		// Same posture/JIT gate as ConnectNetwork — restore must not bypass it.
+		if token != "" {
+			if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+				slog.Warn("skipping restore: network access blocked",
+					"network", network, "error", err)
+				continue
+			}
 		}
 		if err := connectNetwork(network, false); err != nil {
 			slog.Warn("failed to restore connection", "network", network, "error", err)
@@ -235,7 +245,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	}
 	egressID := strings.TrimSpace(config.GetDesiredEgressID(username, tenantID))
 	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
-	token := uiapi.SessionAuthToken()
+	token = uiapi.SessionAuthToken()
 	autoExit := autoExitModeActive(username, tenantID, exitNetwork, token)
 	if !autoExit && token != "" {
 		// Desired exit network may be empty while a connected network still
