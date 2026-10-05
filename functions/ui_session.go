@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"golang.org/x/exp/slog"
@@ -190,13 +191,27 @@ func ReleaseSession(clearServer bool) error {
 		}
 		_ = wireguard.SetPeers(true)
 		if disconnectErr != nil {
+			clearDNSOnLogout()
 			return disconnectErr
 		}
 	}
+	clearDNSOnLogout()
 	if clearServer {
 		config.CurrServer = ""
 		_ = config.SetCurrServerCtxInFile("")
 	}
 	auth.CleanJwtToken()
 	return nil
+}
+
+// clearDNSOnLogout removes Netmaker OS DNS (NRPT on Windows) and listeners.
+//
+// Logout disconnects with restart=false, so nothing else stops the listeners,
+// and the async DNS apply may still be mid-Configure from the exit teardown.
+// Stop clears synchronously; the trailing schedule runs after any in-flight
+// apply and, with no node connected, only resets.
+func clearDNSOnLogout() {
+	dns.GetDNSServerInstance().Stop()
+	dns.FlushCache()
+	scheduleDNSReconfigure()
 }
