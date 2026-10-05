@@ -77,18 +77,23 @@ func reconfigureDNSAfterRouting() {
 	defer logElapsed("dns reconfigure")()
 	server := config.GetServer(config.CurrServer)
 	manageDNS := server != nil && server.ManageDNS
+	anyConnected := config.AnyNodeConnected()
 	// Exit apply often runs before DNS Start during daemon bring-up. When
 	// listeners are already up, still add any missing overlay binds for newly
 	// connected networks (StartListeners is additive on Linux/Windows).
-	if manageDNS {
+	// With nothing connected (logout, last disconnect) never start: macOS binds
+	// its loopback listener regardless of Connected and would reinstall OS DNS.
+	if manageDNS && anyConnected {
 		if dns.GetDNSServerInstance().ListenerAddr() == "" {
 			dns.GetDNSServerInstance().Start()
 		} else {
 			dns.GetDNSServerInstance().StartListeners()
 		}
 	}
-	if dns.GetDNSServerInstance().ListenerAddr() == "" {
-		// Listener still down: strip any leftover full-DNS we installed.
+	if !anyConnected || dns.GetDNSServerInstance().ListenerAddr() == "" {
+		// No connected network, or listener still down: strip any leftover
+		// Netmaker OS DNS (NRPT on Windows).
+		dns.GetDNSServerInstance().StopListeners()
 		done := logElapsed("os dns reset")
 		err := dns.ResetOSConfig()
 		done()

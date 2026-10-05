@@ -304,18 +304,20 @@ func bindsFollowNodeAddrs() bool {
 }
 
 // Stop removes OS DNS and shuts the listeners down.
+//
+// OS DNS is removed even when no listener is recorded: a bind that already died
+// (or was stopped via StopListeners) can leave NRPT/search-list entries behind.
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
-		return
-	}
 
-	err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
-		Remove: true,
-	})
-	if err != nil {
-		logger.Log(0, "error resetting dns config:", err.Error())
+	if configManager != nil {
+		err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
+			Remove: true,
+		})
+		if err != nil {
+			logger.Log(0, "error resetting dns config:", err.Error())
+		}
 	}
 
 	dnsServer.stopListenersLocked()
