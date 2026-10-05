@@ -236,6 +236,25 @@ func TestSelectExitNodeHandlerRequiresSession(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
+func TestClearSessionKeepsTokenOnQuit(t *testing.T) {
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "keep-me")
+	setStatus(Running)
+
+	require.NoError(t, clearSession(false))
+	assert.Equal(t, Idle, getStatus())
+	assert.True(t, isSessionActive(), "quit must keep JWT for auto-login")
+	_, user, token := sessionToken()
+	assert.Equal(t, "alice", user)
+	assert.Equal(t, "keep-me", token)
+
+	require.NoError(t, clearSession(true))
+	assert.False(t, isSessionActive(), "logout must wipe JWT")
+	_, user, token = sessionToken()
+	assert.Empty(t, user)
+	assert.Empty(t, token)
+}
+
 func setupTestSession(server, username, token string) {
 	config.CurrServer = server
 	session.mu.Lock()

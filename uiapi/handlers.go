@@ -130,7 +130,8 @@ func releaseSessionForServerChange(reason string) error {
 	if err := releaseSessionFn(false); err != nil {
 		uiLog(1, "uiapi: error releasing session before server change:", err.Error())
 	}
-	if err := clearSession(false); err != nil {
+	// Changing server must drop the JWT; keep-token (false) is only for app quit.
+	if err := clearSession(true); err != nil {
 		uiLog(0, "uiapi: error clearing session before server change:", err.Error())
 		setStatus(Idle)
 		return err

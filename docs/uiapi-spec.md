@@ -217,15 +217,16 @@ Log out and disconnect all networks.
 
 | Param | Values | Effect |
 |-------|--------|--------|
-| `clear_token` | `"true"` \| omitted | `"true"`: clear server + delete `.uisession.json`; otherwise keep server, clear credentials |
+| `clear_token` | `"true"` \| omitted/`"false"` | `"true"`: full sign-out — clear credentials and delete `.uisession.json`. Otherwise disconnect networks but **keep** the JWT so Desktop can auto-login on relaunch. |
 
 **Response `200`** — always returned even if underlying cleanup logs warnings.
 
 **Behavior**
 
 1. Status → `"closing"`.
-2. Disconnects all connected networks.
-3. Optionally clears server context from netclient config.
+2. Disconnects all connected networks (and snapshots desired reconnect state).
+3. If `clear_token=true`: clear credentials and delete `.uisession.json` (logout).
+   If `clear_token=false`/omitted: keep username/JWT/tenant in memory and on disk (app quit).
 4. Status → `"idle"`.
 
 ---

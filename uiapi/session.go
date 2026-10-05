@@ -236,18 +236,22 @@ func saveUserSession() error {
 	return os.WriteFile(userSessionPath(), data, 0600)
 }
 
-func clearSession(clearServer bool) error {
+func clearSession(clearToken bool) error {
 	session.mu.Lock()
 	session.status = Idle
-	session.username = ""
-	session.authToken = ""
-	session.tenantID = ""
-	session.serverConfig = nmConfig.ServerConfig{}
-	session.expiresAt = time.Time{}
+	if clearToken {
+		// Explicit logout: wipe credentials so reopen does not auto-login.
+		session.username = ""
+		session.authToken = ""
+		session.tenantID = ""
+		session.serverConfig = nmConfig.ServerConfig{}
+		session.expiresAt = time.Time{}
+	}
 	session.mu.Unlock()
-	if clearServer {
+	if clearToken {
 		return os.Remove(userSessionPath())
 	}
+	// App quit / disconnect-only: keep JWT so Desktop can restore the session.
 	return saveUserSession()
 }
 
