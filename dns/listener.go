@@ -310,7 +310,6 @@ func bindsFollowNodeAddrs() bool {
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-
 	if configManager != nil {
 		err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
 			Remove: true,
