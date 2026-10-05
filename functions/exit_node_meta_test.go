@@ -27,6 +27,12 @@ func TestPublicProbeHostsDedupes(t *testing.T) {
 	}))
 }
 
+func TestMeasurePublicLatencyNoHosts(t *testing.T) {
+	// No public endpoints → no probe; does not hit the network.
+	assert.Equal(t, exitNodeLatencyNone, measurePublicLatency(nil))
+	assert.Equal(t, exitNodeLatencyNone, measurePublicLatency([]string{"127.0.0.1", "0.0.0.0"}))
+}
+
 func TestExitNodeEndpointIPs(t *testing.T) {
 	got := exitNodeEndpointIPs([]models.DeviceExitNode{
 		{AllowedEndpoints: []string{"203.0.113.10", "203.0.113.10:51821", "127.0.0.1"}},

@@ -40,6 +40,10 @@ const (
 	// first handshake — BeginIfaceRebuild covers rebuilds — and it is re-armed
 	// after every rebuild, so a long grace compounds into real blindness.
 	IGWStartupGrace = 45 * time.Second
+	// IGWPinRefreshInterval is how often underlay pins are reconciled against
+	// the LAN gateway while the exit is active, so a Wi-Fi switch re-points
+	// them well before IGWFailureThreshold samples could declare the exit dead.
+	IGWPinRefreshInterval = 10 * time.Second
 	// defaultMetricsPort mirrors networking.InitialiseIfaceMetricsServer's fallback.
 	defaultMetricsPort = 51821
 )
@@ -146,6 +150,7 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 
 		ticker := time.NewTicker(IGWMonitorInterval)
 		defer ticker.Stop()
+		lastPinRefresh := time.Now()
 
 		for {
 			select {
@@ -164,6 +169,11 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 					s.successCount = 0
 					s.failureCount = 0
 					s.lastRx = -1
+				}
+				// Unhealthy means host exit routes were reset; no pins wanted.
+				if s.isHealthy && time.Since(lastPinRefresh) >= IGWPinRefreshInterval {
+					lastPinRefresh = time.Now()
+					pinInternetGwHostRoutes(s.publicKey)
 				}
 				logger.Log(2, "checking health of internet gateway...")
 				s.check()

@@ -99,12 +99,22 @@ type Config struct {
 	OriginalDefaultGatewayIp6 net.IP `json:"original_default_gateway_ip6_old" yaml:"original_default_gateway_ip6_old"`
 	CurrGwNmIP                net.IP `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
 	CurrGwNmIP6               net.IP `json:"curr_gw_nm_ip6" yaml:"curr_gw_nm_ip6"`
+	// UnderlayPins - host routes installed via the LAN gateway while an exit is
+	// active; persisted so teardown removes exactly these even after a restart.
+	UnderlayPins []UnderlayPin `json:"underlay_pins,omitempty" yaml:"underlay_pins,omitempty"`
 	//for manage DNS
 	DNSManagerType string   `json:"dns_manager_type" yaml:"dns_manager_type"`
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
 	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
 	FwMark         int      `json:"fwmark" yaml:"fwmark"`
+}
+
+// UnderlayPin is one host route installed via the LAN. Via is the
+// platform-specific next hop the route was installed with.
+type UnderlayPin struct {
+	IP  string `json:"ip" yaml:"ip"`
+	Via string `json:"via" yaml:"via"`
 }
 
 func init() {

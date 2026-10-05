@@ -124,6 +124,9 @@ func failoverAutoExit(network, token, failedPublicKey string) error {
 	if err != nil {
 		return err
 	}
+	// List attaches public latencies for GUI/Auto pick. Failover re-ranks on
+	// overlay metrics-port RTTs so the next exit is nearest on the live mesh.
+	attachExitNodeOverlayLatencies(network, nodes)
 
 	user, tenant := uiapi.SessionIdentity()
 	cur := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
@@ -191,6 +194,13 @@ func failedEgressExcludeSet() map[string]struct{} {
 		out[id] = struct{}{}
 	}
 	return out
+}
+
+// autoExitReconcileExclude is the set reconcileDesiredExit uses when re-picking
+// nearest. It is the IGW-failure blacklist only — never the in-flight desired
+// egress id (manual→Auto clear→assign must not exclude the exit just chosen).
+func autoExitReconcileExclude() map[string]struct{} {
+	return failedEgressExcludeSet()
 }
 
 // egressIDsForPeerKey maps a WireGuard peer public key to exit egress IDs by

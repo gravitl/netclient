@@ -1,12 +1,16 @@
 package functions
 
 import (
+	"errors"
 	"math"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	//lint:ignore SA1019 Reason: same ICMP probe used for remote-access gateway latency
+	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/wireguard"
@@ -15,18 +19,53 @@ import (
 )
 
 const (
-	exitNodeLatencyNone = int64(0)
-	exitNodeLatencyTO   = int64(999)
-	defaultMetricsPort  = 51821
+	exitNodeProbeTimeout = time.Second
+	exitNodeLatencyNone  = int64(0)
+	exitNodeLatencyTO    = int64(999)
+	defaultMetricsPort   = 51821
 )
 
-func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
+// attachExitNodePublicLatencies probes each exit's public AllowedEndpoints
+// (ICMP + TCP 443/22). Works before the mesh is up and is used for GUI list
+// ranking and Auto nearest pick.
+func attachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode) {
 	if len(nodes) == 0 {
 		return
 	}
-	// Keep public underlay pins so WG/control-plane traffic to alternate exits
-	// does not trombone through the current 0.0.0.0/0. Ranking uses overlay
-	// metrics-port probes only (same path as mesh metrics collection).
+	// While an internet exit owns 0.0.0.0/0, pin every exit's public endpoints
+	// on the LAN so probes and WG to alternate exits do not trombone through
+	// the tunnel.
+	pinIPs := exitNodeEndpointIPs(nodes)
+	wireguard.SetExitNodeUnderlayPinIPs(pinIPs)
+	if len(pinIPs) > 0 {
+		wireguard.RefreshInternetGwHostPins()
+	}
+
+	var wg sync.WaitGroup
+	resolved := 0
+	for i := range nodes {
+		endpoints := publicProbeHosts(nodes[i].AllowedEndpoints)
+		if len(endpoints) == 0 {
+			continue
+		}
+		resolved++
+		wg.Add(1)
+		go func(i int, endpoints []string) {
+			defer wg.Done()
+			nodes[i].LatencyMs = measurePublicLatency(endpoints)
+		}(i, endpoints)
+	}
+	wg.Wait()
+	finishExitNodeLatencyAttach(network, nodes, "public", resolved, 0)
+}
+
+// attachExitNodeOverlayLatencies probes each exit's overlay metrics port.
+// Used after connect for Auto failover ranking on the mesh. Does not flip
+// Status on a probe miss.
+func attachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNode) {
+	if len(nodes) == 0 {
+		return
+	}
 	pinIPs := exitNodeEndpointIPs(nodes)
 	wireguard.SetExitNodeUnderlayPinIPs(pinIPs)
 	if len(pinIPs) > 0 {
@@ -47,33 +86,39 @@ func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
 			defer wg.Done()
 			ok, latency := metrics.PeerConnStatus(addr, port, 1)
 			if !ok {
-				// One retry: right after IGW tear-down / path change the first
-				// overlay probe often times out on an otherwise healthy exit,
-				// which made failover pick a worse peer and the GUI re-pick later.
+				// One retry: right after IGW tear-down the first overlay probe
+				// often times out on an otherwise healthy exit.
 				ok, latency = metrics.PeerConnStatus(addr, port, 1)
 			}
 			if ok {
 				nodes[i].LatencyMs = latency
 				return
 			}
-			// Overlay unreachable: do not rank or auto-select this exit even if
-			// the server still reports the routing node Connected.
+			// Rank last for Auto. Do not flip Status — a single metrics-port
+			// miss is not proof the peer is down.
 			nodes[i].LatencyMs = exitNodeLatencyTO
-			nodes[i].Status = false
 		}(i, addr)
 	}
 	wg.Wait()
+	finishExitNodeLatencyAttach(network, nodes, "overlay", probed, port)
+}
+
+func finishExitNodeLatencyAttach(network string, nodes []models.DeviceExitNode, mode string, probed int, metricsPort int) {
 	origin := ""
 	if nc := config.Netclient(); nc != nil {
 		origin = nc.Location
 	}
 	markNearestExitNodes(nodes, origin)
-	slog.Info("exit node latencies attached",
+	attrs := []any{
 		"network", network,
 		"nodes", len(nodes),
-		"overlay_probed", probed,
-		"metrics_port", port,
-	)
+		"mode", mode,
+		"probed", probed,
+	}
+	if metricsPort > 0 {
+		attrs = append(attrs, "metrics_port", metricsPort)
+	}
+	slog.Info("exit node latencies attached", attrs...)
 }
 
 func exitNodeMetricsPort() int {
@@ -117,6 +162,95 @@ func exitNodeEndpointIPs(nodes []models.DeviceExitNode) []net.IP {
 		}
 	}
 	return out
+}
+
+// measurePublicLatency races ICMP and TCP 443/22 against public endpoints,
+// matching the remote-access gateway picker. Returns the lowest successful RTT
+// within one second, or 999 on timeout.
+func measurePublicLatency(endpoints []string) int64 {
+	hosts := publicProbeHosts(endpoints)
+	if len(hosts) == 0 {
+		return exitNodeLatencyNone
+	}
+
+	type probe struct {
+		ms  int64
+		err error
+	}
+	n := 3 * len(hosts)
+	ch := make(chan probe, n)
+	for _, host := range hosts {
+		go func(host string) {
+			ms, err := tryICMP(host)
+			ch <- probe{ms, err}
+		}(host)
+		go func(host string) {
+			ms, err := tryTCP(host, 443)
+			ch <- probe{ms, err}
+		}(host)
+		go func(host string) {
+			ms, err := tryTCP(host, 22)
+			ch <- probe{ms, err}
+		}(host)
+	}
+
+	timeout := time.After(exitNodeProbeTimeout)
+	best := exitNodeLatencyTO
+	got := false
+	for i := 0; i < n; i++ {
+		select {
+		case r := <-ch:
+			if r.err == nil && r.ms > 0 && r.ms < best {
+				best = r.ms
+				got = true
+			}
+		case <-timeout:
+			if got {
+				return best
+			}
+			return exitNodeLatencyTO
+		}
+	}
+	if got {
+		return best
+	}
+	return exitNodeLatencyTO
+}
+
+func tryICMP(host string) (int64, error) {
+	pinger, err := ping.NewPinger(host)
+	if err != nil {
+		return 0, err
+	}
+	pinger.Count = 1
+	pinger.Timeout = exitNodeProbeTimeout
+	pinger.SetPrivileged(true)
+	if err := pinger.Run(); err != nil {
+		return 0, err
+	}
+	stats := pinger.Statistics()
+	if stats == nil || stats.PacketsRecv == 0 {
+		return 0, errors.New("no icmp reply")
+	}
+	return positiveMS(stats.AvgRtt), nil
+}
+
+func tryTCP(host string, port int) (int64, error) {
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), exitNodeProbeTimeout)
+	if err != nil {
+		return 0, err
+	}
+	_ = conn.Close()
+	return positiveMS(time.Since(start)), nil
+}
+
+func positiveMS(d time.Duration) int64 {
+	ms := d.Milliseconds()
+	if ms <= 0 {
+		return 1
+	}
+	return ms
 }
 
 func publicProbeHosts(endpoints []string) []string {

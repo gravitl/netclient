@@ -400,6 +400,14 @@ const exitReconcileInterval = 30 * time.Second
 
 var lastExitReconcile atomic.Int64
 
+// exitSelectInFlight is true while a clear→assign (or manual select) PUT window
+// is open. reconcileDesiredExit skips so ChangeDefaultGw=false from the clear
+// half cannot race and re-select a different exit under us.
+var exitSelectInFlight atomic.Bool
+
+func beginExitSelect() { exitSelectInFlight.Store(true) }
+func endExitSelect()   { exitSelectInFlight.Store(false) }
+
 // reconcileDesiredExit re-selects the exit node on the server when local desired
 // state still wants one but the server keeps advertising none.
 //
@@ -417,6 +425,11 @@ func reconcileDesiredExit() {
 	// for an exit while the teardown runs. Re-selecting here would undo the
 	// server-side clear that logout just issued.
 	if sessionReleased.Load() {
+		return
+	}
+	// Manual→Auto (and failover) clear then assign. The clear publishes
+	// ChangeDefaultGw=false; do not reconcile over that window.
+	if exitSelectInFlight.Load() {
 		return
 	}
 	user, tenant, ok := desktopSessionIdentity()
@@ -449,25 +462,23 @@ func reconcileDesiredExit() {
 	}
 
 	go func() {
+		if exitSelectInFlight.Load() {
+			return
+		}
 		// Auto mode must never call SelectDeviceExitNode: that persists a fixed
-		// egress and clears auto_exit. Re-pick nearest using the failure
-		// blacklist only — do not mark the in-flight desired id as failed
-		// (clear→assign windows would otherwise exclude the exit we just chose).
+		// egress and clears auto_exit. Re-pick nearest using the IGW-failure
+		// blacklist only — never exclude the in-flight desired id (manual→Auto
+		// clear→assign would otherwise drop the exit we just chose and snap
+		// back to the previous one).
 		if autoExit {
 			logger.Log(0, "exit reconcile: auto-exit re-picking nearest on "+network)
-			exclude := failedEgressExcludeSet()
-			if cur := strings.TrimSpace(egressID); cur != "" {
-				exclude[cur] = struct{}{}
-			}
+			exclude := autoExitReconcileExclude()
 			if _, err := selectNearestDeviceExitNodeExcluding(network, token, nil, exclude); err != nil {
 				logger.Log(0, "exit reconcile: auto-exit re-pick failed:", err.Error())
-				// Soft retry: only exclude the current id so a full blacklist
-				// cannot leave the host with no exit when another is up.
-				soft := map[string]struct{}{}
-				if cur := strings.TrimSpace(egressID); cur != "" {
-					soft[cur] = struct{}{}
-				}
-				if _, err2 := selectNearestDeviceExitNodeExcluding(network, token, nil, soft); err2 != nil {
+				// Soft retry with no exclude so a full failure blacklist cannot
+				// leave the host with no exit when another (including the
+				// desired id) is still up.
+				if _, err2 := selectNearestDeviceExitNodeExcluding(network, token, nil, nil); err2 != nil {
 					logger.Log(0, "exit reconcile: nearest fallback failed:", err2.Error())
 				}
 			}

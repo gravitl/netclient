@@ -959,10 +959,15 @@ func restoreInternetGwV4() (err error) {
 }
 
 // pinInternetGwHostRoutes adds main-table rules for exit and non-exit peer
-// underlay IPs without changing the IGW table default. Safe when exit routing
-// is already active.
+// underlay IPs without changing the IGW table default, and drops rules for
+// IPs that are no longer peers. Safe when exit routing is already active.
+// Rules defer to the main table, so they follow a LAN gateway change as is.
 func pinInternetGwHostRoutes(publicKey string) {
-	for _, hostIP := range IGWUnderlayPinIPs(publicKey) {
+	desired := IGWUnderlayPinIPs(publicKey)
+	if canPruneUnderlayPins(publicKey) {
+		pruneUnderlayPinRules(desired)
+	}
+	for _, hostIP := range desired {
 		var cidr string
 		family := netlink.FAMILY_V4
 		if hostIP.To4() != nil {
@@ -988,6 +993,38 @@ func pinInternetGwHostRoutes(publicKey string) {
 			continue
 		}
 		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
+	}
+}
+
+// pruneUnderlayPinRules deletes priority-2999 main-table host rules whose
+// destination is not in desired.
+func pruneUnderlayPinRules(desired []net.IP) {
+	want := make(map[string]struct{}, len(desired))
+	for _, ip := range desired {
+		want[ip.String()] = struct{}{}
+	}
+	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+		rules, err := netlink.RuleList(family)
+		if err != nil {
+			continue
+		}
+		for _, r := range rules {
+			if r.Priority != 2999 || r.Table != unix.RT_TABLE_MAIN || r.Dst == nil {
+				continue
+			}
+			if ones, bits := r.Dst.Mask.Size(); ones != bits {
+				continue
+			}
+			if _, ok := want[r.Dst.IP.String()]; ok {
+				continue
+			}
+			rule := r
+			if err := netlink.RuleDel(&rule); err != nil {
+				slog.Warn("delete stale underlay pin rule failed", "rule", rule.String(), "error", err.Error())
+				continue
+			}
+			slog.Info("removed stale underlay pin rule", "dst", r.Dst.String())
+		}
 	}
 }
 

@@ -475,7 +475,7 @@ func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error)
 	if nodes == nil {
 		nodes = []models.DeviceExitNode{}
 	}
-	attachExitNodeLatencies(network, nodes)
+	attachExitNodePublicLatencies(network, nodes)
 	return nodes, nil
 }
 
@@ -497,7 +497,7 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 		return nil, nil
 	}
 	nodes := []models.DeviceExitNode{node}
-	attachExitNodeLatencies(network, nodes)
+	attachExitNodePublicLatencies(network, nodes)
 	return &nodes[0], nil
 }
 
@@ -520,6 +520,9 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	} else {
 		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
 	}
+
+	beginExitSelect()
+	defer endExitSelect()
 
 	resp, err := putDeviceExitNode(network, token, egressID, false)
 	if err != nil {
@@ -584,8 +587,8 @@ func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.
 	}
 	pick, ok := pickNearestAvailableExitNode(nodes, exclude)
 	if !ok || strings.TrimSpace(pick.EgressID) == "" {
-		// While disconnected, overlay probes mark every exit unhealthy. Persist
-		// Auto intent so connect/restore can pick nearest once the mesh is up.
+		// While disconnected with no usable public latency, persist Auto intent
+		// so connect/restore can pick nearest once probes succeed.
 		if !networkLocallyConnected(network) {
 			user, tenant := uiapi.SessionIdentity()
 			if err := config.SetDesiredAutoExitNode(user, tenant, network, ""); err != nil {
@@ -609,6 +612,12 @@ func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.
 	// Keep auto intent for the whole clear→assign window so MQTT/reconcile do
 	// not treat this as a manual fixed egress (or as exit-off).
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
+
+	// Suppress reconcileDesiredExit for the clear→assign window: the clear
+	// publishes ChangeDefaultGw=false and would otherwise race to re-pick
+	// (historically excluding this desired id and snapping back to the previous exit).
+	beginExitSelect()
+	defer endExitSelect()
 
 	current, err := GetDeviceSelectedExitNode(network, token)
 	if err != nil {
