@@ -9,8 +9,20 @@ import (
 )
 
 // GetConfigPath returns the netclient config directory (single source of truth for uiapi files).
+// Tests may override via SetConfigPathForTest.
 func GetConfigPath() string {
+	if p := configPathForTest; p != "" {
+		return p
+	}
 	return config.GetNetclientPath()
+}
+
+// configPathForTest, when non-empty, redirects session/config file I/O for tests.
+var configPathForTest string
+
+// SetConfigPathForTest redirects GetConfigPath. Pass "" to restore the default.
+func SetConfigPathForTest(dir string) {
+	configPathForTest = dir
 }
 
 func legacyDesktopConfigPath() string {

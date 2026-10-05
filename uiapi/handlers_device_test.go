@@ -237,6 +237,9 @@ func TestSelectExitNodeHandlerRequiresSession(t *testing.T) {
 }
 
 func TestClearSessionKeepsTokenOnQuit(t *testing.T) {
+	SetConfigPathForTest(t.TempDir())
+	t.Cleanup(func() { SetConfigPathForTest("") })
+
 	clearSessionForTest()
 	setupTestSession("api.example.com", "alice", "keep-me")
 	setStatus(Running)
