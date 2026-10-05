@@ -277,9 +277,9 @@ func bindsFollowNodeAddrs() bool {
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
-		return
-	}
+	//if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
+	//	return
+	//}
 
 	err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
 		Remove: true,
