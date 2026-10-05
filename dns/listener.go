@@ -111,16 +111,18 @@ func (dnsServer *DNSServer) Start() {
 // whether they were already up. Callers that also need OS DNS installed either
 // use Start or schedule the apply themselves, keeping the slow networksetup pass
 // off interactive paths like connect, disconnect and logout.
+//
+// On Linux/Windows, if listeners are already running, missing overlay binds for
+// newly connected networks are added instead of no-oping — Start()/daemon paths
+// used to early-return and leave the second network without :53.
 func (dnsServer *DNSServer) StartListeners() (alreadyUp bool) {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if dnsServer.AddrStr != "" {
-		return true
-	}
+	alreadyUp = dnsServer.AddrStr != ""
 
 	if len(config.GetNodes()) == 0 {
 		logger.Log(0, "dns start skipped: no nodes")
-		return false
+		return alreadyUp
 	}
 
 	// macOS listens on the loopback alias only. Overlay WG addresses are never
@@ -128,29 +130,53 @@ func (dnsServer *DNSServer) StartListeners() (alreadyUp bool) {
 	// bind until the tunnel is up, so attempting them only logs bind failures.
 	// Exit-node mode publishes this address system-wide (SplitDNS=false).
 	if runtime.GOOS == "darwin" {
+		if alreadyUp {
+			return true
+		}
 		ensureDarwinDNSLoopbackAlias()
 		if !dnsServer.startListenerLocked(darwinDNSLoopbackAddr + ":53") {
 			logger.Log(0, "dns: failed to bind macOS loopback listener", darwinDNSLoopbackAddr+":53")
 		}
 	} else {
+		have := make(map[string]struct{}, len(dnsServer.AddrList))
+		for _, a := range dnsServer.AddrList {
+			have[a] = struct{}{}
+		}
+		added := 0
 		for _, v := range config.GetNodes() {
-			node := v
 			if !v.Connected {
 				continue
 			}
-			if node.Address.IP != nil {
-				dnsServer.startListenerLocked(node.Address.IP.String() + ":53")
+			if v.Address.IP != nil {
+				addr := v.Address.IP.String() + ":53"
+				if _, ok := have[addr]; ok {
+					continue
+				}
+				if dnsServer.startListenerLocked(addr) {
+					have[addr] = struct{}{}
+					added++
+				}
 			}
-			if node.Address6.IP != nil {
-				dnsServer.startListenerLocked("[" + node.Address6.IP.String() + "]:53")
+			if v.Address6.IP != nil {
+				addr := "[" + v.Address6.IP.String() + "]:53"
+				if _, ok := have[addr]; ok {
+					continue
+				}
+				if dnsServer.startListenerLocked(addr) {
+					have[addr] = struct{}{}
+					added++
+				}
 			}
+		}
+		if alreadyUp && added > 0 {
+			logger.Log(0, "dns: added listeners for newly connected networks:", strings.Join(dnsServer.AddrList, ", "))
 		}
 	}
 
 	if len(dnsServer.AddrList) == 0 || len(dnsServer.DnsServer) == 0 {
 		logger.Log(0, "dns start aborted: no listeners bound")
 	}
-	return false
+	return alreadyUp
 }
 
 // ensureDarwinDNSLoopbackAlias adds the loopback alias on lo0 so the DNS listener
@@ -253,7 +279,9 @@ func SyncForNodeChange() {
 		return
 	}
 	instance := GetDNSServerInstance()
-	if len(config.GetNodes()) == 0 {
+	// Joined-but-disconnected nodes must not keep listeners; bind set follows
+	// Connected, not merely presence in the node map.
+	if !config.AnyNodeConnected() {
 		instance.StopListeners()
 		return
 	}
@@ -262,6 +290,8 @@ func SyncForNodeChange() {
 		return
 	}
 	if running {
+		// Full rebuild drops stale binds for networks that just disconnected and
+		// picks up every currently connected overlay address.
 		instance.StopListeners()
 	}
 	instance.StartListeners()

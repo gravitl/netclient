@@ -75,10 +75,16 @@ func scheduleDNSReconfigure() {
 // so system DNS is not left pointing at the Netmaker listener.
 func reconfigureDNSAfterRouting() {
 	defer logElapsed("dns reconfigure")()
-	// Exit apply often runs before DNS Start during daemon bring-up.
-	if dns.GetDNSServerInstance().ListenerAddr() == "" {
-		if server := config.GetServer(config.CurrServer); server != nil && server.ManageDNS {
+	server := config.GetServer(config.CurrServer)
+	manageDNS := server != nil && server.ManageDNS
+	// Exit apply often runs before DNS Start during daemon bring-up. When
+	// listeners are already up, still add any missing overlay binds for newly
+	// connected networks (StartListeners is additive on Linux/Windows).
+	if manageDNS {
+		if dns.GetDNSServerInstance().ListenerAddr() == "" {
 			dns.GetDNSServerInstance().Start()
+		} else {
+			dns.GetDNSServerInstance().StartListeners()
 		}
 	}
 	if dns.GetDNSServerInstance().ListenerAddr() == "" {
@@ -92,8 +98,8 @@ func reconfigureDNSAfterRouting() {
 		flushDNSCacheTimed()
 		return
 	}
-	// Listener already up: Configure refreshes SplitDNS↔full from CurrGwNmIP
-	// (Start is a no-op for bind when AddrStr is set).
+	// Configure refreshes SplitDNS↔full from CurrGwNmIP and publishes all
+	// current listener addresses as nameservers.
 	done := logElapsed("os dns configure")
 	err := dns.Configure()
 	done()
@@ -278,8 +284,11 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 		applyInternetGwAfterReconnect(pull, nil)
 		done()
 	}
-	// Always refresh OS DNS after reconnect apply — exit restore may have just
-	// set CurrGw (full DNS) or listeners may have started after an earlier no-op.
+	// After iface addresses exist: rebind DNS for every connected network.
+	// Session restore and reconnect used to skip this (only interactive
+	// connect/disconnect synced), so a second network never got a :53 listener
+	// without a daemon restart. OS DNS apply must follow the sync, not precede it.
+	dns.SyncForNodeChange()
 	scheduleDNSReconfigure()
 	return nil
 }
@@ -318,17 +327,9 @@ func applyConnectionChangeInProcess() error {
 	if user, tenant, ok := desktopSessionIdentity(); ok {
 		wantIGW = config.GetDesiredWantIGW(user, tenant)
 	}
-	if err := applyReconnectInProcess(pull, wantIGW); err != nil {
-		return err
-	}
-	// After the iface is configured, not before: on Linux and Windows the
-	// listener binds overlay node addresses, which do not exist yet at entry.
-	dns.SyncForNodeChange()
-	// Listener binds just changed, so OS DNS has to follow — but off this
-	// goroutine. Disconnecting to zero nodes leaves the entries pointing at
-	// listeners that are gone until this runs.
-	scheduleDNSReconfigure()
-	return nil
+	// DNS listener sync + OS reconfigure run inside applyReconnectInProcess
+	// after the iface has the connected-node addresses.
+	return applyReconnectInProcess(pull, wantIGW)
 }
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
