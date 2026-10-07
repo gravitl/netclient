@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sort"
 	"sync"
@@ -187,7 +186,7 @@ func StartEgressHAFailOverThread(ctx context.Context, waitg *sync.WaitGroup) {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("REV CTX DONE SIGNAL exiting startEgressHAFailOverThread")
+			slog.Debug("exiting StartEgressHAFailOverThread")
 			resetHAEgressCache()
 			return
 		case <-EgressResetCh:

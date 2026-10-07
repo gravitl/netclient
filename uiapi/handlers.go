@@ -489,7 +489,7 @@ func listNetworksHandler(w http.ResponseWriter, r *http.Request) {
 	if networks == nil {
 		networks = []models.DeviceNetwork{}
 	}
-	uiLog(0, fmt.Sprintf("uiapi: GET /networks ok server=%s count=%d", server, len(networks)))
+	uiLog(1, fmt.Sprintf("uiapi: GET /networks ok server=%s count=%d", server, len(networks)))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(networks)
 }
@@ -644,7 +644,7 @@ func listExitNodesHandler(w http.ResponseWriter, r *http.Request) {
 	if nodes == nil {
 		nodes = []models.DeviceExitNode{}
 	}
-	uiLog(0, fmt.Sprintf("uiapi: GET /networks/%s/exit_nodes ok count=%d", network, len(nodes)))
+	uiLog(1, fmt.Sprintf("uiapi: GET /networks/%s/exit_nodes ok count=%d", network, len(nodes)))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(nodes)
 }

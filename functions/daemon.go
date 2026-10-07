@@ -566,9 +566,10 @@ func setupMQTT(server *config.Server) error {
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
 	server = config.NormalizeServerHost(server)
+	peerTopic := fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
-	fmt.Println("=========> ###### subscribing to host peer updates", "host", hostID, "server", server, "topic", fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
-	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
+	slog.Debug("subscribing to host peer updates", "host", hostID, "server", server, "topic", peerTopic)
+	if token := client.Subscribe(peerTopic, 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
