@@ -359,8 +359,12 @@ func activateConnection(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if !isSessionActive() && !isRegistered(serverAddress()) {
-		w.WriteHeader(http.StatusBadRequest)
+	// Require a usable Desktop session. Registration alone must not allow
+	// connect after logout. A kept JWT with status idle (app quit) also must
+	// not allow tray reconnect until login restores the session.
+	st := getStatus()
+	if !isSessionActive() || st == Idle || st == Closing {
+		writeSessionRequired(w)
 		return
 	}
 	disconnect, err := prepareConnect(network)

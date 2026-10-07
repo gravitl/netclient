@@ -415,6 +415,8 @@ Connect to a network.
 
 **Path param:** `network` — exact network name from `GET /connections`.
 
+**Precondition:** Active Desktop UI session with status not `idle`/`closing`. Host registration alone is **not** enough (prevents tray connect after logout).
+
 **Response `200`**
 
 Returns the `Connection` object for that network.
@@ -430,7 +432,7 @@ Returns the `Connection` object for that network.
 
 | Code | Example message |
 |------|-----------------|
-| `400` | No session / not registered |
+| `401` | `"session required"` — logged out / idle session |
 | `500` | `"no such network"`, `"node already connected"` |
 
 **UI guidance:** Show a spinner while `GET /server` reports `"loading"`. Connect can take several seconds due to daemon restart.
