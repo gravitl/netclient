@@ -180,9 +180,9 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	// process and still restarts the service.
 	if daemon.IsDaemonProcess() {
 		registrationResetPending.Store(true)
-		logger.Log(0, "device registration: reset deferred until login response")
+		logger.Log(3, "device registration: reset deferred until login response")
 	} else {
-		logger.Log(0, "restart trigger: device registration")
+		logger.Log(3, "restart trigger: device registration")
 		if err := daemon.Restart(); err != nil {
 			logger.Log(3, "daemon restart failed:", err.Error())
 		}
@@ -206,10 +206,10 @@ func ApplyPendingRegistrationReset() <-chan struct{} {
 	if !registrationResetPending.CompareAndSwap(true, false) {
 		return nil
 	}
-	logger.Log(0, "device registration: resetting in-process")
+	logger.Log(3, "device registration: resetting in-process")
 	done := daemon.RequestInProcessReset()
 	if done == nil {
-		logger.Log(0, "restart trigger: device registration")
+		logger.Log(3, "restart trigger: device registration")
 		if err := daemon.Restart(); err != nil {
 			logger.Log(3, "daemon restart failed:", err.Error())
 		}

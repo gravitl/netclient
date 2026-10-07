@@ -81,8 +81,9 @@ func HardRestart() error {
 	return hardRestart()
 }
 
-// logRestartRequest names the caller at level 0. TraceCaller writes slog.Debug,
-// which the Windows service log drops, so a restart otherwise looks spontaneous.
+// logRestartRequest names the caller at verbosity 1 (debug). Kept on logger.Log
+// rather than slog.Debug so it still appears when -v is raised on Windows,
+// where the service log drops slog.Debug.
 func logRestartRequest(kind string) {
 	caller := "unknown"
 	if pc, file, line, ok := runtime.Caller(2); ok {
@@ -92,7 +93,7 @@ func logRestartRequest(kind string) {
 		}
 		caller = fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
 	}
-	logger.Log(0, fmt.Sprintf("daemon %s requested by %s", kind, caller))
+	logger.Log(3, fmt.Sprintf("daemon %s requested by %s", kind, caller))
 }
 
 // Stop - stops a system daemon
