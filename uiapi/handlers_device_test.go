@@ -258,6 +258,31 @@ func TestClearSessionKeepsTokenOnQuit(t *testing.T) {
 	assert.Empty(t, token)
 }
 
+func TestForceLogoutClearsTokenAndKeepsServer(t *testing.T) {
+	SetConfigPathForTest(t.TempDir())
+	t.Cleanup(func() { SetConfigPathForTest("") })
+
+	clearSessionForTest()
+	prevDeps := deps
+	t.Cleanup(func() { deps = prevDeps })
+	deps.ReleaseSession = func(clearServer bool) error {
+		assert.False(t, clearServer, "host delete must keep CurrServer for re-login")
+		return nil
+	}
+
+	setupTestSession("example.com", "alice", "wipe-me")
+	config.CurrServer = "example.com"
+	setStatus(Running)
+
+	ForceLogout()
+	assert.Equal(t, Idle, getStatus())
+	assert.False(t, isSessionActive())
+	_, user, token := sessionToken()
+	assert.Empty(t, user)
+	assert.Empty(t, token)
+	assert.Equal(t, "example.com", config.CurrServer)
+}
+
 func setupTestSession(server, username, token string) {
 	config.CurrServer = server
 	session.mu.Lock()

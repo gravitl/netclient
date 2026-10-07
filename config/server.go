@@ -365,6 +365,74 @@ func DeleteServer(k string) {
 	delete(Servers, k)
 }
 
+// DemoteServerToPartial turns a fully registered server entry into a Settings-
+// style partial (domain + API only). Desktop can still show the saved server
+// after the host is deleted remotely; IsRegisteredToServer becomes false so
+// the next login re-registers. Returns the map key kept, or "" if demotion
+// was not possible (missing entry / no API).
+func DemoteServerToPartial(id string) string {
+	_, key := ResolveServer(id)
+	if key == "" {
+		key = NormalizeServerHost(id)
+		key = strings.TrimPrefix(key, "api.")
+	}
+	if key == "" {
+		return ""
+	}
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
+	existing, ok := Servers[key]
+	if !ok {
+		for k, srv := range Servers {
+			if serverIdentifierMatches(srv, id) || serverIdentifierMatches(srv, key) {
+				existing = srv
+				key = k
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		return ""
+	}
+	api := NormalizeServerAPI(existing.API)
+	if api == "" {
+		api = NormalizeServerAPI(existing.APIHost)
+	}
+	if api == "" {
+		return ""
+	}
+	domain := NormalizeServerHost(existing.Name)
+	domain = strings.TrimPrefix(domain, "api.")
+	if domain == "" {
+		domain = strings.TrimPrefix(NormalizeServerHost(key), "api.")
+	}
+	if domain == "" {
+		return ""
+	}
+	partial := Server{
+		Name:  domain,
+		Nodes: make(map[string]bool),
+		ServerConfig: models.ServerConfig{
+			API: api,
+		},
+	}
+	if host, _, err := net.SplitHostPort(api); err == nil {
+		partial.APIHost = host
+	} else {
+		partial.APIHost = api
+	}
+	// Prefer the canonical domain key used by POST /server / .serverctx.
+	delete(Servers, key)
+	for k := range Servers {
+		if k != domain && NormalizeServerHost(k) == domain {
+			delete(Servers, k)
+		}
+	}
+	Servers[domain] = partial
+	return domain
+}
+
 // UpdateServerConfig updates the in memory server map with values provided from netmaker server
 func UpdateServerConfig(cfg *models.ServerConfig) {
 	serverMutex.Lock()

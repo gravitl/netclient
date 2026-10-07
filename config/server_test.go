@@ -3,10 +3,19 @@ package config
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netmaker/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func uuidMustParse(s string) uuid.UUID {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
 
 func TestResolveServerByAPIAlias(t *testing.T) {
 	Servers = map[string]Server{
@@ -56,6 +65,44 @@ func TestResolveServerDoesNotFallbackToUnrelatedSingleServer(t *testing.T) {
 	server, key = ResolveServer("")
 	require.NotNil(t, server)
 	assert.Equal(t, "comms.netmaker.io", key)
+}
+
+func TestDemoteServerToPartialKeepsDomainAndAPI(t *testing.T) {
+	Servers = map[string]Server{
+		"example.com": {
+			Name: "example.com",
+			MQID: uuidMustParse("11111111-1111-1111-1111-111111111111"),
+			Nodes: map[string]bool{
+				"net1": true,
+			},
+			ServerConfig: models.ServerConfig{
+				Server:  "example.com",
+				API:     "api.example.com:443",
+				APIHost: "api.example.com",
+			},
+		},
+	}
+	CurrServer = "example.com"
+	defer func() {
+		Servers = make(map[string]Server)
+		CurrServer = ""
+	}()
+
+	kept := DemoteServerToPartial("example.com")
+	require.Equal(t, "example.com", kept)
+	srv := GetServer("example.com")
+	require.NotNil(t, srv)
+	assert.Equal(t, "example.com", srv.Name)
+	assert.Equal(t, "api.example.com:443", srv.API)
+	assert.Empty(t, srv.Server, "registration identity must clear so re-login re-registers")
+	assert.Equal(t, uuid.Nil, srv.MQID)
+	assert.Empty(t, srv.Nodes)
+}
+
+func TestDemoteServerToPartialMissingReturnsEmpty(t *testing.T) {
+	Servers = map[string]Server{}
+	defer func() { Servers = make(map[string]Server) }()
+	assert.Empty(t, DemoteServerToPartial("missing.example.com"))
 }
 
 func TestUpdateServerConfigKeepsMetricsPortWhenPayloadOmitsIt(t *testing.T) {

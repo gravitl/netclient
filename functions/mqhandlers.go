@@ -571,6 +571,9 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
+		// Drop Desktop UI login before tearing down host state so the app
+		// returns to the login screen. Demote keeps the server domain for re-register.
+		uiapi.ForceLogout()
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNetclientConfig()
@@ -787,7 +790,17 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
-	wasActive := config.CurrServer == server
+	wasActive := config.CurrServer == server || config.ResolveServerKey(config.CurrServer) == config.ResolveServerKey(server)
+	// Keep domain + API so Desktop Settings/Login still know the server after
+	// a remote host delete. Full wipe of CurrServer forced users to re-save.
+	if kept := config.DemoteServerToPartial(server); kept != "" {
+		if wasActive {
+			config.CurrServer = kept
+			_ = config.SetCurrServerCtxInFile(kept)
+			slog.Info("host deleted: kept server domain for re-login", "server", kept)
+		}
+		return
+	}
 	config.DeleteServer(server)
 	if wasActive {
 		config.SwitchToRemainingServer()
