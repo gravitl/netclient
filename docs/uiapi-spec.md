@@ -233,7 +233,7 @@ Log out and disconnect all networks.
 
 ### `POST /sync`
 
-Pull latest config from the server and refresh local node state. Requires an active session.
+Pull latest config from the server and fully reconfigure local state (WireGuard peers replaced, egress/DNS refreshed). Requires an active session.
 
 **Response `200`** on success.
 

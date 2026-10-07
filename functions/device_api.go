@@ -448,14 +448,24 @@ func RequestJITOnServer(network, token, reason string) error {
 	return err
 }
 
-// SyncDeviceWithServer pulls local config and optionally nudges server sync.
+// SyncDeviceWithServer pulls config from the server and re-applies WireGuard,
+// egress, DNS, and related state. Peers are always replaced (ReplacePeers=true)
+// so a Desktop/tray Sync fully reconfigures the host.
 func SyncDeviceWithServer(token string) error {
 	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/sync", token, nil)
 	if err == nil {
 		_ = decodeDeviceResponse(resp, nil)
 	}
-	_, _, _, err = Pull(false, true, false)
-	return err
+	pullResponse, resetInterface, _, err := Pull(false, true, false)
+	if err != nil {
+		return err
+	}
+	pullResponse.ReplacePeers = true
+	mqFallbackPull(pullResponse, resetInterface, true)
+	if resetInterface {
+		resetInterfaceFunc()
+	}
+	return nil
 }
 
 // ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
