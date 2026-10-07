@@ -248,7 +248,6 @@ func writeServiceConfig() error {
 <logpath>%s</logpath>
 <log mode="append" />
 <startmode>Automatic</startmode>
-<delayedAutoStart>true</delayedAutoStart>
 <stoptimeout>30sec</stoptimeout>
 <resetfailure>1 hour</resetfailure>
 <onfailure action="restart" delay="5 sec"/>
