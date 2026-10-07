@@ -6,6 +6,7 @@ import (
 	"net"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/gravitl/netclient/config"
 	dnsconfig "github.com/gravitl/netclient/dns/config"
@@ -13,15 +14,59 @@ import (
 	"github.com/gravitl/netmaker/logger"
 )
 
-func Configure() error {
+var (
+	appliedDNSMu     sync.Mutex
+	appliedDNSFP     string
+	appliedDNSRemoved bool
+)
+
+// clearAppliedDNSConfig forgets the last successful OS DNS apply so the next
+// Configure always pushes. Called when OS DNS is removed (ResetOSConfig).
+func clearAppliedDNSConfig() {
+	appliedDNSMu.Lock()
+	defer appliedDNSMu.Unlock()
+	appliedDNSFP = ""
+	appliedDNSRemoved = true
+}
+
+func dnsConfigFingerprint(iface string, cfg dnsconfig.Config) string {
+	var b strings.Builder
+	b.WriteString(iface)
+	b.WriteByte('|')
+	if cfg.SplitDNS {
+		b.WriteString("split")
+	} else {
+		b.WriteString("full")
+	}
+	b.WriteByte('|')
+	b.WriteString(strings.Join(cfg.MatchDomains, ","))
+	b.WriteByte('|')
+	b.WriteString(strings.Join(cfg.SearchDomains, ","))
+	b.WriteByte('|')
+	for i, ip := range cfg.Nameservers {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		if len(ip) > 0 {
+			b.WriteString(ip.String())
+		}
+	}
+	return b.String()
+}
+
+// Configure builds and installs OS DNS from the current server/listener state.
+// If the desired config matches the last successful apply, the OS call is
+// skipped (applied=false) so peer-update storms do not hammer systemd-resolved /
+// networksetup.
+func Configure() (applied bool, err error) {
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
-		return errors.New("server not configured")
+		return false, errors.New("server not configured")
 	}
 
 	ips, err := getDnsIps()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var dnsConfig dnsconfig.Config
@@ -76,18 +121,37 @@ func Configure() error {
 	}
 
 	if len(dnsConfig.Nameservers) == 0 {
-		return errors.New("no nameservers to configure")
+		return false, errors.New("no nameservers to configure")
 	}
 
 	if configManager == nil {
-		return errors.New("dns config manager not initialized")
+		return false, errors.New("dns config manager not initialized")
+	}
+
+	iface := ncutils.GetInterfaceName()
+	fp := dnsConfigFingerprint(iface, dnsConfig)
+
+	appliedDNSMu.Lock()
+	unchanged := !appliedDNSRemoved && fp == appliedDNSFP
+	appliedDNSMu.Unlock()
+	if unchanged {
+		logger.Log(1, "dns configure skipped: unchanged")
+		return false, nil
 	}
 
 	logger.Log(0, "applying dns:", fmt.Sprintf("split=%v match_all=%v curr_gw=%v nameservers=%v",
 		dnsConfig.SplitDNS, matchAllDomains, nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0),
 		dnsConfig.Nameservers))
 
-	return configManager.Configure(ncutils.GetInterfaceName(), dnsConfig)
+	if err := configManager.Configure(iface, dnsConfig); err != nil {
+		return false, err
+	}
+
+	appliedDNSMu.Lock()
+	appliedDNSFP = fp
+	appliedDNSRemoved = false
+	appliedDNSMu.Unlock()
+	return true, nil
 }
 
 // getDnsIps returns listener addresses to publish as OS nameservers.

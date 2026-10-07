@@ -1,10 +1,113 @@
 package dns
 
 import (
+	"net"
 	"runtime"
 	"slices"
 	"testing"
+
+	dnsconfig "github.com/gravitl/netclient/dns/config"
 )
+
+func TestDNSConfigFingerprint(t *testing.T) {
+	base := dnsconfig.Config{
+		SplitDNS:      true,
+		MatchDomains:  []string{"example.com", "nm.local"},
+		SearchDomains: []string{"example.com"},
+		Nameservers:   []net.IP{net.ParseIP("127.51.8.21"), net.ParseIP("100.64.0.1")},
+	}
+	fp := dnsConfigFingerprint("netmaker", base)
+	if fp != dnsConfigFingerprint("netmaker", base) {
+		t.Fatal("fingerprint not stable for identical config")
+	}
+	if fp == dnsConfigFingerprint("other", base) {
+		t.Fatal("fingerprint should change with interface name")
+	}
+
+	full := base
+	full.SplitDNS = false
+	if fp == dnsConfigFingerprint("netmaker", full) {
+		t.Fatal("fingerprint should change with SplitDNS")
+	}
+
+	extraNS := base
+	extraNS.Nameservers = append(append([]net.IP{}, base.Nameservers...), net.ParseIP("100.64.0.2"))
+	if fp == dnsConfigFingerprint("netmaker", extraNS) {
+		t.Fatal("fingerprint should change with nameservers")
+	}
+
+	extraMatch := base
+	extraMatch.MatchDomains = append(append([]string{}, base.MatchDomains...), "other.local")
+	if fp == dnsConfigFingerprint("netmaker", extraMatch) {
+		t.Fatal("fingerprint should change with match domains")
+	}
+}
+
+func TestResetOSConfigSkipsWhenAlreadyRemoved(t *testing.T) {
+	prevManager := configManager
+	prevFP := appliedDNSFP
+	prevRemoved := appliedDNSRemoved
+	t.Cleanup(func() {
+		configManager = prevManager
+		appliedDNSMu.Lock()
+		appliedDNSFP = prevFP
+		appliedDNSRemoved = prevRemoved
+		appliedDNSMu.Unlock()
+	})
+
+	calls := 0
+	configManager = &countingDNSManager{onConfigure: func(_ string, cfg dnsconfig.Config) error {
+		calls++
+		if !cfg.Remove {
+			t.Fatalf("expected Remove=true, got %#v", cfg)
+		}
+		return nil
+	}}
+
+	clearAppliedDNSConfig()
+	applied, err := ResetOSConfig()
+	if err != nil {
+		t.Fatalf("ResetOSConfig: %v", err)
+	}
+	if applied {
+		t.Fatal("expected skip when already removed")
+	}
+	if calls != 0 {
+		t.Fatalf("OS Configure called %d times, want 0", calls)
+	}
+
+	appliedDNSMu.Lock()
+	appliedDNSRemoved = false
+	appliedDNSFP = "stale"
+	appliedDNSMu.Unlock()
+
+	applied, err = ResetOSConfig()
+	if err != nil {
+		t.Fatalf("ResetOSConfig: %v", err)
+	}
+	if !applied {
+		t.Fatal("expected apply when not yet removed")
+	}
+	if calls != 1 {
+		t.Fatalf("OS Configure called %d times, want 1", calls)
+	}
+
+	applied, err = ResetOSConfig()
+	if err != nil {
+		t.Fatalf("ResetOSConfig second: %v", err)
+	}
+	if applied || calls != 1 {
+		t.Fatalf("second Reset should skip: applied=%v calls=%d", applied, calls)
+	}
+}
+
+type countingDNSManager struct {
+	onConfigure func(iface string, cfg dnsconfig.Config) error
+}
+
+func (c *countingDNSManager) Configure(iface string, cfg dnsconfig.Config) error {
+	return c.onConfigure(iface, cfg)
+}
 
 func TestOrderListenerIPs(t *testing.T) {
 	tests := []struct {

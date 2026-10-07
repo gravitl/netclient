@@ -93,8 +93,13 @@ func (dnsServer *DNSServer) Start() {
 		return
 	}
 
-	if err := Configure(); err != nil {
+	applied, err := Configure()
+	if err != nil {
 		logger.Log(0, "error configuring dns settings:", err.Error())
+		return
+	}
+	if !applied {
+		logger.Log(1, "dns configure skipped (listener already up), listeners:", listeners)
 		return
 	}
 	if alreadyUp {
@@ -307,16 +312,13 @@ func bindsFollowNodeAddrs() bool {
 //
 // OS DNS is removed even when no listener is recorded: a bind that already died
 // (or was stopped via StopListeners) can leave NRPT/search-list entries behind.
+// Uses ResetOSConfig so the applied-fingerprint cache stays consistent with OS
+// state (a later Configure must not skip after Stop removed DNS).
 func (dnsServer *DNSServer) Stop() {
 	dnsMutex.Lock()
 	defer dnsMutex.Unlock()
-	if configManager != nil {
-		err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
-			Remove: true,
-		})
-		if err != nil {
-			logger.Log(0, "error resetting dns config:", err.Error())
-		}
+	if _, err := ResetOSConfig(); err != nil {
+		logger.Log(0, "error resetting dns config:", err.Error())
 	}
 
 	dnsServer.stopListenersLocked()
