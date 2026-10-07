@@ -73,9 +73,8 @@ func scheduleDNSReconfigure() {
 // SplitDNS flips with CurrGwNmIP even when nameserver lists are unchanged.
 // Always call this after clearing an exit — even if CurrGwNmIP was already nil —
 // so system DNS is not left pointing at the Netmaker listener.
-// No-op OS applies (same fingerprint) skip cache flush and stay at verbosity 1.
 func reconfigureDNSAfterRouting() {
-	start := time.Now()
+	defer logElapsed("dns reconfigure")()
 	server := config.GetServer(config.CurrServer)
 	manageDNS := server != nil && server.ManageDNS
 	anyConnected := config.AnyNodeConnected()
@@ -95,35 +94,27 @@ func reconfigureDNSAfterRouting() {
 		// No connected network, or listener still down: strip any leftover
 		// Netmaker OS DNS (NRPT on Windows).
 		dns.GetDNSServerInstance().StopListeners()
-		applied, err := dns.ResetOSConfig()
+		done := logElapsed("os dns reset")
+		err := dns.ResetOSConfig()
+		done()
 		if err != nil {
 			slog.Warn("failed to reset os dns after routing change", "error", err)
-			return
 		}
-		if applied {
-			flushDNSCacheTimed()
-			logger.Log(0, fmt.Sprintf("dns reconfigure took %s", time.Since(start).Round(time.Millisecond)))
-		} else {
-			logger.Log(1, fmt.Sprintf("dns reconfigure skipped (%s)", time.Since(start).Round(time.Millisecond)))
-		}
+		flushDNSCacheTimed()
 		return
 	}
 	// Configure refreshes SplitDNS↔full from CurrGwNmIP and publishes all
-	// current listener addresses as nameservers. Unchanged peer-update storms
-	// are skipped so systemd-resolved / networksetup are not hammered.
-	applied, err := dns.Configure()
+	// current listener addresses as nameservers.
+	done := logElapsed("os dns configure")
+	err := dns.Configure()
+	done()
 	if err != nil {
 		// Do not ResetOSConfig here — a transient Configure failure would wipe
 		// working DNS, especially on macOS where only loopback is published.
 		slog.Warn("failed to reconfigure dns after routing change", "error", err)
 		return
 	}
-	if !applied {
-		logger.Log(1, fmt.Sprintf("dns reconfigure skipped (%s)", time.Since(start).Round(time.Millisecond)))
-		return
-	}
 	flushDNSCacheTimed()
-	logger.Log(0, fmt.Sprintf("dns reconfigure took %s", time.Since(start).Round(time.Millisecond)))
 }
 
 func flushDNSCacheTimed() {
@@ -136,10 +127,8 @@ func flushDNSCacheTimed() {
 func logIGWDecision(src string, changeDefaultGw bool) {
 	nc := config.Netclient()
 	var currGw string
-	hasCurrGw := false
 	if nc != nil {
 		currGw = fmt.Sprintf("%v/%v", nc.CurrGwNmIP, nc.CurrGwNmIP6)
-		hasCurrGw = len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0
 	}
 	desired := "desktop_session=false"
 	// Each desired-state getter re-reads the JSON store, so skip them headless
@@ -150,15 +139,9 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 			config.GetDesiredAutoExit(user, tenant),
 			config.GetDesiredEgressID(user, tenant))
 	}
-	// Peer updates fire often with change_default_gw=false and no CurrGw — keep
-	// those at verbosity 1. Log at 0 when exit routing is being set or torn down.
-	level := 1
-	if changeDefaultGw || hasCurrGw {
-		level = 0
-	}
 	// logger.Log, not slog.Info: slog runs at Warn unless verbosity is raised
 	// (cmd/root.go), which silently discarded these when they were needed.
-	logger.Log(level, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
+	logger.Log(0, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
 		src, config.AnyNodeConnected(), changeDefaultGw, currGw, desired))
 }
 

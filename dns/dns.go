@@ -22,26 +22,13 @@ var (
 
 // ResetOSConfig removes Netmaker OS DNS settings. Use when the local listener
 // is down (or after exit-node full DNS) so system DNS is not left pointing at us.
-// Skips the OS call when a remove was already the last successful apply.
-func ResetOSConfig() (applied bool, err error) {
+func ResetOSConfig() error {
 	if configManager == nil {
-		clearAppliedDNSConfig()
-		return false, nil
+		return nil
 	}
-	appliedDNSMu.Lock()
-	alreadyRemoved := appliedDNSRemoved
-	appliedDNSMu.Unlock()
-	if alreadyRemoved {
-		logger.Log(1, "dns reset skipped: already removed")
-		return false, nil
-	}
-	if err := configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
+	return configManager.Configure(ncutils.GetInterfaceName(), dnsconfig.Config{
 		Remove: true,
-	}); err != nil {
-		return false, err
-	}
-	clearAppliedDNSConfig()
-	return true, nil
+	})
 }
 
 // FlushCache flushes the OS DNS cache when supported.
