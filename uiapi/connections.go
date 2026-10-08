@@ -6,14 +6,11 @@ import (
 	"github.com/gravitl/netclient/config"
 )
 
+// getCurrServerName returns the active server context only.
+// Do not fall back to the sole servers.json entry — Desktop Settings can
+// clear CurrServer while leaving a partial entry for later reuse.
 func getCurrServerName() string {
-	if config.CurrServer != "" {
-		return config.CurrServer
-	}
-	if key := config.ResolveServerKey(""); key != "" {
-		return key
-	}
-	return ""
+	return config.CurrServer
 }
 
 func isRegisteredToServer() bool {

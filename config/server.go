@@ -346,7 +346,13 @@ func SetCurrServerCtxInFile(server string) error {
 // SetServerCtx - sets netclient's server context
 func SetServerCtx() {
 	currServer, err := GetCurrServerCtxFromFile()
-	if err == nil && currServer != "" {
+	if err == nil {
+		// Empty .serverctx is an explicit clear (Desktop Settings). Do not
+		// adopt the sole servers.json entry via AlignCurrServer.
+		if currServer == "" {
+			CurrServer = ""
+			return
+		}
 		if _, key := ResolveServer(currServer); key != "" {
 			CurrServer = key
 			if key != currServer {
