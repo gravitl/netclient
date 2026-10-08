@@ -111,7 +111,10 @@ func (s *systemdStubManager) Configure(iface string, config Config) error {
 		}
 	}
 
-	return s.flushChanges()
+	// resolvectl applies live; never restart systemd-resolved here — a failed
+	// systemctl restart takes down the stub resolver and breaks all lookups.
+	flushResolvedCaches()
+	return nil
 }
 
 func (s *systemdStubManager) resetConfig(iface string) error {
@@ -145,6 +148,7 @@ func (s *systemdStubManager) resetConfig(iface string) error {
 		return err
 	}
 
+	flushResolvedCaches()
 	return nil
 }
 
@@ -156,14 +160,43 @@ func isInterfaceNotFoundError(output string) bool {
 		strings.Contains(out, "unknown interface")
 }
 
-func (s *systemdStubManager) flushChanges() error {
-	out, err := exec.Command("systemctl", "restart", "systemd-resolved.service").CombinedOutput()
+// flushResolvedCaches best-effort clears the resolver cache. Failures are
+// logged only — nameserver settings from resolvectl are already live.
+func flushResolvedCaches() {
+	out, err := exec.Command("resolvectl", "flush-caches").CombinedOutput()
 	if err != nil {
-		out := strings.TrimSpace(string(out))
-		slog.Error(fmt.Sprintf("error flushing systemd-resolved changes: %v: %s", err, out))
-		return fmt.Errorf("failed to flush systemd-resolved changes: %v", err)
+		slog.Warn(fmt.Sprintf("resolvectl flush-caches failed: %v: %s", err, strings.TrimSpace(string(out))))
 	}
+}
 
+// reloadResolvedDropins reloads systemd-resolved so resolved.conf.d changes
+// take effect, without a hard restart that can leave the unit failed and
+// break host DNS. Returns nil when reload or reload-or-restart succeeds.
+// If both fail, attempts systemctl start to recover resolution; only that
+// start error is returned (unit still down — drop-in never applied).
+func reloadResolvedDropins() error {
+	out, err := exec.Command("systemctl", "reload", "systemd-resolved.service").CombinedOutput()
+	if err == nil {
+		flushResolvedCaches()
+		return nil
+	}
+	slog.Warn(fmt.Sprintf("systemd-resolved reload failed, trying reload-or-restart: %v: %s",
+		err, strings.TrimSpace(string(out))))
+
+	out, err = exec.Command("systemctl", "reload-or-restart", "systemd-resolved.service").CombinedOutput()
+	if err == nil {
+		flushResolvedCaches()
+		return nil
+	}
+	slog.Warn(fmt.Sprintf("systemd-resolved reload-or-restart failed: %v: %s",
+		err, strings.TrimSpace(string(out))))
+	// A failed restart can leave the unit inactive — recover resolution.
+	startOut, startErr := exec.Command("systemctl", "start", "systemd-resolved.service").CombinedOutput()
+	if startErr != nil {
+		slog.Error(fmt.Sprintf("systemd-resolved start after failed reload failed: %v: %s",
+			startErr, strings.TrimSpace(string(startOut))))
+		return fmt.Errorf("failed to reload systemd-resolved drop-ins: %w", startErr)
+	}
 	return nil
 }
 
@@ -253,7 +286,7 @@ func (s *systemdUplinkManager) Configure(iface string, config Config) error {
 		return err
 	}
 
-	return s.flushChanges()
+	return reloadResolvedDropins()
 }
 
 func (s *systemdUplinkManager) resetConfig() error {
@@ -262,7 +295,7 @@ func (s *systemdUplinkManager) resetConfig() error {
 		return err
 	}
 
-	return s.flushChanges()
+	return reloadResolvedDropins()
 }
 
 func (s *systemdUplinkManager) writeConfig(nameservers []string, domains []string) error {
@@ -273,15 +306,4 @@ func (s *systemdUplinkManager) writeConfig(nameservers []string, domains []strin
 	buf.WriteString("Domains=" + strings.Join(domains, " ") + "\n")
 
 	return os.WriteFile(resolvedConfFile, buf.Bytes(), 0644)
-}
-
-func (s *systemdUplinkManager) flushChanges() error {
-	out, err := exec.Command("systemctl", "restart", "systemd-resolved.service").CombinedOutput()
-	if err != nil {
-		out := strings.TrimSpace(string(out))
-		slog.Error(fmt.Sprintf("error flushing systemd-resolved changes: %v: %s", err, out))
-		return fmt.Errorf("failed to flush systemd-resolved changes: %v", err)
-	}
-
-	return nil
 }

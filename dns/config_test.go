@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -40,6 +41,25 @@ func TestOrderListenerIPs(t *testing.T) {
 				t.Fatalf("orderListenerIPs(%v) = %v, want %v", tt.addrs, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNameserversForOS(t *testing.T) {
+	all := []string{"127.51.8.21", "100.104.160.10", "fd3c:7c5c:8180:6b13::a"}
+	got := nameserversForOS(all)
+	if runtime.GOOS == "darwin" {
+		if !slices.Equal(got, []string{"127.51.8.21"}) {
+			t.Fatalf("darwin nameserversForOS = %v, want only loopback", got)
+		}
+	} else if !slices.Equal(got, all) {
+		t.Fatalf("non-darwin nameserversForOS = %v, want %v", got, all)
+	}
+
+	// Fallback when loopback is missing: keep overlay addresses on all platforms.
+	noLoopback := []string{"100.104.160.10", "fd3c:7c5c:8180:6b13::a"}
+	got = nameserversForOS(noLoopback)
+	if !slices.Equal(got, noLoopback) {
+		t.Fatalf("nameserversForOS without loopback = %v, want %v", got, noLoopback)
 	}
 }
 

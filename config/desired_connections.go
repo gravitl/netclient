@@ -1,0 +1,321 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+)
+
+const (
+	desiredConnectionsFile     = "desired_connections.json"
+	desiredConnectionsLockfile = "netclient-desired-connections.lck"
+)
+
+// DesiredState is the reconnect record for one user+tenant on this host.
+type DesiredState struct {
+	Networks []string `json:"networks"`
+	WantIGW  bool     `json:"want_igw"`
+	// AutoExit means restore should pick the nearest available exit node
+	// (latency/geo) instead of re-selecting a fixed egress_id.
+	AutoExit    bool   `json:"auto_exit,omitempty"`
+	EgressID    string `json:"egress_id,omitempty"`
+	ExitNetwork string `json:"exit_network,omitempty"`
+}
+
+// desiredConnectionsStore is username → tenant ID → network state.
+type desiredConnectionsStore map[string]map[string]DesiredState
+
+var (
+	desiredConnectionsMu  sync.Mutex
+	desiredConnectionsDir string // tests may override
+)
+
+func desiredConnectionsPath() string {
+	dir := desiredConnectionsDir
+	if dir == "" {
+		dir = GetNetclientPath()
+	}
+	return filepath.Join(dir, desiredConnectionsFile)
+}
+
+func desiredConnectionsLockPath() string {
+	return filepath.Join(os.TempDir(), desiredConnectionsLockfile)
+}
+
+// sessionUserTenant normalizes identity for desired-state keys.
+// Username is required (desktop UI session). Tenant may be empty for classic
+// non-MSP on-prem so reboot restore does not depend on UI-side config.
+func sessionUserTenant(username, tenantID string) (string, string, bool) {
+	username = strings.TrimSpace(username)
+	tenantID = strings.TrimSpace(tenantID)
+	if username == "" {
+		return "", "", false
+	}
+	return username, tenantID, true
+}
+
+func userState(store desiredConnectionsStore, username, tenantID string) DesiredState {
+	username, tenantID, ok := sessionUserTenant(username, tenantID)
+	if !ok {
+		return DesiredState{}
+	}
+	if tenants, ok := store[username]; ok {
+		return tenants[tenantID]
+	}
+	return DesiredState{}
+}
+
+func putUserState(store desiredConnectionsStore, username, tenantID string, state DesiredState) bool {
+	username, tenantID, ok := sessionUserTenant(username, tenantID)
+	if !ok {
+		return false
+	}
+	state.Networks = uniqueNetworks(state.Networks)
+	tenants := store[username]
+	if tenants == nil {
+		tenants = make(map[string]DesiredState)
+		store[username] = tenants
+	}
+	tenants[tenantID] = state
+	return true
+}
+
+// GetDesiredNetworks returns networks this user should auto-connect on login/reboot.
+func GetDesiredNetworks(username, tenantID string) []string {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	nets := userState(store, username, tenantID).Networks
+	out := make([]string, len(nets))
+	copy(out, nets)
+	return out
+}
+
+// SetDesiredNetworks replaces the auto-connect list for a user+tenant.
+func SetDesiredNetworks(username, tenantID string, networks []string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.Networks = uniqueNetworks(networks)
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// SnapshotDesiredState records networks to restore and exit-node intent
+// (want_igw + auto_exit + optional egress id) so login can re-select and apply routes.
+func SnapshotDesiredState(username, tenantID string, networks []string, wantIGW, autoExit bool, egressID, exitNetwork string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	egressID = strings.TrimSpace(egressID)
+	exitNetwork = strings.TrimSpace(exitNetwork)
+	if !wantIGW {
+		autoExit = false
+		egressID = ""
+		exitNetwork = ""
+	}
+	if !putUserState(store, username, tenantID, DesiredState{
+		Networks:    uniqueNetworks(networks),
+		WantIGW:     wantIGW,
+		AutoExit:    autoExit,
+		EgressID:    egressID,
+		ExitNetwork: exitNetwork,
+	}) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// GetDesiredWantIGW reports whether this user should restore internet-exit routing.
+func GetDesiredWantIGW(username, tenantID string) bool {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	return userState(store, username, tenantID).WantIGW
+}
+
+// GetDesiredEgressID returns the exit node egress id to re-select on restore.
+func GetDesiredEgressID(username, tenantID string) string {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	return userState(store, username, tenantID).EgressID
+}
+
+// GetDesiredExitNetwork returns the network where the exit node was selected.
+func GetDesiredExitNetwork(username, tenantID string) string {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	return userState(store, username, tenantID).ExitNetwork
+}
+
+// GetDesiredAutoExit reports whether restore should auto-pick the nearest exit.
+func GetDesiredAutoExit(username, tenantID string) bool {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	return userState(store, username, tenantID).AutoExit
+}
+
+// SetDesiredExitNode records a manual exit selection for restore (sets want_igw, clears auto_exit).
+func SetDesiredExitNode(username, tenantID, network, egressID string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.WantIGW = true
+	state.AutoExit = false
+	state.EgressID = strings.TrimSpace(egressID)
+	state.ExitNetwork = strings.TrimSpace(network)
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// SetDesiredAutoExitNode records auto-nearest exit intent for restore.
+// egressID is the last chosen node (for display); restore re-picks nearest.
+func SetDesiredAutoExitNode(username, tenantID, network, egressID string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.WantIGW = true
+	state.AutoExit = true
+	state.EgressID = strings.TrimSpace(egressID)
+	state.ExitNetwork = strings.TrimSpace(network)
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// ClearDesiredExitNode clears exit restore intent for a user+tenant.
+func ClearDesiredExitNode(username, tenantID string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.WantIGW = false
+	state.AutoExit = false
+	state.EgressID = ""
+	state.ExitNetwork = ""
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// SetDesiredWantIGW updates only the exit-restore flag for a user+tenant.
+// Clearing want_igw also drops auto_exit and a stored egress id.
+func SetDesiredWantIGW(username, tenantID string, wantIGW bool) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.WantIGW = wantIGW
+	if !wantIGW {
+		state.AutoExit = false
+		state.EgressID = ""
+		state.ExitNetwork = ""
+	}
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// RememberDesiredNetwork records that the user connected this network.
+func RememberDesiredNetwork(username, tenantID, network string) error {
+	network = strings.TrimSpace(network)
+	if network == "" {
+		return nil
+	}
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.Networks = appendUniqueNetwork(state.Networks, network)
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+// ForgetDesiredNetwork records that the user disconnected or left this network.
+func ForgetDesiredNetwork(username, tenantID, network string) error {
+	network = strings.TrimSpace(network)
+	if network == "" {
+		return nil
+	}
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	state := userState(store, username, tenantID)
+	state.Networks = removeNetwork(state.Networks, network)
+	if !putUserState(store, username, tenantID, state) {
+		return nil
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
+func readDesiredConnectionsLocked() desiredConnectionsStore {
+	data, err := os.ReadFile(desiredConnectionsPath())
+	if err != nil {
+		return desiredConnectionsStore{}
+	}
+	var store desiredConnectionsStore
+	if err := json.Unmarshal(data, &store); err != nil || store == nil {
+		return desiredConnectionsStore{}
+	}
+	return store
+}
+
+func writeDesiredConnectionsLocked(store desiredConnectionsStore) error {
+	if store == nil {
+		store = desiredConnectionsStore{}
+	}
+	return WriteJSONAtomic(desiredConnectionsPath(), store, desiredConnectionsLockPath(), 0600)
+}
+
+func uniqueNetworks(networks []string) []string {
+	seen := make(map[string]struct{}, len(networks))
+	out := make([]string, 0, len(networks))
+	for _, n := range networks {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		out = append(out, n)
+	}
+	return out
+}
+
+func appendUniqueNetwork(list []string, network string) []string {
+	out := removeNetwork(list, network)
+	return append(out, network)
+}
+
+func removeNetwork(list []string, network string) []string {
+	if len(list) == 0 {
+		return list
+	}
+	out := make([]string, 0, len(list))
+	for _, n := range list {
+		if n == network {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}

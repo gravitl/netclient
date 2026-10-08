@@ -30,8 +30,10 @@ const (
 	LinuxAppDataPath = "/etc/netclient/"
 	// MacAppDataPath - mac path
 	MacAppDataPath = "/Applications/Netclient/"
-	// WindowsAppDataPath - windows path
-	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
+	// WindowsInstallDir holds the 64-bit binary, WinSW, config, and logs.
+	WindowsInstallDir = `C:\Program Files\Netclient\`
+	// WindowsLegacyDir is the previous install under Program Files (x86).
+	WindowsLegacyDir = `C:\Program Files (x86)\Netclient\`
 	// Timeout timelimit for obtaining/releasing lockfile
 	Timeout = time.Second * 5
 	// ConfigLockfile lockfile to control access to config file
@@ -97,12 +99,22 @@ type Config struct {
 	OriginalDefaultGatewayIp6 net.IP `json:"original_default_gateway_ip6_old" yaml:"original_default_gateway_ip6_old"`
 	CurrGwNmIP                net.IP `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
 	CurrGwNmIP6               net.IP `json:"curr_gw_nm_ip6" yaml:"curr_gw_nm_ip6"`
+	// UnderlayPins - host routes installed via the LAN gateway while an exit is
+	// active; persisted so teardown removes exactly these even after a restart.
+	UnderlayPins []UnderlayPin `json:"underlay_pins,omitempty" yaml:"underlay_pins,omitempty"`
 	//for manage DNS
 	DNSManagerType string   `json:"dns_manager_type" yaml:"dns_manager_type"`
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
 	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
 	FwMark         int      `json:"fwmark" yaml:"fwmark"`
+}
+
+// UnderlayPin is one host route installed via the LAN. Via is the
+// platform-specific next hop the route was installed with.
+type UnderlayPin struct {
+	IP  string `json:"ip" yaml:"ip"`
+	Via string `json:"via" yaml:"via"`
 }
 
 func init() {
@@ -358,7 +370,7 @@ func WriteNetclientConfig() error {
 // GetNetclientPath - returns path to netclient config directory
 func GetNetclientPath() string {
 	if runtime.GOOS == "windows" {
-		return WindowsAppDataPath
+		return WindowsInstallDir
 	} else if runtime.GOOS == "darwin" {
 		return MacAppDataPath
 	} else {
@@ -366,11 +378,20 @@ func GetNetclientPath() string {
 	}
 }
 
+// GetNetclientInstallDir returns the directory that holds the Windows binary
+// and WinSW files. It is empty on other platforms.
+func GetNetclientInstallDir() string {
+	if runtime.GOOS == "windows" {
+		return WindowsInstallDir
+	}
+	return ""
+}
+
 // GetNetclientInstallPath returns the full path where netclient should be installed based on OS
 func GetNetclientInstallPath() string {
 	switch runtime.GOOS {
 	case "windows":
-		return GetNetclientPath() + "netclient.exe"
+		return WindowsInstallDir + "netclient.exe"
 	case "macos":
 		return "/usr/local/bin/netclient"
 	default:
