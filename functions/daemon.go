@@ -30,6 +30,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -434,6 +435,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	} else {
 		dns.GetDNSServerInstance().Stop()
+	}
+	if pullresp.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(pullresp.AddressIdentityMap, pullresp.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 	go func() {
 		time.Sleep(time.Second * 45)

@@ -17,6 +17,7 @@ import (
 	"github.com/google/nftables/expr"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -1291,6 +1292,20 @@ func (n *nftablesManager) addJumpRules() {
 				&expr.Verdict{
 					Kind: expr.VerdictAccept,
 				},
+			},
+		})
+
+		sshPortB := make([]byte, 2)
+		binary.LittleEndian.PutUint16(sshPortB, uint16(sshserver.DefaultPort))
+		n.conn.InsertRule(&nftables.Rule{
+			Table: filterTable,
+			Chain: &nftables.Chain{Name: aclInputRulesChain},
+			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                        // Match incoming interface
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString("netmaker")},         // Match interface name
+				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2}, // Match TCP destination port
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sshPortB},                                 // Port little-endian format
+				&expr.Verdict{Kind: expr.VerdictAccept},                                                  // Accept packet
 			},
 		})
 	}
