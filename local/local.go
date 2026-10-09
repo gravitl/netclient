@@ -23,7 +23,7 @@ func SetIPForwarding() error {
 	case "darwin":
 		//err = SetIPForwardingMac()
 	case "windows":
-		//err = SetIPForwardingWindows()
+		err = SetIPForwardingWindows()
 	default:
 		err = errors.New("this OS is not currently supported")
 	}
@@ -62,16 +62,6 @@ func SetIPForwardingMac() error {
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 	}
 	return err
-}
-
-// SetIPForwardingWindows - sets ip forwarding for windows
-func SetIPForwardingWindows() error {
-	if _, err := ncutils.RunCmd("Set-NetIPInterface -Forwarding Enabled", true); err != nil {
-		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
-		return err
-	}
-	return nil
-
 }
 
 // GetMacIface - gets mac interface
