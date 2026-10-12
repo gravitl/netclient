@@ -1295,8 +1295,7 @@ func (n *nftablesManager) addJumpRules() {
 			},
 		})
 
-		sshPortB := make([]byte, 2)
-		binary.LittleEndian.PutUint16(sshPortB, uint16(sshserver.DefaultPort))
+		sshPortB := portToBytes(uint16(sshserver.DefaultPort))
 		n.conn.InsertRule(&nftables.Rule{
 			Table: filterTable,
 			Chain: &nftables.Chain{Name: aclInputRulesChain},
@@ -1304,7 +1303,7 @@ func (n *nftablesManager) addJumpRules() {
 				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                        // Match incoming interface
 				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString(ncutils.GetInterfaceName())}, // Match interface name
 				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2}, // Match TCP destination port
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sshPortB},                                 // Port little-endian format
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sshPortB},                                 // Port in network (big-endian) byte order
 				&expr.Verdict{Kind: expr.VerdictAccept},                                                  // Accept packet
 			},
 		})
