@@ -435,6 +435,43 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 	return config.WriteNetclientConfig()
 }
 
+// defaultExitRoutesWinning reports whether the split default routes still send
+// an external lookup out the netmaker interface.
+func defaultExitRoutesWinning(gw4, gw6 net.IP) bool {
+	if len(gw4) == 0 && len(gw6) == 0 {
+		return true
+	}
+	ncIface := ncutils.GetInterfaceName()
+	if len(gw4) > 0 && !darwinHalfRoutesOn(ncIface, "0.0.0.1", "128.0.0.1") {
+		return false
+	}
+	if (len(gw6) > 0 || shouldBlockIPv6Leak(gw4, gw6)) && !darwinHalfRoutesOn(ncIface, "2000::1", "8000::1") {
+		return false
+	}
+	return true
+}
+
+func darwinHalfRoutesOn(iface, low, high string) bool {
+	iface1, err1 := getRouteInterface(low)
+	iface2, err2 := getRouteInterface(high)
+	return err1 == nil && err2 == nil && iface1 == iface && iface2 == iface
+}
+
+// defaultReinstallExitRoutes deletes the split defaults before adding them.
+// route add leaves a stale half-route in place when one already exists, which
+// is how an ISP change keeps winning after the tunnel is healthy again.
+func defaultReinstallExitRoutes(publicKey string, gw4, gw6 net.IP) error {
+	deleteDarwinExitHalfRoutes()
+	return setDefaultRoutesOnHost(publicKey, gw4, gw6)
+}
+
+func deleteDarwinExitHalfRoutes() {
+	exec.Command("route", "delete", "-net", "-inet", "0.0.0.0/1").Run()
+	exec.Command("route", "delete", "-net", "-inet", "128.0.0.0/1").Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultLow).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultHigh).Run()
+}
+
 // pinInternetGwHostRoutes reconciles underlay pins against the current peer
 // set and LAN gateway. Safe (and cheap) to call repeatedly while exit routing
 // is active; pins follow a Wi-Fi/LAN gateway change.

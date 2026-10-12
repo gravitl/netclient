@@ -122,6 +122,76 @@ func TestBeginIfaceRebuildGatesChecks(t *testing.T) {
 	}
 }
 
+func TestRefreshHealthyExitRoutes(t *testing.T) {
+	prevPin, prevWin, prevReinstall := pinExitUnderlay, exitRoutesWinning, reinstallExitRoutes
+	t.Cleanup(func() {
+		pinExitUnderlay, exitRoutesWinning, reinstallExitRoutes = prevPin, prevWin, prevReinstall
+	})
+
+	gw4 := net.ParseIP("100.64.0.1")
+	var pins, reinstalls int
+	pinExitUnderlay = func(string) { pins++ }
+	reinstallExitRoutes = func(publicKey string, got4, got6 net.IP) error {
+		reinstalls++
+		if publicKey != "peer" || !got4.Equal(gw4) || got6 != nil {
+			t.Errorf("reinstall args pk=%s gw4=%v gw6=%v", publicKey, got4, got6)
+		}
+		return nil
+	}
+
+	exitRoutesWinning = func(net.IP, net.IP) bool { return false }
+	refreshHealthyExitRoutes(&igwStatus{isHealthy: true, publicKey: "peer", gw4: gw4})
+	if pins != 1 || reinstalls != 1 {
+		t.Fatalf("healthy with exit routes lost: pins=%d reinstalls=%d, want 1 and 1", pins, reinstalls)
+	}
+
+	refreshHealthyExitRoutes(&igwStatus{isHealthy: false, publicKey: "peer", gw4: gw4})
+	if pins != 1 || reinstalls != 1 {
+		t.Fatalf("unhealthy exit must keep the ISP default: pins=%d reinstalls=%d", pins, reinstalls)
+	}
+
+	exitRoutesWinning = func(net.IP, net.IP) bool { return true }
+	refreshHealthyExitRoutes(&igwStatus{isHealthy: true, publicKey: "peer", gw4: gw4})
+	if pins != 2 || reinstalls != 1 {
+		t.Fatalf("healthy with exit routes winning: pins=%d reinstalls=%d, want 2 and 1", pins, reinstalls)
+	}
+}
+
+func TestGatewayMoveClearsFailureStreak(t *testing.T) {
+	prevPin, prevWin, prevGw := pinExitUnderlay, exitRoutesWinning, currentUnderlayGateway
+	t.Cleanup(func() {
+		pinExitUnderlay, exitRoutesWinning, currentUnderlayGateway = prevPin, prevWin, prevGw
+	})
+	pinExitUnderlay = func(string) {}
+	exitRoutesWinning = func(net.IP, net.IP) bool { return true }
+
+	calls := 0
+	currentUnderlayGateway = func() string {
+		calls++
+		if calls == 1 {
+			return "10.0.0.1,"
+		}
+		return "10.1.0.1,"
+	}
+	s := &igwStatus{isHealthy: true, publicKey: "peer", failureCount: 2}
+	if !refreshHealthyExitRoutes(s) {
+		t.Fatal("expected the LAN gateway move to be reported")
+	}
+	if s.failureCount != 0 {
+		t.Fatalf("failureCount = %d after gateway move, want 0", s.failureCount)
+	}
+
+	calls = 0
+	currentUnderlayGateway = func() string { return "10.1.0.1," }
+	s.failureCount = 2
+	if refreshHealthyExitRoutes(s) {
+		t.Fatal("unchanged gateway reported as a move")
+	}
+	if s.failureCount != 2 {
+		t.Fatalf("failureCount = %d with a stable gateway, want 2", s.failureCount)
+	}
+}
+
 // An interface carrying only link-local or loopback addresses cannot source
 // overlay traffic, so the exit path is dead however alive the peer looks.
 func TestAnySourceAddr(t *testing.T) {

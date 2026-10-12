@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -404,6 +403,7 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 // AllowedIPs traffic fails closed and apps fall back to IPv4 via the exit.
 func blockIPv6LeakOnIGW() error {
 	logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+	demoteCompetingLANDefaults(true, nil)
 	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName())
 	out, err := ncutils.RunCmd(addGwCmd, false)
 	if err != nil && !isNetshAlreadyExists(out) {
@@ -432,38 +432,13 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
-	//get current default gateway route
-	gwRoute, err := getDefaultGateway("v6")
-	if err != nil || len(gwRoute) == 0 {
-		if err != nil {
-			slog.Error("no default gateway found, please run command route -n to check in the route table", "error", errString(err))
-		}
-	} else {
-		//if default gateway metric is 0, then reset it to 50
-		ipString := strings.TrimSpace(gwRoute[len(gwRoute)-1])
-		metric := strings.TrimSpace(gwRoute[2])
-		if metric == "0" && ipString != networkIP.String() {
-			parsed := net.ParseIP(ipString)
-			if parsed != nil && parsed.To4() == nil {
-				if len(config.Netclient().OriginalDefaultGatewayIp6) == 0 {
-					config.Netclient().OriginalDefaultGatewayIp6 = parsed
-				}
-				//set the original gateway metric to 50
-				setGwCmd := fmt.Sprintf("netsh int ipv6 set route %s interface=%s nexthop=%s store=active metric=50", IPv6Network, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-
-				_, err = ncutils.RunCmd(setGwCmd, true)
-				if err != nil {
-					slog.Error("Failed to set original gateway route metric", "error", err.Error())
-					slog.Error("please change the metric to 50 manaull to avoid issue", "error")
-					slog.Error("netsh int ipv6 set route ::/0 interface=<Idx> nexthop=<ipv6 address> store=active metric=50", "error")
-				}
-			}
-		}
-	}
 	if lan, ok := lanDefaultRoute(true, networkIP); ok {
 		config.Netclient().OriginalDefaultGatewayIp6 = lan.gw
 		syncWindowsUnderlayPins(true, publicKey, lan)
 	}
+	// A new ISP default often arrives at metric 0 and outranks the exit.
+	// Demote every competing LAN default, not only the gateway from connect time.
+	demoteCompetingLANDefaults(true, networkIP)
 
 	//add new gateway route with metric 0 for setting to top priority, on-link so
 	//Windows does not wait for neighbour discovery on the overlay nexthop
@@ -489,17 +464,12 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 func setInternetGwV4(publicKey string, networkIP net.IP) error {
 	if lan, ok := lanDefaultRouteV4(networkIP); ok {
 		config.Netclient().OriginalDefaultGatewayIp = lan.gw
-		if lan.metric == "0" {
-			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPv4Network, lan.ifaceIdx, lan.gw)
-			if _, err := ncutils.RunCmd(setGwCmd, false); err != nil {
-				slog.Error("Failed to set original gateway route metric", "error", err.Error())
-			}
-		}
 		syncWindowsUnderlayPins(false, publicKey, lan)
 	} else {
 		slog.Warn("no LAN default gateway found; exit-node underlay cannot be pinned",
 			"public_key_prefix", publicKey[:min(8, len(publicKey))])
 	}
+	demoteCompetingLANDefaults(false, networkIP)
 
 	// On-link (no nexthop), like WireGuard for Windows installs its AllowedIPs
 	// routes. An overlay nexthop puts the route in Probe state forever — the
@@ -582,22 +552,27 @@ func syncWindowsUnderlayPins(v6 bool, publicKey string, lan lanRouteV4) {
 
 // pinInternetGwHostRoutes reconciles LAN host routes for exit underlay IPs
 // without changing 0.0.0.0/0. Safe to call repeatedly while exit routing is
-// installed; pins follow a LAN gateway change.
+// installed; pins and metric demotion follow a LAN gateway change.
 func pinInternetGwHostRoutes(publicKey string) {
 	nc := config.Netclient()
-	if len(nc.CurrGwNmIP) > 0 && nc.CurrGwNmIP.To4() != nil {
-		if lan, ok := lanDefaultRoute(false, nc.CurrGwNmIP); ok {
+	gw4, gw6 := nc.CurrGwNmIP, nc.CurrGwNmIP6
+	if len(gw4) > 0 && gw4.To4() != nil {
+		if lan, ok := lanDefaultRoute(false, gw4); ok {
 			nc.OriginalDefaultGatewayIp = lan.gw
 			syncWindowsUnderlayPins(false, publicKey, lan)
 		} else {
 			slog.Debug("skip exit-node IPv4 host pin refresh; LAN gateway not found")
 		}
+		demoteCompetingLANDefaults(false, gw4)
 	}
-	if len(nc.CurrGwNmIP6) > 0 {
-		if lan, ok := lanDefaultRoute(true, nc.CurrGwNmIP6); ok {
-			nc.OriginalDefaultGatewayIp6 = lan.gw
-			syncWindowsUnderlayPins(true, publicKey, lan)
+	if len(gw6) > 0 || shouldBlockIPv6Leak(gw4, gw6) {
+		if len(gw6) > 0 {
+			if lan, ok := lanDefaultRoute(true, gw6); ok {
+				nc.OriginalDefaultGatewayIp6 = lan.gw
+				syncWindowsUnderlayPins(true, publicKey, lan)
+			}
 		}
+		demoteCompetingLANDefaults(true, gw6)
 	}
 }
 
@@ -606,60 +581,143 @@ func lanDefaultRouteV4(overlayGw net.IP) (lanRouteV4, bool) {
 	return lanDefaultRoute(false, overlayGw)
 }
 
+// lanRouteDemoteMetric is applied to every non-exit default whose route metric
+// could beat the on-link exit route (metric 0). 50 matches the value exit
+// setup has always used for the LAN default.
+const lanRouteDemoteMetric = 50
+
 // lanDefaultRoute returns the underlay default route of one family, ignoring
 // any default row that belongs to the netmaker interface or points at the
-// overlay nexthop. Needed because once exit routing is installed the netmaker
-// row has the lowest metric and would otherwise be picked as the "LAN" gateway.
+// overlay nexthop. The live lowest-metric gateway wins, including after an ISP
+// change replaces the gateway saved at connect time.
 func lanDefaultRoute(v6 bool, overlayGw net.IP) (lanRouteV4, bool) {
-	var best lanRouteV4
-	var bestMetric = math.MaxInt32
-	nmIdx := -1
-	if iface, err := net.InterfaceByName(ncutils.GetInterfaceName()); err == nil {
-		nmIdx = iface.Index
+	idx, gw, metric, ok := pickLiveLANGateway(lanRouteCandidates(v6, overlayGw))
+	if !ok {
+		return lanRouteV4{}, false
 	}
+	return lanRouteV4{ifaceIdx: idx, gw: gw, metric: strconv.Itoa(metric)}, true
+}
+
+func lanRouteCandidates(v6 bool, overlayGw net.IP) []lanRouteCandidate {
+	rows := windowsDefaultRoutes(v6)
+	nmIdx := ""
+	if iface, err := net.InterfaceByName(ncutils.GetInterfaceName()); err == nil {
+		nmIdx = strconv.Itoa(iface.Index)
+	}
+	cands := make([]lanRouteCandidate, 0, len(rows))
+	for _, row := range rows {
+		if row.onLink || len(row.gw) == 0 || (row.gw.To4() == nil) != v6 {
+			continue
+		}
+		if nmIdx != "" && row.ifaceIdx == nmIdx {
+			continue
+		}
+		if len(overlayGw) > 0 && row.gw.Equal(overlayGw) {
+			continue
+		}
+		cands = append(cands, lanRouteCandidate{
+			ifaceIdx: row.ifaceIdx,
+			gw:       row.gw,
+			metric:   row.metric,
+			up:       windowsIfaceUp(row.ifaceIdx),
+		})
+	}
+	return cands
+}
+
+// demoteCompetingLANDefaults raises every live non-exit default under
+// lanRouteDemoteMetric so a new ISP route cannot outrank the exit.
+func demoteCompetingLANDefaults(v6 bool, overlayGw net.IP) {
+	fam, network := "ipv4", IPv4Network
+	if v6 {
+		fam, network = "ipv6", IPv6Network
+	}
+	for _, c := range lanRouteCandidates(v6, overlayGw) {
+		if !c.up || c.metric >= lanRouteDemoteMetric {
+			continue
+		}
+		cmd := fmt.Sprintf("netsh int %s set route %s interface=%s nexthop=%s store=active metric=%d",
+			fam, network, c.ifaceIdx, c.gw, lanRouteDemoteMetric)
+		if _, err := ncutils.RunCmd(cmd, false); err != nil {
+			slog.Error("failed to demote LAN default route", "gw", c.gw, "metric", c.metric, "error", err.Error())
+			continue
+		}
+		slog.Info("demoted LAN default so exit route stays preferred", "gw", c.gw, "old_metric", c.metric)
+	}
+}
+
+// defaultExitRoutesWinning reports whether the best default route, including
+// interface metric, is the on-link netmaker route.
+func defaultExitRoutesWinning(gw4, gw6 net.IP) bool {
+	if len(gw4) == 0 && len(gw6) == 0 {
+		return true
+	}
+	if len(gw4) > 0 && !windowsFamilyExitWins(false) {
+		return false
+	}
+	if (len(gw6) > 0 || shouldBlockIPv6Leak(gw4, gw6)) && !windowsFamilyExitWins(true) {
+		return false
+	}
+	return true
+}
+
+func windowsFamilyExitWins(v6 bool) bool {
+	rows := windowsDefaultRoutes(v6)
+	metrics := windowsInterfaceMetrics(v6)
+	nmIdx := ""
+	if iface, err := net.InterfaceByName(ncutils.GetInterfaceName()); err == nil {
+		nmIdx = strconv.Itoa(iface.Index)
+	}
+	scores := make([]exitRouteScore, 0, len(rows))
+	for _, row := range rows {
+		scores = append(scores, exitRouteScore{
+			effective: row.metric + metrics[row.ifaceIdx],
+			netmaker:  nmIdx != "" && row.ifaceIdx == nmIdx,
+		})
+	}
+	return exitDefaultWins(scores)
+}
+
+// defaultReinstallExitRoutes puts the on-link exit default back and demotes
+// whatever LAN default the new ISP installed. The health monitor keeps running.
+func defaultReinstallExitRoutes(publicKey string, gw4, gw6 net.IP) error {
+	return setDefaultRoutesOnHost(publicKey, gw4, gw6)
+}
+
+func windowsDefaultRoutes(v6 bool) []netshDefaultRoute {
 	showCmd, network := "netsh int ipv4 show route", IPv4Network
-	orig := config.Netclient().OriginalDefaultGatewayIp
 	if v6 {
 		showCmd, network = "netsh int ipv6 show route", IPv6Network
-		orig = config.Netclient().OriginalDefaultGatewayIp6
 	}
-
 	input, err := ncutils.RunCmd(showCmd, false)
 	if err != nil {
-		return best, false
+		return nil
 	}
-	lines := strings.FieldsFunc(input, func(r rune) bool { return r == '\r' || r == '\n' })
-	for _, l := range lines {
-		fields := strings.Fields(l)
-		if len(fields) < 5 || !slices.Contains(fields, network) {
-			continue
-		}
-		gw := net.ParseIP(strings.TrimSpace(fields[len(fields)-1]))
-		// On-link rows carry an interface name here, not a usable nexthop.
-		if gw == nil || (gw.To4() == nil) != v6 {
-			continue
-		}
-		idx := strings.TrimSpace(fields[len(fields)-2])
-		if nmIdx >= 0 && idx == strconv.Itoa(nmIdx) {
-			continue
-		}
-		if len(overlayGw) > 0 && gw.Equal(overlayGw) {
-			continue
-		}
-		metric, convErr := strconv.Atoi(strings.TrimSpace(fields[2]))
-		if convErr != nil {
-			metric = math.MaxInt32 - 1
-		}
-		// The remembered original gateway always wins over metric ordering.
-		if len(orig) > 0 && gw.Equal(orig) {
-			return lanRouteV4{ifaceIdx: idx, gw: gw, metric: strings.TrimSpace(fields[2])}, true
-		}
-		if metric < bestMetric {
-			bestMetric = metric
-			best = lanRouteV4{ifaceIdx: idx, gw: gw, metric: strings.TrimSpace(fields[2])}
-		}
+	return parseNetshDefaultRoutes(input, network)
+}
+
+func windowsInterfaceMetrics(v6 bool) map[string]int {
+	cmd := "netsh int ipv4 show interfaces"
+	if v6 {
+		cmd = "netsh int ipv6 show interfaces"
 	}
-	return best, best.gw != nil
+	input, err := ncutils.RunCmd(cmd, false)
+	if err != nil {
+		return map[string]int{}
+	}
+	return parseNetshInterfaceMetrics(input)
+}
+
+func windowsIfaceUp(idx string) bool {
+	n, err := strconv.Atoi(idx)
+	if err != nil {
+		return true
+	}
+	iface, err := net.InterfaceByIndex(n)
+	if err != nil {
+		return true
+	}
+	return iface.Flags&net.FlagUp != 0
 }
 
 // RestoreInternetGw - restore the old default gateway and delte the route to the Internet Gw's ip address

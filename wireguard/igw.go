@@ -41,9 +41,11 @@ const (
 	// after every rebuild, so a long grace compounds into real blindness.
 	IGWStartupGrace = 45 * time.Second
 	// IGWPinRefreshInterval is how often underlay pins are reconciled against
-	// the LAN gateway while the exit is active, so a Wi-Fi switch re-points
-	// them well before IGWFailureThreshold samples could declare the exit dead.
-	IGWPinRefreshInterval = 10 * time.Second
+	// the LAN gateway while the exit is active, and how often missing exit
+	// default routes are put back after an ISP change. A multi-second gap
+	// black-holes traffic that is still pointed at the exit, so this stays
+	// short enough that the switch feels like a brief hitch.
+	IGWPinRefreshInterval = time.Second
 	// defaultMetricsPort mirrors networking.InitialiseIfaceMetricsServer's fallback.
 	defaultMetricsPort = 51821
 )
@@ -148,18 +150,34 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 	go func() {
 		logger.Log(0, "starting health monitor for internet gateway")
 
-		ticker := time.NewTicker(IGWMonitorInterval)
-		defer ticker.Stop()
-		lastPinRefresh := time.Now()
+		healthTicker := time.NewTicker(IGWMonitorInterval)
+		routeTicker := time.NewTicker(IGWPinRefreshInterval)
+		defer healthTicker.Stop()
+		defer routeTicker.Stop()
+
+		// The reachability probe blocks for up to IGWDialTimeout. Route repair
+		// runs on this goroutine; the probe result comes back on probeCh so a
+		// dial cannot postpone fixing the underlay after an ISP change.
+		probeCh := make(chan igwSample, 1)
+		var probing bool
+
+		// Repair once immediately. The ticker's first fire is a full interval
+		// later, and the exit may already be pointed at a gateway that is gone.
+		refreshHealthyExitRoutes(s)
 
 		for {
 			select {
 			case <-ctx.Done():
 				logger.Log(0, "stopping health monitor for internet gateway")
 				return
-			case <-ticker.C:
+			case <-routeTicker.C:
 				if ifaceRebuilds.Load() > 0 {
-					logger.Log(2, "internet gateway health: iface rebuild in flight, skipping check")
+					continue
+				}
+				refreshHealthyExitRoutes(s)
+			case <-healthTicker.C:
+				if probing || ifaceRebuilds.Load() > 0 {
+					logger.Log(2, "internet gateway health: skipping check")
 					continue
 				}
 				// Peers were just reapplied and no handshake has happened yet, so
@@ -170,13 +188,21 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 					s.failureCount = 0
 					s.lastRx = -1
 				}
-				// Unhealthy means host exit routes were reset; no pins wanted.
-				if s.isHealthy && time.Since(lastPinRefresh) >= IGWPinRefreshInterval {
-					lastPinRefresh = time.Now()
-					pinInternetGwHostRoutes(s.publicKey)
+				probing = true
+				go func() {
+					probeCh <- s.collectSample()
+				}()
+			case sample := <-probeCh:
+				probing = false
+				if ctx.Err() != nil {
+					return
+				}
+				if ifaceRebuilds.Load() > 0 {
+					logger.Log(2, "internet gateway health: iface rebuild in flight, dropping sample")
+					continue
 				}
 				logger.Log(2, "checking health of internet gateway...")
-				s.check()
+				s.applySample(sample)
 			}
 		}
 	}()
@@ -216,6 +242,63 @@ func (m *IGWMonitor) IsCurrentIGW(gw4, gw6 net.IP) bool {
 	return ipEqual(m.status.gw4, gw4) && ipEqual(m.status.gw6, gw6)
 }
 
+// exitRoutesWinning reports whether an external lookup still egresses via the
+// exit. An ISP change can delete or outrank those routes while the tunnel
+// itself stays up. Tests replace this.
+var exitRoutesWinning = defaultExitRoutesWinning
+
+// reinstallExitRoutes puts the host default route back on the exit without
+// restarting the health monitor. Tests replace this.
+var reinstallExitRoutes = defaultReinstallExitRoutes
+
+// pinExitUnderlay reconciles LAN pins for the exit handshake. Tests replace this.
+var pinExitUnderlay = pinInternetGwHostRoutes
+
+// currentUnderlayGateway is the LAN gateway pins were last pointed at.
+// Tests replace this.
+var currentUnderlayGateway = underlayGatewayKey
+
+// refreshHealthyExitRoutes runs while the exit is healthy. It re-points
+// underlay pins, then reinstalls host exit routes when they no longer win
+// the default lookup. Unhealthy status returns immediately so the LAN default
+// installed by setUnhealthy stays in place. A gateway move clears the failure
+// streak: probes taken while the old ISP was already dead must not spend the
+// budget that would pull the exit down for IGWRecoveryThreshold more samples.
+func refreshHealthyExitRoutes(s *igwStatus) bool {
+	if s == nil || !s.isHealthy {
+		return false
+	}
+	before := currentUnderlayGateway()
+	pinExitUnderlay(s.publicKey)
+	moved := currentUnderlayGateway() != before
+	if moved {
+		s.failureCount = 0
+	}
+	if exitRoutesWinning(s.gw4, s.gw6) {
+		return moved
+	}
+	logger.Log(0, "exit default routes lost after network change; reinstalling")
+	if err := reinstallExitRoutes(s.publicKey, s.gw4, s.gw6); err != nil {
+		logger.Log(0, "failed to reinstall exit default routes:", err.Error())
+	}
+	return true
+}
+
+func underlayGatewayKey() string {
+	nc := config.Netclient()
+	if nc == nil {
+		return ""
+	}
+	v4, v6 := "", ""
+	if len(nc.OriginalDefaultGatewayIp) > 0 {
+		v4 = nc.OriginalDefaultGatewayIp.String()
+	}
+	if len(nc.OriginalDefaultGatewayIp6) > 0 {
+		v6 = nc.OriginalDefaultGatewayIp6.String()
+	}
+	return v4 + "," + v6
+}
+
 // dialIP returns the preferred nexthop for health checks (IPv4 preferred).
 func (s *igwStatus) dialIP() net.IP {
 	if len(s.gw4) > 0 {
@@ -224,27 +307,57 @@ func (s *igwStatus) dialIP() net.IP {
 	return s.gw6
 }
 
+// igwSample is one health observation. collectSample may block on the probe;
+// applySample is the part that changes routes and must stay on the monitor
+// goroutine alongside route repair.
+type igwSample struct {
+	peerErr   error
+	igw       wgtypes.Peer
+	rxMoved   bool
+	hasAddr   bool
+	canProbe  bool
+	probed    bool
+	reachable bool
+}
+
 // check verifies whether the internet gateway is reachable and updates its
 // status, adjusting routes on the host accordingly.
 func (s *igwStatus) check() {
+	s.applySample(s.collectSample())
+}
+
+func (s *igwStatus) collectSample() igwSample {
+	var sample igwSample
 	igw, err := GetPeer(ncutils.GetInterfaceName(), s.publicKey)
 	if err != nil {
-		logger.Log(0, "failed to get internet gateway peer:", err.Error())
+		sample.peerErr = err
+		return sample
+	}
+	sample.igw = igw
+	// Take the rx baseline every tick, whether or not it ends up being the signal
+	// that decides this sample.
+	sample.rxMoved = s.noteRx(igw.ReceiveBytes)
+	sample.canProbe = s.dialIP() != nil
+	sample.hasAddr = ifaceHasSourceAddr()
+	if !sample.hasAddr || !sample.canProbe {
+		return sample
+	}
+	sample.probed = true
+	sample.reachable = s.probeGateway()
+	return sample
+}
 
-		if errors.Is(err, ErrPeerNotFound) {
+func (s *igwStatus) applySample(sample igwSample) {
+	if sample.peerErr != nil {
+		logger.Log(0, "failed to get internet gateway peer:", sample.peerErr.Error())
+		if errors.Is(sample.peerErr, ErrPeerNotFound) {
 			// A missing peer on a live device is usually an iface rebuild we did not
 			// see, so count it like any other failed sample rather than tearing exit
 			// routing down on one miss.
 			s.noteFailure(nil)
 		}
-
 		return
 	}
-
-	// Take the rx baseline every tick, whether or not it ends up being the signal
-	// that decides this sample.
-	rxMoved := s.noteRx(igw.ReceiveBytes)
-	canProbe := s.dialIP() != nil
 
 	// Every passive signal below is measured on the underlay: handshakes and
 	// keepalives keep completing against the peer's endpoint even when the tunnel
@@ -257,9 +370,9 @@ func (s *igwStatus) check() {
 	//
 	// Iface rebuilds pass through here with no address; the rebuild counter and
 	// the re-armed startup grace above keep those windows from counting.
-	if !ifaceHasSourceAddr() {
+	if !sample.hasAddr {
 		logger.Log(0, "internet gateway unusable: netmaker interface has no address to source traffic from")
-		s.noteFailure(&igw)
+		s.noteFailure(&sample.igw)
 		return
 	}
 
@@ -273,15 +386,15 @@ func (s *igwStatus) check() {
 	// So probe first, every sample. Once a gateway has answered a probe we know it
 	// answers, and from then on its silence is real evidence of a broken path that
 	// no passive counter may vouch for.
-	if canProbe {
-		if s.probeGateway() {
+	if sample.canProbe {
+		if sample.probed && sample.reachable {
 			s.probeEverSucceeded = true
-			s.noteSuccess(igw)
+			s.noteSuccess(sample.igw)
 			return
 		}
 		if s.probeEverSucceeded {
 			logger.Log(2, "internet gateway probe failed on a gateway that has answered before")
-			s.noteFailure(&igw)
+			s.noteFailure(&sample.igw)
 			return
 		}
 	}
@@ -289,16 +402,16 @@ func (s *igwStatus) check() {
 	// Either there is nothing to probe, or this gateway has never answered one
 	// (no metrics listener, firewalled). Passive evidence is all we have, and
 	// tearing exit routing down on its absence alone would be wrong here.
-	if rxMoved || s.handshakeFresh(igw) {
-		s.noteSuccess(igw)
+	if sample.rxMoved || s.handshakeFresh(sample.igw) {
+		s.noteSuccess(sample.igw)
 		return
 	}
-	if !canProbe {
+	if !sample.canProbe {
 		// Nothing to probe and nothing has spoken: no evidence either way.
 		return
 	}
 
-	s.noteFailure(&igw)
+	s.noteFailure(&sample.igw)
 }
 
 // noteSuccess records one healthy sample, restoring exit routes once

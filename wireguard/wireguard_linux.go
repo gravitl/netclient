@@ -469,6 +469,41 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 	return err
 }
 
+// defaultExitRoutesWinning reports whether a kernel lookup of an external
+// address still selects the netmaker interface. RouteGet follows ip rules,
+// so a flushed table 111 or a missing rule shows up as the LAN interface.
+func defaultExitRoutesWinning(gw4, gw6 net.IP) bool {
+	if len(gw4) == 0 && len(gw6) == 0 {
+		return true
+	}
+	link, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return false
+	}
+	idx := link.Attrs().Index
+	if len(gw4) > 0 && !lookupUsesLink(net.ParseIP("1.1.1.1"), idx) {
+		return false
+	}
+	if (len(gw6) > 0 || shouldBlockIPv6Leak(gw4, gw6)) && !lookupUsesLink(net.ParseIP("2001:4860:4860::8888"), idx) {
+		return false
+	}
+	return true
+}
+
+func lookupUsesLink(ip net.IP, linkIndex int) bool {
+	routes, err := netlink.RouteGet(ip)
+	if err != nil || len(routes) == 0 {
+		return false
+	}
+	return routes[0].LinkIndex == linkIndex
+}
+
+// defaultReinstallExitRoutes puts table 111 and its rules back without
+// restarting the health monitor that is running this repair.
+func defaultReinstallExitRoutes(publicKey string, gw4, gw6 net.IP) error {
+	return setDefaultRoutesOnHost(publicKey, gw4, gw6)
+}
+
 func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 	var firstErr error
 	if len(gw4) > 0 {

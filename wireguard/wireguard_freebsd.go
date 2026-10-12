@@ -162,3 +162,9 @@ func resetDefaultRoutesOnHost() error {
 }
 
 func pinInternetGwHostRoutes(publicKey string) {}
+
+// defaultExitRoutesWinning is always true. FreeBSD does not install OS exit
+// routes, so the health monitor has nothing to repair.
+func defaultExitRoutesWinning(gw4, gw6 net.IP) bool { return true }
+
+func defaultReinstallExitRoutes(publicKey string, gw4, gw6 net.IP) error { return nil }
