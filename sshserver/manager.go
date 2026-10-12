@@ -16,10 +16,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/creack/pty"
 	gliderssh "github.com/gliderlabs/ssh"
@@ -260,16 +257,20 @@ func (m *Manager) authorizedOsUsersLocked(addr net.Addr) ([]string, bool) {
 	if ip == nil {
 		return nil, false
 	}
-	for cidr, identity := range m.authorizedIdentities {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if ipNet.Contains(ip) {
-			return identity.OsUsers, true
-		}
+	identity, ok := m.authorizedIdentities[addrKey(ip)]
+	if !ok {
+		return nil, false
 	}
-	return nil, false
+	return identity.OsUsers, true
+}
+
+// addrKey formats ip the way the server keys per-address entries: "<ip>/32"
+// for IPv4 (including IPv4-mapped IPv6), "<ip>/128" for IPv6.
+func addrKey(ip net.IP) string {
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String() + "/32"
+	}
+	return ip.String() + "/128"
 }
 
 // trackSession registers a live session so a later grant change can revoke
@@ -310,16 +311,11 @@ func (m *Manager) peerName(addr net.Addr) string {
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for cidr, identity := range m.identityMap {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if ipNet.Contains(ip) {
-			return identity.Name
-		}
+	identity, ok := m.identityMap[addrKey(ip)]
+	if !ok || identity.Type == models.PeerType_EgressRoute {
+		return ""
 	}
-	return ""
+	return identity.Name
 }
 
 func hostIP(addr net.Addr) net.IP {
