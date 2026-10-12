@@ -34,6 +34,20 @@ var (
 	dnsApplyRunning bool
 )
 
+// reconfigureDNSNow rebinds listeners to the current node set and reapplies OS DNS.
+// Call it after join, disconnect, or a netmaker interface reset — once peers and
+// exit routes are back, because full vs split DNS follows CurrGw.
+// With nothing connected, or DNS not managed, it removes OS DNS instead.
+func reconfigureDNSNow() {
+	server := config.GetServer(config.CurrServer)
+	if server == nil || !server.ManageDNS || !config.AnyNodeConnected() {
+		dns.GetDNSServerInstance().Stop()
+		return
+	}
+	dns.SyncForNodeChange()
+	scheduleDNSReconfigure()
+}
+
 // scheduleDNSReconfigure applies OS DNS off the caller's goroutine, coalescing
 // bursts into a single pass over the latest state.
 //

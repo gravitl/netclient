@@ -9,7 +9,6 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
-	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -60,12 +59,9 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
-		dns.GetDNSServerInstance().Stop()
 		faults = resetInterfaceUninstall(faults)
-		server := config.GetServer(config.CurrServer)
-		if server != nil && server.ManageDNS {
-			dns.GetDNSServerInstance().Start()
-		}
+		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		reconfigureDNSNow()
 	} else { // was called from CLI so restart daemon
 		if err := daemon.Restart(); err != nil {
 			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))

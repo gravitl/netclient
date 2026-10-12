@@ -49,6 +49,7 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	reconfigureDNSNow()
 	if status == "" {
 		return "joined", nil
 	}
