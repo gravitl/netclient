@@ -44,7 +44,8 @@ type Manager struct {
 	authorizedIdentities map[string]models.SSHAuthorizedIdentity
 	server               *gliderssh.Server
 	listeners            map[string]net.Listener // keyed by IP string, one per bound WireGuard address
-	sessions             map[string]*liveSession
+	sessions             map[uint64]*liveSession
+	nextSessionID        uint64
 }
 
 // liveSession tracks one open shell/exec/sftp session so it can be revoked
@@ -275,17 +276,22 @@ func addrKey(ip net.IP) string {
 
 // trackSession registers a live session so a later grant change can revoke
 // it (see revokeStaleSessionsLocked). untrackSession must be deferred by
-// the caller to clean up on normal session end.
-func (m *Manager) trackSession(id string, addr net.Addr, osUser string, cancel context.CancelFunc) {
+// the caller to clean up on normal session end. The returned id is unique per
+// tracked session: gliderssh's SessionID identifies the whole SSH connection,
+// which can carry several sessions at once (multiplexing, sftp + shell).
+func (m *Manager) trackSession(addr net.Addr, osUser string, cancel context.CancelFunc) uint64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.sessions == nil {
-		m.sessions = make(map[string]*liveSession)
+		m.sessions = make(map[uint64]*liveSession)
 	}
+	m.nextSessionID++
+	id := m.nextSessionID
 	m.sessions[id] = &liveSession{remoteAddr: addr, osUser: osUser, cancel: cancel}
+	return id
 }
 
-func (m *Manager) untrackSession(id string) {
+func (m *Manager) untrackSession(id uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.sessions, id)
@@ -294,9 +300,9 @@ func (m *Manager) untrackSession(id string) {
 // withTrackedSession registers s for the duration of fn so a grant change
 // elsewhere can cancel the context fn is given, then runs fn.
 func (m *Manager) withTrackedSession(s gliderssh.Session, fn func(ctx context.Context)) {
-	id := s.Context().SessionID()
 	ctx, cancel := context.WithCancel(s.Context())
-	m.trackSession(id, s.RemoteAddr(), s.User(), cancel)
+	defer cancel()
+	id := m.trackSession(s.RemoteAddr(), s.User(), cancel)
 	defer m.untrackSession(id)
 	fn(ctx)
 }
@@ -455,6 +461,15 @@ func (m *Manager) handleSFTP(s gliderssh.Session) {
 				return
 			}
 			defer srv.Close()
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				select {
+				case <-ctx.Done():
+					_ = srv.Close()
+				case <-done:
+				}
+			}()
 			_ = srv.Serve()
 			return
 		}
