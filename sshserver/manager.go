@@ -508,43 +508,54 @@ func loginShell() string {
 	return "/bin/sh"
 }
 
-var (
-	utilLinuxLoginOnce sync.Once
-	utilLinuxLogin     bool
-)
-
-// isUtilLinuxLogin reports whether loginPath is util-linux's login, as
-// opposed to shadow-utils' or busybox's. Only meaningful on Linux.
-func isUtilLinuxLogin(loginPath string) bool {
-	utilLinuxLoginOnce.Do(func() {
-		if runtime.GOOS != "linux" {
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		out, err := exec.CommandContext(ctx, loginPath, "--version").CombinedOutput()
-		utilLinuxLogin = err == nil && strings.Contains(string(out), "util-linux")
-	})
-	return utilLinuxLogin
-}
-
+// On an SELinux-enforcing host (Fedora/Rocky/RHEL-family, enforcing by
+// default) this can fail with "<user>: no shell: Permission denied", even
+// though the account and its shell are both fine.
+//
+// SELinux checks a second, separate set of rules on top of normal file
+// permissions: every process runs under a security context, and actions
+// like "become this other user" are only allowed between specific contexts
+// the policy lists.
+//
+// login switches into the target user's context as the last step of
+// authenticating them. That switch is only permitted when login itself was
+// started by one of a handful of trusted parent contexts the policy
+// already knows about (getty, sshd, crond, ...).
+//
+// netclient isn't one of them, so the switch is denied and login exits
+// before ever running the shell - there's nothing to fix on our side about
+// that rule.
+//
+// Fix (on the host, not here): grant netclient's own SELinux domain
+// permission to make that transition. Reference policy source and install
+// instructions are in ../selinux/ (netclient.te gives netclient its own
+// domain; netclient-managed-ssh.te grants just this one permission to it,
+// as a separate, deliberate, operator-installed step - neither is built or
+// installed by netclient itself).
 func loginShellCmd(osUser string) (*exec.Cmd, error) {
 	if path, err := exec.LookPath("login"); err == nil {
 		// -f: already authenticated (by the WireGuard/grant check), skip
 		// login's own password prompt.
 		args := []string{"-f", osUser}
-		if !isUtilLinuxLogin(path) {
-			return exec.Command(path, args...), nil
-		}
-		// util-linux login calls vhangup() on its terminal, which hangs it up
-		// before the shell starts when it is the session leader, as it is
-		// under pty.Start (Debian bug 1078023). setsid -c gives it a session
-		// of its own that takes the pty as its controlling terminal; -w
-		// waits so the exit status still propagates.
+		// Every login implementation we've hit this with - util-linux,
+		// BusyBox - calls vhangup() on its controlling terminal as part of
+		// normal secure-tty setup (not just a util-linux quirk: Debian bug
+		// 1078023 documents it for util-linux, but BusyBox's login does the
+		// same thing). That's harmless when login is invoked the usual way,
+		// as the session leader of a fresh tty (e.g. by getty) - but here it
+		// runs under a pty we already created via pty.Start, where it is
+		// NOT the session leader, so vhangup() hangs up that pty instead,
+		// killing the connection right as the shell is about to start.
+		// setsid -c always gives login a session of its own first, so its
+		// vhangup() only ever affects that new session, never the pty our
+		// SSH session is using; -w waits so the exit status still
+		// propagates. This is safe for every login implementation, not just
+		// the ones known to need it.
 		if setsid, err := exec.LookPath("setsid"); err == nil {
 			return exec.Command(setsid, append([]string{"-w", "-c", path}, args...)...), nil
 		}
-		// Without setsid that login would just hang up; use su instead.
+		// Without setsid, login's vhangup() would kill the connection; use
+		// su instead, which doesn't call vhangup().
 	}
 	if path, err := exec.LookPath("su"); err == nil {
 		return exec.Command(path, "-", osUser), nil
