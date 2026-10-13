@@ -155,7 +155,7 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 	}
 	// logger.Log, not slog.Info: slog runs at Warn unless verbosity is raised
 	// (cmd/root.go), which silently discarded these when they were needed.
-	logger.Log(0, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
+	logger.Log(1, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
 		src, config.AnyNodeConnected(), changeDefaultGw, currGw, desired))
 }
 
