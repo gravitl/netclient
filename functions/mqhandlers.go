@@ -124,10 +124,8 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
-		if server.ManageDNS {
-			dns.GetDNSServerInstance().Stop()
-			dns.GetDNSServerInstance().Start()
-		}
+		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		reconfigureDNSNow(server)
 
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
@@ -304,9 +302,16 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// ReplacePeers (e.g. ACL policy changes) forces a reinstall so OS exit routes
 	// are restored even if the IGW monitor still reports the same nexthop.
 	logIGWDecision("peer-update", peerUpdate.ChangeDefaultGw)
+	// Set when this update installs, reinstalls, or removes exit routes.
+	// A same-nexthop reinstall still counts: Restore clears CurrGw before Set
+	// puts it back, and an in-flight DNS apply can observe that gap (connect
+	// does this — it installs the exit, then the follow-up peer update
+	// reinstalls it). Pin refresh of an already-current exit does not.
+	exitRoutingChanged := false
 	if !config.AnyNodeConnected() {
 		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 			logger.Log(0, "tearing down internet gateway (peer-update, no node connected)")
+			exitRoutingChanged = true
 			if err := wireguard.RestoreInternetGw(); err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
 			}
@@ -325,6 +330,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 				// Only tear down an existing exit before reinstall; a blank
 				// Restore here races concurrent DNS Configure (SplitDNS wipe).
 				if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+					exitRoutingChanged = true
 					_ = wireguard.RestoreInternetGw()
 				}
 				err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
@@ -332,11 +338,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 					slog.Error("error setting default gateway", "error", err.Error())
 					// Continue applying peers even if IGW setup failed.
 				} else {
+					exitRoutingChanged = true
 					if user, tenant, ok := desktopSessionIdentity(); ok {
 						_ = config.SetDesiredWantIGW(user, tenant, true)
 					}
-					// Apply system-wide DNS as soon as CurrGw is set (exit restore).
-					scheduleDNSReconfigure()
 				}
 			}
 		} else {
@@ -352,6 +357,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		// the LAN default route back. Local desired state never outranks it —
 		// reconnect and session restore re-apply the exit when it is usable.
 		logger.Log(0, "tearing down internet gateway (peer-update, change_default_gw=false)")
+		exitRoutingChanged = true
 		if err := wireguard.RestoreInternetGw(); err != nil {
 			slog.Error("error restoring default gateway", "error", err.Error())
 		}
@@ -435,9 +441,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			dns.GetDNSServerInstance().Stop()
 		}
 	}
-	// Always re-apply OS DNS when listening: SplitDNS depends on CurrGwNmIP
-	// (exit node), not only on nameserver list / ManageDNS flips.
-	if dnsOp != stop {
+	// OS DNS is system-wide while an exit is installed and split otherwise.
+	// Reapply when nameservers changed or this update installed, reinstalled,
+	// or removed exit routes. Start/Stop already apply or clear it. A peer
+	// update that only refreshes pins must not call networksetup again.
+	// Also reapply when we should be serving DNS but the listener is down —
+	// connect's own apply can lose the race with this update's Restore.
+	listenerDown := server.ManageDNS && config.AnyNodeConnected() && dns.GetDNSServerInstance().ListenerAddr() == ""
+	if dnsOp != start && dnsOp != stop && (dnsOp == update || exitRoutingChanged || listenerDown) {
 		scheduleDNSReconfigure()
 	}
 
@@ -703,17 +714,17 @@ func resetInterfaceFunc() {
 		slog.Error("failed to set peers", err)
 	}
 	wireguard.SetRoutesFromCache()
+	// Closing the iface drops OS exit routes while CurrGw is still set.
+	// Put them back before DNS, so the apply sees full vs split correctly.
+	wireguard.ReapplyInternetGwAfterIfaceRecreate()
 
+	// No single network owns an iface reset; CurrServer is only the fallback.
 	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return
+	if server != nil {
+		// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
+		reconcileTCPUplink(server, nil)
 	}
-	// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
-	reconcileTCPUplink(server, nil)
-	if server.ManageDNS {
-		dns.GetDNSServerInstance().Stop()
-		dns.GetDNSServerInstance().Start()
-	}
+	reconfigureDNSNow(server)
 	wireguard.EgressResetCh <- struct{}{}
 }
 
@@ -996,9 +1007,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	// ReplacePeers forces a reinstall so OS exit routes are restored after ACL
 	// (or other full-replace) updates even if the IGW monitor nexthop is unchanged.
 	logIGWDecision("host-update", pullResponse.ChangeDefaultGw)
+	exitRoutingChanged := false
 	if !config.AnyNodeConnected() {
 		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 			logger.Log(0, "tearing down internet gateway (host-update, no node connected)")
+			exitRoutingChanged = true
 			if err := wireguard.RestoreInternetGw(); err != nil {
 				slog.Error("error restoring default gateway", "error", err.Error())
 			}
@@ -1013,16 +1026,17 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
 			} else {
 				if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+					exitRoutingChanged = true
 					_ = wireguard.RestoreInternetGw()
 				}
 				if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					// Continue applying peers even if IGW setup failed.
 				} else {
+					exitRoutingChanged = true
 					if user, tenant, ok := desktopSessionIdentity(); ok {
 						_ = config.SetDesiredWantIGW(user, tenant, true)
 					}
-					scheduleDNSReconfigure()
 				}
 			}
 		} else {
@@ -1036,6 +1050,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		// Unconditional for the same reason as the peer-update path above: never
 		// hold a default route the server has withdrawn.
 		logger.Log(0, "tearing down internet gateway (host-update, change_default_gw=false)")
+		exitRoutingChanged = true
 		if err := wireguard.RestoreInternetGw(); err != nil {
 			slog.Error("error restoring default gateway", "error", err.Error())
 		}
@@ -1114,9 +1129,10 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			dns.GetDNSServerInstance().Stop()
 		}
 	}
-	// Always re-apply OS DNS when listening: SplitDNS depends on CurrGwNmIP
-	// (exit node), not only on nameserver list / ManageDNS flips.
-	if dnsOp != stop {
+	// Same rule as the peer-update path: nameserver changes, exit install /
+	// reinstall / removal, or a missing listener. Not every fallback pull.
+	listenerDown := server.ManageDNS && config.AnyNodeConnected() && dns.GetDNSServerInstance().ListenerAddr() == ""
+	if dnsOp != start && dnsOp != stop && (dnsOp == update || exitRoutingChanged || listenerDown) {
 		scheduleDNSReconfigure()
 	}
 

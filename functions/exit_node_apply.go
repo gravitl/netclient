@@ -34,6 +34,46 @@ var (
 	dnsApplyRunning bool
 )
 
+// reconfigureDNSNow rebinds listeners to the current node set and reapplies OS DNS.
+// Call it after join, disconnect, or a netmaker interface reset — once peers and
+// exit routes are back, because full vs split DNS follows CurrGw.
+//
+// server is the network's server (config.GetServer(node.Server)). Callers with
+// no network context may pass nil; CurrServer is used only then. OS DNS is
+// removed only when no connected network still manages it, so a nil or
+// unmanaged CurrServer cannot wipe resolver state another network needs.
+func reconfigureDNSNow(server *config.Server) {
+	if server == nil {
+		server = config.GetServer(config.CurrServer)
+	}
+	if !anyConnectedNetworkManagesDNS() {
+		dns.GetDNSServerInstance().Stop()
+		return
+	}
+	// This server is nil or does not manage DNS, but another connected network
+	// does. Leave that resolver state in place.
+	if server == nil || !server.ManageDNS {
+		return
+	}
+	dns.SyncForNodeChange()
+	scheduleDNSReconfigure()
+}
+
+// anyConnectedNetworkManagesDNS reports whether a locally connected node
+// belongs to a server that has ManageDNS set.
+func anyConnectedNetworkManagesDNS() bool {
+	for _, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		srv := config.GetServer(node.Server)
+		if srv != nil && srv.ManageDNS {
+			return true
+		}
+	}
+	return false
+}
+
 // scheduleDNSReconfigure applies OS DNS off the caller's goroutine, coalescing
 // bursts into a single pass over the latest state.
 //
@@ -141,7 +181,7 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 	}
 	// logger.Log, not slog.Info: slog runs at Warn unless verbosity is raised
 	// (cmd/root.go), which silently discarded these when they were needed.
-	logger.Log(0, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
+	logger.Log(1, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
 		src, config.AnyNodeConnected(), changeDefaultGw, currGw, desired))
 }
 
