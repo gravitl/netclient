@@ -4,6 +4,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func TestSetUnhealthyInvokesOnIGWUnhealthyHook(t *testing.T) {
@@ -53,6 +55,24 @@ func TestSetUnhealthyReappliesDNSBeforeFailover(t *testing.T) {
 
 // A single failed sample must never tear exit routing down: every iface rebuild
 // has a window where the device is up with no peers configured yet.
+func TestNoHandshakeDeclaresUnhealthyAfterGrace(t *testing.T) {
+	s := &igwStatus{isHealthy: true, startedAt: time.Now()}
+	var peer wgtypes.Peer
+	if got := s.noHandshakeAction(peer); got != "grace" {
+		t.Fatalf("no handshake during grace = %q, want grace", got)
+	}
+
+	s.startedAt = time.Now().Add(-2 * IGWStartupGrace)
+	if got := s.noHandshakeAction(peer); got != "unhealthy" {
+		t.Fatalf("no handshake after grace = %q, want unhealthy", got)
+	}
+
+	peer.LastHandshakeTime = time.Now()
+	if got := s.noHandshakeAction(peer); got != "" {
+		t.Fatalf("peer with a handshake = %q, want normal checks", got)
+	}
+}
+
 func TestNoteFailureRespectsGraceAndThreshold(t *testing.T) {
 	s := &igwStatus{isHealthy: true, startedAt: time.Now()}
 

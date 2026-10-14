@@ -96,6 +96,7 @@ type persistedUserSession struct {
 	AuthToken     string                `json:"auth_token"`
 	TenantID      string                `json:"tenant_id"`
 	ServerConfig  nmConfig.ServerConfig `json:"server_config"`
+	Notice        SessionNotice         `json:"notice,omitempty"`
 }
 
 type sessionState struct {
@@ -106,6 +107,7 @@ type sessionState struct {
 	tenantID     string
 	serverConfig nmConfig.ServerConfig
 	expiresAt    time.Time
+	notice       SessionNotice
 }
 
 var session sessionState
@@ -212,6 +214,7 @@ func applyPersistedUserSession(stored persistedUserSession) {
 			session.status = Idle
 		}
 	}
+	session.notice = stored.Notice
 }
 
 func saveUserSession() error {
@@ -221,6 +224,7 @@ func saveUserSession() error {
 		AuthToken:    session.authToken,
 		TenantID:     session.tenantID,
 		ServerConfig: session.serverConfig,
+		Notice:       session.notice,
 	}
 	session.mu.RUnlock()
 	if stored.Username == "" && stored.AuthToken == "" {
@@ -247,6 +251,7 @@ func clearSession(clearToken bool) error {
 		session.serverConfig = nmConfig.ServerConfig{}
 		session.expiresAt = time.Time{}
 	}
+	session.notice = SessionNotice{}
 	session.mu.Unlock()
 	if clearToken {
 		return os.Remove(userSessionPath())
@@ -308,6 +313,34 @@ func setStatus(status Status) {
 	session.mu.Unlock()
 }
 
+// SetSessionNotice stores a GUI notice and persists it with the session so a
+// daemon restart still returns it on GET /session.
+func SetSessionNotice(notice SessionNotice) {
+	session.mu.Lock()
+	session.notice = notice
+	session.mu.Unlock()
+	_ = saveUserSession()
+}
+
+// ClearSessionNotice drops the current GUI notice.
+func ClearSessionNotice() {
+	session.mu.Lock()
+	if session.notice.Code == "" {
+		session.mu.Unlock()
+		return
+	}
+	session.notice = SessionNotice{}
+	session.mu.Unlock()
+	_ = saveUserSession()
+}
+
+// GetSessionNotice returns the current GUI notice. Code is empty when there is none.
+func GetSessionNotice() SessionNotice {
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	return session.notice
+}
+
 func tokenExpiry(tokenString string) (time.Time, bool) {
 	parser := jwt.Parser{}
 	claims := &jwt.RegisteredClaims{}
@@ -327,6 +360,7 @@ func setSession(username, authToken, tenantID string, serverConfig nmConfig.Serv
 	session.serverConfig = serverConfig
 	session.expiresAt = exp
 	session.status = Running
+	session.notice = SessionNotice{}
 	session.mu.Unlock()
 	_ = saveUserSession()
 }

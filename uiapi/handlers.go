@@ -196,6 +196,9 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 		resp.AutoExit = config.GetDesiredAutoExit(username, tenantID)
 		resp.DesiredEgressID = config.GetDesiredEgressID(username, tenantID)
 		resp.DesiredExitNetwork = config.GetDesiredExitNetwork(username, tenantID)
+		if notice := GetSessionNotice(); notice.Code != "" {
+			resp.Notice = &notice
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

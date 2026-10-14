@@ -41,6 +41,16 @@ type GetServerResponse struct {
 	AutoExit           bool                  `json:"auto_exit,omitempty"`
 	DesiredEgressID    string                `json:"desired_egress_id,omitempty"`
 	DesiredExitNetwork string                `json:"desired_exit_network,omitempty"`
+	// Notice is a one-shot message for the GUI, such as a manual exit that
+	// failed its post-connect VPN health check.
+	Notice *SessionNotice `json:"notice,omitempty"`
+}
+
+// SessionNotice is a message the desktop GUI can show from GET /session.
+type SessionNotice struct {
+	Code    string `json:"code"`
+	Network string `json:"network,omitempty"`
+	Message string `json:"message"`
 }
 
 type ConfigureSessionRequest struct {

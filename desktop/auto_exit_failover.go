@@ -32,9 +32,10 @@ func init() {
 	wireguard.OnIGWUnhealthy = handleIGWUnhealthyAutoExit
 }
 
-// handleIGWUnhealthyAutoExit is the IGW monitor hook: when the current exit is
-// marked unhealthy and auto-exit is active (local AUTO or server-required
-// auto_select_exit_node), pick the next nearest available exit.
+// handleIGWUnhealthyAutoExit is the IGW monitor hook. The monitor already
+// probed the exit over the VPN. Auto mode switches to the next nearest exit.
+// A manual selection clears that exit and leaves a session notice. The network
+// stays connected.
 func handleIGWUnhealthyAutoExit(publicKey string) {
 	if sessionReleased.Load() {
 		return
@@ -45,9 +46,13 @@ func handleIGWUnhealthyAutoExit(publicKey string) {
 	}
 	token := uiapi.SessionAuthToken()
 	network := resolveAutoExitNetwork(user, tenant, token)
-	if token == "" || network == "" || !autoExitModeActive(user, tenant, network, token) {
-		slog.Debug("auto-exit failover skipped: not in auto mode or missing network/token",
-			"network", network)
+	if token == "" || network == "" {
+		slog.Debug("exit unhealthy: missing network or token", "network", network)
+		return
+	}
+	if !autoExitModeActive(user, tenant, network, token) {
+		slog.Info("selected exit is unhealthy; clearing exit selection", "network", network)
+		clearManualUnhealthyExit(network, token)
 		return
 	}
 
@@ -78,6 +83,32 @@ func handleIGWUnhealthyAutoExit(publicKey string) {
 	autoExitFailoverMu.Lock()
 	autoExitLastFailover = time.Now()
 	autoExitFailoverMu.Unlock()
+}
+
+var clearUnhealthyExitFn = func(network, token string) error {
+	_, err := SelectDeviceExitNode(network, token, "")
+	return err
+}
+
+// clearManualUnhealthyExit drops a manually selected exit that failed the
+// post-connect VPN probe. The network stays connected. Clearing desired exit
+// state stops reconcile from selecting that exit again.
+func clearManualUnhealthyExit(network, token string) {
+	network = strings.TrimSpace(network)
+	if network == "" {
+		return
+	}
+	uiapi.SetSessionNotice(uiapi.SessionNotice{
+		Code:    "exit_unhealthy",
+		Network: network,
+		Message: "Exit node is unreachable over the VPN. Disconnected from the exit node.",
+	})
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	if err := clearUnhealthyExitFn(network, token); err != nil {
+		slog.Warn("failed to clear unhealthy exit selection", "network", network, "error", err)
+	}
 }
 
 // exitRestoreUsesAuto decides whether login should re-pick the nearest exit.
@@ -148,9 +179,11 @@ func failoverAutoExit(network, token, failedPublicKey string) error {
 	if err != nil {
 		return err
 	}
-	// List attaches public latencies for GUI/Auto pick. Failover re-ranks on
-	// overlay metrics-port RTTs so the next exit is nearest on the live mesh.
-	functions.AttachExitNodeOverlayLatencies(network, nodes)
+	// List already ranks on the overlay once the network is connected. Re-probe
+	// only when that list still used public endpoints.
+	if !exitProbesUseOverlay(network) {
+		functions.AttachExitNodeOverlayLatencies(network, nodes)
+	}
 
 	user, tenant := uiapi.SessionIdentity()
 	cur := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))

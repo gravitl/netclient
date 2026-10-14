@@ -93,3 +93,29 @@ func TestEnsureRegisterServerConfPreservesPortedAPI(t *testing.T) {
 	assert.Equal(t, "api.example.com", resp.ServerConf.Server)
 	assert.Equal(t, "api.example.com:8443", resp.ServerConf.API)
 }
+
+func TestHideClearedExitSelection(t *testing.T) {
+	t.Cleanup(func() { forgetExitClearedLocally("net") })
+	markExitClearedLocally("net")
+
+	nodes, skip := hideClearedExitSelection("net", []models.DeviceExitNode{
+		{EgressID: "a", Selected: true},
+		{EgressID: "b"},
+	})
+	if !skip || nodes[0].Selected || nodes[1].Selected {
+		t.Fatalf("stale server selection still visible: skip=%v nodes=%+v", skip, nodes)
+	}
+	if !exitClearedLocally("net") {
+		t.Fatal("latch dropped before the server agreed")
+	}
+
+	nodes, skip = hideClearedExitSelection("net", []models.DeviceExitNode{
+		{EgressID: "a"},
+	})
+	if skip || exitClearedLocally("net") {
+		t.Fatalf("latch stuck after server agreed: skip=%v cleared=%v", skip, exitClearedLocally("net"))
+	}
+	if len(nodes) != 1 || nodes[0].Selected {
+		t.Fatalf("nodes=%+v", nodes)
+	}
+}

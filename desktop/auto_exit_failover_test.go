@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -32,7 +33,45 @@ func TestFailedEgressExcludeSetExpires(t *testing.T) {
 	}
 }
 
-func TestHandleIGWUnhealthyAutoExitSkipsManualMode(t *testing.T) {
+func TestExitProbesUseOverlayOnceConnected(t *testing.T) {
+	t.Cleanup(config.DeleteNodes)
+	if exitProbesUseOverlay("mesh") {
+		t.Fatal("disconnected network should rank exits by public endpoints")
+	}
+	config.UpdateNodeMap("mesh", config.Node{
+		CommonNode: models.CommonNode{Network: "mesh", Connected: true},
+	})
+	if !exitProbesUseOverlay("mesh") {
+		t.Fatal("connected network should rank exits by overlay probes")
+	}
+}
+
+func TestClearManualUnhealthyExitKeepsNetwork(t *testing.T) {
+	uiapi.SetConfigPathForTest(t.TempDir())
+	t.Cleanup(func() {
+		uiapi.SetConfigPathForTest("")
+		uiapi.ClearSessionNotice()
+	})
+	prevClear := clearUnhealthyExitFn
+	var cleared string
+	clearUnhealthyExitFn = func(network, token string) error {
+		cleared = network + ":" + token
+		return nil
+	}
+	t.Cleanup(func() { clearUnhealthyExitFn = prevClear })
+
+	clearManualUnhealthyExit("mesh", "tok")
+
+	if cleared != "mesh:tok" {
+		t.Fatalf("clear exit=%q", cleared)
+	}
+	notice := uiapi.GetSessionNotice()
+	if notice.Code != "exit_unhealthy" || notice.Network != "mesh" || notice.Message == "" {
+		t.Fatalf("notice=%+v", notice)
+	}
+}
+
+func TestHandleIGWUnhealthyWithoutSession(t *testing.T) {
 	resetAutoExitFailoverStateForTest()
 	t.Cleanup(resetAutoExitFailoverStateForTest)
 

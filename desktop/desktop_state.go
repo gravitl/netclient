@@ -59,6 +59,7 @@ func rememberDesiredConnection(network string) {
 	if err := config.RememberDesiredNetwork(user, tenant, network); err != nil {
 		slog.Warn("failed to persist desired connection", "network", network, "error", err)
 	}
+	uiapi.ClearSessionNotice()
 }
 
 // forgetDesiredConnection drops the network from this desktop user's desired set.

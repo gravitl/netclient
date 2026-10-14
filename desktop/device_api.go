@@ -482,14 +482,89 @@ func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error)
 	if nodes == nil {
 		nodes = []models.DeviceExitNode{}
 	}
-	functions.AttachExitNodePublicLatencies(network, nodes)
+	// The server can keep Selected set until the clear PUT converges. Report the
+	// local clear immediately, and skip probes so this refresh is not held up.
+	nodes, skipProbes := hideClearedExitSelection(network, nodes)
+	if !skipProbes {
+		attachExitNodeLatencies(network, nodes)
+	}
 	return nodes, nil
+}
+
+var (
+	clearedExitMu sync.Mutex
+	clearedExit   = map[string]struct{}{} // network whose exit the GUI should show as off
+)
+
+func markExitClearedLocally(network string) {
+	network = strings.TrimSpace(network)
+	if network == "" {
+		return
+	}
+	clearedExitMu.Lock()
+	clearedExit[network] = struct{}{}
+	clearedExitMu.Unlock()
+}
+
+func forgetExitClearedLocally(network string) {
+	network = strings.TrimSpace(network)
+	clearedExitMu.Lock()
+	delete(clearedExit, network)
+	clearedExitMu.Unlock()
+}
+
+func exitClearedLocally(network string) bool {
+	clearedExitMu.Lock()
+	_, ok := clearedExit[network]
+	clearedExitMu.Unlock()
+	return ok
+}
+
+// hideClearedExitSelection forces Selected off while a local clear is ahead of
+// the server. skipProbes is true when the server still reports a selection, so
+// the GUI refresh that shows the disconnect does not wait on latency probes.
+// Once the server agrees nothing is selected, the mark is dropped.
+func hideClearedExitSelection(network string, nodes []models.DeviceExitNode) ([]models.DeviceExitNode, bool) {
+	if !exitClearedLocally(network) {
+		return nodes, false
+	}
+	serverSelected := false
+	for i := range nodes {
+		if nodes[i].Selected {
+			serverSelected = true
+			nodes[i].Selected = false
+		}
+	}
+	if !serverSelected {
+		forgetExitClearedLocally(network)
+		return nodes, false
+	}
+	return nodes, true
+}
+
+// attachExitNodeLatencies ranks exits by public endpoints before the mesh is
+// up, and by overlay metrics-port probes once the network is connected.
+func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
+	if exitProbesUseOverlay(network) {
+		functions.AttachExitNodeOverlayLatencies(network, nodes)
+		return
+	}
+	functions.AttachExitNodePublicLatencies(network, nodes)
+}
+
+// exitProbesUseOverlay is true once the network is connected. Before that, the
+// public endpoint is the only path that can answer.
+func exitProbesUseOverlay(network string) bool {
+	return networkLocallyConnected(network)
 }
 
 // GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
 func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
+	}
+	if exitClearedLocally(network) {
+		return nil, nil
 	}
 	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
 	resp, err := deviceRequest(http.MethodGet, path, token, nil)
@@ -504,7 +579,7 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 		return nil, nil
 	}
 	nodes := []models.DeviceExitNode{node}
-	functions.AttachExitNodePublicLatencies(network, nodes)
+	attachExitNodeLatencies(network, nodes)
 	return &nodes[0], nil
 }
 
@@ -523,8 +598,12 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	// immediately; if want_igw is still false a ChangeDefaultGw=false update will
 	// RestoreInternetGw and wipe CurrGw/DNS right after SetInternetGw.
 	if egressID == "" {
+		// Mark before the server PUT so the next GUI poll does not keep showing
+		// the exit the server has not cleared yet.
+		markExitClearedLocally(network)
 		_ = config.ClearDesiredExitNode(user, tenant)
 	} else {
+		forgetExitClearedLocally(network)
 		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
 	}
 

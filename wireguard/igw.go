@@ -20,16 +20,17 @@ const (
 	// IGWMonitorInterval so a failing probe cannot stretch the sampling period.
 	IGWDialTimeout = time.Second * 2
 	// IGWMonitorInterval is the interval at which to check internet gateway's health.
-	// With IGWFailureThreshold samples this is ~15s to declare the exit unhealthy
-	// and trigger auto-exit failover — fast enough for UX, slow enough to ride
-	// out brief wifi blips.
+	// With IGWFailureThreshold samples this is ~5s of failed checks after startup
+	// grace. A peer that has never handshaked is declared unhealthy on the first
+	// sample once that grace ends.
 	IGWMonitorInterval = time.Second * 5
 	// IGWRecoveryThreshold is the number of consecutive successes before considering
 	// internet gateway is up.
 	IGWRecoveryThreshold = 3
 	// IGWFailureThreshold is the number of consecutive failures before considering
-	// internet gateway is down.
-	IGWFailureThreshold = 3
+	// internet gateway is down. A peer with no handshake at all does not wait
+	// for this many samples.
+	IGWFailureThreshold = 2
 	// IGWHandshakeFreshness is how recent a WireGuard handshake must be to count as
 	// proof of life on its own. It has to stay short: a handshake as old as
 	// WireGuard's rekey period would keep a gateway that died seconds ago looking
@@ -39,7 +40,7 @@ const (
 	// first handshake can complete. It only has to cover monitor start through
 	// first handshake — BeginIfaceRebuild covers rebuilds — and it is re-armed
 	// after every rebuild, so a long grace compounds into real blindness.
-	IGWStartupGrace = 45 * time.Second
+	IGWStartupGrace = 5 * time.Second
 	// IGWPinRefreshInterval is how often underlay pins are reconciled against
 	// the LAN gateway while the exit is active, so a Wi-Fi switch re-points
 	// them well before IGWFailureThreshold samples could declare the exit dead.
@@ -229,6 +230,13 @@ func (s *igwStatus) dialIP() net.IP {
 func (s *igwStatus) check() {
 	igw, err := GetPeer(ncutils.GetInterfaceName(), s.publicKey)
 	if err != nil {
+		if errors.Is(err, ErrPeerNotFound) && !s.isHealthy {
+			// Routes are already off this exit. A missing peer means the selection
+			// was cleared; stop instead of logging a miss on every sample.
+			logger.Log(1, "internet gateway peer gone after unhealthy; stopping health monitor")
+			GetIGWMonitor().Stop()
+			return
+		}
 		logger.Log(0, "failed to get internet gateway peer:", err.Error())
 
 		if errors.Is(err, ErrPeerNotFound) {
@@ -238,6 +246,23 @@ func (s *igwStatus) check() {
 			s.noteFailure(nil)
 		}
 
+		return
+	}
+
+	// A peer that has never completed a handshake has no tunnel. One sample after
+	// startup grace is enough; do not wait for another failed probe. The peer
+	// stays on the interface after the exit selection is cleared, so stop the
+	// monitor instead of logging the same miss on every sample.
+	if action := s.noHandshakeAction(igw); action != "" {
+		if action == "unhealthy" {
+			if s.isHealthy {
+				logger.Log(0, "internet gateway unhealthy: no handshake")
+				s.setUnhealthy(&igw)
+			}
+			GetIGWMonitor().Stop()
+		} else {
+			logger.Log(2, "internet gateway health: no handshake yet, still in startup grace")
+		}
 		return
 	}
 
@@ -312,6 +337,19 @@ func (s *igwStatus) noteSuccess(igw wgtypes.Peer) {
 	if !s.isHealthy && s.successCount >= IGWRecoveryThreshold {
 		s.setHealthy(igw)
 	}
+}
+
+// noHandshakeAction reports how to treat a peer that has never completed a
+// handshake. "grace" means keep waiting. "unhealthy" means declare it down.
+// An empty result means the peer has a handshake and the normal probe applies.
+func (s *igwStatus) noHandshakeAction(igw wgtypes.Peer) string {
+	if !igw.LastHandshakeTime.IsZero() {
+		return ""
+	}
+	if time.Since(s.startedAt) < IGWStartupGrace {
+		return "grace"
+	}
+	return "unhealthy"
 }
 
 // handshakeFresh reports whether the exit peer completed a handshake recently
