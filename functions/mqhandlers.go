@@ -125,7 +125,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
 		wireguard.ReapplyInternetGwAfterIfaceRecreate()
-		reconfigureDNSNow()
+		reconfigureDNSNow(server)
 
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
@@ -718,13 +718,13 @@ func resetInterfaceFunc() {
 	// Put them back before DNS, so the apply sees full vs split correctly.
 	wireguard.ReapplyInternetGwAfterIfaceRecreate()
 
+	// No single network owns an iface reset; CurrServer is only the fallback.
 	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return
+	if server != nil {
+		// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
+		reconcileTCPUplink(server, nil)
 	}
-	// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
-	reconcileTCPUplink(server, nil)
-	reconfigureDNSNow()
+	reconfigureDNSNow(server)
 	wireguard.EgressResetCh <- struct{}{}
 }
 

@@ -128,7 +128,7 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		// Other networks are still up, so the iface is not rebuilt below.
 		// Drop this network's listener and refresh OS DNS anyway.
 		if config.AnyNodeConnected() {
-			reconfigureDNSNow()
+			reconfigureDNSNow(config.GetServer(node.Server))
 		}
 		return nil
 	}

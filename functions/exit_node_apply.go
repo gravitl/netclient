@@ -37,15 +37,41 @@ var (
 // reconfigureDNSNow rebinds listeners to the current node set and reapplies OS DNS.
 // Call it after join, disconnect, or a netmaker interface reset — once peers and
 // exit routes are back, because full vs split DNS follows CurrGw.
-// With nothing connected, or DNS not managed, it removes OS DNS instead.
-func reconfigureDNSNow() {
-	server := config.GetServer(config.CurrServer)
-	if server == nil || !server.ManageDNS || !config.AnyNodeConnected() {
+//
+// server is the network's server (config.GetServer(node.Server)). Callers with
+// no network context may pass nil; CurrServer is used only then. OS DNS is
+// removed only when no connected network still manages it, so a nil or
+// unmanaged CurrServer cannot wipe resolver state another network needs.
+func reconfigureDNSNow(server *config.Server) {
+	if server == nil {
+		server = config.GetServer(config.CurrServer)
+	}
+	if !anyConnectedNetworkManagesDNS() {
 		dns.GetDNSServerInstance().Stop()
+		return
+	}
+	// This server is nil or does not manage DNS, but another connected network
+	// does. Leave that resolver state in place.
+	if server == nil || !server.ManageDNS {
 		return
 	}
 	dns.SyncForNodeChange()
 	scheduleDNSReconfigure()
+}
+
+// anyConnectedNetworkManagesDNS reports whether a locally connected node
+// belongs to a server that has ManageDNS set.
+func anyConnectedNetworkManagesDNS() bool {
+	for _, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		srv := config.GetServer(node.Server)
+		if srv != nil && srv.ManageDNS {
+			return true
+		}
+	}
+	return false
 }
 
 // scheduleDNSReconfigure applies OS DNS off the caller's goroutine, coalescing
