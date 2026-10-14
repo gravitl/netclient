@@ -1,4 +1,4 @@
-package functions
+package desktop
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"golang.org/x/exp/slog"
@@ -14,7 +15,7 @@ import (
 
 var (
 	registerDeviceOnServerForSession = RegisterDeviceOnServer
-	pullForSession                   = Pull
+	pullForSession                   = functions.Pull
 )
 
 // IsRegisteredToServer reports whether netclient is fully registered to the given server.
@@ -81,7 +82,7 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	// must do the same so the daemon picks up the new context (manual
 	// `netclient pull` restarts and masks this).
 	if config.ConsumeServerContextChanged() {
-		registrationResetPending.Store(true)
+		functions.MarkRegistrationResetPending()
 	}
 	return nil
 }
@@ -116,7 +117,7 @@ func sessionTenantMatches(server, tenantID string) bool {
 // can restore them. Local default routes are restored before disconnect so
 // logout does not wait on a daemon restart for internet to return.
 func ReleaseSession(clearServer bool) error {
-	defer logElapsed("logout")()
+	defer functions.LogElapsed("logout")()
 	// Latch before any teardown so peer updates that land mid-logout cannot
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
@@ -140,7 +141,7 @@ func ReleaseSession(clearServer bool) error {
 		token := uiapi.SessionAuthToken()
 		if wantIGW && egressID == "" && !autoExit && token != "" {
 			func() {
-				defer logElapsed("logout exit selection lookup")()
+				defer functions.LogElapsed("logout exit selection lookup")()
 				for _, network := range networks {
 					sel, err := GetDeviceSelectedExitNode(network, token)
 					if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
@@ -164,11 +165,11 @@ func ReleaseSession(clearServer bool) error {
 		skipNextDesiredRestore()
 
 		// Bring LAN + OS DNS back immediately; do not wait for disconnect + daemon restart.
-		restoreInternetGwAndDNS()
+		functions.RestoreInternetGwAndDNS()
 		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
-			done := logElapsed("logout server exit clear")
+			done := functions.LogElapsed("logout server exit clear")
 			_, err := putDeviceExitNode(exitNetwork, token, "", false)
 			done()
 			if err != nil {
@@ -180,7 +181,7 @@ func ReleaseSession(clearServer bool) error {
 		for _, network := range networks {
 			// Skip daemon restart per network — iface cleanup below is enough and
 			// avoids the long SIGHUP path that made logout with exit feel stuck.
-			if err := disconnectNetwork(network, false, false); err != nil {
+			if err := functions.DisconnectWithoutRestart(network, false); err != nil {
 				// Do not return: one failed network must not skip the peer flush
 				// below, which is what actually takes the tunnel down.
 				slog.Warn("failed to disconnect network on logout", "network", network, "error", err)

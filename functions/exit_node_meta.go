@@ -28,6 +28,10 @@ const (
 // attachExitNodePublicLatencies probes each exit's public AllowedEndpoints
 // (ICMP + TCP 443/22). Works before the mesh is up and is used for GUI list
 // ranking and Auto nearest pick.
+func AttachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode) {
+	attachExitNodePublicLatencies(network, nodes)
+}
+
 func attachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode) {
 	if len(nodes) == 0 {
 		return
@@ -62,6 +66,10 @@ func attachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode
 // attachExitNodeOverlayLatencies probes each exit's overlay metrics port.
 // Used after connect for Auto failover ranking on the mesh. Does not flip
 // Status on a probe miss.
+func AttachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNode) {
+	attachExitNodeOverlayLatencies(network, nodes)
+}
+
 func attachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNode) {
 	if len(nodes) == 0 {
 		return
@@ -270,6 +278,8 @@ func publicProbeHosts(endpoints []string) []string {
 	return out
 }
 
+func PublicProbeHost(raw string) string { return publicProbeHost(raw) }
+
 func publicProbeHost(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "<nil>" {
@@ -335,6 +345,10 @@ func markNearestExitNodes(nodes []models.DeviceExitNode, origin string) {
 // Always prefers the lowest measured LatencyMs among Status=true nodes.
 // Nearest is only a tie-breaker. Never selects Status=false exits.
 // Egress IDs in exclude are skipped.
+func PickNearestAvailableExitNode(nodes []models.DeviceExitNode, exclude map[string]struct{}) (models.DeviceExitNode, bool) {
+	return pickNearestAvailableExitNode(nodes, exclude)
+}
+
 func pickNearestAvailableExitNode(nodes []models.DeviceExitNode, exclude map[string]struct{}) (models.DeviceExitNode, bool) {
 	if len(nodes) == 0 {
 		return models.DeviceExitNode{}, false

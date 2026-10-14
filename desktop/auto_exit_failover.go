@@ -1,4 +1,4 @@
-package functions
+package desktop
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
@@ -29,7 +29,6 @@ var (
 )
 
 func init() {
-	wireguard.OnIGWRoutingChanged = dns.ReconfigureAfterRouting
 	wireguard.OnIGWUnhealthy = handleIGWUnhealthyAutoExit
 }
 
@@ -81,6 +80,30 @@ func handleIGWUnhealthyAutoExit(publicKey string) {
 	autoExitFailoverMu.Unlock()
 }
 
+// exitRestoreUsesAuto decides whether login should re-pick the nearest exit.
+// A stored manual selection stays manual. Auto is used when local desired
+// state says so, when that exit network requires it, or when no exit network
+// was stored but a connected network still requires auto exit.
+func exitRestoreUsesAuto(user, tenant, exitNetwork, token string) (string, bool) {
+	exitNetwork = strings.TrimSpace(exitNetwork)
+	if autoExitModeActive(user, tenant, exitNetwork, token) {
+		return exitNetwork, true
+	}
+	if exitNetwork != "" || strings.TrimSpace(token) == "" {
+		return exitNetwork, false
+	}
+	for name, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		required, err := NetworkRequiresAutoExit(name, config.CurrServer, token)
+		if err == nil && required {
+			return name, true
+		}
+	}
+	return exitNetwork, false
+}
+
 // autoExitModeActive is true for local AUTO desired state or when the server
 // network requires auto_select_exit_node.
 func autoExitModeActive(user, tenant, network, token string) bool {
@@ -127,7 +150,7 @@ func failoverAutoExit(network, token, failedPublicKey string) error {
 	}
 	// List attaches public latencies for GUI/Auto pick. Failover re-ranks on
 	// overlay metrics-port RTTs so the next exit is nearest on the live mesh.
-	attachExitNodeOverlayLatencies(network, nodes)
+	functions.AttachExitNodeOverlayLatencies(network, nodes)
 
 	user, tenant := uiapi.SessionIdentity()
 	cur := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
@@ -223,7 +246,7 @@ func egressIDsForPeerKey(publicKey string, nodes []models.DeviceExitNode) []stri
 	}
 	underlayHost := ""
 	if peer.Endpoint != nil {
-		underlayHost = publicProbeHost(peer.Endpoint.IP.String())
+		underlayHost = functions.PublicProbeHost(peer.Endpoint.IP.String())
 	}
 	var ids []string
 	seen := map[string]struct{}{}
@@ -247,7 +270,7 @@ func egressIDsForPeerKey(publicKey string, nodes []models.DeviceExitNode) []stri
 		}
 		if !match && underlayHost != "" {
 			for _, ep := range nodes[i].AllowedEndpoints {
-				if publicProbeHost(ep) == underlayHost {
+				if functions.PublicProbeHost(ep) == underlayHost {
 					match = true
 					break
 				}

@@ -333,7 +333,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 					// Continue applying peers even if IGW setup failed.
 				} else {
 					exitRoutingChanged = true
-					rememberDesiredWantIGW()
+					callRememberDesiredWantIGW()
 				}
 			}
 		} else {
@@ -357,7 +357,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if config.AnyNodeConnected() && !peerUpdate.ChangeDefaultGw {
 		// Desired state may still want an exit the server is not advertising
 		// (a re-select lost during session restore). Ask again, rate-limited.
-		ReconcileExitIfDesired()
+		callReconcileExitIfDesired()
 	}
 	if config.AnyNodeConnected() {
 		if len(peerUpdate.EgressRoutes) > 0 {
@@ -636,6 +636,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
+func ResetInterface() { resetInterfaceFunc() }
+
 func resetInterfaceFunc() {
 	mNMutex.Lock()
 	defer mNMutex.Unlock()
@@ -891,6 +893,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
+// MQFallbackPull applies a host pull when MQTT is down. Desktop sync uses this.
+func MQFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
+	mqFallbackPull(pullResponse, resetInterface, replacePeers)
+}
+
 // MQTT Fallback Config Pull
 func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
 	serverName := config.CurrServer
@@ -984,7 +991,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 					// Continue applying peers even if IGW setup failed.
 				} else {
 					exitRoutingChanged = true
-					rememberDesiredWantIGW()
+					callRememberDesiredWantIGW()
 				}
 			}
 		} else {

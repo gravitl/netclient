@@ -34,7 +34,7 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 	}
 	// Desired-state getters re-read the JSON store; desktopExitDecision skips
 	// them when no desktop session is active.
-	desired := desktopExitDecision()
+	desired := callDesktopExitDecision()
 	// logger.Log, not slog.Info: slog runs at Warn unless verbosity is raised
 	// (cmd/root.go), which silently discarded these when they were needed.
 	logger.Log(1, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
@@ -60,16 +60,6 @@ var pullForReconnect = Pull
 const (
 	reconnectPullTimeout  = 10 * time.Second
 	reconnectPullInterval = 250 * time.Millisecond
-	// Shorter waits during session restore so login isn't blocked on slow server convergence.
-	restoreConnectedTimeout = 4 * time.Second
-	restoreIGWTimeout       = 4 * time.Second
-	exitReselectAttempts    = 8
-	exitReselectInterval    = 300 * time.Millisecond
-	// exitPhaseDeadline bounds the whole exit re-select phase in wall-clock time.
-	// The attempt counter alone does not: each device API call retries internally,
-	// so on a degraded link (which is normal mid-exit-switchover) eight attempts
-	// can run for minutes while the GUI sits on "Reconnecting exit node".
-	exitPhaseDeadline = 20 * time.Second
 	// Bounds on reinstalling exit routes after an iface rebuild. The deadline is
 	// what actually holds: attempts are cheap only when the server answers fast.
 	igwApplyAttempts = 12
@@ -226,7 +216,7 @@ func applyConnectionChangeInProcess() error {
 	}
 	// DNS listener sync + OS reconfigure run inside applyReconnectInProcess
 	// after the iface has the connected-node addresses.
-	return applyReconnectInProcess(pull, desktopWantsIGW())
+	return applyReconnectInProcess(pull, callDesktopWantsIGW())
 }
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
@@ -236,7 +226,7 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 	}
 	// Server-advertised exits always install. A desktop session that still wants
 	// an exit installs too; otherwise the server is asked again and we return.
-	if !desktopWantsExitApply(pull, pullErr) {
+	if !shouldApplyExitAfterReconnect(pull, pullErr) {
 		return
 	}
 	var lastErr error
@@ -265,13 +255,13 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 				"attempt", attempt, "error", err)
 			continue
 		}
-		rememberDesiredWantIGW()
+		callRememberDesiredWantIGW()
 		kickInternetGwHandshake(resp)
 		return
 	}
 	if lastErr != nil {
 		logger.Log(0, "failed to apply exit-node routes after reconnect:", lastErr.Error())
-		ReconcileExitIfDesired()
+		callReconcileExitIfDesired()
 	}
 }
 
@@ -315,4 +305,35 @@ func kickInternetGwHandshake(pull models.HostPull) {
 			_ = conn.Close()
 		}
 	}()
+}
+
+// LogElapsed logs how long the labelled phase took. Desktop logout uses it.
+func LogElapsed(label string) func() { return logElapsed(label) }
+
+// RestoreInternetGwAndDNS restores LAN default routes and reapplies OS DNS.
+func RestoreInternetGwAndDNS() { restoreInternetGwAndDNS() }
+
+// ApplyReconnectInProcess brings the live iface and exit routes up without a daemon restart.
+func ApplyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
+	return applyReconnectInProcess(pull, wantIGW)
+}
+
+// WaitForReconnectHostPull polls until the host pull reflects the reconnect.
+func WaitForReconnectHostPull(networks []string, wantIGW bool) (models.HostPull, error) {
+	return waitForReconnectHostPull(networks, wantIGW)
+}
+
+// WaitForReconnectHostPullTimeout is WaitForReconnectHostPull with an explicit deadline.
+func WaitForReconnectHostPullTimeout(networks []string, wantIGW bool, timeout time.Duration) (models.HostPull, error) {
+	return waitForReconnectHostPullTimeout(networks, wantIGW, timeout)
+}
+
+// HostPullReadyForReconnect reports whether a pull already shows the networks connected.
+func HostPullReadyForReconnect(pull models.HostPull, networks []string, wantIGW bool) bool {
+	return hostPullReadyForReconnect(pull, networks, wantIGW)
+}
+
+// HostPullHasConnectedNetworks reports whether the pull lists those networks as connected.
+func HostPullHasConnectedNetworks(pull models.HostPull, networks []string) bool {
+	return hostPullHasConnectedNetworks(pull, networks)
 }

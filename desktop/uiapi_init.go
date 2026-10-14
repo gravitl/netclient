@@ -1,8 +1,9 @@
-package functions
+package desktop
 
 import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netmaker/models"
 )
@@ -11,10 +12,10 @@ func init() {
 	uiapi.SetHandlers(uiapi.HandlerDeps{
 		RegisterSession:           RegisterSession,
 		ReleaseSession:            ReleaseSession,
-		ApplyRegistrationReset:    ApplyPendingRegistrationReset,
-		RegistrationResetPending:  RegistrationResetPending,
+		ApplyRegistrationReset:    functions.ApplyPendingRegistrationReset,
+		RegistrationResetPending:  functions.RegistrationResetPending,
 		Connect:                   connectWithJoin,
-		Disconnect:                Disconnect,
+		Disconnect:                functions.Disconnect,
 		IsRegistered:              IsRegisteredToServer,
 		FetchNetworks:             FetchDeviceNetworks,
 		JoinNetwork:               joinNetworkForUI,
@@ -36,7 +37,7 @@ func connectWithJoin(network string) error {
 	if token != "" {
 		return ConnectNetwork(network, server, token)
 	}
-	return Connect(network)
+	return functions.Connect(network)
 }
 
 func joinNetworkForUI(network, server, token string) (string, error) {
@@ -47,7 +48,7 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if status == models.DeviceJoinStatusPending {
 		return status, nil
 	}
-	_, _, _, err = Pull(false, true, false)
+	_, _, _, err = functions.Pull(false, true, false)
 	if err != nil {
 		return "", err
 	}

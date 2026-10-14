@@ -1,4 +1,4 @@
-package functions
+package desktop
 
 import (
 	"fmt"
@@ -9,11 +9,25 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
+)
+
+const (
+	// Shorter waits during session restore so login isn't blocked on slow server convergence.
+	restoreConnectedTimeout = 4 * time.Second
+	restoreIGWTimeout       = 4 * time.Second
+	exitReselectAttempts    = 8
+	exitReselectInterval    = 300 * time.Millisecond
+	// exitPhaseDeadline bounds the whole exit re-select phase in wall-clock time.
+	// The attempt counter alone does not: each device API call retries internally,
+	// so on a degraded link (which is normal mid-exit-switchover) eight attempts
+	// can run for minutes while the GUI sits on "Reconnecting exit node".
+	exitPhaseDeadline = 20 * time.Second
 )
 
 // prepareDesktopConnect applies desktop-only exit policy before a network is
@@ -56,6 +70,16 @@ func forgetDesiredConnection(network string) {
 	if err := config.ForgetDesiredNetwork(user, tenant, network); err != nil {
 		slog.Warn("failed to clear desired connection", "network", network, "error", err)
 	}
+}
+
+// forgetDesiredNetworkOnLeave drops a left network from desired state without
+// logging. Leave already deleted the node; a missing record is not a failure.
+func forgetDesiredNetworkOnLeave(network string) {
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok {
+		return
+	}
+	_ = config.ForgetDesiredNetwork(user, tenant, network)
 }
 
 // finishDesktopConnect selects a deferred auto-exit once the mesh is up.
@@ -169,7 +193,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 				continue
 			}
 		}
-		if err := connectNetwork(network, false); err != nil {
+		if err := functions.ConnectWithoutRestart(network); err != nil {
 			slog.Warn("failed to restore connection", "network", network, "error", err)
 			continue
 		}
@@ -184,22 +208,14 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	egressID := strings.TrimSpace(config.GetDesiredEgressID(username, tenantID))
 	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
 	token = uiapi.SessionAuthToken()
-	autoExit := autoExitModeActive(username, tenantID, exitNetwork, token)
-	if !autoExit && token != "" {
-		// Desired exit network may be empty while a connected network still
-		// requires auto exit — arm restore for that case too.
-		if n := resolveAutoExitNetwork(username, tenantID, token); n != "" {
-			exitNetwork = n
-			autoExit = true
-		}
-	}
+	exitNetwork, autoExit := exitRestoreUsesAuto(username, tenantID, exitNetwork, token)
 	wantIGW := config.GetDesiredWantIGW(username, tenantID) || egressID != "" || autoExit
 	if !changed && !wantIGW {
 		return nil
 	}
 
 	// Brief wait for Connected — do not burn the full 10s before exit re-select.
-	pull, err := waitForReconnectHostPullTimeout(desired, false, restoreConnectedTimeout)
+	pull, err := functions.WaitForReconnectHostPullTimeout(desired, false, restoreConnectedTimeout)
 	if err != nil {
 		slog.Warn("host pull after reconnect still stale; continuing restore", "error", err)
 	}
@@ -311,7 +327,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		} else {
 			uiapi.SetRestorePhase(uiapi.RestorePhaseRoutes)
 			// Short wait for ChangeDefaultGw; peer updates may finish routes after we return.
-			if igwPull, igwErr := waitForReconnectHostPullTimeout(desired, true, restoreIGWTimeout); igwErr != nil {
+			if igwPull, igwErr := functions.WaitForReconnectHostPullTimeout(desired, true, restoreIGWTimeout); igwErr != nil {
 				slog.Warn("host pull after exit re-select still stale", "error", igwErr)
 				if !pull.ChangeDefaultGw {
 					pull = igwPull
@@ -328,7 +344,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	uiapi.SetRestorePhase(uiapi.RestorePhaseRoutes)
 	// Apply in-process. A SIGHUP restart tears down routes and re-hole-punches
 	// before IGW can be reinstalled, which is the login delay users see.
-	if err := applyReconnectInProcess(pull, wantIGW); err != nil {
+	if err := functions.ApplyReconnectInProcess(pull, wantIGW); err != nil {
 		slog.Warn("in-process reconnect apply failed; falling back to daemon restart", "error", err)
 		if uiapi.ShouldAbortSessionRestore() {
 			return nil
@@ -352,7 +368,7 @@ func reassertDesiredConnected(networks []string) {
 		if !ok || node.Connected {
 			continue
 		}
-		if err := connectNetwork(network, false); err != nil {
+		if err := functions.ConnectWithoutRestart(network); err != nil {
 			slog.Warn("failed to reassert connection after pull", "network", network, "error", err)
 		}
 	}
@@ -390,99 +406,36 @@ func forceDisconnectAllNodes() {
 	}
 }
 
-func locallyDisconnectedNetworks() map[string]struct{} {
-	out := make(map[string]struct{})
-	for network, node := range config.GetNodes() {
-		if !node.Connected {
-			out[network] = struct{}{}
-		}
-	}
-	return out
-}
-
-func keepLocallyDisconnected(networks map[string]struct{}) {
-	if len(networks) == 0 {
-		return
-	}
-	for network, node := range config.GetNodes() {
-		if _, ok := networks[network]; !ok || !node.Connected {
-			continue
-		}
-		node.Connected = false
-		config.UpdateNodeMap(network, node)
-	}
-}
-
-func locallyConnectedNetworks() map[string]struct{} {
-	out := make(map[string]struct{})
-	for network, node := range config.GetNodes() {
-		if node.Connected {
-			out[network] = struct{}{}
-		}
-	}
-	return out
-}
-
-// keepLocallyConnected restores Connected=true after a server node sync that still
-// reports Connected=false (common right after reconnect/login before the server
-// processes PublishNodeUpdate). Without this, AnyNodeConnected() is false and
-// peer/pull handlers clear egress and internet-exit routes.
-//
-// With an active desktop session, only networks still in desired state are
-// preserved — otherwise an in-flight peer/pull snapshot taken before user
-// disconnect can revive Connected=true and reinstall the exit node.
-func keepLocallyConnected(networks map[string]struct{}) {
-	if len(networks) == 0 {
-		return
-	}
-	// Post-logout there is no session to filter against, and reviving here would
-	// undo the disconnect that logout just performed.
+func filterPreservedConnections(networks map[string]struct{}) map[string]struct{} {
 	if sessionReleased.Load() {
-		return
+		return nil
 	}
-	if uiapi.IsSessionActive() {
-		user, tenant := uiapi.SessionIdentity()
-		desired := filterDesiredNetworks(config.GetDesiredNetworks(user, tenant), uiapi.RestrictToSingleNetwork())
-		if len(desired) == 0 {
-			return
-		}
-		allowed := make(map[string]struct{}, len(desired))
-		for _, network := range desired {
-			allowed[network] = struct{}{}
-		}
-		filtered := make(map[string]struct{}, len(networks))
-		for network := range networks {
-			if _, ok := allowed[network]; ok {
-				filtered[network] = struct{}{}
-			}
-		}
-		networks = filtered
-		if len(networks) == 0 {
-			return
+	if !uiapi.IsSessionActive() {
+		return networks
+	}
+	user, tenant := uiapi.SessionIdentity()
+	desired := filterDesiredNetworks(config.GetDesiredNetworks(user, tenant), uiapi.RestrictToSingleNetwork())
+	if len(desired) == 0 {
+		return nil
+	}
+	allowed := make(map[string]struct{}, len(desired))
+	for _, network := range desired {
+		allowed[network] = struct{}{}
+	}
+	filtered := make(map[string]struct{}, len(networks))
+	for network := range networks {
+		if _, ok := allowed[network]; ok {
+			filtered[network] = struct{}{}
 		}
 	}
-	changed := false
-	for network, node := range config.GetNodes() {
-		if _, ok := networks[network]; !ok || node.Connected {
-			continue
-		}
-		node.Connected = true
-		config.UpdateNodeMap(network, node)
-		changed = true
-		slog.Info("preserving local connection after server node sync", "network", network)
-	}
-	if changed {
-		if err := config.WriteNodeConfig(); err != nil {
-			slog.Warn("failed to persist preserved connections", "error", err)
-		}
-	}
+	return filtered
 }
 
 // reassertDesiredConnectedFlags forces Connected=true for networks in desired
 // state. Covers login restore races where a peer update arrives before/without
 // a prior local Connected=true snapshot.
 func reassertDesiredConnectedFlags() {
-	if !uiapi.IsSessionActive() {
+	if sessionReleased.Load() || !uiapi.IsSessionActive() {
 		return
 	}
 	user, tenant := uiapi.SessionIdentity()
@@ -494,7 +447,7 @@ func reassertDesiredConnectedFlags() {
 	for _, network := range desired {
 		keep[network] = struct{}{}
 	}
-	keepLocallyConnected(keep)
+	functions.KeepLocallyConnected(keep)
 }
 
 func refreshHostPullAfterReconnect(prev models.HostPull, prevErr error) (models.HostPull, error) {
@@ -518,12 +471,12 @@ func refreshHostPullAfterReconnect(prev models.HostPull, prevErr error) (models.
 		return prev, prevErr
 	}
 	wantIGW := config.GetDesiredWantIGW(user, tenant)
-	if prevErr == nil && hostPullReadyForReconnect(prev, desired, wantIGW) {
+	if prevErr == nil && functions.HostPullReadyForReconnect(prev, desired, wantIGW) {
 		return prev, nil
 	}
-	resp, err := waitForReconnectHostPull(desired, wantIGW)
+	resp, err := functions.WaitForReconnectHostPull(desired, wantIGW)
 	if err != nil {
-		if prevErr == nil && (resp.ChangeDefaultGw || hostPullHasConnectedNetworks(resp, desired)) {
+		if prevErr == nil && (resp.ChangeDefaultGw || functions.HostPullHasConnectedNetworks(resp, desired)) {
 			return resp, nil
 		}
 		if prevErr == nil {

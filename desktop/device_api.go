@@ -1,4 +1,4 @@
-package functions
+package desktop
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netmaker/logger"
@@ -205,10 +206,6 @@ func ensureRegisterServerConf(resp *models.RegisterResponse, server, token strin
 	return nil
 }
 
-func canonicalServerID(id string) string {
-	return config.NormalizeServerHost(id)
-}
-
 // RegisterDeviceOnServer registers the host via the device REST API using a user JWT.
 func RegisterDeviceOnServer(server, token string) error {
 	server = config.NormalizeServerHost(server)
@@ -216,7 +213,7 @@ func RegisterDeviceOnServer(server, token string) error {
 		_ = config.SetCurrServerCtxInFile(server)
 		config.CurrServer = server
 	}
-	host, err := prepareRegistrationHost()
+	host, err := functions.PrepareRegistrationHost()
 	if err != nil {
 		return fmt.Errorf("error when checking host values - %w", err)
 	}
@@ -233,7 +230,7 @@ func RegisterDeviceOnServer(server, token string) error {
 	}
 	config.CurrServer = registerResponse.ServerConf.Server
 	_ = config.SetCurrServerCtxInFile(config.CurrServer)
-	handleRegisterResponse(&registerResponse)
+	functions.HandleRegisterResponse(&registerResponse)
 	return nil
 }
 
@@ -456,14 +453,14 @@ func SyncDeviceWithServer(token string) error {
 	if err == nil {
 		_ = decodeDeviceResponse(resp, nil)
 	}
-	pullResponse, resetInterface, _, err := Pull(false, true, false)
+	pullResponse, resetInterface, _, err := functions.Pull(false, true, false)
 	if err != nil {
 		return err
 	}
 	pullResponse.ReplacePeers = true
-	mqFallbackPull(pullResponse, resetInterface, true)
+	functions.MQFallbackPull(pullResponse, resetInterface, true)
 	if resetInterface {
-		resetInterfaceFunc()
+		functions.ResetInterface()
 	}
 	return nil
 }
@@ -485,7 +482,7 @@ func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error)
 	if nodes == nil {
 		nodes = []models.DeviceExitNode{}
 	}
-	attachExitNodePublicLatencies(network, nodes)
+	functions.AttachExitNodePublicLatencies(network, nodes)
 	return nodes, nil
 }
 
@@ -507,7 +504,7 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 		return nil, nil
 	}
 	nodes := []models.DeviceExitNode{node}
-	attachExitNodePublicLatencies(network, nodes)
+	functions.AttachExitNodePublicLatencies(network, nodes)
 	return &nodes[0], nil
 }
 
@@ -552,7 +549,7 @@ func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNo
 	if !wantGW {
 		_ = config.ClearDesiredExitNode(user, tenant)
 		// Restore LAN routes and OS DNS immediately; MQTT will converge peers next.
-		restoreInternetGwAndDNS()
+		functions.RestoreInternetGwAndDNS()
 		return nil, nil
 	}
 	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
@@ -595,7 +592,7 @@ func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.
 			return nil, err
 		}
 	}
-	pick, ok := pickNearestAvailableExitNode(nodes, exclude)
+	pick, ok := functions.PickNearestAvailableExitNode(nodes, exclude)
 	if !ok || strings.TrimSpace(pick.EgressID) == "" {
 		// While disconnected with no usable public latency, persist Auto intent
 		// so connect/restore can pick nearest once probes succeed.
@@ -699,11 +696,11 @@ func ConnectNetwork(network, server, token string) error {
 		if status != "joined" && status != "" {
 			return fmt.Errorf("unexpected join status: %s", status)
 		}
-		if _, _, _, err := Pull(false, true, false); err != nil {
+		if _, _, _, err := functions.Pull(false, true, false); err != nil {
 			return fmt.Errorf("failed to sync after join: %w", err)
 		}
 	}
-	if err := Connect(network); err != nil {
+	if err := functions.Connect(network); err != nil {
 		if err.Error() == "node already connected" {
 			return nil
 		}

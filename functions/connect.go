@@ -30,24 +30,24 @@ func connectNetwork(network string, restart bool) error {
 	if node.Connected {
 		return errors.New("node already connected")
 	}
-	token := prepareDesktopConnect(network)
+	token := callPrepareDesktopConnect(network)
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	rememberDesiredConnection(network)
+	callRememberDesiredConnection(network)
 	if err := PublishNodeUpdate(&node); err != nil {
 		return err
 	}
 	if !restart {
-		finishDesktopConnect(network, token)
+		callFinishDesktopConnect(network, token)
 		return nil
 	}
 	if err := applyConnectionChange("connect"); err != nil {
 		return err
 	}
-	finishDesktopConnect(network, token)
+	callFinishDesktopConnect(network, token)
 	return nil
 }
 
@@ -80,7 +80,7 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		return fmt.Errorf("error writing node config %w", err)
 	}
 	if forgetDesired {
-		forgetDesiredConnection(network)
+		callForgetDesiredConnection(network)
 		// Keep exit-node selection (desired + server). Disconnect only drops local
 		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
@@ -103,4 +103,17 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		return nil
 	}
 	return applyConnectionChange("disconnect")
+}
+
+// ConnectWithoutRestart marks the network connected and publishes the update
+// without rebuilding the daemon. Desktop session restore uses this.
+func ConnectWithoutRestart(network string) error {
+	return connectNetwork(network, false)
+}
+
+// DisconnectWithoutRestart marks the network disconnected without a daemon
+// restart. forgetDesired clears the desktop user's desired-connection record
+// when that hook is registered.
+func DisconnectWithoutRestart(network string, forgetDesired bool) error {
+	return disconnectNetwork(network, false, forgetDesired)
 }

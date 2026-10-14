@@ -1,9 +1,11 @@
-package functions
+package desktop
 
 import (
 	"testing"
 	"time"
 
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netmaker/models"
 )
 
@@ -36,6 +38,33 @@ func TestHandleIGWUnhealthyAutoExitSkipsManualMode(t *testing.T) {
 
 	// No desktop session → should no-op (not panic).
 	handleIGWUnhealthyAutoExit("unused-key")
+}
+
+func TestExitRestoreUsesAutoKeepsManualSelection(t *testing.T) {
+	prev := networkAutoSelectExit
+	t.Cleanup(func() {
+		networkAutoSelectExit = prev
+		config.DeleteNodes()
+	})
+	networkAutoSelectExit = func(network, _, _ string) (bool, error) {
+		return network == "forced", nil
+	}
+	config.UpdateNodeMap("forced", config.Node{
+		CommonNode: models.CommonNode{Network: "forced", Connected: true},
+	})
+
+	// A stored manual exit network must not be promoted to Auto just because
+	// a name is present. That is what made re-login show "Auto" after the user
+	// had picked a specific exit node.
+	network, auto := exitRestoreUsesAuto("restore-manual-user", "t", "manual-net", "tok")
+	if auto || network != "manual-net" {
+		t.Fatalf("manual exit restored as auto: network=%q auto=%v", network, auto)
+	}
+
+	network, auto = exitRestoreUsesAuto("restore-manual-user", "t", "", "tok")
+	if !auto || network != "forced" {
+		t.Fatalf("server-required network not armed: network=%q auto=%v", network, auto)
+	}
 }
 
 func TestAutoExitModeActiveIncludesServerRequired(t *testing.T) {
@@ -71,7 +100,7 @@ func TestPickNearestSkipsSelectedWhenExcluded(t *testing.T) {
 		{EgressID: "cur", Status: true, Nearest: true, LatencyMs: 1, Selected: true},
 		{EgressID: "alt", Status: true, LatencyMs: 40},
 	}
-	pick, ok := pickNearestAvailableExitNode(nodes, map[string]struct{}{"cur": {}})
+	pick, ok := functions.PickNearestAvailableExitNode(nodes, map[string]struct{}{"cur": {}})
 	if !ok || pick.EgressID != "alt" {
 		t.Fatalf("got %+v ok=%v", pick, ok)
 	}
@@ -96,7 +125,7 @@ func TestAutoExitReconcileExcludeOmitsDesiredID(t *testing.T) {
 		{EgressID: "eg-desired", Status: true, LatencyMs: 10, Nearest: true},
 		{EgressID: "eg-previous", Status: true, LatencyMs: 40},
 	}
-	pick, ok := pickNearestAvailableExitNode(nodes, set)
+	pick, ok := functions.PickNearestAvailableExitNode(nodes, set)
 	if !ok || pick.EgressID != "eg-desired" {
 		t.Fatalf("reconcile exclude should keep nearest desired; got %+v ok=%v", pick, ok)
 	}

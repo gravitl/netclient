@@ -1,4 +1,4 @@
-package functions
+package desktop
 
 import (
 	"fmt"
@@ -48,9 +48,6 @@ func desktopExitDecision() string {
 // that still wants one applies too. When neither is true, the server is asked
 // again and this returns false so the caller leaves routes alone.
 func desktopWantsExitApply(pull models.HostPull, pullErr error) bool {
-	if pullErr == nil && pull.ChangeDefaultGw {
-		return true
-	}
 	wantIGW := desktopWantsIGW()
 	localDesired := locallyConnectedDesired()
 	if wantIGW && localDesired {
@@ -61,7 +58,7 @@ func desktopWantsExitApply(pull models.HostPull, pullErr error) bool {
 	logger.Log(0, fmt.Sprintf(
 		"exit apply skipped after reconnect: change_default_gw=%v pull_err=%v want_igw=%v locally_connected_desired=%v",
 		pull.ChangeDefaultGw, pullErr != nil, wantIGW, localDesired))
-	ReconcileExitIfDesired()
+	reconcileDesiredExit()
 	return false
 }
 

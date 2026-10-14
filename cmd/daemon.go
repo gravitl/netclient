@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 
+	_ "github.com/gravitl/netclient/desktop"
 	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 )

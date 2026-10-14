@@ -396,9 +396,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	// Re-apply last connected networks after Pull so logout-cleared server
 	// state does not keep the iface down across reboot / daemon reset.
 	// Headless startup has no desktop session and does nothing here.
-	ApplyStartupConnections()
+	callApplyStartupConnections()
 	if server != nil && server.API != "" {
-		pullresp, pullErr = refreshHostPullAfterReconnect(pullresp, pullErr)
+		pullresp, pullErr = callRefreshHostPullAfterReconnect(pullresp, pullErr)
 		if pullErr != nil {
 			slog.Error("fail to refresh config after reconnect", "error", pullErr.Error())
 		}

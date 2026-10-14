@@ -124,6 +124,15 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 	return
 }
 
+func canonicalServerID(id string) string {
+	return config.NormalizeServerHost(id)
+}
+
+// HandleRegisterResponse applies a device or CLI register response to local config.
+func HandleRegisterResponse(registerResponse *models.RegisterResponse) {
+	handleRegisterResponse(registerResponse)
+}
+
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	if registerResponse == nil {
 		return
@@ -191,6 +200,12 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 }
 
 var registrationResetPending atomic.Bool
+
+// MarkRegistrationResetPending asks the daemon to rebuild against the server
+// context written by a desktop login.
+func MarkRegistrationResetPending() {
+	registrationResetPending.Store(true)
+}
 
 // RegistrationResetPending reports that a desktop registration finished and
 // the daemon still needs to pick up the new server. The GUI uses this window

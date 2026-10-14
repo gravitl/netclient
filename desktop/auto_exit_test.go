@@ -1,4 +1,4 @@
-package functions
+package desktop
 
 import (
 	"testing"

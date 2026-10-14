@@ -27,6 +27,10 @@ type RegisterSSO struct {
 	AllNetworks bool
 }
 
+func PrepareRegistrationHost() (schema.Host, error) {
+	return prepareRegistrationHost()
+}
+
 func prepareRegistrationHost() (schema.Host, error) {
 	host := config.Netclient()
 	ip, err := ncutils.GetInterfaces()
