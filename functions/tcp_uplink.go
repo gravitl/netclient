@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/internal/proxyuplink"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
@@ -450,7 +451,7 @@ func flipTCPUplinkWireGuardMode() {
 	if server != nil {
 		reconcileTCPUplink(server, nil)
 	}
-	reconfigureDNSNow(server)
+	dns.ReconfigureNow(server)
 	select {
 	case wireguard.EgressResetCh <- struct{}{}:
 	default:

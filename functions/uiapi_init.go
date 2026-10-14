@@ -2,6 +2,7 @@ package functions
 
 import (
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netmaker/models"
 )
@@ -50,7 +51,7 @@ func joinNetworkForUI(network, server, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	reconfigureDNSNow(config.GetServer(server))
+	dns.ReconfigureNow(config.GetServer(server))
 	if status == "" {
 		return "joined", nil
 	}

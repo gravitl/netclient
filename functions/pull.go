@@ -103,12 +103,7 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		_ = config.RefreshControlPlaneEndpoints(srv)
 	}
 	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
-	keepDisconnected := locallyDisconnectedNetworks()
-	keepConnected := locallyConnectedNetworks()
-	config.SetNodes(pullResponse.Nodes)
-	keepLocallyDisconnected(keepDisconnected)
-	keepLocallyConnected(keepConnected)
-	reassertDesiredConnectedFlags()
+	PreserveConnectionsAfterSync(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)
 	if server == nil {

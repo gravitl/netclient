@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -125,7 +124,7 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
 		wireguard.ReapplyInternetGwAfterIfaceRecreate()
-		reconfigureDNSNow(server)
+		dns.ReconfigureNow(server)
 
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
@@ -275,12 +274,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	if len(peerUpdate.Nodes) > 0 {
-		keepDisconnected := locallyDisconnectedNetworks()
-		keepConnected := locallyConnectedNetworks()
-		config.SetNodes(peerUpdate.Nodes)
-		keepLocallyDisconnected(keepDisconnected)
-		keepLocallyConnected(keepConnected)
-		reassertDesiredConnectedFlags()
+		PreserveConnectionsAfterSync(peerUpdate.Nodes)
 		_ = config.WriteNodeConfig()
 	}
 	// Nodes can land here after the interface was already built without them,
@@ -339,9 +333,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 					// Continue applying peers even if IGW setup failed.
 				} else {
 					exitRoutingChanged = true
-					if user, tenant, ok := desktopSessionIdentity(); ok {
-						_ = config.SetDesiredWantIGW(user, tenant, true)
-					}
+					rememberDesiredWantIGW()
 				}
 			}
 		} else {
@@ -365,7 +357,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if config.AnyNodeConnected() && !peerUpdate.ChangeDefaultGw {
 		// Desired state may still want an exit the server is not advertising
 		// (a re-select lost during session restore). Ask again, rate-limited.
-		reconcileDesiredExit()
+		ReconcileExitIfDesired()
 	}
 	if config.AnyNodeConnected() {
 		if len(peerUpdate.EgressRoutes) > 0 {
@@ -381,36 +373,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	syncEgressDomains(peerUpdate.EgressWithDomains)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
-	var dnsOp string
-	const start string = "start"
-	const stop string = "stop"
-	const update string = "update"
-	if server.ManageDNS {
-		if !peerUpdate.ManageDNS {
-			server.ManageDNS = false
-			server.DefaultDomain = ""
-			server.NameServers = nil
-			server.DnsNameservers = nil
-			saveServerConfig = true
-			dnsOp = stop
-		} else if server.DefaultDomain != peerUpdate.DefaultDomain ||
-			len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) ||
-			!reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
-			server.DefaultDomain = peerUpdate.DefaultDomain
-			server.NameServers = peerUpdate.NameServers
-			server.DnsNameservers = peerUpdate.DnsNameservers
-			saveServerConfig = true
-			dnsOp = update
-		}
-	} else {
-		if peerUpdate.ManageDNS {
-			server.ManageDNS = true
-			server.DefaultDomain = peerUpdate.DefaultDomain
-			server.NameServers = peerUpdate.NameServers
-			server.DnsNameservers = peerUpdate.DnsNameservers
-			saveServerConfig = true
-			dnsOp = start
-		}
+	dnsChange, dnsChanged := dns.DiffServer(server, peerUpdate.ManageDNS, peerUpdate.DefaultDomain, peerUpdate.NameServers, peerUpdate.DnsNameservers)
+	if dnsChanged {
+		saveServerConfig = true
 	}
 
 	reloadStun := false
@@ -434,23 +399,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
-		switch dnsOp {
-		case start:
-			dns.GetDNSServerInstance().Start()
-		case stop:
-			dns.GetDNSServerInstance().Stop()
-		}
 	}
-	// OS DNS is system-wide while an exit is installed and split otherwise.
-	// Reapply when nameservers changed or this update installed, reinstalled,
-	// or removed exit routes. Start/Stop already apply or clear it. A peer
-	// update that only refreshes pins must not call networksetup again.
-	// Also reapply when we should be serving DNS but the listener is down —
-	// connect's own apply can lose the race with this update's Restore.
-	listenerDown := server.ManageDNS && config.AnyNodeConnected() && dns.GetDNSServerInstance().ListenerAddr() == ""
-	if dnsOp != start && dnsOp != stop && (dnsOp == update || exitRoutingChanged || listenerDown) {
-		scheduleDNSReconfigure()
-	}
+	dns.ApplyForUpdate(server, dnsChange, exitRoutingChanged)
 
 	if peerUpdate.Host.EnableFlowLogs {
 		_ = flow.GetManager().Start(peerUpdate.AddressIdentityMap)
@@ -724,7 +674,7 @@ func resetInterfaceFunc() {
 		// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
 		reconcileTCPUplink(server, nil)
 	}
-	reconfigureDNSNow(server)
+	dns.ReconfigureNow(server)
 	wireguard.EgressResetCh <- struct{}{}
 }
 
@@ -1034,9 +984,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 					// Continue applying peers even if IGW setup failed.
 				} else {
 					exitRoutingChanged = true
-					if user, tenant, ok := desktopSessionIdentity(); ok {
-						_ = config.SetDesiredWantIGW(user, tenant, true)
-					}
+					rememberDesiredWantIGW()
 				}
 			}
 		} else {
@@ -1069,36 +1017,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	syncEgressDomains(pullResponse.EgressWithDomains)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	var dnsOp string
-	const start string = "start"
-	const stop string = "stop"
-	const update string = "update"
-	if server.ManageDNS {
-		if !pullResponse.ServerConfig.ManageDNS {
-			server.ManageDNS = false
-			server.DefaultDomain = ""
-			server.NameServers = nil
-			server.DnsNameservers = nil
-			saveServerConfig = true
-			dnsOp = stop
-		} else if server.DefaultDomain != pullResponse.ServerConfig.DefaultDomain ||
-			len(server.DnsNameservers) != len(pullResponse.DnsNameservers) ||
-			!reflect.DeepEqual(server.DnsNameservers, pullResponse.DnsNameservers) {
-			server.DefaultDomain = pullResponse.ServerConfig.DefaultDomain
-			server.NameServers = pullResponse.NameServers
-			server.DnsNameservers = pullResponse.DnsNameservers
-			saveServerConfig = true
-			dnsOp = update
-		}
-	} else {
-		if pullResponse.ServerConfig.ManageDNS {
-			server.ManageDNS = true
-			server.DefaultDomain = pullResponse.ServerConfig.DefaultDomain
-			server.NameServers = pullResponse.NameServers
-			server.DnsNameservers = pullResponse.DnsNameservers
-			saveServerConfig = true
-			dnsOp = start
-		}
+	dnsChange, dnsChanged := dns.DiffServer(server, pullResponse.ServerConfig.ManageDNS, pullResponse.ServerConfig.DefaultDomain, pullResponse.NameServers, pullResponse.DnsNameservers)
+	if dnsChanged {
+		saveServerConfig = true
 	}
 
 	reloadStun := false
@@ -1122,19 +1043,8 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
-		switch dnsOp {
-		case start:
-			dns.GetDNSServerInstance().Start()
-		case stop:
-			dns.GetDNSServerInstance().Stop()
-		}
 	}
-	// Same rule as the peer-update path: nameserver changes, exit install /
-	// reinstall / removal, or a missing listener. Not every fallback pull.
-	listenerDown := server.ManageDNS && config.AnyNodeConnected() && dns.GetDNSServerInstance().ListenerAddr() == ""
-	if dnsOp != start && dnsOp != stop && (dnsOp == update || exitRoutingChanged || listenerDown) {
-		scheduleDNSReconfigure()
-	}
+	dns.ApplyForUpdate(server, dnsChange, exitRoutingChanged)
 
 	if pullResponse.Host.EnableFlowLogs {
 		_ = flow.GetManager().Start(pullResponse.AddressIdentityMap)

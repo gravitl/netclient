@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/internal/proxyuplink"
-	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -28,140 +24,6 @@ func logElapsed(label string) func() {
 	}
 }
 
-var (
-	dnsApplyMu      sync.Mutex
-	dnsApplyPending bool
-	dnsApplyRunning bool
-)
-
-// reconfigureDNSNow rebinds listeners to the current node set and reapplies OS DNS.
-// Call it after join, disconnect, or a netmaker interface reset — once peers and
-// exit routes are back, because full vs split DNS follows CurrGw.
-//
-// server is the network's server (config.GetServer(node.Server)). Callers with
-// no network context may pass nil; CurrServer is used only then. OS DNS is
-// removed only when no connected network still manages it, so a nil or
-// unmanaged CurrServer cannot wipe resolver state another network needs.
-func reconfigureDNSNow(server *config.Server) {
-	if server == nil {
-		server = config.GetServer(config.CurrServer)
-	}
-	if !anyConnectedNetworkManagesDNS() {
-		dns.GetDNSServerInstance().Stop()
-		return
-	}
-	// This server is nil or does not manage DNS, but another connected network
-	// does. Leave that resolver state in place.
-	if server == nil || !server.ManageDNS {
-		return
-	}
-	dns.SyncForNodeChange()
-	scheduleDNSReconfigure()
-}
-
-// anyConnectedNetworkManagesDNS reports whether a locally connected node
-// belongs to a server that has ManageDNS set.
-func anyConnectedNetworkManagesDNS() bool {
-	for _, node := range config.GetNodes() {
-		if !node.Connected {
-			continue
-		}
-		srv := config.GetServer(node.Server)
-		if srv != nil && srv.ManageDNS {
-			return true
-		}
-	}
-	return false
-}
-
-// scheduleDNSReconfigure applies OS DNS off the caller's goroutine, coalescing
-// bursts into a single pass over the latest state.
-//
-// Installing OS DNS on macOS shells out to networksetup for every network
-// service, and we necessarily do it while the network stack is mid-reconfigure —
-// right after exit routes move. Measured there a single pass costs 7-15s, against
-// 0.12s on an idle system, and connect/disconnect/logout blocked on it for their
-// whole duration. Desired state is recomputed inside the apply, so coalescing
-// converges on the final state instead of replaying intermediate ones.
-//
-// Callers that must observe DNS installed before returning should still call
-// reconfigureDNSAfterRouting directly.
-func scheduleDNSReconfigure() {
-	dnsApplyMu.Lock()
-	defer dnsApplyMu.Unlock()
-	dnsApplyPending = true
-	if dnsApplyRunning {
-		return
-	}
-	dnsApplyRunning = true
-	go func() {
-		for {
-			dnsApplyMu.Lock()
-			if !dnsApplyPending {
-				dnsApplyRunning = false
-				dnsApplyMu.Unlock()
-				return
-			}
-			dnsApplyPending = false
-			dnsApplyMu.Unlock()
-			reconfigureDNSAfterRouting()
-		}
-	}()
-}
-
-// reconfigureDNSAfterRouting re-runs OS DNS setup after exit-node routing changes.
-// SplitDNS flips with CurrGwNmIP even when nameserver lists are unchanged.
-// Always call this after clearing an exit — even if CurrGwNmIP was already nil —
-// so system DNS is not left pointing at the Netmaker listener.
-func reconfigureDNSAfterRouting() {
-	defer logElapsed("dns reconfigure")()
-	server := config.GetServer(config.CurrServer)
-	manageDNS := server != nil && server.ManageDNS
-	anyConnected := config.AnyNodeConnected()
-	// Exit apply often runs before DNS Start during daemon bring-up. When
-	// listeners are already up, still add any missing overlay binds for newly
-	// connected networks (StartListeners is additive on Linux/Windows).
-	// With nothing connected (logout, last disconnect) never start: macOS binds
-	// its loopback listener regardless of Connected and would reinstall OS DNS.
-	if manageDNS && anyConnected {
-		if dns.GetDNSServerInstance().ListenerAddr() == "" {
-			dns.GetDNSServerInstance().Start()
-		} else {
-			dns.GetDNSServerInstance().StartListeners()
-		}
-	}
-	if !anyConnected || dns.GetDNSServerInstance().ListenerAddr() == "" {
-		// No connected network, or listener still down: strip any leftover
-		// Netmaker OS DNS (NRPT on Windows).
-		dns.GetDNSServerInstance().StopListeners()
-		done := logElapsed("os dns reset")
-		err := dns.ResetOSConfig()
-		done()
-		if err != nil {
-			slog.Warn("failed to reset os dns after routing change", "error", err)
-		}
-		flushDNSCacheTimed()
-		return
-	}
-	// Configure refreshes SplitDNS↔full from CurrGwNmIP and publishes all
-	// current listener addresses as nameservers.
-	done := logElapsed("os dns configure")
-	err := dns.Configure()
-	done()
-	if err != nil {
-		// Do not ResetOSConfig here — a transient Configure failure would wipe
-		// working DNS, especially on macOS where only loopback is published.
-		slog.Warn("failed to reconfigure dns after routing change", "error", err)
-		return
-	}
-	flushDNSCacheTimed()
-}
-
-func flushDNSCacheTimed() {
-	defer logElapsed("dns cache flush")()
-	dns.FlushCache()
-}
-
 // logIGWDecision records the inputs that decide whether exit routing survives an
 // update, so a teardown can be traced to a specific branch from the logs.
 func logIGWDecision(src string, changeDefaultGw bool) {
@@ -170,15 +32,9 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 	if nc != nil {
 		currGw = fmt.Sprintf("%v/%v", nc.CurrGwNmIP, nc.CurrGwNmIP6)
 	}
-	desired := "desktop_session=false"
-	// Each desired-state getter re-reads the JSON store, so skip them headless
-	// where they can only ever report the zero value.
-	if user, tenant, ok := desktopSessionIdentity(); ok {
-		desired = fmt.Sprintf("want_igw=%v auto_exit=%v desired_egress=%s",
-			config.GetDesiredWantIGW(user, tenant),
-			config.GetDesiredAutoExit(user, tenant),
-			config.GetDesiredEgressID(user, tenant))
-	}
+	// Desired-state getters re-read the JSON store; desktopExitDecision skips
+	// them when no desktop session is active.
+	desired := desktopExitDecision()
 	// logger.Log, not slog.Info: slog runs at Warn unless verbosity is raised
 	// (cmd/root.go), which silently discarded these when they were needed.
 	logger.Log(1, fmt.Sprintf("igw decision: src=%s any_node_connected=%v change_default_gw=%v curr_gw=%s %s",
@@ -196,7 +52,7 @@ func restoreInternetGwAndDNS() {
 		}
 		done()
 	}
-	scheduleDNSReconfigure()
+	dns.ScheduleReconfigure()
 }
 
 var pullForReconnect = Pull
@@ -334,7 +190,7 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 	// connect/disconnect synced), so a second network never got a :53 listener
 	// without a daemon restart. OS DNS apply must follow the sync, not precede it.
 	dns.SyncForNodeChange()
-	scheduleDNSReconfigure()
+	dns.ScheduleReconfigure()
 	return nil
 }
 
@@ -368,13 +224,9 @@ func applyConnectionChangeInProcess() error {
 			pull = p
 		}
 	}
-	wantIGW := false
-	if user, tenant, ok := desktopSessionIdentity(); ok {
-		wantIGW = config.GetDesiredWantIGW(user, tenant)
-	}
 	// DNS listener sync + OS reconfigure run inside applyReconnectInProcess
 	// after the iface has the connected-node addresses.
-	return applyReconnectInProcess(pull, wantIGW)
+	return applyReconnectInProcess(pull, desktopWantsIGW())
 }
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
@@ -382,18 +234,9 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 		logger.Log(0, "exit apply skipped after reconnect: no node connected")
 		return
 	}
-	// Headless has no desired state: only a server-advertised exit applies below.
-	user, tenant, hasSession := desktopSessionIdentity()
-	wantIGW := hasSession && config.GetDesiredWantIGW(user, tenant)
-	if pullErr == nil && pull.ChangeDefaultGw {
-		// Server already advertised an exit; reinstall OS routes after iface recreate.
-	} else if !(wantIGW && locallyConnectedDesired()) {
-		// Silent here once cost a full session of "connected but no exit": the
-		// restore finished clean while the server still advertised no gateway.
-		logger.Log(0, fmt.Sprintf(
-			"exit apply skipped after reconnect: change_default_gw=%v pull_err=%v want_igw=%v locally_connected_desired=%v",
-			pull.ChangeDefaultGw, pullErr != nil, wantIGW, locallyConnectedDesired()))
-		reconcileDesiredExit()
+	// Server-advertised exits always install. A desktop session that still wants
+	// an exit installs too; otherwise the server is asked again and we return.
+	if !desktopWantsExitApply(pull, pullErr) {
 		return
 	}
 	var lastErr error
@@ -422,130 +265,14 @@ func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {
 				"attempt", attempt, "error", err)
 			continue
 		}
-		if hasSession {
-			_ = config.SetDesiredWantIGW(user, tenant, true)
-		}
+		rememberDesiredWantIGW()
 		kickInternetGwHandshake(resp)
 		return
 	}
 	if lastErr != nil {
 		logger.Log(0, "failed to apply exit-node routes after reconnect:", lastErr.Error())
-		reconcileDesiredExit()
+		ReconcileExitIfDesired()
 	}
-}
-
-// exitReconcileInterval bounds how often the client may re-drive the server exit
-// selection, so a server that simply has no exit available is not hammered.
-const exitReconcileInterval = 30 * time.Second
-
-var lastExitReconcile atomic.Int64
-
-// exitSelectInFlight is true while a clear→assign (or manual select) PUT window
-// is open. reconcileDesiredExit skips so ChangeDefaultGw=false from the clear
-// half cannot race and re-select a different exit under us.
-var exitSelectInFlight atomic.Bool
-
-func beginExitSelect() { exitSelectInFlight.Store(true) }
-func endExitSelect()   { exitSelectInFlight.Store(false) }
-
-// reconcileDesiredExit re-selects the exit node on the server when local desired
-// state still wants one but the server keeps advertising none.
-//
-// Logout clears the server selection and login re-selects it. When that PUT is
-// lost, or the server has not converged by the time restore gives up, peer
-// updates keep arriving with ChangeDefaultGw=false and nothing ever asks again:
-// the host sits connected with no exit and split DNS, which reads to the user as
-// "DNS was not switched to Netmaker".
-//
-// This re-drives the *selection* rather than pinning routes locally. Holding a
-// local default route against the server is what black-holed traffic when an
-// exit genuinely went away; asking the server again keeps it authoritative.
-func reconcileDesiredExit() {
-	// Logout snapshots want_igw for the next login, so desired state still asks
-	// for an exit while the teardown runs. Re-selecting here would undo the
-	// server-side clear that logout just issued.
-	if sessionReleased.Load() {
-		return
-	}
-	// Manual→Auto (and failover) clear then assign. The clear publishes
-	// ChangeDefaultGw=false; do not reconcile over that window.
-	if exitSelectInFlight.Load() {
-		return
-	}
-	user, tenant, ok := desktopSessionIdentity()
-	if !ok {
-		return
-	}
-	if wireguard.IGWRoutingActive() {
-		return
-	}
-	token := uiapi.SessionAuthToken()
-	network := resolveAutoExitNetwork(user, tenant, token)
-	autoExit := autoExitModeActive(user, tenant, network, token)
-	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
-	// Server-required auto exit must reconcile even when local want_igw was
-	// never set (exit assigned only via EnsureAutoExitNode).
-	if !config.GetDesiredWantIGW(user, tenant) && !autoExit {
-		return
-	}
-	if token == "" || network == "" || (egressID == "" && !autoExit) {
-		return
-	}
-
-	now := time.Now().UnixNano()
-	last := lastExitReconcile.Load()
-	if last != 0 && time.Duration(now-last) < exitReconcileInterval {
-		return
-	}
-	if !lastExitReconcile.CompareAndSwap(last, now) {
-		return
-	}
-
-	go func() {
-		if exitSelectInFlight.Load() {
-			return
-		}
-		// Auto mode must never call SelectDeviceExitNode: that persists a fixed
-		// egress and clears auto_exit. Re-pick nearest using the IGW-failure
-		// blacklist only — never exclude the in-flight desired id (manual→Auto
-		// clear→assign would otherwise drop the exit we just chose and snap
-		// back to the previous one).
-		if autoExit {
-			logger.Log(0, "exit reconcile: auto-exit re-picking nearest on "+network)
-			exclude := autoExitReconcileExclude()
-			if _, err := selectNearestDeviceExitNodeExcluding(network, token, nil, exclude); err != nil {
-				logger.Log(0, "exit reconcile: auto-exit re-pick failed:", err.Error())
-				// Soft retry with no exclude so a full failure blacklist cannot
-				// leave the host with no exit when another (including the
-				// desired id) is still up.
-				if _, err2 := selectNearestDeviceExitNodeExcluding(network, token, nil, nil); err2 != nil {
-					logger.Log(0, "exit reconcile: nearest fallback failed:", err2.Error())
-				}
-			}
-			return
-		}
-		logger.Log(0, fmt.Sprintf(
-			"exit reconcile: server advertises no exit while %s is desired on %s; re-selecting",
-			egressID, network))
-		if _, err := SelectDeviceExitNode(network, token, egressID); err != nil {
-			logger.Log(0, "exit reconcile: re-select failed:", err.Error())
-		}
-	}()
-}
-
-func locallyConnectedDesired() bool {
-	if !uiapi.IsSessionActive() {
-		return false
-	}
-	user, tenant := uiapi.SessionIdentity()
-	desired := filterDesiredNetworks(config.GetDesiredNetworks(user, tenant), uiapi.RestrictToSingleNetwork())
-	nodes := config.GetNodes()
-	for _, network := range desired {
-		if node, ok := nodes[network]; ok && node.Connected {
-			return true
-		}
-	}
-	return false
 }
 
 func forceApplyInternetGw(pull models.HostPull) error {
@@ -569,7 +296,7 @@ func forceApplyInternetGw(pull models.HostPull) error {
 	if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 		return err
 	}
-	scheduleDNSReconfigure()
+	dns.ScheduleReconfigure()
 	return nil
 }
 
@@ -588,41 +315,4 @@ func kickInternetGwHandshake(pull models.HostPull) {
 			_ = conn.Close()
 		}
 	}()
-}
-
-func refreshHostPullAfterReconnect(prev models.HostPull, prevErr error) (models.HostPull, error) {
-	if !uiapi.IsSessionActive() {
-		return prev, prevErr
-	}
-	user, tenant := uiapi.SessionIdentity()
-	desired := filterDesiredNetworks(config.GetDesiredNetworks(user, tenant), uiapi.RestrictToSingleNetwork())
-	if len(desired) == 0 {
-		return prev, prevErr
-	}
-	nodes := config.GetNodes()
-	anyConnected := false
-	for _, network := range desired {
-		if node, ok := nodes[network]; ok && node.Connected {
-			anyConnected = true
-			break
-		}
-	}
-	if !anyConnected {
-		return prev, prevErr
-	}
-	wantIGW := config.GetDesiredWantIGW(user, tenant)
-	if prevErr == nil && hostPullReadyForReconnect(prev, desired, wantIGW) {
-		return prev, nil
-	}
-	resp, err := waitForReconnectHostPull(desired, wantIGW)
-	if err != nil {
-		if prevErr == nil && (resp.ChangeDefaultGw || hostPullHasConnectedNetworks(resp, desired)) {
-			return resp, nil
-		}
-		if prevErr == nil {
-			return prev, prevErr
-		}
-		return resp, err
-	}
-	return resp, nil
 }

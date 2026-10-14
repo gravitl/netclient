@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
@@ -28,7 +29,7 @@ var (
 )
 
 func init() {
-	wireguard.OnIGWRoutingChanged = reconfigureDNSAfterRouting
+	wireguard.OnIGWRoutingChanged = dns.ReconfigureAfterRouting
 	wireguard.OnIGWUnhealthy = handleIGWUnhealthyAutoExit
 }
 

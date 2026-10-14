@@ -213,5 +213,5 @@ func ReleaseSession(clearServer bool) error {
 func clearDNSOnLogout() {
 	dns.GetDNSServerInstance().Stop()
 	dns.FlushCache()
-	scheduleDNSReconfigure()
+	dns.ScheduleReconfigure()
 }
