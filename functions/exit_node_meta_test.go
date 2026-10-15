@@ -91,6 +91,36 @@ func TestMarkNearestExitNodesByGeo(t *testing.T) {
 	assert.True(t, nodes[1].Nearest)
 }
 
+func TestOverlayMissDecisive(t *testing.T) {
+	assert.False(t, overlayMissDecisive(false, false), "connect-time miss is not unhealthy")
+	assert.True(t, overlayMissDecisive(true, false), "miss is unhealthy once another exit answered")
+	assert.True(t, overlayMissDecisive(false, true), "miss is unhealthy once this exit has handshaked")
+}
+
+func TestApplyOverlayProbeSetsHealth(t *testing.T) {
+	pending := models.DeviceExitNode{EgressID: "pending", Status: true, LatencyMs: 12}
+	applyOverlayProbe(&pending, false, 0, false)
+	assert.True(t, pending.Status, "probe miss before handshake must not mark the exit unhealthy")
+	assert.Equal(t, exitNodeLatencyTO, pending.LatencyMs)
+
+	down := models.DeviceExitNode{EgressID: "down", Status: true, LatencyMs: 12}
+	applyOverlayProbe(&down, false, 0, true)
+	assert.False(t, down.Status)
+	assert.Equal(t, exitNodeLatencyTO, down.LatencyMs)
+
+	up := models.DeviceExitNode{EgressID: "up", Status: false}
+	applyOverlayProbe(&up, true, 18, true)
+	assert.True(t, up.Status)
+	assert.Equal(t, int64(18), up.LatencyMs)
+
+	pick, ok := pickNearestAvailableExitNode([]models.DeviceExitNode{
+		down,
+		{EgressID: "other", Status: true, LatencyMs: 40},
+	}, nil)
+	assert.True(t, ok)
+	assert.Equal(t, "other", pick.EgressID, "overlay-unhealthy exit is not selected")
+}
+
 func TestPickNearestAvailableExitNode(t *testing.T) {
 	_, ok := pickNearestAvailableExitNode(nil, nil)
 	assert.False(t, ok)

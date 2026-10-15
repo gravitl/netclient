@@ -13,6 +13,7 @@ import (
 	"github.com/go-ping/ping"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
@@ -64,8 +65,10 @@ func attachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode
 }
 
 // attachExitNodeOverlayLatencies probes each exit's overlay metrics port.
-// Used after connect for Auto failover ranking on the mesh. Does not flip
-// Status on a probe miss.
+// Used after connect. A successful probe marks the exit healthy. A miss marks
+// it unhealthy when another exit in the same check answered, or when this
+// exit's peer has already handshaked. A miss while nothing has answered yet
+// is the tunnel still coming up, not proof every exit is down.
 func AttachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNode) {
 	attachExitNodeOverlayLatencies(network, nodes)
 }
@@ -82,6 +85,14 @@ func attachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNod
 
 	port := exitNodeMetricsPort()
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	type overlayHit struct {
+		i       int
+		ok      bool
+		latency int64
+		addr    string
+	}
+	var hits []overlayHit
 	probed := 0
 	for i := range nodes {
 		addr := exitNodeOverlayProbeAddr(nodes[i])
@@ -98,17 +109,81 @@ func attachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNod
 				// often times out on an otherwise healthy exit.
 				ok, latency = metrics.PeerConnStatus(addr, port, 1)
 			}
-			if ok {
-				nodes[i].LatencyMs = latency
-				return
-			}
-			// Rank last for Auto. Do not flip Status — a single metrics-port
-			// miss is not proof the peer is down.
-			nodes[i].LatencyMs = exitNodeLatencyTO
+			mu.Lock()
+			hits = append(hits, overlayHit{i: i, ok: ok, latency: latency, addr: addr})
+			mu.Unlock()
 		}(i, addr)
 	}
 	wg.Wait()
+	anyOK := false
+	for _, hit := range hits {
+		if hit.ok {
+			anyOK = true
+			break
+		}
+	}
+	for _, hit := range hits {
+		// Another exit answering means the overlay is up, so this miss is real.
+		// A lone miss still waits for this peer's handshake so connect-time
+		// timeouts do not disable the whole list.
+		decisive := overlayMissDecisive(anyOK, overlayAddrHandshaked(hit.addr))
+		applyOverlayProbe(&nodes[hit.i], hit.ok, hit.latency, decisive)
+	}
 	finishExitNodeLatencyAttach(network, nodes, "overlay", probed, port)
+}
+
+// overlayMissDecisive reports whether a failed overlay probe should mark the
+// exit unhealthy. Another successful probe in the same pass is enough. So is
+// a handshake on this exit when nothing else answered.
+func overlayMissDecisive(anyProbeSucceeded, handshaked bool) bool {
+	return anyProbeSucceeded || handshaked
+}
+
+// applyOverlayProbe records the overlay metrics check. Success means the exit
+// answers on the tunnel. A miss sets Status=false only when decisive is true
+// (the exit's WireGuard peer has already handshaked). Otherwise the server
+// status is left alone so a connect-time timeout does not mark every exit down.
+func applyOverlayProbe(n *models.DeviceExitNode, ok bool, latency int64, decisive bool) {
+	if n == nil {
+		return
+	}
+	if ok {
+		n.Status = true
+		n.LatencyMs = latency
+		return
+	}
+	n.LatencyMs = exitNodeLatencyTO
+	if decisive {
+		n.Status = false
+	}
+}
+
+// overlayAddrHandshaked reports whether a WireGuard peer owns this overlay
+// address as a host route and has completed a handshake.
+func overlayAddrHandshaked(addr string) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	peers, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+	if err != nil {
+		return false
+	}
+	for _, peer := range peers {
+		if peer.LastHandshakeTime.IsZero() {
+			continue
+		}
+		for _, allowed := range peer.AllowedIPs {
+			ones, bits := allowed.Mask.Size()
+			if bits == 0 || ones != bits || allowed.IP == nil {
+				continue
+			}
+			if allowed.IP.Equal(ip) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func finishExitNodeLatencyAttach(network string, nodes []models.DeviceExitNode, mode string, probed int, metricsPort int) {
