@@ -761,12 +761,7 @@ func publicIPForProto(ip net.IP, proto int) net.IP {
 // isRelayedOnSingleNetwork returns true when the host is connected to exactly one network
 // and its node in that network is relayed.
 func isRelayedOnSingleNetwork() bool {
-	var active []config.Node
-	for _, node := range config.GetNodes() {
-		if node.Connected {
-			active = append(active, node)
-		}
-	}
+	active := config.GetConnectedNodes()
 	return len(active) == 1 && active[0].IsRelayed && active[0].RelayedBy != ""
 }
 
