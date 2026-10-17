@@ -24,6 +24,7 @@ net: netclient join -s <server> -n <net> // attempt to join specified network vi
 all-networks: netclient join -s <server> -A // attempt to register to all allowed networks on given server via auth
 user: netclient join -s <server> -u <user_name> // attempt to join/register via basic auth`,
 
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		validateArgs(cmd)
 		setHostFields(cmd)

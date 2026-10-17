@@ -20,6 +20,7 @@ var leaveCmd = &cobra.Command{
 For example:
 
 netclient leave my-network`,
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		logger.Log(0, "leave called")
 		faults, err := functions.LeaveNetwork(args[0], false)

@@ -1,0 +1,92 @@
+package desktop
+
+import (
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/uiapi"
+	"github.com/gravitl/netmaker/models"
+)
+
+func init() {
+	uiapi.SetHandlers(uiapi.HandlerDeps{
+		RegisterSession:           RegisterSession,
+		ReleaseSession:            ReleaseSession,
+		ApplyRegistrationReset:    functions.ApplyPendingRegistrationReset,
+		RegistrationResetPending:  functions.RegistrationResetPending,
+		Connect:                   connectWithJoin,
+		Disconnect:                functions.Disconnect,
+		IsRegistered:              IsRegisteredToServer,
+		FetchNetworks:             FetchDeviceNetworks,
+		JoinNetwork:               joinNetworkForUI,
+		LeaveNetwork:              leaveNetworkForUI,
+		CancelJoin:                cancelJoinForUI,
+		RequestJIT:                requestJITForUI,
+		Sync:                      SyncDeviceWithServer,
+		ListExitNodes:             listExitNodesForUI,
+		GetSelectedExitNode:       getSelectedExitNodeForUI,
+		SelectExitNode:            selectExitNodeForUI,
+		SelectNearestExitNode:     selectNearestExitNodeForUI,
+		NetworkRequiresAutoExit:   NetworkRequiresAutoExit,
+		RestoreDesiredConnections: RestoreDesiredConnections,
+	})
+}
+
+func connectWithJoin(network string) error {
+	server, token := sessionCredentials()
+	if token != "" {
+		return ConnectNetwork(network, server, token)
+	}
+	return functions.Connect(network)
+}
+
+func joinNetworkForUI(network, server, token string) (string, error) {
+	status, err := JoinDeviceNetworkOnServer(network, token)
+	if err != nil {
+		return "", err
+	}
+	if status == models.DeviceJoinStatusPending {
+		return status, nil
+	}
+	_, _, _, err = functions.Pull(false, true, false)
+	if err != nil {
+		return "", err
+	}
+	dns.ReconfigureNow(config.GetServer(server))
+	if status == "" {
+		return "joined", nil
+	}
+	return status, nil
+}
+
+func leaveNetworkForUI(network, server, token string) error {
+	return LeaveDeviceNetworkOnServer(network, token)
+}
+
+func cancelJoinForUI(network, server, token string) error {
+	return CancelDeviceNetworkJoinOnServer(network, token)
+}
+
+func requestJITForUI(network, server, token, reason string) error {
+	return RequestJITOnServer(network, token, reason)
+}
+
+func listExitNodesForUI(network, server, token string) ([]models.DeviceExitNode, error) {
+	return ListDeviceExitNodes(network, token)
+}
+
+func getSelectedExitNodeForUI(network, server, token string) (*models.DeviceExitNode, error) {
+	return GetDeviceSelectedExitNode(network, token)
+}
+
+func selectExitNodeForUI(network, server, token, egressID string) (*models.DeviceExitNode, error) {
+	return SelectDeviceExitNode(network, token, egressID)
+}
+
+func selectNearestExitNodeForUI(network, server, token string) (*models.DeviceExitNode, error) {
+	return SelectNearestDeviceExitNode(network, token)
+}
+
+func sessionCredentials() (server, token string) {
+	return uiapi.SessionCredentials()
+}

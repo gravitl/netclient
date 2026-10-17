@@ -55,21 +55,37 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	reply.RecursionDesired = true
 	reply.Rcode = dns.RcodeSuccess
 	logger.Log(4, fmt.Sprintf("resolving dns query %s", r.Question[0].Name))
-	if config.Netclient().CurrGwNmIP != nil {
+	// IPv4-only exit diverts ::/0 to utun without peer ::/0 AllowedIPs, so AAAA
+	// answers make browsers Happy-Eyeballs-stall on a blackhole. Refuse AAAA up
+	// front and strip AAAA from mixed answers so pages use IPv4 via the exit.
+	if ipv4OnlyInternetExit() && r.Question[0].Qtype == dns.TypeAAAA {
+		reply.Rcode = dns.RcodeSuccess
+		_ = w.WriteMsg(reply)
+		return
+	}
+	if igwDNS := internetGwDNSServer(); igwDNS != "" {
+		qName := r.Question[0].Name
 		logger.Log(4, fmt.Sprintf(
 			"connected to gw, forwarding dns query %s to gw %s",
-			r.Question[0].Name,
-			config.Netclient().CurrGwNmIP.String()),
-		)
+			qName,
+			igwDNS,
+		))
 
-		resp, err := exchangeDNSQueryWithPool(r, config.Netclient().CurrGwNmIP.String())
+		resp, err := exchangeDNSQueryWithPool(r, igwDNS)
 		if err != nil {
-			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), err))
-		} else {
-			logger.Log(4, fmt.Sprintf("resolved dns query %s with gw %s: %v", r.Question[0].Name, config.Netclient().CurrGwNmIP.String(), resp.Answer))
+			logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with gw %s: %v", qName, igwDNS, err))
+		} else if resp != nil {
+			// Preserve prior IGW DNS behavior: use whatever the exit resolver returned.
+			logger.Log(4, fmt.Sprintf("resolved dns query %s with gw %s: %v", qName, igwDNS, resp.Answer))
 			reply.Authoritative = resp.Authoritative
 			reply.Answer = append(reply.Answer, resp.Answer...)
+			if resp.Rcode != dns.RcodeSuccess && len(resp.Answer) == 0 {
+				reply.Rcode = resp.Rcode
+			}
 		}
+
+		// Only API/broker names may leave exit DNS; everything else stays on it.
+		resolveControlPlaneFallback(r, reply)
 	} else {
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
 		currServer := config.GetServer(config.CurrServer)
@@ -180,10 +196,41 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 				}
 			}
 		}
+		// OS DNS can still be in system-wide mode for a moment after an exit is
+		// torn down, sending names here that no match domain covers.
+		resolveControlPlaneFallback(r, reply)
 	}
 
+	if ipv4OnlyInternetExit() {
+		reply.Answer = stripAAAARecords(reply.Answer)
+	}
 	go recordDNSAnswers(reply.Answer)
 	_ = w.WriteMsg(reply)
+}
+
+// ipv4OnlyInternetExit reports whether an IPv4 exit is active with no IPv6
+// nexthop. In that mode host IPv6 is diverted onto the WireGuard iface and
+// blackholed (leak prevention), so AAAA must not be handed to browsers.
+func ipv4OnlyInternetExit() bool {
+	nc := config.Netclient()
+	if nc == nil || len(nc.CurrGwNmIP) == 0 || nc.CurrGwNmIP.To4() == nil {
+		return false
+	}
+	return len(nc.CurrGwNmIP6) == 0
+}
+
+func stripAAAARecords(rrs []dns.RR) []dns.RR {
+	if len(rrs) == 0 {
+		return rrs
+	}
+	out := make([]dns.RR, 0, len(rrs))
+	for _, rr := range rrs {
+		if rr != nil && rr.Header().Rrtype == dns.TypeAAAA {
+			continue
+		}
+		out = append(out, rr)
+	}
+	return out
 }
 
 // Register A record
@@ -244,6 +291,120 @@ func (d *DNSResolver) Lookup(m *dns.Msg) (dns.RR, error) {
 	}
 
 	return r, nil
+}
+
+// internetGwDNSServer returns the overlay nexthop used as the exit DNS
+// forwarder when an internet gateway route is active.
+func internetGwDNSServer() string {
+	nc := config.Netclient()
+	if nc == nil {
+		return ""
+	}
+	if len(nc.CurrGwNmIP) > 0 {
+		return nc.CurrGwNmIP.String()
+	}
+	if len(nc.CurrGwNmIP6) > 0 {
+		return nc.CurrGwNmIP6.String()
+	}
+	return ""
+}
+
+// resolveControlPlaneFallback answers API/broker hostnames from the underlay pin
+// cache, then public resolvers, when nothing else produced an answer. Losing
+// these names strands the client: it cannot reach the server to repair routing.
+func resolveControlPlaneFallback(r *dns.Msg, reply *dns.Msg) {
+	if len(reply.Answer) > 0 || len(r.Question) == 0 {
+		return
+	}
+	qName := r.Question[0].Name
+	if !config.IsControlPlaneHostname(qName) {
+		return
+	}
+	if local := controlPlaneAnswers(r); len(local) > 0 {
+		logger.Log(4, fmt.Sprintf("resolved control-plane %s from underlay pin cache", qName))
+		reply.Rcode = dns.RcodeSuccess
+		reply.Answer = append(reply.Answer, local...)
+		reply.Authoritative = true
+		return
+	}
+	publicResp, err := resolveViaPublicDNSServers(r)
+	if err != nil {
+		logger.Log(4, fmt.Sprintf("control-plane public DNS fallback failed for %s: %v", qName, err))
+		return
+	}
+	if publicResp != nil && len(publicResp.Answer) > 0 {
+		logger.Log(4, fmt.Sprintf("resolved control-plane %s via public DNS fallback", qName))
+		reply.Rcode = dns.RcodeSuccess
+		reply.Authoritative = publicResp.Authoritative
+		reply.Answer = append(reply.Answer, publicResp.Answer...)
+	}
+}
+
+// controlPlaneAnswers builds A/AAAA RRs from cached control-plane underlay IPs.
+func controlPlaneAnswers(r *dns.Msg) []dns.RR {
+	if r == nil || len(r.Question) == 0 {
+		return nil
+	}
+	q := r.Question[0]
+	ips := config.ControlPlaneIPsForHost(q.Name)
+	if len(ips) == 0 {
+		return nil
+	}
+	var out []dns.RR
+	for _, ip := range ips {
+		switch q.Qtype {
+		case dns.TypeA:
+			if v4 := ip.To4(); v4 != nil {
+				out = append(out, &dns.A{
+					Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+					A:   v4,
+				})
+			}
+		case dns.TypeAAAA:
+			if ip.To4() == nil && ip.To16() != nil {
+				out = append(out, &dns.AAAA{
+					Hdr:  dns.RR_Header{Name: q.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 60},
+					AAAA: ip,
+				})
+			}
+		case dns.TypeANY:
+			if v4 := ip.To4(); v4 != nil {
+				out = append(out, &dns.A{
+					Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+					A:   v4,
+				})
+			} else if ip.To16() != nil {
+				out = append(out, &dns.AAAA{
+					Hdr:  dns.RR_Header{Name: q.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 60},
+					AAAA: ip,
+				})
+			}
+		}
+	}
+	return out
+}
+
+// resolveViaPublicDNSServers forwards a query to well-known public resolvers.
+// Only used for scoped control-plane fallback.
+func resolveViaPublicDNSServers(r *dns.Msg) (*dns.Msg, error) {
+	if r == nil || len(r.Question) == 0 {
+		return nil, errors.New("empty DNS question")
+	}
+	var lastErr error
+	for _, server := range egressPublicDNSServers {
+		resp, err := exchangeDNSQueryWithPool(r, server)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp != nil && resp.Rcode == dns.RcodeSuccess && len(resp.Answer) > 0 {
+			return resp, nil
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("no answer from public DNS for %s", r.Question[0].Name)
 }
 
 func exchangeDNSQueryWithPool(r *dns.Msg, ns string) (*dns.Msg, error) {

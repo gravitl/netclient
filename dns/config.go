@@ -2,12 +2,15 @@ package dns
 
 import (
 	"errors"
+	"fmt"
 	"net"
+	"runtime"
 	"strings"
 
 	"github.com/gravitl/netclient/config"
 	dnsconfig "github.com/gravitl/netclient/dns/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netmaker/logger"
 )
 
 func Configure() error {
@@ -55,29 +58,48 @@ func Configure() error {
 
 	// AD domain nameservers should always be prioritized before gateway DNS.
 	for _, ip := range ips {
+		parsed := net.ParseIP(ip)
+		if parsed == nil {
+			continue
+		}
 		if _, ok := nameserverIPsMap[ip]; !ok {
-			dnsConfig.Nameservers = append(dnsConfig.Nameservers, net.ParseIP(ip))
+			dnsConfig.Nameservers = append(dnsConfig.Nameservers, parsed)
 			nameserverIPsMap[ip] = true
 		}
 	}
 
-	if config.Netclient().CurrGwNmIP != nil || matchAllDomains {
+	// Exit node (CurrGw) or match-all nameservers → system-wide DNS
+	// (networksetup on macOS). Otherwise split DNS via /etc/resolver.
+	nc := config.Netclient()
+	if matchAllDomains || (nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0)) {
 		dnsConfig.SplitDNS = false
 	}
+
+	if len(dnsConfig.Nameservers) == 0 {
+		return errors.New("no nameservers to configure")
+	}
+
+	if configManager == nil {
+		return errors.New("dns config manager not initialized")
+	}
+
+	logger.Log(0, "applying dns:", fmt.Sprintf("split=%v match_all=%v curr_gw=%v nameservers=%v",
+		dnsConfig.SplitDNS, matchAllDomains, nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0),
+		dnsConfig.Nameservers))
 
 	return configManager.Configure(ncutils.GetInterfaceName(), dnsConfig)
 }
 
-// getDnsIps returns every address the local DNS listener is serving on, in the
-// order they should be handed to the resolver. All of them must be published:
-// the listener binds whichever families the node has, and publishing only the
-// last one leaves dual-stack nodes with an IPv6-only nameserver that a host with
-// IPv6 restricted cannot reach at all.
+// getDnsIps returns listener addresses to publish as OS nameservers.
 //
-// A loopback listener answers regardless of tunnel state, so it stays first
-// where one exists (macOS); otherwise IPv4 leads.
+// On non-macOS, every bind is published (IPv4 then IPv6) so dual-stack hosts
+// are not left with an unreachable IPv6-only nameserver.
+//
+// On macOS we only publish the loopback listener (127.51.8.21). Overlay WG
+// addresses keep working only while the tunnel is up and cause DNS breakage
+// after exit-node / disconnect; loopback answers regardless of tunnel state.
 func getDnsIps() ([]string, error) {
-	addrs := GetDNSServerInstance().AddrList
+	addrs := GetDNSServerInstance().ListenerAddrs()
 	if len(addrs) == 0 {
 		return nil, errors.New("no listener is running")
 	}
@@ -87,11 +109,30 @@ func getDnsIps() ([]string, error) {
 	}
 
 	ips := orderListenerIPs(addrs)
+	ips = nameserversForOS(ips)
 	if len(ips) == 0 {
 		return nil, errors.New("no usable listener address")
 	}
 
 	return ips, nil
+}
+
+// nameserversForOS filters listener IPs for OS DNS installation.
+// Darwin: loopback only when available; other platforms: unchanged.
+func nameserversForOS(ips []string) []string {
+	if runtime.GOOS != "darwin" {
+		return ips
+	}
+	var loopback []string
+	for _, ip := range ips {
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.IsLoopback() {
+			loopback = append(loopback, ip)
+		}
+	}
+	if len(loopback) > 0 {
+		return loopback
+	}
+	return ips
 }
 
 // orderListenerIPs extracts the IPs from ip:port listener addresses, dropping

@@ -11,7 +11,29 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+// internetGwPeerEndpoint resolves the exit peer's underlay UDP endpoint from
+// HostPeers / better-endpoint cache when the live device peer is not ready yet.
+func internetGwPeerEndpoint(publicKey string) *net.UDPAddr {
+	if pk, err := wgtypes.ParseKey(publicKey); err == nil {
+		if host := config.Netclient(); host != nil {
+			for _, p := range host.HostPeers {
+				if p.PublicKey == pk && p.Endpoint != nil && p.Endpoint.IP != nil {
+					return p.Endpoint
+				}
+			}
+		}
+	}
+	if peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey); err == nil && peer.Endpoint != nil {
+		return peer.Endpoint
+	}
+	if ep, ok := GetBetterEndpoint(publicKey); ok && ep != nil {
+		return ep
+	}
+	return nil
+}
 
 // NCIface.Create - makes a new Wireguard interface for darwin users (userspace)
 func (nc *NCIface) Create() error {
@@ -127,7 +149,7 @@ func SetRoutes(addrs []ifaceAddress) error {
 				cmd = exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
 			}
 
-			if out, err := cmd.CombinedOutput(); err != nil {
+			if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
 				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
 				continue
 			}
@@ -137,7 +159,7 @@ func SetRoutes(addrs []ifaceAddress) error {
 			} else {
 				cmd = exec.Command("route", "add", "-net", "-inet6", addr.Network.String(), addr.IP.String())
 			}
-			if out, err := cmd.CombinedOutput(); err != nil {
+			if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
 				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
 				continue
 			}
@@ -145,6 +167,11 @@ func SetRoutes(addrs []ifaceAddress) error {
 
 	}
 	return nil
+}
+
+func routeAlreadyExists(out []byte) bool {
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "file exists") || strings.Contains(s, "already in table")
 }
 
 func (nc *NCIface) SetMTU() error {
@@ -313,25 +340,11 @@ func resetDefaultRoutesOnHost() error {
 	iface := ncutils.GetInterfaceName()
 	exec.Command("route", "delete", "-net", "-inet", "0.0.0.0/1", "-interface", iface).Run()
 	exec.Command("route", "delete", "-net", "-inet", "128.0.0.0/1", "-interface", iface).Run()
-	exec.Command("route", "delete", "-net", "-inet6", "::/1", "-interface", iface).Run()
-	exec.Command("route", "delete", "-net", "-inet6", "8000::/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface).Run()
 
-	gwVIP := config.Netclient().CurrGwNmIP
-	if len(gwVIP) > 0 {
-		peers, err := GetPeersFromDevice(iface)
-		if err == nil {
-			for _, peer := range peers {
-				for _, allowed := range peer.AllowedIPs {
-					if allowed.IP.Equal(gwVIP) {
-						if peer.Endpoint != nil {
-							exec.Command("route", "delete", peer.Endpoint.IP.String()).Run()
-						}
-						break
-					}
-				}
-			}
-		}
-	}
+	removeUnderlayPins(false, darwinPinOps)
+	removeUnderlayPins(true, darwinPinOps)
 	config.Netclient().CurrGwNmIP = nil
 	config.Netclient().CurrGwNmIP6 = nil
 	config.Netclient().OriginalDefaultGatewayIp = nil
@@ -345,6 +358,8 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 	if IsZeroWGPublicKey(publicKey) {
 		return fmt.Errorf("internet gateway peer public key is empty")
 	}
+	// Resolve+pin API/broker on LAN before 0.0.0.0/0 moves onto the exit.
+	SyncControlPlaneUnderlayPins()
 	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
 	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
@@ -357,30 +372,21 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 }
 
 func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
-	if len(gw4) > 0 {
-		if gw, err := getRouteGateway("default"); err == nil {
-			config.Netclient().OriginalDefaultGatewayIp = gw
-		}
-	}
-	if len(gw6) > 0 {
-		if gw6Orig, err := getRouteGateway("-inet6", "default"); err == nil {
-			config.Netclient().OriginalDefaultGatewayIp6 = gw6Orig
-		} else if gw, err := getRouteGateway("default"); err == nil && gw.To4() == nil {
-			config.Netclient().OriginalDefaultGatewayIp6 = gw
-		}
-	}
-
-	gw := config.Netclient().OriginalDefaultGatewayIp
-	if len(gw) == 0 {
-		var err error
-		gw, err = getRouteGateway("default")
-		if err != nil {
-			return fmt.Errorf("failed to get current gateway: %w", err)
-		}
-		config.Netclient().OriginalDefaultGatewayIp = gw
+	armUnderlayPins()
+	refreshDarwinLANGateways()
+	if len(config.Netclient().OriginalDefaultGatewayIp) == 0 {
+		return fmt.Errorf("failed to get current gateway")
 	}
 
 	peer, err := GetPeer(ncutils.GetInterfaceName(), publicKey)
+	if err != nil || peer.Endpoint == nil {
+		// Right after iface recreate the live device may not have the exit
+		// peer yet. HostPeers still has the underlay endpoint for pinning.
+		if ep := internetGwPeerEndpoint(publicKey); ep != nil {
+			peer.Endpoint = ep
+			err = nil
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to get peer: %w", err)
 	}
@@ -388,9 +394,10 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 		return fmt.Errorf("peer endpoint is nil")
 	}
 
-	if out, err := exec.Command("route", "add", peer.Endpoint.IP.String(), gw.String()).CombinedOutput(); err != nil {
-		slog.Error("failed to add route to endpoint", "output", string(out), "error", err)
-	}
+	// Pin the exit and every other peer underlay BEFORE 0.0.0.0/1. Otherwise
+	// WireGuard UDP to a site-egress gateway is swallowed by the split default
+	// and trombones through the exit (large extra RTT with unchanged TTL).
+	syncDarwinUnderlayPins(publicKey)
 
 	iface := ncutils.GetInterfaceName()
 	run := func(args ...string) {
@@ -406,15 +413,87 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 	}
 
 	if len(gw6) > 0 {
-		run("add", "-net", "-inet6", "::/1", "-interface", iface)
-		run("add", "-net", "-inet6", "8000::/1", "-interface", iface)
+		run("add", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface)
+		run("add", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface)
 		config.Netclient().CurrGwNmIP6 = gw6
 		if len(config.Netclient().CurrGwNmIP) == 0 {
 			config.Netclient().CurrGwNmIP = gw6
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		// IPv4-only exit on a dual-stack host: pull IPv6 off the ISP so Happy
+		// Eyeballs cannot leak. No CurrGwNmIP6 and no peer ::/0 — packets hit
+		// the iface and drop via cryptokey routing; apps fall back to IPv4.
+		logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+		run("add", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface)
+		run("add", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface)
 	}
+
+	// Reinstall more-specific egress CIDRs so they win over 0.0.0.0/1 after IGW
+	// install or monitor recovery (same as Linux table-111 reapply).
+	reapplyCachedEgressRoutes()
 
 	return config.WriteNetclientConfig()
 }
 
-func pinInternetGwHostRoutes(publicKey string) {}
+// pinInternetGwHostRoutes reconciles underlay pins against the current peer
+// set and LAN gateway. Safe (and cheap) to call repeatedly while exit routing
+// is active; pins follow a Wi-Fi/LAN gateway change.
+func pinInternetGwHostRoutes(publicKey string) {
+	refreshDarwinLANGateways()
+	syncDarwinUnderlayPins(publicKey)
+}
+
+// refreshDarwinLANGateways re-reads the LAN default gateways. Exit routing
+// only adds half-defaults on utun, so `route get default` still reports the
+// LAN; the cached value is kept when the lookup fails (e.g. Wi-Fi briefly down).
+func refreshDarwinLANGateways() {
+	nc := config.Netclient()
+	overlay := func(ip net.IP) bool {
+		return ip.Equal(nc.CurrGwNmIP) || ip.Equal(nc.CurrGwNmIP6)
+	}
+	if gw, err := getRouteGateway("default"); err == nil && gw.To4() != nil && !overlay(gw) {
+		nc.OriginalDefaultGatewayIp = gw
+	}
+	if gw, err := getRouteGateway("-inet6", "default"); err == nil && gw.To4() == nil && !overlay(gw) {
+		nc.OriginalDefaultGatewayIp6 = gw
+	}
+}
+
+var darwinPinOps = underlayPinOps{install: installDarwinPin, remove: removeDarwinPin}
+
+func syncDarwinUnderlayPins(publicKey string) {
+	nc := config.Netclient()
+	ips := IGWUnderlayPinIPs(publicKey)
+	prune := canPruneUnderlayPins(publicKey)
+	reconcileUnderlayPins(false, ips, viaGateway(nc.OriginalDefaultGatewayIp), prune, darwinPinOps)
+	reconcileUnderlayPins(true, ips, viaGateway(nc.OriginalDefaultGatewayIp6), prune, darwinPinOps)
+}
+
+func darwinRouteFamily(ip net.IP) string {
+	if ip.To4() != nil {
+		return "-inet"
+	}
+	return "-inet6"
+}
+
+func installDarwinPin(ip net.IP, via string) error {
+	fam := darwinRouteFamily(ip)
+	out, err := exec.Command("route", "-n", "add", fam, "-host", ip.String(), via).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if !routeAlreadyExists(out) {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	// A pre-existing route may point at a gateway from a previous network;
+	// replace it rather than trusting it.
+	removeDarwinPin(ip, "")
+	if out, err = exec.Command("route", "-n", "add", fam, "-host", ip.String(), via).CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+func removeDarwinPin(ip net.IP, _ string) {
+	_ = exec.Command("route", "-n", "delete", darwinRouteFamily(ip), "-host", ip.String()).Run()
+}

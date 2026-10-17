@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime"
 
@@ -60,12 +61,17 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
-		dns.GetDNSServerInstance().Stop()
 		faults = resetInterfaceUninstall(faults)
-		server := config.GetServer(config.CurrServer)
-		if server != nil && server.ManageDNS {
-			dns.GetDNSServerInstance().Start()
+		// Leave never clears host-level CurrGw. Reapply would put 0.0.0.0/0
+		// back through the deleted network's exit peer and black-hole traffic.
+		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+			logger.Log(0, "tearing down internet gateway (leave network)")
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Warn("failed to restore default gateway", "error", err)
+			}
 		}
+		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		dns.ReconfigureNow(config.GetServer(node.Server))
 	} else { // was called from CLI so restart daemon
 		if err := daemon.Restart(); err != nil {
 			faults = append(faults, fmt.Errorf("could not restart daemon after leave - %v", err.Error()))
@@ -129,6 +135,7 @@ func deleteLocalNetwork(node *config.Node) error {
 	if nodetodelete.Network == "" {
 		return errors.New("no such network")
 	}
+	callForgetDesiredNetwork(node.Network)
 	//remove node from nodes map
 	config.DeleteNode(node.Network)
 	server := config.GetServer(node.Server)

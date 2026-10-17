@@ -58,6 +58,7 @@ server: netclient register -s <server> // join a specific server via SSO if Oaut
 net: netclient register -s <server> -n <net> // attempt to join specified network via auth
 all-networks: netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
 user: netclient register -s <server> -u <user_name> // attempt to join/register via basic auth`,
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		validateArgs(cmd)
 		setHostFields(cmd)

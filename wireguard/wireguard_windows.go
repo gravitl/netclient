@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -355,6 +356,8 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 	if IsZeroWGPublicKey(publicKey) {
 		return fmt.Errorf("internet gateway peer public key is empty")
 	}
+	// Resolve+pin API/broker on LAN before 0.0.0.0/0 moves onto the exit.
+	SyncControlPlaneUnderlayPins()
 	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
 	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
@@ -367,6 +370,7 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 }
 
 func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
+	armUnderlayPins()
 	var firstErr error
 	if len(gw4) > 0 {
 		if err := setInternetGwV4(publicKey, gw4); err != nil {
@@ -381,8 +385,39 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 				firstErr = err
 			}
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		if err := blockIPv6LeakOnIGW(); err != nil {
+			slog.Error("failed to divert IPv6 off ISP for IPv4-only exit", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
+	// Reinstall more-specific egress CIDRs so they win over on-link 0.0.0.0/0
+	// after IGW install or monitor recovery.
+	reapplyCachedEgressRoutes()
 	return firstErr
+}
+
+// blockIPv6LeakOnIGW pulls IPv6 off the ISP when the exit is IPv4-only.
+// On-link ::/0 via netmaker wins over the LAN default; without peer ::/0
+// AllowedIPs traffic fails closed and apps fall back to IPv4 via the exit.
+func blockIPv6LeakOnIGW() error {
+	logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(addGwCmd, false)
+	if err != nil && !isNetshAlreadyExists(out) {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
+	}
+	return nil
+}
+
+func clearIPv6LeakOnIGW() {
+	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPv6Network, ncutils.GetInterfaceName())
+	out, err := ncutils.RunCmd(delCmd, false)
+	if err != nil && !isNetshNotFound(err, out) {
+		slog.Warn("failed to clear IPv6 leak-block route", "error", err, "out", strings.TrimSpace(out))
+	}
 }
 
 // setInternetGwV6 - set a new default gateway and the route to Internet Gw's ip address
@@ -424,19 +459,10 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 				}
 			}
 		}
-
-		igwHostIPs := InternetGwHostIPs(publicKey)
-		for _, hostIP := range igwHostIPs {
-			if hostIP.To4() != nil {
-				continue
-			}
-			destination := hostIP.String() + "/128"
-			gwRouteCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s nexthop=%s store=active metric=1", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]), ipString)
-			_, err = ncutils.RunCmd(gwRouteCmd, true)
-			if err != nil {
-				slog.Error("Failed to add route to gateway", "error", err.Error())
-			}
-		}
+	}
+	if lan, ok := lanDefaultRoute(true, networkIP); ok {
+		config.Netclient().OriginalDefaultGatewayIp6 = lan.gw
+		syncWindowsUnderlayPins(true, publicKey, lan)
 	}
 
 	//add new gateway route with metric 0 for setting to top priority, on-link so
@@ -462,16 +488,14 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 // routing.
 func setInternetGwV4(publicKey string, networkIP net.IP) error {
 	if lan, ok := lanDefaultRouteV4(networkIP); ok {
-		if len(config.Netclient().OriginalDefaultGatewayIp) == 0 {
-			config.Netclient().OriginalDefaultGatewayIp = lan.gw
-		}
+		config.Netclient().OriginalDefaultGatewayIp = lan.gw
 		if lan.metric == "0" {
 			setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=50", IPv4Network, lan.ifaceIdx, lan.gw)
 			if _, err := ncutils.RunCmd(setGwCmd, false); err != nil {
 				slog.Error("Failed to set original gateway route metric", "error", err.Error())
 			}
 		}
-		pinHostIPsViaLanV4(InternetGwHostIPs(publicKey), lan)
+		syncWindowsUnderlayPins(false, publicKey, lan)
 	} else {
 		slog.Warn("no LAN default gateway found; exit-node underlay cannot be pinned",
 			"public_key_prefix", publicKey[:min(8, len(publicKey))])
@@ -492,77 +516,127 @@ func setInternetGwV4(publicKey string, networkIP net.IP) error {
 	return config.WriteNetclientConfig()
 }
 
-// lanRouteV4 describes the pre-exit (underlay) IPv4 default route.
+// lanRouteV4 describes the pre-exit (underlay) default route of one family.
 type lanRouteV4 struct {
 	ifaceIdx string
 	gw       net.IP
 	metric   string
 }
 
-// pinHostIPsViaLanV4 adds /32 routes for exit underlay IPs via the LAN gateway.
-func pinHostIPsViaLanV4(hostIPs []net.IP, lan lanRouteV4) {
-	pinned := 0
-	for _, hostIP := range hostIPs {
-		if hostIP.To4() == nil {
-			continue
-		}
-		destination := hostIP.String() + "/32"
-		gwRouteCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s nexthop=%s store=active metric=1", destination, lan.ifaceIdx, lan.gw)
-		out, err := ncutils.RunCmd(gwRouteCmd, false)
-		if err != nil && !isNetshAlreadyExists(out) {
-			slog.Error("Failed to pin exit-node underlay route", "destination", destination,
-				"error", err.Error(), "out", strings.TrimSpace(out))
-			continue
-		}
-		slog.Info("pinning exit-node underlay via LAN gateway", "cmd", gwRouteCmd)
-		pinned++
+func (l lanRouteV4) via() string { return l.ifaceIdx + "|" + l.gw.String() }
+
+var windowsPinOps = underlayPinOps{install: installWindowsPin, remove: removeWindowsPin}
+
+func netshFamily(ip net.IP) (family, prefix string) {
+	if ip.To4() != nil {
+		return "ipv4", "/32"
 	}
-	if pinned == 0 {
-		slog.Warn("no exit-node underlay host route pinned; WireGuard/TCP underlay may be blackholed",
-			"candidates", len(hostIPs))
-	}
+	return "ipv6", "/128"
 }
 
-// pinInternetGwHostRoutes adds LAN /32 routes for exit underlay IPs without
-// changing 0.0.0.0/0. Safe to call when exit routing is already installed.
-func pinInternetGwHostRoutes(publicKey string) {
-	lan, ok := lanDefaultRouteV4(config.Netclient().CurrGwNmIP)
+func installWindowsPin(ip net.IP, via string) error {
+	idx, gw, ok := strings.Cut(via, "|")
 	if !ok {
-		slog.Debug("skip exit-node host pin refresh; LAN gateway not found")
-		return
+		return fmt.Errorf("malformed pin next hop %q", via)
 	}
-	pinHostIPsViaLanV4(InternetGwHostIPs(publicKey), lan)
+	fam, prefix := netshFamily(ip)
+	addCmd := fmt.Sprintf("netsh int %s add route %s%s interface=%s nexthop=%s store=active metric=1", fam, ip, prefix, idx, gw)
+	out, err := ncutils.RunCmd(addCmd, false)
+	if err == nil {
+		return nil
+	}
+	if !isNetshAlreadyExists(out) {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
+	}
+	// A pre-existing route may point at a gateway from a previous network;
+	// replace it rather than trusting it.
+	removeWindowsPin(ip, "")
+	if out, err = ncutils.RunCmd(addCmd, false); err != nil {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
+	}
+	return nil
 }
 
-// lanDefaultRouteV4 returns the underlay IPv4 default route, ignoring any
-// 0.0.0.0/0 row that belongs to the netmaker interface or points at the overlay
-// nexthop. Needed because once exit routing is installed the netmaker row has
-// the lowest metric and would otherwise be picked as the "LAN" gateway.
+// removeWindowsPin deletes the pin without an interface filter when via is
+// unknown: once 0.0.0.0/0 is on netmaker, getDefaultGateway returns the
+// netmaker row, so an interface-scoped delete would silently miss the pin.
+func removeWindowsPin(ip net.IP, via string) {
+	fam, prefix := netshFamily(ip)
+	delCmd := fmt.Sprintf("netsh int %s delete route %s%s store=active", fam, ip, prefix)
+	if idx, gw, ok := strings.Cut(via, "|"); ok {
+		delCmd = fmt.Sprintf("netsh int %s delete route %s%s interface=%s nexthop=%s store=active", fam, ip, prefix, idx, gw)
+	}
+	out, err := ncutils.RunCmd(delCmd, false)
+	if err != nil && !isNetshNotFound(err, out) {
+		slog.Warn("Failed to delete exit-node host route", "cmd", delCmd,
+			"error", err, "out", strings.TrimSpace(out))
+	}
+}
+
+// syncWindowsUnderlayPins pins the exit's underlay IPs of one family via lan.
+func syncWindowsUnderlayPins(v6 bool, publicKey string, lan lanRouteV4) {
+	via := lan.via()
+	reconcileUnderlayPins(v6, IGWUnderlayPinIPs(publicKey), func(net.IP) string { return via },
+		canPruneUnderlayPins(publicKey), windowsPinOps)
+}
+
+// pinInternetGwHostRoutes reconciles LAN host routes for exit underlay IPs
+// without changing 0.0.0.0/0. Safe to call repeatedly while exit routing is
+// installed; pins follow a LAN gateway change.
+func pinInternetGwHostRoutes(publicKey string) {
+	nc := config.Netclient()
+	if len(nc.CurrGwNmIP) > 0 && nc.CurrGwNmIP.To4() != nil {
+		if lan, ok := lanDefaultRoute(false, nc.CurrGwNmIP); ok {
+			nc.OriginalDefaultGatewayIp = lan.gw
+			syncWindowsUnderlayPins(false, publicKey, lan)
+		} else {
+			slog.Debug("skip exit-node IPv4 host pin refresh; LAN gateway not found")
+		}
+	}
+	if len(nc.CurrGwNmIP6) > 0 {
+		if lan, ok := lanDefaultRoute(true, nc.CurrGwNmIP6); ok {
+			nc.OriginalDefaultGatewayIp6 = lan.gw
+			syncWindowsUnderlayPins(true, publicKey, lan)
+		}
+	}
+}
+
+// lanDefaultRouteV4 returns the underlay IPv4 default route; see lanDefaultRoute.
 func lanDefaultRouteV4(overlayGw net.IP) (lanRouteV4, bool) {
+	return lanDefaultRoute(false, overlayGw)
+}
+
+// lanDefaultRoute returns the underlay default route of one family, ignoring
+// any default row that belongs to the netmaker interface or points at the
+// overlay nexthop. Needed because once exit routing is installed the netmaker
+// row has the lowest metric and would otherwise be picked as the "LAN" gateway.
+func lanDefaultRoute(v6 bool, overlayGw net.IP) (lanRouteV4, bool) {
 	var best lanRouteV4
 	var bestMetric = math.MaxInt32
 	nmIdx := -1
 	if iface, err := net.InterfaceByName(ncutils.GetInterfaceName()); err == nil {
 		nmIdx = iface.Index
 	}
+	showCmd, network := "netsh int ipv4 show route", IPv4Network
 	orig := config.Netclient().OriginalDefaultGatewayIp
+	if v6 {
+		showCmd, network = "netsh int ipv6 show route", IPv6Network
+		orig = config.Netclient().OriginalDefaultGatewayIp6
+	}
 
-	input, err := ncutils.RunCmd("netsh int ipv4 show route", false)
+	input, err := ncutils.RunCmd(showCmd, false)
 	if err != nil {
 		return best, false
 	}
 	lines := strings.FieldsFunc(input, func(r rune) bool { return r == '\r' || r == '\n' })
 	for _, l := range lines {
-		if !strings.Contains(l, IPv4Network) {
-			continue
-		}
 		fields := strings.Fields(l)
-		if len(fields) < 5 {
+		if len(fields) < 5 || !slices.Contains(fields, network) {
 			continue
 		}
 		gw := net.ParseIP(strings.TrimSpace(fields[len(fields)-1]))
 		// On-link rows carry an interface name here, not a usable nexthop.
-		if gw == nil || gw.To4() == nil {
+		if gw == nil || (gw.To4() == nil) != v6 {
 			continue
 		}
 		idx := strings.TrimSpace(fields[len(fields)-2])
@@ -608,6 +682,12 @@ func resetDefaultRoutesOnHost() error {
 		if err := restoreInternetGwV4(); err != nil {
 			firstErr = err
 		}
+		// IPv4-only exit may have installed IPv6 divert with no CurrGwNmIP6.
+		// When a real gw6 was also set, restoreInternetGwV6 removes the same
+		// on-link ::/0 — clearIPv6LeakOnIGW is idempotent either way.
+		if !needV6 {
+			clearIPv6LeakOnIGW()
+		}
 	}
 	if needV6 {
 		if err := restoreInternetGwV6(); err != nil && firstErr == nil {
@@ -626,15 +706,6 @@ func restoreInternetGwV6() (err error) {
 	if err != nil {
 		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
 		return err
-	}
-
-	var destination string
-	for _, peer := range config.Netclient().HostPeers {
-		for _, allowedIP := range peer.AllowedIPs {
-			if allowedIP.String() == IPv6Network {
-				destination = peer.Endpoint.IP.String() + "/128"
-			}
-		}
 	}
 
 	//get current default gateway route
@@ -656,16 +727,9 @@ func restoreInternetGwV6() (err error) {
 				slog.Error("netsh int ipv6 set route ::/0 interface=<Idx> nexthop=<ipv6 address> store=active metric=0", "error")
 			}
 		}
-
-		if destination != "" {
-			delCmd := fmt.Sprintf("netsh int ipv6 delete route %s %s store=active", destination, strings.TrimSpace(gwRoute[len(gwRoute)-2]))
-			_, err = ncutils.RunCmd(delCmd, true)
-			if err != nil {
-				slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
-				return err
-			}
-		}
 	}
+
+	removeUnderlayPins(true, windowsPinOps)
 
 	config.Netclient().CurrGwNmIP6 = net.ParseIP("")
 	if curr := config.Netclient().CurrGwNmIP; curr != nil && curr.To4() == nil {
@@ -685,32 +749,6 @@ func restoreInternetGwV4() (err error) {
 		return err
 	}
 
-	var destinations []string
-	seen := map[string]struct{}{}
-	for _, peer := range config.Netclient().HostPeers {
-		hasDefault := false
-		for _, allowedIP := range peer.AllowedIPs {
-			if allowedIP.String() == IPv4Network {
-				hasDefault = true
-				break
-			}
-		}
-		if !hasDefault {
-			continue
-		}
-		for _, ip := range InternetGwHostIPs(peer.PublicKey.String()) {
-			if ip.To4() == nil {
-				continue
-			}
-			d := ip.String() + "/32"
-			if _, ok := seen[d]; ok {
-				continue
-			}
-			seen[d] = struct{}{}
-			destinations = append(destinations, d)
-		}
-	}
-
 	// Restore the LAN default route to metric 0 (exit setup demoted it to 50).
 	if lan, ok := lanDefaultRouteV4(config.Netclient().CurrGwNmIP); ok && lan.metric != "0" {
 		setGwCmd := fmt.Sprintf("netsh int ipv4 set route %s interface=%s nexthop=%s store=active metric=0", IPv4Network, lan.ifaceIdx, lan.gw)
@@ -720,17 +758,7 @@ func restoreInternetGwV4() (err error) {
 		}
 	}
 
-	// Delete pins without an interface filter: once 0.0.0.0/0 is on netmaker,
-	// getDefaultGateway returns the netmaker row, so an interface-scoped delete
-	// silently misses the pins and the next add fails with "already exists".
-	for _, destination := range destinations {
-		delCmd := fmt.Sprintf("netsh int ipv4 delete route %s store=active", destination)
-		out, delErr := ncutils.RunCmd(delCmd, false)
-		if delErr != nil && !isNetshNotFound(delErr, out) {
-			slog.Warn("Failed to delete exit-node host route", "destination", destination,
-				"error", delErr, "out", strings.TrimSpace(out))
-		}
-	}
+	removeUnderlayPins(false, windowsPinOps)
 
 	config.Netclient().CurrGwNmIP = net.ParseIP("")
 	return config.WriteNetclientConfig()

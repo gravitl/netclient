@@ -14,6 +14,7 @@ var useCmd = &cobra.Command{
 	Short: "use a specific version of netclient",
 	Long: `use a specific version of netclient if available
 For example:- netclient use v0.18.0`,
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		skip, err := functions.UseVersion(args[0], true)
 		if skip {

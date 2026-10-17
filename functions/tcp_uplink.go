@@ -448,14 +448,10 @@ func flipTCPUplinkWireGuardMode() {
 	wireguard.ReapplyInternetGwAfterIfaceRecreate()
 
 	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return
+	if server != nil {
+		reconcileTCPUplink(server, nil)
 	}
-	reconcileTCPUplink(server, nil)
-	if server.ManageDNS {
-		dns.GetDNSServerInstance().Stop()
-		dns.GetDNSServerInstance().Start()
-	}
+	dns.ReconfigureNow(server)
 	select {
 	case wireguard.EgressResetCh <- struct{}{}:
 	default:

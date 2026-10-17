@@ -1,12 +1,78 @@
 package wireguard
 
 import (
+	"net"
 	"testing"
 	"time"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+func TestSetUnhealthyInvokesOnIGWUnhealthyHook(t *testing.T) {
+	prev := OnIGWUnhealthy
+	t.Cleanup(func() { OnIGWUnhealthy = prev })
+
+	done := make(chan string, 1)
+	OnIGWUnhealthy = func(pk string) { done <- pk }
+
+	s := &igwStatus{isHealthy: true, publicKey: "peer-key-abc"}
+	s.setUnhealthy(nil)
+	if s.isHealthy {
+		t.Fatal("expected unhealthy")
+	}
+	select {
+	case pk := <-done:
+		if pk != "peer-key-abc" {
+			t.Fatalf("hook public key = %q", pk)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnIGWUnhealthy was not called")
+	}
+}
+
+// Failover talks to the API, which needs DNS switched back to split mode first.
+func TestSetUnhealthyReappliesDNSBeforeFailover(t *testing.T) {
+	prevRouting, prevUnhealthy := OnIGWRoutingChanged, OnIGWUnhealthy
+	t.Cleanup(func() { OnIGWRoutingChanged, OnIGWUnhealthy = prevRouting, prevUnhealthy })
+
+	order := make(chan string, 2)
+	OnIGWRoutingChanged = func() { order <- "dns" }
+	OnIGWUnhealthy = func(string) { order <- "failover" }
+
+	s := &igwStatus{isHealthy: true, publicKey: "peer-key-abc"}
+	s.setUnhealthy(nil)
+	for _, want := range []string{"dns", "failover"} {
+		select {
+		case got := <-order:
+			if got != want {
+				t.Fatalf("hook order: got %q, want %q", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("hook %q was not called", want)
+		}
+	}
+}
 
 // A single failed sample must never tear exit routing down: every iface rebuild
 // has a window where the device is up with no peers configured yet.
+func TestNoHandshakeDeclaresUnhealthyAfterGrace(t *testing.T) {
+	s := &igwStatus{isHealthy: true, startedAt: time.Now()}
+	var peer wgtypes.Peer
+	if got := s.noHandshakeAction(peer); got != "grace" {
+		t.Fatalf("no handshake during grace = %q, want grace", got)
+	}
+
+	s.startedAt = time.Now().Add(-2 * IGWStartupGrace)
+	if got := s.noHandshakeAction(peer); got != "unhealthy" {
+		t.Fatalf("no handshake after grace = %q, want unhealthy", got)
+	}
+
+	peer.LastHandshakeTime = time.Now()
+	if got := s.noHandshakeAction(peer); got != "" {
+		t.Fatalf("peer with a handshake = %q, want normal checks", got)
+	}
+}
+
 func TestNoteFailureRespectsGraceAndThreshold(t *testing.T) {
 	s := &igwStatus{isHealthy: true, startedAt: time.Now()}
 
@@ -73,5 +139,61 @@ func TestBeginIfaceRebuildGatesChecks(t *testing.T) {
 	}
 	if !igwRearmPending.Load() {
 		t.Error("startup grace not re-armed after the rebuild finished")
+	}
+}
+
+// An interface carrying only link-local or loopback addresses cannot source
+// overlay traffic, so the exit path is dead however alive the peer looks.
+func TestAnySourceAddr(t *testing.T) {
+	cases := []struct {
+		name string
+		ips  []string
+		want bool
+	}{
+		{"overlay v4", []string{"100.121.42.9"}, true},
+		{"overlay v6 ula", []string{"fd3c:1a93:2fa8:7ba5::9"}, true},
+		{"link-local only", []string{"fe80::1"}, false},
+		{"loopback only", []string{"127.0.0.1"}, false},
+		{"unspecified only", []string{"0.0.0.0"}, false},
+		{"none", nil, false},
+		{"link-local plus overlay", []string{"fe80::1", "100.121.42.9"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ips := make([]net.IP, 0, len(tc.ips))
+			for _, s := range tc.ips {
+				ip := net.ParseIP(s)
+				if ip == nil {
+					t.Fatalf("bad test ip %q", s)
+				}
+				ips = append(ips, ip)
+			}
+			if got := anySourceAddr(ips); got != tc.want {
+				t.Fatalf("anySourceAddr(%v) = %v, want %v", tc.ips, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShouldBlockIPv6Leak(t *testing.T) {
+	v4 := net.ParseIP("100.121.42.5")
+	v6 := net.ParseIP("fd3c:1a93:2fa8:7ba5::5")
+	cases := []struct {
+		name string
+		gw4  net.IP
+		gw6  net.IP
+		want bool
+	}{
+		{"ipv4-only exit", v4, nil, true},
+		{"dual-stack exit", v4, v6, false},
+		{"ipv6-only exit", nil, v6, false},
+		{"no exit", nil, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldBlockIPv6Leak(tc.gw4, tc.gw6); got != tc.want {
+				t.Fatalf("shouldBlockIPv6Leak(%v,%v)=%v want %v", tc.gw4, tc.gw6, got, tc.want)
+			}
+		})
 	}
 }

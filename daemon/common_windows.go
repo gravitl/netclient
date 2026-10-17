@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -15,21 +16,25 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-var serviceConfigPath = config.GetNetclientPath() + "winsw.xml"
+func serviceConfigPath() string {
+	return config.GetNetclientInstallDir() + "winsw.xml"
+}
 
 // install - sets up the Windows daemon service
 func install() error {
+	if err := config.CopyWindowsLegacyState(); err != nil {
+		logger.Log(0, "failed to copy legacy windows config:", err.Error())
+	}
+	if err := os.MkdirAll(config.GetNetclientInstallDir(), 0755); err != nil {
+		return fmt.Errorf("failed to create installation directory: %w", err)
+	}
+	stopLegacyService()
 	if err := writeServiceConfig(); err != nil {
 		os.Exit(3)
 		return err
 	}
 
-	// Ensure the installation directory exists
 	installPath := config.GetNetclientInstallPath()
-	installDir := filepath.Dir(installPath)
-	if err := os.MkdirAll(installDir, 0755); err != nil {
-		return fmt.Errorf("failed to create installation directory: %w", err)
-	}
 
 	binarypath, err := os.Executable()
 	if err != nil {
@@ -60,22 +65,14 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	// Always try to stop and uninstall existing service before installing
-	// This prevents "service already exists" errors
-	slog.Info("ensuring any existing service is stopped and uninstalled before installation")
-	_ = runWinSWCMD("stop")
-	time.Sleep(time.Second * 2)
-	_ = runWinSWCMD("uninstall")
-	time.Sleep(time.Second * 2)
+	// The existing service may still be the old WinSW under Program Files (x86).
+	// The new wrapper cannot stop that registration (error 1061), and then
+	// install fails because the service id is taken (error 1073).
+	deleteWindowsService()
 
-	// Now install the service
 	if err = runWinSWCMD("install"); err != nil {
-		// If install still fails, try one more time with stop/uninstall
-		slog.Warn("service install failed, retrying after stop/uninstall", "error", err)
-		_ = runWinSWCMD("stop")
-		time.Sleep(time.Second * 2)
-		_ = runWinSWCMD("uninstall")
-		time.Sleep(time.Second * 2)
+		slog.Warn("service install failed, retrying after removing the existing service", "error", err)
+		deleteWindowsService()
 		if err = runWinSWCMD("install"); err != nil {
 			return fmt.Errorf("failed to install service: %w", err)
 		}
@@ -117,7 +114,7 @@ func cleanUp() error {
 	var allErrors []string
 
 	// Write service config if it doesn't exist (needed for uninstall)
-	if ncutils.FileExists(serviceConfigPath) {
+	if ncutils.FileExists(serviceConfigPath()) {
 		_ = writeServiceConfig()
 	} else {
 		// If config doesn't exist, try to create it from the install path
@@ -127,6 +124,9 @@ func cleanUp() error {
 			_ = writeServiceConfig()
 		}
 	}
+
+	// The service may still be the pre-split WinSW under Program Files (x86).
+	stopLegacyService()
 
 	// Stop the service first
 	slog.Info("stopping netclient service")
@@ -155,39 +155,21 @@ func cleanUp() error {
 	// Wait a bit more to ensure all file handles are released
 	time.Sleep(time.Second * 2)
 
-	// Remove the netclient directory and all files
-	netclientPath := config.GetNetclientPath()
-	slog.Info("removing netclient files", "path", netclientPath)
-
-	// Try to remove files directly first
-	if err := os.RemoveAll(netclientPath); err != nil {
-		slog.Warn("failed to remove netclient directory directly", "error", err, "path", netclientPath)
-		allErrors = append(allErrors, fmt.Sprintf("failed to remove directory: %v", err))
-
-		// If direct removal fails, try using PowerShell to force delete
-		// This handles locked files better than os.RemoveAll
-		slog.Info("attempting PowerShell deletion for locked files")
-		psCmd := fmt.Sprintf("Get-ChildItem -Path '%s' -Recurse | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; if (Test-Path '%s') { $fso = New-Object -ComObject Scripting.FileSystemObject; $fso.DeleteFolder('%s', $true) }", netclientPath, netclientPath, netclientPath)
-		winCmd := fmt.Sprintf(`powershell -NoProfile -ExecutionPolicy Bypass -Command "%s"`, psCmd)
-		_, err2 := ncutils.RunCmdFormatted(winCmd, false)
-		if err2 != nil {
-			slog.Warn("PowerShell deletion also failed", "error", err2)
-			allErrors = append(allErrors, fmt.Sprintf("PowerShell deletion failed: %v", err2))
-		} else {
-			slog.Info("PowerShell deletion completed")
-		}
-	} else {
-		slog.Info("successfully removed netclient directory")
+	dirs := []string{
+		config.GetNetclientPath(),
+		config.GetNetclientInstallDir(),
+		config.WindowsLegacyDir,
 	}
-
-	// Also try to remove the installed binary if it's in a different location
-	installPath := config.GetNetclientInstallPath()
-	if installPath != netclientPath+"netclient.exe" {
-		if err := os.Remove(installPath); err != nil && !os.IsNotExist(err) {
-			slog.Warn("failed to remove installed binary", "error", err, "path", installPath)
-			allErrors = append(allErrors, fmt.Sprintf("failed to remove binary: %v", err))
+	dataDir := strings.TrimRight(config.GetNetclientPath(), `\/`)
+	for _, dir := range dirs {
+		err := removeInstallTree(dir)
+		// The install folder is still locked by this process. The delayed sweep
+		// removes it. A failed config-directory delete is a real error.
+		if err != nil && strings.TrimRight(dir, `\/`) == dataDir {
+			allErrors = append(allErrors, err.Error())
 		}
 	}
+	scheduleTreeRemoval(dirs...)
 
 	if len(allErrors) > 0 {
 		return fmt.Errorf("uninstall completed with errors: %s", strings.Join(allErrors, "; "))
@@ -249,7 +231,7 @@ func writeServiceConfig() error {
 	// Configure log path to preserve logs across restarts
 	// Note: GetNetclientPath() already returns paths with single backslashes
 	// (the \\ in source code is just Go's escape sequence)
-	executablePath := config.GetNetclientPath() + "netclient.exe"
+	executablePath := config.GetNetclientInstallPath()
 	workingDir := config.GetNetclientPath()
 	logPath := config.GetNetclientPath() + "logs"
 	// WinSW creates log files based on the wrapper executable name (winsw.exe -> winsw.out.log, winsw.err.log)
@@ -277,8 +259,8 @@ func writeServiceConfig() error {
 </service>
 `, executablePath, workingDir, logPath)
 	// Always write/update the config to ensure log settings are correct
-	fileExisted := ncutils.FileExists(serviceConfigPath)
-	err := os.WriteFile(serviceConfigPath, []byte(scriptString), 0600)
+	fileExisted := ncutils.FileExists(serviceConfigPath())
+	err := os.WriteFile(serviceConfigPath(), []byte(scriptString), 0600)
 	if err != nil {
 		return err
 	}
@@ -292,7 +274,7 @@ func writeServiceConfig() error {
 
 // runWinSWCMD - Run a command with the winsw.exe tool (start, stop, install, uninstall)
 func runWinSWCMD(command string) error {
-	if !ncutils.FileExists(serviceConfigPath) {
+	if !ncutils.FileExists(serviceConfigPath()) {
 		return nil
 	}
 
@@ -313,7 +295,7 @@ func runWinSWCMD(command string) error {
 	// Note: GetNetclientPath() already returns paths with single backslashes
 	// WinSW automatically finds winsw.xml in the same directory as winsw.exe
 	// Log files are named based on the wrapper executable: winsw.out.log and winsw.err.log
-	dirPath := config.GetNetclientPath()
+	dirPath := config.GetNetclientInstallDir()
 	winCmd := fmt.Sprintf(`"%swinsw.exe" %s`, dirPath, command)
 	logger.Log(1, "running "+command+" of Windows Netclient daemon")
 	// run command and log for success/failure
@@ -333,6 +315,84 @@ func runWinSWCMD(command string) error {
 		logger.Log(1, "successfully ran "+command+" of Windows Netclient daemon")
 	}
 	return err
+}
+
+// deleteWindowsService removes the netclient service by name, including one
+// registered by the old Program Files (x86) WinSW.
+func deleteWindowsService() {
+	slog.Info("removing existing netclient service if present")
+	stopOut, stopErr := exec.Command("sc.exe", "stop", "netclient").CombinedOutput()
+	if stopErr != nil && !serviceControlBenign(stopOut, stopErr) {
+		logger.Log(0, "sc stop netclient:", strings.TrimSpace(string(stopOut)))
+	}
+	time.Sleep(time.Second * 2)
+	delOut, delErr := exec.Command("sc.exe", "delete", "netclient").CombinedOutput()
+	if delErr != nil && !serviceControlBenign(delOut, delErr) {
+		logger.Log(0, "sc delete netclient:", strings.TrimSpace(string(delOut)))
+	}
+	time.Sleep(time.Second)
+}
+
+func serviceControlBenign(out []byte, err error) bool {
+	msg := strings.ToLower(string(out) + " " + err.Error())
+	return strings.Contains(msg, "1060") ||
+		strings.Contains(msg, "1062") ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "has not been started")
+}
+
+// stopLegacyService removes the WinSW registration that still lives under
+// Program Files (x86), so a new install can register the Program Files service.
+func stopLegacyService() {
+	winsw := config.WindowsLegacyDir + "winsw.exe"
+	if !ncutils.FileExists(winsw) {
+		return
+	}
+	slog.Info("stopping legacy netclient service", "path", winsw)
+	_, _ = ncutils.RunCmdFormatted(fmt.Sprintf(`"%s" stop`, winsw), false)
+	time.Sleep(time.Second * 2)
+	_, _ = ncutils.RunCmdFormatted(fmt.Sprintf(`"%s" uninstall`, winsw), false)
+	time.Sleep(time.Second * 2)
+}
+
+// scheduleTreeRemoval deletes leftover install folders after this process
+// exits. The uninstall command itself is running from Program Files\Netclient.
+func scheduleTreeRemoval(dirs ...string) {
+	script := "timeout /t 8 /nobreak >nul"
+	for _, dir := range dirs {
+		dir = strings.TrimRight(dir, `\/`)
+		if dir == "" {
+			continue
+		}
+		script += fmt.Sprintf(` & if exist "%s" rd /s /q "%s"`, dir, dir)
+	}
+	cmd := exec.Command("cmd.exe", "/C", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008}
+	if err := cmd.Start(); err != nil {
+		slog.Warn("failed to schedule leftover folder removal", "error", err)
+	}
+}
+
+func removeInstallTree(dir string) error {
+	dir = strings.TrimRight(dir, `\/`)
+	if dir == "" {
+		return nil
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil
+	}
+	slog.Info("removing netclient files", "path", dir)
+	if err := os.RemoveAll(dir); err == nil {
+		return nil
+	} else {
+		slog.Warn("failed to remove netclient directory directly", "error", err, "path", dir)
+		psCmd := fmt.Sprintf("Get-ChildItem -Path '%s' -Recurse | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; if (Test-Path '%s') { $fso = New-Object -ComObject Scripting.FileSystemObject; $fso.DeleteFolder('%s', $true) }", dir, dir, dir)
+		winCmd := fmt.Sprintf(`powershell -NoProfile -ExecutionPolicy Bypass -Command "%s"`, psCmd)
+		if _, err2 := ncutils.RunCmdFormatted(winCmd, false); err2 != nil {
+			return fmt.Errorf("failed to remove %s: %v", dir, err2)
+		}
+	}
+	return nil
 }
 
 // GetInitType - returns the init type (not applicable for windows)
