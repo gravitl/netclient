@@ -136,7 +136,7 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			// Detect underlay IP changes via STUN on an ephemeral port. Do not STUN on
 			// ListenPort here — WireGuard already owns it, so binding would fail.
 			// Public listen port is only discovered at iface create (startGoRoutines).
-			if config.Netclient().IsStatic || wireguard.IGWRoutingActive() {
+			if config.Netclient().IsStatic || wireguard.IGWRoutingActive() || isRelayedOnSingleNetwork() {
 				continue
 			}
 			restart := false

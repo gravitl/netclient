@@ -30,6 +30,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
@@ -296,8 +297,20 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	// Hole punch only when at least one of endpoint/port is dynamic. Apply STUN
 	// results independently: static endpoint keeps configured IPs; static port
 	// keeps ListenPort as the public port (already set above).
-	needEndpointUpdate := !netclientCfg.IsStatic
-	needPortUpdate := !netclientCfg.IsStaticPort
+	// Relayed hosts reach peers through the relay, so their own public
+	// endpoint is unused: skip STUN and public IP detection.
+	relayed := isRelayedOnSingleNetwork()
+	needEndpointUpdate := !netclientCfg.IsStatic && !relayed
+	needPortUpdate := !netclientCfg.IsStaticPort && !relayed
+	if relayed {
+		slog.Info("host is relayed, skipping stun and public ip detection")
+		if netclientCfg.EndpointIP != nil {
+			config.HostPublicIP = netclientCfg.EndpointIP
+		}
+		if netclientCfg.EndpointIPv6 != nil {
+			config.HostPublicIP6 = netclientCfg.EndpointIPv6
+		}
+	}
 	if needEndpointUpdate || needPortUpdate {
 		pubIP4, pubPort4, natType4 := holePunchWgPort(4, netclientCfg.ListenPort)
 		pubIP6, pubPort6, natType6 := holePunchWgPort(6, netclientCfg.ListenPort)
@@ -474,6 +487,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		}
 	} else {
 		dns.GetDNSServerInstance().Stop()
+	}
+	if pullresp.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(pullresp.AddressIdentityMap, pullresp.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 	go func() {
 		time.Sleep(time.Second * 45)
@@ -778,6 +798,13 @@ func publicIPForProto(ip net.IP, proto int) net.IP {
 		return nil
 	}
 	return ip
+}
+
+// isRelayedOnSingleNetwork returns true when the host is connected to exactly one network
+// and its node in that network is relayed.
+func isRelayedOnSingleNetwork() bool {
+	active := config.GetConnectedNodes()
+	return len(active) == 1 && active[0].IsRelayed && active[0].RelayedBy != ""
 }
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {

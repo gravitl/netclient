@@ -81,6 +81,19 @@ func AnyNodeConnected() bool {
 	return false
 }
 
+// GetConnectedNodes returns the nodes that are connected to their network
+func GetConnectedNodes() []Node {
+	nodeMutex.RLock()
+	defer nodeMutex.RUnlock()
+	var nodes []Node
+	for _, node := range Nodes {
+		if node.Connected {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
 // GetNode returns returns the node configuation of the specified network name
 func GetNode(k string) Node {
 	nodeMutex.RLock()

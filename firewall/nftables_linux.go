@@ -17,6 +17,7 @@ import (
 	"github.com/google/nftables/expr"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
@@ -1241,11 +1242,11 @@ func (n *nftablesManager) addJumpRules() {
 			Table: filterTable,
 			Chain: &nftables.Chain{Name: aclInputRulesChain},
 			Exprs: []expr.Any{
-				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                        // Match incoming interface
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString("netmaker")},         // Match interface name
-				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2}, // Match TCP destination port
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: portB},                                    // Port little-endian format
-				&expr.Verdict{Kind: expr.VerdictAccept},                                                  // Accept packet
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                                // Match incoming interface
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString(ncutils.GetInterfaceName())}, // Match interface name
+				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},         // Match TCP destination port
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: portB},                                            // Port little-endian format
+				&expr.Verdict{Kind: expr.VerdictAccept},                                                          // Accept packet
 			},
 		}
 		n.conn.InsertRule(rule)
@@ -1259,7 +1260,7 @@ func (n *nftablesManager) addJumpRules() {
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
-					Data:     nullTerminatedString("netmaker"),
+					Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 				},
 				// [ payload load 1b @ network header + 9 => reg 1 ]  (proto)
 				&expr.Payload{
@@ -1291,6 +1292,21 @@ func (n *nftablesManager) addJumpRules() {
 				&expr.Verdict{
 					Kind: expr.VerdictAccept,
 				},
+			},
+		})
+
+		sshPortB := portToBytes(uint16(sshserver.DefaultPort))
+		n.conn.InsertRule(&nftables.Rule{
+			Table: filterTable,
+			Chain: &nftables.Chain{Name: aclInputRulesChain},
+			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                                // Match incoming interface
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString(ncutils.GetInterfaceName())}, // Match interface name
+				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.IPPROTO_TCP}},
+				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2}, // Match TCP destination port
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sshPortB},                                 // Port in network (big-endian) byte order
+				&expr.Verdict{Kind: expr.VerdictAccept},                                                  // Accept packet
 			},
 		})
 	}
