@@ -733,13 +733,18 @@ func decryptServerMsg(serverName string, payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("server config is nil for %s", serverName)
 	}
 
-	if key, keyErr := deriveTrafficKey(server); keyErr == nil {
-		if data, err := decryptAESGCM(key, payload); err == nil {
-			return unzipPayload(data)
-		}
+	key, keyErr := deriveTrafficKey(server)
+	if keyErr != nil {
+		slog.Warn("could not derive ECDH traffic key, falling back to legacy decrypt schemes", "server", serverName, "error", keyErr)
+	} else if data, err := decryptAESGCM(key, payload); err == nil {
+		return unzipPayload(data)
 	}
 
-	if data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], payload); err == nil {
+	trafficKeyPublic := config.Netclient().TrafficKeyPublic
+	if len(trafficKeyPublic) < 32 {
+		slog.Warn("traffic public key is too short to use for legacy decrypt", "length", len(trafficKeyPublic))
+	} else if data, err := decryptAESGCM(trafficKeyPublic[0:32], payload); err == nil {
+		slog.Debug("decrypted server message with legacy public-key-as-AES-key scheme; server has not upgraded past the vulnerable v0.30.0-v1.7.x scheme", "server", serverName)
 		return unzipPayload(data)
 	}
 
