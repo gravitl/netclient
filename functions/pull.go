@@ -30,7 +30,9 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	replacePeers := false
 	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
-		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
+		err := errors.New("server config not found")
+		logger.Log(0, "pull failed:", err.Error())
+		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 	if serverName != config.CurrServer {
 		config.CurrServer = serverName
@@ -40,6 +42,7 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		CleanupOnUnauthorized: false,
 	})
 	if err != nil {
+		logger.Log(0, "pull failed for server", serverName, "authenticate:", err.Error())
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
@@ -53,14 +56,17 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
 			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
+			logger.Log(0, "pull failed for server", serverName, "mdm:", denyErr.Error())
 			return models.HostPull{}, resetInterface, replacePeers, denyErr
 		}
+		logger.Log(0, "pull failed for server", serverName, "request:", err.Error())
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
 	var pullResponse models.HostPull
 	err = json.Unmarshal(respBytes.Bytes(), &pullResponse)
 	if err != nil {
+		logger.Log(0, "pull failed for server", serverName, "decode:", err.Error())
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
@@ -107,19 +113,31 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)
 	if server == nil {
-		return models.HostPull{}, resetInterface, replacePeers, errors.New("server config not found")
+		err := errors.New("server config not found")
+		logger.Log(0, "pull failed:", err.Error())
+		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	fmt.Printf("completed pull for server %s\n", serverName)
+	logger.Log(0, "completed pull for server", serverName)
 	config.UpdateServer(server.Name, *server)
-	_ = config.WriteServerConfig()
-	_ = config.WriteNetclientConfig()
-	_ = config.WriteNodeConfig()
+	if err := config.WriteServerConfig(); err != nil {
+		logger.Log(0, "pull for server", serverName, "failed to write server config:", err.Error())
+	}
+	if err := config.WriteNetclientConfig(); err != nil {
+		logger.Log(0, "pull for server", serverName, "failed to write host config:", err.Error())
+	}
+	if err := config.WriteNodeConfig(); err != nil {
+		logger.Log(0, "pull for server", serverName, "failed to write node config:", err.Error())
+	}
 	if restart {
 		logger.Log(0, "restarting daemon after pull")
-		return models.HostPull{}, resetInterface, replacePeers, daemon.Restart()
+		if err := daemon.Restart(); err != nil {
+			logger.Log(0, "restart after pull failed:", err.Error())
+			return models.HostPull{}, resetInterface, replacePeers, err
+		}
+		return models.HostPull{}, resetInterface, replacePeers, nil
 	}
 	return pullResponse, resetInterface, replacePeers, nil
 }

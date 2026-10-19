@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
@@ -26,7 +27,9 @@ func connectNetwork(network string, restart bool) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
-		return errors.New("no such network")
+		err := errors.New("no such network")
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
 	}
 	if node.Connected {
 		return errors.New("node already connected")
@@ -35,10 +38,13 @@ func connectNetwork(network string, restart bool) error {
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
-		return fmt.Errorf("error writing node config %w", err)
+		err = fmt.Errorf("error writing node config %w", err)
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
 	}
 	callRememberDesiredConnection(network)
 	if err := PublishNodeUpdate(&node); err != nil {
+		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
 	if !restart {
@@ -46,6 +52,7 @@ func connectNetwork(network string, restart bool) error {
 		return nil
 	}
 	if err := applyConnectionChange("connect"); err != nil {
+		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
 	callFinishDesktopConnect(network, token)

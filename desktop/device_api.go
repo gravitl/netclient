@@ -780,23 +780,31 @@ func putDeviceExitNodeTimeout(network, token, egressID string, force bool, timeo
 func ConnectNetwork(network, server, token string) error {
 	if token != "" {
 		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+			logger.Log(0, "connect", network, "access check failed:", err.Error())
 			return err
 		}
 	}
 	nodes := config.GetNodes()
 	if _, ok := nodes[network]; !ok {
 		if token == "" {
-			return fmt.Errorf("network %s is not joined", network)
+			err := fmt.Errorf("network %s is not joined", network)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
 		}
 		status, err := JoinDeviceNetworkOnServer(network, token)
 		if err != nil {
+			logger.Log(0, "connect", network, "join failed:", err.Error())
 			return err
 		}
 		if status != "joined" && status != "" {
-			return fmt.Errorf("unexpected join status: %s", status)
+			err := fmt.Errorf("unexpected join status: %s", status)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
 		}
 		if _, _, _, err := functions.Pull(false, true, false); err != nil {
-			return fmt.Errorf("failed to sync after join: %w", err)
+			err = fmt.Errorf("failed to sync after join: %w", err)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
 		}
 	}
 	if err := functions.Connect(network); err != nil {

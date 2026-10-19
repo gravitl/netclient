@@ -372,6 +372,7 @@ func activateConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	disconnect, err := prepareConnect(network)
 	if err != nil {
+		uiLog(0, "uiapi: POST /connections/"+network+" failed:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
@@ -380,6 +381,7 @@ func activateConnection(w http.ResponseWriter, r *http.Request) {
 	for _, name := range disconnect {
 		if err := disconnectNetwork(name); err != nil {
 			setStatus(Running)
+			uiLog(0, "uiapi: POST /connections/"+network+" failed:", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 			return
@@ -399,15 +401,18 @@ func activateConnection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if isJITAccessError(err) {
+			uiLog(0, "uiapi: POST /connections/"+network+" failed:", err.Error())
 			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 			return
 		}
 		if isApprovalAccessError(err) {
+			uiLog(0, "uiapi: POST /connections/"+network+" failed:", err.Error())
 			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 			return
 		}
+		uiLog(0, "uiapi: POST /connections/"+network+" failed:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: err.Error()})
 		return
