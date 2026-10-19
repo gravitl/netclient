@@ -41,15 +41,27 @@ func logIGWDecision(src string, changeDefaultGw bool) {
 		src, config.AnyNodeConnected(), changeDefaultGw, currGw, desired))
 }
 
-// restoreInternetGwAndDNS restores LAN default routes (if still installed) and
-// always re-applies OS DNS so exit-node full DNS cannot stick after clear/disconnect.
+// restoreInternetGwAndDNS restores LAN default routes and always re-applies OS
+// DNS so exit-node full DNS cannot stick after clear/disconnect.
+//
+// CurrGwNmIP is not a reliable signal that the OS routes are gone. A route
+// delete can fail after the flag is cleared, and logout then skips teardown
+// while 0.0.0.0/1 still blackholes the API for the whole retry budget.
 func restoreInternetGwAndDNS() {
-	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+	nc := config.Netclient()
+	if nc == nil {
+		dns.ScheduleReconfigure()
+		return
+	}
+	hadGw := len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0
+	if hadGw {
 		logger.Log(0, "tearing down internet gateway (restore requested)")
-		done := logElapsed("internet gateway teardown")
-		if err := wireguard.RestoreInternetGw(); err != nil {
-			slog.Warn("failed to restore default gateway", "error", err)
-		}
+	}
+	done := logElapsed("internet gateway teardown")
+	if err := wireguard.RestoreInternetGw(); err != nil {
+		slog.Warn("failed to restore default gateway", "error", err)
+	}
+	if hadGw {
 		done()
 	}
 	dns.ScheduleReconfigure()

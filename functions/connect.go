@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -85,7 +86,10 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
 	done := logElapsed("disconnect node update publish")
-	err := PublishNodeUpdate(&node)
+	// One short attempt. The default client retries for about a minute, and
+	// that wait is what made logout with an exit selected feel stuck after
+	// the routes were already restored.
+	err := PublishNodeUpdateOnce(&node, 5*time.Second)
 	done()
 	if err != nil {
 		return err

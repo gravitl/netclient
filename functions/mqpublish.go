@@ -191,13 +191,25 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-// hostUpdateWithServer - used to send host updates to server via restful api
+// hostUpdateWithServer - used to send host updates to server via restful api.
+// timeout > 0 is a single attempt; logout and disconnect pass it so a dead
+// control-plane path cannot block the user on the default retry budget.
 func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
+	return hostUpdateWithServerTimeout(server, hu, 0)
+}
+
+func hostUpdateWithServerTimeout(server *config.Server, hu models.HostUpdate, timeout time.Duration) error {
 	host := config.Netclient()
 	if host == nil {
 		return fmt.Errorf("no configured host found")
 	}
-	token, err := auth.Authenticate(server, host)
+	var token string
+	var err error
+	if timeout > 0 {
+		token, err = auth.AuthenticateOnce(server, host, timeout)
+	} else {
+		token, err = auth.Authenticate(server, host)
+	}
 	if err != nil {
 		return err
 	}
@@ -208,7 +220,12 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set(scope.HeaderTenantID, host.TenantID)
-	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
+	payload := buildHostUpdatePayload(hu)
+	if timeout > 0 {
+		_, err = ncutils.SendRequestOnce(http.MethodPut, url, headers, payload, timeout)
+	} else {
+		_, err = ncutils.SendRequest(http.MethodPut, url, headers, payload)
+	}
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
 			logMDMDenialOnce()
@@ -251,10 +268,36 @@ func checkin() {
 
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
-	hostServerUpdate(models.HostUpdate{
+	return publishNodeUpdate(node, 0)
+}
+
+// PublishNodeUpdateOnce pushes a node update with one short attempt.
+// Interactive disconnect uses this; a failure is logged and ignored by the
+// caller so local teardown still finishes.
+func PublishNodeUpdateOnce(node *config.Node, timeout time.Duration) error {
+	return publishNodeUpdate(node, timeout)
+}
+
+func publishNodeUpdate(node *config.Node, timeout time.Duration) error {
+	hu := models.HostUpdate{
 		Action: models.UpdateNode,
 		Node:   models.Node{CommonNode: node.CommonNode},
-	})
+	}
+	var err error
+	if timeout > 0 {
+		server := config.GetServer(config.CurrServer)
+		if server == nil {
+			err = errors.New("server config not found")
+		} else {
+			err = hostUpdateWithServerTimeout(server, hu, timeout)
+		}
+	} else {
+		err = hostServerUpdate(hu)
+	}
+	if err != nil {
+		logger.Log(0, "network:", node.Network, "node update was not published:", err.Error())
+		return nil
+	}
 	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
 	return nil
 }

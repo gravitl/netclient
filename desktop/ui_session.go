@@ -3,6 +3,7 @@ package desktop
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
@@ -170,7 +171,9 @@ func ReleaseSession(clearServer bool) error {
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
 			done := functions.LogElapsed("logout server exit clear")
-			_, err := putDeviceExitNode(exitNetwork, token, "", false)
+			// One attempt. The shared client would otherwise retry a blackholed
+			// API for about a minute after local routes are already restored.
+			_, err := putDeviceExitNodeTimeout(exitNetwork, token, "", false, 5*time.Second)
 			done()
 			if err != nil {
 				slog.Warn("failed to clear server exit node on logout", "network", exitNetwork, "error", err)

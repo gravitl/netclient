@@ -34,7 +34,17 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": "{{daemon}}/server"
+        "url": "{{daemon}}/server",
+        "description": "Same payload as GET /session.\n\nWhile a session is active the body also includes:\n- restore_phase (only while status is restoring)\n- want_igw, auto_exit, desired_egress_id, desired_exit_network\n- notice: { code, network, message } when the daemon has a GUI message. code exit_unhealthy means a manual exit failed its post-connect VPN check and was cleared; the network stays connected."
+      }
+    },
+    {
+      "name": "Get Session",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/session",
+        "description": "Same payload as GET /server. Use APIHost for Netmaker HTTP."
       }
     },
     {
@@ -141,6 +151,19 @@
       }
     },
     {
+      "name": "Cancel Join",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/cancel",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "cancel"]
+        },
+        "description": "Cancels a pending join. Requires a session. 200 with an empty body on success. 401 { \"message\": \"session required\" } when logged out."
+      }
+    },
+    {
       "name": "Request JIT Access",
       "request": {
         "method": "POST",
@@ -156,6 +179,89 @@
           "host": ["{{daemon}}"],
           "path": ["networks", "{{network}}", "jit", "request"]
         }
+      }
+    },
+    {
+      "name": "List Exit Nodes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_nodes",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_nodes"]
+        },
+        "description": "Requires a session. Returns a JSON array of exit nodes.\n\nEach item: egress_id, name, description, network, routing_node_id, routing_host_name, address, address6, allowed_endpoints, country_code, location, tcp_proxy_enabled, tcp_proxy_listen_port, selected, status, latency_ms, nearest.\n\nstatus false means the exit is unhealthy. latency_ms and nearest are filled by netclient (overlay probe after connect, public probe before). 401 when logged out."
+      }
+    },
+    {
+      "name": "Get Selected Exit Node",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session. Returns the selected exit node object, or null when none is selected. Same fields as List Exit Nodes."
+      }
+    },
+    {
+      "name": "Select Exit Node",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"egress_id\": \"{{egress_id}}\"\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session. Selects the exit identified by egress_id. Returns the selected exit node.\n\n409 when another connected network already has an exit. 400 for a missing, inactive, or self exit."
+      }
+    },
+    {
+      "name": "Select Nearest Exit Node",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"auto\": true\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session. auto true selects the nearest healthy exit. Networks that enforce auto exit also take this path even when auto is omitted."
+      }
+    },
+    {
+      "name": "Clear Exit Node",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"egress_id\": \"\"\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session. An empty egress_id with auto false clears the selected exit. The network stays connected. Response is null when nothing remains selected."
       }
     },
     {
@@ -198,6 +304,7 @@
     { "key": "auth_token", "value": "" },
     { "key": "tenant_id", "value": "" },
     { "key": "password", "value": "" },
-    { "key": "network", "value": "my-network" }
+    { "key": "network", "value": "my-network" },
+    { "key": "egress_id", "value": "" }
   ]
 }
