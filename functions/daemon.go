@@ -688,6 +688,9 @@ func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
 
 	// Separate nonce and ciphertext
 	nonceSize := aesGCM.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short: %d bytes", len(ciphertext))
+	}
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
 
 	// Decrypt the data
@@ -697,6 +700,50 @@ func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
 	}
 
 	return plaintext, nil
+}
+
+// deriveTrafficKey computes the AES-256 key shared with server, derived via
+// ECDH between this host's private traffic key and the server's public one.
+func deriveTrafficKey(server *config.Server) ([]byte, error) {
+	hostPrivKey, err := ncutils.ConvertBytesToKey(config.Netclient().TrafficKeyPrivate)
+	if err != nil {
+		return nil, err
+	}
+	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
+	if err != nil {
+		return nil, err
+	}
+	return DeriveSharedKey(hostPrivKey, serverPubKey)
+}
+
+// decryptServerMsg decrypts a message published by serverName, trying each
+// scheme the server may have used to encrypt it, newest first:
+//  1. AES-GCM with a key derived via ECDH (current servers).
+//  2. AES-GCM with the host's raw public key as the key (servers on
+//     v0.30.0-v1.7.x -- kept only until such servers are upgraded; this
+//     legacy scheme provides no real confidentiality, since the "key" is
+//     public).
+//  3. The original nacl-box/chunk scheme (servers older than v0.30.0).
+//
+// AES-GCM's authentication tag makes a wrong-key attempt fail cleanly rather
+// than returning garbage, so trying schemes in order is safe.
+func decryptServerMsg(serverName string, payload []byte) ([]byte, error) {
+	server := config.GetServer(serverName)
+	if server == nil {
+		return nil, fmt.Errorf("server config is nil for %s", serverName)
+	}
+
+	if key, keyErr := deriveTrafficKey(server); keyErr == nil {
+		if data, err := decryptAESGCM(key, payload); err == nil {
+			return unzipPayload(data)
+		}
+	}
+
+	if data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], payload); err == nil {
+		return unzipPayload(data)
+	}
+
+	return decryptMsg(serverName, payload)
 }
 
 func read(network, which string) string {
