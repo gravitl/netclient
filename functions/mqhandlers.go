@@ -58,20 +58,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if server == nil {
 		return
 	}
-	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
+	data, err := decryptServerMsg(server.Name, msg.Payload())
 	if err != nil {
-		slog.Warn("error decrypting message", "warn", err)
-		data, err = decryptMsg(server.Name, msg.Payload())
-		if err != nil {
-			slog.Error("error decrypting message", "error", err)
-			return
-		}
-	} else {
-		data, err = unzipPayload(data)
-		if err != nil {
-			slog.Error("error unzipping message", "error", err)
-			return
-		}
+		slog.Error("error decrypting message", "error", err)
+		return
 	}
 
 	serverNode := models.Node{}
@@ -177,20 +167,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	slog.Info("processing peer update for server", "server", serverName)
-	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
+	data, err := decryptServerMsg(server.Name, msg.Payload())
 	if err != nil {
-		slog.Warn("error decrypting message", "warn", err)
-		data, err = decryptMsg(server.Name, msg.Payload())
-		if err != nil {
-			slog.Error("error decrypting message", "error", err)
-			return
-		}
-	} else {
-		data, err = unzipPayload(data)
-		if err != nil {
-			slog.Error("error unzipping message", "error", err)
-			return
-		}
+		slog.Error("error decrypting message", "error", err)
+		return
 	}
 
 	err = json.Unmarshal([]byte(data), &peerUpdate)
@@ -446,20 +426,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	if len(msg.Payload()) == 0 {
 		return
 	}
-	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
+	data, err := decryptServerMsg(server.Name, msg.Payload())
 	if err != nil {
-		slog.Warn("error decrypting message", "warn", err)
-		data, err = decryptMsg(server.Name, msg.Payload())
-		if err != nil {
-			slog.Error("error decrypting message", "error", err)
-			return
-		}
-	} else {
-		data, err = unzipPayload(data)
-		if err != nil {
-			slog.Error("error unzipping message", "error", err)
-			return
-		}
+		slog.Error("error decrypting message", "error", err)
+		return
 	}
 	err = json.Unmarshal([]byte(data), &hostUpdate)
 	if err != nil {
