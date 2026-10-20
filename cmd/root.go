@@ -446,15 +446,48 @@ func checkConfig() {
 			fail = true
 			logger.Log(0, "configuration for", config.CurrServer, "is missing")
 		} else if server.MQID != uuid.Nil && server.MQID != netclient.ID {
-			// Partial Desktop POST /server entries keep MQID nil until host
-			// registration; only fail once an enrolled MQID disagrees with host id.
-			fail = true
-			logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
+			// The broker identity is the host id. A leftover server record from
+			// another host (or a regenerated host id) can never authenticate, and
+			// failing here blocks install and every later command. Drop the
+			// enrollment and keep the server address so the host can register again.
+			logger.Log(0, server.Name, "is misconfigured: MQID does not match host id; clearing enrollment")
+			clearMismatchedServer(server.Name)
 		}
 	}
 
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
+	}
+}
+
+// clearMismatchedServer removes an enrollment whose broker id is not this host.
+// The saved server address is kept when it can be turned into a partial entry.
+func clearMismatchedServer(server string) {
+	for name, node := range config.GetNodes() {
+		if node.Server == server {
+			config.DeleteNode(name)
+		}
+	}
+	if err := config.WriteNodeConfig(); err != nil {
+		logger.Log(0, "failed to write node config after clearing", server, err.Error())
+	}
+	wasActive := config.CurrServer == server || config.ResolveServerKey(config.CurrServer) == config.ResolveServerKey(server)
+	if kept := config.DemoteServerToPartial(server); kept != "" {
+		if wasActive {
+			config.CurrServer = kept
+			_ = config.SetCurrServerCtxInFile(kept)
+		}
+		if err := config.WriteServerConfig(); err != nil {
+			logger.Log(0, "failed to write server config after clearing", server, err.Error())
+		}
+		return
+	}
+	config.DeleteServer(server)
+	if err := config.WriteServerConfig(); err != nil {
+		logger.Log(0, "failed to write server config after clearing", server, err.Error())
+	}
+	if wasActive {
+		config.SwitchToRemainingServer()
 	}
 }
 

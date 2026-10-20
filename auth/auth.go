@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,8 +55,19 @@ func Authenticate(server *config.Server, host *config.Config) (string, error) {
 	return AuthenticateWithOptions(server, host, AuthenticateOptions{CleanupOnUnauthorized: true})
 }
 
+// AuthenticateOnce is a single short attempt. Interactive disconnect uses it
+// when the cached host JWT is missing, so a blackholed API cannot add another
+// full retry budget before the node update itself.
+func AuthenticateOnce(server *config.Server, host *config.Config, timeout time.Duration) (string, error) {
+	return authenticate(server, host, AuthenticateOptions{CleanupOnUnauthorized: true}, timeout)
+}
+
 // AuthenticateWithOptions authenticates with optional control over 401 cleanup behavior.
 func AuthenticateWithOptions(server *config.Server, host *config.Config, opts AuthenticateOptions) (string, error) {
+	return authenticate(server, host, opts, 0)
+}
+
+func authenticate(server *config.Server, host *config.Config, opts AuthenticateOptions, timeout time.Duration) (string, error) {
 	if jwtToken != "" && !isTokenExpired(jwtToken) {
 		return jwtToken, nil
 	}
@@ -69,7 +81,13 @@ func AuthenticateWithOptions(server *config.Server, host *config.Config, opts Au
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	headers.Set(scope.HeaderTenantID, host.TenantID)
-	respBytes, err := ncutils.SendRequest(http.MethodPost, url, headers, data)
+	var respBytes *bytes.Buffer
+	var err error
+	if timeout > 0 {
+		respBytes, err = ncutils.SendRequestOnce(http.MethodPost, url, headers, data, timeout)
+	} else {
+		respBytes, err = ncutils.SendRequest(http.MethodPost, url, headers, data)
+	}
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk
 		if errors.As(err, &notOkErr) {

@@ -20,7 +20,7 @@ const (
 	// IGWMonitorInterval so a failing probe cannot stretch the sampling period.
 	IGWDialTimeout = time.Second * 2
 	// IGWMonitorInterval is the interval at which to check internet gateway's health.
-	// With IGWFailureThreshold samples this is ~5s of failed checks after startup
+	// With IGWFailureThreshold samples this is ~10s of failed checks after startup
 	// grace. A peer that has never handshaked is declared unhealthy on the first
 	// sample once that grace ends.
 	IGWMonitorInterval = time.Second * 5
@@ -36,11 +36,11 @@ const (
 	// WireGuard's rekey period would keep a gateway that died seconds ago looking
 	// healthy for minutes, which is exactly the outage this monitor exists to end.
 	IGWHandshakeFreshness = 90 * time.Second
-	// IGWStartupGrace skips failure counting briefly after monitor start so the
-	// first handshake can complete. It only has to cover monitor start through
-	// first handshake — BeginIfaceRebuild covers rebuilds — and it is re-armed
-	// after every rebuild, so a long grace compounds into real blindness.
-	IGWStartupGrace = 5 * time.Second
+	// IGWStartupGrace skips failure counting after monitor start so the first
+	// handshake can complete. Five seconds marked a slow handshake as a dead
+	// exit. BeginIfaceRebuild covers iface rebuilds and re-arms this grace,
+	// so it only has to cover monitor start through the first handshake.
+	IGWStartupGrace = 10 * time.Second
 	// IGWPinRefreshInterval is how often underlay pins are reconciled against
 	// the LAN gateway while the exit is active, so a Wi-Fi switch re-points
 	// them well before IGWFailureThreshold samples could declare the exit dead.

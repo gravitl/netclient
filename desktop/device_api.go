@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
@@ -64,6 +65,11 @@ func deviceRequest(method, path, token string, data any) ([]byte, error) {
 }
 
 func deviceRequestWithHost(method, path, token string, data any, includeHost bool) ([]byte, error) {
+	return doDeviceRequest(method, path, token, data, includeHost, 0)
+}
+
+// timeout > 0 is a single attempt. Logout uses it for the exit clear.
+func doDeviceRequest(method, path, token string, data any, includeHost bool, timeout time.Duration) ([]byte, error) {
 	base, err := deviceServerURL()
 	if err != nil {
 		return nil, err
@@ -77,11 +83,21 @@ func deviceRequestWithHost(method, path, token string, data any, includeHost boo
 	if tenantID := config.Netclient().TenantID; tenantID != "" {
 		headers.Set(scope.HeaderTenantID, tenantID)
 	}
-	respBytes, err := ncutils.SendRequest(method, base+path, headers, data)
-	if err != nil {
-		return nil, err
+	var body []byte
+	if timeout > 0 {
+		buf, err := ncutils.SendRequestOnce(method, base+path, headers, data, timeout)
+		if err != nil {
+			return nil, err
+		}
+		body = buf.Bytes()
+	} else {
+		buf, err := ncutils.SendRequest(method, base+path, headers, data)
+		if err != nil {
+			return nil, err
+		}
+		body = buf.Bytes()
 	}
-	return respBytes.Bytes(), nil
+	return body, nil
 }
 
 func decodeDeviceResponse(data []byte, dest any) error {
@@ -749,34 +765,46 @@ func DropNetworkExitSelection(network, token string) error {
 }
 
 func putDeviceExitNode(network, token, egressID string, force bool) ([]byte, error) {
+	return putDeviceExitNodeTimeout(network, token, egressID, force, 0)
+}
+
+func putDeviceExitNodeTimeout(network, token, egressID string, force bool, timeout time.Duration) ([]byte, error) {
 	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
-	return deviceRequest(http.MethodPut, path, token, models.DeviceExitNodeSelectionReq{
+	return doDeviceRequest(http.MethodPut, path, token, models.DeviceExitNodeSelectionReq{
 		EgressID: egressID,
 		Force:    force,
-	})
+	}, true, timeout)
 }
 
 // ConnectNetwork joins (if needed) then connects locally.
 func ConnectNetwork(network, server, token string) error {
 	if token != "" {
 		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+			logger.Log(0, "connect", network, "access check failed:", err.Error())
 			return err
 		}
 	}
 	nodes := config.GetNodes()
 	if _, ok := nodes[network]; !ok {
 		if token == "" {
-			return fmt.Errorf("network %s is not joined", network)
+			err := fmt.Errorf("network %s is not joined", network)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
 		}
 		status, err := JoinDeviceNetworkOnServer(network, token)
 		if err != nil {
+			logger.Log(0, "connect", network, "join failed:", err.Error())
 			return err
 		}
 		if status != "joined" && status != "" {
-			return fmt.Errorf("unexpected join status: %s", status)
+			err := fmt.Errorf("unexpected join status: %s", status)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
 		}
 		if _, _, _, err := functions.Pull(false, true, false); err != nil {
-			return fmt.Errorf("failed to sync after join: %w", err)
+			err = fmt.Errorf("failed to sync after join: %w", err)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
 		}
 	}
 	if err := functions.Connect(network); err != nil {

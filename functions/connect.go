@@ -3,11 +3,13 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
@@ -25,7 +27,9 @@ func connectNetwork(network string, restart bool) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
-		return errors.New("no such network")
+		err := errors.New("no such network")
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
 	}
 	if node.Connected {
 		return errors.New("node already connected")
@@ -34,10 +38,13 @@ func connectNetwork(network string, restart bool) error {
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
 	if err := config.WriteNodeConfig(); err != nil {
-		return fmt.Errorf("error writing node config %w", err)
+		err = fmt.Errorf("error writing node config %w", err)
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
 	}
 	callRememberDesiredConnection(network)
 	if err := PublishNodeUpdate(&node); err != nil {
+		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
 	if !restart {
@@ -45,6 +52,7 @@ func connectNetwork(network string, restart bool) error {
 		return nil
 	}
 	if err := applyConnectionChange("connect"); err != nil {
+		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
 	callFinishDesktopConnect(network, token)
@@ -85,7 +93,10 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
 	done := logElapsed("disconnect node update publish")
-	err := PublishNodeUpdate(&node)
+	// One short attempt. The default client retries for about a minute, and
+	// that wait is what made logout with an exit selected feel stuck after
+	// the routes were already restored.
+	err := PublishNodeUpdateOnce(&node, 5*time.Second)
 	done()
 	if err != nil {
 		return err
