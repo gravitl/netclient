@@ -179,11 +179,6 @@ func failoverAutoExit(network, token, failedPublicKey string) error {
 	if err != nil {
 		return err
 	}
-	// List already ranks on the overlay once the network is connected. Re-probe
-	// only when that list still used public endpoints.
-	if !exitProbesUseOverlay(network) {
-		functions.AttachExitNodeOverlayLatencies(network, nodes)
-	}
 
 	user, tenant := uiapi.SessionIdentity()
 	cur := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))

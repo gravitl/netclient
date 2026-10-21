@@ -295,9 +295,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	} else if peerUpdate.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
-		// A repaired interface invalidates the monitor's nexthop bookkeeping:
-		// exit routes added over an unaddressed interface never took effect.
-		if peerUpdate.ReplacePeers || ifaceRepaired || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		// Monitor already declared this nexthop dead (no handshake / failed
+		// overlay probe). Reinstalling would restart grace and look healthy.
+		if wireguard.GetIGWMonitor().RejectedIGW(gw4, gw6) {
+			logger.Log(0, "skipping internet gateway install: monitor rejected this nexthop")
+		} else if peerUpdate.ReplacePeers || ifaceRepaired || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			// A repaired interface invalidates the monitor's nexthop bookkeeping:
+			// exit routes added over an unaddressed interface never took effect.
 			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
@@ -956,7 +960,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
 	} else if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
-		if replacePeers || ifaceRepaired || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		if wireguard.GetIGWMonitor().RejectedIGW(gw4, gw6) {
+			logger.Log(0, "skipping internet gateway install: monitor rejected this nexthop")
+		} else if replacePeers || ifaceRepaired || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")

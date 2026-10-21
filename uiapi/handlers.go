@@ -625,6 +625,8 @@ func writeExitNodeErr(w http.ResponseWriter, err error) {
 	case strings.Contains(msg, "does not have access"),
 		strings.Contains(msg, "forbidden"):
 		status = http.StatusForbidden
+	case strings.Contains(msg, "connect to the network before choosing an exit"):
+		status = http.StatusConflict
 	case strings.Contains(msg, "not joined"),
 		strings.Contains(msg, "is required"),
 		strings.Contains(msg, "not found"),

@@ -53,6 +53,28 @@ func TestSetUnhealthyReappliesDNSBeforeFailover(t *testing.T) {
 	}
 }
 
+func TestRejectedIGW(t *testing.T) {
+	m := &IGWMonitor{}
+	gw4 := net.ParseIP("100.64.0.1")
+	if m.RejectedIGW(gw4, nil) {
+		t.Fatal("empty monitor rejected a nexthop")
+	}
+	m.status = &igwStatus{gw4: gw4, isHealthy: true}
+	if m.RejectedIGW(gw4, nil) {
+		t.Fatal("healthy current IGW reported as rejected")
+	}
+	m.status.isHealthy = false
+	if !m.RejectedIGW(gw4, nil) {
+		t.Fatal("unhealthy current IGW not rejected")
+	}
+	if m.RejectedIGW(net.ParseIP("100.64.0.2"), nil) {
+		t.Fatal("different nexthop reported as rejected")
+	}
+	if !m.IsCurrentIGW(gw4, nil) {
+		t.Fatal("unhealthy IGW should still count as current so peer-updates skip reinstall")
+	}
+}
+
 // A single failed sample must never tear exit routing down: every iface rebuild
 // has a window where the device is up with no peers configured yet.
 func TestNoHandshakeDeclaresUnhealthyAfterGrace(t *testing.T) {
@@ -70,6 +92,46 @@ func TestNoHandshakeDeclaresUnhealthyAfterGrace(t *testing.T) {
 	peer.LastHandshakeTime = time.Now()
 	if got := s.noHandshakeAction(peer); got != "" {
 		t.Fatalf("peer with a handshake = %q, want normal checks", got)
+	}
+}
+
+// A black-holed exit can keep its WireGuard handshake fresh via keepalives while
+// the overlay VPN-IP probe times out. That probe failure must count even when the
+// peer has never answered a probe before — otherwise the exit stays "healthy"
+// and desktop never clears it.
+func TestFailedOverlayProbeCountsWithoutPriorSuccess(t *testing.T) {
+	s := &igwStatus{
+		isHealthy: true,
+		startedAt: time.Now().Add(-2 * IGWStartupGrace),
+		gw4:       net.ParseIP("100.64.0.1"),
+	}
+	peer := wgtypes.Peer{LastHandshakeTime: time.Now()}
+
+	for i := 0; i < IGWFailureThreshold; i++ {
+		s.applyOverlayProbeResult(peer, false)
+	}
+	if s.isHealthy {
+		t.Fatal("failed overlay probes left the exit healthy")
+	}
+	if s.probeEverSucceeded {
+		t.Fatal("probeEverSucceeded set after only failures")
+	}
+}
+
+func TestOverlayProbeSuccessClearsFailures(t *testing.T) {
+	s := &igwStatus{
+		isHealthy:    true,
+		startedAt:    time.Now().Add(-2 * IGWStartupGrace),
+		failureCount: IGWFailureThreshold - 1,
+		gw4:          net.ParseIP("100.64.0.1"),
+	}
+	peer := wgtypes.Peer{LastHandshakeTime: time.Now()}
+	s.applyOverlayProbeResult(peer, true)
+	if !s.probeEverSucceeded {
+		t.Fatal("probeEverSucceeded not set after success")
+	}
+	if s.failureCount != 0 {
+		t.Fatalf("failureCount = %d after success, want 0", s.failureCount)
 	}
 }
 

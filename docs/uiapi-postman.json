@@ -191,7 +191,7 @@
           "host": ["{{daemon}}"],
           "path": ["networks", "{{network}}", "exit_nodes"]
         },
-        "description": "Requires a session. Returns a JSON array of exit nodes.\n\nEach item: egress_id, name, description, network, routing_node_id, routing_host_name, address, address6, allowed_endpoints, country_code, location, tcp_proxy_enabled, tcp_proxy_listen_port, selected, status, latency_ms, nearest.\n\nstatus false means the exit is unhealthy. latency_ms and nearest are filled by netclient (overlay probe after connect, public probe before). 401 when logged out."
+        "description": "Requires a session and a connected network. Returns a JSON array of exit nodes.\n\nEach item: egress_id, name, description, network, routing_node_id, routing_host_name, address, address6, allowed_endpoints, country_code, location, tcp_proxy_enabled, tcp_proxy_listen_port, selected, status, latency_ms, nearest.\n\nstatus false means the exit is unhealthy. latency_ms and nearest are filled by overlay VPN probes. 409 when the network is not connected. 401 when logged out."
       }
     },
     {
@@ -204,7 +204,7 @@
           "host": ["{{daemon}}"],
           "path": ["networks", "{{network}}", "exit_node"]
         },
-        "description": "Requires a session. Returns the selected exit node object, or null when none is selected. Same fields as List Exit Nodes."
+        "description": "Requires a session and a connected network. Returns the selected exit node object, or null when none is selected. Same fields as List Exit Nodes. 409 when the network is not connected."
       }
     },
     {
@@ -223,7 +223,7 @@
           "host": ["{{daemon}}"],
           "path": ["networks", "{{network}}", "exit_node"]
         },
-        "description": "Requires a session. Selects the exit identified by egress_id. Returns the selected exit node.\n\n409 when another connected network already has an exit. 400 for a missing, inactive, or self exit."
+        "description": "Requires a session and a connected network. Selects the exit identified by egress_id. Returns the selected exit node.\n\n409 when the network is not connected, or when another connected network already has an exit. 400 for a missing, inactive, or self exit."
       }
     },
     {
@@ -242,7 +242,7 @@
           "host": ["{{daemon}}"],
           "path": ["networks", "{{network}}", "exit_node"]
         },
-        "description": "Requires a session. auto true selects the nearest healthy exit. Networks that enforce auto exit also take this path even when auto is omitted."
+        "description": "Requires a session and a connected network. auto true selects the nearest healthy exit using overlay VPN probes. Networks that enforce auto exit also take this path even when auto is omitted. 409 when the network is not connected."
       }
     },
     {

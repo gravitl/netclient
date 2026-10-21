@@ -110,8 +110,8 @@ type igwStatus struct {
 	// no baseline has been taken yet.
 	lastRx int64
 	// probeEverSucceeded records that this gateway has answered a probe at least
-	// once, which means it is a gateway whose silence is meaningful. Gateways that
-	// never answer (no metrics listener, firewalled) stay on passive evidence.
+	// once. Used only for log wording; a failed overlay probe always counts as a
+	// failure after grace whether or not the peer has answered before.
 	probeEverSucceeded bool
 }
 
@@ -217,6 +217,19 @@ func (m *IGWMonitor) IsCurrentIGW(gw4, gw6 net.IP) bool {
 	return ipEqual(m.status.gw4, gw4) && ipEqual(m.status.gw6, gw6)
 }
 
+// RejectedIGW reports that this nexthop is the monitored exit and the monitor
+// has already torn it down. Peer/host updates must not call SetInternetGw for
+// it — that would restart the monitor as healthy and undo the clear.
+func (m *IGWMonitor) RejectedIGW(gw4, gw6 net.IP) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.status == nil || m.status.isHealthy {
+		return false
+	}
+	return ipEqual(m.status.gw4, gw4) && ipEqual(m.status.gw6, gw6)
+}
+
 // dialIP returns the preferred nexthop for health checks (IPv4 preferred).
 func (s *igwStatus) dialIP() net.IP {
 	if len(s.gw4) > 0 {
@@ -250,16 +263,18 @@ func (s *igwStatus) check() {
 	}
 
 	// A peer that has never completed a handshake has no tunnel. One sample after
-	// startup grace is enough; do not wait for another failed probe. The peer
-	// stays on the interface after the exit selection is cleared, so stop the
-	// monitor instead of logging the same miss on every sample.
+	// startup grace is enough; do not wait for another failed probe.
+	//
+	// Keep the monitor status after declaring unhealthy. Stop() clears it, which
+	// makes IsCurrentIGW false so the next ChangeDefaultGw peer-update calls
+	// SetInternetGw again, restarts grace, and the exit looks healthy forever.
+	// RestoreInternetGw (server clear) stops the monitor when selection is gone.
 	if action := s.noHandshakeAction(igw); action != "" {
 		if action == "unhealthy" {
 			if s.isHealthy {
 				logger.Log(0, "internet gateway unhealthy: no handshake")
 				s.setUnhealthy(&igw)
 			}
-			GetIGWMonitor().Stop()
 		} else {
 			logger.Log(2, "internet gateway health: no handshake yet, still in startup grace")
 		}
@@ -275,10 +290,8 @@ func (s *igwStatus) check() {
 	// keepalives keep completing against the peer's endpoint even when the tunnel
 	// cannot carry a single packet. Without a local overlay address there is
 	// nothing to source traffic from, so the exit path is broken no matter how
-	// alive the peer looks. This has to be checked before the probe, because the
-	// probe can never succeed in this state either — leaving probeEverSucceeded
-	// false and pinning the gateway on passive evidence forever, which is how a
-	// dead exit once held the default route indefinitely.
+	// alive the peer looks. Check that before the probe — the probe cannot
+	// succeed without a source either.
 	//
 	// Iface rebuilds pass through here with no address; the rebuild counter and
 	// the re-armed startup grace above keep those windows from counting.
@@ -295,35 +308,20 @@ func (s *igwStatus) check() {
 	// exit has stopped forwarding, so trusting them let a black-holed exit look
 	// healthy indefinitely while the host had no internet at all.
 	//
-	// So probe first, every sample. Once a gateway has answered a probe we know it
-	// answers, and from then on its silence is real evidence of a broken path that
-	// no passive counter may vouch for.
+	// Probe every sample when a nexthop exists. A failed dial is a failed sample
+	// even if the peer has never answered before and the handshake is still
+	// fresh: that is exactly the "connected to a dead exit" case the desktop
+	// health check is meant to clear.
 	if canProbe {
-		if s.probeGateway() {
-			s.probeEverSucceeded = true
-			s.noteSuccess(igw)
-			return
-		}
-		if s.probeEverSucceeded {
-			logger.Log(2, "internet gateway probe failed on a gateway that has answered before")
-			s.noteFailure(&igw)
-			return
-		}
+		s.applyOverlayProbeResult(igw, s.probeGateway())
+		return
 	}
 
-	// Either there is nothing to probe, or this gateway has never answered one
-	// (no metrics listener, firewalled). Passive evidence is all we have, and
-	// tearing exit routing down on its absence alone would be wrong here.
+	// No overlay nexthop to dial. Passive underlay evidence is all we have.
 	if rxMoved || s.handshakeFresh(igw) {
 		s.noteSuccess(igw)
 		return
 	}
-	if !canProbe {
-		// Nothing to probe and nothing has spoken: no evidence either way.
-		return
-	}
-
-	s.noteFailure(&igw)
 }
 
 // noteSuccess records one healthy sample, restoring exit routes once
@@ -382,6 +380,23 @@ func (s *igwStatus) probeGateway() bool {
 		return false
 	}
 	return isHostReachable(ip, igwProbePort())
+}
+
+// applyOverlayProbeResult records one overlay VPN-IP dial. ok means the exit
+// answered through the tunnel. A failure always counts, including the first
+// sample after connect: keepalives must not override a dead overlay path.
+func (s *igwStatus) applyOverlayProbeResult(igw wgtypes.Peer, ok bool) {
+	if ok {
+		s.probeEverSucceeded = true
+		s.noteSuccess(igw)
+		return
+	}
+	if s.probeEverSucceeded {
+		logger.Log(2, "internet gateway probe failed on a gateway that has answered before")
+	} else {
+		logger.Log(0, "internet gateway overlay probe failed")
+	}
+	s.noteFailure(&igw)
 }
 
 // igwProbePort mirrors networking.InitialiseIfaceMetricsServer's port choice.

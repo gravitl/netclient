@@ -24,11 +24,60 @@ const (
 	exitNodeLatencyNone  = int64(0)
 	exitNodeLatencyTO    = int64(999)
 	defaultMetricsPort   = 51821
+	// ExitOverlayProbeGrace is how long after a network connects before overlay
+	// latency probes run. Right after connect the mesh is still settling and
+	// probes time out or report inflated RTT.
+	ExitOverlayProbeGrace = 4 * time.Second
 )
 
-// attachExitNodePublicLatencies probes each exit's public AllowedEndpoints
-// (ICMP + TCP 443/22). Works before the mesh is up and is used for GUI list
-// ranking and Auto nearest pick.
+var (
+	exitOverlayConnectedMu sync.Mutex
+	exitOverlayConnectedAt = map[string]time.Time{}
+)
+
+// NoteExitOverlayConnected starts the post-connect grace clock for overlay
+// latency probes on this network.
+func NoteExitOverlayConnected(network string) {
+	network = strings.TrimSpace(network)
+	if network == "" {
+		return
+	}
+	exitOverlayConnectedMu.Lock()
+	exitOverlayConnectedAt[network] = time.Now()
+	exitOverlayConnectedMu.Unlock()
+}
+
+// inExitOverlayProbeGrace reports whether overlay latency probes should be
+// skipped because the network connected too recently for stable RTT samples.
+func inExitOverlayProbeGrace(network string) bool {
+	exitOverlayConnectedMu.Lock()
+	started, ok := exitOverlayConnectedAt[network]
+	exitOverlayConnectedMu.Unlock()
+	if !ok {
+		return false
+	}
+	return time.Since(started) < ExitOverlayProbeGrace
+}
+
+// WaitExitOverlayProbeGrace blocks until ExitOverlayProbeGrace has elapsed
+// since the network connected. Used by async post-connect auto-exit ranking.
+func WaitExitOverlayProbeGrace(network string) {
+	exitOverlayConnectedMu.Lock()
+	started, ok := exitOverlayConnectedAt[network]
+	exitOverlayConnectedMu.Unlock()
+	if !ok {
+		time.Sleep(ExitOverlayProbeGrace)
+		return
+	}
+	remaining := ExitOverlayProbeGrace - time.Since(started)
+	if remaining > 0 {
+		time.Sleep(remaining)
+	}
+}
+
+// AttachExitNodePublicLatencies probes each exit's public AllowedEndpoints
+// (ICMP + TCP 443/22). Desktop exit ranking no longer uses this; overlay VPN
+// probes run only after the network is connected.
 func AttachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode) {
 	attachExitNodePublicLatencies(network, nodes)
 }
@@ -75,6 +124,14 @@ func AttachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNod
 
 func attachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNode) {
 	if len(nodes) == 0 {
+		return
+	}
+	// Right after connect, return the list without probing so the GUI can show
+	// exits immediately. A later refresh (after grace) fills in latency_ms.
+	if inExitOverlayProbeGrace(network) {
+		slog.Info("exit node overlay probes deferred until mesh settles",
+			"network", network, "grace", ExitOverlayProbeGrace)
+		finishExitNodeLatencyAttach(network, nodes, "overlay-deferred", 0, 0)
 		return
 	}
 	pinIPs := exitNodeEndpointIPs(nodes)

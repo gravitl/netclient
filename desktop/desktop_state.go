@@ -31,7 +31,8 @@ const (
 )
 
 // prepareDesktopConnect applies desktop-only exit policy before a network is
-// marked connected. Headless (no session token) does nothing and returns "".
+// marked connected. Enforced auto-exit is only armed here; the nearest pick
+// runs after connect. Headless (no session token) does nothing and returns "".
 func prepareDesktopConnect(network string) string {
 	token := uiapi.SessionAuthToken()
 	if token == "" {
@@ -44,7 +45,7 @@ func prepareDesktopConnect(network string) string {
 				"network", network, "active_exit_network", other, "error", err)
 		}
 	} else if err := applyEnforcedAutoExit(network, token); err != nil {
-		slog.Warn("auto exit select on connect failed", "network", network, "error", err)
+		slog.Warn("auto exit arm on connect failed", "network", network, "error", err)
 	}
 	return token
 }
@@ -83,13 +84,16 @@ func forgetDesiredNetworkOnLeave(network string) {
 	_ = config.ForgetDesiredNetwork(user, tenant, network)
 }
 
-// finishDesktopConnect selects a deferred auto-exit once the mesh is up.
-// Voluntary Auto chosen while disconnected is only persisted until then;
-// overlay probes can succeed after connect. Headless passes an empty token.
+// finishDesktopConnect selects an auto-exit once the mesh is up so ranking
+// uses overlay VPN probes. Connect already invokes this on a goroutine so the
+// grace wait + latency probes do not block POST /connections.
+// Headless passes an empty token.
 func finishDesktopConnect(network, token string) {
 	if token == "" {
 		return
 	}
+	// List API skips probes during grace; wait so nearest pick sees real RTT.
+	functions.WaitExitOverlayProbeGrace(network)
 	applyDeferredAutoExitAfterConnect(network, token)
 }
 

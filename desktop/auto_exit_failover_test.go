@@ -33,16 +33,28 @@ func TestFailedEgressExcludeSetExpires(t *testing.T) {
 	}
 }
 
-func TestExitProbesUseOverlayOnceConnected(t *testing.T) {
+func TestExitAPIsRequireConnectedNetwork(t *testing.T) {
 	t.Cleanup(config.DeleteNodes)
-	if exitProbesUseOverlay("mesh") {
-		t.Fatal("disconnected network should rank exits by public endpoints")
+	if networkLocallyConnected("mesh") {
+		t.Fatal("disconnected network reported connected")
+	}
+	_, err := ListDeviceExitNodes("mesh", "tok")
+	if err != ErrNetworkNotConnected {
+		t.Fatalf("list while disconnected: %v", err)
+	}
+	_, err = SelectNearestDeviceExitNode("mesh", "tok")
+	if err != ErrNetworkNotConnected {
+		t.Fatalf("nearest while disconnected: %v", err)
+	}
+	_, err = SelectDeviceExitNode("mesh", "tok", "eg1")
+	if err != ErrNetworkNotConnected {
+		t.Fatalf("select while disconnected: %v", err)
 	}
 	config.UpdateNodeMap("mesh", config.Node{
 		CommonNode: models.CommonNode{Network: "mesh", Connected: true},
 	})
-	if !exitProbesUseOverlay("mesh") {
-		t.Fatal("connected network should rank exits by overlay probes")
+	if !networkLocallyConnected("mesh") {
+		t.Fatal("connected network not reported connected")
 	}
 }
 
