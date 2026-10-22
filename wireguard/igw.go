@@ -99,10 +99,12 @@ type IGWMonitor struct {
 }
 
 type igwStatus struct {
-	gw4          net.IP
-	gw6          net.IP
-	publicKey    string
-	isHealthy    bool
+	gw4       net.IP
+	gw6       net.IP
+	publicKey string
+	// isHealthy is written by the monitor ticker (setHealthy/setUnhealthy) and
+	// read by MQTT-handler paths via RejectedIGW, so it must be atomic.
+	isHealthy    atomic.Bool
 	successCount int
 	failureCount int
 	startedAt    time.Time
@@ -139,10 +141,10 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 		gw4:       gw4,
 		gw6:       gw6,
 		publicKey: publicKey,
-		isHealthy: true, // Assume healthy initially
 		startedAt: time.Now(),
 		lastRx:    -1,
 	}
+	s.isHealthy.Store(true) // Assume healthy initially
 	m.status = s
 	m.mu.Unlock()
 
@@ -172,7 +174,7 @@ func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
 					s.lastRx = -1
 				}
 				// Unhealthy means host exit routes were reset; no pins wanted.
-				if s.isHealthy && time.Since(lastPinRefresh) >= IGWPinRefreshInterval {
+				if s.isHealthy.Load() && time.Since(lastPinRefresh) >= IGWPinRefreshInterval {
 					lastPinRefresh = time.Now()
 					pinInternetGwHostRoutes(s.publicKey)
 				}
@@ -224,7 +226,7 @@ func (m *IGWMonitor) RejectedIGW(gw4, gw6 net.IP) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.status == nil || m.status.isHealthy {
+	if m.status == nil || m.status.isHealthy.Load() {
 		return false
 	}
 	return ipEqual(m.status.gw4, gw4) && ipEqual(m.status.gw6, gw6)
@@ -243,7 +245,7 @@ func (s *igwStatus) dialIP() net.IP {
 func (s *igwStatus) check() {
 	igw, err := GetPeer(ncutils.GetInterfaceName(), s.publicKey)
 	if err != nil {
-		if errors.Is(err, ErrPeerNotFound) && !s.isHealthy {
+		if errors.Is(err, ErrPeerNotFound) && !s.isHealthy.Load() {
 			// Routes are already off this exit. A missing peer means the selection
 			// was cleared; stop instead of logging a miss on every sample.
 			logger.Log(1, "internet gateway peer gone after unhealthy; stopping health monitor")
@@ -271,7 +273,7 @@ func (s *igwStatus) check() {
 	// RestoreInternetGw (server clear) stops the monitor when selection is gone.
 	if action := s.noHandshakeAction(igw); action != "" {
 		if action == "unhealthy" {
-			if s.isHealthy {
+			if s.isHealthy.Load() {
 				logger.Log(0, "internet gateway unhealthy: no handshake")
 				s.setUnhealthy(&igw)
 			}
@@ -303,17 +305,13 @@ func (s *igwStatus) check() {
 
 	// The probe is the only signal that tests the path *through* the tunnel: it
 	// reaches the gateway's endpoint-detection listener over the overlay. The
-	// passive signals are weaker than they look — WireGuard keepalives and rekeys
-	// keep both the receive counter and the handshake timestamp moving while the
-	// exit has stopped forwarding, so trusting them let a black-holed exit look
-	// healthy indefinitely while the host had no internet at all.
-	//
-	// Probe every sample when a nexthop exists. A failed dial is a failed sample
-	// even if the peer has never answered before and the handshake is still
-	// fresh: that is exactly the "connected to a dead exit" case the desktop
-	// health check is meant to clear.
+	// passive signals alone are weaker than they look — WireGuard keepalives
+	// keep the handshake fresh while a black-holed exit forwards nothing. A
+	// failed probe with no rx movement still counts as a failure. A failed
+	// probe with a fresh handshake and rx movement is treated as a firewalled
+	// metrics port, not a dead exit (see applyOverlayProbeResult).
 	if canProbe {
-		s.applyOverlayProbeResult(igw, s.probeGateway())
+		s.applyOverlayProbeResult(igw, s.probeGateway(), rxMoved)
 		return
 	}
 
@@ -332,7 +330,7 @@ func (s *igwStatus) noteSuccess(igw wgtypes.Peer) {
 	s.successCount++
 	s.failureCount = 0
 
-	if !s.isHealthy && s.successCount >= IGWRecoveryThreshold {
+	if !s.isHealthy.Load() && s.successCount >= IGWRecoveryThreshold {
 		s.setHealthy(igw)
 	}
 }
@@ -383,12 +381,19 @@ func (s *igwStatus) probeGateway() bool {
 }
 
 // applyOverlayProbeResult records one overlay VPN-IP dial. ok means the exit
-// answered through the tunnel. A failure always counts, including the first
-// sample after connect: keepalives must not override a dead overlay path.
-func (s *igwStatus) applyOverlayProbeResult(igw wgtypes.Peer, ok bool) {
+// answered through the tunnel. A failed probe still counts as a failure when
+// there is no underlay evidence of life (no fresh handshake + rx movement),
+// so a black-holed exit is cleared. When the handshake is fresh and rx moved
+// this sample, the metrics port is likely firewalled — do not tear the exit
+// down on that alone.
+func (s *igwStatus) applyOverlayProbeResult(igw wgtypes.Peer, ok bool, rxMoved bool) {
 	if ok {
 		s.probeEverSucceeded = true
 		s.noteSuccess(igw)
+		return
+	}
+	if s.handshakeFresh(igw) && rxMoved {
+		logger.Log(2, "internet gateway overlay probe failed but underlay traffic is flowing")
 		return
 	}
 	if s.probeEverSucceeded {
@@ -421,18 +426,18 @@ func (s *igwStatus) noteFailure(igw *wgtypes.Peer) {
 	s.failureCount++
 	s.successCount = 0
 
-	if s.isHealthy && s.failureCount >= IGWFailureThreshold {
+	if s.isHealthy.Load() && s.failureCount >= IGWFailureThreshold {
 		s.setUnhealthy(igw)
 	}
 }
 
 func (s *igwStatus) setHealthy(igw wgtypes.Peer) {
-	if s.isHealthy {
+	if s.isHealthy.Load() {
 		return
 	}
 
 	logger.Log(0, "setting internet gateway healthy")
-	s.isHealthy = true
+	s.isHealthy.Store(true)
 
 	logger.Log(0, "restoring default routes for internet gateway")
 	// internet gateway is back up, restore 0.0.0.0/0 and ::/0 routes
@@ -453,12 +458,12 @@ func (s *igwStatus) setHealthy(igw wgtypes.Peer) {
 }
 
 func (s *igwStatus) setUnhealthy(igw *wgtypes.Peer) {
-	if !s.isHealthy {
+	if !s.isHealthy.Load() {
 		return
 	}
 
 	logger.Log(0, "setting internet gateway unhealthy")
-	s.isHealthy = false
+	s.isHealthy.Store(false)
 
 	// Only rewrite AllowedIPs from a peer that was actually read: a synthesized one
 	// carries no AllowedIPs, and replacing the list with an empty set would strip
