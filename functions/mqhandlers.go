@@ -528,6 +528,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
 		restartDaemon = true
+	case models.HostMqAction("FORCE_LOGOUT"):
+		// Account disabled (or admin logout): clear Desktop JWT and disconnect
+		// networks. Host stays enrolled so re-enable / re-login can reconnect.
+		// Constant is models.ForceLogout once netclient's netmaker dep is bumped.
+		clearRetainedMsg(client, msg.Topic())
+		uiapi.ForceLogout()
+		writeToDisk = false
 	case models.UpdateHost:
 		resetInterface, restartDaemon, sendHostUpdate = UpdateHostFromServer(&hostUpdate.Host)
 		if sendHostUpdate {
