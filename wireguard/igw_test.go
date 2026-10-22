@@ -15,9 +15,10 @@ func TestSetUnhealthyInvokesOnIGWUnhealthyHook(t *testing.T) {
 	done := make(chan string, 1)
 	OnIGWUnhealthy = func(pk string) { done <- pk }
 
-	s := &igwStatus{isHealthy: true, publicKey: "peer-key-abc"}
+	s := &igwStatus{publicKey: "peer-key-abc"}
+	s.isHealthy.Store(true)
 	s.setUnhealthy(nil)
-	if s.isHealthy {
+	if s.isHealthy.Load() {
 		t.Fatal("expected unhealthy")
 	}
 	select {
@@ -39,7 +40,8 @@ func TestSetUnhealthyReappliesDNSBeforeFailover(t *testing.T) {
 	OnIGWRoutingChanged = func() { order <- "dns" }
 	OnIGWUnhealthy = func(string) { order <- "failover" }
 
-	s := &igwStatus{isHealthy: true, publicKey: "peer-key-abc"}
+	s := &igwStatus{publicKey: "peer-key-abc"}
+	s.isHealthy.Store(true)
 	s.setUnhealthy(nil)
 	for _, want := range []string{"dns", "failover"} {
 		select {
@@ -53,10 +55,34 @@ func TestSetUnhealthyReappliesDNSBeforeFailover(t *testing.T) {
 	}
 }
 
+func TestRejectedIGW(t *testing.T) {
+	m := &IGWMonitor{}
+	gw4 := net.ParseIP("100.64.0.1")
+	if m.RejectedIGW(gw4, nil) {
+		t.Fatal("empty monitor rejected a nexthop")
+	}
+	m.status = &igwStatus{gw4: gw4}
+	m.status.isHealthy.Store(true)
+	if m.RejectedIGW(gw4, nil) {
+		t.Fatal("healthy current IGW reported as rejected")
+	}
+	m.status.isHealthy.Store(false)
+	if !m.RejectedIGW(gw4, nil) {
+		t.Fatal("unhealthy current IGW not rejected")
+	}
+	if m.RejectedIGW(net.ParseIP("100.64.0.2"), nil) {
+		t.Fatal("different nexthop reported as rejected")
+	}
+	if !m.IsCurrentIGW(gw4, nil) {
+		t.Fatal("unhealthy IGW should still count as current so peer-updates skip reinstall")
+	}
+}
+
 // A single failed sample must never tear exit routing down: every iface rebuild
 // has a window where the device is up with no peers configured yet.
 func TestNoHandshakeDeclaresUnhealthyAfterGrace(t *testing.T) {
-	s := &igwStatus{isHealthy: true, startedAt: time.Now()}
+	s := &igwStatus{startedAt: time.Now()}
+	s.isHealthy.Store(true)
 	var peer wgtypes.Peer
 	if got := s.noHandshakeAction(peer); got != "grace" {
 		t.Fatalf("no handshake during grace = %q, want grace", got)
@@ -73,18 +99,81 @@ func TestNoHandshakeDeclaresUnhealthyAfterGrace(t *testing.T) {
 	}
 }
 
+// A black-holed exit can keep its WireGuard handshake fresh via keepalives while
+// the overlay VPN-IP probe times out. That probe failure must count even when the
+// peer has never answered a probe before — otherwise the exit stays "healthy"
+// and desktop never clears it.
+func TestFailedOverlayProbeCountsWithoutPriorSuccess(t *testing.T) {
+	s := &igwStatus{
+		startedAt: time.Now().Add(-2 * IGWStartupGrace),
+		gw4:       net.ParseIP("100.64.0.1"),
+	}
+	s.isHealthy.Store(true)
+	peer := wgtypes.Peer{LastHandshakeTime: time.Now()}
+
+	for i := 0; i < IGWFailureThreshold; i++ {
+		// No rx movement: dead-exit path must still count failures.
+		s.applyOverlayProbeResult(peer, false, false)
+	}
+	if s.isHealthy.Load() {
+		t.Fatal("failed overlay probes left the exit healthy")
+	}
+	if s.probeEverSucceeded {
+		t.Fatal("probeEverSucceeded set after only failures")
+	}
+}
+
+// A live exit whose metrics port is firewalled still moves the WireGuard
+// receive counter. That must not tear the gateway down.
+func TestFailedOverlayProbeIgnoredWhenUnderlayFlows(t *testing.T) {
+	s := &igwStatus{
+		startedAt: time.Now().Add(-2 * IGWStartupGrace),
+		gw4:       net.ParseIP("100.64.0.1"),
+	}
+	s.isHealthy.Store(true)
+	peer := wgtypes.Peer{LastHandshakeTime: time.Now()}
+
+	for i := 0; i < IGWFailureThreshold; i++ {
+		s.applyOverlayProbeResult(peer, false, true)
+	}
+	if !s.isHealthy.Load() {
+		t.Fatal("firewalled metrics port tore down a flowing underlay exit")
+	}
+	if s.failureCount != 0 {
+		t.Fatalf("failureCount = %d, want 0", s.failureCount)
+	}
+}
+
+func TestOverlayProbeSuccessClearsFailures(t *testing.T) {
+	s := &igwStatus{
+		startedAt:    time.Now().Add(-2 * IGWStartupGrace),
+		failureCount: IGWFailureThreshold - 1,
+		gw4:          net.ParseIP("100.64.0.1"),
+	}
+	s.isHealthy.Store(true)
+	peer := wgtypes.Peer{LastHandshakeTime: time.Now()}
+	s.applyOverlayProbeResult(peer, true, false)
+	if !s.probeEverSucceeded {
+		t.Fatal("probeEverSucceeded not set after success")
+	}
+	if s.failureCount != 0 {
+		t.Fatalf("failureCount = %d after success, want 0", s.failureCount)
+	}
+}
+
 func TestNoteFailureRespectsGraceAndThreshold(t *testing.T) {
-	s := &igwStatus{isHealthy: true, startedAt: time.Now()}
+	s := &igwStatus{startedAt: time.Now()}
+	s.isHealthy.Store(true)
 
 	s.noteFailure(nil)
-	if !s.isHealthy || s.failureCount != 0 {
-		t.Fatalf("failure counted during startup grace: healthy=%v count=%d", s.isHealthy, s.failureCount)
+	if !s.isHealthy.Load() || s.failureCount != 0 {
+		t.Fatalf("failure counted during startup grace: healthy=%v count=%d", s.isHealthy.Load(), s.failureCount)
 	}
 
 	s.startedAt = time.Now().Add(-2 * IGWStartupGrace)
 	for i := 1; i < IGWFailureThreshold; i++ {
 		s.noteFailure(nil)
-		if !s.isHealthy {
+		if !s.isHealthy.Load() {
 			t.Fatalf("torn down after %d of %d failures", i, IGWFailureThreshold)
 		}
 	}

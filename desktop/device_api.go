@@ -288,9 +288,9 @@ func NetworkRequiresAutoExit(network, server, token string) (bool, error) {
 	return networkAutoSelectExit(network, server, token)
 }
 
-// applyEnforcedAutoExit selects the nearest exit before a connect is published
-// when the network requires it. Missing exits do not fail the connect.
-// Always arms local auto_exit desired state so IGW failover can switch exits.
+// applyEnforcedAutoExit arms auto_exit desired state when the network requires
+// it. The actual nearest pick runs after connect (finishDesktopConnect) so
+// ranking can use overlay VPN probes.
 func applyEnforcedAutoExit(network, token string) error {
 	if strings.TrimSpace(token) == "" {
 		return nil
@@ -299,17 +299,7 @@ func applyEnforcedAutoExit(network, token string) error {
 	if err != nil || !required {
 		return err
 	}
-	node, err := selectNearestExitNode(network, token)
-	if err != nil {
-		// Still arm auto mode so a later reconcile/failover can pick one up.
-		armEnforcedAutoExitDesired(network, "")
-		return err
-	}
-	egressID := ""
-	if node != nil {
-		egressID = node.EgressID
-	}
-	armEnforcedAutoExitDesired(network, egressID)
+	armEnforcedAutoExitDesired(network, "")
 	autoExitEnforced.Store(network, struct{}{})
 	return nil
 }
@@ -326,8 +316,8 @@ func armEnforcedAutoExitDesired(network, egressID string) {
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, egressID)
 }
 
-// applyDeferredAutoExitAfterConnect selects nearest when Auto was chosen while
-// disconnected (or enforced pick failed before the overlay was up).
+// applyDeferredAutoExitAfterConnect selects nearest once the mesh is up when
+// auto_exit is desired (user Auto, or a network that enforces it).
 func applyDeferredAutoExitAfterConnect(network, token string) {
 	if strings.TrimSpace(token) == "" || strings.TrimSpace(network) == "" {
 		return
@@ -481,10 +471,19 @@ func SyncDeviceWithServer(token string) error {
 	return nil
 }
 
+// ErrNetworkNotConnected is returned when exit list/select runs before the
+// network is connected. Overlay VPN probes are the only ranking signal, so the
+// mesh has to be up first.
+var ErrNetworkNotConnected = errors.New("connect to the network before choosing an exit node")
+
 // ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
+// The network must be connected so exits can be ranked by overlay VPN probes.
 func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
+	}
+	if !networkLocallyConnected(network) {
+		return nil, ErrNetworkNotConnected
 	}
 	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_nodes"
 	resp, err := deviceRequest(http.MethodGet, path, token, nil)
@@ -558,26 +557,19 @@ func hideClearedExitSelection(network string, nodes []models.DeviceExitNode) ([]
 	return nodes, true
 }
 
-// attachExitNodeLatencies ranks exits by public endpoints before the mesh is
-// up, and by overlay metrics-port probes once the network is connected.
+// attachExitNodeLatencies ranks exits by overlay metrics-port probes over the VPN.
 func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
-	if exitProbesUseOverlay(network) {
-		functions.AttachExitNodeOverlayLatencies(network, nodes)
-		return
-	}
-	functions.AttachExitNodePublicLatencies(network, nodes)
-}
-
-// exitProbesUseOverlay is true once the network is connected. Before that, the
-// public endpoint is the only path that can answer.
-func exitProbesUseOverlay(network string) bool {
-	return networkLocallyConnected(network)
+	functions.AttachExitNodeOverlayLatencies(network, nodes)
 }
 
 // GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
+// The network must be connected so health/latency come from the overlay probe.
 func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
+	}
+	if !networkLocallyConnected(network) {
+		return nil, ErrNetworkNotConnected
 	}
 	if exitClearedLocally(network) {
 		return nil, nil
@@ -603,12 +595,16 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 // Switching A→B is not done in one step: clear first (None), then assign. The server
 // rejects a direct switch while RelayedBy still points at the current gateway.
 // Peer/IGW routes are applied by the MQTT peer update; we do not pull here.
+// Selecting an exit requires the network to be connected. Clearing is always allowed.
 func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
 	user, tenant := uiapi.SessionIdentity()
 	egressID = strings.TrimSpace(egressID)
+	if egressID != "" && !networkLocallyConnected(network) {
+		return nil, ErrNetworkNotConnected
+	}
 
 	// Persist desired intent BEFORE the server PUT. MQTT peer updates can arrive
 	// immediately; if want_igw is still false a ChangeDefaultGw=false update will
@@ -662,9 +658,13 @@ func networkLocallyConnected(network string) bool {
 // SelectNearestDeviceExitNode lists exits, picks the nearest available one, and selects it.
 // Persists auto_exit so session restore re-picks nearest rather than a fixed egress id.
 // Switching A→B clears the current selection first (server rejects direct switch).
+// Requires the network to be connected so ranking uses overlay VPN probes.
 func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
+	}
+	if !networkLocallyConnected(network) {
+		return nil, ErrNetworkNotConnected
 	}
 	nodes, err := ListDeviceExitNodes(network, token)
 	if err != nil {
@@ -689,16 +689,6 @@ func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.
 	}
 	pick, ok := functions.PickNearestAvailableExitNode(nodes, exclude)
 	if !ok || strings.TrimSpace(pick.EgressID) == "" {
-		// While disconnected with no usable public latency, persist Auto intent
-		// so connect/restore can pick nearest once probes succeed.
-		if !networkLocallyConnected(network) {
-			user, tenant := uiapi.SessionIdentity()
-			if err := config.SetDesiredAutoExitNode(user, tenant, network, ""); err != nil {
-				return nil, err
-			}
-			slog.Info("auto exit deferred until network is connected", "network", network)
-			return nil, nil
-		}
 		return nil, fmt.Errorf("no available exit nodes on network %s", network)
 	}
 	user, tenant := uiapi.SessionIdentity()

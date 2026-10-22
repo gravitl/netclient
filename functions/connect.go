@@ -37,6 +37,7 @@ func connectNetwork(network string, restart bool) error {
 	token := callPrepareDesktopConnect(network)
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
+	NoteExitOverlayConnected(network)
 	if err := config.WriteNodeConfig(); err != nil {
 		err = fmt.Errorf("error writing node config %w", err)
 		logger.Log(0, "connect", network, "failed:", err.Error())
@@ -48,14 +49,15 @@ func connectNetwork(network string, restart bool) error {
 		return err
 	}
 	if !restart {
-		callFinishDesktopConnect(network, token)
+		// Auto-exit ranking probes the overlay; do not hold connect on that.
+		go callFinishDesktopConnect(network, token)
 		return nil
 	}
 	if err := applyConnectionChange("connect"); err != nil {
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
-	callFinishDesktopConnect(network, token)
+	go callFinishDesktopConnect(network, token)
 	return nil
 }
 

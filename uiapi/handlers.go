@@ -142,7 +142,7 @@ func releaseSessionForServerChange(reason string) error {
 
 // ForceLogout clears the Desktop UI session (JWT) so the app returns to login.
 // Keeps CurrServer / servers.json — callers demote the host entry for re-register.
-// Used when the server deletes this host remotely (mesh already going down).
+// Used when the server deletes this host or force-logs out a disabled account.
 func ForceLogout() {
 	cancelSessionRestore()
 	if !isSessionActive() {
@@ -150,7 +150,7 @@ func ForceLogout() {
 		setStatus(Idle)
 		return
 	}
-	uiLog(0, "uiapi: forcing logout after remote host delete")
+	uiLog(0, "uiapi: forcing logout after remote host delete or account disable")
 	setStatus(Closing)
 	if err := releaseSessionFn(false); err != nil {
 		uiLog(1, "uiapi: error releasing session on forced logout:", err.Error())
@@ -625,6 +625,8 @@ func writeExitNodeErr(w http.ResponseWriter, err error) {
 	case strings.Contains(msg, "does not have access"),
 		strings.Contains(msg, "forbidden"):
 		status = http.StatusForbidden
+	case strings.Contains(msg, "connect to the network before choosing an exit"):
+		status = http.StatusConflict
 	case strings.Contains(msg, "not joined"),
 		strings.Contains(msg, "is required"),
 		strings.Contains(msg, "not found"),
