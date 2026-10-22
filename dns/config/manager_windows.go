@@ -115,7 +115,16 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	}
 
 	if len(namespaces) > 0 {
-		err := w.setGlobalSearchList(searchList, nameservers)
+		// Split DNS: publish search suffixes only. Writing Netclient IPs into the
+		// global NameServer list makes Windows send unrelated queries to the
+		// Netclient resolver; NRPT already steers managed domains. Passing an
+		// empty nameserver list also restores any previously injected global
+		// NameServer values from PreNetmakerNameServer.
+		globalDNS := nameservers
+		if !matchAllDomains {
+			globalDNS = nil
+		}
+		err := w.setGlobalSearchList(searchList, globalDNS)
 		if err != nil {
 			return err
 		}
@@ -227,6 +236,12 @@ func (w *windowsManager) setSearchListOnRegistryKey(searchListKey registry.Key, 
 		}
 	}
 
+	if len(dnsIPs) == 0 {
+		// Split-DNS / search-only updates must not install Netclient as a system
+		// resolver, and should undo a previous install if one is still present.
+		return w.restoreNameServerOnRegistryKey(searchListKey)
+	}
+
 	nameserverStr, _, err := searchListKey.GetStringValue("NameServer")
 	nameserverStr = strings.TrimSpace(nameserverStr)
 	if err != nil {
@@ -269,6 +284,25 @@ func (w *windowsManager) setSearchListOnRegistryKey(searchListKey registry.Key, 
 		}
 	}
 
+	return nil
+}
+
+// restoreNameServerOnRegistryKey undoes a prior Netclient NameServer injection
+// when dnsIPs is empty (split DNS). Mirrors the NameServer half of resetSearchListOnRegistryKey.
+func (w *windowsManager) restoreNameServerOnRegistryKey(searchListKey registry.Key) error {
+	nameserver, _, err := searchListKey.GetStringValue("PreNetmakerNameServer")
+	if err != nil {
+		if !errors.Is(err, registry.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+
+	err = searchListKey.SetStringValue("NameServer", nameserver)
+	if err != nil {
+		return err
+	}
+	_ = searchListKey.DeleteValue("PreNetmakerNameServer")
 	return nil
 }
 

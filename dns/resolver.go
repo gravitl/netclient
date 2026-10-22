@@ -89,6 +89,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	} else {
 		query := canonicalizeDomainForMatching(r.Question[0].Name)
 		currServer := config.GetServer(config.CurrServer)
+		var privateNoData bool
 		if currServer == nil {
 			reply.Rcode = dns.RcodeServerFailure
 		} else {
@@ -113,6 +114,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			resp, err := GetDNSResolverInstance().Lookup(r)
 			if err != nil {
 				logger.Log(4, fmt.Sprintf("failed to resolve dns query %s with local records: %v", r.Question[0].Name, err))
+				privateNoData = errors.Is(err, ErrNoQTypeRecord)
 			} else {
 				logger.Log(4, fmt.Sprintf("resolved dns query %s with local records: %v", r.Question[0].Name, resp))
 				reply.Authoritative = true
@@ -199,6 +201,15 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		// OS DNS can still be in system-wide mode for a moment after an exit is
 		// torn down, sending names here that no match domain covers.
 		resolveControlPlaneFallback(r, reply)
+
+		// Empty NOERROR (NODATA) stops Windows from trying the next resolver.
+		// When Netclient is consulted for an unrelated name with fallback DNS
+		// disabled, SERVFAIL lets the OS fail over to Wi-Fi/Ethernet DNS.
+		// Preserve true private NODATA (name exists, wrong RR type).
+		if len(reply.Answer) == 0 && reply.Rcode == dns.RcodeSuccess && !privateNoData {
+			reply.Rcode = dns.RcodeServerFailure
+			logger.Log(4, fmt.Sprintf("no answer for dns query %s; returning SERVFAIL so OS may try next resolver", r.Question[0].Name))
+		}
 	}
 
 	if ipv4OnlyInternetExit() {

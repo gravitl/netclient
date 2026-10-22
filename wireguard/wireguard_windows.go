@@ -1,7 +1,6 @@
 package wireguard
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -123,8 +122,13 @@ func (nc *NCIface) Create() error {
 // setInterfaceMetric puts the netmaker interface one step behind the interface
 // that resolves DNS, so Windows keeps preferring that one for resolution.
 func (nc *NCIface) setInterfaceMetric(resolvingMetric uint32) error {
-	if resolvingMetric == 0 {
+	if nc.IsTestIface {
 		return nil
+	}
+	// 0 means the probe was skipped or failed to produce a value; still demote
+	// the adapter so Netclient is not preferred for general DNS.
+	if resolvingMetric == 0 {
+		resolvingMetric = fallbackInterfaceMetric
 	}
 	_, err := runPSCommand(fmt.Sprintf("Set-NetIPInterface -InterfaceAlias '%s' -InterfaceMetric %d", nc.Name, resolvingMetric+1))
 	return err
@@ -871,6 +875,11 @@ func errString(err error) string {
 // tens of seconds on some hosts — far too long to repeat for every iface rebuild.
 const resolvingMetricTTL = 5 * time.Minute
 
+// fallbackInterfaceMetric is applied when the probe fails so the netmaker
+// adapter is still demoted relative to typical Wi-Fi/Ethernet metrics (often
+// 5–35). Leaving the metric unset (0) recreates the v1.5.1 split-DNS break.
+const fallbackInterfaceMetric uint32 = 75
+
 var resolvingMetric struct {
 	sync.Mutex
 	value uint32
@@ -885,7 +894,9 @@ func cachedResolvingInterfaceMetric() (uint32, error) {
 	}
 	metric, err := getResolvingInterfaceMetric()
 	if err != nil {
-		return 0, err
+		slog.Warn("failed to probe resolving interface metric; using fallback",
+			"error", err, "fallback_metric", fallbackInterfaceMetric)
+		metric = fallbackInterfaceMetric
 	}
 	resolvingMetric.value = metric
 	resolvingMetric.at = time.Now()
@@ -900,13 +911,8 @@ func getResolvingInterfaceMetric() (uint32, error) {
 		return 0, err
 	}
 
-	type dnsEntry struct {
-		InterfaceIndex  int      `json:"InterfaceIndex"`
-		ServerAddresses []string `json:"ServerAddresses"`
-	}
-
-	var entries []dnsEntry
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &entries); err != nil {
+	entries, err := parseDnsClientServerAddressJSON(output)
+	if err != nil {
 		return 0, err
 	}
 
