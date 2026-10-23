@@ -2,11 +2,14 @@ package dns
 
 import (
 	"context"
+	"errors"
+	"net"
 	"os/exec"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -24,12 +27,28 @@ import (
 // answering regardless of tunnel state.
 const darwinDNSLoopbackAddr = "127.51.8.21"
 
+const (
+	dnsBindAttempts     = 5
+	dnsBindRetryWait    = 150 * time.Millisecond
+	dnsShutdownWait     = 3 * time.Second
+	dnsServeExitWait    = 2 * time.Second
+	dnsStartRetryDelay  = 2 * time.Second
+	dnsStartRetryMinGap = 5 * time.Second
+)
+
 var dnsMutex = sync.Mutex{} // used to mutex functions of the DNS
+
+var (
+	dnsStartRetryMu sync.Mutex
+	dnsStartRetryAt time.Time
+)
 
 type DNSServer struct {
 	DnsServer []*dns.Server
 	AddrList  []string
 	AddrStr   string
+	// serveDone aligns with DnsServer: closed when that server's ListenAndServe returns.
+	serveDone []chan struct{}
 }
 
 var dnsServer *DNSServer
@@ -90,6 +109,8 @@ func (dnsServer *DNSServer) Start() {
 	bound := dnsServer.AddrStr != ""
 	dnsMutex.Unlock()
 	if !bound {
+		logger.Log(0, "dns start aborted: no listeners bound; scheduling retry")
+		scheduleDNSStartRetry()
 		return
 	}
 
@@ -105,6 +126,24 @@ func (dnsServer *DNSServer) Start() {
 	}
 	logger.Log(0, "dns configured, listeners:", listeners)
 	slog.Info("DNS server listens on: ", "Info", listeners)
+}
+
+// scheduleDNSStartRetry asks the DNS apply worker to try again after a short
+// delay. Desktop login/logout can leave :53 busy briefly (or orphan a serve
+// goroutine); without a retry, NRPT is never installed for the rest of the session.
+func scheduleDNSStartRetry() {
+	dnsStartRetryMu.Lock()
+	if time.Since(dnsStartRetryAt) < dnsStartRetryMinGap {
+		dnsStartRetryMu.Unlock()
+		return
+	}
+	dnsStartRetryAt = time.Now()
+	dnsStartRetryMu.Unlock()
+
+	go func() {
+		time.Sleep(dnsStartRetryDelay)
+		ScheduleReconfigure()
+	}()
 }
 
 // StartListeners binds the DNS listeners without touching OS DNS, reporting
@@ -190,12 +229,33 @@ func ensureDarwinDNSLoopbackAlias() {
 }
 
 // startListenerLocked binds a UDP DNS listener and only records it after the
-// socket is actually listening. Caller must hold dnsMutex.
+// socket is actually listening. Retries on transient bind failures (common on
+// Windows after StopListeners during login/logout stress). Caller must hold dnsMutex.
 func (dnsServer *DNSServer) startListenerLocked(lIp string) bool {
+	for attempt := 1; attempt <= dnsBindAttempts; attempt++ {
+		if dnsServer.tryStartListenerLocked(lIp) {
+			return true
+		}
+		if attempt == dnsBindAttempts {
+			break
+		}
+		// Another Start may have bound this address while we slept.
+		dnsMutex.Unlock()
+		time.Sleep(dnsBindRetryWait * time.Duration(attempt))
+		dnsMutex.Lock()
+		if slices.Contains(dnsServer.AddrList, lIp) {
+			return true
+		}
+	}
+	return false
+}
+
+func (dnsServer *DNSServer) tryStartListenerLocked(lIp string) bool {
 	dns.HandleFunc(".", handleDNSRequest)
 
 	started := make(chan struct{})
 	errCh := make(chan error, 1)
+	done := make(chan struct{})
 	srv := &dns.Server{
 		Net:     "udp",
 		Addr:    lIp,
@@ -212,6 +272,7 @@ func (dnsServer *DNSServer) startListenerLocked(lIp string) bool {
 
 	go func() {
 		errCh <- srv.ListenAndServe()
+		close(done)
 	}()
 
 	select {
@@ -219,6 +280,7 @@ func (dnsServer *DNSServer) startListenerLocked(lIp string) bool {
 		dnsServer.AddrStr = lIp
 		dnsServer.AddrList = append(dnsServer.AddrList, lIp)
 		dnsServer.DnsServer = append(dnsServer.DnsServer, srv)
+		dnsServer.serveDone = append(dnsServer.serveDone, done)
 		// Keep watching: an overlay listener dies when its address goes away
 		// with the tunnel, and a dead address must not stay published.
 		go func() {
@@ -229,13 +291,20 @@ func (dnsServer *DNSServer) startListenerLocked(lIp string) bool {
 		}()
 		return true
 	case err := <-errCh:
-		logger.Log(0, "error in starting dns server on", lIp+":", err.Error())
+		<-done
+		if isAddrInUse(err) {
+			logger.Log(0, "error in starting dns server on", lIp+":", err.Error(), "(address in use; will retry)")
+		} else {
+			logger.Log(0, "error in starting dns server on", lIp+":", err.Error())
+		}
 		return false
 	case <-time.After(3 * time.Second):
 		logger.Log(0, "timeout starting dns server on", lIp)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		_ = srv.ShutdownContext(ctx)
-		cancel()
+		forceShutdownDNSServer(srv)
+		select {
+		case <-done:
+		case <-time.After(dnsServeExitWait):
+		}
 		return false
 	}
 }
@@ -253,6 +322,9 @@ func (dnsServer *DNSServer) dropListener(srv *dns.Server) {
 	}
 	addr := srv.Addr
 	dnsServer.DnsServer = slices.Delete(dnsServer.DnsServer, idx, idx+1)
+	if idx < len(dnsServer.serveDone) {
+		dnsServer.serveDone = slices.Delete(dnsServer.serveDone, idx, idx+1)
+	}
 	dnsServer.AddrList = slices.DeleteFunc(dnsServer.AddrList, func(a string) bool { return a == addr })
 
 	dnsServer.AddrStr = ""
@@ -337,17 +409,75 @@ func (dnsServer *DNSServer) stopListenersLocked() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	servers := dnsServer.DnsServer
+	dones := dnsServer.serveDone
+	dnsServer.AddrStr = ""
+	dnsServer.AddrList = []string{}
+	dnsServer.DnsServer = []*dns.Server{}
+	dnsServer.serveDone = nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), dnsShutdownWait)
 	defer cancel()
 
-	for _, v := range dnsServer.DnsServer {
+	for _, v := range servers {
 		err := v.ShutdownContext(ctx)
 		if err != nil {
 			logger.Log(0, "error shutting down dns server:", err.Error())
 		}
+		// ShutdownContext can time out while ListenAndServe still holds :53.
+		// Forgetting the server without closing the packet conn orphans the
+		// socket for the life of the process (desktop login/logout stress).
+		forceShutdownDNSServer(v)
 	}
 
-	dnsServer.AddrStr = ""
-	dnsServer.AddrList = []string{}
-	dnsServer.DnsServer = []*dns.Server{}
+	deadline := time.Now().Add(dnsServeExitWait)
+	for i, done := range dones {
+		if done == nil {
+			continue
+		}
+		wait := time.Until(deadline)
+		if wait < 0 {
+			wait = 0
+		}
+		select {
+		case <-done:
+		case <-time.After(wait):
+			addr := ""
+			if i < len(servers) && servers[i] != nil {
+				addr = servers[i].Addr
+			}
+			logger.Log(0, "dns listener did not exit after shutdown:", addr)
+		}
+	}
+}
+
+// forceShutdownDNSServer closes the underlying packet conn/listener so a stuck
+// ListenAndServe releases the UDP port even when ShutdownContext timed out.
+func forceShutdownDNSServer(srv *dns.Server) {
+	if srv == nil {
+		return
+	}
+	if srv.PacketConn != nil {
+		_ = srv.PacketConn.Close()
+	}
+	if srv.Listener != nil {
+		_ = srv.Listener.Close()
+	}
+}
+
+// isAddrInUse reports whether err is a UDP bind conflict (POSIX or Windows).
+func isAddrInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		err = opErr.Err
+	}
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "address already in use") ||
+		strings.Contains(s, "only one usage of each socket address")
 }
