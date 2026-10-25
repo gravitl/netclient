@@ -16,6 +16,7 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/uiapi"
 	"github.com/minio/selfupdate"
 	"golang.org/x/exp/slog"
 )
@@ -116,6 +117,13 @@ func versionLessThan(v1, v2 string) (bool, error) {
 func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 	if IsContainerized() {
 		slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", version)
+		return true, nil
+	}
+	// Desktop owns binary updates while a GUI session is active. Self-updating
+	// the daemon underneath the app races the installer and breaks the session.
+	uiapi.EnsureSessionLoaded()
+	if uiapi.IsSessionActive() {
+		slog.Warn("skipping auto-upgrade in GUI mode; Desktop manages updates", "version", version)
 		return true, nil
 	}
 	// Use Windows specific version change process

@@ -13,6 +13,17 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+func respondServerIncompatible(w http.ResponseWriter, serverVersion string) {
+	msg := serverIncompatibleMessage(serverVersion)
+	uiLog(0, "uiapi: server incompatible:", msg)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Message: msg,
+		Code:    ErrCodeServerIncompatible,
+	})
+}
+
 func checkHealth(w http.ResponseWriter, r *http.Request) {
 	resp := DaemonHealthStatus{
 		Status:         DaemonStatusOK,
@@ -67,6 +78,14 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if api == "" {
 		respondConfigureServerError(w, "invalid server")
+		return
+	}
+	// Reject known-old servers on save when /api/server/status is reachable.
+	// Unreachable servers are still saved; PUT /session re-checks with auth.
+	if ver, err := fetchServerStatusVersion(r.Context(), api); err != nil {
+		uiLog(1, "uiapi: could not verify server version on save:", err.Error())
+	} else if !IsDesktopServerCompatible(ver) {
+		respondServerIncompatible(w, ver)
 		return
 	}
 	if key := config.ResolveServerKey(domain); key != "" {
@@ -285,6 +304,22 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Verify server version before registering the host so an old controller
+	// never receives a Desktop enrollment.
+	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
+	if err != nil {
+		uiLog(0, "uiapi: failed to fetch server config for compatibility check:", err.Error())
+		setStatus(Idle)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "unable to verify server version; try again"})
+		return
+	}
+	if !IsDesktopServerCompatible(cfg.Version) {
+		setStatus(Idle)
+		respondServerIncompatible(w, cfg.Version)
+		return
+	}
+
 	if err := registerSession(server, req.Username, req.AuthToken, req.Password, req.TenantID); err != nil {
 		uiLog(0, "uiapi: PUT /session register failed:", err.Error())
 		setStatus(Idle)
@@ -293,10 +328,6 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
-	if err != nil {
-		uiLog(1, "uiapi: failed to fetch server config:", err.Error())
-	}
 	setSession(req.Username, req.AuthToken, req.TenantID, cfg)
 	// Return immediately so the GUI can show a registration transition.
 	// The daemon rebuild runs after this response is flushed, and reconnect

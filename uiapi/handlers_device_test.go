@@ -1,6 +1,7 @@
 package uiapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,6 +16,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// stubCompatibleServerConfig makes PUT /session compatibility checks pass in tests.
+func stubCompatibleServerConfig(t *testing.T, version string) {
+	t.Helper()
+	prev := fetchServerConfig
+	t.Cleanup(func() { fetchServerConfig = prev })
+	if version == "" {
+		version = "v1.8.0"
+	}
+	fetchServerConfig = func(ctx context.Context, server, username, authToken, tenantID string) (nmConfig.ServerConfig, error) {
+		return nmConfig.ServerConfig{Version: version}, nil
+	}
+}
 
 func TestListNetworksHandler(t *testing.T) {
 	setStatus(Idle)
@@ -346,6 +360,7 @@ func TestGetStatusReportsIdleWhenSessionExpired(t *testing.T) {
 func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
 	clearSessionForTest()
 	config.CurrServer = "api.example.com"
+	stubCompatibleServerConfig(t, "v1.8.0")
 
 	restoredUser := ""
 	restoredTenant := ""
@@ -386,6 +401,7 @@ func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
 func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 	clearSessionForTest()
 	setupTestSession("api.example.com", "alice", "alice-token")
+	stubCompatibleServerConfig(t, "v1.8.0")
 
 	released := false
 	registeredUser := ""
@@ -416,6 +432,7 @@ func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 func TestConfigureSessionHandoffOnTenantChange(t *testing.T) {
 	clearSessionForTest()
 	setupTestSession("api.example.com", "alice", "alice-token")
+	stubCompatibleServerConfig(t, "v1.8.0")
 	session.mu.Lock()
 	session.tenantID = "tenant-a"
 	session.mu.Unlock()
