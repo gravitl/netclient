@@ -2,6 +2,7 @@ package uiapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -225,6 +226,33 @@ func TestSelectExitNodeHandlerEnforcedAuto(t *testing.T) {
 	var node models.DeviceExitNode
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &node))
 	assert.Equal(t, "e-near", node.EgressID)
+}
+
+func TestSelectExitNodeHandlerPolicyCheckFailsClosed(t *testing.T) {
+	setStatus(Idle)
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "token-123")
+
+	SetHandlers(HandlerDeps{
+		NetworkRequiresAutoExit: func(network, server, token string) (bool, error) {
+			return false, errors.New("server unreachable")
+		},
+		SelectExitNode: func(network, server, token, egressID string) (*models.DeviceExitNode, error) {
+			t.Fatal("manual select must not run when policy check fails")
+			return nil, nil
+		},
+		SelectNearestExitNode: func(network, server, token string) (*models.DeviceExitNode, error) {
+			t.Fatal("auto select must not run when policy check fails")
+			return nil, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/networks/net1/exit_node", strings.NewReader(`{"egress_id":"e1"}`))
+	req.SetPathValue("network", "net1")
+	rec := httptest.NewRecorder()
+	selectExitNodeHandler(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 }
 
 func TestSelectExitNodeHandlerRequiresSession(t *testing.T) {

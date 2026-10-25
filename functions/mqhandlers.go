@@ -575,11 +575,18 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if uiapi.IsSessionActive() {
 			logger.Log(0, "host update REQ_PULL: pulling in-process (desktop session)")
 			clearRetainedMsg(client, msg.Topic())
-			response, resetInterface, replacePeers, err := Pull(false, false, false)
+			var replacePeers bool
+			var err error
+			var response models.HostPull
+			// Assign into the outer resetInterface — := would shadow it and skip
+			// resetInterfaceFunc() after the switch.
+			response, resetInterface, replacePeers, err = Pull(false, false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {
 				mqFallbackPull(response, resetInterface, replacePeers)
+				// mqFallbackPull already applied resetInterface.
+				resetInterface = false
 			}
 			writeToDisk = false
 			break
@@ -589,11 +596,15 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		response, resetInterface, replacePeers, err := Pull(false, false, false)
+		var replacePeers bool
+		var err error
+		var response models.HostPull
+		response, resetInterface, replacePeers, err = Pull(false, false, false)
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
 			mqFallbackPull(response, resetInterface, replacePeers)
+			resetInterface = false
 		}
 		writeToDisk = false
 	case models.EgressUpdate:
@@ -1075,6 +1086,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 	if server.IsPro {
 		go networking.RefreshPeerInfoCache()
+	}
+
+	// Pull may report that the WireGuard iface needs a rebuild (address/peer
+	// drift). Host-update MQTT paths apply this after mqFallbackPull via the
+	// outer resetInterface flag; the mq-fallback ticker and MQFallbackPull
+	// callers must honor it here or the iface stays stale until a daemon restart.
+	if resetInterface {
+		resetInterfaceFunc()
 	}
 }
 

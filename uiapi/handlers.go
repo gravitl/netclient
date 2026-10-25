@@ -713,7 +713,12 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	enforced, enfErr := networkRequiresAutoExit(network, server, token)
 	if enfErr != nil {
+		// Fail closed: if we cannot learn whether the network requires auto
+		// exit, do not allow a manual clear/select that might violate policy.
 		uiLog(0, "uiapi: exit auto-select requirement check failed:", enfErr.Error())
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "unable to verify exit node policy; try again"})
+		return
 	}
 	selectingExit := req.Auto || enforced || strings.TrimSpace(req.EgressID) != ""
 	if selectingExit {
