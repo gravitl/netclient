@@ -67,7 +67,8 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	ownerMatches := owner == "" || owner == username
 	applySessionTenant(server, tenantID)
 
-	if !alreadyRegistered || !tenantMatches || !ownerMatches {
+	needRegister := !alreadyRegistered || !tenantMatches || !ownerMatches
+	if needRegister {
 		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
 			return err
 		}
@@ -75,7 +76,19 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 
 	if IsRegisteredToServer(server) {
 		if _, _, _, err := pullForSession(false, true, false); err != nil {
-			return fmt.Errorf("failed to sync with server: %w", err)
+			// Local servers.json can outlive the host row (reinstall, admin
+			// delete). Re-enroll once instead of failing login forever.
+			if isMissingHostOnServer(err) && !needRegister {
+				slog.Warn("session pull: host missing on server, re-registering", "server", server, "error", err)
+				if regErr := registerDeviceOnServerForSession(server, authToken); regErr != nil {
+					return regErr
+				}
+				if _, _, _, err := pullForSession(false, true, false); err != nil {
+					return fmt.Errorf("failed to sync with server: %w", err)
+				}
+			} else {
+				return fmt.Errorf("failed to sync with server: %w", err)
+			}
 		}
 	}
 	// After POST /server, MQTT may still be on the previous broker. First-time
@@ -86,6 +99,17 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 		functions.MarkRegistrationResetPending()
 	}
 	return nil
+}
+
+// isMissingHostOnServer reports host authenticate/pull failures where the
+// server no longer has this device (common after reinstall with leftover config).
+func isMissingHostOnServer(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "record not found") ||
+		(strings.Contains(msg, "failed to authenticate") && strings.Contains(msg, "400"))
 }
 
 func applySessionTenant(server, tenantID string) {
