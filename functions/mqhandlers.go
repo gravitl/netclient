@@ -178,6 +178,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		slog.Error("error unmarshalling peer data", "error", err)
 		return
 	}
+	currCheckInterval := networking.PeerConnectionCheckInterval
 	if peerUpdate.ServerConfig.PeerConnectionCheckInterval != "" &&
 		peerUpdate.ServerConfig.PeerConnectionCheckInterval != server.PeerConnectionCheckInterval {
 		sec, err := strconv.Atoi(peerUpdate.ServerConfig.PeerConnectionCheckInterval)
@@ -186,11 +187,13 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if server.IsPro {
-		if autoRelayConnTicker != nil {
-			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
-		}
-		if networking.PeerLocalEndpointConnTicker != nil {
-			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
+		if networking.PeerConnectionCheckInterval != currCheckInterval {
+			if autoRelayConnTicker != nil {
+				autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+			}
+			if networking.PeerLocalEndpointConnTicker != nil {
+				networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
+			}
 		}
 		if wireguard.HaEgressTicker != nil {
 			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
