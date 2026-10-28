@@ -10,7 +10,6 @@ import (
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
-	"golang.org/x/exp/slog"
 )
 
 // Disconnect disconnects a node from the given network
@@ -65,7 +64,7 @@ func connectNetwork(network string, restart bool) error {
 // without bouncing the daemon, falling back to a restart only if that fails.
 func applyConnectionChange(op string) error {
 	if err := applyConnectionChangeInProcess(); err != nil {
-		slog.Warn("in-process apply failed; falling back to daemon restart", "op", op, "error", err)
+		fmt.Println("in-process", op, "apply failed; falling back to service restart (Windows: uiapi will drop):", err)
 		if err := daemon.Restart(); err != nil {
 			if err := daemon.Start(); err != nil {
 				return fmt.Errorf("daemon restart failed %w", err)

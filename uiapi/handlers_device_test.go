@@ -64,6 +64,7 @@ func TestJoinNetworkHandlerRequiresSession(t *testing.T) {
 	var body ErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "session required", body.Message)
+	assert.Equal(t, ErrCodeSessionRequired, body.Code)
 }
 
 func TestListNetworksHandlerRequiresSession(t *testing.T) {
@@ -75,6 +76,7 @@ func TestListNetworksHandlerRequiresSession(t *testing.T) {
 	var body ErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "session required", body.Message)
+	assert.Equal(t, ErrCodeSessionRequired, body.Code)
 }
 
 func TestSyncHandler(t *testing.T) {

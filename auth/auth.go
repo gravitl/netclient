@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -65,6 +66,20 @@ func AuthenticateOnce(server *config.Server, host *config.Config, timeout time.D
 // AuthenticateWithOptions authenticates with optional control over 401 cleanup behavior.
 func AuthenticateWithOptions(server *config.Server, host *config.Config, opts AuthenticateOptions) (string, error) {
 	return authenticate(server, host, opts, 0)
+}
+
+// IsMissingHostError reports host authenticate failures where the server no
+// longer has this device (deleted host, leftover enrollment after reinstall).
+// The API returns HTTP 400 with "record not found", not 401.
+func IsMissingHostError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "record not found") {
+		return true
+	}
+	return strings.Contains(msg, "failed to authenticate") && strings.Contains(msg, "400")
 }
 
 func authenticate(server *config.Server, host *config.Config, opts AuthenticateOptions, timeout time.Duration) (string, error) {

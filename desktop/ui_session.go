@@ -104,12 +104,7 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 // isMissingHostOnServer reports host authenticate/pull failures where the
 // server no longer has this device (common after reinstall with leftover config).
 func isMissingHostOnServer(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "record not found") ||
-		(strings.Contains(msg, "failed to authenticate") && strings.Contains(msg, "400"))
+	return auth.IsMissingHostError(err)
 }
 
 func applySessionTenant(server, tenantID string) {

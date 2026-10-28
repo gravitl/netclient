@@ -17,6 +17,10 @@ const MinDesktopServerVersion = "v1.7.0"
 // the target Netmaker server is too old for this Desktop build.
 const ErrCodeServerIncompatible = "server_incompatible"
 
+// ErrCodeSessionRequired is returned on session-gated routes when there is no
+// usable Desktop JWT. The GUI should logout, clear local session, and stop polling.
+const ErrCodeSessionRequired = "session_required"
+
 // IsDesktopServerCompatible reports whether a Netmaker server version can be
 // used with this Desktop daemon (strictly newer than MinDesktopServerVersion).
 // "dev" is always allowed. Unparseable versions are rejected.

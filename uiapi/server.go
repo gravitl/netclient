@@ -100,6 +100,7 @@ func stopLocked() error {
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	fmt.Println("uiapi: stopping desktop API on", listenAddr)
 	err := httpSrv.Shutdown(shutdownCtx)
 	if listenDone != nil {
 		<-listenDone
@@ -107,7 +108,9 @@ func stopLocked() error {
 	}
 	httpSrv = nil
 	if err != nil {
-		uiLog(0, "uiapi: shutdown error:", err.Error())
+		fmt.Println("uiapi: shutdown error:", err.Error())
+	} else {
+		fmt.Println("uiapi: stopped (Desktop will see ECONNREFUSED until listen returns)")
 	}
 	return err
 }

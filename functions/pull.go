@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/gravitl/netclient/auth"
@@ -38,11 +39,21 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		config.CurrServer = serverName
 		_ = config.SetCurrServerCtxInFile(serverName)
 	}
+	// Partial servers.json entries (Desktop Settings) are not enrolled — do not
+	// hammer authenticate / spam ERROR logs from mqFallback.
+	if strings.TrimSpace(server.Server) == "" {
+		err := errors.New("not registered to server")
+		return models.HostPull{}, resetInterface, replacePeers, err
+	}
 	token, err := auth.AuthenticateWithOptions(server, config.Netclient(), auth.AuthenticateOptions{
 		CleanupOnUnauthorized: false,
 	})
 	if err != nil {
-		logger.Log(0, "pull failed for server", serverName, "authenticate:", err.Error())
+		if ClearEnrollmentIfHostMissing(serverName, err) {
+			logger.Log(0, "pull failed for server", serverName, "host missing on server; enrollment cleared")
+		} else {
+			logger.Log(0, "pull failed for server", serverName, "authenticate:", err.Error())
+		}
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 

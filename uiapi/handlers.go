@@ -339,7 +339,7 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		SetRestorePhase(RestorePhaseRegister)
 	}
 	username, tenantID := req.Username, req.TenantID
-	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
+	fmt.Println("uiapi: session configured user=", req.Username, "tenant=", req.TenantID, "server=", server, "restore_pending=", resetting)
 	w.WriteHeader(http.StatusOK)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -347,10 +347,12 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	resetDone := applyRegistrationReset()
 	go func(gen uint64, username, tenantID string, resetDone <-chan struct{}) {
 		if resetDone != nil {
+			fmt.Println("uiapi: waiting for registration in-process reset before restore")
 			<-resetDone
+			fmt.Println("uiapi: registration in-process reset done; starting restore")
 		}
 		if err := restoreDesiredConnections(username, tenantID); err != nil {
-			uiLog(1, "uiapi: failed to restore previous connections:", err.Error())
+			fmt.Println("uiapi: failed to restore previous connections:", err.Error())
 		}
 		finishSessionRestore(gen)
 	}(restoreGen, username, tenantID, resetDone)
@@ -358,17 +360,19 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
+	fmt.Println("uiapi: DELETE /session clear_token=", clearToken)
 	cancelSessionRestore()
 	setStatus(Closing)
 	// Never clear CurrServer / .serverctx on logout — Settings should keep
 	// the last saved server so the user does not re-enter it.
 	if err := releaseSessionFn(false); err != nil {
-		uiLog(1, "uiapi: error releasing session:", err.Error())
+		fmt.Println("uiapi: error releasing session:", err.Error())
 	}
 	if err := clearSession(clearToken); err != nil {
-		uiLog(1, "uiapi: error clearing session:", err.Error())
+		fmt.Println("uiapi: error clearing session:", err.Error())
 	}
 	setStatus(Idle)
+	fmt.Println("uiapi: logout complete")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -496,7 +500,10 @@ func isApprovalAccessError(err error) bool {
 func writeSessionRequired(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "session required"})
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Message: "session required",
+		Code:    ErrCodeSessionRequired,
+	})
 }
 
 func requireSession(w http.ResponseWriter) (server, token string, ok bool) {

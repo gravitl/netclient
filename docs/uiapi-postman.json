@@ -36,7 +36,7 @@
         "method": "GET",
         "header": [],
         "url": "{{daemon}}/server",
-        "description": "Same payload as GET /session.\n\nWhile a session is active the body also includes:\n- restore_phase (only while status is restoring)\n- want_igw, auto_exit, desired_egress_id, desired_exit_network\n- notice: { code, network, message } when the daemon has a GUI message. code exit_unhealthy means a manual exit failed its post-connect VPN check and was cleared; the network stays connected."
+        "description": "Same payload as GET /session.\n\nWhile a session is active the body also includes:\n- restore_phase (only while status is restoring)\n- want_igw, auto_exit, desired_egress_id, desired_exit_network\n- notice: { code, network, message } when the daemon has a GUI message. code exit_unhealthy means a manual exit failed its post-connect VPN check and was cleared; the network stays connected.\n\nSession-gated routes (e.g. GET /networks) return 401 with code session_required when there is no usable JWT — Desktop should logout, clear local session, and stop polling."
       }
     },
     {

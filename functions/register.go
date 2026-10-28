@@ -221,12 +221,12 @@ func ApplyPendingRegistrationReset() <-chan struct{} {
 	if !registrationResetPending.CompareAndSwap(true, false) {
 		return nil
 	}
-	logger.Log(3, "device registration: resetting in-process")
+	fmt.Println("device registration: resetting in-process")
 	done := daemon.RequestInProcessReset()
 	if done == nil {
-		logger.Log(3, "restart trigger: device registration")
+		fmt.Println("registration reset: in-process unavailable; falling back to service restart (Windows: uiapi will drop)")
 		if err := daemon.Restart(); err != nil {
-			logger.Log(3, "daemon restart failed:", err.Error())
+			fmt.Println("daemon restart failed:", err.Error())
 		}
 	}
 	return done

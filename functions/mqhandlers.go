@@ -14,6 +14,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -872,12 +873,20 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			if skip && ((Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "") {
 				continue
 			}
+			// Partial / demoted enrollment — nothing to pull until Desktop re-registers.
+			if !IsServerFullyRegistered("") {
+				continue
+			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
 			//auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false, false, false)
 			if err != nil {
-				slog.Error("pull failed", "error", err)
+				if auth.IsMissingHostError(err) {
+					slog.Warn("pull failed; host missing on server", "error", err)
+				} else {
+					slog.Error("pull failed", "error", err)
+				}
 			} else {
 				mqFallbackPull(response, resetInterface, replacePeers)
 				server := config.GetServer(config.CurrServer)

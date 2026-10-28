@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
@@ -81,9 +80,9 @@ func HardRestart() error {
 	return hardRestart()
 }
 
-// logRestartRequest names the caller at verbosity 1 (debug). Kept on logger.Log
-// rather than slog.Debug so it still appears when -v is raised on Windows,
-// where the service log drops slog.Debug.
+// logRestartRequest names the caller. Always Log(0): on Windows a service
+// restart drops uiapi (:61820) and Desktop sees ECONNREFUSED; we need these
+// lines in default logs when chasing logout/re-login hangs.
 func logRestartRequest(kind string) {
 	caller := "unknown"
 	if pc, file, line, ok := runtime.Caller(2); ok {
@@ -93,7 +92,7 @@ func logRestartRequest(kind string) {
 		}
 		caller = fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
 	}
-	logger.Log(3, fmt.Sprintf("daemon %s requested by %s", kind, caller))
+	fmt.Println("daemon", kind, "requested by", caller, "(Windows: uiapi :61820 will drop during service stop/start)")
 }
 
 // Stop - stops a system daemon

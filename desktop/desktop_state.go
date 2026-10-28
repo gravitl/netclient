@@ -350,7 +350,9 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	// Apply in-process. A SIGHUP restart tears down routes and re-hole-punches
 	// before IGW can be reinstalled, which is the login delay users see.
 	if err := functions.ApplyReconnectInProcess(pull, wantIGW); err != nil {
-		slog.Warn("in-process reconnect apply failed; falling back to daemon restart", "error", err)
+		// On Windows this kills uiapi until WinSW finishes restart — Desktop
+		// then gets ECONNREFUSED on :61820 and can stick in loading.
+		fmt.Println("login restore: in-process reconnect apply failed; falling back to service restart (uiapi will drop):", err.Error())
 		if uiapi.ShouldAbortSessionRestore() {
 			return nil
 		}
