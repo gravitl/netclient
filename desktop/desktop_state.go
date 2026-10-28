@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/uiapi"
@@ -350,17 +349,10 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	// Apply in-process. A SIGHUP restart tears down routes and re-hole-punches
 	// before IGW can be reinstalled, which is the login delay users see.
 	if err := functions.ApplyReconnectInProcess(pull, wantIGW); err != nil {
-		// On Windows this kills uiapi until WinSW finishes restart — Desktop
-		// then gets ECONNREFUSED on :61820 and can stick in loading.
-		fmt.Println("login restore: in-process reconnect apply failed; falling back to service restart (uiapi will drop):", err.Error())
-		if uiapi.ShouldAbortSessionRestore() {
-			return nil
-		}
-		if err := daemon.Restart(); err != nil {
-			if err := daemon.Start(); err != nil {
-				return fmt.Errorf("daemon restart failed %w", err)
-			}
-		}
+		// Never fall back to daemon.Restart() here: on Windows WinSW stop/start
+		// drops uiapi (:61820) and Desktop login fails with ECONNREFUSED.
+		fmt.Println("login restore: in-process reconnect apply failed; keeping uiapi up (no service restart):", err.Error())
+		slog.Warn("login restore: in-process reconnect apply failed", "error", err)
 	}
 	// Ensure system-wide DNS after exit restore even if Start ran earlier in
 	// SplitDNS mode (listener already up; Configure must run again with CurrGw).

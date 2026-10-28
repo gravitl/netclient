@@ -224,10 +224,9 @@ func ApplyPendingRegistrationReset() <-chan struct{} {
 	fmt.Println("device registration: resetting in-process")
 	done := daemon.RequestInProcessReset()
 	if done == nil {
-		fmt.Println("registration reset: in-process unavailable; falling back to service restart (Windows: uiapi will drop)")
-		if err := daemon.Restart(); err != nil {
-			fmt.Println("daemon restart failed:", err.Error())
-		}
+		// Do not WinSW-restart: that drops uiapi during Desktop login.
+		fmt.Println("registration reset: in-process unavailable; skipping service restart to keep uiapi up")
+		logger.Log(0, "registration reset: in-process unavailable; skipping service restart")
 	}
 	return done
 }
