@@ -275,13 +275,6 @@ func IsSessionActive() bool {
 	return isSessionActive()
 }
 
-// PreferInProcessOnly is true when a Windows service restart would drop uiapi
-// (:61820) under Desktop — during login/restore/active session or logout.
-func PreferInProcessOnly() bool {
-	st := getStatus()
-	return isSessionActive() || st == Loading || st == Restoring || st == Closing
-}
-
 // SessionIdentity returns the logged-in username and tenant for auto-reconnect.
 func SessionIdentity() (username, tenantID string) {
 	session.mu.RLock()

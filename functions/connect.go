@@ -8,7 +8,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
-	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 )
@@ -62,15 +61,10 @@ func connectNetwork(network string, restart bool) error {
 }
 
 // applyConnectionChange brings the live interface in line with the new node set
-// without bouncing the daemon, falling back to a restart only if that fails
-// and Desktop is not mid-login/restore (WinSW restart drops uiapi).
+// without bouncing the daemon, falling back to a restart only if that fails.
 func applyConnectionChange(op string) error {
 	if err := applyConnectionChangeInProcess(); err != nil {
-		if uiapi.PreferInProcessOnly() {
-			fmt.Println("in-process", op, "apply failed; not restarting service (Desktop session active):", err)
-			return fmt.Errorf("%s apply failed: %w", op, err)
-		}
-		fmt.Println("in-process", op, "apply failed; falling back to service restart:", err)
+		fmt.Println("in-process", op, "apply failed; falling back to service restart (Windows: uiapi will drop):", err)
 		if err := daemon.Restart(); err != nil {
 			if err := daemon.Start(); err != nil {
 				return fmt.Errorf("daemon restart failed %w", err)
