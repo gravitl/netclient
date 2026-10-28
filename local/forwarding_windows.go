@@ -14,9 +14,10 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// SetIPForwardingWindows enables IP forwarding on the netmaker interface and
-// all other connected interfaces (required for Windows egress / internet exit
-// and mesh gateway hairpin relay).
+// SetIPForwardingWindows enables IP forwarding on the netmaker interface only.
+// LAN/WAN ifaces used for egress NAT are enabled later by InsertEgressRoutingRules
+// when those ranges are known — never blanket-enable all Connected ifaces (that
+// can routing-loop with exit-node 0.0.0.0/0 when underlay pins are missing).
 func SetIPForwardingWindows() error {
 	nm := ncutils.GetInterfaceName()
 	// This runs before the adapter exists on a normal start; wireguard Create()
@@ -28,11 +29,6 @@ func SetIPForwardingWindows() error {
 		logger.Log(0, "WARNING: Error encountered setting ip forwarding. This can break functionality.")
 		slog.Warn("windows: failed to enable forwarding on netmaker iface", "iface", nm, "error", err)
 	}
-	// Also enable forwarding globally so LAN/WAN ifaces used for egress NAT work
-	// even before InsertEgressRoutingRules discovers them.
-	if _, err := runPowerShell(`Get-NetIPInterface | Where-Object { $_.ConnectionState -eq 'Connected' } | ForEach-Object { Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled -ErrorAction SilentlyContinue }`); err != nil {
-		slog.Warn("windows global IP forwarding enable had errors", "error", err)
-	}
 	return nil
 }
 
@@ -40,8 +36,27 @@ func SetIPForwardingWindows() error {
 // For the netmaker adapter it also enables WeakHostSend/Receive so same-interface
 // (gateway/relay hairpin) forwarding works on Windows.
 func EnableForwardingOnInterfaces(aliases ...string) error {
+	return setForwardingOnInterfaces(true, aliases...)
+}
+
+// DisableForwardingOnInterfaces disables forwarding on the given interface aliases.
+// For the netmaker adapter it also disables WeakHostSend/Receive. Missing ifaces
+// are ignored so stop/FlushAll stay safe after the adapter is already torn down.
+func DisableForwardingOnInterfaces(aliases ...string) error {
+	return setForwardingOnInterfaces(false, aliases...)
+}
+
+func setForwardingOnInterfaces(enable bool, aliases ...string) error {
 	var lastErr error
 	nm := ncutils.GetInterfaceName()
+	fwd := "Disabled"
+	weak := "Disabled"
+	action := "disable"
+	if enable {
+		fwd = "Enabled"
+		weak = "Enabled"
+		action = "enable"
+	}
 	for _, alias := range aliases {
 		alias = strings.TrimSpace(alias)
 		if alias == "" {
@@ -58,26 +73,31 @@ $ErrorActionPreference = 'Stop'
 $ifaces = Get-NetIPInterface -InterfaceAlias '%s' -ErrorAction Stop
 if ($null -eq $ifaces) { throw 'interface not found' }
 $ifaces | ForEach-Object {
-  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled -WeakHostSend Enabled -WeakHostReceive Enabled -ErrorAction Stop
+  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding %s -WeakHostSend %s -WeakHostReceive %s -ErrorAction Stop
 }
-`, escaped)
+`, escaped, fwd, weak, weak)
 		} else {
 			cmd = fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 $ifaces = Get-NetIPInterface -InterfaceAlias '%s' -ErrorAction Stop
 if ($null -eq $ifaces) { throw 'interface not found' }
 $ifaces | ForEach-Object {
-  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled -ErrorAction Stop
+  Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding %s -ErrorAction Stop
 }
-`, escaped)
+`, escaped, fwd)
 		}
 		if _, err := runPowerShell(cmd); err != nil {
-			slog.Warn("failed to enable forwarding on interface", "iface", alias, "hairpin", hairpin, "error", err)
+			// Adapter may already be gone on stop/FlushAll.
+			if !enable && strings.Contains(strings.ToLower(err.Error()), "not found") {
+				slog.Debug("windows: iface gone while disabling forwarding", "iface", alias)
+				continue
+			}
+			slog.Warn("failed to "+action+" forwarding on interface", "iface", alias, "hairpin", hairpin, "error", err)
 			lastErr = err
 		} else if hairpin {
-			slog.Info("enabled forwarding + weak host on netmaker iface", "iface", alias)
+			slog.Info(action+"d forwarding + weak host on netmaker iface", "iface", alias)
 		} else {
-			slog.Debug("enabled IP forwarding on interface", "iface", alias)
+			slog.Debug(action+"d IP forwarding on interface", "iface", alias)
 		}
 	}
 	return lastErr

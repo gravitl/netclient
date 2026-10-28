@@ -233,12 +233,15 @@ func (w *windowsManager) RemoveRoutingRules(server, ruletableName, peerKey strin
 		}
 		return nil
 	}
+	lanIfaces := make([]string, 0)
 	for _, rules := range cfg.rulesMap {
 		for _, rule := range rules {
 			if len(rule.rule) < 2 {
 				continue
 			}
 			switch rule.rule[0] {
+			case "forwarding":
+				lanIfaces = append(lanIfaces, rule.rule[1])
 			case "netnat":
 				_ = removeNetNat(rule.rule[1])
 			case "wfp":
@@ -253,7 +256,55 @@ func (w *windowsManager) RemoveRoutingRules(server, ruletableName, peerKey strin
 		}
 	}
 	delete(rulesTable, peerKey)
+	// Drop LAN forwarding only when no remaining egress still needs that iface.
+	// Never disable the netmaker adapter here — relay/hairpin still needs it.
+	if ruletableName == egressTable {
+		w.disableUnusedEgressForwardingLocked(lanIfaces)
+	}
 	return nil
+}
+
+// disableUnusedEgressForwardingLocked turns off Forwarding on LAN ifaces that
+// are no longer referenced by any egress rule. Caller must hold w.mux.
+func (w *windowsManager) disableUnusedEgressForwardingLocked(lanIfaces []string) {
+	nm := ncutils.GetInterfaceName()
+	seen := make(map[string]struct{})
+	for _, iface := range lanIfaces {
+		iface = strings.TrimSpace(iface)
+		if iface == "" || strings.EqualFold(iface, nm) {
+			continue
+		}
+		key := strings.ToLower(iface)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if w.egressForwardingStillNeededLocked(iface) {
+			continue
+		}
+		if err := local.DisableForwardingOnInterfaces(iface); err != nil {
+			slog.Warn("windows: failed to disable forwarding on egress LAN iface",
+				"iface", iface, "error", err)
+		}
+	}
+}
+
+// egressForwardingStillNeededLocked reports whether any egress entry still has
+// a forwarding rule for iface. Caller must hold w.mux.
+func (w *windowsManager) egressForwardingStillNeededLocked(iface string) bool {
+	for _, serverTable := range w.engressRules {
+		for _, cfg := range serverTable {
+			for _, rules := range cfg.rulesMap {
+				for _, rule := range rules {
+					if len(rule.rule) >= 2 && rule.rule[0] == "forwarding" &&
+						strings.EqualFold(rule.rule[1], iface) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (w *windowsManager) DeleteRoutingRule(server, tableName, srcPeer, dstPeer string) error {
@@ -271,7 +322,10 @@ func (w *windowsManager) CleanRoutingRules(server, tableName string) {
 func (w *windowsManager) FlushAll() {
 	w.mux.Lock()
 	defer w.mux.Unlock()
-	slog.Info("windows: flushing netmaker NetNat and WFP ACL filters")
+	slog.Info("windows: flushing netmaker NetNat, WFP ACL filters, and IP forwarding")
+	// Collect egress LAN ifaces before clearing rule tables so we can disable
+	// Forwarding we previously enabled for NAT/egress.
+	lanIfaces := collectEgressForwardingIfaces(w.engressRules)
 	closeWFPEngine()
 	if err := removeAllNetmakerACLFirewallRules(); err != nil {
 		slog.Warn("windows: failed removing leftover Defender ACL rules", "error", err)
@@ -289,6 +343,46 @@ func (w *windowsManager) FlushAll() {
 	w.engressRules = make(serverrulestable)
 	w.ingRules = make(serverrulestable)
 	w.aclRules = make(serverrulestable)
+	if len(lanIfaces) > 0 {
+		if err := local.DisableForwardingOnInterfaces(lanIfaces...); err != nil {
+			slog.Warn("windows: failed disabling egress LAN forwarding on flush", "error", err)
+		}
+	}
+	// Daemon stop/reset: clear netmaker Forwarding + WeakHost (iface may already
+	// be gone — DisableForwardingOnInterfaces treats that as benign).
+	if err := local.DisableForwardingOnInterfaces(ncutils.GetInterfaceName()); err != nil {
+		slog.Warn("windows: failed disabling netmaker forwarding on flush", "error", err)
+	}
+}
+
+// collectEgressForwardingIfaces returns unique LAN iface aliases recorded under
+// "forwarding" egress rules (excludes the netmaker adapter).
+func collectEgressForwardingIfaces(tables serverrulestable) []string {
+	nm := ncutils.GetInterfaceName()
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, serverTable := range tables {
+		for _, cfg := range serverTable {
+			for _, rules := range cfg.rulesMap {
+				for _, rule := range rules {
+					if len(rule.rule) < 2 || rule.rule[0] != "forwarding" {
+						continue
+					}
+					iface := strings.TrimSpace(rule.rule[1])
+					if iface == "" || strings.EqualFold(iface, nm) {
+						continue
+					}
+					key := strings.ToLower(iface)
+					if _, ok := seen[key]; ok {
+						continue
+					}
+					seen[key] = struct{}{}
+					out = append(out, iface)
+				}
+			}
+		}
+	}
+	return out
 }
 
 func getWindowsInterfaceName(dstCIDR string) (string, error) {
