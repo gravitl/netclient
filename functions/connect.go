@@ -64,7 +64,7 @@ func connectNetwork(network string, restart bool) error {
 // without bouncing the daemon, falling back to a restart only if that fails.
 func applyConnectionChange(op string) error {
 	if err := applyConnectionChangeInProcess(); err != nil {
-		fmt.Println("in-process", op, "apply failed; falling back to service restart (Windows: uiapi will drop):", err)
+		fmt.Println("in-process", op, "apply failed; falling back to daemon soft restart:", err)
 		if err := daemon.Restart(); err != nil {
 			if err := daemon.Start(); err != nil {
 				return fmt.Errorf("daemon restart failed %w", err)

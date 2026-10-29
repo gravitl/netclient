@@ -93,8 +93,34 @@ func stop() error {
 	return runWinSWCMD("stop")
 }
 
-// restart - restarts windows service
+// restart soft-resets the running daemon, matching Linux SIGHUP.
+//
+// Inside the service process this queues RequestInProcessReset so uiapi
+// (:61820) stays up. From a CLI process there is no in-process callback, so
+// we fall back to WinSW. Callers that must bounce the process after a binary
+// replace should use HardRestart.
 func restart() error {
+	if IsDaemonProcess() {
+		if done := RequestInProcessReset(); done != nil {
+			// Do not wait on done: Restart is often called from MQ/daemon
+			// goroutines that resetDaemonInProcess must be able to stop.
+			slog.Info("windows soft restart: in-process reset queued")
+			return nil
+		}
+		// Never call winsw restart! from inside the service — stop often wins
+		// the race and start never runs, leaving netclient stuck Stopped.
+		slog.Warn("windows soft restart: in-process reset unavailable (callback not registered)")
+		return errors.New("in-process reset unavailable")
+	}
+	return winSWRestart()
+}
+
+// hardRestart bounces the Windows service via WinSW (full process recycle).
+func hardRestart() error {
+	return winSWRestart()
+}
+
+func winSWRestart() error {
 	if err := runWinSWCMD("restart!"); err != nil {
 		if strings.Contains(err.Error(), "Failed to stop the service") {
 			return runWinSWCMD("start")
@@ -102,11 +128,6 @@ func restart() error {
 		return err
 	}
 	return nil
-}
-
-// hardRestart - restarts windows service  - no special handling on Windows
-func hardRestart() error {
-	return restart()
 }
 
 // cleanup - cleans up windows files

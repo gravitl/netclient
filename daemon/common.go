@@ -80,9 +80,8 @@ func HardRestart() error {
 	return hardRestart()
 }
 
-// logRestartRequest names the caller. Always Log(0): on Windows a service
-// restart drops uiapi (:61820) and Desktop sees ECONNREFUSED; we need these
-// lines in default logs when chasing logout/re-login hangs.
+// logRestartRequest names the caller. On Windows, soft Restart keeps uiapi up;
+// HardRestart / CLI Restart still bounce WinSW and drop :61820.
 func logRestartRequest(kind string) {
 	caller := "unknown"
 	if pc, file, line, ok := runtime.Caller(2); ok {
@@ -92,7 +91,15 @@ func logRestartRequest(kind string) {
 		}
 		caller = fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
 	}
-	fmt.Println("daemon", kind, "requested by", caller, "(Windows: uiapi :61820 will drop during service stop/start)")
+	note := ""
+	if runtime.GOOS == "windows" {
+		if kind == "hard restart" || !IsDaemonProcess() {
+			note = " (Windows: WinSW stop/start; uiapi :61820 will drop)"
+		} else {
+			note = " (Windows: soft in-process reset; uiapi stays up)"
+		}
+	}
+	fmt.Println("daemon", kind, "requested by", caller+note)
 }
 
 // Stop - stops a system daemon

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/local"
@@ -245,10 +246,8 @@ func (w *windowsManager) RemoveRoutingRules(server, ruletableName, peerKey strin
 			case "netnat":
 				_ = removeNetNat(rule.rule[1])
 			case "wfp":
-				if wfpEngine != nil {
-					if id, err := strconv.ParseUint(rule.rule[1], 10, 64); err == nil {
-						wfpEngine.DeleteFilters([]uint64{id})
-					}
+				if id, err := strconv.ParseUint(rule.rule[1], 10, 64); err == nil {
+					deleteWFPFiltersIfOpen([]uint64{id})
 				}
 			case "winfw":
 				_ = removeWindowsFirewallRule(rule.rule[1])
@@ -322,14 +321,15 @@ func (w *windowsManager) CleanRoutingRules(server, tableName string) {
 func (w *windowsManager) FlushAll() {
 	w.mux.Lock()
 	defer w.mux.Unlock()
+	start := time.Now()
 	slog.Info("windows: flushing netmaker NetNat, WFP ACL filters, and IP forwarding")
 	// Collect egress LAN ifaces before clearing rule tables so we can disable
 	// Forwarding we previously enabled for NAT/egress.
 	lanIfaces := collectEgressForwardingIfaces(w.engressRules)
 	closeWFPEngine()
-	if err := removeAllNetmakerACLFirewallRules(); err != nil {
-		slog.Warn("windows: failed removing leftover Defender ACL rules", "error", err)
-	}
+	// Same once-per-process migration cleanup as bootstrap (avoids a second
+	// PowerShell sweep when Init does FlushAll then CreateChains/ForwardRule).
+	cleanupLegacyDefenderACLRules()
 	names, err := listNetmakerNetNats()
 	if err != nil {
 		slog.Warn("windows: failed listing NetNats during flush", "error", err)
@@ -352,6 +352,9 @@ func (w *windowsManager) FlushAll() {
 	// be gone — DisableForwardingOnInterfaces treats that as benign).
 	if err := local.DisableForwardingOnInterfaces(ncutils.GetInterfaceName()); err != nil {
 		slog.Warn("windows: failed disabling netmaker forwarding on flush", "error", err)
+	}
+	if d := time.Since(start); d > 500*time.Millisecond {
+		logger.Log(0, "windows firewall FlushAll took ", d.String())
 	}
 }
 
@@ -421,13 +424,15 @@ func removeWindowsFirewallRule(name string) error {
 }
 
 // removeAllNetmakerACLFirewallRules clears Defender rules from the prior ACL implementation.
+// Name/group filters only — never enumerate every firewall rule (that alone is often 5–15s).
 func removeAllNetmakerACLFirewallRules() error {
+	group := strings.ReplaceAll(winFwACLGroup, "'", "''")
+	dnsName := strings.ReplaceAll(winFwDNSUDPRuleName, "'", "''")
 	ps := fmt.Sprintf(`
 Get-NetFirewallRule -Group '%s' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
-Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object {
-  $_.Name -like 'nm-acl-*' -or $_.Name -eq '%s'
-} | Remove-NetFirewallRule -ErrorAction SilentlyContinue
-`, strings.ReplaceAll(winFwACLGroup, "'", "''"), strings.ReplaceAll(winFwDNSUDPRuleName, "'", "''"))
+Get-NetFirewallRule -Name 'nm-acl-*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+Get-NetFirewallRule -Name '%s' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+`, group, dnsName)
 	_, err := runPS(ps)
 	return err
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -27,6 +29,8 @@ var pMutex = sync.Mutex{} // used to mutex functions for pull
 func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
+	logger.Log(0, "host pull starting:", pullCaller(),
+		fmt.Sprintf("restart=%v reset_failover=%v refresh=%v", restart, resetIfFailedOvered, refresh))
 	resetInterface := false
 	replacePeers := false
 	server, serverName := config.ResolveServer(config.CurrServer)
@@ -151,4 +155,23 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		return models.HostPull{}, resetInterface, replacePeers, nil
 	}
 	return pullResponse, resetInterface, replacePeers, nil
+}
+
+// pullCaller names who requested the host pull (skips this file's frames).
+func pullCaller() string {
+	for skip := 2; skip < 8; skip++ {
+		pc, file, line, ok := runtime.Caller(skip)
+		if !ok {
+			break
+		}
+		if filepath.Base(file) == "pull.go" {
+			continue
+		}
+		name := "unknown"
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			name = fn.Name()
+		}
+		return fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
+	}
+	return "unknown"
 }
