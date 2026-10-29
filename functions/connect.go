@@ -63,7 +63,8 @@ func connectNetwork(network string, restart bool) error {
 // applyConnectionChange brings the live interface in line with the new node set
 // without bouncing the daemon, falling back to a restart only if that fails.
 func applyConnectionChange(op string) error {
-	if err := applyConnectionChangeInProcess(); err != nil {
+	wantIGW := op != "disconnect" && callDesktopWantsIGW()
+	if err := applyConnectionChangeInProcess(wantIGW); err != nil {
 		fmt.Println("in-process", op, "apply failed; falling back to daemon soft restart:", err)
 		if err := daemon.Restart(); err != nil {
 			if err := daemon.Start(); err != nil {
@@ -93,25 +94,47 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		// Keep exit-node selection (desired + server). Disconnect only drops local
 		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
+
+	lastNetwork := !config.AnyNodeConnected()
+	hadIGW := wireguard.IGWRoutingActive()
+
+	// Tear down exit routes before publish. With 0.0.0.0/1 still diverting
+	// through the exit, the host-update HTTP call often stalls until the 5s
+	// PublishNodeUpdateOnce budget — most of the "disconnect with exit is
+	// slow" complaint on Windows.
+	if lastNetwork {
+		_ = wireguard.SetPeers(true)
+		if hadIGW {
+			restoreInternetGwAndDNS()
+		}
+	}
+
 	done := logElapsed("disconnect node update publish")
 	// One short attempt. The default client retries for about a minute, and
 	// that wait is what made logout with an exit selected feel stuck after
 	// the routes were already restored.
-	err := PublishNodeUpdateOnce(&node, 5*time.Second)
+	_ = PublishNodeUpdateOnce(&node, 5*time.Second)
 	done()
-	if err != nil {
-		return err
+
+	if lastNetwork {
+		if !hadIGW {
+			dns.ScheduleReconfigure()
+		}
+		if !restart {
+			return nil
+		}
+		// Peers/IGW/DNS already handled above. A full reconnect rebuild would
+		// also try want_igw exit re-apply against an empty pull (~10s).
+		logger.Log(0, "disconnect: last network; skipping connection-change rebuild")
+		dns.SyncForNodeChange()
+		dns.ScheduleReconfigure()
+		return nil
 	}
-	if !config.AnyNodeConnected() {
-		_ = wireguard.SetPeers(true)
-		restoreInternetGwAndDNS()
-	}
+
 	if !restart {
 		// Other networks are still up, so the iface is not rebuilt below.
 		// Drop this network's listener and refresh OS DNS anyway.
-		if config.AnyNodeConnected() {
-			dns.ReconfigureNow(config.GetServer(node.Server))
-		}
+		dns.ReconfigureNow(config.GetServer(node.Server))
 		return nil
 	}
 	return applyConnectionChange("disconnect")

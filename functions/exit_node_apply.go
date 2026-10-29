@@ -204,7 +204,11 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 // regardless of Connected, so flipping that flag changes nothing about them.
 // Paying for a full daemon soft reset (or WinSW HardRestart) is worse than
 // an in-process iface rebuild on every connect/disconnect.
-func applyConnectionChangeInProcess() error {
+//
+// wantIGW must be false on disconnect: an empty pull + desktop want_igw would
+// burn igwApplyDeadline (~10s) retrying forceApplyInternetGw. Remaining exit
+// routes are reinstalled locally via ReapplyInternetGwAfterIfaceRecreate.
+func applyConnectionChangeInProcess(wantIGW bool) error {
 	// Connect and disconnect block the UI for the whole apply, so keep the phase
 	// costs visible: the expensive parts are network-dependent and only show up
 	// on real links.
@@ -215,7 +219,17 @@ func applyConnectionChangeInProcess() error {
 	// seconds on every connect/disconnect while cached peers were enough to
 	// rebuild the iface.
 	logger.Log(0, "connection change: skipping host pull (using cached peers; wait for MQTT peer update)")
-	return applyReconnectInProcess(models.HostPull{}, callDesktopWantsIGW())
+	hadIGW := wireguard.IGWRoutingActive()
+	if err := applyReconnectInProcess(models.HostPull{}, wantIGW); err != nil {
+		return err
+	}
+	// Iface rebuild drops OS default routes while CurrGwNmIP may still be set
+	// (disconnect of a non-exit network with exit still desired on another).
+	if !wantIGW && hadIGW && wireguard.IGWRoutingActive() {
+		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		dns.ScheduleReconfigure()
+	}
+	return nil
 }
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {

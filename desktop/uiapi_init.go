@@ -72,7 +72,7 @@ func requestJITForUI(network, server, token, reason string) error {
 }
 
 func listExitNodesForUI(network, server, token string) ([]models.DeviceExitNode, error) {
-	return ListDeviceExitNodes(network, token)
+	return ListDeviceExitNodesForUI(network, token)
 }
 
 func getSelectedExitNodeForUI(network, server, token string) (*models.DeviceExitNode, error) {

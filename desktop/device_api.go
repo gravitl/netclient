@@ -482,15 +482,24 @@ func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error)
 	return listDeviceExitNodes(network, token, true)
 }
 
+// ListDeviceExitNodesForUI returns exit nodes for the desktop selector.
+// With an active session it may run while disconnected so the GUI can show the
+// restored exit name after logout/login; overlay latency probes still require
+// a live mesh.
+func ListDeviceExitNodesForUI(network, token string) ([]models.DeviceExitNode, error) {
+	return listDeviceExitNodes(network, token, false)
+}
+
 func listDeviceExitNodes(network, token string, requireConnected bool) ([]models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
-	if !networkLocallyConnected(network) {
+	connected := networkLocallyConnected(network)
+	if !connected {
 		if requireConnected || !uiapi.IsSessionActive() {
 			return nil, ErrNetworkNotConnected
 		}
-		slog.Warn("exit reconcile: listing exits while network not marked connected",
+		slog.Warn("exit list: network not connected; returning names without overlay probes",
 			"network", network)
 	}
 	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_nodes"
@@ -508,7 +517,7 @@ func listDeviceExitNodes(network, token string, requireConnected bool) ([]models
 	// The server can keep Selected set until the clear PUT converges. Report the
 	// local clear immediately, and skip probes so this refresh is not held up.
 	nodes, skipProbes := hideClearedExitSelection(network, nodes)
-	if !skipProbes {
+	if !skipProbes && connected {
 		attachExitNodeLatencies(network, nodes)
 	}
 	return nodes, nil
