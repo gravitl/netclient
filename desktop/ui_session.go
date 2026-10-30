@@ -43,6 +43,11 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 		server = key
 	}
 
+	// Pull runs before uiapi.setSession stores the JWT. Expose the request
+	// token so user-owned Authenticate does not fail closed mid-login.
+	auth.SetPendingUserToken(authToken)
+	defer auth.SetPendingUserToken("")
+
 	if config.CurrServer != server {
 		if err := config.SetCurrServerCtxInFile(server); err != nil {
 			return err

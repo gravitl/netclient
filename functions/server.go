@@ -76,7 +76,7 @@ func LeaveServer(s string) error {
 		url := fmt.Sprintf("%s/api/hosts/%s?force=true", config.APIBaseURL(config.NormalizeServerAPI(server.API)), scopedHost.ID.String())
 		headers := make(http.Header)
 		headers.Set("Content-Type", "application/json")
-		headers.Set("Authorization", "Bearer "+token)
+		auth.ApplyAPIHeaders(headers, token, &scopedHost)
 		headers.Set(scope.HeaderTenantID, server.TenantID)
 		_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 		if err != nil {

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
@@ -20,10 +22,34 @@ import (
 	"github.com/gravitl/netmaker/scope"
 )
 
+// DeviceHostIDHeader identifies the local host when authenticating with a user JWT.
+const DeviceHostIDHeader = "X-Host-ID"
+
+// ErrUserSessionRequired is returned for user-owned devices when Desktop has no
+// active user JWT. Host-password auth is not allowed for those devices.
+var ErrUserSessionRequired = errors.New("user session required for this device")
+
 var (
 	jwtToken     string
 	jwtSecretKey []byte
+
+	// UserTokenProvider returns the active Desktop user JWT, or empty when
+	// logged out. Wired from the desktop package to avoid an import cycle.
+	UserTokenProvider func() string
+
+	// pendingUserToken covers the login window before uiapi.setSession runs:
+	// RegisterSession pulls while the request JWT is not yet in session state.
+	pendingUserMu    sync.RWMutex
+	pendingUserToken string
 )
+
+// SetPendingUserToken temporarily exposes a user JWT to Authenticate (login pull).
+// Pass empty to clear.
+func SetPendingUserToken(token string) {
+	pendingUserMu.Lock()
+	pendingUserToken = strings.TrimSpace(token)
+	pendingUserMu.Unlock()
+}
 
 func isTokenExpired(tokenString string) bool {
 	claims := &models.Claims{}
@@ -68,6 +94,24 @@ func AuthenticateWithOptions(server *config.Server, host *config.Config, opts Au
 	return authenticate(server, host, opts, 0)
 }
 
+// IsUserOwnedDevice reports whether this host is bound to a Netmaker user
+// (desktop/device registration).
+func IsUserOwnedDevice(host *config.Config) bool {
+	return host != nil && strings.TrimSpace(host.OwnerUsername) != ""
+}
+
+// ApplyAPIHeaders sets Authorization. X-Host-ID is always included when a host
+// is known so user-JWT AuthorizeHost can bind the request to this device.
+func ApplyAPIHeaders(headers http.Header, token string, host *config.Config) {
+	if headers == nil {
+		return
+	}
+	headers.Set("Authorization", "Bearer "+token)
+	if host != nil && host.ID != uuid.Nil {
+		headers.Set(DeviceHostIDHeader, host.ID.String())
+	}
+}
+
 // IsMissingHostError reports host authenticate failures where the server no
 // longer has this device (deleted host, leftover enrollment after reinstall).
 // The API returns HTTP 400 with "record not found", not 401.
@@ -82,7 +126,29 @@ func IsMissingHostError(err error) bool {
 	return strings.Contains(msg, "failed to authenticate") && strings.Contains(msg, "400")
 }
 
+func userSessionToken() string {
+	pendingUserMu.RLock()
+	pending := pendingUserToken
+	pendingUserMu.RUnlock()
+	if pending != "" {
+		return pending
+	}
+	if UserTokenProvider == nil {
+		return ""
+	}
+	return strings.TrimSpace(UserTokenProvider())
+}
+
 func authenticate(server *config.Server, host *config.Config, opts AuthenticateOptions, timeout time.Duration) (string, error) {
+	// User-owned desktop devices must use the Desktop user JWT. HostPass must
+	// not mint a control-plane token after logout or for a different user.
+	if IsUserOwnedDevice(host) {
+		if tok := userSessionToken(); tok != "" {
+			return tok, nil
+		}
+		return "", ErrUserSessionRequired
+	}
+
 	if jwtToken != "" && !isTokenExpired(jwtToken) {
 		return jwtToken, nil
 	}
