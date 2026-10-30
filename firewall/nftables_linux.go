@@ -1233,11 +1233,7 @@ func (n *nftablesManager) addJumpRules() {
 	// add metrics rule
 	server := config.GetServer(config.CurrServer)
 	if server != nil {
-		var portNum uint16 = uint16(server.MetricsPort)
-
-		// Convert to Little Endian bytes
-		portB := make([]byte, 2) // Size of uint16 is 2 bytes
-		binary.LittleEndian.PutUint16(portB, portNum)
+		portB := portToBytes(uint16(server.MetricsPort))
 		rule := &nftables.Rule{
 			Table: filterTable,
 			Chain: &nftables.Chain{Name: aclInputRulesChain},
@@ -1245,7 +1241,7 @@ func (n *nftablesManager) addJumpRules() {
 				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},                                                // Match incoming interface
 				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: nullTerminatedString(ncutils.GetInterfaceName())}, // Match interface name
 				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},         // Match TCP destination port
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: portB},                                            // Port little-endian format
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: portB},                                            // Port in network byte order
 				&expr.Verdict{Kind: expr.VerdictAccept},                                                          // Accept packet
 			},
 		}
