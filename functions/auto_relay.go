@@ -389,23 +389,31 @@ func checkAutoRelayCtx(server *config.Server, node models.Node, peers models.Pee
 		return
 	}
 	slog.Debug("checking auto relay context", "nodeID", node.ID.String(), "address", node.PrimaryAddress())
-	// check current relay in use is the closest
+	// group the auto relayed peers by the relay in use, so each relay is
+	// checked once instead of once per peer
+	relayedPeers := make(map[string][]string)
 	for autoRelayedPeerID, currentAutoRelayID := range node.AutoRelayedPeers {
-		for _, autoRelayNode := range autoRelayNodes {
-			if autoRelayNode.ID.String() == currentAutoRelayID {
-				slog.Debug("checking if current relay is active", "address", autoRelayNode.PrimaryAddress())
-				connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), server.MetricsPort, 4)
-				if !connected {
-					slog.Warn("current relay not active", "nodeID", node.ID.String(), "relayID", currentAutoRelayID)
-					err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
-					if err != nil {
-						slog.Error("failed to switch to nearest gw node", "error", err)
-					}
-					if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
-						signalThrottleCache.Delete(autoRelayedPeer.HostID)
-					}
-					break
-				}
+		relayedPeers[currentAutoRelayID] = append(relayedPeers[currentAutoRelayID], autoRelayedPeerID)
+	}
+	for _, autoRelayNode := range autoRelayNodes {
+		relayID := autoRelayNode.ID.String()
+		peerIDs, ok := relayedPeers[relayID]
+		if !ok {
+			continue
+		}
+		slog.Debug("checking if current relay is active", "address", autoRelayNode.PrimaryAddress())
+		connected, _ := metrics.PeerConnStatus(autoRelayNode.PrimaryAddress(), server.MetricsPort, 4)
+		if connected {
+			continue
+		}
+		slog.Warn("current relay not active", "nodeID", node.ID.String(), "relayID", relayID)
+		for _, autoRelayedPeerID := range peerIDs {
+			err := autoRelayME(http.MethodPut, server.Server, node.ID.String(), autoRelayedPeerID, "")
+			if err != nil {
+				slog.Error("failed to switch to nearest gw node", "error", err)
+			}
+			if autoRelayedPeer, ok := peers[autoRelayedPeerID]; ok {
+				signalThrottleCache.Delete(autoRelayedPeer.HostID)
 			}
 		}
 	}
