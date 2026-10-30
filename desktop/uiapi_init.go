@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/functions"
@@ -9,6 +10,9 @@ import (
 )
 
 func init() {
+	// User-owned devices authenticate control-plane APIs with the Desktop JWT.
+	auth.UserTokenProvider = uiapi.SessionAuthToken
+
 	uiapi.SetHandlers(uiapi.HandlerDeps{
 		RegisterSession:           RegisterSession,
 		ReleaseSession:            ReleaseSession,
@@ -72,7 +76,7 @@ func requestJITForUI(network, server, token, reason string) error {
 }
 
 func listExitNodesForUI(network, server, token string) ([]models.DeviceExitNode, error) {
-	return ListDeviceExitNodes(network, token)
+	return ListDeviceExitNodesForUI(network, token)
 }
 
 func getSelectedExitNodeForUI(network, server, token string) (*models.DeviceExitNode, error) {

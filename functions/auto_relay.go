@@ -569,7 +569,7 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	url := fmt.Sprintf("https://%s/api/v1/node/%s/auto_relay_me", server.API, nodeID)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, host)
 	headers.Set(scope.HeaderTenantID, host.TenantID)
 	_, err = ncutils.SendRequest(method, url, headers, models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID})
 	if err != nil {

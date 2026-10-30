@@ -218,7 +218,7 @@ func hostUpdateWithServerTimeout(server *config.Server, hu models.HostUpdate, ti
 	url := fmt.Sprintf("https://%s/api/v1/fallback/host/%s", server.API, host.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, host)
 	headers.Set(scope.HeaderTenantID, host.TenantID)
 	payload := buildHostUpdatePayload(hu)
 	if timeout > 0 {
