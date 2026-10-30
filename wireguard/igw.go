@@ -385,7 +385,8 @@ func (s *igwStatus) probeGateway() bool {
 // there is no underlay evidence of life (no fresh handshake + rx movement),
 // so a black-holed exit is cleared. When the handshake is fresh and rx moved
 // this sample, the metrics port is likely firewalled — do not tear the exit
-// down on that alone.
+// down on that alone. Count underlay life as success so a firewalled metrics
+// port can still recover an exit that was marked unhealthy during a brief stall.
 func (s *igwStatus) applyOverlayProbeResult(igw wgtypes.Peer, ok bool, rxMoved bool) {
 	if ok {
 		s.probeEverSucceeded = true
@@ -394,6 +395,7 @@ func (s *igwStatus) applyOverlayProbeResult(igw wgtypes.Peer, ok bool, rxMoved b
 	}
 	if s.handshakeFresh(igw) && rxMoved {
 		logger.Log(2, "internet gateway overlay probe failed but underlay traffic is flowing")
+		s.noteSuccess(igw)
 		return
 	}
 	if s.probeEverSucceeded {

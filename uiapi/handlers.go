@@ -13,6 +13,17 @@ import (
 	"github.com/gravitl/netmaker/models"
 )
 
+func respondServerIncompatible(w http.ResponseWriter, serverVersion string) {
+	msg := serverIncompatibleMessage(serverVersion)
+	uiLog(0, "uiapi: server incompatible:", msg)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Message: msg,
+		Code:    ErrCodeServerIncompatible,
+	})
+}
+
 func checkHealth(w http.ResponseWriter, r *http.Request) {
 	resp := DaemonHealthStatus{
 		Status:         DaemonStatusOK,
@@ -67,6 +78,14 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if api == "" {
 		respondConfigureServerError(w, "invalid server")
+		return
+	}
+	// Reject known-old servers on save when /api/server/status is reachable.
+	// Unreachable servers are still saved; PUT /session re-checks with auth.
+	if ver, err := fetchServerStatusVersion(r.Context(), api); err != nil {
+		uiLog(1, "uiapi: could not verify server version on save:", err.Error())
+	} else if !IsDesktopServerCompatible(ver) {
+		respondServerIncompatible(w, ver)
 		return
 	}
 	if key := config.ResolveServerKey(domain); key != "" {
@@ -285,6 +304,22 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Verify server version before registering the host so an old controller
+	// never receives a Desktop enrollment.
+	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
+	if err != nil {
+		uiLog(0, "uiapi: failed to fetch server config for compatibility check:", err.Error())
+		setStatus(Idle)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "unable to verify server version; try again"})
+		return
+	}
+	if !IsDesktopServerCompatible(cfg.Version) {
+		setStatus(Idle)
+		respondServerIncompatible(w, cfg.Version)
+		return
+	}
+
 	if err := registerSession(server, req.Username, req.AuthToken, req.Password, req.TenantID); err != nil {
 		uiLog(0, "uiapi: PUT /session register failed:", err.Error())
 		setStatus(Idle)
@@ -293,10 +328,6 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
-	if err != nil {
-		uiLog(1, "uiapi: failed to fetch server config:", err.Error())
-	}
 	setSession(req.Username, req.AuthToken, req.TenantID, cfg)
 	// Return immediately so the GUI can show a registration transition.
 	// The daemon rebuild runs after this response is flushed, and reconnect
@@ -308,7 +339,7 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		SetRestorePhase(RestorePhaseRegister)
 	}
 	username, tenantID := req.Username, req.TenantID
-	uiLog(0, fmt.Sprintf("uiapi: session configured user=%s tenant=%s server=%s", req.Username, req.TenantID, server))
+	fmt.Println("uiapi: session configured user=", req.Username, "tenant=", req.TenantID, "server=", server, "restore_pending=", resetting)
 	w.WriteHeader(http.StatusOK)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -316,10 +347,12 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	resetDone := applyRegistrationReset()
 	go func(gen uint64, username, tenantID string, resetDone <-chan struct{}) {
 		if resetDone != nil {
+			fmt.Println("uiapi: waiting for registration in-process reset before restore")
 			<-resetDone
+			fmt.Println("uiapi: registration in-process reset done; starting restore")
 		}
 		if err := restoreDesiredConnections(username, tenantID); err != nil {
-			uiLog(1, "uiapi: failed to restore previous connections:", err.Error())
+			fmt.Println("uiapi: failed to restore previous connections:", err.Error())
 		}
 		finishSessionRestore(gen)
 	}(restoreGen, username, tenantID, resetDone)
@@ -327,17 +360,19 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
+	fmt.Println("uiapi: DELETE /session clear_token=", clearToken)
 	cancelSessionRestore()
 	setStatus(Closing)
 	// Never clear CurrServer / .serverctx on logout — Settings should keep
 	// the last saved server so the user does not re-enter it.
 	if err := releaseSessionFn(false); err != nil {
-		uiLog(1, "uiapi: error releasing session:", err.Error())
+		fmt.Println("uiapi: error releasing session:", err.Error())
 	}
 	if err := clearSession(clearToken); err != nil {
-		uiLog(1, "uiapi: error clearing session:", err.Error())
+		fmt.Println("uiapi: error clearing session:", err.Error())
 	}
 	setStatus(Idle)
+	fmt.Println("uiapi: logout complete")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -465,7 +500,10 @@ func isApprovalAccessError(err error) bool {
 func writeSessionRequired(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "session required"})
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Message: "session required",
+		Code:    ErrCodeSessionRequired,
+	})
 }
 
 func requireSession(w http.ResponseWriter) (server, token string, ok bool) {
@@ -713,7 +751,12 @@ func selectExitNodeHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	enforced, enfErr := networkRequiresAutoExit(network, server, token)
 	if enfErr != nil {
+		// Fail closed: if we cannot learn whether the network requires auto
+		// exit, do not allow a manual clear/select that might violate policy.
 		uiLog(0, "uiapi: exit auto-select requirement check failed:", enfErr.Error())
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Message: "unable to verify exit node policy; try again"})
+		return
 	}
 	selectingExit := req.Auto || enforced || strings.TrimSpace(req.EgressID) != ""
 	if selectingExit {

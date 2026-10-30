@@ -286,8 +286,15 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 						continue
 					}
 					autoRelayNodes := getAutoRelayNodes(schema.NetworkID(node.Network))
-					// Use cached metrics from setAutoRelayNodes
 					networkID := schema.NetworkID(node.Network)
+					currNode := getCurrNode(node.ID.String())
+					hasCurrNode := currNode.ID.String() != ""
+
+					if hasCurrNode && currNode.AutoAssignGateway {
+						checkAssignGw(server, currNode)
+					}
+
+					// Use cached metrics from setAutoRelayNodes
 					autoRelayNodeMetrics := getNetworkMetrics(networkID)
 					if len(autoRelayNodeMetrics) == 0 {
 						autoRelayNodeMetrics = refreshNetworkMetrics(networkID, metricPort)
@@ -295,14 +302,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 							continue
 						}
 					}
-					if currNode := getCurrNode(node.ID.String()); currNode.ID.String() != "" {
-						if currNode.AutoAssignGateway {
-							checkAssignGw(server, currNode)
-						} else {
-							if len(autoRelayNodes) > 0 {
-								checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
-							}
-						}
+					if hasCurrNode && !currNode.AutoAssignGateway && len(autoRelayNodes) > 0 {
+						checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
 					}
 					for pubKey, peer := range peers {
 						// Check context before processing each peer
@@ -568,7 +569,7 @@ func autoRelayME(method, serverName, nodeID, peernodeID, relayID string) error {
 	url := fmt.Sprintf("https://%s/api/v1/node/%s/auto_relay_me", server.API, nodeID)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, host)
 	headers.Set(scope.HeaderTenantID, host.TenantID)
 	_, err = ncutils.SendRequest(method, url, headers, models.AutoRelayMeReq{NodeID: peernodeID, AutoRelayGwID: relayID})
 	if err != nil {

@@ -199,7 +199,7 @@ func failoverAutoExit(network, token, failedPublicKey string) error {
 		}
 	}
 
-	pick, err := selectNearestDeviceExitNodeExcluding(network, token, nodes, exclude)
+	pick, err := selectNearestDeviceExitNodeExcluding(network, token, nodes, exclude, false)
 	if err != nil {
 		// Last resort: only exclude the current id so we don't get stuck if the
 		// blacklist covered every exit.
@@ -207,7 +207,7 @@ func failoverAutoExit(network, token, failedPublicKey string) error {
 		if cur != "" {
 			soft[cur] = struct{}{}
 		}
-		pick, err = selectNearestDeviceExitNodeExcluding(network, token, nodes, soft)
+		pick, err = selectNearestDeviceExitNodeExcluding(network, token, nodes, soft, false)
 		if err != nil {
 			return err
 		}

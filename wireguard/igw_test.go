@@ -144,6 +144,25 @@ func TestFailedOverlayProbeIgnoredWhenUnderlayFlows(t *testing.T) {
 	}
 }
 
+// Underlay evidence must also heal an exit that was marked unhealthy while the
+// metrics port stays firewalled (probe never returns ok).
+func TestUnderlayFlowRecoversUnhealthyFirewalledExit(t *testing.T) {
+	s := &igwStatus{
+		startedAt: time.Now().Add(-2 * IGWStartupGrace),
+		gw4:       net.ParseIP("100.64.0.1"),
+		lastRx:    100,
+	}
+	s.isHealthy.Store(false)
+	peer := wgtypes.Peer{LastHandshakeTime: time.Now()}
+
+	for i := 0; i < IGWRecoveryThreshold; i++ {
+		s.applyOverlayProbeResult(peer, false, true)
+	}
+	if !s.isHealthy.Load() {
+		t.Fatal("firewalled exit did not recover from underlay traffic")
+	}
+}
+
 func TestOverlayProbeSuccessClearsFailures(t *testing.T) {
 	s := &igwStatus{
 		startedAt:    time.Now().Add(-2 * IGWStartupGrace),
