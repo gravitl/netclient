@@ -464,10 +464,8 @@ func SyncDeviceWithServer(token string) error {
 		return err
 	}
 	pullResponse.ReplacePeers = true
+	// MQFallbackPull applies resetInterface itself; do not ResetInterface again.
 	functions.MQFallbackPull(pullResponse, resetInterface, true)
-	if resetInterface {
-		functions.ResetInterface()
-	}
 	return nil
 }
 
