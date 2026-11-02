@@ -141,12 +141,12 @@ func reconcileDesiredExit() {
 		if autoExit {
 			logger.Log(0, "exit reconcile: auto-exit re-picking nearest on "+network)
 			exclude := autoExitReconcileExclude()
-			if _, err := selectNearestDeviceExitNodeExcluding(network, token, nil, exclude); err != nil {
+			if _, err := selectNearestDeviceExitNodeExcluding(network, token, nil, exclude, true); err != nil {
 				logger.Log(0, "exit reconcile: auto-exit re-pick failed:", err.Error())
 				// Soft retry with no exclude so a full failure blacklist cannot
 				// leave the host with no exit when another (including the
 				// desired id) is still up.
-				if _, err2 := selectNearestDeviceExitNodeExcluding(network, token, nil, nil); err2 != nil {
+				if _, err2 := selectNearestDeviceExitNodeExcluding(network, token, nil, nil, true); err2 != nil {
 					logger.Log(0, "exit reconcile: nearest fallback failed:", err2.Error())
 				}
 			}
@@ -155,7 +155,7 @@ func reconcileDesiredExit() {
 		logger.Log(0, fmt.Sprintf(
 			"exit reconcile: server advertises no exit while %s is desired on %s; re-selecting",
 			egressID, network))
-		if _, err := SelectDeviceExitNode(network, token, egressID); err != nil {
+		if _, err := selectDeviceExitNodeForReconcile(network, token, egressID); err != nil {
 			logger.Log(0, "exit reconcile: re-select failed:", err.Error())
 		}
 	}()

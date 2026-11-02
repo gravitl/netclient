@@ -35,8 +35,10 @@ func TestMeasurePublicLatencyNoHosts(t *testing.T) {
 
 func TestExitNodeEndpointIPs(t *testing.T) {
 	got := exitNodeEndpointIPs([]models.DeviceExitNode{
-		{AllowedEndpoints: []string{"203.0.113.10", "203.0.113.10:51821", "127.0.0.1"}},
-		{AllowedEndpoints: []string{"2001:db8::1"}},
+		{Status: true, AllowedEndpoints: []string{"203.0.113.10", "203.0.113.10:51821", "127.0.0.1"}},
+		{Status: true, AllowedEndpoints: []string{"2001:db8::1"}},
+		// Disconnected routing node — must not be pinned or probed.
+		{Status: false, AllowedEndpoints: []string{"198.51.100.1"}},
 	})
 	assert.Equal(t, []string{"203.0.113.10", "2001:db8::1"}, func() []string {
 		out := make([]string, len(got))

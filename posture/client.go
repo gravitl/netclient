@@ -56,7 +56,7 @@ func postureGet(server *config.Server, host *config.Config) (*models.HostPosture
 	url := fmt.Sprintf("https://%s/api/v1/host/%s/posture_status", server.API, host.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, host)
 	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {

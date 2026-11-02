@@ -20,6 +20,8 @@ const (
 
 type ErrorResponse struct {
 	Message string `json:"message"`
+	// Code is a stable machine-readable reason for the GUI (e.g. server_incompatible).
+	Code string `json:"code,omitempty"`
 }
 
 type SetServerRequest struct {

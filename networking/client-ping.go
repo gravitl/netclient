@@ -207,11 +207,12 @@ func fetchPeerInfo() (models.HostPeerInfo, error) {
 		return models.HostPeerInfo{}, fmt.Errorf("auth failed: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
+	host := config.Netclient()
+	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, host.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
-	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
+	auth.ApplyAPIHeaders(headers, token, host)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk

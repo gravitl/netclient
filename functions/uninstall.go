@@ -116,12 +116,13 @@ func deleteNodeFromServer(node *config.Node) error {
 		return fmt.Errorf("unable to authenticate %w", err)
 	}
 
+	host := config.Netclient()
 	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, host)
 	headers.Set("requestfrom", "node")
-	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	_, err = ncutils.SendRequest(http.MethodDelete, url, headers, nil)
 	if err != nil {
 		return fmt.Errorf("error deleting node from network %s on server: %v", node.Network, err)

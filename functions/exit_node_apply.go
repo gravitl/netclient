@@ -202,33 +202,34 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 // This replaces daemon.Restart() on those paths. The restart was only ever
 // rebuilding the interface: MQ subscriptions are set up for every joined node
 // regardless of Connected, so flipping that flag changes nothing about them.
-// Paying for a full service cycle is especially bad on Windows, where Restart()
-// is a WinSW stop/start that costs about a minute before peers can handshake.
-func applyConnectionChangeInProcess() error {
+// Paying for a full daemon soft reset (or WinSW HardRestart) is worse than
+// an in-process iface rebuild on every connect/disconnect.
+//
+// wantIGW must be false on disconnect: an empty pull + desktop want_igw would
+// burn igwApplyDeadline (~10s) retrying forceApplyInternetGw. Remaining exit
+// routes are reinstalled locally via ReapplyInternetGwAfterIfaceRecreate.
+func applyConnectionChangeInProcess(wantIGW bool) error {
 	// Connect and disconnect block the UI for the whole apply, so keep the phase
 	// costs visible: the expensive parts are network-dependent and only show up
 	// on real links.
 	defer logElapsed("connection change apply")()
 
-	var pull models.HostPull
-	// Only pull when something is still connected. Tearing the last network down
-	// has nothing left to converge, and the request would block the UI while
-	// routes and DNS are mid-flux — which is most of what made disconnect slow.
-	if config.AnyNodeConnected() {
-		done := logElapsed("connection change pull")
-		p, _, _, err := pullForReconnect(false, true, false)
-		done()
-		if err != nil {
-			// Cached peers are still enough to rebuild; routes for a newly
-			// connected network catch up on the next peer update.
-			logger.Log(0, "pull after connection change failed; applying from cached config:", err.Error())
-		} else {
-			pull = p
-		}
+	// No host pull here. PublishNodeUpdate already told the server; the next
+	// MQTT peer update carries peers/routes/exit. Pulling blocked the UI for
+	// seconds on every connect/disconnect while cached peers were enough to
+	// rebuild the iface.
+	logger.Log(0, "connection change: skipping host pull (using cached peers; wait for MQTT peer update)")
+	hadIGW := wireguard.IGWRoutingActive()
+	if err := applyReconnectInProcess(models.HostPull{}, wantIGW); err != nil {
+		return err
 	}
-	// DNS listener sync + OS reconfigure run inside applyReconnectInProcess
-	// after the iface has the connected-node addresses.
-	return applyReconnectInProcess(pull, callDesktopWantsIGW())
+	// Iface rebuild drops OS default routes while CurrGwNmIP may still be set
+	// (disconnect of a non-exit network with exit still desired on another).
+	if !wantIGW && hadIGW && wireguard.IGWRoutingActive() {
+		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		dns.ScheduleReconfigure()
+	}
+	return nil
 }
 
 func applyInternetGwAfterReconnect(pull models.HostPull, pullErr error) {

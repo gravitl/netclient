@@ -98,6 +98,12 @@ func attachExitNodePublicLatencies(network string, nodes []models.DeviceExitNode
 	var wg sync.WaitGroup
 	resolved := 0
 	for i := range nodes {
+		// Server Status=false means the routing node is disconnected / egress
+		// disabled — do not probe or inflate latency as "unhealthy".
+		if !nodes[i].Status {
+			nodes[i].LatencyMs = exitNodeLatencyNone
+			continue
+		}
 		endpoints := publicProbeHosts(nodes[i].AllowedEndpoints)
 		if len(endpoints) == 0 {
 			continue
@@ -152,6 +158,12 @@ func attachExitNodeOverlayLatencies(network string, nodes []models.DeviceExitNod
 	var hits []overlayHit
 	probed := 0
 	for i := range nodes {
+		// Routing node disconnected / egress off on the server — skip health
+		// checks so Desktop can show "disconnected" instead of probe "unhealthy".
+		if !nodes[i].Status {
+			nodes[i].LatencyMs = exitNodeLatencyNone
+			continue
+		}
 		addr := exitNodeOverlayProbeAddr(nodes[i])
 		if addr == "" {
 			continue
@@ -288,6 +300,9 @@ func exitNodeEndpointIPs(nodes []models.DeviceExitNode) []net.IP {
 	seen := map[string]struct{}{}
 	var out []net.IP
 	for i := range nodes {
+		if !nodes[i].Status {
+			continue
+		}
 		for _, host := range publicProbeHosts(nodes[i].AllowedEndpoints) {
 			ip := net.ParseIP(host)
 			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() {

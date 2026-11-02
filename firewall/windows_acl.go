@@ -6,6 +6,8 @@ package firewall
 import (
 	"fmt"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/firewall/wfp"
@@ -16,33 +18,61 @@ import (
 )
 
 // wfpEngine is the process-wide WFP ACL engine (NetNat remains separate).
-var wfpEngine *wfp.Engine
+// wfpMu serializes open/close/use: soft-restart FlushAll races MQTT peer
+// updates that still call ChangeACL* / AddAcl*.
+var (
+	wfpEngine *wfp.Engine
+	wfpMu     sync.Mutex
+)
 
-func ensureWFPEngine() error {
-	if wfpEngine != nil {
-		return nil
+// defenderACLCleanupOnce removes leftover Defender Firewall ACL rules from the
+// pre-WFP implementation at most once per process. Init used to pay for this
+// three times (FlushAll + CreateChains + ForwardRule), each spawning PowerShell.
+var (
+	defenderACLCleanupOnce sync.Once
+	aclBootstrapLogOnce    sync.Once
+)
+
+// withWFPEngine runs fn against a live engine. Holds wfpMu for the whole call
+// so closeWFPEngine cannot nil the pointer mid-use.
+func withWFPEngine(fn func(*wfp.Engine) error) error {
+	wfpMu.Lock()
+	defer wfpMu.Unlock()
+	if wfpEngine == nil {
+		eng, err := wfp.Open()
+		if err != nil {
+			return err
+		}
+		wfpEngine = eng
 	}
-	eng, err := wfp.Open()
-	if err != nil {
-		return err
-	}
-	wfpEngine = eng
-	return nil
+	return fn(wfpEngine)
 }
 
 func closeWFPEngine() {
+	wfpMu.Lock()
+	defer wfpMu.Unlock()
 	if wfpEngine != nil {
 		wfpEngine.Close()
 		wfpEngine = nil
 	}
 }
 
-func refreshWFPInterface() error {
-	if wfpEngine == nil {
-		return nil
+// deleteWFPFiltersIfOpen drops filters when an engine is already open.
+// Does not open a new session (cleanup after FlushAll must stay a no-op).
+func deleteWFPFiltersIfOpen(ids []uint64) {
+	if len(ids) == 0 {
+		return
 	}
+	wfpMu.Lock()
+	defer wfpMu.Unlock()
+	if wfpEngine != nil {
+		wfpEngine.DeleteFilters(ids)
+	}
+}
+
+func refreshWFPInterfaceLocked(eng *wfp.Engine) error {
 	alias := ncutils.GetInterfaceName()
-	if err := wfpEngine.SetInterfaceAlias(alias); err != nil {
+	if err := eng.SetInterfaceAlias(alias); err != nil {
 		slog.Warn("windows: netmaker iface LUID not ready for WFP yet (default deny inactive)",
 			"iface", alias, "error", err)
 		return err
@@ -54,12 +84,10 @@ func refreshWFPInterface() error {
 // deny filters. Call after the iface is created — Init often runs too early,
 // leaving the ACL layers without their default deny.
 func RefreshACLInterface() {
-	if err := ensureWFPEngine(); err != nil {
-		slog.Warn("windows: WFP unavailable for ACL iface refresh", "error", err)
-		return
-	}
 	alias := ncutils.GetInterfaceName()
-	if err := wfpEngine.SetInterfaceAlias(alias); err != nil {
+	if err := withWFPEngine(func(eng *wfp.Engine) error {
+		return eng.SetInterfaceAlias(alias)
+	}); err != nil {
 		slog.Warn("windows: WFP ACL iface bind failed (ACLs not enforced until retry)",
 			"iface", alias, "error", err)
 		logger.Log(0, "windows: WFP ACL iface bind failed: ", err.Error())
@@ -69,32 +97,47 @@ func RefreshACLInterface() {
 }
 
 func ensureWindowsACLBootstrap() {
-	if err := ensureWFPEngine(); err != nil {
-		slog.Warn("windows: failed to open WFP engine for ACLs", "error", err)
-		return
-	}
-	_ = refreshWFPInterface()
+	start := time.Now()
 	metricsPort := 0
 	if server := config.GetServer(config.CurrServer); server != nil {
 		metricsPort = server.MetricsPort
 	}
-	if err := wfpEngine.EnsureBootstrapAllows(metricsPort); err != nil {
-		slog.Warn("windows: failed to install WFP DNS/metrics allows", "error", err)
+	if err := withWFPEngine(func(eng *wfp.Engine) error {
+		_ = refreshWFPInterfaceLocked(eng)
+		return eng.EnsureBootstrapAllows(metricsPort)
+	}); err != nil {
+		slog.Warn("windows: failed to open/bootstrap WFP engine for ACLs", "error", err)
+		return
 	}
-	// Clean any leftover Defender ACL rules from prior builds.
-	_ = removeAllNetmakerACLFirewallRules()
-	logger.Log(0, "windows ACL enforcement via WFP (host ALE + IPFORWARD); NetNat unchanged")
+	cleanupLegacyDefenderACLRules()
+	aclBootstrapLogOnce.Do(func() {
+		logger.Log(0, "windows ACL enforcement via WFP (host ALE + IPFORWARD); NetNat unchanged")
+	})
+	if d := time.Since(start); d > 500*time.Millisecond {
+		logger.Log(0, "windows ACL bootstrap took ", d.String())
+	}
+}
+
+// cleanupLegacyDefenderACLRules runs the Defender→WFP migration cleanup once.
+func cleanupLegacyDefenderACLRules() {
+	defenderACLCleanupOnce.Do(func() {
+		start := time.Now()
+		if err := removeAllNetmakerACLFirewallRules(); err != nil {
+			slog.Warn("windows: failed removing leftover Defender ACL rules", "error", err)
+		}
+		if d := time.Since(start); d > 500*time.Millisecond {
+			logger.Log(0, "windows legacy Defender ACL cleanup took ", d.String())
+		}
+	})
 }
 
 // ChangeACLInTarget mirrors Linux NETMAKER-ACL-IN default verdict.
 func (w *windowsManager) ChangeACLInTarget(target string) {
 	slog.Debug("windows: setting ACL input target", "target", target)
-	if err := ensureWFPEngine(); err != nil {
-		slog.Warn("windows: WFP unavailable for ACL IN target", "error", err)
-		return
-	}
-	_ = refreshWFPInterface()
-	if err := wfpEngine.SetInboundDefaultAccept(target == targetAccept); err != nil {
+	if err := withWFPEngine(func(eng *wfp.Engine) error {
+		_ = refreshWFPInterfaceLocked(eng)
+		return eng.SetInboundDefaultAccept(target == targetAccept)
+	}); err != nil {
 		slog.Warn("windows: failed to set WFP ACL IN target", "target", target, "error", err)
 	}
 }
@@ -102,12 +145,10 @@ func (w *windowsManager) ChangeACLInTarget(target string) {
 // ChangeACLFwdTarget mirrors Linux NETMAKER-ACL-FWD default verdict via IPFORWARD.
 func (w *windowsManager) ChangeACLFwdTarget(target string) {
 	slog.Debug("windows: setting ACL forward target", "target", target)
-	if err := ensureWFPEngine(); err != nil {
-		slog.Warn("windows: WFP unavailable for ACL FWD target", "error", err)
-		return
-	}
-	_ = refreshWFPInterface()
-	if err := wfpEngine.SetForwardDefaultAccept(target == targetAccept); err != nil {
+	if err := withWFPEngine(func(eng *wfp.Engine) error {
+		_ = refreshWFPInterfaceLocked(eng)
+		return eng.SetForwardDefaultAccept(target == targetAccept)
+	}); err != nil {
 		slog.Warn("windows: failed to set WFP ACL FWD target", "target", target, "error", err)
 	}
 }
@@ -120,20 +161,22 @@ func (w *windowsManager) AddAclRules(server string, aclRules map[string]models.A
 	if ruleTable == nil {
 		ruleTable = make(ruletable)
 	}
-	if err := ensureWFPEngine(); err != nil {
+	err := withWFPEngine(func(eng *wfp.Engine) error {
+		_ = refreshWFPInterfaceLocked(eng)
+		for _, aclRule := range aclRules {
+			rules := w.installWFPAclRules(eng, aclRule, wfp.LayerInboundACL)
+			if len(rules) == 0 {
+				continue
+			}
+			ruleTable[aclRule.ID] = rulesCfg{
+				rulesMap:  map[string][]ruleInfo{aclRule.ID: rules},
+				extraInfo: aclRule,
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		slog.Warn("windows: WFP unavailable for AddAclRules", "error", err)
-		return
-	}
-	_ = refreshWFPInterface()
-	for _, aclRule := range aclRules {
-		rules := w.installWFPAclRules(aclRule, wfp.LayerInboundACL)
-		if len(rules) == 0 {
-			continue
-		}
-		ruleTable[aclRule.ID] = rulesCfg{
-			rulesMap:  map[string][]ruleInfo{aclRule.ID: rules},
-			extraInfo: aclRule,
-		}
 	}
 }
 
@@ -142,22 +185,24 @@ func (w *windowsManager) UpsertAclRule(server string, aclRule models.AclRule) {
 	defer w.SaveRules(server, aclTable, ruleTable)
 	w.mux.Lock()
 	defer w.mux.Unlock()
-	if existing, ok := ruleTable[aclRule.ID]; ok {
-		w.removeWFPRules(existing.rulesMap[aclRule.ID])
-	}
-	if err := ensureWFPEngine(); err != nil {
+	err := withWFPEngine(func(eng *wfp.Engine) error {
+		if existing, ok := ruleTable[aclRule.ID]; ok {
+			w.removeWFPRules(eng, existing.rulesMap[aclRule.ID])
+		}
+		_ = refreshWFPInterfaceLocked(eng)
+		rules := w.installWFPAclRules(eng, aclRule, wfp.LayerInboundACL)
+		if len(rules) == 0 {
+			delete(ruleTable, aclRule.ID)
+			return nil
+		}
+		ruleTable[aclRule.ID] = rulesCfg{
+			rulesMap:  map[string][]ruleInfo{aclRule.ID: rules},
+			extraInfo: aclRule,
+		}
+		return nil
+	})
+	if err != nil {
 		slog.Warn("windows: WFP unavailable for UpsertAclRule", "error", err)
-		return
-	}
-	_ = refreshWFPInterface()
-	rules := w.installWFPAclRules(aclRule, wfp.LayerInboundACL)
-	if len(rules) == 0 {
-		delete(ruleTable, aclRule.ID)
-		return
-	}
-	ruleTable[aclRule.ID] = rulesCfg{
-		rulesMap:  map[string][]ruleInfo{aclRule.ID: rules},
-		extraInfo: aclRule,
 	}
 }
 
@@ -170,7 +215,10 @@ func (w *windowsManager) DeleteAclRule(server, aclID string) {
 	if !ok {
 		return
 	}
-	w.removeWFPRules(cfg.rulesMap[aclID])
+	_ = withWFPEngine(func(eng *wfp.Engine) error {
+		w.removeWFPRules(eng, cfg.rulesMap[aclID])
+		return nil
+	})
 	delete(ruleTable, aclID)
 }
 
@@ -182,28 +230,30 @@ func (w *windowsManager) AddAclEgressRules(server string, egressInfo models.Egre
 	if ruleTable == nil {
 		ruleTable = make(ruletable)
 	}
-	if err := ensureWFPEngine(); err != nil {
-		slog.Warn("windows: WFP unavailable for egress ACLs", "error", err)
-		return
-	}
-	_ = refreshWFPInterface()
-	slog.Info("windows: applying egress ACL rules via WFP IPFORWARD",
-		"egress", egressInfo.EgressID, "rules", len(egressInfo.EgressFwRules))
+	err := withWFPEngine(func(eng *wfp.Engine) error {
+		_ = refreshWFPInterfaceLocked(eng)
+		slog.Info("windows: applying egress ACL rules via WFP IPFORWARD",
+			"egress", egressInfo.EgressID, "rules", len(egressInfo.EgressFwRules))
 
-	aclRules := egressInfo.EgressFwRules
-	rCfg := rulesCfg{rulesMap: make(map[string][]ruleInfo)}
-	kept := make(map[string]models.AclRule, len(aclRules))
-	for _, aclRule := range aclRules {
-		rules := w.installWFPAclRules(aclRule, wfp.LayerForwardACL)
-		if len(rules) == 0 {
-			slog.Warn("windows: egress ACL produced no WFP filters", "acl", aclRule.ID, "egress", egressInfo.EgressID)
-			continue
+		aclRules := egressInfo.EgressFwRules
+		rCfg := rulesCfg{rulesMap: make(map[string][]ruleInfo)}
+		kept := make(map[string]models.AclRule, len(aclRules))
+		for _, aclRule := range aclRules {
+			rules := w.installWFPAclRules(eng, aclRule, wfp.LayerForwardACL)
+			if len(rules) == 0 {
+				slog.Warn("windows: egress ACL produced no WFP filters", "acl", aclRule.ID, "egress", egressInfo.EgressID)
+				continue
+			}
+			rCfg.rulesMap[aclRule.ID] = rules
+			kept[aclRule.ID] = aclRule
 		}
-		rCfg.rulesMap[aclRule.ID] = rules
-		kept[aclRule.ID] = aclRule
+		rCfg.extraInfo = kept
+		ruleTable[fmt.Sprintf("acl#%s", egressInfo.EgressID)] = rCfg
+		return nil
+	})
+	if err != nil {
+		slog.Warn("windows: WFP unavailable for egress ACLs", "error", err)
 	}
-	rCfg.extraInfo = kept
-	ruleTable[fmt.Sprintf("acl#%s", egressInfo.EgressID)] = rCfg
 }
 
 func (w *windowsManager) UpsertAclEgressRule(server, egressID string, aclRule models.AclRule) {
@@ -221,21 +271,24 @@ func (w *windowsManager) UpsertAclEgressRule(server, egressID string, aclRule mo
 			extraInfo = m
 		}
 	}
-	if old, ok := rCfg.rulesMap[aclRule.ID]; ok {
-		w.removeWFPRules(old)
-	}
-	if err := ensureWFPEngine(); err != nil {
+	err := withWFPEngine(func(eng *wfp.Engine) error {
+		if old, ok := rCfg.rulesMap[aclRule.ID]; ok {
+			w.removeWFPRules(eng, old)
+		}
+		_ = refreshWFPInterfaceLocked(eng)
+		rules := w.installWFPAclRules(eng, aclRule, wfp.LayerForwardACL)
+		if len(rules) == 0 {
+			delete(rCfg.rulesMap, aclRule.ID)
+			delete(extraInfo, aclRule.ID)
+		} else {
+			rCfg.rulesMap[aclRule.ID] = rules
+			extraInfo[aclRule.ID] = aclRule
+		}
+		return nil
+	})
+	if err != nil {
 		slog.Warn("windows: WFP unavailable for UpsertAclEgressRule", "error", err)
 		return
-	}
-	_ = refreshWFPInterface()
-	rules := w.installWFPAclRules(aclRule, wfp.LayerForwardACL)
-	if len(rules) == 0 {
-		delete(rCfg.rulesMap, aclRule.ID)
-		delete(extraInfo, aclRule.ID)
-	} else {
-		rCfg.rulesMap[aclRule.ID] = rules
-		extraInfo[aclRule.ID] = aclRule
 	}
 	rCfg.extraInfo = extraInfo
 	ruleTable[egressID] = rCfg
@@ -250,7 +303,10 @@ func (w *windowsManager) DeleteAclEgressRule(server, egressID, aclID string) {
 	if !ok {
 		return
 	}
-	w.removeWFPRules(rCfg.rulesMap[aclID])
+	_ = withWFPEngine(func(eng *wfp.Engine) error {
+		w.removeWFPRules(eng, rCfg.rulesMap[aclID])
+		return nil
+	})
 	delete(rCfg.rulesMap, aclID)
 	if rCfg.extraInfo != nil {
 		if m, ok := rCfg.extraInfo.(map[string]models.AclRule); ok {
@@ -270,20 +326,24 @@ func (w *windowsManager) DeleteAllAclEgressRules(server, egressID string) {
 	if !ok {
 		return
 	}
-	for _, rules := range rCfg.rulesMap {
-		w.removeWFPRules(rules)
-	}
+	_ = withWFPEngine(func(eng *wfp.Engine) error {
+		for _, rules := range rCfg.rulesMap {
+			w.removeWFPRules(eng, rules)
+		}
+		return nil
+	})
 	delete(ruleTable, egressID)
 }
 
-func (w *windowsManager) installWFPAclRules(acl models.AclRule, layer wfp.Layer) []ruleInfo {
-	if wfpEngine == nil {
+// installWFPAclRules must be called under wfpMu (via withWFPEngine).
+func (w *windowsManager) installWFPAclRules(eng *wfp.Engine, acl models.AclRule, layer wfp.Layer) []ruleInfo {
+	if eng == nil {
 		return nil
 	}
 	specs := aclToFilterSpecs(acl, int(layer))
 	var rules []ruleInfo
 	for _, spec := range specs {
-		ids, err := wfpEngine.AddAllow(wfp.FilterSpec{
+		ids, err := eng.AddAllow(wfp.FilterSpec{
 			Name:       spec.Name,
 			Layer:      wfp.Layer(spec.Layer),
 			SrcNets:    spec.SrcNets,
@@ -308,8 +368,9 @@ func (w *windowsManager) installWFPAclRules(acl models.AclRule, layer wfp.Layer)
 	return rules
 }
 
-func (w *windowsManager) removeWFPRules(rules []ruleInfo) {
-	if wfpEngine == nil {
+// removeWFPRules must be called under wfpMu (via withWFPEngine).
+func (w *windowsManager) removeWFPRules(eng *wfp.Engine, rules []ruleInfo) {
+	if eng == nil {
 		return
 	}
 	var ids []uint64
@@ -328,5 +389,5 @@ func (w *windowsManager) removeWFPRules(rules []ruleInfo) {
 			_ = removeWindowsFirewallRule(rule.rule[1])
 		}
 	}
-	wfpEngine.DeleteFilters(ids)
+	eng.DeleteFilters(ids)
 }

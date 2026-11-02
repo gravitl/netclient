@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
@@ -81,9 +80,8 @@ func HardRestart() error {
 	return hardRestart()
 }
 
-// logRestartRequest names the caller at verbosity 1 (debug). Kept on logger.Log
-// rather than slog.Debug so it still appears when -v is raised on Windows,
-// where the service log drops slog.Debug.
+// logRestartRequest names the caller. On Windows, soft Restart keeps uiapi up;
+// HardRestart / CLI Restart still bounce WinSW and drop :61820.
 func logRestartRequest(kind string) {
 	caller := "unknown"
 	if pc, file, line, ok := runtime.Caller(2); ok {
@@ -93,7 +91,15 @@ func logRestartRequest(kind string) {
 		}
 		caller = fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
 	}
-	logger.Log(3, fmt.Sprintf("daemon %s requested by %s", kind, caller))
+	note := ""
+	if runtime.GOOS == "windows" {
+		if kind == "hard restart" || !IsDaemonProcess() {
+			note = " (Windows: WinSW stop/start; uiapi :61820 will drop)"
+		} else {
+			note = " (Windows: soft in-process reset; uiapi stays up)"
+		}
+	}
+	fmt.Println("daemon", kind, "requested by", caller+note)
 }
 
 // Stop - stops a system daemon

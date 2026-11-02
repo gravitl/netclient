@@ -14,6 +14,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -575,11 +576,18 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if uiapi.IsSessionActive() {
 			logger.Log(0, "host update REQ_PULL: pulling in-process (desktop session)")
 			clearRetainedMsg(client, msg.Topic())
-			response, resetInterface, replacePeers, err := Pull(false, false, false)
+			var replacePeers bool
+			var err error
+			var response models.HostPull
+			// Assign into the outer resetInterface — := would shadow it and skip
+			// resetInterfaceFunc() after the switch.
+			response, resetInterface, replacePeers, err = Pull(false, false, false)
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {
 				mqFallbackPull(response, resetInterface, replacePeers)
+				// mqFallbackPull already applied resetInterface.
+				resetInterface = false
 			}
 			writeToDisk = false
 			break
@@ -589,11 +597,15 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		response, resetInterface, replacePeers, err := Pull(false, false, false)
+		var replacePeers bool
+		var err error
+		var response models.HostPull
+		response, resetInterface, replacePeers, err = Pull(false, false, false)
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
 			mqFallbackPull(response, resetInterface, replacePeers)
+			resetInterface = false
 		}
 		writeToDisk = false
 	case models.EgressUpdate:
@@ -861,12 +873,20 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			if skip && ((Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "") {
 				continue
 			}
+			// Partial / demoted enrollment — nothing to pull until Desktop re-registers.
+			if !IsServerFullyRegistered("") {
+				continue
+			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
 			//auth.CleanJwtToken()
 			response, resetInterface, replacePeers, err := Pull(false, false, false)
 			if err != nil {
-				slog.Error("pull failed", "error", err)
+				if auth.IsMissingHostError(err) {
+					slog.Warn("pull failed; host missing on server", "error", err)
+				} else {
+					slog.Error("pull failed", "error", err)
+				}
 			} else {
 				mqFallbackPull(response, resetInterface, replacePeers)
 				server := config.GetServer(config.CurrServer)
@@ -1075,6 +1095,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 	if server.IsPro {
 		go networking.RefreshPeerInfoCache()
+	}
+
+	// Pull may report that the WireGuard iface needs a rebuild (address/peer
+	// drift). Host-update MQTT paths apply this after mqFallbackPull via the
+	// outer resetInterface flag; the mq-fallback ticker and MQFallbackPull
+	// callers must honor it here or the iface stays stale until a daemon restart.
+	if resetInterface {
+		resetInterfaceFunc()
 	}
 }
 

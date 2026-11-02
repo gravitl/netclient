@@ -2,6 +2,7 @@ package uiapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,10 +34,12 @@ func beginSessionRestore() uint64 {
 // current and the session is still in Restoring.
 func finishSessionRestore(gen uint64) {
 	if sessionRestoreGen.Load() != gen {
+		fmt.Println("uiapi: session restore finished but generation stale; leaving status unchanged")
 		return
 	}
 	SetRestorePhase("")
 	if getStatus() == Restoring {
+		fmt.Println("uiapi: session restore complete")
 		setStatus(Running)
 	}
 }
@@ -46,6 +49,7 @@ func cancelSessionRestore() {
 	sessionRestoreAbort.Store(true)
 	sessionRestoreGen.Add(1)
 	SetRestorePhase("")
+	fmt.Println("uiapi: session restore cancelled")
 }
 
 // Restore phase values exposed on GET /server while status=restoring.
@@ -309,8 +313,12 @@ func getStatus() Status {
 
 func setStatus(status Status) {
 	session.mu.Lock()
+	prev := session.status
 	session.status = status
 	session.mu.Unlock()
+	if prev != status {
+		fmt.Println("uiapi: session status", prev, "->", status)
+	}
 }
 
 // SetSessionNotice stores a GUI notice and persists it with the session so a

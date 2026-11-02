@@ -464,10 +464,8 @@ func SyncDeviceWithServer(token string) error {
 		return err
 	}
 	pullResponse.ReplacePeers = true
+	// MQFallbackPull applies resetInterface itself; do not ResetInterface again.
 	functions.MQFallbackPull(pullResponse, resetInterface, true)
-	if resetInterface {
-		functions.ResetInterface()
-	}
 	return nil
 }
 
@@ -479,11 +477,28 @@ var ErrNetworkNotConnected = errors.New("connect to the network before choosing 
 // ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
 // The network must be connected so exits can be ranked by overlay VPN probes.
 func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error) {
+	return listDeviceExitNodes(network, token, true)
+}
+
+// ListDeviceExitNodesForUI returns exit nodes for the desktop selector.
+// With an active session it may run while disconnected so the GUI can show the
+// restored exit name after logout/login; overlay latency probes still require
+// a live mesh.
+func ListDeviceExitNodesForUI(network, token string) ([]models.DeviceExitNode, error) {
+	return listDeviceExitNodes(network, token, false)
+}
+
+func listDeviceExitNodes(network, token string, requireConnected bool) ([]models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
-	if !networkLocallyConnected(network) {
-		return nil, ErrNetworkNotConnected
+	connected := networkLocallyConnected(network)
+	if !connected {
+		if requireConnected || !uiapi.IsSessionActive() {
+			return nil, ErrNetworkNotConnected
+		}
+		slog.Warn("exit list: network not connected; returning names without overlay probes",
+			"network", network)
 	}
 	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_nodes"
 	resp, err := deviceRequest(http.MethodGet, path, token, nil)
@@ -500,7 +515,7 @@ func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error)
 	// The server can keep Selected set until the clear PUT converges. Report the
 	// local clear immediately, and skip probes so this refresh is not held up.
 	nodes, skipProbes := hideClearedExitSelection(network, nodes)
-	if !skipProbes {
+	if !skipProbes && connected {
 		attachExitNodeLatencies(network, nodes)
 	}
 	return nodes, nil
@@ -597,13 +612,28 @@ func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, e
 // Peer/IGW routes are applied by the MQTT peer update; we do not pull here.
 // Selecting an exit requires the network to be connected. Clearing is always allowed.
 func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNode, error) {
+	return selectDeviceExitNode(network, token, egressID, false)
+}
+
+// selectDeviceExitNodeForReconcile re-drives server exit selection from desired
+// state. It allows a brief Connected=false race while a desktop session is
+// active so peer-update flaps cannot permanently block re-select.
+func selectDeviceExitNodeForReconcile(network, token, egressID string) (*models.DeviceExitNode, error) {
+	return selectDeviceExitNode(network, token, egressID, true)
+}
+
+func selectDeviceExitNode(network, token, egressID string, forReconcile bool) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
 	}
 	user, tenant := uiapi.SessionIdentity()
 	egressID = strings.TrimSpace(egressID)
 	if egressID != "" && !networkLocallyConnected(network) {
-		return nil, ErrNetworkNotConnected
+		if !forReconcile || !uiapi.IsSessionActive() {
+			return nil, ErrNetworkNotConnected
+		}
+		slog.Warn("exit reconcile: network not marked connected; still re-selecting",
+			"network", network)
 	}
 
 	// Persist desired intent BEFORE the server PUT. MQTT peer updates can arrive
@@ -670,7 +700,7 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 	if err != nil {
 		return nil, err
 	}
-	return selectNearestDeviceExitNodeExcluding(network, token, nodes, nil)
+	return selectNearestDeviceExitNodeExcluding(network, token, nodes, nil, false)
 }
 
 // selectNearestDeviceExitNodeExcluding picks the nearest exit not in exclude and
@@ -679,10 +709,11 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 //
 // Never ClearDesiredExitNode here: that drops auto_exit/want_igw and races with
 // peer updates / reconcile into "manual + dead exit + ISP routing".
-func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.DeviceExitNode, exclude map[string]struct{}) (*models.DeviceExitNode, error) {
+// forReconcile skips the Connected gate when a desktop session is active.
+func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.DeviceExitNode, exclude map[string]struct{}, forReconcile bool) (*models.DeviceExitNode, error) {
 	var err error
 	if nodes == nil {
-		nodes, err = ListDeviceExitNodes(network, token)
+		nodes, err = listDeviceExitNodes(network, token, !forReconcile)
 		if err != nil {
 			return nil, err
 		}

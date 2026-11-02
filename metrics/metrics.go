@@ -114,7 +114,24 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 	wg.Wait()
 
 	fillUnconnectedData(&metrics, peerMap, mi)
+	fillSummary(&metrics, peerMap)
 	return &metrics, nil
+}
+
+// fillSummary - summarises connectivity to the node peers in peerMap, for the
+// server to compute this node's status from. Ext clients are not counted.
+func fillSummary(metrics *models.Metrics, peerMap models.PeerMap) {
+	summary := &models.MetricsSummary{UnreachablePeers: []string{}}
+	for _, peer := range peerMap {
+		if peer.IsExtClient || peer.ID == "" {
+			continue
+		}
+		summary.TotalPeers++
+		if !metrics.Connectivity[peer.ID].Connected {
+			summary.UnreachablePeers = append(summary.UnreachablePeers, peer.ID)
+		}
+	}
+	metrics.Summary = summary
 }
 
 // probeConcurrency returns the maximum number of per-peer probes Collect runs

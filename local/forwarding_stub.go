@@ -12,3 +12,8 @@ func SetIPForwardingWindows() error {
 func EnableForwardingOnInterfaces(aliases ...string) error {
 	return nil
 }
+
+// DisableForwardingOnInterfaces is a no-op on non-Windows builds.
+func DisableForwardingOnInterfaces(aliases ...string) error {
+	return nil
+}

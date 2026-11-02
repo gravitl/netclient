@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/gravitl/netclient/auth"
@@ -26,6 +29,8 @@ var pMutex = sync.Mutex{} // used to mutex functions for pull
 func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
+	logger.Log(0, "host pull starting:", pullCaller(),
+		fmt.Sprintf("restart=%v reset_failover=%v refresh=%v", restart, resetIfFailedOvered, refresh))
 	resetInterface := false
 	replacePeers := false
 	server, serverName := config.ResolveServer(config.CurrServer)
@@ -38,11 +43,21 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		config.CurrServer = serverName
 		_ = config.SetCurrServerCtxInFile(serverName)
 	}
+	// Partial servers.json entries (Desktop Settings) are not enrolled — do not
+	// hammer authenticate / spam ERROR logs from mqFallback.
+	if strings.TrimSpace(server.Server) == "" {
+		err := errors.New("not registered to server")
+		return models.HostPull{}, resetInterface, replacePeers, err
+	}
 	token, err := auth.AuthenticateWithOptions(server, config.Netclient(), auth.AuthenticateOptions{
 		CleanupOnUnauthorized: false,
 	})
 	if err != nil {
-		logger.Log(0, "pull failed for server", serverName, "authenticate:", err.Error())
+		if ClearEnrollmentIfHostMissing(serverName, err) {
+			logger.Log(0, "pull failed for server", serverName, "host missing on server; enrollment cleared")
+		} else {
+			logger.Log(0, "pull failed for server", serverName, "authenticate:", err.Error())
+		}
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
 
@@ -50,7 +65,7 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		config.APIBaseURL(config.NormalizeServerAPI(server.API)), resetIfFailedOvered, refresh)
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, config.Netclient())
 	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
@@ -140,4 +155,23 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		return models.HostPull{}, resetInterface, replacePeers, nil
 	}
 	return pullResponse, resetInterface, replacePeers, nil
+}
+
+// pullCaller names who requested the host pull (skips this file's frames).
+func pullCaller() string {
+	for skip := 2; skip < 8; skip++ {
+		pc, file, line, ok := runtime.Caller(skip)
+		if !ok {
+			break
+		}
+		if filepath.Base(file) == "pull.go" {
+			continue
+		}
+		name := "unknown"
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			name = fn.Name()
+		}
+		return fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
+	}
+	return "unknown"
 }
