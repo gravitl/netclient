@@ -128,6 +128,22 @@ func GetServer(name string) *Server {
 	return server
 }
 
+// IsRegisteredToServer reports whether netclient has a tenant-bound enrollment
+// for the given server. Partial Settings entries (API only) have no TenantID;
+// it is written on register/pull, not on Desktop configure.
+func IsRegisteredToServer(server string) bool {
+	srv := GetServer(server)
+	if srv == nil {
+		return false
+	}
+	return strings.TrimSpace(srv.TenantID) != ""
+}
+
+// IsRegistered reports a tenant-bound enrollment for CurrServer.
+func IsRegistered() bool {
+	return IsRegisteredToServer(CurrServer)
+}
+
 // ResolveServerKey returns the servers.json map key for the given identifier.
 func ResolveServerKey(id string) string {
 	_, key := ResolveServer(id)

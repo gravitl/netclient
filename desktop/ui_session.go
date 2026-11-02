@@ -1,29 +1,34 @@
 package desktop
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/dns"
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 )
 
 var (
 	registerDeviceOnServerForSession = RegisterDeviceOnServer
+	leaveHostOnTenantForSession      = leaveHostOnTenant
 	pullForSession                   = functions.Pull
 )
 
 // IsRegisteredToServer reports whether netclient is fully registered to the given server.
-// A partial servers.json entry (API set, Server empty) from configureServer does not count.
+// A partial servers.json entry (API only, no TenantID) from configureServer does not count.
 func IsRegisteredToServer(server string) bool {
-	srv := config.GetServer(server)
-	return srv != nil && strings.TrimSpace(srv.Server) != ""
+	return config.IsRegisteredToServer(server)
 }
 
 // RegisterSession registers or refreshes a desktop UI session against a server.
@@ -62,6 +67,7 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 
 	alreadyRegistered := IsRegisteredToServer(server)
 	tenantMatches := sessionTenantMatches(server, tenantID)
+	prevTenant := previousEnrollmentTenant(server)
 	// The host on this machine is owned by whoever registered it. A different
 	// user must re-register so the server rebinds the device; otherwise join
 	// fails with "host does not belong to user".
@@ -70,12 +76,42 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 		owner = strings.TrimSpace(host.OwnerUsername)
 	}
 	ownerMatches := owner == "" || owner == username
+
+	// MSP tenant switch: server rejects the same host UUID under a new tenant
+	// ("host already registered to another tenant"). Leave the previous tenant
+	// before re-registering. Capture prevTenant before applySessionTenant.
+	if alreadyRegistered && !tenantMatches && prevTenant != "" && prevTenant != tenantID {
+		slog.Info("session: leaving previous tenant before register",
+			"server", server, "from", prevTenant, "to", tenantID)
+		if err := leaveHostOnTenantForSession(server, prevTenant, authToken); err != nil {
+			slog.Warn("session: leave previous tenant failed; continuing to register",
+				"from", prevTenant, "error", err)
+		}
+		clearLocalEnrollmentAfterTenantLeave(server)
+		alreadyRegistered = IsRegisteredToServer(server)
+	}
+
 	applySessionTenant(server, tenantID)
 
 	needRegister := !alreadyRegistered || !tenantMatches || !ownerMatches
 	if needRegister {
 		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
-			return err
+			// Host may still exist under the previous tenant if leave failed or
+			// local enrollment tenant was stale. Retry leave+register once.
+			if isHostRegisteredToAnotherTenant(err) && prevTenant != "" && prevTenant != tenantID {
+				slog.Warn("session: register blocked by previous tenant; retrying leave",
+					"from", prevTenant, "error", err)
+				if leaveErr := leaveHostOnTenantForSession(server, prevTenant, authToken); leaveErr != nil {
+					return fmt.Errorf("%w (also failed to leave previous tenant: %v)", err, leaveErr)
+				}
+				clearLocalEnrollmentAfterTenantLeave(server)
+				applySessionTenant(server, tenantID)
+				if err2 := registerDeviceOnServerForSession(server, authToken); err2 != nil {
+					return err2
+				}
+			} else {
+				return err
+			}
 		}
 	}
 
@@ -113,15 +149,14 @@ func isMissingHostOnServer(err error) bool {
 }
 
 func applySessionTenant(server, tenantID string) {
+	_ = server
+	// Only stamp the host for device API headers. servers.json TenantID is the
+	// enrollment signal (IsRegisteredToServer) and must wait for register/pull.
 	host := config.Netclient()
 	if host != nil && host.TenantID != tenantID {
 		host.TenantID = tenantID
 		config.UpdateNetclient(*host)
 		_ = config.WriteNetclientConfig()
-	}
-	if srv := config.GetServer(server); srv != nil && srv.TenantID != tenantID {
-		srv.TenantID = tenantID
-		_ = config.SaveServer(server, *srv)
 	}
 }
 
@@ -131,10 +166,114 @@ func sessionTenantMatches(server, tenantID string) bool {
 		return false
 	}
 	if srv := config.GetServer(server); srv != nil {
-		// Empty stored tenant matches empty session tenant (classic on-prem).
+		// Not enrolled yet (no server TenantID): host match is enough.
+		if strings.TrimSpace(srv.TenantID) == "" {
+			return true
+		}
 		return srv.TenantID == tenantID
 	}
 	return tenantID == ""
+}
+
+// previousEnrollmentTenant is the tenant this host is currently enrolled under
+// (server config preferred, then local host stamp).
+func previousEnrollmentTenant(server string) string {
+	if srv := config.GetServer(server); srv != nil {
+		if t := strings.TrimSpace(srv.TenantID); t != "" {
+			return t
+		}
+	}
+	if host := config.Netclient(); host != nil {
+		return strings.TrimSpace(host.TenantID)
+	}
+	return ""
+}
+
+func isHostRegisteredToAnotherTenant(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "host already registered to another tenant")
+}
+
+// leaveHostOnTenant deletes this device from the given tenant on the server so
+// RegisterDevice can enroll the same host UUID under a different MSP tenant.
+func leaveHostOnTenant(server, tenantID, userToken string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	userToken = strings.TrimSpace(userToken)
+	if tenantID == "" {
+		return nil
+	}
+	if userToken == "" {
+		return errors.New("user token required to leave previous tenant")
+	}
+	srv := config.GetServer(server)
+	if srv == nil {
+		return fmt.Errorf("server not found: %s", server)
+	}
+	api := config.NormalizeServerAPI(srv.API)
+	if api == "" {
+		api = config.NormalizeServerAPI(srv.APIHost)
+	}
+	if api == "" {
+		return fmt.Errorf("server API not configured: %s", server)
+	}
+	host := config.Netclient()
+	if host == nil || host.ID == uuid.Nil {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/api/hosts/%s?force=true", config.APIBaseURL(api), host.ID.String())
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	auth.ApplyAPIHeaders(headers, userToken, host)
+	headers.Set(scope.HeaderTenantID, tenantID)
+
+	_, err := ncutils.SendRequest(http.MethodDelete, url, headers, nil)
+	if err == nil {
+		return nil
+	}
+	// Already gone on that tenant — safe to continue registering elsewhere.
+	if isMissingHostOnServer(err) {
+		return nil
+	}
+	var notOk ncutils.ErrStatusNotOk
+	if errors.As(err, &notOk) && (notOk.Status == http.StatusNotFound || notOk.Status == http.StatusBadRequest) {
+		msg := strings.ToLower(notOk.Message)
+		if msg == "" || strings.Contains(msg, "not found") || strings.Contains(msg, "no host") {
+			return nil
+		}
+	}
+	return err
+}
+
+// clearLocalEnrollmentAfterTenantLeave drops nodes/peers and demotes the
+// server entry so the next register is treated as a fresh enrollment. Does not
+// ForceLogout — caller is mid PUT /session with a pending user JWT.
+func clearLocalEnrollmentAfterTenantLeave(server string) {
+	config.DeleteServerHostPeerCfg()
+	for k, node := range config.GetNodes() {
+		if node.Server == server || config.ResolveServerKey(node.Server) == config.ResolveServerKey(server) {
+			config.DeleteNode(k)
+		}
+	}
+	if err := config.WriteNodeConfig(); err != nil {
+		slog.Warn("failed to write node config after tenant leave", "error", err)
+	}
+	_ = wireguard.SetPeers(true)
+
+	if kept := config.DemoteServerToPartial(server); kept != "" {
+		config.CurrServer = kept
+		_ = config.SetCurrServerCtxInFile(kept)
+		if err := config.WriteServerConfig(); err != nil {
+			slog.Warn("failed to write server config after tenant leave", "error", err)
+		}
+	}
+	if host := config.Netclient(); host != nil && strings.TrimSpace(host.TenantID) != "" {
+		host.TenantID = ""
+		config.UpdateNetclient(*host)
+		_ = config.WriteNetclientConfig()
+	}
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.

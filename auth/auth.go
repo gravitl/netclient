@@ -97,7 +97,10 @@ func AuthenticateWithOptions(server *config.Server, host *config.Config, opts Au
 // IsUserOwnedDevice reports whether this host is bound to a Netmaker user
 // (desktop/device registration).
 func IsUserOwnedDevice(host *config.Config) bool {
-	return host != nil && strings.TrimSpace(host.OwnerUsername) != ""
+	if host != nil {
+		return strings.TrimSpace(host.OwnerUsername) != ""
+	}
+	return config.IsUserOwnedDevice()
 }
 
 // ApplyAPIHeaders sets Authorization. X-Host-ID is always included when a host

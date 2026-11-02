@@ -235,6 +235,13 @@ func Netclient() *Config {
 	return &netclient
 }
 
+// IsUserOwnedDevice reports whether this host was registered by an end user
+// (Desktop/device flow). User devices are not gateways/relays/egress routers.
+func IsUserOwnedDevice() bool {
+	nc := Netclient()
+	return nc != nil && strings.TrimSpace(nc.OwnerUsername) != ""
+}
+
 // UpdateHostPeers - updates host peer map in the netclient config
 func UpdateHostPeers(peers []wgtypes.PeerConfig) {
 	netclientCfgMutex.Lock()
