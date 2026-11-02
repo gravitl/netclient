@@ -19,10 +19,12 @@ var joinCmd = &cobra.Command{
 	Long: `join a netmaker network using: 
 
 token: netclient join -t <token> // join using token
-server: netclient join -s <server> // join a specific server via SSO if Oauth configured
-net: netclient join -s <server> -n <net> // attempt to join specified network via auth
-all-networks: netclient join -s <server> -A // attempt to register to all allowed networks on given server via auth
-user: netclient join -s <server> -u <user_name> // attempt to join/register via basic auth`,
+server (DEPRECATED): netclient join -s <server> // join a specific server via SSO if Oauth configured
+net (DEPRECATED): netclient join -s <server> -n <net> // attempt to join specified network via auth
+all-networks (DEPRECATED): netclient join -s <server> -A // attempt to register to all allowed networks on given server via auth
+user (DEPRECATED): netclient join -s <server> -u <user_name> // attempt to join/register via basic auth
+
+WARNING: Joining a device without an enrollment token (-s/-u) is deprecated and will be removed in a future release. Use -t <token> to join your device.`,
 
 	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {

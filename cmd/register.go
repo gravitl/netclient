@@ -54,10 +54,12 @@ var registerCmd = &cobra.Command{
 	Short: "register to a Netmaker instance",
 	Long: `register to a Netmaker instance using: 
 token: netclient register -t <token> // join using an enrollment token
-server: netclient register -s <server> // join a specific server via SSO if Oauth configured
-net: netclient register -s <server> -n <net> // attempt to join specified network via auth
-all-networks: netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
-user: netclient register -s <server> -u <user_name> // attempt to join/register via basic auth`,
+server (DEPRECATED): netclient register -s <server> // join a specific server via SSO if Oauth configured
+net (DEPRECATED): netclient register -s <server> -n <net> // attempt to join specified network via auth
+all-networks (DEPRECATED): netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
+user (DEPRECATED): netclient register -s <server> -u <user_name> // attempt to join/register via basic auth
+
+WARNING: Registering a device without an enrollment token (-s/-u) is deprecated and will be removed in a future release. Use -t <token> to register your device.`,
 	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		validateArgs(cmd)
@@ -157,6 +159,8 @@ func validateIface(iface string) bool {
 }
 
 func checkUserRegistration(cmd *cobra.Command) error {
+	fmt.Println("DEPRECATED: joining/registering via -s (SSO) or -u (basic auth) is deprecated and will be removed in a future release. Use an enrollment token instead: netclient join -t <token>.")
+	logger.Log(0, "DEPRECATED: joining/registering without an enrollment token (-s/-u) is deprecated and will be removed in a future release; use -t <token> instead")
 	apiURI, err := cmd.Flags().GetString(registerFlags.Server)
 	if err != nil {
 		return err
