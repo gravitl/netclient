@@ -206,6 +206,58 @@ func NormalizeServerHost(id string) string {
 	return id
 }
 
+// IsTenantServerKey reports whether id is a SaaS/MSP tenant map key
+// (no DNS dots — typically a UUID) rather than a hostname.
+func IsTenantServerKey(id string) bool {
+	id = NormalizeServerHost(id)
+	return id != "" && !strings.Contains(id, ".")
+}
+
+// IsUsableServerAPI reports whether api is a dialable HTTPS host:port.
+// Bare tenant map keys (UUID:443) are not usable.
+func IsUsableServerAPI(api, serverKey string) bool {
+	api = NormalizeServerAPI(api)
+	if api == "" {
+		return false
+	}
+	host := NormalizeServerHost(api)
+	if host == "" || IsTenantServerKey(host) {
+		return false
+	}
+	key := NormalizeServerHost(serverKey)
+	if key != "" && host == key && IsTenantServerKey(key) {
+		return false
+	}
+	return true
+}
+
+// PreferExistingServerAPI keeps a known-good API when the incoming value is
+// empty, a bare tenant key, or the base domain of an existing api.<base> host.
+func PreferExistingServerAPI(existing, incoming string) string {
+	existing = NormalizeServerAPI(existing)
+	incoming = NormalizeServerAPI(incoming)
+	if existing == "" {
+		return incoming
+	}
+	if incoming == "" {
+		return existing
+	}
+	eh := NormalizeServerHost(existing)
+	ih := NormalizeServerHost(incoming)
+	if eh == ih {
+		return existing
+	}
+	// Keep api.<base> when the controller returns bare <base>.
+	if strings.HasPrefix(eh, "api.") && strings.TrimPrefix(eh, "api.") == ih {
+		return existing
+	}
+	// Never replace a DNS API with a tenant-UUID API.
+	if IsTenantServerKey(ih) && !IsTenantServerKey(eh) {
+		return existing
+	}
+	return incoming
+}
+
 // NormalizeServerAPI returns host:port for HTTPS API calls.
 // If the input has no port, :443 is appended.
 func NormalizeServerAPI(id string) string {
@@ -486,18 +538,27 @@ func UpdateServerConfig(cfg *models.ServerConfig) {
 		server = Server{}
 		server.Nodes = make(map[string]bool)
 	}
-	api := NormalizeServerAPI(cfg.API)
+	api := PreferExistingServerAPI(server.API, cfg.API)
 	if api == "" {
-		api = NormalizeServerAPI(server.API)
+		api = PreferExistingServerAPI("", key)
 	}
-	if api == "" {
-		api = NormalizeServerAPI(key)
+	// Never persist a bare tenant UUID as the dialable API.
+	if !IsUsableServerAPI(api, key) {
+		api = PreferExistingServerAPI(server.API, "")
 	}
-	// Prefer existing host:port when register response returns bare host.
-	if server.API != "" && NormalizeServerHost(server.API) == NormalizeServerHost(api) {
-		api = NormalizeServerAPI(server.API)
+	if IsUsableServerAPI(api, key) {
+		cfg.API = api
+		if host, _, err := net.SplitHostPort(api); err == nil {
+			cfg.APIHost = host
+		} else {
+			cfg.APIHost = NormalizeServerHost(api)
+		}
+	} else if IsUsableServerAPI(server.API, key) {
+		cfg.API = NormalizeServerAPI(server.API)
+		if server.APIHost != "" {
+			cfg.APIHost = server.APIHost
+		}
 	}
-	cfg.API = api
 	// A payload that omits the metrics port must not clobber a known-good one.
 	// Register responses carry no port, and every consumer reads 0 as "unset"
 	// and falls back to 51821, so storing the 0 makes the next pull see a port

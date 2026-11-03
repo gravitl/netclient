@@ -105,6 +105,85 @@ func TestDemoteServerToPartialMissingReturnsEmpty(t *testing.T) {
 	assert.Empty(t, DemoteServerToPartial("missing.example.com"))
 }
 
+func TestIsTenantServerKeyAndUsableAPI(t *testing.T) {
+	tenant := "abdc97c9-a332-4979-9220-99d1da3c753b"
+	assert.True(t, IsTenantServerKey(tenant))
+	assert.False(t, IsTenantServerKey("nm.example.com"))
+	assert.False(t, IsTenantServerKey("api-"+tenant+".app.prod.netmaker.io"))
+
+	assert.False(t, IsUsableServerAPI(tenant, tenant))
+	assert.False(t, IsUsableServerAPI(tenant+":443", tenant))
+	assert.True(t, IsUsableServerAPI("api-"+tenant+".app.prod.netmaker.io", tenant))
+	assert.True(t, IsUsableServerAPI("api.nm.example.com:443", "nm.example.com"))
+}
+
+func TestPreferExistingServerAPIKeepsApiPrefix(t *testing.T) {
+	assert.Equal(t,
+		"api.nm.example.com:443",
+		PreferExistingServerAPI("api.nm.example.com:443", "nm.example.com"),
+	)
+	assert.Equal(t,
+		"api.nm.example.com:443",
+		PreferExistingServerAPI("api.nm.example.com:443", "nm.example.com:443"),
+	)
+	tenant := "abdc97c9-a332-4979-9220-99d1da3c753b"
+	good := "api-" + tenant + ".app.prod.netmaker.io:443"
+	assert.Equal(t, good, PreferExistingServerAPI(good, tenant))
+	assert.Equal(t, good, PreferExistingServerAPI(good, tenant+":443"))
+}
+
+func TestUpdateServerConfigDoesNotClobberApiPrefixWithBaseDomain(t *testing.T) {
+	Servers = map[string]Server{
+		"nm.example.com": {
+			Name: "nm.example.com",
+			ServerConfig: models.ServerConfig{
+				Server:  "nm.example.com",
+				API:     "api.nm.example.com:443",
+				APIHost: "api.nm.example.com",
+			},
+		},
+	}
+	CurrServer = "nm.example.com"
+	defer func() {
+		Servers = make(map[string]Server)
+		CurrServer = ""
+	}()
+
+	UpdateServerConfig(&models.ServerConfig{
+		Server: "nm.example.com",
+		API:    "nm.example.com",
+	})
+	assert.Equal(t, "api.nm.example.com:443", Servers["nm.example.com"].API)
+	assert.Equal(t, "api.nm.example.com", Servers["nm.example.com"].APIHost)
+}
+
+func TestUpdateServerConfigDoesNotPersistTenantUUIDAsAPI(t *testing.T) {
+	tenant := "abdc97c9-a332-4979-9220-99d1da3c753b"
+	good := "api-" + tenant + ".app.prod.netmaker.io:443"
+	Servers = map[string]Server{
+		tenant: {
+			Name: tenant,
+			ServerConfig: models.ServerConfig{
+				Server:  tenant,
+				API:     good,
+				APIHost: "api-" + tenant + ".app.prod.netmaker.io",
+			},
+		},
+	}
+	CurrServer = tenant
+	defer func() {
+		Servers = make(map[string]Server)
+		CurrServer = ""
+	}()
+
+	UpdateServerConfig(&models.ServerConfig{
+		Server: tenant,
+		API:    tenant,
+	})
+	assert.Equal(t, good, Servers[tenant].API)
+	assert.Equal(t, "api-"+tenant+".app.prod.netmaker.io", Servers[tenant].APIHost)
+}
+
 func TestUpdateServerConfigKeepsMetricsPortWhenPayloadOmitsIt(t *testing.T) {
 	Servers = map[string]Server{
 		"api.example.com": {

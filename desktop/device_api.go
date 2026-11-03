@@ -49,13 +49,13 @@ func deviceServerURL() (string, error) {
 	api := ""
 	if srv != nil {
 		api = srv.API
-	}
-	if api == "" {
-		api = config.CurrServer
+		if !config.IsUsableServerAPI(api, config.CurrServer) && srv.APIHost != "" {
+			api = srv.APIHost
+		}
 	}
 	api = config.NormalizeServerAPI(api)
-	if api == "" {
-		return "", fmt.Errorf("server not configured")
+	if !config.IsUsableServerAPI(api, config.CurrServer) {
+		return "", fmt.Errorf("server API host not configured")
 	}
 	return config.APIBaseURL(api), nil
 }
@@ -150,13 +150,13 @@ func fetchModelsServerConfig(server, token string) (models.ServerConfig, error) 
 	api := ""
 	if srv := config.GetServer(server); srv != nil {
 		api = srv.API
-	}
-	if api == "" {
-		api = server
+		if !config.IsUsableServerAPI(api, server) && srv.APIHost != "" {
+			api = srv.APIHost
+		}
 	}
 	api = config.NormalizeServerAPI(api)
-	if api == "" {
-		return models.ServerConfig{}, fmt.Errorf("server not configured")
+	if !config.IsUsableServerAPI(api, server) {
+		return models.ServerConfig{}, fmt.Errorf("server API host not configured")
 	}
 	url := fmt.Sprintf("%s/api/server/getserverinfo", config.APIBaseURL(api))
 	headers := make(http.Header)
@@ -189,8 +189,10 @@ func ensureRegisterServerConf(resp *models.RegisterResponse, server, token strin
 	}
 
 	preservedAPI := ""
-	if existing := config.GetServer(domain); existing != nil && existing.API != "" {
-		preservedAPI = config.NormalizeServerAPI(existing.API)
+	if existing := config.GetServer(domain); existing != nil {
+		if config.IsUsableServerAPI(existing.API, domain) {
+			preservedAPI = config.NormalizeServerAPI(existing.API)
+		}
 	}
 
 	if resp.ServerConf.API == "" || resp.ServerConf.Broker == "" {
@@ -210,12 +212,9 @@ func ensureRegisterServerConf(resp *models.RegisterResponse, server, token strin
 		}
 	}
 
-	api := preservedAPI
-	if api == "" {
-		api = config.NormalizeServerAPI(resp.ServerConf.API)
-	}
-	if api == "" {
-		api = config.NormalizeServerAPI(domain)
+	api := config.PreferExistingServerAPI(preservedAPI, resp.ServerConf.API)
+	if !config.IsUsableServerAPI(api, domain) {
+		return fmt.Errorf("server API host not configured")
 	}
 	resp.ServerConf.API = api
 	resp.ServerConf.Server = domain

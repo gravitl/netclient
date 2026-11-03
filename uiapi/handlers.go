@@ -42,10 +42,10 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		respondConfigureServerError(w, "invalid request body")
 		return
 	}
-	// Name / map key = base domain (nm...); API keeps api.<domain>:port for HTTPS.
+	// Name / map key = base domain (nm...) or SaaS tenant UUID.
+	// API must be a dialable host (api.<domain> / api-<tenant>.app…), never the UUID.
 	domain := config.NormalizeServerHost(req.Server)
 	domain = strings.TrimPrefix(domain, "api.")
-	api := config.NormalizeServerAPI(req.Server)
 	rawHost := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(req.Server), "https://"), "http://")
 	if i := strings.Index(rawHost, "/"); i >= 0 {
 		rawHost = rawHost[:i]
@@ -72,12 +72,14 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// Self-hosted: API host is api.<SERVER_NAME>. Skip for tenant IDs (no dots).
-	if strings.Contains(domain, ".") && !strings.HasPrefix(rawHost, "api.") {
-		api = config.NormalizeServerAPI("api." + domain)
-	}
-	if api == "" {
-		respondConfigureServerError(w, "invalid server")
+
+	api := resolveConfigureServerAPI(domain, req.API, req.Server, rawHost)
+	if !config.IsUsableServerAPI(api, domain) {
+		if config.IsTenantServerKey(domain) {
+			respondConfigureServerError(w, "api host required for tenant server")
+		} else {
+			respondConfigureServerError(w, "invalid server")
+		}
 		return
 	}
 	// Reject known-old servers on save when /api/server/status is reachable.
@@ -129,6 +131,30 @@ func configureServer(w http.ResponseWriter, r *http.Request) {
 	}
 	uiLog(0, fmt.Sprintf("uiapi: server set to %s (api %s)", domain, api))
 	w.WriteHeader(http.StatusOK)
+}
+
+// resolveConfigureServerAPI picks the dialable API host for POST /server.
+// Explicit req.API wins; otherwise preserve a good existing entry; otherwise use
+// the host the user typed (api.nm.x, apinm.x, …). Never invent api.<domain> —
+// installs use custom API hostnames. Never returns a bare tenant UUID.
+func resolveConfigureServerAPI(domain, reqAPI, reqServer, rawHost string) string {
+	var existingAPI string
+	if existing := config.GetServer(domain); existing != nil {
+		existingAPI = existing.API
+	}
+	api := config.PreferExistingServerAPI(existingAPI, reqAPI)
+	if config.IsUsableServerAPI(api, domain) {
+		return api
+	}
+	if config.IsTenantServerKey(domain) {
+		return api
+	}
+	typed := strings.TrimSpace(reqServer)
+	if typed == "" {
+		typed = rawHost
+	}
+	api = config.NormalizeServerAPI(typed)
+	return config.PreferExistingServerAPI(existingAPI, api)
 }
 
 func respondConfigureServerError(w http.ResponseWriter, message string) {
@@ -255,7 +281,14 @@ func currentServerAPIHost(server string) string {
 	host := strings.TrimSpace(srv.APIHost)
 	host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
 	if h, _, err := net.SplitHostPort(host); err == nil {
-		return h
+		host = h
+	}
+	// Fall back to API when APIHost was corrupted to the tenant map key.
+	if !config.IsUsableServerAPI(host, server) {
+		if api := configuredServerAPI(server); api != "" {
+			return config.NormalizeServerHost(api)
+		}
+		return ""
 	}
 	return host
 }
@@ -266,7 +299,10 @@ func configuredServerAPI(server string) string {
 		server = getCurrServerName()
 	}
 	if srv := config.GetServer(server); srv != nil && strings.TrimSpace(srv.API) != "" {
-		return config.NormalizeServerAPI(srv.API)
+		api := config.NormalizeServerAPI(srv.API)
+		if config.IsUsableServerAPI(api, server) {
+			return api
+		}
 	}
 	return ""
 }

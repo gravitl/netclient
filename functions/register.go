@@ -151,15 +151,15 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	}
 
 	preservedAPI := ""
-	if existing := config.GetServer(serverKey); existing != nil && existing.API != "" {
-		preservedAPI = config.NormalizeServerAPI(existing.API)
+	if existing := config.GetServer(serverKey); existing != nil {
+		if config.IsUsableServerAPI(existing.API, serverKey) {
+			preservedAPI = config.NormalizeServerAPI(existing.API)
+		}
 	}
-	api := preservedAPI
-	if api == "" {
-		api = config.NormalizeServerAPI(registerResponse.ServerConf.API)
-	}
-	if api == "" {
-		api = config.NormalizeServerAPI(serverKey)
+	api := config.PreferExistingServerAPI(preservedAPI, registerResponse.ServerConf.API)
+	if !config.IsUsableServerAPI(api, serverKey) {
+		logger.Log(0, "register response missing usable server API host")
+		return
 	}
 	registerResponse.ServerConf.API = api
 	registerResponse.ServerConf.Server = serverKey
