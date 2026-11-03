@@ -163,7 +163,6 @@ func logUnsupportedAuthRegistration(cmd *cobra.Command) {
 			break
 		}
 	}
-	fmt.Println(msg)
 	logger.Log(0, msg)
 }
 
