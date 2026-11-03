@@ -33,12 +33,6 @@ This is the client for Netmaker networks. To learn more about Netmaker, [see her
 With Token:
 `netclient join -t <token>`
 
-With User (Basic Auth):
-`netclient join -n <net name> -u <username> -s api.<netmaker domain>`
-
-With User (SSO):
-`netclient join -n <net name> -s api.<netmaker domain>`
-
 ## Interface Exclusion
 
 Netclient excludes certain interfaces from being advertised to peers. By default, the following patterns are excluded: `docker`, `netmaker`, `flannel`, `cni`, and bridge networks.
