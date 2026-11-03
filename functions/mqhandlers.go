@@ -519,6 +519,26 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
+		// Tenant switch / explicit unregister DELETE the host, then MQTT
+		// DELETE_HOST can land after the next tenant session is already up.
+		// Treating that as a live eviction ForceLogout + wipes the new enrollment.
+		if ShouldIgnoreStaleDeleteHost() {
+			slog.Info("ignoring DELETE_HOST after intentional leave/tenant switch",
+				"server", serverName)
+			writeToDisk = false
+			break
+		}
+		// Different tenant than the active enrollment — stale leave from a prior MSP tenant.
+		if nc := config.Netclient(); nc != nil && uiapi.IsSessionActive() {
+			curTenant := strings.TrimSpace(nc.TenantID)
+			msgTenant := strings.TrimSpace(hostUpdate.Host.TenantID)
+			if curTenant != "" && msgTenant != "" && curTenant != msgTenant {
+				slog.Info("ignoring DELETE_HOST for other tenant",
+					"server", serverName, "current", curTenant, "deleted", msgTenant)
+				writeToDisk = false
+				break
+			}
+		}
 		// Drop Desktop UI login before tearing down host state so the app
 		// returns to the login screen. Demote keeps the server domain for re-register.
 		uiapi.ForceLogout()

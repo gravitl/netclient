@@ -86,6 +86,8 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 		if err := leaveHostOnTenantForSession(server, prevTenant, authToken); err != nil {
 			slog.Warn("session: leave previous tenant failed; continuing to register",
 				"from", prevTenant, "error", err)
+		} else {
+			functions.ArmIgnoreStaleDeleteHost()
 		}
 		clearLocalEnrollmentAfterTenantLeave(server)
 		alreadyRegistered = IsRegisteredToServer(server)
@@ -104,6 +106,7 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 				if leaveErr := leaveHostOnTenantForSession(server, prevTenant, authToken); leaveErr != nil {
 					return fmt.Errorf("%w (also failed to leave previous tenant: %v)", err, leaveErr)
 				}
+				functions.ArmIgnoreStaleDeleteHost()
 				clearLocalEnrollmentAfterTenantLeave(server)
 				applySessionTenant(server, tenantID)
 				if err2 := registerDeviceOnServerForSession(server, authToken); err2 != nil {
@@ -420,5 +423,7 @@ func unregisterHostBeforeLogout() {
 			"tenant", tenant, "error", err)
 		return
 	}
+	// MQTT DELETE_HOST often arrives after the next login on Windows — ignore it.
+	functions.ArmIgnoreStaleDeleteHost()
 	clearLocalEnrollmentAfterTenantLeave(server)
 }
