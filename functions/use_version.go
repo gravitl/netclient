@@ -202,6 +202,13 @@ func windowsUpdate(url string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("specified version of netclient doesn't exist %s", url)
+		}
+		return fmt.Errorf("error making HTTP request Code: %d", resp.StatusCode)
+	}
+
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
 	if err != nil {
 		return err
