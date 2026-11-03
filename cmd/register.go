@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/functions"
@@ -17,7 +16,6 @@ import (
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/schema"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var registerFlags = struct {
@@ -54,29 +52,28 @@ var registerCmd = &cobra.Command{
 	Short: "register to a Netmaker instance",
 	Long: `register to a Netmaker instance using: 
 token: netclient register -t <token> // join using an enrollment token
-server (DEPRECATED): netclient register -s <server> // join a specific server via SSO if Oauth configured
-net (DEPRECATED): netclient register -s <server> -n <net> // attempt to join specified network via auth
-all-networks (DEPRECATED): netclient register -s <server> -A // attempt to register to all allowed networks on given server via auth
-user (DEPRECATED): netclient register -s <server> -u <user_name> // attempt to join/register via basic auth
 
-WARNING: Registering a device without an enrollment token (-s/-u) is deprecated and will be removed in a future release. Use -t <token> to register your device.`,
+NOTE: Registering via SSO/basic auth (-s/-u/-n/-A) is no longer supported. Use -t <token> to register your device.`,
 	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
-		validateArgs(cmd)
-		setHostFields(cmd)
-		functions.Push(false)
-		token, err := cmd.Flags().GetString(registerFlags.Token)
-		if err != nil || len(token) == 0 {
-			if regErr := checkUserRegistration(cmd); regErr != nil {
-				cmd.Usage()
-				return
-			}
-		} else {
-			if err := functions.Register(token); err != nil {
-				logger.Log(0, "registration failed", err.Error())
-			}
-		}
+		runEnrollmentRegistration(cmd)
 	},
+}
+
+// runEnrollmentRegistration registers the host using an enrollment token.
+// Registration via SSO/basic auth (-s/-u/-n/-A) is no longer supported.
+func runEnrollmentRegistration(cmd *cobra.Command) {
+	token, err := cmd.Flags().GetString(registerFlags.Token)
+	if err != nil || len(token) == 0 {
+		logUnsupportedAuthRegistration(cmd)
+		cmd.Usage()
+		return
+	}
+	setHostFields(cmd)
+	functions.Push(false)
+	if err := functions.Register(token); err != nil {
+		logger.Log(0, "registration failed", err.Error())
+	}
 }
 
 func setHostFields(cmd *cobra.Command) {
@@ -158,51 +155,24 @@ func validateIface(iface string) bool {
 	return true
 }
 
-func checkUserRegistration(cmd *cobra.Command) error {
-	fmt.Println("DEPRECATED: joining/registering via -s (SSO) or -u (basic auth) is deprecated and will be removed in a future release. Use an enrollment token instead: netclient join -t <token>.")
-	logger.Log(0, "DEPRECATED: joining/registering without an enrollment token (-s/-u) is deprecated and will be removed in a future release; use -t <token> instead")
-	apiURI, err := cmd.Flags().GetString(registerFlags.Server)
-	if err != nil {
-		return err
-	}
-
-	var regData = functions.RegisterSSO{
-		API:      apiURI,
-		UsingSSO: true,
-	}
-
-	network, err := cmd.Flags().GetString(registerFlags.Network)
-	if err == nil {
-		regData.Network = network
-	}
-
-	useAllNetworks, err := cmd.Flags().GetBool(registerFlags.AllNetworks)
-	if err == nil {
-		regData.AllNetworks = useAllNetworks
-	}
-
-	userName, err := cmd.Flags().GetString(registerFlags.User)
-	if err == nil && len(userName) > 0 {
-		fmt.Printf("Continuing with user, %s.\nPlease input password:\n", userName)
-		pass, err := term.ReadPassword(int(syscall.Stdin))
-		if err != nil || len(pass) == 0 {
-			logger.FatalLog("no password provided, exiting")
+func logUnsupportedAuthRegistration(cmd *cobra.Command) {
+	msg := "joining/registering without an enrollment token is no longer supported; use an enrollment token instead: netclient join -t <token>"
+	for _, flag := range []string{registerFlags.Server, registerFlags.User, registerFlags.Network, registerFlags.AllNetworks} {
+		if cmd.Flags().Changed(flag) {
+			msg = "joining/registering via -s (SSO), -u (basic auth), -n or -A is no longer supported; use an enrollment token instead: netclient join -t <token>"
+			break
 		}
-		regData.User = userName
-		regData.Pass = string(pass)
-		pass = nil
-		regData.UsingSSO = false
 	}
-
-	return functions.RegisterWithSSO(&regData)
+	fmt.Println(msg)
+	logger.Log(0, msg)
 }
 
 func init() {
-	registerCmd.Flags().StringP(registerFlags.Server, "s", "", "server for attempting SSO/Auth registration")
+	registerCmd.Flags().StringP(registerFlags.Server, "s", "", "deprecated: SSO/Auth registration is no longer supported")
 	registerCmd.Flags().StringP(registerFlags.Token, "t", "", "enrollment token for registering to a Netmaker instance")
-	registerCmd.Flags().StringP(registerFlags.User, "u", "", "user name for attempting Basic Auth registration")
-	registerCmd.Flags().StringP(registerFlags.Network, "n", "", "network to attempt to register to")
-	registerCmd.Flags().BoolP(registerFlags.AllNetworks, "A", false, "attempts to register to all available networks to user")
+	registerCmd.Flags().StringP(registerFlags.User, "u", "", "deprecated: Basic Auth registration is no longer supported")
+	registerCmd.Flags().StringP(registerFlags.Network, "n", "", "deprecated: SSO/Auth registration is no longer supported")
+	registerCmd.Flags().BoolP(registerFlags.AllNetworks, "A", false, "deprecated: SSO/Auth registration is no longer supported")
 	registerCmd.Flags().StringP(registerFlags.EndpointIP, "e", "", "sets endpoint on host")
 	registerCmd.Flags().StringP(registerFlags.EndpointIP6, "E", "", "sets ipv6 endpoint on host")
 	registerCmd.Flags().IntP(registerFlags.Port, "p", 0, "sets wg listen port")
