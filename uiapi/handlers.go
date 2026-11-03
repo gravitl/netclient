@@ -146,7 +146,7 @@ func releaseSessionForServerChange(reason string) error {
 	}
 	uiLog(0, "uiapi: releasing session before", reason)
 	setStatus(Closing)
-	if err := releaseSessionFn(false); err != nil {
+	if err := releaseSessionFn(false, true); err != nil {
 		uiLog(1, "uiapi: error releasing session before server change:", err.Error())
 	}
 	// Changing server must drop the JWT; keep-token (false) is only for app quit.
@@ -171,7 +171,8 @@ func ForceLogout() {
 	}
 	uiLog(0, "uiapi: forcing logout after remote host delete or account disable")
 	setStatus(Closing)
-	if err := releaseSessionFn(false); err != nil {
+	// Host may already be gone remotely; skip unregister (false).
+	if err := releaseSessionFn(false, false); err != nil {
 		uiLog(1, "uiapi: error releasing session on forced logout:", err.Error())
 	}
 	if err := clearSession(true); err != nil {
@@ -299,8 +300,12 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	_, prevUser, _ := sessionToken()
 	prevTenant := sessionTenantID()
 	if prevUser != "" && (prevUser != req.Username || prevTenant != req.TenantID) {
-		if err := releaseSessionFn(false); err != nil {
+		// Unregister under the previous user's JWT so the next user/tenant can enroll.
+		if err := releaseSessionFn(false, true); err != nil {
 			uiLog(1, "uiapi: failed to disconnect prior session before handoff:", err.Error())
+		}
+		if err := clearSession(true); err != nil {
+			uiLog(1, "uiapi: failed to clear prior session before handoff:", err.Error())
 		}
 	}
 
@@ -363,9 +368,10 @@ func releaseSession(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("uiapi: DELETE /session clear_token=", clearToken)
 	cancelSessionRestore()
 	setStatus(Closing)
-	// Never clear CurrServer / .serverctx on logout — Settings should keep
-	// the last saved server so the user does not re-enter it.
-	if err := releaseSessionFn(false); err != nil {
+	// Explicit logout (clear_token): unregister the host while the current
+	// user's JWT is still valid so User Y / Tenant Y can enroll next.
+	// App-quit keep-token must not unregister or session restore breaks.
+	if err := releaseSessionFn(false, clearToken); err != nil {
 		fmt.Println("uiapi: error releasing session:", err.Error())
 	}
 	if err := clearSession(clearToken); err != nil {

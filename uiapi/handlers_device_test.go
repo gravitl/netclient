@@ -309,8 +309,9 @@ func TestForceLogoutClearsTokenAndKeepsServer(t *testing.T) {
 	clearSessionForTest()
 	prevDeps := deps
 	t.Cleanup(func() { deps = prevDeps })
-	deps.ReleaseSession = func(clearServer bool) error {
+	deps.ReleaseSession = func(clearServer bool, unregisterHost bool) error {
 		assert.False(t, clearServer, "host delete must keep CurrServer for re-login")
+		assert.False(t, unregisterHost, "remote host delete already removed enrollment")
 		return nil
 	}
 
@@ -408,9 +409,10 @@ func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 	released := false
 	registeredUser := ""
 	SetHandlers(HandlerDeps{
-		ReleaseSession: func(clearServer bool) error {
+		ReleaseSession: func(clearServer bool, unregisterHost bool) error {
 			released = true
 			assert.False(t, clearServer)
+			assert.True(t, unregisterHost)
 			return nil
 		},
 		RegisterSession: func(server, username, authToken, password, tenantID string) error {
@@ -442,8 +444,9 @@ func TestConfigureSessionHandoffOnTenantChange(t *testing.T) {
 	released := false
 	gotTenant := ""
 	SetHandlers(HandlerDeps{
-		ReleaseSession: func(clearServer bool) error {
+		ReleaseSession: func(clearServer bool, unregisterHost bool) error {
 			released = true
+			assert.True(t, unregisterHost)
 			return nil
 		},
 		RegisterSession: func(server, username, authToken, password, tenantID string) error {

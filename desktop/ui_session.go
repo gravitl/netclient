@@ -280,11 +280,21 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 // Currently connected networks (and exit selection) are saved so the next login
 // can restore them. Local default routes are restored before disconnect so
 // logout does not wait on a daemon restart for internet to return.
-func ReleaseSession(clearServer bool) error {
+//
+// When unregisterHost is true (explicit Desktop logout / user handoff), DELETE
+// the host under the current session JWT before clearing credentials. That lets
+// a different user or MSP tenant enroll this machine next; the new user cannot
+// leave the previous owner's host themselves (unauthorized).
+func ReleaseSession(clearServer bool, unregisterHost bool) error {
 	defer functions.LogElapsed("logout")()
 	// Latch before any teardown so peer updates that land mid-logout cannot
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
+
+	if unregisterHost {
+		unregisterHostBeforeLogout()
+	}
+
 	networks := make([]string, 0, len(config.GetNodes()))
 	for network, node := range config.GetNodes() {
 		if node.Connected {
@@ -381,4 +391,34 @@ func clearDNSOnLogout() {
 	dns.GetDNSServerInstance().Stop()
 	dns.FlushCache()
 	dns.ScheduleReconfigure()
+}
+
+// unregisterHostBeforeLogout deletes this device from the current tenant while
+// the Desktop JWT is still valid, then demotes local enrollment.
+func unregisterHostBeforeLogout() {
+	token := strings.TrimSpace(uiapi.SessionAuthToken())
+	_, tenant := uiapi.SessionIdentity()
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" {
+		tenant = previousEnrollmentTenant(config.CurrServer)
+	}
+	server := config.CurrServer
+	if server == "" || token == "" || tenant == "" {
+		return
+	}
+	hostTenant := ""
+	if host := config.Netclient(); host != nil {
+		hostTenant = strings.TrimSpace(host.TenantID)
+	}
+	if !IsRegisteredToServer(server) && hostTenant == "" {
+		return
+	}
+	slog.Info("session: unregistering host before logout",
+		"server", server, "tenant", tenant)
+	if err := leaveHostOnTenantForSession(server, tenant, token); err != nil {
+		slog.Warn("session: unregister before logout failed",
+			"tenant", tenant, "error", err)
+		return
+	}
+	clearLocalEnrollmentAfterTenantLeave(server)
 }
