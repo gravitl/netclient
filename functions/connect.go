@@ -31,8 +31,13 @@ func connectNetwork(network string, restart bool) error {
 		return err
 	}
 	if node.Connected {
+		fmt.Println("connect debug: connectNetwork already connected",
+			"network=", network, "restart=", restart)
 		return errors.New("node already connected")
 	}
+	fmt.Println("connect debug: connectNetwork marking connected",
+		"network=", network, "restart=", restart,
+		"peers_cached=", len(config.Netclient().HostPeers))
 	token := callPrepareDesktopConnect(network)
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
@@ -49,9 +54,12 @@ func connectNetwork(network string, restart bool) error {
 	}
 	if !restart {
 		// Auto-exit ranking probes the overlay; do not hold connect on that.
+		fmt.Println("connect debug: connectNetwork skipping apply (restart=false)",
+			"network=", network)
 		go callFinishDesktopConnect(network, token)
 		return nil
 	}
+	fmt.Println("connect debug: connectNetwork applying connection change", "network=", network)
 	if err := applyConnectionChange("connect"); err != nil {
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err

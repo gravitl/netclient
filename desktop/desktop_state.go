@@ -171,10 +171,16 @@ func ApplyDesiredConnectedFlags() {
 
 func restoreDesiredConnections(username, tenantID string, restrictSingle, restart bool) error {
 	desired := filterDesiredNetworks(config.GetDesiredNetworks(username, tenantID), restrictSingle)
+	fmt.Println("restore debug: restoreDesiredConnections",
+		"user=", username, "tenant=", tenantID, "desired=", desired,
+		"restrict_single=", restrictSingle, "restart=", restart,
+		"local_nodes=", len(config.GetNodes()))
 	if len(desired) == 0 {
+		fmt.Println("restore debug: no desired networks after filter")
 		return nil
 	}
 	if uiapi.ShouldAbortSessionRestore() {
+		fmt.Println("restore debug: aborted before network phase")
 		return nil
 	}
 	uiapi.SetRestorePhase(uiapi.RestorePhaseNetworks)
@@ -187,21 +193,30 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		}
 		nodes := config.GetNodes()
 		node, ok := nodes[network]
-		if !ok || node.Connected {
+		if !ok {
+			fmt.Println("restore debug: skip not_joined (will need ConnectNetwork join)",
+				"network=", network)
+			continue
+		}
+		if node.Connected {
+			fmt.Println("restore debug: skip already_connected", "network=", network)
 			continue
 		}
 		// Same posture/JIT gate as ConnectNetwork — restore must not bypass it.
 		if token != "" {
 			if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+				fmt.Println("restore debug: skip access_blocked", "network=", network, "err=", err)
 				slog.Warn("skipping restore: network access blocked",
 					"network", network, "error", err)
 				continue
 			}
 		}
 		if err := functions.ConnectWithoutRestart(network); err != nil {
+			fmt.Println("restore debug: ConnectWithoutRestart failed", "network=", network, "err=", err)
 			slog.Warn("failed to restore connection", "network", network, "error", err)
 			continue
 		}
+		fmt.Println("restore debug: ConnectWithoutRestart ok (no iface apply)", "network=", network)
 		changed = true
 	}
 	if !restart {
