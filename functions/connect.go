@@ -44,12 +44,15 @@ func connectNetwork(network string, restart bool) error {
 		if err := PublishNodeUpdate(&node); err != nil {
 			logger.Log(0, "connect", network, "publish while already connected:", err.Error())
 		}
+		token := callPrepareDesktopConnect(network)
 		fmt.Println("connect debug: already connected; applying peers/iface",
 			"network=", network, "peers_cached=", len(config.Netclient().HostPeers))
 		if err := ApplyConnectionChange("connect"); err != nil {
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
 		}
+		NoteExitOverlayConnected(network)
+		go callFinishDesktopConnect(network, token)
 		return nil
 	}
 	fmt.Println("connect debug: connectNetwork marking connected",
