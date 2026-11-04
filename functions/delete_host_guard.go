@@ -8,15 +8,18 @@ import (
 )
 
 // After an intentional host leave (tenant switch / Desktop logout unregister),
-// the server publishes DELETE_HOST over MQTT. On Windows that message often
-// arrives after the user has already logged into the next tenant. Handling it
-// would ForceLogout and wipe the new enrollment — ignore it for a short window.
+// the server publishes DELETE_HOST over MQTT — often immediately, before the
+// leave HTTP returns, and again after the next tenant session is up. Handling
+// that echo ForceLogouts and wipes enrollment — ignore it for a short window.
+// Callers must ArmIgnoreStaleDeleteHost BEFORE the leave HTTP request.
 const staleDeleteHostGrace = 2 * time.Minute
 
 var ignoreDeleteHostUntil atomic.Int64 // unix nano; 0 = not armed
 
 // ArmIgnoreStaleDeleteHost suppresses DELETE_HOST ForceLogout / local teardown
 // for staleDeleteHostGrace. Safe to call repeatedly; extends the window.
+// Must be called before leaveHostOnTenant / unregister HTTP so an immediate
+// MQTT echo cannot race past the ignore.
 func ArmIgnoreStaleDeleteHost() {
 	until := time.Now().Add(staleDeleteHostGrace).UnixNano()
 	ignoreDeleteHostUntil.Store(until)

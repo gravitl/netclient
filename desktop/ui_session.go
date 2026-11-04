@@ -83,11 +83,12 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	if alreadyRegistered && !tenantMatches && prevTenant != "" && prevTenant != tenantID {
 		slog.Info("session: leaving previous tenant before register",
 			"server", server, "from", prevTenant, "to", tenantID)
+		// Arm before leave HTTP: server may publish DELETE_HOST immediately, and
+		// handling it would ForceLogout mid-switch before we can ignore it.
+		functions.ArmIgnoreStaleDeleteHost()
 		if err := leaveHostOnTenantForSession(server, prevTenant, authToken); err != nil {
 			slog.Warn("session: leave previous tenant failed; continuing to register",
 				"from", prevTenant, "error", err)
-		} else {
-			functions.ArmIgnoreStaleDeleteHost()
 		}
 		clearLocalEnrollmentAfterTenantLeave(server)
 		alreadyRegistered = IsRegisteredToServer(server)
@@ -96,29 +97,43 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	applySessionTenant(server, tenantID)
 
 	needRegister := !alreadyRegistered || !tenantMatches || !ownerMatches
+	fmt.Println("session debug: RegisterSession",
+		"server=", server, "user=", username, "tenant=", tenantID,
+		"already_registered=", alreadyRegistered, "tenant_matches=", tenantMatches,
+		"owner=", owner, "owner_matches=", ownerMatches, "need_register=", needRegister,
+		"prev_tenant=", prevTenant)
 	if needRegister {
+		fmt.Println("session debug: calling RegisterDeviceOnServer", "server=", server, "tenant=", tenantID)
 		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
 			// Host may still exist under the previous tenant if leave failed or
 			// local enrollment tenant was stale. Retry leave+register once.
 			if isHostRegisteredToAnotherTenant(err) && prevTenant != "" && prevTenant != tenantID {
 				slog.Warn("session: register blocked by previous tenant; retrying leave",
 					"from", prevTenant, "error", err)
+				functions.ArmIgnoreStaleDeleteHost()
 				if leaveErr := leaveHostOnTenantForSession(server, prevTenant, authToken); leaveErr != nil {
 					return fmt.Errorf("%w (also failed to leave previous tenant: %v)", err, leaveErr)
 				}
-				functions.ArmIgnoreStaleDeleteHost()
 				clearLocalEnrollmentAfterTenantLeave(server)
 				applySessionTenant(server, tenantID)
 				if err2 := registerDeviceOnServerForSession(server, authToken); err2 != nil {
 					return err2
 				}
 			} else {
+				fmt.Println("session debug: RegisterDeviceOnServer failed", "err=", err)
 				return err
 			}
 		}
+		if nc := config.Netclient(); nc != nil {
+			fmt.Println("session debug: after register",
+				"host=", nc.ID.String(), "owner=", nc.OwnerUsername, "tenant=", nc.TenantID)
+		}
+	} else {
+		fmt.Println("session debug: skipping register (already enrolled for this tenant/owner)")
 	}
 
 	if IsRegisteredToServer(server) {
+		fmt.Println("session debug: pulling after session register/login", "server=", server)
 		if _, _, _, err := pullForSession(false, true, false); err != nil {
 			// Local servers.json can outlive the host row (reinstall, admin
 			// delete). Re-enroll once instead of failing login forever.
@@ -254,6 +269,15 @@ func leaveHostOnTenant(server, tenantID, userToken string) error {
 // server entry so the next register is treated as a fresh enrollment. Does not
 // ForceLogout — caller is mid PUT /session with a pending user JWT.
 func clearLocalEnrollmentAfterTenantLeave(server string) {
+	ownerBefore := ""
+	tenantBefore := ""
+	if host := config.Netclient(); host != nil {
+		ownerBefore = host.OwnerUsername
+		tenantBefore = host.TenantID
+	}
+	fmt.Println("session debug: clearLocalEnrollmentAfterTenantLeave",
+		"server=", server, "owner_before=", ownerBefore, "tenant_before=", tenantBefore,
+		"nodes_before=", len(config.GetNodes()))
 	config.DeleteServerHostPeerCfg()
 	for k, node := range config.GetNodes() {
 		if node.Server == server || config.ResolveServerKey(node.Server) == config.ResolveServerKey(server) {
@@ -277,6 +301,15 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 		config.UpdateNetclient(*host)
 		_ = config.WriteNetclientConfig()
 	}
+	ownerAfter := ""
+	tenantAfter := ""
+	if host := config.Netclient(); host != nil {
+		ownerAfter = host.OwnerUsername
+		tenantAfter = host.TenantID
+	}
+	fmt.Println("session debug: clearLocalEnrollment done",
+		"owner_after=", ownerAfter, "tenant_after=", tenantAfter,
+		"registered=", IsRegisteredToServer(server), "nodes_after=", len(config.GetNodes()))
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.
@@ -418,12 +451,13 @@ func unregisterHostBeforeLogout() {
 	}
 	slog.Info("session: unregistering host before logout",
 		"server", server, "tenant", tenant)
+	// Arm before leave HTTP so an immediate DELETE_HOST MQTT echo cannot
+	// ForceLogout the session we are intentionally tearing down / switching.
+	functions.ArmIgnoreStaleDeleteHost()
 	if err := leaveHostOnTenantForSession(server, tenant, token); err != nil {
 		slog.Warn("session: unregister before logout failed",
 			"tenant", tenant, "error", err)
 		return
 	}
-	// MQTT DELETE_HOST often arrives after the next login on Windows — ignore it.
-	functions.ArmIgnoreStaleDeleteHost()
 	clearLocalEnrollmentAfterTenantLeave(server)
 }

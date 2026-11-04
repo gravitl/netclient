@@ -143,18 +143,46 @@ func userSessionToken() string {
 }
 
 func authenticate(server *config.Server, host *config.Config, opts AuthenticateOptions, timeout time.Duration) (string, error) {
+	owner := ""
+	tenant := ""
+	hostID := ""
+	hostPassSet := false
+	if host != nil {
+		owner = strings.TrimSpace(host.OwnerUsername)
+		tenant = strings.TrimSpace(host.TenantID)
+		hostID = host.ID.String()
+		hostPassSet = strings.TrimSpace(host.HostPass) != ""
+	}
+	serverName := ""
+	if server != nil {
+		serverName = server.Name
+	}
+
 	// User-owned desktop devices must use the Desktop user JWT. HostPass must
 	// not mint a control-plane token after logout or for a different user.
 	if IsUserOwnedDevice(host) {
 		if tok := userSessionToken(); tok != "" {
+			fmt.Println("auth debug: mode=user_jwt owner_set=true",
+				"owner=", owner, "tenant=", tenant, "host=", hostID, "server=", serverName)
 			return tok, nil
 		}
+		fmt.Println("auth debug: mode=no_session owner_set=true",
+			"owner=", owner, "tenant=", tenant, "host=", hostID, "server=", serverName)
 		return "", ErrUserSessionRequired
 	}
 
 	if jwtToken != "" && !isTokenExpired(jwtToken) {
+		fmt.Println("auth debug: mode=cached_host_jwt owner_set=false",
+			"tenant=", tenant, "host=", hostID, "server=", serverName, "hostpass_set=", hostPassSet)
 		return jwtToken, nil
 	}
+	apiHost := ""
+	if server != nil {
+		apiHost = config.NormalizeServerAPI(server.API)
+	}
+	fmt.Println("auth debug: mode=host_pass owner_set=false",
+		"tenant=", tenant, "host=", hostID, "server=", serverName, "hostpass_set=", hostPassSet,
+		"api=", apiHost)
 	data := models.AuthParams{
 		MacAddress: host.MacAddress.String(),
 		ID:         host.ID.String(),
@@ -176,6 +204,9 @@ func authenticate(server *config.Server, host *config.Config, opts AuthenticateO
 		var notOkErr ncutils.ErrStatusNotOk
 		if errors.As(err, &notOkErr) {
 			if notOkErr.Status == http.StatusUnauthorized {
+				fmt.Println("auth debug: host_pass 401",
+					"status=", notOkErr.Status, "server_msg=", notOkErr.Message,
+					"tenant=", tenant, "host=", hostID, "cleanup=", opts.CleanupOnUnauthorized)
 				if opts.CleanupOnUnauthorized {
 					if err := cleanUpByServer(server); err != nil {
 						return "", err
@@ -185,9 +216,13 @@ func authenticate(server *config.Server, host *config.Config, opts AuthenticateO
 				return "", fmt.Errorf("host authentication failed: unauthorized")
 			}
 
+			fmt.Println("auth debug: host_pass failed",
+				"status=", notOkErr.Status, "server_msg=", notOkErr.Message,
+				"tenant=", tenant, "host=", hostID)
 			return "", fmt.Errorf("failed to authenticate %d %s", notOkErr.Status, notOkErr.Message)
 		}
 
+		fmt.Println("auth debug: host_pass request error", "err=", err, "tenant=", tenant, "host=", hostID)
 		return "", err
 	}
 
