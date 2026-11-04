@@ -30,10 +30,27 @@ func connectNetwork(network string, restart bool) error {
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
+	// Join Pull + reassertDesired often marks Connected=true before Connect
+	// runs. Treat that as "ensure applied" when restart is requested so peers
+	// hit the WireGuard device (tenant switch / first join after reset).
 	if node.Connected {
 		fmt.Println("connect debug: connectNetwork already connected",
-			"network=", network, "restart=", restart)
-		return errors.New("node already connected")
+			"network=", network, "restart=", restart,
+			"peers_cached=", len(config.Netclient().HostPeers))
+		callRememberDesiredConnection(network)
+		if !restart {
+			return errors.New("node already connected")
+		}
+		if err := PublishNodeUpdate(&node); err != nil {
+			logger.Log(0, "connect", network, "publish while already connected:", err.Error())
+		}
+		fmt.Println("connect debug: already connected; applying peers/iface",
+			"network=", network, "peers_cached=", len(config.Netclient().HostPeers))
+		if err := ApplyConnectionChange("connect"); err != nil {
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
+		}
+		return nil
 	}
 	fmt.Println("connect debug: connectNetwork marking connected",
 		"network=", network, "restart=", restart,
@@ -60,7 +77,7 @@ func connectNetwork(network string, restart bool) error {
 		return nil
 	}
 	fmt.Println("connect debug: connectNetwork applying connection change", "network=", network)
-	if err := applyConnectionChange("connect"); err != nil {
+	if err := ApplyConnectionChange("connect"); err != nil {
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
 	}
@@ -68,9 +85,9 @@ func connectNetwork(network string, restart bool) error {
 	return nil
 }
 
-// applyConnectionChange brings the live interface in line with the new node set
+// ApplyConnectionChange brings the live interface in line with the new node set
 // without bouncing the daemon, falling back to a restart only if that fails.
-func applyConnectionChange(op string) error {
+func ApplyConnectionChange(op string) error {
 	wantIGW := op != "disconnect" && callDesktopWantsIGW()
 	if err := applyConnectionChangeInProcess(wantIGW); err != nil {
 		fmt.Println("in-process", op, "apply failed; falling back to daemon soft restart:", err)
@@ -145,7 +162,7 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		dns.ReconfigureNow(config.GetServer(node.Server))
 		return nil
 	}
-	return applyConnectionChange("disconnect")
+	return ApplyConnectionChange("disconnect")
 }
 
 // ConnectWithoutRestart marks the network connected and publishes the update

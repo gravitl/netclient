@@ -170,7 +170,12 @@ func ApplyDesiredConnectedFlags() {
 }
 
 func restoreDesiredConnections(username, tenantID string, restrictSingle, restart bool) error {
-	desired := filterDesiredNetworks(config.GetDesiredNetworks(username, tenantID), restrictSingle)
+	// Keep networks that are not joined yet — tenant switch re-register leaves
+	// an empty node map; restore must join via ConnectNetwork, not drop them.
+	desired := config.GetDesiredNetworks(username, tenantID)
+	if restrictSingle && len(desired) > 1 {
+		desired = desired[len(desired)-1:]
+	}
 	fmt.Println("restore debug: restoreDesiredConnections",
 		"user=", username, "tenant=", tenantID, "desired=", desired,
 		"restrict_single=", restrictSingle, "restart=", restart,
@@ -185,6 +190,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	}
 	uiapi.SetRestorePhase(uiapi.RestorePhaseNetworks)
 	changed := false
+	needApply := false
 	token := uiapi.SessionAuthToken()
 	server := config.CurrServer
 	for _, network := range desired {
@@ -194,12 +200,23 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		nodes := config.GetNodes()
 		node, ok := nodes[network]
 		if !ok {
-			fmt.Println("restore debug: skip not_joined (will need ConnectNetwork join)",
+			fmt.Println("restore debug: not_joined; ConnectNetwork join+connect",
 				"network=", network)
+			if token == "" {
+				continue
+			}
+			if err := ConnectNetwork(network, server, token); err != nil {
+				fmt.Println("restore debug: ConnectNetwork failed", "network=", network, "err=", err)
+				slog.Warn("failed to restore connection (join)",
+					"network", network, "error", err)
+				continue
+			}
+			changed = true
 			continue
 		}
 		if node.Connected {
-			fmt.Println("restore debug: skip already_connected", "network=", network)
+			fmt.Println("restore debug: already_connected; will apply peers", "network=", network)
+			needApply = true
 			continue
 		}
 		// Same posture/JIT gate as ConnectNetwork — restore must not bypass it.
@@ -218,6 +235,14 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		}
 		fmt.Println("restore debug: ConnectWithoutRestart ok (no iface apply)", "network=", network)
 		changed = true
+	}
+	if needApply && restart {
+		fmt.Println("restore debug: applying peers for already-connected desired nets")
+		if err := functions.ApplyConnectionChange("connect"); err != nil {
+			slog.Warn("failed to apply peers during restore", "error", err)
+		} else {
+			changed = true
+		}
 	}
 	if !restart {
 		return nil
