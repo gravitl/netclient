@@ -124,6 +124,18 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		_ = config.RefreshControlPlaneEndpoints(srv)
 	}
 	config.SyncTenantID(pullResponse.Host.ID, pullResponse.ServerConfig.TenantID)
+	// Classic enrollments may have Server set with an empty TenantID until a
+	// pull carries one. Backfill servers.json so MSP headers and enrollment
+	// checks see the tenant without waiting for another register.
+	if tid := strings.TrimSpace(pullResponse.ServerConfig.TenantID); tid != "" {
+		if srv := config.GetServer(serverName); srv != nil && strings.TrimSpace(srv.TenantID) == "" {
+			srv.TenantID = tid
+			config.UpdateServer(srv.Name, *srv)
+			if err := config.WriteServerConfig(); err != nil {
+				logger.Log(0, "pull for server", serverName, "failed to backfill tenant id:", err.Error())
+			}
+		}
+	}
 	PreserveConnectionsAfterSync(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)

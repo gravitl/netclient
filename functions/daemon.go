@@ -260,7 +260,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	slog.Info("configuring netmaker wireguard interface")
 	var pullresp models.HostPull
 	var pullErr error
-	if server != nil && server.API != "" {
+	// Partial Desktop entries (POST /server) have API but are not enrolled —
+	// skip Pull until register/login sets Server and/or TenantID.
+	if config.IsRegistered() && server != nil && server.API != "" {
 		// refresh=true: ask server to recompute host peer cache on daemon startup.
 		pullresp, _, _, pullErr = Pull(false, true, true)
 		if pullErr != nil {
@@ -447,7 +449,14 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		cache.SkipEndpointCache = sync.Map{}
 	}
 	server = config.GetServer(config.CurrServer)
-	if server == nil {
+	// GetServer is non-nil for Desktop partial Settings entries; require
+	// enrollment (Server and/or TenantID) before MQTT/check-in/mqFallback.
+	if server == nil || !config.IsRegisteredToServer(config.CurrServer) {
+		if server == nil {
+			slog.Info("no server configured; skipping daemon network routines")
+		} else {
+			slog.Info("server not enrolled; skipping daemon network routines", "server", config.CurrServer)
+		}
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)

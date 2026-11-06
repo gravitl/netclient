@@ -219,6 +219,7 @@ func applyConnectionChangeInProcess(wantIGW bool) error {
 	// seconds on every connect/disconnect while cached peers were enough to
 	// rebuild the iface.
 	logger.Log(0, "connection change: skipping host pull (using cached peers; wait for MQTT peer update)")
+	_ = wireguard.EnsureNodeAddrs()
 	hadIGW := wireguard.IGWRoutingActive()
 	if err := applyReconnectInProcess(models.HostPull{}, wantIGW); err != nil {
 		return err

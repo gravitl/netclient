@@ -25,7 +25,11 @@ type ErrorResponse struct {
 }
 
 type SetServerRequest struct {
+	// Server is the daemon map key: base domain for on-prem, tenant UUID for SaaS.
 	Server string `json:"server"`
+	// API is the dialable HTTPS host (api.<domain> or api-<tenant>.app…).
+	// Required for tenant UUID keys — never dial the UUID itself.
+	API string `json:"api,omitempty"`
 }
 
 type GetServerResponse struct {

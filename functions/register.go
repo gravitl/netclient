@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 
 	"github.com/google/uuid"
@@ -151,15 +152,15 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	}
 
 	preservedAPI := ""
-	if existing := config.GetServer(serverKey); existing != nil && existing.API != "" {
-		preservedAPI = config.NormalizeServerAPI(existing.API)
+	if existing := config.GetServer(serverKey); existing != nil {
+		if config.IsUsableServerAPI(existing.API, serverKey) {
+			preservedAPI = config.NormalizeServerAPI(existing.API)
+		}
 	}
-	api := preservedAPI
-	if api == "" {
-		api = config.NormalizeServerAPI(registerResponse.ServerConf.API)
-	}
-	if api == "" {
-		api = config.NormalizeServerAPI(serverKey)
+	api := config.PreferExistingServerAPI(preservedAPI, registerResponse.ServerConf.API)
+	if !config.IsUsableServerAPI(api, serverKey) {
+		logger.Log(0, "register response missing usable server API host")
+		return
 	}
 	registerResponse.ServerConf.API = api
 	registerResponse.ServerConf.Server = serverKey
@@ -183,6 +184,20 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 		logger.Log(0, "failed to save server context", err.Error())
 	}
 	UpdateHostFromServer(&registerResponse.RequestedHost)
+	nc := config.Netclient()
+	owner := ""
+	tenant := ""
+	hostID := ""
+	if nc != nil {
+		owner = strings.TrimSpace(nc.OwnerUsername)
+		tenant = strings.TrimSpace(nc.TenantID)
+		hostID = nc.ID.String()
+	}
+	fmt.Println("register debug: HandleRegisterResponse applied",
+		"server=", serverKey, "host=", hostID, "owner=", owner, "tenant=", tenant,
+		"resp_owner=", strings.TrimSpace(registerResponse.RequestedHost.OwnerUsername),
+		"resp_tenant=", strings.TrimSpace(registerResponse.ServerConf.TenantID),
+		"owner_set=", owner != "")
 	// First desktop login registers before PUT /session can answer. Restarting
 	// the Windows service here kills that request. Defer an in-process reset
 	// until the login response is written. A CLI registration is another
