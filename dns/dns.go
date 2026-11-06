@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 
 	dnscache "github.com/gravitl/netclient/dns/cache"
@@ -58,7 +59,7 @@ func newDNSRecord(name string, t uint16, dest string) dnsRecord {
 }
 
 func buildDNSEntryKey(name string, t uint16) string {
-	return fmt.Sprintf("%s.%d", name, t)
+	return fmt.Sprintf("%s.%d", strings.ToLower(name), t)
 }
 
 // Sync up the DNS entries with NM server
