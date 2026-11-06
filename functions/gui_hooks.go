@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gravitl/netclient/config"
@@ -18,8 +19,9 @@ func init() {
 	wireguard.OnIGWRoutingChanged = dns.ReconfigureAfterRouting
 }
 
-// GUI is filled by the desktop package at init. A nil field is the headless
-// path: no session, no desired-state filter, no exit re-select.
+// GUI is filled by the desktop package at init when built with -tags desktop.
+// A nil field is the default headless path: no session, no uiapi listener, no
+// demote for re-login, no desired-state filter, no exit re-select.
 var GUI struct {
 	PrepareConnect        func(network string) string
 	RememberConnection    func(network string)
@@ -35,6 +37,15 @@ var GUI struct {
 	ApplyStartup          func()
 	RefreshHostPull       func(prev models.HostPull, prevErr error) (models.HostPull, error)
 	ForgetNetwork         func(network string)
+
+	// Desktop-only control plane. Nil on headless builds.
+	StartUIAPI                 func(ctx context.Context)
+	StopUIAPI                  func() error
+	RefreshUIAPI               func()
+	ForceLogout                func()
+	IsSessionActive            func() bool
+	EnsureSessionLoaded        func()
+	KeepServerDomainForRelogin func() bool
 }
 
 func callPrepareDesktopConnect(network string) string {
@@ -105,6 +116,13 @@ func callForgetDesiredNetwork(network string) {
 	if GUI.ForgetNetwork != nil {
 		GUI.ForgetNetwork(network)
 	}
+}
+
+// DesktopSessionActive reports whether a Desktop UI session is loaded.
+// Headless builds (nil hooks) always return false.
+func DesktopSessionActive() bool {
+	callEnsureSessionLoaded()
+	return callIsSessionActive()
 }
 
 // shouldApplyExitAfterReconnect installs a server-advertised exit. Otherwise

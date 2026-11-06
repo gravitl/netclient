@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/uiapi"
 )
 
 func init() {
@@ -19,4 +20,12 @@ func init() {
 	functions.GUI.ApplyStartup = ApplyDesiredConnectedFlags
 	functions.GUI.RefreshHostPull = refreshHostPullAfterReconnect
 	functions.GUI.ForgetNetwork = forgetDesiredNetworkOnLeave
+
+	functions.GUI.StartUIAPI = uiapi.Start
+	functions.GUI.StopUIAPI = uiapi.Stop
+	functions.GUI.RefreshUIAPI = uiapi.Refresh
+	functions.GUI.ForceLogout = uiapi.ForceLogout
+	functions.GUI.IsSessionActive = uiapi.IsSessionActive
+	functions.GUI.EnsureSessionLoaded = uiapi.EnsureSessionLoaded
+	functions.GUI.KeepServerDomainForRelogin = func() bool { return true }
 }

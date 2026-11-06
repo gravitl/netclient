@@ -32,7 +32,6 @@ import (
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netclient/stun"
-	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/logic"
@@ -86,7 +85,10 @@ func Daemon() {
 
 	uiapiCtx, uiapiCancel := context.WithCancel(context.Background())
 	defer uiapiCancel()
-	uiapi.Start(uiapiCtx)
+	// Desktop builds register StartUIAPI; headless leaves it nil (no :61820).
+	if GUI.StartUIAPI != nil {
+		GUI.StartUIAPI(uiapiCtx)
+	}
 
 	inProcessReset := make(chan chan struct{}, 1)
 	daemon.SetInProcessReset(func(done chan struct{}) {
@@ -112,8 +114,10 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
-			if err := uiapi.Stop(); err != nil {
-				slog.Warn("uiapi: error stopping desktop API", "error", err)
+			if GUI.StopUIAPI != nil {
+				if err := GUI.StopUIAPI(); err != nil {
+					slog.Warn("uiapi: error stopping desktop API", "error", err)
+				}
 			}
 			config.FwClose()
 			slog.Info("shutdown complete")
@@ -229,7 +233,9 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	updateConfig := false
 
 	config.SetServerCtx()
-	uiapi.Refresh()
+	if GUI.RefreshUIAPI != nil {
+		GUI.RefreshUIAPI()
+	}
 	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}

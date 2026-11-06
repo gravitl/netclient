@@ -3,8 +3,7 @@ before:
     # You may remove this if you don't use go modules.
     - go mod tidy
 builds:
-  - 
-    id: headless
+  - id: headless
     binary: netclient
     env:
       - CGO_ENABLED=0
@@ -20,6 +19,9 @@ builds:
       - linux_mips_softfloat
       - linux_mipsle_softfloat
       - linux_mipsle_hardfloat
+      - windows_amd64
+      - darwin_amd64
+      - darwin_arm64
 
 archives:
   - format: binary
