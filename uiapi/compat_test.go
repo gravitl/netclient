@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netmaker/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -103,4 +104,168 @@ func TestConfigureServerAllowsCompatibleServer(t *testing.T) {
 	configureServer(rec, req)
 
 	assert.NotEqual(t, http.StatusConflict, rec.Code)
+}
+
+func TestConfigureServerKeepsCustomAPIHostAsTyped(t *testing.T) {
+	prevFetch := fetchServerStatusVersion
+	t.Cleanup(func() { fetchServerStatusVersion = prevFetch })
+	var gotAPI string
+	fetchServerStatusVersion = func(ctx context.Context, api string) (string, error) {
+		gotAPI = api
+		return "v1.8.0", nil
+	}
+
+	prevServers := config.Servers
+	prevCurr := config.CurrServer
+	t.Cleanup(func() {
+		config.Servers = prevServers
+		config.CurrServer = prevCurr
+	})
+	config.Servers = map[string]config.Server{}
+	config.CurrServer = ""
+
+	// Custom installs may use apinm.<base> (not api.<base>).
+	body := `{"server":"apinm.example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/server", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureServer(rec, req)
+
+	assert.NotEqual(t, http.StatusBadRequest, rec.Code)
+	assert.NotEqual(t, http.StatusConflict, rec.Code)
+	// Version probe uses the resolved dialable API (before disk persist).
+	assert.Equal(t, "apinm.example.com:443", gotAPI)
+	if srv := config.GetServer("apinm.example.com"); srv != nil {
+		assert.Equal(t, "apinm.example.com:443", srv.API)
+		assert.Equal(t, "apinm.example.com", srv.APIHost)
+	}
+}
+
+func TestConfigureServerKeepsApiPrefixedHostAsTyped(t *testing.T) {
+	prevFetch := fetchServerStatusVersion
+	t.Cleanup(func() { fetchServerStatusVersion = prevFetch })
+	var gotAPI string
+	fetchServerStatusVersion = func(ctx context.Context, api string) (string, error) {
+		gotAPI = api
+		return "v1.8.0", nil
+	}
+
+	prevServers := config.Servers
+	prevCurr := config.CurrServer
+	t.Cleanup(func() {
+		config.Servers = prevServers
+		config.CurrServer = prevCurr
+	})
+	config.Servers = map[string]config.Server{}
+	config.CurrServer = ""
+
+	body := `{"server":"api.nm.example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/server", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureServer(rec, req)
+
+	assert.NotEqual(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, "api.nm.example.com:443", gotAPI)
+	// Map key strips only a leading "api." label.
+	if srv := config.GetServer("nm.example.com"); srv != nil {
+		assert.Equal(t, "api.nm.example.com:443", srv.API)
+		assert.Equal(t, "api.nm.example.com", srv.APIHost)
+	}
+}
+
+func TestConfigureServerRejectsTenantUUIDWithoutAPI(t *testing.T) {
+	prevFetch := fetchServerStatusVersion
+	t.Cleanup(func() { fetchServerStatusVersion = prevFetch })
+	fetchServerStatusVersion = func(ctx context.Context, api string) (string, error) {
+		return "v1.8.0", nil
+	}
+
+	prevServers := config.Servers
+	prevCurr := config.CurrServer
+	t.Cleanup(func() {
+		config.Servers = prevServers
+		config.CurrServer = prevCurr
+	})
+	config.Servers = map[string]config.Server{}
+	config.CurrServer = ""
+
+	tenant := "abdc97c9-a332-4979-9220-99d1da3c753b"
+	body := `{"server":"` + tenant + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/server", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureServer(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Empty(t, config.CurrServer)
+}
+
+func TestConfigureServerAcceptsTenantUUIDWithAPI(t *testing.T) {
+	prevFetch := fetchServerStatusVersion
+	t.Cleanup(func() { fetchServerStatusVersion = prevFetch })
+	var gotAPI string
+	fetchServerStatusVersion = func(ctx context.Context, api string) (string, error) {
+		gotAPI = api
+		return "v1.8.0", nil
+	}
+
+	prevServers := config.Servers
+	prevCurr := config.CurrServer
+	t.Cleanup(func() {
+		config.Servers = prevServers
+		config.CurrServer = prevCurr
+	})
+	config.Servers = map[string]config.Server{}
+	config.CurrServer = ""
+
+	tenant := "abdc97c9-a332-4979-9220-99d1da3c753b"
+	apiHost := "api-" + tenant + ".app.prod.netmaker.io"
+	body := `{"server":"` + tenant + `","api":"` + apiHost + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/server", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureServer(rec, req)
+
+	assert.NotEqual(t, http.StatusConflict, rec.Code)
+	assert.NotEqual(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, apiHost+":443", gotAPI)
+	if srv := config.GetServer(tenant); srv != nil {
+		assert.Equal(t, apiHost+":443", srv.API)
+		assert.Equal(t, apiHost, srv.APIHost)
+	}
+}
+
+func TestConfigureServerPreservesTenantAPIOnBareRePOST(t *testing.T) {
+	prevFetch := fetchServerStatusVersion
+	t.Cleanup(func() { fetchServerStatusVersion = prevFetch })
+	fetchServerStatusVersion = func(ctx context.Context, api string) (string, error) {
+		return "v1.8.0", nil
+	}
+
+	tenant := "abdc97c9-a332-4979-9220-99d1da3c753b"
+	apiHost := "api-" + tenant + ".app.prod.netmaker.io"
+	prevServers := config.Servers
+	prevCurr := config.CurrServer
+	t.Cleanup(func() {
+		config.Servers = prevServers
+		config.CurrServer = prevCurr
+	})
+	config.Servers = map[string]config.Server{
+		tenant: {
+			Name: tenant,
+			ServerConfig: models.ServerConfig{
+				Server:  tenant,
+				API:     apiHost + ":443",
+				APIHost: apiHost,
+			},
+		},
+	}
+	config.CurrServer = tenant
+
+	body := `{"server":"` + tenant + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/server", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureServer(rec, req)
+
+	assert.NotEqual(t, http.StatusBadRequest, rec.Code)
+	srv := config.GetServer(tenant)
+	require.NotNil(t, srv)
+	assert.Equal(t, apiHost+":443", srv.API)
 }

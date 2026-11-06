@@ -222,6 +222,16 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 	if host.TcpProxyCertFingerprint == "" {
 		host.TcpProxyCertFingerprint = hostCfg.TcpProxyCertFingerprint
 	}
+	prevOwner := strings.TrimSpace(hostCfg.OwnerUsername)
+	nextOwner := strings.TrimSpace(host.OwnerUsername)
+	prevTenant := strings.TrimSpace(hostCfg.TenantID)
+	nextTenant := strings.TrimSpace(host.TenantID)
+	if prevOwner != nextOwner || prevTenant != nextTenant {
+		fmt.Println("config debug: UpdateHost identity change",
+			"owner=", prevOwner, "->", nextOwner,
+			"tenant=", prevTenant, "->", nextTenant,
+			"owner_wiped=", prevOwner != "" && nextOwner == "")
+	}
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
@@ -233,6 +243,13 @@ func Netclient() *Config {
 	netclientCfgMutex.RLock()
 	defer netclientCfgMutex.RUnlock()
 	return &netclient
+}
+
+// IsUserOwnedDevice reports whether this host was registered by an end user
+// (Desktop/device flow). User devices are not gateways/relays/egress routers.
+func IsUserOwnedDevice() bool {
+	nc := Netclient()
+	return nc != nil && strings.TrimSpace(nc.OwnerUsername) != ""
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config

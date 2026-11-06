@@ -8,7 +8,10 @@ import (
 
 type HandlerDeps struct {
 	RegisterSession           func(server, username, authToken, password, tenantID string) error
-	ReleaseSession            func(clearServer bool) error
+	// ReleaseSession tears down tunnels. When unregisterHost is true (explicit
+	// logout / user-tenant handoff), also DELETE the host under the current
+	// session JWT so the next Desktop login can enroll a different user/tenant.
+	ReleaseSession func(clearServer bool, unregisterHost bool) error
 	ApplyRegistrationReset    func() <-chan struct{}
 	RegistrationResetPending  func() bool
 	Connect                   func(network string) error
@@ -42,11 +45,11 @@ func registerSession(server, username, authToken, password, tenantID string) err
 	return deps.RegisterSession(server, username, authToken, password, tenantID)
 }
 
-func releaseSessionFn(clearServer bool) error {
+func releaseSessionFn(clearServer bool, unregisterHost bool) error {
 	if deps.ReleaseSession == nil {
 		return errHandlersNotConfigured
 	}
-	return deps.ReleaseSession(clearServer)
+	return deps.ReleaseSession(clearServer, unregisterHost)
 }
 
 func applyRegistrationReset() <-chan struct{} {

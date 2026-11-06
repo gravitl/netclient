@@ -70,11 +70,11 @@ func ClearEnrollmentIfHostMissing(serverName string, err error) bool {
 }
 
 // IsServerFullyRegistered reports whether CurrServer (or name) still has a
-// full enrollment (Server identity set). Partial Settings entries do not count.
+// full enrollment (Server and/or TenantID present). Partial Settings entries
+// do not count.
 func IsServerFullyRegistered(name string) bool {
 	if name == "" {
 		name = config.CurrServer
 	}
-	srv := config.GetServer(name)
-	return srv != nil && strings.TrimSpace(srv.Server) != ""
+	return config.IsRegisteredToServer(name)
 }
