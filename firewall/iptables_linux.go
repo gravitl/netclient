@@ -591,9 +591,10 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 					}
 				}
 				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, egressRangeIface, isAddrIpv4(egressGwRange.Network), fwdJumpDedupe, &egressGwRoutes)
-				defaultIface := config.Netclient().DefaultInterface
-				if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
-					logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
+				// Skip LAN→VPN SNAT only for true internet egress (0.0.0.0/0, ::/0).
+				// Do not key off default iface: single-NIC hosts share eth0 for LAN and WAN.
+				if egressGwRange.Network == IPv4Network || egressGwRange.Network == IPv6Network {
+					logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for internet egress %s via %s", egressGwRange.Network, egressRangeIface))
 					continue
 				}
 				// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.

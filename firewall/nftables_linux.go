@@ -793,10 +793,10 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				})
 			}
 			// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
-			// Skip when egress is via the default/WAN interface (same as iptables).
-			defaultIface := config.Netclient().DefaultInterface
-			if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
-				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
+			// Skip only for true internet egress (0.0.0.0/0, ::/0). Do not key off default
+			// iface: single-NIC hosts share eth0 for LAN and WAN (same as iptables).
+			if egressGwRange.Network == IPv4Network || egressGwRange.Network == IPv6Network {
+				logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for internet egress %s via %s", egressGwRange.Network, egressRangeIface))
 			} else {
 				lanCIDR := config.ToIPNet(egressGwRange.Network)
 				additionalRuleSpec := []string{
