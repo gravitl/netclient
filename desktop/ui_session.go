@@ -26,7 +26,8 @@ var (
 )
 
 // IsRegisteredToServer reports whether netclient is fully registered to the given server.
-// A partial servers.json entry (API only, no TenantID) from configureServer does not count.
+// Partial Settings entries (API only, empty Server and TenantID) do not count;
+// classic enrollments with Server set but empty TenantID do.
 func IsRegisteredToServer(server string) bool {
 	return config.IsRegisteredToServer(server)
 }
@@ -85,7 +86,12 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 			"server", server, "from", prevTenant, "to", tenantID)
 		// Arm before leave HTTP: server may publish DELETE_HOST immediately, and
 		// handling it would ForceLogout mid-switch before we can ignore it.
-		functions.ArmIgnoreStaleDeleteHost()
+		// Capture identity before clearLocalEnrollmentAfterTenantLeave.
+		leftHostID := ""
+		if host := config.Netclient(); host != nil {
+			leftHostID = host.ID.String()
+		}
+		functions.ArmIgnoreStaleDeleteHost(prevTenant, leftHostID)
 		if err := leaveHostOnTenantForSession(server, prevTenant, authToken); err != nil {
 			slog.Warn("session: leave previous tenant failed; continuing to register",
 				"from", prevTenant, "error", err)
@@ -110,7 +116,11 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 			if isHostRegisteredToAnotherTenant(err) && prevTenant != "" && prevTenant != tenantID {
 				slog.Warn("session: register blocked by previous tenant; retrying leave",
 					"from", prevTenant, "error", err)
-				functions.ArmIgnoreStaleDeleteHost()
+				leftHostID := ""
+				if host := config.Netclient(); host != nil {
+					leftHostID = host.ID.String()
+				}
+				functions.ArmIgnoreStaleDeleteHost(prevTenant, leftHostID)
 				if leaveErr := leaveHostOnTenantForSession(server, prevTenant, authToken); leaveErr != nil {
 					return fmt.Errorf("%w (also failed to leave previous tenant: %v)", err, leaveErr)
 				}
@@ -453,7 +463,12 @@ func unregisterHostBeforeLogout() {
 		"server", server, "tenant", tenant)
 	// Arm before leave HTTP so an immediate DELETE_HOST MQTT echo cannot
 	// ForceLogout the session we are intentionally tearing down / switching.
-	functions.ArmIgnoreStaleDeleteHost()
+	// Capture identity before clearLocalEnrollmentAfterTenantLeave.
+	leftHostID := ""
+	if host := config.Netclient(); host != nil {
+		leftHostID = host.ID.String()
+	}
+	functions.ArmIgnoreStaleDeleteHost(tenant, leftHostID)
 	if err := leaveHostOnTenantForSession(server, tenant, token); err != nil {
 		slog.Warn("session: unregister before logout failed",
 			"tenant", tenant, "error", err)

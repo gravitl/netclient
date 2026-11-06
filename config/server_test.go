@@ -97,6 +97,39 @@ func TestDemoteServerToPartialKeepsDomainAndAPI(t *testing.T) {
 	assert.Empty(t, srv.Server, "registration identity must clear so re-login re-registers")
 	assert.Equal(t, uuid.Nil, srv.MQID)
 	assert.Empty(t, srv.Nodes)
+	assert.False(t, IsRegisteredToServer("example.com"), "demoted partial must not count as enrolled")
+}
+
+func TestIsRegisteredToServerClassicEnrollmentEmptyTenant(t *testing.T) {
+	Servers = map[string]Server{
+		"nm.example.com": {
+			Name: "nm.example.com",
+			ServerConfig: models.ServerConfig{
+				Server:  "nm.example.com",
+				API:     "api.nm.example.com:443",
+				APIHost: "api.nm.example.com",
+				// Classic non-MSP: enrolled identity is Server, TenantID empty.
+				TenantID: "",
+			},
+		},
+	}
+	defer func() { Servers = make(map[string]Server) }()
+
+	assert.True(t, IsRegisteredToServer("nm.example.com"),
+		"classic enrollment with Server set must count even when TenantID is empty")
+
+	// Desktop Settings partial: API only, no Server / TenantID.
+	Servers["nm.example.com"] = Server{
+		Name: "nm.example.com",
+		ServerConfig: models.ServerConfig{
+			API:     "api.nm.example.com:443",
+			APIHost: "api.nm.example.com",
+		},
+	}
+	assert.False(t, IsRegisteredToServer("nm.example.com"),
+		"partial Settings entry must not count as enrolled")
+
+	assert.False(t, IsRegisteredToServer("missing.example.com"))
 }
 
 func TestDemoteServerToPartialMissingReturnsEmpty(t *testing.T) {

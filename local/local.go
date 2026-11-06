@@ -13,9 +13,10 @@ import (
 )
 
 // SetIPForwarding - Sets IP forwarding if it's mac or linux.
-// Skip until the host is enrolled, and always skip user-owned Desktop devices
-// (they never act as gateways/relays/egress; OwnerUsername is set only after
-// registration, so an unregistered startup must not enable forwarding either).
+// Skip until the host is enrolled (Server and/or TenantID present), and always
+// skip user-owned Desktop devices (they never act as gateways/relays/egress;
+// OwnerUsername is set only after registration, so an unregistered startup
+// must not enable forwarding either).
 func SetIPForwarding() error {
 	if !config.IsRegistered() || config.IsUserOwnedDevice() {
 		return nil

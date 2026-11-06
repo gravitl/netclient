@@ -522,9 +522,11 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		// Tenant switch / explicit unregister DELETE the host, then MQTT
 		// DELETE_HOST can land after the next tenant session is already up.
 		// Treating that as a live eviction ForceLogout + wipes the new enrollment.
-		if ShouldIgnoreStaleDeleteHost() {
+		if ShouldIgnoreStaleDeleteHost(hostUpdate.Host) {
 			slog.Info("ignoring DELETE_HOST after intentional leave/tenant switch",
-				"server", serverName)
+				"server", serverName,
+				"tenant", hostUpdate.Host.TenantID,
+				"host", hostUpdate.Host.ID.String())
 			writeToDisk = false
 			break
 		}

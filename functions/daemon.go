@@ -261,7 +261,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	var pullresp models.HostPull
 	var pullErr error
 	// Partial Desktop entries (POST /server) have API but are not enrolled —
-	// skip Pull until TenantID is present from register/login.
+	// skip Pull until register/login sets Server and/or TenantID.
 	if config.IsRegistered() && server != nil && server.API != "" {
 		// refresh=true: ask server to recompute host peer cache on daemon startup.
 		pullresp, _, _, pullErr = Pull(false, true, true)
@@ -450,7 +450,7 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	server = config.GetServer(config.CurrServer)
 	// GetServer is non-nil for Desktop partial Settings entries; require
-	// enrollment (TenantID) before MQTT/check-in/mqFallback.
+	// enrollment (Server and/or TenantID) before MQTT/check-in/mqFallback.
 	if server == nil || !config.IsRegisteredToServer(config.CurrServer) {
 		if server == nil {
 			slog.Info("no server configured; skipping daemon network routines")

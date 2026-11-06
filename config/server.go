@@ -128,15 +128,17 @@ func GetServer(name string) *Server {
 	return server
 }
 
-// IsRegisteredToServer reports whether netclient has a tenant-bound enrollment
-// for the given server. Partial Settings entries (API only) have no TenantID;
-// it is written on register/pull, not on Desktop configure.
+// IsRegisteredToServer reports whether netclient has a full enrollment for the
+// given server. Classic (non-MSP) enrollments set ServerConfig.Server but may
+// leave TenantID empty; MSP/SaaS sets TenantID. Partial Settings entries from
+// UpsertPartialServer / DemoteServerToPartial leave both empty so they do not
+// count until register/pull.
 func IsRegisteredToServer(server string) bool {
 	srv := GetServer(server)
 	if srv == nil {
 		return false
 	}
-	return strings.TrimSpace(srv.TenantID) != ""
+	return strings.TrimSpace(srv.TenantID) != "" || strings.TrimSpace(srv.Server) != ""
 }
 
 // IsRegistered reports a tenant-bound enrollment for CurrServer.
@@ -322,8 +324,9 @@ func canonicalServerKey(values ...string) string {
 }
 
 // UpsertPartialServer stores domain identity + API host:port before full registration.
-// Leaves ServerConfig.Server empty so IsRegisteredToServer stays false until register.
-// domain is stored without a leading "api." label (Name / map key); api keeps the full API host.
+// Leaves ServerConfig.Server and TenantID empty so IsRegisteredToServer stays
+// false until register. domain is stored without a leading "api." label
+// (Name / map key); api keeps the full API host.
 func UpsertPartialServer(domain, api string) error {
 	domain = NormalizeServerHost(domain)
 	domain = strings.TrimPrefix(domain, "api.")
@@ -440,10 +443,10 @@ func DeleteServer(k string) {
 }
 
 // DemoteServerToPartial turns a fully registered server entry into a Settings-
-// style partial (domain + API only). Desktop can still show the saved server
-// after the host is deleted remotely; IsRegisteredToServer becomes false so
-// the next login re-registers. Returns the map key kept, or "" if demotion
-// was not possible (missing entry / no API).
+// style partial (domain + API only, Server and TenantID cleared). Desktop can
+// still show the saved server after the host is deleted remotely;
+// IsRegisteredToServer becomes false so the next login re-registers. Returns
+// the map key kept, or "" if demotion was not possible (missing entry / no API).
 func DemoteServerToPartial(id string) string {
 	_, key := ResolveServer(id)
 	if key == "" {
