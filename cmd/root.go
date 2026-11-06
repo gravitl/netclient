@@ -71,6 +71,10 @@ func initConfig() {
 	if isReadOnlyInfoCommand() {
 		return
 	}
+	// Desktop builds refuse `use` in PreRunE; skip root/config so that message shows.
+	if functions.IsDesktopBuild() && matchedRootCommand("use") {
+		return
+	}
 	InitConfig(flags)
 	if isUninstallCommand() {
 		return

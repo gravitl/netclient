@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
 	"github.com/spf13/cobra"
 )
 
@@ -42,8 +43,8 @@ func init() {
 
 func printBuildInfo(long bool) {
 	fmt.Printf("version:\t%s\n", config.Version)
-	fmt.Printf("profile:\t%s\n", buildProfile)
-	fmt.Printf("desktop:\t%v\n", desktopLinked)
+	fmt.Printf("profile:\t%s\n", functions.BuildProfile)
+	fmt.Printf("desktop:\t%v\n", functions.IsDesktopBuild())
 	fmt.Printf("os/arch:\t%s/%s\n", runtime.GOOS, runtime.GOARCH)
 
 	info, ok := debug.ReadBuildInfo()
