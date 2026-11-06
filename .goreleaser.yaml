@@ -3,7 +3,8 @@ before:
     # You may remove this if you don't use go modules.
     - go mod tidy
 builds:
-  # Default: headless server/CLI (no desktop package, no :61820 uiapi).
+  # Headless only. Desktop GUI daemons are built by the Netmaker-Desktop
+  # workflow with -tags desktop as netclient-desktop-*.
   - id: headless
     binary: netclient
     env:
@@ -20,17 +21,6 @@ builds:
       - linux_mips_softfloat
       - linux_mipsle_softfloat
       - linux_mipsle_hardfloat
-  # GUI daemon for Desktop installs (pass -tags desktop).
-  # Artifact basename is netclient-desktop so it does not collide with headless.
-  - id: desktop
-    binary: netclient-desktop
-    tags:
-      - desktop
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-    targets:
       - windows_amd64
       - darwin_amd64
       - darwin_arm64
