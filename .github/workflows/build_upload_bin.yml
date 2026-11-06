@@ -68,27 +68,35 @@ jobs:
       run: |
         go version
         go mod tidy
+        # Default is headless (netclient-*). Desktop GUI platforms opt in with
+        # -tags desktop and a netclient-desktop-* artifact name.
+        PREFIX="netclient"
+        BUILD_TAGS=""
+        if [ "${{ matrix.goos }}" = "windows" ] || [ "${{ matrix.goos }}" = "darwin" ]; then
+          PREFIX="netclient-desktop"
+          BUILD_TAGS="-tags desktop"
+        fi
         if [ -n "$GOARM" ]; then
-          OUTPUT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
-          ARTIFACT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
+          OUTPUT_NAME="${PREFIX}-${{ matrix.goos }}-armv$GOARM"
+          ARTIFACT_NAME="${PREFIX}-${{ matrix.goos }}-armv$GOARM"
         else
-          OUTPUT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
-          ARTIFACT_NAME="netclient-${{ matrix.goos }}-${{ matrix.goarch }}"
+          OUTPUT_NAME="${PREFIX}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ARTIFACT_NAME="${PREFIX}-${{ matrix.goos }}-${{ matrix.goarch }}"
         fi
         if [ "${{ matrix.goos }}" = "windows" ]; then
           OUTPUT_NAME="${OUTPUT_NAME}.exe"
         fi
         echo "OUTPUT_NAME=$OUTPUT_NAME" >> $GITHUB_OUTPUT
         echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-        go build -v -ldflags "-X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
+        go build -v $BUILD_TAGS -ldflags "-X main.version=${{ github.event.inputs.version }}" -o "$OUTPUT_NAME" .
 
     - name: List built binary (Unix)
       if: matrix.goos != 'windows'
-      run: ls -l netclient-*
+      run: ls -l netclient*
 
     - name: List built binary (Windows)
       if: matrix.goos == 'windows'
-      run: Get-ChildItem netclient-*
+      run: Get-ChildItem netclient*
 
     - name: Upload artifact
       uses: actions/upload-artifact@v7

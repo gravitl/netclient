@@ -67,9 +67,11 @@ jobs:
           VERSION: ${{ inputs.version }}
           CGO_ENABLED: 0
         run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
-          
+          # Default builds are headless (netclient-*). Darwin/Windows Desktop
+          # artifacts use -tags desktop and netclient-desktop-* names.
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags desktop -ldflags="-s -w" -o builds/netclient-desktop-darwin-amd64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags desktop -ldflags="-s -w" -o builds/netclient-desktop-darwin-arm64
+
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
           
@@ -82,7 +84,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=hardfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-hardfloat
           CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="-s -w" -o builds/netclient-linux-mipsle-softfloat
 
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-windows-amd64.exe
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags desktop -ldflags="-s -w" -o builds/netclient-desktop-windows-amd64.exe
 
       - name: Verify Builds
         run: |

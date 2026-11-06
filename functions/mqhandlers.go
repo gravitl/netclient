@@ -26,7 +26,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/sshserver"
-	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -531,7 +530,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			break
 		}
 		// Different tenant than the active enrollment — stale leave from a prior MSP tenant.
-		if nc := config.Netclient(); nc != nil && uiapi.IsSessionActive() {
+		if nc := config.Netclient(); nc != nil && callIsSessionActive() {
 			curTenant := strings.TrimSpace(nc.TenantID)
 			msgTenant := strings.TrimSpace(hostUpdate.Host.TenantID)
 			if curTenant != "" && msgTenant != "" && curTenant != msgTenant {
@@ -542,8 +541,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			}
 		}
 		// Drop Desktop UI login before tearing down host state so the app
-		// returns to the login screen. Demote keeps the server domain for re-register.
-		uiapi.ForceLogout()
+		// returns to the login screen. Desktop demotes; headless deletes.
+		callForceLogout()
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNetclientConfig()
@@ -556,7 +555,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		// networks. Host stays enrolled so re-enable / re-login can reconnect.
 		// Constant is models.ForceLogout once netclient's netmaker dep is bumped.
 		clearRetainedMsg(client, msg.Topic())
-		uiapi.ForceLogout()
+		callForceLogout()
 		writeToDisk = false
 	case models.UpdateHost:
 		resetInterface, restartDaemon, sendHostUpdate = UpdateHostFromServer(&hostUpdate.Host)
@@ -595,7 +594,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		// stops the Windows service and drops the desktop API out from under
 		// the GUI. A logged-in desktop session pulls in-process instead.
 		// Headless clients keep the restart.
-		if uiapi.IsSessionActive() {
+		if callIsSessionActive() {
 			logger.Log(0, "host update REQ_PULL: pulling in-process (desktop session)")
 			clearRetainedMsg(client, msg.Topic())
 			var replacePeers bool
@@ -780,21 +779,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
-	wasActive := config.CurrServer == server || config.ResolveServerKey(config.CurrServer) == config.ResolveServerKey(server)
-	// Keep domain + API so Desktop Settings/Login still know the server after
-	// a remote host delete. Full wipe of CurrServer forced users to re-save.
-	if kept := config.DemoteServerToPartial(server); kept != "" {
-		if wasActive {
-			config.CurrServer = kept
-			_ = config.SetCurrServerCtxInFile(kept)
-			slog.Info("host deleted: kept server domain for re-login", "server", kept)
-		}
-		return
-	}
-	config.DeleteServer(server)
-	if wasActive {
-		config.SwitchToRemainingServer()
-	}
+	DisposeServerEnrollment(server)
 }
 
 func parseNetworkFromTopic(topic string) string {

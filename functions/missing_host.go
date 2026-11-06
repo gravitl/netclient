@@ -5,15 +5,14 @@ import (
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
 )
 
-// ClearEnrollmentIfHostMissing demotes local enrollment when authenticate/pull
-// reports the host is gone on the server (400 record not found). Keeps the
-// server domain for Desktop re-login, clears the UI session, and stops treating
+// ClearEnrollmentIfHostMissing clears local enrollment when authenticate/pull
+// reports the host is gone on the server (400 record not found). Headless
+// deletes the server entry; Desktop demotes it for re-login. Stops treating
 // the host as enrolled so mqFallback stops spamming Pull.
 func ClearEnrollmentIfHostMissing(serverName string, err error) bool {
 	if !auth.IsMissingHostError(err) {
@@ -33,7 +32,7 @@ func ClearEnrollmentIfHostMissing(serverName string, err error) bool {
 
 	logger.Log(0, "host missing on server; clearing enrollment for", serverName, ":", err.Error())
 	auth.CleanJwtToken()
-	uiapi.ForceLogout()
+	callForceLogout()
 
 	config.DeleteServerHostPeerCfg()
 	for k, node := range config.GetNodes() {
@@ -46,26 +45,7 @@ func ClearEnrollmentIfHostMissing(serverName string, err error) bool {
 	}
 	_ = wireguard.SetPeers(true)
 
-	wasActive := config.CurrServer == serverName ||
-		config.ResolveServerKey(config.CurrServer) == config.ResolveServerKey(serverName)
-	if kept := config.DemoteServerToPartial(serverName); kept != "" {
-		if wasActive {
-			config.CurrServer = kept
-			_ = config.SetCurrServerCtxInFile(kept)
-		}
-		if writeErr := config.WriteServerConfig(); writeErr != nil {
-			slog.Warn("failed to write server config after missing host demote", "error", writeErr)
-		}
-		slog.Info("host missing: demoted server for re-login", "server", kept)
-		return true
-	}
-	config.DeleteServer(serverName)
-	if writeErr := config.WriteServerConfig(); writeErr != nil {
-		slog.Warn("failed to write server config after missing host delete", "error", writeErr)
-	}
-	if wasActive {
-		config.SwitchToRemainingServer()
-	}
+	DisposeServerEnrollment(serverName)
 	return true
 }
 

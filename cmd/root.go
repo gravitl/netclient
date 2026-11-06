@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netclient/wireguard"
@@ -66,6 +67,10 @@ func init() {
 func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
+	// version / build-info are safe for non-root and need no host config or WG iface.
+	if isReadOnlyInfoCommand() {
+		return
+	}
 	InitConfig(flags)
 	if isUninstallCommand() {
 		return
@@ -461,7 +466,7 @@ func checkConfig() {
 }
 
 // clearMismatchedServer removes an enrollment whose broker id is not this host.
-// The saved server address is kept when it can be turned into a partial entry.
+// Desktop demotes to a Settings partial; headless deletes the server entry.
 func clearMismatchedServer(server string) {
 	for name, node := range config.GetNodes() {
 		if node.Server == server {
@@ -471,33 +476,35 @@ func clearMismatchedServer(server string) {
 	if err := config.WriteNodeConfig(); err != nil {
 		logger.Log(0, "failed to write node config after clearing", server, err.Error())
 	}
-	wasActive := config.CurrServer == server || config.ResolveServerKey(config.CurrServer) == config.ResolveServerKey(server)
-	if kept := config.DemoteServerToPartial(server); kept != "" {
-		if wasActive {
-			config.CurrServer = kept
-			_ = config.SetCurrServerCtxInFile(kept)
-		}
-		if err := config.WriteServerConfig(); err != nil {
-			logger.Log(0, "failed to write server config after clearing", server, err.Error())
-		}
-		return
-	}
-	config.DeleteServer(server)
-	if err := config.WriteServerConfig(); err != nil {
-		logger.Log(0, "failed to write server config after clearing", server, err.Error())
-	}
-	if wasActive {
-		config.SwitchToRemainingServer()
-	}
+	functions.DisposeServerEnrollment(server)
 }
 
 // isUninstallCommand reports whether the CLI was invoked as `netclient uninstall`.
 func isUninstallCommand() bool {
+	return matchedRootCommand("uninstall")
+}
+
+// isReadOnlyInfoCommand reports version / build-info (and alias "info").
+func isReadOnlyInfoCommand() bool {
+	return matchedRootCommand("version", "build-info")
+}
+
+func matchedRootCommand(names ...string) bool {
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[n] = struct{}{}
+	}
 	cmd, _, err := rootCmd.Find(os.Args[1:])
 	if err != nil {
 		for _, arg := range os.Args[1:] {
-			if arg == "uninstall" {
+			if _, ok := want[arg]; ok {
 				return true
+			}
+			// "info" is an alias of build-info.
+			if arg == "info" {
+				if _, ok := want["build-info"]; ok {
+					return true
+				}
 			}
 			if !strings.HasPrefix(arg, "-") {
 				break
@@ -505,5 +512,9 @@ func isUninstallCommand() bool {
 		}
 		return false
 	}
-	return cmd != nil && cmd.Name() == "uninstall"
+	if cmd == nil {
+		return false
+	}
+	_, ok := want[cmd.Name()]
+	return ok
 }

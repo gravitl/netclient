@@ -17,7 +17,10 @@ jobs:
           go-version-file: 'go.mod'
       - name: Build
         run: |
+          # Default build is headless (no desktop package).
           env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build .
+          # GUI daemon must still compile with -tags desktop.
+          env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags desktop -o netclient-desktop .
           
   tests:
     runs-on: ubuntu-latest

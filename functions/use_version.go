@@ -16,7 +16,6 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
-	"github.com/gravitl/netclient/uiapi"
 	"github.com/minio/selfupdate"
 	"golang.org/x/exp/slog"
 )
@@ -121,8 +120,8 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 	}
 	// Desktop owns binary updates while a GUI session is active. Self-updating
 	// the daemon underneath the app races the installer and breaks the session.
-	uiapi.EnsureSessionLoaded()
-	if uiapi.IsSessionActive() {
+	callEnsureSessionLoaded()
+	if callIsSessionActive() {
 		slog.Warn("skipping auto-upgrade in GUI mode; Desktop manages updates", "version", version)
 		return true, nil
 	}
