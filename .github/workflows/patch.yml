@@ -67,9 +67,10 @@ jobs:
           VERSION: ${{ inputs.version }}
           CGO_ENABLED: 0
         run: |
+          # Headless only. Desktop GUI daemons are built by Netmaker-Desktop.
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-darwin-amd64
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-darwin-arm64
-          
+
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/netclient-linux-amd64
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o builds/netclient-linux-arm64
           

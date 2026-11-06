@@ -3,8 +3,9 @@ before:
     # You may remove this if you don't use go modules.
     - go mod tidy
 builds:
-  -
-    id: headless
+  # Headless only. Desktop GUI daemons are built by the Netmaker-Desktop
+  # workflow with -tags desktop as netclient-desktop-*.
+  - id: headless
     binary: netclient
     env:
       - CGO_ENABLED=0
