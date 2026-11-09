@@ -665,8 +665,13 @@ func selectDeviceExitNode(network, token, egressID string, forReconcile bool) (*
 		}
 		return nil, err
 	}
-	wantGW := egressID != "" && node.EgressID != ""
-	if !wantGW {
+	// A non-empty request that comes back empty is a failed assign, not a clear.
+	// Clearing desire + RestoreInternetGwAndDNS here is what tore exit down while
+	// the user still wanted it (reconcile then had to put it back minutes later).
+	if exitAssignUnconfirmed(egressID, node.EgressID) {
+		return nil, fmt.Errorf("server did not assign exit node %s", egressID)
+	}
+	if egressID == "" || strings.TrimSpace(node.EgressID) == "" {
 		_ = config.ClearDesiredExitNode(user, tenant)
 		// Restore LAN routes and OS DNS immediately; MQTT will converge peers next.
 		functions.RestoreInternetGwAndDNS()
@@ -674,6 +679,12 @@ func selectDeviceExitNode(network, token, egressID string, forReconcile bool) (*
 	}
 	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
 	return &node, nil
+}
+
+// exitAssignUnconfirmed is true when we asked for an exit and the server
+// returned none. That must not be treated as a successful clear.
+func exitAssignUnconfirmed(requested, returned string) bool {
+	return strings.TrimSpace(requested) != "" && strings.TrimSpace(returned) == ""
 }
 
 func networkLocallyConnected(network string) bool {

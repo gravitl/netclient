@@ -14,6 +14,7 @@ func init() {
 	functions.GUI.ReassertDesired = reassertDesiredConnectedFlags
 	functions.GUI.WantsIGW = desktopWantsIGW
 	functions.GUI.WantsUnadvertisedExit = desktopWantsExitApply
+	functions.GUI.HoldIGWTeardown = holdIGWTeardown
 	functions.GUI.RememberWantIGW = rememberDesiredWantIGW
 	functions.GUI.ReconcileExit = reconcileDesiredExit
 	functions.GUI.ExitDecision = desktopExitDecision

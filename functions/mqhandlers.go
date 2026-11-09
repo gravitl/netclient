@@ -331,15 +331,19 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
-		// Server cleared exit-node routing; remove any installed IGW routes.
-		// This must be unconditional: an exit that has stopped forwarding
-		// black-holes every route pointed at it, and this is the path that hands
-		// the LAN default route back. Local desired state never outranks it —
-		// reconnect and session restore re-apply the exit when it is usable.
-		logger.Log(0, "tearing down internet gateway (peer-update, change_default_gw=false)")
-		exitRoutingChanged = true
-		if err := wireguard.RestoreInternetGw(); err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
+		// Server cleared exit-node routing. Normally restore the LAN default —
+		// holding a dead exit black-holes traffic. During desktop exit select or
+		// session restore, desire still wants an exit and MQTT often publishes
+		// ChangeDefaultGw=false mid-window; tearing down there opens a long gap
+		// until reconcile re-selects. Defer restore and re-drive selection.
+		if callHoldIGWTeardown() {
+			logger.Log(0, "deferring internet gateway teardown (peer-update, desktop still wants exit)")
+		} else {
+			logger.Log(0, "tearing down internet gateway (peer-update, change_default_gw=false)")
+			exitRoutingChanged = true
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
 		}
 	}
 	if config.AnyNodeConnected() && !peerUpdate.ChangeDefaultGw {
@@ -1028,14 +1032,23 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
-		// Server cleared exit-node routing; remove any installed IGW routes.
-		// Unconditional for the same reason as the peer-update path above: never
-		// hold a default route the server has withdrawn.
-		logger.Log(0, "tearing down internet gateway (host-update, change_default_gw=false)")
-		exitRoutingChanged = true
-		if err := wireguard.RestoreInternetGw(); err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
+		// Same as peer-update: restore LAN unless desktop is mid-select/restore
+		// and still wants an exit (defer + reconcile below).
+		if callHoldIGWTeardown() {
+			logger.Log(0, "deferring internet gateway teardown (host-update, desktop still wants exit)")
+		} else {
+			logger.Log(0, "tearing down internet gateway (host-update, change_default_gw=false)")
+			exitRoutingChanged = true
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
 		}
+	}
+	if config.AnyNodeConnected() && !pullResponse.ChangeDefaultGw {
+		// Host-update used to tear down without re-driving selection; peer-update
+		// already reconciled here. Without this, a ChangeDefaultGw=false pull
+		// could leave Desktop without exit until an unrelated peer update.
+		callReconcileExitIfDesired()
 	}
 	if config.AnyNodeConnected() {
 		if len(pullResponse.EgressRoutes) > 0 {

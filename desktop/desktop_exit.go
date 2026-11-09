@@ -17,7 +17,21 @@ import (
 // Headless returns false.
 func desktopWantsIGW() bool {
 	user, tenant, ok := desktopSessionIdentity()
-	return ok && config.GetDesiredWantIGW(user, tenant)
+	return ok && desiredWantsIGW(user, tenant)
+}
+
+// desiredWantsIGW is true when want_igw is set, or when a stored egress id /
+// auto_exit implies exit intent (partial / older desired state). Without this,
+// the first post-connect apply skips with want_igw=false while reconcile later
+// re-selects the same egress.
+func desiredWantsIGW(user, tenant string) bool {
+	if config.GetDesiredWantIGW(user, tenant) {
+		return true
+	}
+	if strings.TrimSpace(config.GetDesiredEgressID(user, tenant)) != "" {
+		return true
+	}
+	return config.GetDesiredAutoExit(user, tenant)
 }
 
 // rememberDesiredWantIGW records that the desktop user still wants an exit
@@ -43,22 +57,20 @@ func desktopExitDecision() string {
 		config.GetDesiredEgressID(user, tenant))
 }
 
-// desktopWantsExitApply decides whether to install exit routes after an iface
-// rebuild. A server-advertised exit always applies. Otherwise a desktop session
-// that still wants one applies too. When neither is true, the server is asked
-// again and this returns false so the caller leaves routes alone.
+// desktopWantsExitApply runs only when the server is not advertising an exit
+// (shouldApplyExitAfterReconnect already returned for ChangeDefaultGw=true).
+// forceApplyInternetGw cannot install without that flag, so returning true here
+// only burned ~10s of retries. When desire still wants an exit, re-drive server
+// selection immediately and leave local routes alone.
 func desktopWantsExitApply(pull models.HostPull, pullErr error) bool {
 	wantIGW := desktopWantsIGW()
 	localDesired := locallyConnectedDesired()
-	if wantIGW && localDesired {
-		return true
-	}
-	// Silent here once cost a full session of "connected but no exit": the
-	// restore finished clean while the server still advertised no gateway.
 	logger.Log(0, fmt.Sprintf(
 		"exit apply skipped after reconnect: change_default_gw=%v pull_err=%v want_igw=%v locally_connected_desired=%v",
 		pull.ChangeDefaultGw, pullErr != nil, wantIGW, localDesired))
-	reconcileDesiredExit()
+	if wantIGW && localDesired {
+		reconcileDesiredExit()
+	}
 	return false
 }
 
@@ -75,6 +87,28 @@ var exitSelectInFlight atomic.Bool
 
 func beginExitSelect() { exitSelectInFlight.Store(true) }
 func endExitSelect()   { exitSelectInFlight.Store(false) }
+
+// holdIGWTeardown is true while Desktop still wants an exit and tearing down on
+// ChangeDefaultGw=false would open a long gap until reconcile re-selects.
+// Covers the clear→assign window and session-restore phases. Logout clears
+// sessionReleased / desire so genuine clears still restore the LAN gateway.
+func holdIGWTeardown() bool {
+	if sessionReleased.Load() {
+		return false
+	}
+	if !desktopWantsIGW() {
+		return false
+	}
+	if exitSelectInFlight.Load() {
+		return true
+	}
+	switch uiapi.GetRestorePhase() {
+	case uiapi.RestorePhaseNetworks, uiapi.RestorePhaseExit, uiapi.RestorePhaseRoutes:
+		return true
+	default:
+		return false
+	}
+}
 
 // reconcileDesiredExit re-selects the exit node on the server when local desired
 // state still wants one but the server keeps advertising none.
