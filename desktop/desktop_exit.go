@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/uiapi"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -78,6 +79,11 @@ func desktopWantsExitApply(pull models.HostPull, pullErr error) bool {
 // selection, so a server that simply has no exit available is not hammered.
 const exitReconcileInterval = 30 * time.Second
 
+// restoreIGWHoldDeadline bounds how long ChangeDefaultGw=false teardown may be
+// deferred for session restore. Longer than exitPhaseDeadline so a normal
+// restore can finish; short enough that a hung restore cannot black-hole forever.
+const restoreIGWHoldDeadline = 45 * time.Second
+
 var lastExitReconcile atomic.Int64
 
 // exitSelectInFlight is true while a clear→assign (or manual select) PUT window
@@ -85,13 +91,25 @@ var lastExitReconcile atomic.Int64
 // half cannot race and re-select a different exit under us.
 var exitSelectInFlight atomic.Bool
 
+// pendingExitReconcile is set when MQTT defers IGW teardown during a hold.
+// Cleared when onExitHoldReleased runs after select/restore completes.
+var pendingExitReconcile atomic.Bool
+
 func beginExitSelect() { exitSelectInFlight.Store(true) }
-func endExitSelect()   { exitSelectInFlight.Store(false) }
+
+func endExitSelect() {
+	was := exitSelectInFlight.Swap(false)
+	if was {
+		onExitHoldReleased()
+	}
+}
+
+func notePendingExitReconcile() { pendingExitReconcile.Store(true) }
 
 // holdIGWTeardown is true while Desktop still wants an exit and tearing down on
 // ChangeDefaultGw=false would open a long gap until reconcile re-selects.
-// Covers the clear→assign window and session-restore phases. Logout clears
-// sessionReleased / desire so genuine clears still restore the LAN gateway.
+// Covers the clear→assign window and session-restore phases (bounded). Logout
+// clears sessionReleased / desire so genuine clears still restore the LAN gateway.
 func holdIGWTeardown() bool {
 	if sessionReleased.Load() {
 		return false
@@ -102,11 +120,44 @@ func holdIGWTeardown() bool {
 	if exitSelectInFlight.Load() {
 		return true
 	}
+	return restorePhaseWithinHoldDeadline()
+}
+
+// restorePhaseWithinHoldDeadline is true only while Networks/Exit/Routes is
+// active and younger than restoreIGWHoldDeadline.
+func restorePhaseWithinHoldDeadline() bool {
 	switch uiapi.GetRestorePhase() {
 	case uiapi.RestorePhaseNetworks, uiapi.RestorePhaseExit, uiapi.RestorePhaseRoutes:
+		started := uiapi.RestorePhaseStartedAt()
+		if started.IsZero() || time.Since(started) > restoreIGWHoldDeadline {
+			return false
+		}
 		return true
 	default:
 		return false
+	}
+}
+
+// onExitHoldReleased runs when exitSelectInFlight clears or restore becomes idle.
+// Mid-hold MQTT reconcile is a no-op (in-flight / active IGW); this is where
+// deferred teardown either re-drives selection or finishes LAN restore.
+func onExitHoldReleased() {
+	pending := pendingExitReconcile.Swap(false)
+	if sessionReleased.Load() {
+		return
+	}
+	if desktopWantsIGW() {
+		// Successful assign: routes live, nothing deferred → skip (avoid a
+		// redundant select PUT). Deferred MQTT or failed assign (no IGW) → re-drive.
+		if pending || !wireguard.IGWRoutingActive() {
+			logger.Log(0, "exit hold released: re-driving exit selection")
+			reconcileDesiredExitOpts(true)
+		}
+		return
+	}
+	if pending || wireguard.IGWRoutingActive() {
+		logger.Log(0, "exit hold released: desire cleared; restoring LAN gateway")
+		functions.RestoreInternetGwAndDNS()
 	}
 }
 
@@ -123,6 +174,14 @@ func holdIGWTeardown() bool {
 // local default route against the server is what black-holed traffic when an
 // exit genuinely went away; asking the server again keeps it authoritative.
 func reconcileDesiredExit() {
+	reconcileDesiredExitOpts(false)
+}
+
+// reconcileDesiredExitOpts re-drives exit selection. When allowActiveIGW is true
+// (hold just released), skip the IGWRoutingActive guard so a deferred CurrGw
+// with server advertising no exit still re-PUTs. Never skip exitSelectInFlight —
+// that would race clear→assign.
+func reconcileDesiredExitOpts(allowActiveIGW bool) {
 	// Logout snapshots want_igw for the next login, so desired state still asks
 	// for an exit while the teardown runs. Re-selecting here would undo the
 	// server-side clear that logout just issued.
@@ -138,7 +197,7 @@ func reconcileDesiredExit() {
 	if !ok {
 		return
 	}
-	if wireguard.IGWRoutingActive() {
+	if !allowActiveIGW && wireguard.IGWRoutingActive() {
 		return
 	}
 	token := uiapi.SessionAuthToken()

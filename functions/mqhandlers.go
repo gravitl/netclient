@@ -338,6 +338,8 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		// until reconcile re-selects. Defer restore and re-drive selection.
 		if callHoldIGWTeardown() {
 			logger.Log(0, "deferring internet gateway teardown (peer-update, desktop still wants exit)")
+			// Mid-hold reconcile is a no-op; mark so endExitSelect / restore-idle re-drives.
+			callNotePendingExitReconcile()
 		} else {
 			logger.Log(0, "tearing down internet gateway (peer-update, change_default_gw=false)")
 			exitRoutingChanged = true
@@ -1036,6 +1038,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		// and still wants an exit (defer + reconcile below).
 		if callHoldIGWTeardown() {
 			logger.Log(0, "deferring internet gateway teardown (host-update, desktop still wants exit)")
+			callNotePendingExitReconcile()
 		} else {
 			logger.Log(0, "tearing down internet gateway (host-update, change_default_gw=false)")
 			exitRoutingChanged = true

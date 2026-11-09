@@ -15,6 +15,7 @@ func init() {
 	functions.GUI.WantsIGW = desktopWantsIGW
 	functions.GUI.WantsUnadvertisedExit = desktopWantsExitApply
 	functions.GUI.HoldIGWTeardown = holdIGWTeardown
+	functions.GUI.NotePendingExitReconcile = notePendingExitReconcile
 	functions.GUI.RememberWantIGW = rememberDesiredWantIGW
 	functions.GUI.ReconcileExit = reconcileDesiredExit
 	functions.GUI.ExitDecision = desktopExitDecision
@@ -29,4 +30,7 @@ func init() {
 	functions.GUI.IsSessionActive = uiapi.IsSessionActive
 	functions.GUI.EnsureSessionLoaded = uiapi.EnsureSessionLoaded
 	functions.GUI.KeepServerDomainForRelogin = func() bool { return true }
+
+	// When restore phase returns to idle, finish any deferred exit reconcile/teardown.
+	uiapi.OnRestoreIdle = onExitHoldReleased
 }

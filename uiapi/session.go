@@ -62,9 +62,40 @@ const (
 
 var sessionRestorePhase atomic.Value // string
 
+// restorePhaseStartedNS is UnixNano when Networks/Exit/Routes began; 0 when idle.
+// Used so Desktop can bound deferred IGW teardown during a hung restore.
+var restorePhaseStartedNS atomic.Int64
+
+// OnRestoreIdle is set by the desktop package. Invoked when the restore phase
+// transitions from a non-empty value to idle so deferred exit reconcile/teardown
+// can run after the hold window.
+var OnRestoreIdle func()
+
+func restorePhaseHoldsIGW(phase string) bool {
+	switch phase {
+	case RestorePhaseNetworks, RestorePhaseExit, RestorePhaseRoutes:
+		return true
+	default:
+		return false
+	}
+}
+
 // SetRestorePhase records what session restore is doing for the GUI.
 func SetRestorePhase(phase string) {
+	prev := GetRestorePhase()
+	if restorePhaseHoldsIGW(phase) {
+		// Refresh the clock only when entering a hold phase from outside one
+		// (Networks→Exit→Routes keep the original start).
+		if !restorePhaseHoldsIGW(prev) {
+			restorePhaseStartedNS.Store(time.Now().UnixNano())
+		}
+	} else {
+		restorePhaseStartedNS.Store(0)
+	}
 	sessionRestorePhase.Store(phase)
+	if prev != "" && phase == "" && OnRestoreIdle != nil {
+		OnRestoreIdle()
+	}
 }
 
 // GetRestorePhase returns the current restore phase, or empty when idle.
@@ -75,6 +106,25 @@ func GetRestorePhase() string {
 		}
 	}
 	return ""
+}
+
+// RestorePhaseStartedAt returns when the current Networks/Exit/Routes hold began.
+// Zero means idle or Register-only.
+func RestorePhaseStartedAt() time.Time {
+	ns := restorePhaseStartedNS.Load()
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
+// ForceRestorePhaseStartedAtForTest overrides the restore hold clock in tests.
+func ForceRestorePhaseStartedAtForTest(t time.Time) {
+	if t.IsZero() {
+		restorePhaseStartedNS.Store(0)
+		return
+	}
+	restorePhaseStartedNS.Store(t.UnixNano())
 }
 
 // SessionAuthToken returns the active desktop session JWT, or empty if none.

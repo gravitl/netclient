@@ -34,9 +34,12 @@ var GUI struct {
 	// HoldIGWTeardown skips ChangeDefaultGw=false RestoreInternetGw while a
 	// desktop exit select or session restore still wants an exit. Nil on headless.
 	HoldIGWTeardown func() bool
-	RememberWantIGW func()
-	ReconcileExit   func()
-	ExitDecision    func() string
+	// NotePendingExitReconcile marks that teardown was deferred so release
+	// callbacks can re-drive selection or finish LAN restore. Nil on headless.
+	NotePendingExitReconcile func()
+	RememberWantIGW          func()
+	ReconcileExit            func()
+	ExitDecision             func() string
 	ApplyStartup          func()
 	RefreshHostPull       func(prev models.HostPull, prevErr error) (models.HostPull, error)
 	ForgetNetwork         func(network string)
@@ -88,6 +91,12 @@ func callHoldIGWTeardown() bool {
 		return false
 	}
 	return GUI.HoldIGWTeardown()
+}
+
+func callNotePendingExitReconcile() {
+	if GUI.NotePendingExitReconcile != nil {
+		GUI.NotePendingExitReconcile()
+	}
 }
 
 func callRememberDesiredWantIGW() {

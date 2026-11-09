@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/uiapi"
@@ -69,6 +70,38 @@ func TestExitAssignUnconfirmed(t *testing.T) {
 	assert.False(t, exitAssignUnconfirmed("", ""))
 	assert.False(t, exitAssignUnconfirmed("", "eg-1"))
 	assert.False(t, exitAssignUnconfirmed("eg-1", "eg-1"))
+}
+
+func TestNotePendingClearedOnHoldReleaseWithoutSession(t *testing.T) {
+	pendingExitReconcile.Store(false)
+	sessionReleased.Store(false)
+	endExitSelect()
+	uiapi.SetRestorePhase("")
+	t.Cleanup(func() {
+		pendingExitReconcile.Store(false)
+		sessionReleased.Store(false)
+		endExitSelect()
+		uiapi.SetRestorePhase("")
+	})
+
+	notePendingExitReconcile()
+	assert.True(t, pendingExitReconcile.Load())
+	// No session → onExitHoldReleased clears pending and does not reconcile.
+	onExitHoldReleased()
+	assert.False(t, pendingExitReconcile.Load())
+}
+
+func TestRestorePhaseWithinHoldDeadline(t *testing.T) {
+	uiapi.SetRestorePhase("")
+	t.Cleanup(func() { uiapi.SetRestorePhase("") })
+
+	assert.False(t, restorePhaseWithinHoldDeadline())
+
+	uiapi.SetRestorePhase(uiapi.RestorePhaseExit)
+	assert.True(t, restorePhaseWithinHoldDeadline())
+
+	uiapi.ForceRestorePhaseStartedAtForTest(time.Now().Add(-restoreIGWHoldDeadline - time.Second))
+	assert.False(t, restorePhaseWithinHoldDeadline(), "stale restore phase must not hold IGW teardown")
 }
 
 func writePartialDesired(t *testing.T, dir, user, tenant string, state config.DesiredState) {
