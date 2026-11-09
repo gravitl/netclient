@@ -825,6 +825,13 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 	// Rebind WFP after iface up (Init often runs too early for default deny).
 	firewall.RefreshACLInterface()
 
+	// Desktop: only default-deny inbound on the mesh iface. ACL allows, egress,
+	// and ingress are enforced server-side — ignore FwUpdate payload locally.
+	if IsDesktopBuild() {
+		firewall.ApplyDesktopACLDefaults()
+		return
+	}
+
 	if payload.IsEgressGw {
 		firewall.SetEgressRoutes(server, payload.EgressInfo)
 	} else {
@@ -836,7 +843,6 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 		firewall.RemoveIngressRoutingRules(server)
 	}
 	firewall.ProcessAclRules(server, payload)
-
 }
 
 func getServerBrokerStatus() (bool, error) {

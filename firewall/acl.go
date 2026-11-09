@@ -3,8 +3,23 @@ package firewall
 import (
 	"reflect"
 
+	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 )
+
+// ApplyDesktopACLDefaults enforces default-deny inbound (and forward) on the
+// mesh iface for Desktop builds. Server ACL / egress / ingress rules are not
+// applied on the device — policy is enforced server-side. Outbound stays open.
+func ApplyDesktopACLDefaults() {
+	fwMutex.Lock()
+	defer fwMutex.Unlock()
+	if fwCrtl == nil {
+		return
+	}
+	fwCrtl.ChangeACLInTarget(targetDrop)
+	fwCrtl.ChangeACLFwdTarget(targetDrop)
+	logger.Log(0, "desktop ACL: default deny inbound/forward (server FW rules skipped)")
+}
 
 func ProcessAclRules(server string, fwUpdate *models.FwUpdate) {
 	fwMutex.Lock()
