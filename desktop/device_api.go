@@ -699,6 +699,10 @@ func networkLocallyConnected(network string) bool {
 // Persists auto_exit so session restore re-picks nearest rather than a fixed egress id.
 // Switching A→B clears the current selection first (server rejects direct switch).
 // Requires the network to be connected so ranking uses overlay VPN probes.
+//
+// Waits for ExitOverlayProbeGrace after connect so latency samples are stable.
+// Without this, UI Auto / enforced auto right after tunnel setup ranks on
+// deferred or inflated RTTs and picks the wrong exit.
 func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
@@ -706,6 +710,7 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 	if !networkLocallyConnected(network) {
 		return nil, ErrNetworkNotConnected
 	}
+	functions.WaitExitOverlayProbeGrace(network)
 	nodes, err := ListDeviceExitNodes(network, token)
 	if err != nil {
 		return nil, err
