@@ -271,8 +271,10 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	// Partial Desktop entries (POST /server) have API but are not enrolled —
 	// skip Pull until register/login sets Server and/or TenantID.
 	if config.IsRegistered() && server != nil && server.API != "" {
-		// refresh=true: ask server to recompute host peer cache on daemon startup.
-		pullresp, _, _, pullErr = Pull(false, true, true)
+		// refresh=true: recompute host peer cache on startup.
+		// reset_failovered=false: keep existing auto-relay peer connections
+		// (explicit clear via pull --reset-connections / tray Sync).
+		pullresp, _, _, pullErr = Pull(false, false, true)
 		if pullErr != nil {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}

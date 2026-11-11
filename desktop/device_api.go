@@ -450,15 +450,12 @@ func RequestJITOnServer(network, token, reason string) error {
 	return err
 }
 
-// SyncDeviceWithServer pulls config from the server and re-applies WireGuard,
-// egress, DNS, and related state. Peers are always replaced (ReplacePeers=true)
-// so a Desktop/tray Sync fully reconfigures the host.
+// SyncDeviceWithServer pulls host config (reset auto-relay + refresh peer cache)
+// and applies it in-process. Peers are always replaced so tray Sync fully
+// reconfigures WireGuard without a daemon restart.
 func SyncDeviceWithServer(token string) error {
-	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/sync", token, nil)
-	if err == nil {
-		_ = decodeDeviceResponse(resp, nil)
-	}
-	pullResponse, resetInterface, _, err := functions.Pull(false, true, false)
+	_ = token // session JWT is read via auth.UserTokenProvider during Pull
+	pullResponse, resetInterface, _, err := functions.Pull(false, true, true)
 	if err != nil {
 		return err
 	}
