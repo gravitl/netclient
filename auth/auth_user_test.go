@@ -13,6 +13,7 @@ import (
 func TestAuthenticate_userOwnedRequiresSession(t *testing.T) {
 	t.Cleanup(func() {
 		UserTokenProvider = nil
+		EnsureUserSessionLoaded = nil
 		SetPendingUserToken("")
 		CleanJwtToken()
 	})
@@ -29,6 +30,32 @@ func TestAuthenticate_userOwnedRequiresSession(t *testing.T) {
 	tok, err := Authenticate(nil, host)
 	require.NoError(t, err)
 	assert.Equal(t, "user-jwt", tok)
+}
+
+func TestAuthenticate_userOwnedLoadsPersistedSession(t *testing.T) {
+	t.Cleanup(func() {
+		UserTokenProvider = nil
+		EnsureUserSessionLoaded = nil
+		SetPendingUserToken("")
+		CleanJwtToken()
+	})
+
+	host := &config.Config{}
+	host.ID = uuid.New()
+	host.OwnerUsername = "alice"
+
+	loaded := false
+	EnsureUserSessionLoaded = func() { loaded = true }
+	UserTokenProvider = func() string {
+		if !loaded {
+			return ""
+		}
+		return "disk-jwt"
+	}
+	tok, err := Authenticate(nil, host)
+	require.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "disk-jwt", tok)
 }
 
 func TestAuthenticate_pendingUserTokenDuringLogin(t *testing.T) {

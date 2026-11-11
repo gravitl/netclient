@@ -74,8 +74,10 @@ func Daemon() {
 		slog.Error("unable to save PID on daemon startup", "error", err)
 		os.Exit(1)
 	}
-	if err := local.SetIPForwarding(); err != nil {
-		slog.Warn("unable to set IPForwarding", "error", err)
+	if !IsDesktopBuild() {
+		if err := local.SetIPForwarding(); err != nil {
+			slog.Warn("unable to set IPForwarding", "error", err)
+		}
 	}
 	wg := sync.WaitGroup{}
 	quit := make(chan os.Signal, 1)

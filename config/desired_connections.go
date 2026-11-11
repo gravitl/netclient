@@ -32,6 +32,14 @@ var (
 	desiredConnectionsDir string // tests may override
 )
 
+// SetDesiredConnectionsDirForTest overrides where desired_connections.json is
+// read and written. Pass "" to restore the production path.
+func SetDesiredConnectionsDirForTest(dir string) {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	desiredConnectionsDir = dir
+}
+
 func desiredConnectionsPath() string {
 	dir := desiredConnectionsDir
 	if dir == "" {
