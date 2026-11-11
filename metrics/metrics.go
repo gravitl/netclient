@@ -76,6 +76,11 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 			continue
 		}
 
+		if peer.UserName != "" {
+			logger.Log(0, "skipping metrics for user-owned device", peer.ID, peer.Address)
+			continue
+		}
+
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {
