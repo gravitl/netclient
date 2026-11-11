@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gravitl/netclient/auth"
@@ -23,6 +24,12 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+const (
+	// autoRelayHandshakeGrace lets WireGuard attempt direct handshakes after
+	// peers are applied before we signal for auto-relay.
+	autoRelayHandshakeGrace = 5 * time.Second
+)
+
 var (
 	autoRelayCacheMutex = &sync.Mutex{}
 	currentNodesCache   = make(map[string]models.Node)
@@ -31,6 +38,10 @@ var (
 	networkMetricsCache = make(map[schema.NetworkID]map[string]int64) // Cached metrics per network
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
+
+	autoRelayWatchCtx    context.Context
+	autoRelayScanMu      sync.Mutex
+	autoRelayScheduleGen atomic.Uint64
 )
 
 func getAutoRelayNodes(network schema.NetworkID) []models.Node {
@@ -74,15 +85,17 @@ func refreshNetworkMetrics(network schema.NetworkID, metricPort int) map[string]
 
 func setAutoRelayNodes(autoRelaynodes map[schema.NetworkID][]models.Node, gwNodes map[schema.NetworkID][]models.Node, currNodes []models.Node) {
 	autoRelayCacheMutex.Lock()
-	defer autoRelayCacheMutex.Unlock()
 	autoRelayCache = autoRelaynodes
 	gwNodesCache = gwNodes
 	currentNodesCache = make(map[string]models.Node)
 	for _, currNode := range currNodes {
 		currentNodesCache[currNode.ID.String()] = currNode
 	}
+	// Clear stale metrics; refresh async so peer-update / pull paths are not
+	// blocked on relay latency probes (those can take several seconds).
+	networkMetricsCache = make(map[schema.NetworkID]map[string]int64)
+	autoRelayCacheMutex.Unlock()
 
-	// Calculate and cache metrics for each network
 	server := config.GetServer(config.CurrServer)
 	if server == nil {
 		return
@@ -91,16 +104,14 @@ func setAutoRelayNodes(autoRelaynodes map[schema.NetworkID][]models.Node, gwNode
 	if metricPort == 0 {
 		metricPort = 51821
 	}
-
-	// Clear old metrics cache
-	networkMetricsCache = make(map[schema.NetworkID]map[string]int64)
-
-	// Calculate metrics for each network's auto relay nodes
-	for networkID, nodes := range autoRelaynodes {
-		if len(nodes) > 0 {
-			networkMetricsCache[networkID] = findNodeLatencies(nodes, metricPort)
+	go func(networks map[schema.NetworkID][]models.Node, port int) {
+		for networkID, nodes := range networks {
+			if len(nodes) == 0 {
+				continue
+			}
+			_ = refreshNetworkMetrics(networkID, port)
 		}
-	}
+	}(autoRelaynodes, metricPort)
 }
 
 // processPeerSignal - processes the peer signals for any updates from peers
@@ -221,6 +232,36 @@ func handlePeerRelaySignal(signal models.Signal) error {
 	return nil
 }
 
+// shouldRunScheduledScan reports whether a deferred one-shot is still the latest.
+func shouldRunScheduledScan(scheduled, current uint64) bool {
+	return scheduled == current
+}
+
+// scheduleAutoRelayPeerScan waits for a WireGuard handshake grace, then runs
+// one bad-peer → signal pass. Rapid peer updates coalesce to the latest schedule.
+// No-op until watchPeerConnections is running (Pro only).
+func scheduleAutoRelayPeerScan() {
+	ctx := autoRelayWatchCtx
+	if ctx == nil {
+		return
+	}
+	gen := autoRelayScheduleGen.Add(1)
+	go func(gen uint64) {
+		timer := time.NewTimer(autoRelayHandshakeGrace)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if !shouldRunScheduledScan(gen, autoRelayScheduleGen.Load()) {
+			return
+		}
+		slog.Debug("auto-relay: running post-peer handshake scan")
+		runAutoRelayPeerScan(ctx)
+	}(gen)
+}
+
 // watchPeerConnections - periodically watches peer connections.
 // if connection is bad, host will signal peers to use turn
 func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
@@ -229,6 +270,9 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	if server == nil {
 		return
 	}
+	autoRelayWatchCtx = ctx
+	defer func() { autoRelayWatchCtx = nil }()
+
 	if server.PeerConnectionCheckInterval != "" {
 		sec, err := strconv.Atoi(server.PeerConnectionCheckInterval)
 		if err == nil && sec > 0 {
@@ -238,144 +282,152 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	autoRelayConnTicker = time.NewTicker(networking.PeerConnectionCheckInterval)
 	defer autoRelayConnTicker.Stop()
 
-	metricPort := server.MetricsPort
-	if metricPort == 0 {
-		metricPort = 51821
-	}
+	// Peers from the initial host pull are already applied — scan once after grace
+	// instead of waiting a full ticker interval.
+	scheduleAutoRelayPeerScan()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("exiting peer connection watcher")
 			return
 		case <-autoRelayConnTicker.C:
-			// Use a mutex to prevent overlapping executions and goroutine accumulation
-			go func() {
-				// Exit early if context is done
-				select {
-				case <-ctx.Done():
-					return
-				default:
+			go runAutoRelayPeerScan(ctx)
+		}
+	}
+}
+
+// runAutoRelayPeerScan signals peers that lack a WireGuard handshake / metrics
+// path so they can negotiate auto-relay. Serialized so ticker and one-shot scans
+// do not pile up.
+func runAutoRelayPeerScan(ctx context.Context) {
+	autoRelayScanMu.Lock()
+	defer autoRelayScanMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		return
+	}
+	metricPort := server.MetricsPort
+	if metricPort == 0 {
+		metricPort = 51821
+	}
+
+	nodes := config.GetNodes()
+	if len(nodes) == 0 {
+		return
+	}
+	peerInfo, err := networking.GetPeerInfo()
+	if err != nil {
+		slog.Error("failed to get peer info", "error", err)
+		return
+	}
+	devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
+	if err != nil {
+		slog.Debug("failed to get peers from device: ", "error", err)
+		return
+	}
+	for _, node := range nodes {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if node.Server != config.CurrServer {
+			continue
+		}
+		peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
+		if !ok {
+			continue
+		}
+		autoRelayNodes := getAutoRelayNodes(schema.NetworkID(node.Network))
+		networkID := schema.NetworkID(node.Network)
+		currNode := getCurrNode(node.ID.String())
+		hasCurrNode := currNode.ID.String() != ""
+
+		if hasCurrNode && currNode.AutoAssignGateway {
+			checkAssignGw(server, currNode)
+		}
+
+		autoRelayNodeMetrics := getNetworkMetrics(networkID)
+		if len(autoRelayNodeMetrics) == 0 {
+			autoRelayNodeMetrics = refreshNetworkMetrics(networkID, metricPort)
+			if len(autoRelayNodeMetrics) == 0 {
+				continue
+			}
+		}
+		if hasCurrNode && !currNode.AutoAssignGateway && len(autoRelayNodes) > 0 {
+			checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
+		}
+		for pubKey, peer := range peers {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			if peer.IsExtClient {
+				continue
+			}
+			devicePeer, ok := devicePeerMap[pubKey]
+			if !ok {
+				continue
+			}
+			if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
+				slog.Debug("throttle cache hit", "address", peer.Address)
+				continue
+			}
+			connected, err := networking.IsPeerConnected(devicePeer)
+			if err != nil || connected {
+				continue
+			}
+			// Overlay metrics need a tunnel. With no handshake yet the probe
+			// always fails and costs seconds (2× timeout) per peer — skip it.
+			if !devicePeer.LastHandshakeTime.IsZero() {
+				connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, 2)
+				if connected {
+					continue
 				}
-				nodes := config.GetNodes()
-				if len(nodes) == 0 {
-					return
+			}
+			if len(autoRelayNodeMetrics) == 0 {
+				continue
+			}
+			if config.GetServer(config.CurrServer) == nil {
+				continue
+			}
+			s := models.Signal{
+				Server:               config.CurrServer,
+				FromHostID:           config.Netclient().ID.String(),
+				ToHostID:             peer.HostID,
+				FromNodeID:           node.ID.String(),
+				ToNodeID:             peer.ID,
+				FromHostPubKey:       config.Netclient().PublicKey.String(),
+				ToHostPubKey:         pubKey,
+				NetworkID:            peer.Network,
+				Action:               models.ConnNegotiation,
+				AutoRelayNodeMetrics: autoRelayNodeMetrics,
+				TimeStamp:            time.Now().Unix(),
+			}
+			slog.Debug("sending signal for peer", "address", peer.Address)
+			err = SignalPeer(s)
+			if err != nil {
+				slog.Debug("failed to signal peer", "error", err.Error())
+				continue
+			}
+			if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
+				if cnt.(int) <= 3 {
+					signalThrottleCache.Store(peer.HostID, cnt.(int)+1)
 				}
-				peerInfo, err := networking.GetPeerInfo()
-				if err != nil {
-					slog.Error("failed to get peer info", "error", err)
-					return
-				}
-				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
-				if err != nil {
-					slog.Debug("failed to get peers from device: ", "error", err)
-					return
-				}
-				for _, node := range nodes {
-					// Check context before processing each node
-					select {
-					case <-ctx.Done():
-						return
-					default:
-					}
-
-					if node.Server != config.CurrServer {
-						continue
-					}
-					peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
-					if !ok {
-						continue
-					}
-					autoRelayNodes := getAutoRelayNodes(schema.NetworkID(node.Network))
-					networkID := schema.NetworkID(node.Network)
-					currNode := getCurrNode(node.ID.String())
-					hasCurrNode := currNode.ID.String() != ""
-
-					if hasCurrNode && currNode.AutoAssignGateway {
-						checkAssignGw(server, currNode)
-					}
-
-					// Use cached metrics from setAutoRelayNodes
-					autoRelayNodeMetrics := getNetworkMetrics(networkID)
-					if len(autoRelayNodeMetrics) == 0 {
-						autoRelayNodeMetrics = refreshNetworkMetrics(networkID, metricPort)
-						if len(autoRelayNodeMetrics) == 0 {
-							continue
-						}
-					}
-					if hasCurrNode && !currNode.AutoAssignGateway && len(autoRelayNodes) > 0 {
-						checkAutoRelayCtx(server, currNode, peers, autoRelayNodes)
-					}
-					for pubKey, peer := range peers {
-						// Check context before processing each peer
-						select {
-						case <-ctx.Done():
-							return
-						default:
-						}
-
-						if peer.IsExtClient {
-							continue
-						}
-						devicePeer, ok := devicePeerMap[pubKey]
-						if !ok {
-							continue
-						}
-						if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
-							slog.Debug("throttle cache hit", "address", peer.Address)
-							continue
-						}
-						// check if there is handshake on interface
-						connected, err := networking.IsPeerConnected(devicePeer)
-						if err != nil || connected {
-							continue
-						}
-						connected, _ = metrics.PeerConnStatus(peer.Address, metricPort, 2)
-						if connected {
-							// peer is connected,so continue
-							continue
-						}
-						s := models.Signal{
-							Server:         config.CurrServer,
-							FromHostID:     config.Netclient().ID.String(),
-							ToHostID:       peer.HostID,
-							FromNodeID:     node.ID.String(),
-							ToNodeID:       peer.ID,
-							FromHostPubKey: config.Netclient().PublicKey.String(),
-							ToHostPubKey:   pubKey,
-							NetworkID:      peer.Network,
-							Action:         models.ConnNegotiation,
-						}
-						server := config.GetServer(config.CurrServer)
-						if server == nil {
-							continue
-						}
-						// Use cached metrics instead of recalculating for each peer
-						if len(autoRelayNodeMetrics) == 0 {
-							continue
-						}
-						slog.Debug("sending signal for peer", "address", peer.Address)
-						s.AutoRelayNodeMetrics = autoRelayNodeMetrics
-						s.TimeStamp = time.Now().Unix()
-						// signal peer
-						err = SignalPeer(s)
-						if err != nil {
-							slog.Debug("failed to signal peer", "error", err.Error())
-						} else {
-							if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
-								if cnt.(int) <= 3 {
-									cnt := cnt.(int) + 1
-									signalThrottleCache.Store(peer.HostID, cnt)
-								}
-							} else {
-								signalThrottleCache.Store(peer.HostID, 1)
-							}
-
-						}
-
-					}
-				}
-			}()
-
+			} else {
+				signalThrottleCache.Store(peer.HostID, 1)
+			}
 		}
 	}
 }
