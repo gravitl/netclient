@@ -128,7 +128,7 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 func fillSummary(metrics *models.Metrics, peerMap models.PeerMap) {
 	summary := &models.MetricsSummary{UnreachablePeers: []string{}}
 	for _, peer := range peerMap {
-		if peer.IsExtClient || peer.ID == "" {
+		if peer.IsExtClient || peer.ID == "" || peer.UserName != "" {
 			continue
 		}
 		summary.TotalPeers++
@@ -154,6 +154,9 @@ func probeConcurrency() int {
 // == used to fill zero value data for non connected peers ==
 func fillUnconnectedData(metrics *models.Metrics, peerMap models.PeerMap, mi int) {
 	for r := range peerMap {
+		if peerMap[r].UserName != "" {
+			continue
+		}
 		id := peerMap[r].ID
 		if !metrics.Connectivity[id].Connected {
 			newMetric := models.Metric{
