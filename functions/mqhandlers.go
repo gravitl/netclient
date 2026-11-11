@@ -719,6 +719,12 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 		slog.Warn("skipping endpoint detection: server config not found")
 		return
 	}
+	// Exit selected: private LAN probes false-positive peers co-located with the
+	// exit (same VPC). Keep server-published underlays for everyone.
+	if wireguard.ShouldSkipAllEndpointDetection() {
+		slog.Debug("skipping private LAN endpoint detection: internet exit active")
+		return
+	}
 	currentCidrs := getAllAllowedIPs(peers[:])
 	metricPort := server.MetricsPort
 	if metricPort == 0 {
