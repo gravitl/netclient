@@ -23,7 +23,6 @@ func TestRestorePhaseStartedAtTracksHoldWindow(t *testing.T) {
 	assert.False(t, started.IsZero())
 
 	// Networks→Exit→Routes must keep the original clock.
-	time.Sleep(5 * time.Millisecond)
 	SetRestorePhase(RestorePhaseExit)
 	assert.Equal(t, started.UnixNano(), RestorePhaseStartedAt().UnixNano())
 	SetRestorePhase(RestorePhaseRoutes)
