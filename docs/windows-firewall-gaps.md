@@ -71,7 +71,8 @@ ACL model: **unidirectional allow filters** on inbound vs forward layers, with a
 | Requires Hyper-V / WinNAT capability | NetNat PowerShell APIs must work on the host |
 | Dynamic WFP session | Filters disappear when the process exits (expected); `FlushAll` also closes the engine |
 | Not Defender Firewall for ACLs | Current path is WFP; leftover `Netmaker-ACL` Defender rules are migration cleanup only |
-| macOS / FreeBSD | Separate unimplemented stub (`firewall_nonlinux.go`); out of scope here |
+| macOS | Desktop default-deny inbound via pf anchor (`firewall_darwin.go`); full ACL/egress/ingress not implemented |
+| FreeBSD | Unimplemented stub (`firewall_freebsd.go` / `firewall_noop.go`) |
 
 ---
 

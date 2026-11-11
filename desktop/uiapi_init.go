@@ -12,6 +12,8 @@ import (
 func init() {
 	// User-owned devices authenticate control-plane APIs with the Desktop JWT.
 	auth.UserTokenProvider = uiapi.SessionAuthToken
+	// CLI (ping/peers) is a separate process — load the on-disk session first.
+	auth.EnsureUserSessionLoaded = uiapi.EnsureSessionLoaded
 
 	uiapi.SetHandlers(uiapi.HandlerDeps{
 		RegisterSession:           RegisterSession,
