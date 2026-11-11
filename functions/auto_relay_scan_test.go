@@ -7,16 +7,16 @@ import (
 )
 
 func TestScheduleAutoRelayPeerScan_coalescesRapidUpdates(t *testing.T) {
-	prevCtx := autoRelayWatchCtx
+	prev := autoRelayWatchCtx.Load()
 	prevGen := autoRelayScheduleGen.Load()
 	t.Cleanup(func() {
-		autoRelayWatchCtx = prevCtx
+		autoRelayWatchCtx.Store(prev)
 		autoRelayScheduleGen.Store(prevGen)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	autoRelayWatchCtx = ctx
+	autoRelayWatchCtx.Store(&ctx)
 
 	scheduleAutoRelayPeerScan()
 	g1 := autoRelayScheduleGen.Load()
@@ -39,13 +39,13 @@ func TestScheduleAutoRelayPeerScan_coalescesRapidUpdates(t *testing.T) {
 }
 
 func TestScheduleAutoRelayPeerScan_noopWithoutWatcher(t *testing.T) {
-	prevCtx := autoRelayWatchCtx
+	prev := autoRelayWatchCtx.Load()
 	prevGen := autoRelayScheduleGen.Load()
 	t.Cleanup(func() {
-		autoRelayWatchCtx = prevCtx
+		autoRelayWatchCtx.Store(prev)
 		autoRelayScheduleGen.Store(prevGen)
 	})
-	autoRelayWatchCtx = nil
+	autoRelayWatchCtx.Store(nil)
 	before := autoRelayScheduleGen.Load()
 	scheduleAutoRelayPeerScan()
 	if autoRelayScheduleGen.Load() != before {

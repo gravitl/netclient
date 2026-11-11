@@ -39,7 +39,7 @@ var (
 	autoRelayConnTicker *time.Ticker
 	signalThrottleCache = sync.Map{}
 
-	autoRelayWatchCtx    context.Context
+	autoRelayWatchCtx    atomic.Pointer[context.Context]
 	autoRelayScanMu      sync.Mutex
 	autoRelayScheduleGen atomic.Uint64
 )
@@ -241,10 +241,11 @@ func shouldRunScheduledScan(scheduled, current uint64) bool {
 // one bad-peer → signal pass. Rapid peer updates coalesce to the latest schedule.
 // No-op until watchPeerConnections is running (Pro only).
 func scheduleAutoRelayPeerScan() {
-	ctx := autoRelayWatchCtx
-	if ctx == nil {
+	p := autoRelayWatchCtx.Load()
+	if p == nil {
 		return
 	}
+	ctx := *p
 	gen := autoRelayScheduleGen.Add(1)
 	go func(gen uint64) {
 		timer := time.NewTimer(autoRelayHandshakeGrace)
@@ -270,8 +271,8 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	if server == nil {
 		return
 	}
-	autoRelayWatchCtx = ctx
-	defer func() { autoRelayWatchCtx = nil }()
+	autoRelayWatchCtx.Store(&ctx)
+	defer autoRelayWatchCtx.Store(nil)
 
 	if server.PeerConnectionCheckInterval != "" {
 		sec, err := strconv.Atoi(server.PeerConnectionCheckInterval)
