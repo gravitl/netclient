@@ -145,26 +145,14 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	if IsRegisteredToServer(server) {
 		fmt.Println("session debug: pulling after session register/login", "server=", server)
 		if _, _, _, err := pullForSession(false, true, false); err != nil {
-			// Local enrollment can outlive the host row (reinstall, admin delete)
-			// or go stale after soft logout / server switch (401 on host pull).
-			// Re-enroll once instead of failing login forever.
-			if (isMissingHostOnServer(err) || isPullUnauthorized(err)) && !needRegister {
-				slog.Warn("session pull: enrollment stale, re-registering",
+			// Host row gone on server (reinstall / admin delete) while local
+			// enrollment remains. Re-register without wiping local config first —
+			// a failed register must not leave the device permanently unenrolled.
+			// 401 / expired JWT is a session problem: return to the UI for logout;
+			// do not clear enrollment or re-register.
+			if isMissingHostOnServer(err) && !needRegister {
+				slog.Warn("session pull: host missing on server, re-registering",
 					"server", server, "error", err)
-				clearLocalEnrollmentAfterTenantLeave(server)
-				applySessionTenant(server, tenantID)
-				if regErr := registerDeviceOnServerForSession(server, authToken); regErr != nil {
-					return regErr
-				}
-				if _, _, _, err := pullForSession(false, true, false); err != nil {
-					return fmt.Errorf("failed to sync with server: %w", err)
-				}
-			} else if isPullUnauthorized(err) && needRegister {
-				// Just registered but pull still 401 — often a stale tenant stamp
-				// on the host after switching servers. Clear and retry once.
-				slog.Warn("session pull: unauthorized after register; retrying enroll",
-					"server", server, "error", err)
-				clearLocalEnrollmentAfterTenantLeave(server)
 				applySessionTenant(server, tenantID)
 				if regErr := registerDeviceOnServerForSession(server, authToken); regErr != nil {
 					return regErr
@@ -191,20 +179,6 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 // server no longer has this device (common after reinstall with leftover config).
 func isMissingHostOnServer(err error) bool {
 	return auth.IsMissingHostError(err)
-}
-
-// isPullUnauthorized reports host pull/auth failures with HTTP 401 — common after
-// soft logout, server switch, or a leftover tenant stamp on the local host.
-func isPullUnauthorized(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "unauthorized") {
-		return true
-	}
-	var notOk ncutils.ErrStatusNotOk
-	return errors.As(err, &notOk) && notOk.Status == http.StatusUnauthorized
 }
 
 func applySessionTenant(server, tenantID string) {
