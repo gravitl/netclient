@@ -2,7 +2,6 @@ package networking
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 )
@@ -28,8 +26,6 @@ var (
 	PeerConnectionCheckInterval = time.Second * 15
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
-	//
-	PeerLocalEndpointConnTicker *time.Ticker
 
 	peerInfoCache   models.HostPeerInfo
 	peerInfoCacheMu sync.RWMutex
@@ -102,61 +98,6 @@ func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int
 			}
 		} else {
 			cache.SkipEndpointCache.Store(peerPubKey, 1)
-		}
-	}
-}
-
-func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
-	defer waitg.Done()
-	PeerLocalEndpointConnTicker = time.NewTicker(PeerConnectionCheckInterval)
-	defer PeerLocalEndpointConnTicker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("exiting peer connection watcher")
-			return
-		case <-PeerLocalEndpointConnTicker.C:
-			go func() {
-				nodes := config.GetNodes()
-				if len(nodes) == 0 {
-					return
-				}
-				peerInfo, err := GetPeerInfo()
-				if err != nil {
-					slog.Error("failed to get peer info", "error", err)
-					return
-				}
-				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
-				if err != nil {
-					slog.Debug("failed to get peers from device: ", "error", err)
-					return
-				}
-				for _, node := range nodes {
-					if node.Server != config.CurrServer {
-						continue
-					}
-					peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
-					if !ok {
-						continue
-					}
-
-					for pubKey, peer := range peers {
-						if peer.IsExtClient {
-							continue
-						}
-						devicePeer, ok := devicePeerMap[pubKey]
-						if !ok {
-							continue
-						}
-						// check if local endpoint is present
-						localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey)
-						if ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
-							SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
-						}
-					}
-				}
-			}()
-
 		}
 	}
 }
