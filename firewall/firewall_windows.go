@@ -34,6 +34,8 @@ const (
 
 // windowsManager implements egress via Hyper-V NetNat + IP forwarding, and
 // peer/host + egress ACLs via the Windows Filtering Platform (WFP).
+// Feature gaps vs Linux iptables/nftables are documented in
+// docs/windows-firewall-gaps.md.
 type windowsManager struct {
 	mux          sync.Mutex
 	engressRules serverrulestable

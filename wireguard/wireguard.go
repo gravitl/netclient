@@ -602,11 +602,42 @@ func EndpointDetectedAlready(peerPubKey string) bool {
 	return false
 }
 
+// ShouldSkipAllEndpointDetection reports whether private-LAN endpoint probing
+// must be skipped for every peer. While an internet exit is selected (CurrGw
+// set or any peer advertises 0.0.0.0/0 / ::/0), probing private iface IPs from
+// HostNetworkInfo false-positives peers that share the exit's VPC/LAN and can
+// rewrite underlay endpoints to unreachable 10.x addresses.
+func ShouldSkipAllEndpointDetection() bool {
+	if IGWRoutingActive() {
+		return true
+	}
+	host := config.Netclient()
+	if host == nil {
+		return false
+	}
+	for _, p := range host.HostPeers {
+		if p.Remove {
+			continue
+		}
+		for _, a := range p.AllowedIPs {
+			s := a.String()
+			if s == IPv4Network || s == IPv6Network {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ShouldSkipEndpointDetection returns true for peers that must keep their
 // server-published underlay endpoint: internet-exit peers (0.0.0.0/0 / ::/0)
 // and the active TCP-uplink relay. Endpoint detection often picks private
 // 10.x addresses that break TCP divert and blackhole UDP after IGW install.
+// Also true for every peer while ShouldSkipAllEndpointDetection is set.
 func ShouldSkipEndpointDetection(peerPubKey string) bool {
+	if ShouldSkipAllEndpointDetection() {
+		return true
+	}
 	if peerPubKey == "" {
 		return false
 	}

@@ -450,15 +450,12 @@ func RequestJITOnServer(network, token, reason string) error {
 	return err
 }
 
-// SyncDeviceWithServer pulls config from the server and re-applies WireGuard,
-// egress, DNS, and related state. Peers are always replaced (ReplacePeers=true)
-// so a Desktop/tray Sync fully reconfigures the host.
+// SyncDeviceWithServer pulls host config (reset auto-relay + refresh peer cache)
+// and applies it in-process. Peers are always replaced so tray Sync fully
+// reconfigures WireGuard without a daemon restart.
 func SyncDeviceWithServer(token string) error {
-	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/sync", token, nil)
-	if err == nil {
-		_ = decodeDeviceResponse(resp, nil)
-	}
-	pullResponse, resetInterface, _, err := functions.Pull(false, true, false)
+	_ = token // session JWT is read via auth.UserTokenProvider during Pull
+	pullResponse, resetInterface, _, err := functions.Pull(false, true, true)
 	if err != nil {
 		return err
 	}
@@ -665,8 +662,13 @@ func selectDeviceExitNode(network, token, egressID string, forReconcile bool) (*
 		}
 		return nil, err
 	}
-	wantGW := egressID != "" && node.EgressID != ""
-	if !wantGW {
+	// A non-empty request that comes back empty is a failed assign, not a clear.
+	// Clearing desire + RestoreInternetGwAndDNS here is what tore exit down while
+	// the user still wanted it (reconcile then had to put it back minutes later).
+	if exitAssignUnconfirmed(egressID, node.EgressID) {
+		return nil, fmt.Errorf("server did not assign exit node %s", egressID)
+	}
+	if egressID == "" || strings.TrimSpace(node.EgressID) == "" {
 		_ = config.ClearDesiredExitNode(user, tenant)
 		// Restore LAN routes and OS DNS immediately; MQTT will converge peers next.
 		functions.RestoreInternetGwAndDNS()
@@ -674,6 +676,12 @@ func selectDeviceExitNode(network, token, egressID string, forReconcile bool) (*
 	}
 	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
 	return &node, nil
+}
+
+// exitAssignUnconfirmed is true when we asked for an exit and the server
+// returned none. That must not be treated as a successful clear.
+func exitAssignUnconfirmed(requested, returned string) bool {
+	return strings.TrimSpace(requested) != "" && strings.TrimSpace(returned) == ""
 }
 
 func networkLocallyConnected(network string) bool {
@@ -688,6 +696,10 @@ func networkLocallyConnected(network string) bool {
 // Persists auto_exit so session restore re-picks nearest rather than a fixed egress id.
 // Switching A→B clears the current selection first (server rejects direct switch).
 // Requires the network to be connected so ranking uses overlay VPN probes.
+//
+// Waits for ExitOverlayProbeGrace after connect so latency samples are stable.
+// Without this, UI Auto / enforced auto right after tunnel setup ranks on
+// deferred or inflated RTTs and picks the wrong exit.
 func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network is required")
@@ -695,6 +707,7 @@ func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode,
 	if !networkLocallyConnected(network) {
 		return nil, ErrNetworkNotConnected
 	}
+	functions.WaitExitOverlayProbeGrace(network)
 	nodes, err := ListDeviceExitNodes(network, token)
 	if err != nil {
 		return nil, err

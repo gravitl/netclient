@@ -170,7 +170,9 @@ func GetPeerInfo() (models.HostPeerInfo, error) {
 	}
 	peerInfoCacheMu.RUnlock()
 
-	RefreshPeerInfoCache()
+	if err := RefreshPeerInfoCache(); err != nil {
+		return models.HostPeerInfo{}, fmt.Errorf("failed to fetch peer info: %w", err)
+	}
 
 	peerInfoCacheMu.RLock()
 	defer peerInfoCacheMu.RUnlock()
@@ -182,19 +184,20 @@ func GetPeerInfo() (models.HostPeerInfo, error) {
 
 // RefreshPeerInfoCache fetches fresh peer info from the server and updates the cache.
 // Uses a dedicated mutex to serialize callers and enforce a minimum interval between attempts.
-func RefreshPeerInfoCache() {
+func RefreshPeerInfoCache() error {
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
 
 	info, err := fetchPeerInfo()
 	if err != nil {
 		slog.Warn("failed to refresh peer info cache", "error", err)
-		return
+		return err
 	}
 	peerInfoCacheMu.Lock()
 	peerInfoCache = info
 	peerInfoCacheMu.Unlock()
 	slog.Debug("peer info cache refreshed")
+	return nil
 }
 
 func fetchPeerInfo() (models.HostPeerInfo, error) {

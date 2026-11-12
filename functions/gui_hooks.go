@@ -31,9 +31,15 @@ var GUI struct {
 	ReassertDesired       func()
 	WantsIGW              func() bool
 	WantsUnadvertisedExit func(pull models.HostPull, pullErr error) bool
-	RememberWantIGW       func()
-	ReconcileExit         func()
-	ExitDecision          func() string
+	// HoldIGWTeardown skips ChangeDefaultGw=false RestoreInternetGw while a
+	// desktop exit select or session restore still wants an exit. Nil on headless.
+	HoldIGWTeardown func() bool
+	// NotePendingExitReconcile marks that teardown was deferred so release
+	// callbacks can re-drive selection or finish LAN restore. Nil on headless.
+	NotePendingExitReconcile func()
+	RememberWantIGW          func()
+	ReconcileExit            func()
+	ExitDecision             func() string
 	ApplyStartup          func()
 	RefreshHostPull       func(prev models.HostPull, prevErr error) (models.HostPull, error)
 	ForgetNetwork         func(network string)
@@ -78,6 +84,19 @@ func callDesktopWantsIGW() bool {
 		return false
 	}
 	return GUI.WantsIGW()
+}
+
+func callHoldIGWTeardown() bool {
+	if GUI.HoldIGWTeardown == nil {
+		return false
+	}
+	return GUI.HoldIGWTeardown()
+}
+
+func callNotePendingExitReconcile() {
+	if GUI.NotePendingExitReconcile != nil {
+		GUI.NotePendingExitReconcile()
+	}
 }
 
 func callRememberDesiredWantIGW() {
@@ -126,8 +145,10 @@ func DesktopSessionActive() bool {
 }
 
 // shouldApplyExitAfterReconnect installs a server-advertised exit. Otherwise
-// the desktop hook decides whether the user still wants one. A nil hook does
-// not install and does not re-select.
+// the desktop hook may re-drive selection when desire still wants an exit.
+// A nil hook does not install and does not re-select. The hook must not return
+// true when ChangeDefaultGw is false: forceApplyInternetGw cannot install then
+// and would only burn the apply retry budget.
 func shouldApplyExitAfterReconnect(pull models.HostPull, pullErr error) bool {
 	if pullErr == nil && pull.ChangeDefaultGw {
 		return true

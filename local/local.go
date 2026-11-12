@@ -7,7 +7,6 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 )
@@ -18,9 +17,6 @@ import (
 // OwnerUsername is set only after registration, so an unregistered startup
 // must not enable forwarding either).
 func SetIPForwarding() error {
-	if !config.IsRegistered() || config.IsUserOwnedDevice() {
-		return nil
-	}
 	os := runtime.GOOS
 	var err error
 	switch os {

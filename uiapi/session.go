@@ -60,21 +60,77 @@ const (
 	RestorePhaseRoutes   = "routes"
 )
 
-var sessionRestorePhase atomic.Value // string
+var (
+	restorePhaseMu        sync.Mutex
+	sessionRestorePhase   string
+	restorePhaseStartedNS int64 // UnixNano when Networks/Exit/Routes began; 0 when idle
+)
+
+// OnRestoreIdle is set by the desktop package. Invoked when the restore phase
+// transitions from a non-empty value to idle so deferred exit reconcile/teardown
+// can run after the hold window.
+var OnRestoreIdle func()
+
+func restorePhaseHoldsIGW(phase string) bool {
+	switch phase {
+	case RestorePhaseNetworks, RestorePhaseExit, RestorePhaseRoutes:
+		return true
+	default:
+		return false
+	}
+}
 
 // SetRestorePhase records what session restore is doing for the GUI.
 func SetRestorePhase(phase string) {
-	sessionRestorePhase.Store(phase)
+	restorePhaseMu.Lock()
+	prev := sessionRestorePhase
+	if restorePhaseHoldsIGW(phase) {
+		// Refresh the clock only when entering a hold phase from outside one
+		// (Networks→Exit→Routes keep the original start).
+		if !restorePhaseHoldsIGW(prev) {
+			restorePhaseStartedNS = time.Now().UnixNano()
+		}
+	} else {
+		restorePhaseStartedNS = 0
+	}
+	sessionRestorePhase = phase
+	fireIdle := prev != "" && phase == "" && OnRestoreIdle != nil
+	idle := OnRestoreIdle
+	restorePhaseMu.Unlock()
+	// Callback outside the lock — desktop may re-enter restore helpers.
+	if fireIdle {
+		idle()
+	}
 }
 
 // GetRestorePhase returns the current restore phase, or empty when idle.
 func GetRestorePhase() string {
-	if v := sessionRestorePhase.Load(); v != nil {
-		if s, ok := v.(string); ok {
-			return s
-		}
+	restorePhaseMu.Lock()
+	defer restorePhaseMu.Unlock()
+	return sessionRestorePhase
+}
+
+// RestorePhaseStartedAt returns when the current Networks/Exit/Routes hold began.
+// Zero means idle or Register-only.
+func RestorePhaseStartedAt() time.Time {
+	restorePhaseMu.Lock()
+	ns := restorePhaseStartedNS
+	restorePhaseMu.Unlock()
+	if ns == 0 {
+		return time.Time{}
 	}
-	return ""
+	return time.Unix(0, ns)
+}
+
+// ForceRestorePhaseStartedAtForTest overrides the restore hold clock in tests.
+func ForceRestorePhaseStartedAtForTest(t time.Time) {
+	restorePhaseMu.Lock()
+	defer restorePhaseMu.Unlock()
+	if t.IsZero() {
+		restorePhaseStartedNS = 0
+		return
+	}
+	restorePhaseStartedNS = t.UnixNano()
 }
 
 // SessionAuthToken returns the active desktop session JWT, or empty if none.

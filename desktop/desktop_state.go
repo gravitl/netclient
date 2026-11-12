@@ -254,7 +254,18 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	exitNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(username, tenantID))
 	token = uiapi.SessionAuthToken()
 	exitNetwork, autoExit := exitRestoreUsesAuto(username, tenantID, exitNetwork, token)
-	wantIGW := config.GetDesiredWantIGW(username, tenantID) || egressID != "" || autoExit
+	wantIGW := desiredWantsIGW(username, tenantID) || autoExit
+	// Normalize want_igw before iface/MQTT apply so early paths do not skip with
+	// want_igw=false while an egress id or auto_exit is already stored.
+	if wantIGW && !config.GetDesiredWantIGW(username, tenantID) {
+		if autoExit {
+			_ = config.SetDesiredAutoExitNode(username, tenantID, exitNetwork, egressID)
+		} else if egressID != "" {
+			_ = config.SetDesiredExitNode(username, tenantID, exitNetwork, egressID)
+		} else {
+			_ = config.SetDesiredWantIGW(username, tenantID, true)
+		}
+	}
 	if !changed && !wantIGW {
 		return nil
 	}

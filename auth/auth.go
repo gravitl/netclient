@@ -37,6 +37,12 @@ var (
 	// logged out. Wired from the desktop package to avoid an import cycle.
 	UserTokenProvider func() string
 
+	// EnsureUserSessionLoaded loads the persisted Desktop session into memory.
+	// CLI commands run in a separate process from the daemon and must call this
+	// before reading UserTokenProvider, or peer_info/ping auth fails with
+	// ErrUserSessionRequired despite an active Desktop login on disk.
+	EnsureUserSessionLoaded func()
+
 	// pendingUserToken covers the login window before uiapi.setSession runs:
 	// RegisterSession pulls while the request JWT is not yet in session state.
 	pendingUserMu    sync.RWMutex
@@ -135,6 +141,9 @@ func userSessionToken() string {
 	pendingUserMu.RUnlock()
 	if pending != "" {
 		return pending
+	}
+	if EnsureUserSessionLoaded != nil {
+		EnsureUserSessionLoaded()
 	}
 	if UserTokenProvider == nil {
 		return ""
