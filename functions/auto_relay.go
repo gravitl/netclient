@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gravitl/netclient/auth"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
@@ -381,6 +382,11 @@ func runAutoRelayPeerScan(ctx context.Context) {
 			if !ok {
 				continue
 			}
+
+			if localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey); ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
+				networking.SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
+			}
+
 			if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
 				slog.Debug("throttle cache hit", "address", peer.Address)
 				continue
