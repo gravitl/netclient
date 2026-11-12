@@ -185,16 +185,14 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
 		}
 	}
-	if server.IsPro {
-		if autoRelayConnTicker != nil {
-			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
-		}
-		if networking.PeerLocalEndpointConnTicker != nil {
-			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
-		}
-		if wireguard.HaEgressTicker != nil {
-			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
-		}
+	if autoRelayConnTicker != nil {
+		autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+	}
+	if networking.PeerLocalEndpointConnTicker != nil {
+		networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
+	}
+	if wireguard.HaEgressTicker != nil {
+		wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -410,13 +408,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
-	if server.IsPro {
-		go func() {
-			networking.RefreshPeerInfoCache()
-			time.Sleep(time.Second * 6)
-			callPublishMetrics(true)
-		}()
-	}
+	go func() {
+		networking.RefreshPeerInfoCache()
+		time.Sleep(time.Second * 6)
+		callPublishMetrics(true)
+	}()
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -1100,9 +1096,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
-	if server.IsPro {
-		go networking.RefreshPeerInfoCache()
-	}
+	go networking.RefreshPeerInfoCache()
 
 	// Pull may report that the WireGuard iface needs a rebuild (address/peer
 	// drift). Host-update MQTT paths apply this after mqFallbackPull via the
