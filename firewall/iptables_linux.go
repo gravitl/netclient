@@ -533,6 +533,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 	}
 	egressGwRoutes := []ruleInfo{}
 	fwdJumpDedupe := make(map[string]struct{})
+	vnatChainsReset := make(map[string]struct{})
 	for _, egressGwRange := range egressInfo.EgressGWCfg.RangesWithMetric {
 		// Check if virtual NAT should be applied first (before checking Nat flag)
 		// This ensures VNAT is applied when switching from direct to virtual mode
@@ -543,7 +544,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				logger.Log(0, "failed to get interface name for virtual NAT: ", egressRangeIface, err.Error())
 			} else {
 				wgInterface := ncutils.GetInterfaceName()
-				vnatRules, err := i.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface)
+				vnatRules, err := i.applyVirtualNATRules(egressInfo.EgressID, vnatInfo, egressRangeIface, wgInterface, vnatChainsReset)
 				if err != nil {
 					logger.Log(1, fmt.Sprintf("failed to apply virtual NAT rules: %v", err))
 				} else {
@@ -1786,8 +1787,9 @@ func (i *iptablesManager) checkNETMAPSupport(ipv4 bool) bool {
 	return false
 }
 
-// applyVirtualNATRules applies virtual NAT rules for an egress gateway using iptables
-func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string) ([]ruleInfo, error) {
+// applyVirtualNATRules applies virtual NAT rules for one range of an egress gateway using iptables.
+// chainsReset records, per address family, that this insert already reset the egress VNAT chains.
+func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtualNatInfo, egressRangeIface string, wgInterface string, chainsReset map[string]struct{}) ([]ruleInfo, error) {
 	var rules []ruleInfo
 
 	// Per-egress FORWARD ACL (LAN in -> Netmaker out) is added from InsertEgressRoutingRules.
@@ -1809,15 +1811,17 @@ func (i *iptablesManager) applyVirtualNATRules(egressID string, vnatInfo *virtua
 	// Calculate real range window (same prefix length as virtual range)
 	realWindow := getRealRangeWindow(vnatInfo.realRange, vnatInfo.virtualRange)
 
-	// Delete existing chains if they exist (for idempotency)
-	i.deleteVNATChains(client, preroutingChain, postroutingChain, isIPv4)
-
-	// Create per-egress NAT chains (filter FORWARD jump is separate; see InsertEgressRoutingRules).
-	if err := createChain(client, defaultNatTable, preroutingChain); err != nil {
-		return nil, fmt.Errorf("failed to create prerouting chain: %w", err)
-	}
-	if err := createChain(client, defaultNatTable, postroutingChain); err != nil {
-		return nil, fmt.Errorf("failed to create postrouting chain: %w", err)
+	// All VNAT ranges of one egress share these chains: create or flush them on the first
+	// range of this insert only, so each later range appends next to the earlier ones.
+	family := iptablesProtoToString(client.Proto())
+	if _, done := chainsReset[family]; !done {
+		if err := client.ClearChain(defaultNatTable, preroutingChain); err != nil {
+			return nil, fmt.Errorf("failed to reset prerouting chain: %w", err)
+		}
+		if err := client.ClearChain(defaultNatTable, postroutingChain); err != nil {
+			return nil, fmt.Errorf("failed to reset postrouting chain: %w", err)
+		}
+		chainsReset[family] = struct{}{}
 	}
 
 	if isIPv4 {
