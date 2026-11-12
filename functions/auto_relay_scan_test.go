@@ -80,3 +80,38 @@ func TestShouldRunScheduledScan_afterGraceGate(t *testing.T) {
 		t.Fatal("expected scheduled scan gate to fire after grace")
 	}
 }
+
+func TestIsAutoRelayPairWriter(t *testing.T) {
+	low, high := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	if !isAutoRelayPairWriter(low, high) {
+		t.Fatal("lower ID should be writer")
+	}
+	if isAutoRelayPairWriter(high, low) {
+		t.Fatal("higher ID should not be writer")
+	}
+	if !isAutoRelayPairWriter(low, low) {
+		t.Fatal("equal IDs should allow a single writer")
+	}
+}
+
+func TestPeerSignalCooldownSurvivesWithoutClear(t *testing.T) {
+	hostID := "cooldown-host"
+	signalThrottleCache.Delete(hostID)
+	t.Cleanup(func() { signalThrottleCache.Delete(hostID) })
+
+	if peerSignalOnCooldown(hostID) {
+		t.Fatal("expected no cooldown before mark")
+	}
+	markPeerSignalCooldown(hostID)
+	if !peerSignalOnCooldown(hostID) {
+		t.Fatal("expected cooldown after mark")
+	}
+	// Survives without an explicit Delete (reply path used to clear).
+	if !peerSignalOnCooldown(hostID) {
+		t.Fatal("cooldown should still be active")
+	}
+	signalThrottleCache.Delete(hostID)
+	if peerSignalOnCooldown(hostID) {
+		t.Fatal("expected cooldown cleared after unrelay-style Delete")
+	}
+}

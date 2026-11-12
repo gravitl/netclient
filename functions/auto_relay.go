@@ -28,6 +28,10 @@ const (
 	// autoRelayHandshakeGrace lets WireGuard attempt direct handshakes after
 	// peers are applied before we signal for auto-relay.
 	autoRelayHandshakeGrace = 5 * time.Second
+	// autoRelaySignalCooldown keeps us from re-signaling the same host after a
+	// successful ConnNegotiation send. Unlike the old attempt counter, replies
+	// do not clear this — only expiry or an explicit unrelay does.
+	autoRelaySignalCooldown = 90 * time.Second
 )
 
 var (
@@ -143,6 +147,26 @@ func processPeerSignal(signal models.Signal) {
 
 }
 
+// isAutoRelayPairWriter matches server proLogic.IsAutoRelayPairWriter: only the
+// lexicographically lower node ID persists the pair so dual POSTs do not double-write.
+func isAutoRelayPairWriter(nodeID, peerID string) bool {
+	return nodeID <= peerID
+}
+
+func peerSignalOnCooldown(hostID string) bool {
+	if v, ok := signalThrottleCache.Load(hostID); ok {
+		until, ok := v.(time.Time)
+		if ok && time.Now().Before(until) {
+			return true
+		}
+	}
+	return false
+}
+
+func markPeerSignalCooldown(hostID string) {
+	signalThrottleCache.Store(hostID, time.Now().Add(autoRelaySignalCooldown))
+}
+
 func handlePeerRelaySignal(signal models.Signal) error {
 	slog.Debug("received signal from peer", "pubkey", signal.FromHostPubKey)
 	server := config.GetServer(signal.Server)
@@ -167,7 +191,7 @@ func handlePeerRelaySignal(signal models.Signal) error {
 		}
 	}
 	if !signal.Reply {
-		// signal back
+		// signal back — do not clear cooldown on reply; that reopened signaling storms
 		s := models.Signal{
 			Server:               signal.Server,
 			FromHostID:           signal.ToHostID,
@@ -185,11 +209,19 @@ func handlePeerRelaySignal(signal models.Signal) error {
 		err := SignalPeer(s)
 		if err != nil {
 			slog.Warn("failed to signal peer", "error", err.Error())
-		} else {
-			signalThrottleCache.Delete(signal.FromHostID)
 		}
-	} else {
-		signalThrottleCache.Delete(signal.FromHostID)
+	}
+
+	curr := getCurrNode(signal.ToNodeID)
+	if curr.ID.String() != "" {
+		if _, alreadyRelayed := curr.AutoRelayedPeers[signal.FromNodeID]; alreadyRelayed {
+			slog.Debug("skipping autoRelayME; already relayed", "peerNodeID", signal.FromNodeID)
+			return nil
+		}
+	}
+	if !isAutoRelayPairWriter(signal.ToNodeID, signal.FromNodeID) {
+		slog.Debug("skipping autoRelayME; not pair writer", "nodeID", signal.ToNodeID, "peerNodeID", signal.FromNodeID)
+		return nil
 	}
 
 	// compare my node autoRelayNodeMetrics with signal.AutoRelayNodeMetrics and choose closest to both of them on average and set nearest node
@@ -377,12 +409,17 @@ func runAutoRelayPeerScan(ctx context.Context) {
 			if peer.IsExtClient {
 				continue
 			}
+			if hasCurrNode {
+				if _, alreadyRelayed := currNode.AutoRelayedPeers[peer.ID]; alreadyRelayed {
+					continue
+				}
+			}
 			devicePeer, ok := devicePeerMap[pubKey]
 			if !ok {
 				continue
 			}
-			if cnt, ok := signalThrottleCache.Load(peer.HostID); ok && cnt.(int) > 3 {
-				slog.Debug("throttle cache hit", "address", peer.Address)
+			if peerSignalOnCooldown(peer.HostID) {
+				slog.Debug("signal cooldown active", "address", peer.Address)
 				continue
 			}
 			connected, err := networking.IsPeerConnected(devicePeer)
@@ -422,13 +459,7 @@ func runAutoRelayPeerScan(ctx context.Context) {
 				slog.Debug("failed to signal peer", "error", err.Error())
 				continue
 			}
-			if cnt, ok := signalThrottleCache.Load(peer.HostID); ok {
-				if cnt.(int) <= 3 {
-					signalThrottleCache.Store(peer.HostID, cnt.(int)+1)
-				}
-			} else {
-				signalThrottleCache.Store(peer.HostID, 1)
-			}
+			markPeerSignalCooldown(peer.HostID)
 		}
 	}
 }
