@@ -487,8 +487,6 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	networking.InitialiseIfaceMetricsServer(ctx, wg)
 	wg.Add(1)
 	go watchPeerConnections(ctx, wg)
-	wg.Add(1)
-	go networking.CheckPeerEndpoints(ctx, wg)
 	if server.IsPro {
 		wg.Add(1)
 		go wireguard.StartEgressHAFailOverThread(ctx, wg)
