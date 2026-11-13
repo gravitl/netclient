@@ -388,7 +388,14 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 }
 
 func SetRoutesFromCache() {
-	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+	// Prefer rebuilding from the models cache so route shape matches current
+	// GetNodes() (single-network linux entries omit IP/GwIP and are skipped once
+	// a second network is joined). Clear the iface-address cache first: after
+	// ApplyAddrs wiped OS routes, same computed addrs would no-op in SetEgressRoutes.
+	if routes := GetEgressRoutesFromCache(); len(routes) > 0 {
+		cache.EgressRouteCache = sync.Map{}
+		SetEgressRoutes(routes)
+	} else if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
 	//inetGW route — only when monitor thinks routes are missing (iface recreate

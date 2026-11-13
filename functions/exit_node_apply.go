@@ -181,6 +181,11 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 	} else if len(pull.Nodes) > 0 {
 		wireguard.RemoveEgressRoutes()
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	} else {
+		// Empty HostPull (connect/disconnect): Configure/ApplyAddrs already
+		// deleted OS egress routes. Reinstall from cache so network A's routes
+		// survive joining network B before the next MQTT peer update.
+		wireguard.SetRoutesFromCache()
 	}
 	if wantIGW || pull.ChangeDefaultGw {
 		done := logElapsed("exit route apply")
