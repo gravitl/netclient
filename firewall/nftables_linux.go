@@ -1719,33 +1719,8 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 		ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 		n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 		var nfRule *nftables.Rule
+		e := n.GetIpExpr(rule.SrcIP, rule.DstIP)
 		if rule.SrcIP.IP.To4() != nil {
-			e := []expr.Any{
-				// Match packets from source IP 100.59.157.252/32
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       12, // IPv4 Source IP offset
-					Len:          4,  // IPv4 address size
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     rule.SrcIP.IP.To4(), // IPv4 source address
-				},
-				// Match packets to destination IP 100.59.157.250/32
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       16, // IPv4 Destination IP offset
-					Len:          4,  // IPv4 address size
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     rule.DstIP.IP.To4(), // IPv4 destination address
-				},
-			}
 			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(rule.AllowedProtocol, true)...)
 			}
@@ -1756,40 +1731,7 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				&expr.Verdict{
 					Kind: expr.VerdictAccept, // ACCEPT verdict
 				})
-			nfRule = &nftables.Rule{
-				Table:    filterTable,
-				Chain:    &nftables.Chain{Name: aclInputRulesChain},
-				Exprs:    e,
-				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
-			}
-
 		} else {
-			e := []expr.Any{
-				// Match packets from source IP 2001:db8::1/128
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       8,  // IPv6 Source IP offset
-					Len:          16, // IPv6 address length
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     rule.SrcIP.IP.To16(), // IPv6 source address
-				},
-				// Match packets to destination IP 2001:db8::2/128
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       24, // IPv6 Destination IP offset
-					Len:          16, // IPv6 address length
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     rule.DstIP.IP.To16(), // IPv6 destination address
-				},
-			}
 			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(rule.AllowedProtocol, false)...)
 			}
@@ -1800,12 +1742,12 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 				&expr.Verdict{
 					Kind: expr.VerdictAccept, // ACCEPT verdict
 				})
-			nfRule = &nftables.Rule{
-				Table:    filterTable,
-				Chain:    &nftables.Chain{Name: aclInputRulesChain},
-				Exprs:    e,
-				UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
-			}
+		}
+		nfRule = &nftables.Rule{
+			Table:    filterTable,
+			Chain:    &nftables.Chain{Name: aclInputRulesChain},
+			Exprs:    e,
+			UserData: []byte(genRuleKey(ruleSpec...)), // Equivalent to the comment in iptables
 		}
 		n.conn.InsertRule(nfRule)
 		if err := n.conn.Flush(); err != nil {
