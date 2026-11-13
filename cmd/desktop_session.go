@@ -9,7 +9,8 @@ import (
 
 // refuseIfDesktopSession blocks CLI commands that change the device while
 // Netmaker Desktop is logged in. Headless installs have no session hooks, so
-// the CLI stays usable there. Read-only commands do not use this hook.
+// the CLI stays usable there. Read-only commands and uninstall do not use this
+// hook (uninstall must succeed from Desktop install.sh --uninstall).
 func refuseIfDesktopSession(cmd *cobra.Command, _ []string) error {
 	if !functions.DesktopSessionActive() {
 		return nil

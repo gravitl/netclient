@@ -10,12 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// uninstallCmd represents the uninstall command
+// uninstallCmd represents the uninstall command.
+// Not gated by refuseIfDesktopSession: Desktop install.sh --uninstall (and
+// removing the app) must be able to tear down netclient while a UI session is
+// still loaded.
 var uninstallCmd = &cobra.Command{
-	Use:     "uninstall",
-	Short:   "uninstall netclient",
-	Long:    `uninstall netclient and all files:`,
-	PreRunE: refuseIfDesktopSession,
+	Use:   "uninstall",
+	Short: "uninstall netclient",
+	Long:  `uninstall netclient and all files:`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("\nremoving netclient binary and supporting files")
