@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	RouteTableName    = 111
-	EgressRouteMetric = 256
+	RouteTableName = 111
 )
 
 // useKernelWireGuard prefers kernel WG unless TCP uplink needs userspace conn.Bind.
@@ -207,18 +206,19 @@ func RemoveRoutes(addrs []ifaceAddress) {
 		return
 	}
 
+	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
+		src, gw, metric, ok := linuxEgressRouteParams(addr, multi)
+		if !ok {
 			continue
 		}
-		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
+		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s ->%s", src.String(), addr.Network.String(), gw.String()))
 		if err := netlink.RouteDel(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
-			Gw:        addr.GwIP,
-			Src:       addr.IP,
+			Gw:        gw,
+			Src:       src,
 			Dst:       &addr.Network,
-			Priority:  int(addr.Metric),
+			Priority:  metric,
 		}); err != nil {
 			slog.Warn("error removing route", "error", err.Error())
 		}
@@ -234,20 +234,17 @@ func SetRoutes(addrs []ifaceAddress) error {
 		return err
 	}
 
+	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
+		src, gw, metric, ok := linuxEgressRouteParams(addr, multi)
+		if !ok {
 			continue
 		}
-		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-		metric := EgressRouteMetric
-		if addr.Metric > 0 && addr.Metric < 999 {
-			metric = int(addr.Metric)
-		}
+		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", src.String(), addr.Network.String(), gw.String()))
 		if err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
-			Gw:        addr.GwIP,
-			Src:       addr.IP,
+			Gw:        gw,
+			Src:       src,
 			Dst:       &addr.Network,
 			Priority:  metric,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
@@ -256,6 +253,18 @@ func SetRoutes(addrs []ifaceAddress) error {
 		addSpecificRouteToIGWTable(l, addr, metric)
 	}
 	return nil
+}
+
+// linuxEgressRouteParams returns Src/Gw/metric for a netlink egress route.
+// Single-net: Src and Gw may be nil (on-link). Multi-net: both required.
+func linuxEgressRouteParams(addr ifaceAddress, multi bool) (src, gw net.IP, metric int, ok bool) {
+	if addr.Network.IP == nil || addr.Network.String() == IPv4Network || addr.Network.String() == IPv6Network {
+		return nil, nil, 0, false
+	}
+	if multi && (addr.IP == nil || addr.GwIP == nil) {
+		return nil, nil, 0, false
+	}
+	return addr.IP, addr.GwIP, int(egressMetric(addr.Metric)), true
 }
 
 // addSpecificRouteToIGWTable installs a more-specific egress CIDR in table 111 so

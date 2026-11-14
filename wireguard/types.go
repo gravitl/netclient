@@ -3,7 +3,6 @@ package wireguard
 import (
 	"fmt"
 	"net"
-	"runtime"
 	"sort"
 	"sync"
 
@@ -192,6 +191,10 @@ func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	return peers
 }
 
+// EgressRouteMetric is the default OS route metric for egress CIDRs when the
+// server does not supply one (matches historical Linux behavior).
+const EgressRouteMetric = 256
+
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
 	GwIP     net.IP
@@ -199,6 +202,14 @@ type ifaceAddress struct {
 	Network  net.IPNet
 	AddRoute bool
 	Metric   uint32
+}
+
+// egressMetric returns a usable route metric (1–998 from server, else default).
+func egressMetric(m uint32) uint32 {
+	if m > 0 && m < 999 {
+		return m
+	}
+	return EgressRouteMetric
 }
 
 // Close closes a netclient interface
@@ -285,89 +296,7 @@ func filterConflictingRoutes(addrs []ifaceAddress) []ifaceAddress {
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
-	addrs := []ifaceAddress{}
-	for _, egressRoute := range egressRoutes {
-		for _, egressRange := range egressRoute.EgressRangesWithMetric {
-			egressRangeIPNet := config.ToIPNet(egressRange.Network)
-			if egressRange.Nat && egressRange.Mode == schema.VirtualNAT && egressRange.VirtualNetwork != "" {
-				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNetwork)
-			}
-			if egressRangeIPNet.IP != nil {
-				if len(config.GetNodes()) == 1 {
-					if runtime.GOOS == "linux" {
-						addrs = append(addrs, ifaceAddress{
-							Network: egressRangeIPNet,
-							Metric:  egressRange.RouteMetric,
-						})
-					} else {
-						if egressRoute.EgressGwAddr.IP != nil {
-							addrs = append(addrs, ifaceAddress{
-								Network: egressRangeIPNet,
-								GwIP:    egressRoute.EgressGwAddr.IP,
-								Metric:  egressRange.RouteMetric,
-							})
-						}
-						if egressRoute.EgressGwAddr6.IP != nil {
-							addrs = append(addrs, ifaceAddress{
-								Network: egressRangeIPNet,
-								GwIP:    egressRoute.EgressGwAddr6.IP,
-								Metric:  egressRange.RouteMetric,
-							})
-						}
-					}
-
-					continue
-				}
-				if egressRangeIPNet.IP.To4() != nil && egressRoute.NodeAddr.IP != nil {
-					addrs = append(addrs, ifaceAddress{
-						GwIP:    egressRoute.EgressGwAddr.IP,
-						IP:      egressRoute.NodeAddr.IP,
-						Network: egressRangeIPNet,
-						Metric:  egressRange.RouteMetric,
-					})
-				}
-				if egressRangeIPNet.IP.To4() == nil && egressRoute.NodeAddr6.IP != nil {
-					addrs = append(addrs, ifaceAddress{
-						GwIP:    egressRoute.EgressGwAddr6.IP,
-						IP:      egressRoute.NodeAddr6.IP,
-						Network: egressRangeIPNet,
-						Metric:  egressRange.RouteMetric,
-					})
-				}
-
-			}
-
-		}
-
-	}
-
-	// Ensure unique metrics for routes with the same network
-	networkGroups := make(map[string][]int) // map network -> indices in addrs slice
-	for i, addr := range addrs {
-		networkKey := addr.Network.String()
-		networkGroups[networkKey] = append(networkGroups[networkKey], i)
-	}
-
-	for _, indices := range networkGroups {
-		if len(indices) <= 1 {
-			continue
-		}
-		// Sort indices by metric
-		sort.Slice(indices, func(i, j int) bool {
-			return addrs[indices[i]].Metric < addrs[indices[j]].Metric
-		})
-
-		// Ensure unique metrics by incrementing duplicates
-		for i := 1; i < len(indices); i++ {
-			prevIdx := indices[i-1]
-			currIdx := indices[i]
-			if addrs[currIdx].Metric <= addrs[prevIdx].Metric {
-				addrs[currIdx].Metric = addrs[prevIdx].Metric + 1
-			}
-		}
-	}
-
-	addrs = filterConflictingRoutes(addrs)
+	addrs := filterConflictingRoutes(buildEgressIfaceAddresses(egressRoutes, len(config.GetNodes())))
 
 	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		isSame := checkEgressRoutes(addrs, addrs1.([]ifaceAddress))
@@ -385,6 +314,69 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
 		}
 	}
+}
+
+// buildEgressIfaceAddresses maps server egress routes into iface addresses.
+// nodeCount==1 → on-link (Network+Metric only). nodeCount>1 → Src=NodeAddr, Gw=EgressGwAddr.
+func buildEgressIfaceAddresses(egressRoutes []models.EgressNetworkRoutes, nodeCount int) []ifaceAddress {
+	addrs := []ifaceAddress{}
+	for _, egressRoute := range egressRoutes {
+		for _, egressRange := range egressRoute.EgressRangesWithMetric {
+			egressRangeIPNet := config.ToIPNet(egressRange.Network)
+			if egressRange.Nat && egressRange.Mode == schema.VirtualNAT && egressRange.VirtualNetwork != "" {
+				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNetwork)
+			}
+			if egressRangeIPNet.IP == nil {
+				continue
+			}
+			if nodeCount == 1 {
+				addrs = append(addrs, ifaceAddress{
+					Network: egressRangeIPNet,
+					Metric:  egressRange.RouteMetric,
+				})
+				continue
+			}
+			if egressRangeIPNet.IP.To4() != nil && egressRoute.NodeAddr.IP != nil {
+				addrs = append(addrs, ifaceAddress{
+					GwIP:    egressRoute.EgressGwAddr.IP,
+					IP:      egressRoute.NodeAddr.IP,
+					Network: egressRangeIPNet,
+					Metric:  egressRange.RouteMetric,
+				})
+			}
+			if egressRangeIPNet.IP.To4() == nil && egressRoute.NodeAddr6.IP != nil {
+				addrs = append(addrs, ifaceAddress{
+					GwIP:    egressRoute.EgressGwAddr6.IP,
+					IP:      egressRoute.NodeAddr6.IP,
+					Network: egressRangeIPNet,
+					Metric:  egressRange.RouteMetric,
+				})
+			}
+		}
+	}
+
+	// Ensure unique metrics for routes with the same network
+	networkGroups := make(map[string][]int)
+	for i, addr := range addrs {
+		networkKey := addr.Network.String()
+		networkGroups[networkKey] = append(networkGroups[networkKey], i)
+	}
+	for _, indices := range networkGroups {
+		if len(indices) <= 1 {
+			continue
+		}
+		sort.Slice(indices, func(i, j int) bool {
+			return addrs[indices[i]].Metric < addrs[indices[j]].Metric
+		})
+		for i := 1; i < len(indices); i++ {
+			prevIdx := indices[i-1]
+			currIdx := indices[i]
+			if addrs[currIdx].Metric <= addrs[prevIdx].Metric {
+				addrs[currIdx].Metric = addrs[prevIdx].Metric + 1
+			}
+		}
+	}
+	return addrs
 }
 
 func SetRoutesFromCache() {

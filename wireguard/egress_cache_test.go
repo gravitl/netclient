@@ -8,6 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEgressMetricDefault(t *testing.T) {
+	assert.Equal(t, uint32(EgressRouteMetric), egressMetric(0))
+	assert.Equal(t, uint32(100), egressMetric(100))
+	assert.Equal(t, uint32(EgressRouteMetric), egressMetric(999))
+}
+
 func TestGetEgressRoutesFromCache_roundTrip(t *testing.T) {
 	prev := GetEgressRoutesFromCache()
 	t.Cleanup(func() { SetEgressRoutesInCache(prev) })
