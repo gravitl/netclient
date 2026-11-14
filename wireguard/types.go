@@ -76,30 +76,30 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	return &netmaker
 }
 
-// EnsureNodeAddrs re-applies interface addresses when the live interface is
-// missing one belonging to a connected node, and reports whether it repaired
-// anything. NewNCIface only takes addresses from connected nodes, so a startup
-// where the node map is still empty (failed Pull) leaves the interface
-// unaddressed; nodes then arrive over MQ with nothing to re-configure the
-// interface. An unaddressed interface drops every packet while routes and DNS
-// still read as correctly configured, which is indistinguishable from a dead
-// exit node.
+// EnsureNodeAddrs re-applies interface addresses when the live set does not
+// match connected nodes (missing or stale). NewNCIface only takes addresses
+// from connected nodes, so a startup where the node map is still empty (failed
+// Pull) leaves the interface unaddressed; nodes then arrive over MQ with
+// nothing to re-configure the interface. An unaddressed interface drops every
+// packet while routes and DNS still read as correctly configured, which is
+// indistinguishable from a dead exit node. Stale addresses after disconnect
+// leave proto-kernel overlay routes (e.g. 100.x.0.0/24 scope link) behind.
 func EnsureNodeAddrs() bool {
 	nodes := config.GetNodes()
-	var want []net.IP
+	want := make([]net.IP, 0)
+	wantSet := make(map[string]struct{})
 	for _, node := range nodes {
 		if !node.Connected {
 			continue
 		}
 		if node.Address.IP != nil {
 			want = append(want, node.Address.IP)
+			wantSet[node.Address.IP.String()] = struct{}{}
 		}
 		if node.Address6.IP != nil {
 			want = append(want, node.Address6.IP)
+			wantSet[node.Address6.IP.String()] = struct{}{}
 		}
-	}
-	if len(want) == 0 {
-		return false
 	}
 	live, err := liveIfaceIPs()
 	if err != nil {
@@ -119,10 +119,16 @@ func EnsureNodeAddrs() bool {
 			missing = append(missing, ip.String())
 		}
 	}
-	if len(missing) == 0 {
+	var stale []string
+	for _, l := range live {
+		if _, ok := wantSet[l.String()]; !ok {
+			stale = append(stale, l.String())
+		}
+	}
+	if len(missing) == 0 && len(stale) == 0 {
 		return false
 	}
-	logger.Log(0, fmt.Sprintf("netmaker interface is missing node addresses %v; re-applying", missing))
+	logger.Log(0, fmt.Sprintf("netmaker interface address sync missing=%v stale=%v; re-applying", missing, stale))
 	if err := NewNCIface(config.Netclient(), nodes).Configure(); err != nil {
 		slog.Error("failed to re-apply netmaker interface addresses", "error", err)
 		return false
@@ -297,22 +303,15 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
 	addrs := filterConflictingRoutes(buildEgressIfaceAddresses(egressRoutes, len(config.GetNodes())))
+	key := config.Netclient().Host.ID.String()
 
-	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
-		isSame := checkEgressRoutes(addrs, addrs1.([]ifaceAddress))
-
-		if !isSame {
-			RemoveRoutes(addrs1.([]ifaceAddress))
-			err := SetRoutes(addrs)
-			if err == nil {
-				cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
-			}
-		}
-	} else {
-		err := SetRoutes(addrs)
-		if err == nil {
-			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
-		}
+	// Wipe then re-apply. Skip add/remove diffs so connect/disconnect and
+	// peer updates always converge to the desired egress set.
+	if prev, ok := cache.EgressRouteCache.Load(key); ok {
+		RemoveRoutes(prev.([]ifaceAddress))
+	}
+	if err := SetRoutes(addrs); err == nil {
+		cache.EgressRouteCache.Store(key, addrs)
 	}
 }
 
@@ -383,7 +382,7 @@ func SetRoutesFromCache() {
 	// Prefer rebuilding from the models cache so route shape matches current
 	// GetNodes() (single-network linux entries omit IP/GwIP and are skipped once
 	// a second network is joined). Clear the iface-address cache first: after
-	// ApplyAddrs wiped OS routes, same computed addrs would no-op in SetEgressRoutes.
+	// ApplyAddrs wiped OS routes, RemoveRoutes would only hit already-gone entries.
 	if routes := GetEgressRoutesFromCache(); len(routes) > 0 {
 		cache.EgressRouteCache = sync.Map{}
 		SetEgressRoutes(routes)
@@ -442,25 +441,6 @@ func RefreshInternetGwHostPins() {
 	}
 	SyncControlPlaneUnderlayPins()
 	pinInternetGwHostRoutes(igw.PublicKey.String())
-}
-
-// checkEgressRoutes - check if the addr are the same ones
-func checkEgressRoutes(addrs, addrs1 []ifaceAddress) bool {
-	if len(addrs) != len(addrs1) {
-		return false
-	}
-
-	sort.Slice(addrs, func(i, j int) bool { return addrs[i].IP.String() < addrs[j].IP.String() })
-	sort.Slice(addrs1, func(i, j int) bool { return addrs1[i].IP.String() < addrs1[j].IP.String() })
-
-	for i := range addrs {
-		if addrs[i].IP.String() != addrs1[i].IP.String() ||
-			addrs[i].Network.String() != addrs1[i].Network.String() || addrs[i].Metric != addrs1[i].Metric {
-			return false
-		}
-	}
-
-	return true
 }
 
 func GetInterface() *NCIface {

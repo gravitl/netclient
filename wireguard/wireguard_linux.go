@@ -155,6 +155,10 @@ func (l *netLink) Close() error {
 }
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
+// ApplyAddrs wipes all iface addresses and routes, then re-applies nc.Addresses.
+// No add/remove diff — connect/disconnect always ends in the desired set.
+// AddrDel first: proto-kernel on-link overlay routes drop with the address;
+// RouteDel-first used to abort on "no such process" and leave stale overlays.
 func (nc *NCIface) ApplyAddrs() error {
 	l, err := netlink.LinkByName(nc.Name)
 	if err != nil {
@@ -165,24 +169,20 @@ func (nc *NCIface) ApplyAddrs() error {
 	if err != nil {
 		return err
 	}
+
+	for i := range currentAddrs {
+		if err := netlink.AddrDel(l, &currentAddrs[i]); err != nil {
+			slog.Warn("failed to delete iface address", "addr", currentAddrs[i].IPNet.String(), "error", err)
+		}
+	}
+
 	routes, err := netlink.RouteList(l, 0)
 	if err != nil {
 		return err
 	}
-
 	for i := range routes {
-		err = netlink.RouteDel(&routes[i])
-		if err != nil {
-			return fmt.Errorf("failed to list routes %w", err)
-		}
-	}
-
-	if len(currentAddrs) > 0 {
-		for i := range currentAddrs {
-			err = netlink.AddrDel(l, &currentAddrs[i])
-			if err != nil {
-				return fmt.Errorf("failed to delete route %w", err)
-			}
+		if err := netlink.RouteDel(&routes[i]); err != nil && !strings.Contains(err.Error(), "no such process") {
+			slog.Warn("failed to delete iface route", "error", err)
 		}
 	}
 

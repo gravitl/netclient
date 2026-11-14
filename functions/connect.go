@@ -151,9 +151,11 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		if !restart {
 			return nil
 		}
-		// Peers/IGW/DNS already handled above. A full reconnect rebuild would
-		// also try want_igw exit re-apply against an empty pull (~10s).
-		logger.Log(0, "disconnect: last network; skipping connection-change rebuild")
+		// Peers/IGW/DNS already handled above. Skip full connection-change
+		// (would re-drive want_igw against an empty pull ~10s), but still flush
+		// iface addresses so proto-kernel overlay routes drop with the addr.
+		logger.Log(0, "disconnect: last network; flushing iface addrs, skipping full connection-change rebuild")
+		flushIfaceAfterDisconnect()
 		dns.SyncForNodeChange()
 		dns.ScheduleReconfigure()
 		return nil
@@ -166,6 +168,16 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		return nil
 	}
 	return ApplyConnectionChange("disconnect")
+}
+
+// flushIfaceAfterDisconnect removes addresses/routes for networks that are no
+// longer connected (including clearing the iface when none remain).
+func flushIfaceAfterDisconnect() {
+	wireguard.RemoveEgressRoutes()
+	wireguard.SetEgressRoutesInCache(nil)
+	if err := wireguard.NewNCIface(config.Netclient(), config.GetNodes()).Configure(); err != nil {
+		logger.Log(0, "disconnect: failed to flush netmaker iface addrs:", err.Error())
+	}
 }
 
 // ConnectWithoutRestart marks the network connected and publishes the update

@@ -54,45 +54,115 @@ func (nc *NCIface) Create() error {
 	return nil
 }
 
-// NCIface.ApplyAddrs - applies address for darwin userspace
+// NCIface.ApplyAddrs wipes all global-unicast addresses on the iface, then
+// re-applies the connected-node set (Linux wipe-then-reapply parity). No
+// add/remove diff — connect/disconnect always ends in desired state.
 func (nc *NCIface) ApplyAddrs() error {
-
-	for _, address := range nc.Addresses {
-		if address.IP != nil {
-			if address.IP.To4() != nil {
-
-				cmd := exec.Command("ifconfig", nc.Name, "inet", "add", address.IP.String(), address.IP.String())
-				if out, err := cmd.CombinedOutput(); err != nil {
-					slog.Error("error adding address", "command", cmd.String(), "error", string(out))
+	if iface, err := net.InterfaceByName(nc.Name); err == nil {
+		if addrs, err := iface.Addrs(); err == nil {
+			for _, a := range addrs {
+				ipnet, ok := a.(*net.IPNet)
+				if !ok || ipnet.IP == nil || !ipnet.IP.IsGlobalUnicast() {
 					continue
 				}
-			} else {
-
-				cmd := exec.Command("ifconfig", nc.Name, "inet6", address.IP.String(), "prefixlen", "64", "alias")
-				if out, err := cmd.CombinedOutput(); err != nil {
-					slog.Error("error adding address", "command", cmd.String(), "error", string(out))
-					continue
-				}
-			}
-
-		}
-		if address.Network.IP.To4() != nil {
-			cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
-			if out, err := cmd.CombinedOutput(); err != nil {
-				slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
-				continue
-			}
-		} else {
-			cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
-			if out, err := cmd.CombinedOutput(); err != nil {
-				slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
-				continue
+				removeDarwinNodeAddr(nc.Name, ipnet.IP, networkRangeForNodeIP(ipnet.IP))
 			}
 		}
-
 	}
 
+	for _, address := range nc.Addresses {
+		addDarwinNodeAddr(nc.Name, address)
+	}
 	return nil
+}
+
+func networkRangeForNodeIP(ip net.IP) net.IPNet {
+	for _, node := range config.GetNodes() {
+		if node.Address.IP != nil && node.Address.IP.Equal(ip) {
+			return node.NetworkRange
+		}
+		if node.Address6.IP != nil && node.Address6.IP.Equal(ip) {
+			return node.NetworkRange6
+		}
+	}
+	return net.IPNet{}
+}
+
+func removeDarwinNodeAddr(iface string, ip net.IP, network net.IPNet) {
+	if ip == nil {
+		return
+	}
+	if ip.To4() != nil {
+		if network.IP != nil {
+			cmd := exec.Command("route", "delete", "-net", "-inet", network.String(), ip.String())
+			if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
+				slog.Warn("failed to delete overlay route", "command", cmd.String(), "error", string(out))
+			}
+		}
+		cmd := exec.Command("ifconfig", iface, "inet", ip.String(), "delete")
+		if out, err := cmd.CombinedOutput(); err != nil && !darwinAddrGone(out) {
+			slog.Warn("failed to delete iface address", "command", cmd.String(), "error", string(out))
+		}
+		return
+	}
+	if network.IP != nil {
+		cmd := exec.Command("route", "delete", "-net", "-inet6", network.String(), ip.String())
+		if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
+			slog.Warn("failed to delete overlay route", "command", cmd.String(), "error", string(out))
+		}
+	}
+	cmd := exec.Command("ifconfig", iface, "inet6", ip.String(), "-alias")
+	if out, err := cmd.CombinedOutput(); err != nil && !darwinAddrGone(out) {
+		slog.Warn("failed to delete iface address", "command", cmd.String(), "error", string(out))
+	}
+}
+
+func addDarwinNodeAddr(iface string, address ifaceAddress) {
+	if address.IP == nil {
+		return
+	}
+	if address.IP.To4() != nil {
+		cmd := exec.Command("ifconfig", iface, "inet", "add", address.IP.String(), address.IP.String())
+		if out, err := cmd.CombinedOutput(); err != nil && !darwinAddrExists(out) {
+			slog.Error("error adding address", "command", cmd.String(), "error", string(out))
+		}
+		if address.Network.IP != nil {
+			cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
+			if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
+				slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
+			}
+		}
+		return
+	}
+	cmd := exec.Command("ifconfig", iface, "inet6", address.IP.String(), "prefixlen", "64", "alias")
+	if out, err := cmd.CombinedOutput(); err != nil && !darwinAddrExists(out) {
+		slog.Error("error adding address", "command", cmd.String(), "error", string(out))
+	}
+	if address.Network.IP != nil {
+		cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
+		if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
+			slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
+		}
+	}
+}
+
+func darwinAddrExists(out []byte) bool {
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "file exists") || strings.Contains(s, "already exists")
+}
+
+func darwinAddrGone(out []byte) bool {
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "not found") ||
+		strings.Contains(s, "no such") ||
+		strings.Contains(s, "can't find")
+}
+
+func darwinRouteGone(out []byte) bool {
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "not in table") ||
+		strings.Contains(s, "no such") ||
+		strings.Contains(s, "not found")
 }
 
 // RemoveRoutes - remove routes to the interface
