@@ -67,6 +67,18 @@ func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
 	egressRoutes = egressRoutesInfo
 }
 
+// GetEgressRoutesFromCache returns the last server-provided egress route list.
+func GetEgressRoutesFromCache() []models.EgressNetworkRoutes {
+	egressRoutesCacheMutex.Lock()
+	defer egressRoutesCacheMutex.Unlock()
+	if len(egressRoutes) == 0 {
+		return nil
+	}
+	out := make([]models.EgressNetworkRoutes, len(egressRoutes))
+	copy(out, egressRoutes)
+	return out
+}
+
 func resetHAEgressCache() {
 	egressRoutesCacheMutex.Lock()
 	egressRoutes = []models.EgressNetworkRoutes{}

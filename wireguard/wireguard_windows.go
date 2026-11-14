@@ -163,59 +163,155 @@ func (nc *NCIface) ApplyAddrs() error {
 
 // RemoveRoutes - remove routes to the interface
 func RemoveRoutes(addrs []ifaceAddress) {
+	luid, err := netmakerRouteLUID()
+	if err != nil {
+		slog.Error("failed to get netmaker LUID for route removal", "error", err)
+		return
+	}
+	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
+		if (multi && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (multi && addr.GwIP == nil) {
 			continue
 		}
-		if addr.Network.IP.To4() != nil {
-			slog.Info("removing ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
-			cmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
-			_, err := ncutils.RunCmd(cmd, false)
-			if err != nil {
-				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
-			}
-		} else {
-			slog.Info("removing ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
-			cmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
-			_, err := ncutils.RunCmd(cmd, false)
-			if err != nil {
-				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
-			}
+		dest, nextHop, ok := windowsEgressRouteAddrs(addr, multi)
+		if !ok {
+			continue
+		}
+		slog.Info("removing route from interface",
+			"dst", addr.Network.String(), "nexthop", nextHop.String(), "src", addr.IP.String())
+		if err := luid.DeleteRoute(dest, nextHop); err != nil {
+			slog.Error("failed to remove egress route", "dst", addr.Network.String(), "error", err)
 		}
 	}
 }
 
-// SetRoutes - sets additional routes to the interface.
-// Routes are on-link: an overlay nexthop would sit in Probe state forever
-// because the WireGuard adapter never answers neighbour discovery.
+// SetRoutes sets egress CIDRs on the netmaker interface.
+//
+// Single-network: on-link (nexthop unspecified), same as Linux without Src/Gw.
+// Multi-network: via EgressGwAddr with a permanent neighbor entry so the route
+// does not sit in Probe forever. Windows then prefers a source address on the
+// nexthop's subnet (the owning NodeAddr) — Linux parity for Src+Gw.
 func SetRoutes(addrs []ifaceAddress) error {
+	luid, err := netmakerRouteLUID()
+	if err != nil {
+		slog.Error("failed to get netmaker LUID for routes", "error", err)
+		return err
+	}
+	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
+		if (multi && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network || (multi && addr.GwIP == nil) {
 			continue
 		}
-		if addr.Network.IP.To4() != nil {
-			slog.Info("adding ipv4 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
-			cmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
-			out, err := ncutils.RunCmd(cmd, false)
-			if err != nil && !strings.Contains(out, "already exists") {
-				slog.Error("failed to apply", "ipv4 egress range", addr.Network.String(), err.Error())
+		dest, nextHop, ok := windowsEgressRouteAddrs(addr, multi)
+		if !ok {
+			continue
+		}
+		metric := egressMetric(addr.Metric)
+		if multi {
+			if err := ensureOverlayNeighbor(addr.GwIP); err != nil {
+				slog.Warn("failed to seed overlay neighbor for egress gw",
+					"gw", addr.GwIP.String(), "error", err)
 			}
-		} else {
-			slog.Info("adding ipv6 route to interface", "route", fmt.Sprintf("%s -> %s", addr.IP.String(), addr.Network.String()))
-			cmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=%s metric=%d",
-				addr.Network.String(), ncutils.GetInterfaceName(), "active", addr.Metric)
-			out, err := ncutils.RunCmd(cmd, false)
-			if err != nil && !strings.Contains(out, "already exists") {
-				slog.Error("failed to apply", "ipv6 egress range", addr.Network.String(), err.Error())
-			}
+		}
+		slog.Info("adding route to interface",
+			"dst", addr.Network.String(), "nexthop", nextHop.String(),
+			"src", addr.IP.String(), "metric", metric)
+		if err := luid.AddRoute(dest, nextHop, metric); err != nil && !windowsRouteExists(err) {
+			slog.Error("failed to apply egress route", "dst", addr.Network.String(), "error", err)
 		}
 	}
 	return nil
+}
+
+func netmakerRouteLUID() (winipcfg.LUID, error) {
+	iface, err := net.InterfaceByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return 0, err
+	}
+	return winipcfg.LUIDFromIndex(uint32(iface.Index))
+}
+
+// windowsEgressRouteAddrs builds destination/nexthop for AddRoute/DeleteRoute.
+// Multi-net uses GwIP as nexthop (Linux Gw); single-net uses unspecified (on-link).
+func windowsEgressRouteAddrs(addr ifaceAddress, multi bool) (dest netip.Prefix, nextHop netip.Addr, ok bool) {
+	ones, bits := addr.Network.Mask.Size()
+	if bits == 0 {
+		return netip.Prefix{}, netip.Addr{}, false
+	}
+	ip, ok := netip.AddrFromSlice(addr.Network.IP)
+	if !ok {
+		return netip.Prefix{}, netip.Addr{}, false
+	}
+	ip = ip.Unmap()
+	dest = netip.PrefixFrom(ip, ones)
+	if !dest.IsValid() {
+		return netip.Prefix{}, netip.Addr{}, false
+	}
+	if multi && addr.GwIP != nil {
+		nextHop, ok = netip.AddrFromSlice(addr.GwIP)
+		if !ok {
+			return netip.Prefix{}, netip.Addr{}, false
+		}
+		return dest, nextHop.Unmap(), true
+	}
+	if addr.Network.IP.To4() != nil {
+		return dest, netip.IPv4Unspecified(), true
+	}
+	return dest, netip.IPv6Unspecified(), true
+}
+
+// ensureOverlayNeighbor installs a permanent neighbor for an overlay nexthop so
+// Windows does not leave multi-net egress routes in Probe (WG never answers ND).
+func ensureOverlayNeighbor(gw net.IP) error {
+	if gw == nil {
+		return errors.New("nil gateway")
+	}
+	iface, err := net.InterfaceByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return err
+	}
+	mac := iface.HardwareAddr
+	if len(mac) == 0 {
+		mac = net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	}
+	macStr := strings.ReplaceAll(mac.String(), ":", "-")
+	family := "ipv4"
+	if gw.To4() == nil {
+		family = "ipv6"
+	}
+	cmd := fmt.Sprintf("netsh interface %s add neighbors %q %s %s",
+		family, ncutils.GetInterfaceName(), gw.String(), macStr)
+	out, err := ncutils.RunCmd(cmd, false)
+	if err != nil && !windowsNeighborExists(out, err) {
+		// Already present under a different MAC — force update.
+		setCmd := fmt.Sprintf("netsh interface %s set neighbors %q %s %s",
+			family, ncutils.GetInterfaceName(), gw.String(), macStr)
+		out2, err2 := ncutils.RunCmd(setCmd, false)
+		if err2 != nil && !windowsNeighborExists(out2, err2) {
+			return fmt.Errorf("%v (%s)", err2, strings.TrimSpace(out2))
+		}
+	}
+	return nil
+}
+
+func windowsRouteExists(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, windows.ERROR_OBJECT_ALREADY_EXISTS) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "already exists") || strings.Contains(s, "exists")
+}
+
+func windowsNeighborExists(out string, err error) bool {
+	s := strings.ToLower(out + " " + errString(err))
+	return strings.Contains(s, "already exists") ||
+		strings.Contains(s, "object already exists") ||
+		strings.Contains(s, "element exists")
 }
 
 func getInterfaceInfo() (iList []string, err error) {

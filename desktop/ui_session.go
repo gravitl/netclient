@@ -145,10 +145,15 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	if IsRegisteredToServer(server) {
 		fmt.Println("session debug: pulling after session register/login", "server=", server)
 		if _, _, _, err := pullForSession(false, true, false); err != nil {
-			// Local servers.json can outlive the host row (reinstall, admin
-			// delete). Re-enroll once instead of failing login forever.
+			// Host row gone on server (reinstall / admin delete) while local
+			// enrollment remains. Re-register without wiping local config first —
+			// a failed register must not leave the device permanently unenrolled.
+			// 401 / expired JWT is a session problem: return to the UI for logout;
+			// do not clear enrollment or re-register.
 			if isMissingHostOnServer(err) && !needRegister {
-				slog.Warn("session pull: host missing on server, re-registering", "server", server, "error", err)
+				slog.Warn("session pull: host missing on server, re-registering",
+					"server", server, "error", err)
+				applySessionTenant(server, tenantID)
 				if regErr := registerDeviceOnServerForSession(server, authToken); regErr != nil {
 					return regErr
 				}
@@ -257,7 +262,9 @@ func leaveHostOnTenant(server, tenantID, userToken string) error {
 	auth.ApplyAPIHeaders(headers, userToken, host)
 	headers.Set(scope.HeaderTenantID, tenantID)
 
-	_, err := ncutils.SendRequest(http.MethodDelete, url, headers, nil)
+	// One short attempt. Logout / "save new server while old is dead" must not
+	// wait on SendRequest's ~minute retry budget against an unreachable API.
+	_, err := ncutils.SendRequestOnce(http.MethodDelete, url, headers, nil, 5*time.Second)
 	if err == nil {
 		return nil
 	}
@@ -337,61 +344,58 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
 
-	if unregisterHost {
-		unregisterHostBeforeLogout()
-	}
-
 	networks := make([]string, 0, len(config.GetNodes()))
 	for network, node := range config.GetNodes() {
 		if node.Connected {
 			networks = append(networks, network)
 		}
 	}
+
+	user, tenant := uiapi.SessionIdentity()
+	// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
+	// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
+	wantIGW := config.GetDesiredWantIGW(user, tenant)
+	autoExit := config.GetDesiredAutoExit(user, tenant)
+	egressID := config.GetDesiredEgressID(user, tenant)
+	exitNetwork := config.GetDesiredExitNetwork(user, tenant)
+	hasCurrGw := false
+	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+		wantIGW = true
+		hasCurrGw = true
+	}
+	token := uiapi.SessionAuthToken()
+
+	// Snapshot + restore LAN before any control-plane HTTP. Saving a new server
+	// while the old one is dead used to block logout on SendRequest retries
+	// (unregister / exit lookup) for ~15–60s.
 	if len(networks) > 0 {
-		user, tenant := uiapi.SessionIdentity()
-		// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
-		// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
-		wantIGW := config.GetDesiredWantIGW(user, tenant)
-		autoExit := config.GetDesiredAutoExit(user, tenant)
-		egressID := config.GetDesiredEgressID(user, tenant)
-		exitNetwork := config.GetDesiredExitNetwork(user, tenant)
-		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-			wantIGW = true
-		}
-		token := uiapi.SessionAuthToken()
-		if wantIGW && egressID == "" && !autoExit && token != "" {
-			func() {
-				defer functions.LogElapsed("logout exit selection lookup")()
-				for _, network := range networks {
-					sel, err := GetDeviceSelectedExitNode(network, token)
-					if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
-						continue
-					}
-					egressID = sel.EgressID
-					exitNetwork = network
-					break
-				}
-			}()
-		}
 		if egressID != "" || autoExit {
 			wantIGW = true
 			if exitNetwork == "" {
 				exitNetwork = networks[len(networks)-1]
 			}
 		}
+		// Local desire is enough for next-login restore — do not GET exit
+		// selection from a possibly-dead API during logout.
 		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, autoExit, egressID, exitNetwork); err != nil {
 			slog.Warn("failed to persist connected networks before logout", "error", err)
 		}
 		skipNextDesiredRestore()
-
-		// Bring LAN + OS DNS back immediately; do not wait for disconnect + daemon restart.
+	}
+	if len(networks) > 0 || hasCurrGw {
 		functions.RestoreInternetGwAndDNS()
+	}
+
+	if unregisterHost {
+		unregisterHostBeforeLogout()
+	}
+
+	if len(networks) > 0 {
 		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
 			done := functions.LogElapsed("logout server exit clear")
-			// One attempt. The shared client would otherwise retry a blackholed
-			// API for about a minute after local routes are already restored.
+			// One attempt — dead previous server must not hold Settings save.
 			_, err := putDeviceExitNodeTimeout(exitNetwork, token, "", false, 5*time.Second)
 			done()
 			if err != nil {
@@ -470,9 +474,10 @@ func unregisterHostBeforeLogout() {
 	}
 	functions.ArmIgnoreStaleDeleteHost(tenant, leftHostID)
 	if err := leaveHostOnTenantForSession(server, tenant, token); err != nil {
-		slog.Warn("session: unregister before logout failed",
+		// Dead / unreachable previous server is common when saving a new host in
+		// Settings — still demote local enrollment so the next login is not stuck.
+		slog.Warn("session: unregister before logout failed; clearing local enrollment",
 			"tenant", tenant, "error", err)
-		return
 	}
 	clearLocalEnrollmentAfterTenantLeave(server)
 }
