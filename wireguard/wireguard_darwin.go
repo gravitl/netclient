@@ -165,15 +165,14 @@ func darwinRouteGone(out []byte) bool {
 		strings.Contains(s, "not found")
 }
 
-// RemoveRoutes - remove routes to the interface
+// RemoveRoutes removes egress routes using the stored addr shape (IP nil →
+// interface route; IP set → via that nexthop). Does not skip on-link entries
+// when multiple networks are connected.
 func RemoveRoutes(addrs []ifaceAddress) {
 	var cmd *exec.Cmd
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
-			continue
-		}
-		if addr.Network.IP == nil {
+		if addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network {
 			continue
 		}
 		if addr.Network.IP.To4() != nil {

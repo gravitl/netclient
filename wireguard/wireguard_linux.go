@@ -198,7 +198,9 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
-// RemoveRoutes - Remove routes to the interface
+// RemoveRoutes removes egress routes using the stored addr shape (not current
+// node count), so single-net on-link entries are still deleted after a second
+// network is joined.
 func RemoveRoutes(addrs []ifaceAddress) {
 	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
 	if err != nil {
@@ -206,9 +208,8 @@ func RemoveRoutes(addrs []ifaceAddress) {
 		return
 	}
 
-	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		src, gw, metric, ok := linuxEgressRouteParams(addr, multi)
+		src, gw, metric, ok := linuxEgressRouteParamsForStored(addr)
 		if !ok {
 			continue
 		}
@@ -265,6 +266,20 @@ func linuxEgressRouteParams(addr ifaceAddress, multi bool) (src, gw net.IP, metr
 		return nil, nil, 0, false
 	}
 	return addr.IP, addr.GwIP, int(egressMetric(addr.Metric)), true
+}
+
+// linuxEgressRouteParamsForStored returns params for deleting a previously
+// installed route from cache. Uses the stored shape: both IP+Gw set → via-GW;
+// otherwise on-link (nil Src/Gw). Does not consult current node count.
+func linuxEgressRouteParamsForStored(addr ifaceAddress) (src, gw net.IP, metric int, ok bool) {
+	if addr.Network.IP == nil || addr.Network.String() == IPv4Network || addr.Network.String() == IPv6Network {
+		return nil, nil, 0, false
+	}
+	metric = int(egressMetric(addr.Metric))
+	if addr.IP != nil && addr.GwIP != nil {
+		return addr.IP, addr.GwIP, metric, true
+	}
+	return nil, nil, metric, true
 }
 
 // addSpecificRouteToIGWTable installs a more-specific egress CIDR in table 111 so

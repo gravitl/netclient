@@ -305,9 +305,12 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	addrs := filterConflictingRoutes(buildEgressIfaceAddresses(egressRoutes, len(config.GetNodes())))
 	key := config.Netclient().Host.ID.String()
 
-	// Wipe then re-apply. Skip add/remove diffs so connect/disconnect and
-	// peer updates always converge to the desired egress set.
+	// Skip remove+re-add when unchanged — peer updates must not churn OS
+	// routes (brief egress gap) if the set is identical.
 	if prev, ok := cache.EgressRouteCache.Load(key); ok {
+		if checkEgressRoutes(addrs, prev.([]ifaceAddress)) {
+			return
+		}
 		RemoveRoutes(prev.([]ifaceAddress))
 	}
 	if err := SetRoutes(addrs); err == nil {
@@ -382,7 +385,7 @@ func SetRoutesFromCache() {
 	// Prefer rebuilding from the models cache so route shape matches current
 	// GetNodes() (single-network linux entries omit IP/GwIP and are skipped once
 	// a second network is joined). Clear the iface-address cache first: after
-	// ApplyAddrs wiped OS routes, RemoveRoutes would only hit already-gone entries.
+	// ApplyAddrs wiped OS routes, same computed addrs would no-op in SetEgressRoutes.
 	if routes := GetEgressRoutesFromCache(); len(routes) > 0 {
 		cache.EgressRouteCache = sync.Map{}
 		SetEgressRoutes(routes)
@@ -441,6 +444,38 @@ func RefreshInternetGwHostPins() {
 	}
 	SyncControlPlaneUnderlayPins()
 	pinInternetGwHostRoutes(igw.PublicKey.String())
+}
+
+// checkEgressRoutes reports whether two egress iface-address sets are equal
+// (network, metric, src IP, gateway). Sorts copies so callers' slices are unchanged.
+func checkEgressRoutes(addrs, addrs1 []ifaceAddress) bool {
+	if len(addrs) != len(addrs1) {
+		return false
+	}
+	a := append([]ifaceAddress(nil), addrs...)
+	b := append([]ifaceAddress(nil), addrs1...)
+	sort.Slice(a, func(i, j int) bool { return egressAddrSortKey(a[i]) < egressAddrSortKey(a[j]) })
+	sort.Slice(b, func(i, j int) bool { return egressAddrSortKey(b[i]) < egressAddrSortKey(b[j]) })
+	for i := range a {
+		if a[i].Network.String() != b[i].Network.String() ||
+			a[i].Metric != b[i].Metric ||
+			!ipEqual(a[i].IP, b[i].IP) ||
+			!ipEqual(a[i].GwIP, b[i].GwIP) {
+			return false
+		}
+	}
+	return true
+}
+
+func egressAddrSortKey(a ifaceAddress) string {
+	return a.Network.String() + "|" + ipString(a.IP) + "|" + ipString(a.GwIP)
+}
+
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 func GetInterface() *NCIface {

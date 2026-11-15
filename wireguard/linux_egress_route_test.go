@@ -79,6 +79,25 @@ func TestBuildEgressIfaceAddresses_singleVsMulti(t *testing.T) {
 	assert.Equal(t, "10.120.0.0/20", multi[0].Network.String())
 }
 
+func TestLinuxEgressRouteParamsForStored_onLinkAndVia(t *testing.T) {
+	_, n, err := net.ParseCIDR("10.104.0.0/20")
+	require.NoError(t, err)
+
+	src, gw, _, ok := linuxEgressRouteParamsForStored(ifaceAddress{Network: *n, Metric: 256})
+	require.True(t, ok)
+	assert.Nil(t, src)
+	assert.Nil(t, gw)
+
+	node := net.ParseIP("100.95.7.3")
+	peer := net.ParseIP("100.121.42.5")
+	src, gw, _, ok = linuxEgressRouteParamsForStored(ifaceAddress{
+		Network: *n, Metric: 256, IP: node, GwIP: peer,
+	})
+	require.True(t, ok)
+	assert.True(t, src.Equal(node))
+	assert.True(t, gw.Equal(peer))
+}
+
 func TestBuildEgressIfaceAddresses_virtualNAT(t *testing.T) {
 	gw := net.ParseIP("100.76.188.1")
 	node := net.ParseIP("100.76.188.3")

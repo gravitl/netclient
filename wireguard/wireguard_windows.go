@@ -161,27 +161,33 @@ func (nc *NCIface) ApplyAddrs() error {
 	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
 }
 
-// RemoveRoutes - remove routes to the interface
+// RemoveRoutes removes egress routes using the stored addr shape (not current
+// node count). Always also deletes the on-link form for each destination so a
+// single→multi transition cannot leave On-link + via-GW duplicates.
 func RemoveRoutes(addrs []ifaceAddress) {
 	luid, err := netmakerRouteLUID()
 	if err != nil {
 		slog.Error("failed to get netmaker LUID for route removal", "error", err)
 		return
 	}
-	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		if (multi && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (multi && addr.GwIP == nil) {
+		if addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
+			addr.Network.String() == IPv6Network {
 			continue
 		}
-		dest, nextHop, ok := windowsEgressRouteAddrs(addr, multi)
+		dest, onLink, viaGW, ok := windowsEgressRemoveNexthops(addr)
 		if !ok {
 			continue
 		}
 		slog.Info("removing route from interface",
-			"dst", addr.Network.String(), "nexthop", nextHop.String(), "src", addr.IP.String())
-		if err := luid.DeleteRoute(dest, nextHop); err != nil {
-			slog.Error("failed to remove egress route", "dst", addr.Network.String(), "error", err)
+			"dst", addr.Network.String(), "onlink", onLink.String(), "via", viaGW.IsValid())
+		if err := luid.DeleteRoute(dest, onLink); err != nil && !windowsRouteGone(err) {
+			slog.Warn("failed to remove on-link egress route", "dst", addr.Network.String(), "error", err)
+		}
+		if viaGW.IsValid() {
+			if err := luid.DeleteRoute(dest, viaGW); err != nil && !windowsRouteGone(err) {
+				slog.Warn("failed to remove via-gw egress route", "dst", addr.Network.String(), "error", err)
+			}
 		}
 	}
 }
@@ -233,20 +239,11 @@ func netmakerRouteLUID() (winipcfg.LUID, error) {
 	return winipcfg.LUIDFromIndex(uint32(iface.Index))
 }
 
-// windowsEgressRouteAddrs builds destination/nexthop for AddRoute/DeleteRoute.
+// windowsEgressRouteAddrs builds destination/nexthop for AddRoute.
 // Multi-net uses GwIP as nexthop (Linux Gw); single-net uses unspecified (on-link).
 func windowsEgressRouteAddrs(addr ifaceAddress, multi bool) (dest netip.Prefix, nextHop netip.Addr, ok bool) {
-	ones, bits := addr.Network.Mask.Size()
-	if bits == 0 {
-		return netip.Prefix{}, netip.Addr{}, false
-	}
-	ip, ok := netip.AddrFromSlice(addr.Network.IP)
+	dest, ok = windowsEgressDest(addr)
 	if !ok {
-		return netip.Prefix{}, netip.Addr{}, false
-	}
-	ip = ip.Unmap()
-	dest = netip.PrefixFrom(ip, ones)
-	if !dest.IsValid() {
 		return netip.Prefix{}, netip.Addr{}, false
 	}
 	if multi && addr.GwIP != nil {
@@ -260,6 +257,44 @@ func windowsEgressRouteAddrs(addr ifaceAddress, multi bool) (dest netip.Prefix, 
 		return dest, netip.IPv4Unspecified(), true
 	}
 	return dest, netip.IPv6Unspecified(), true
+}
+
+// windowsEgressRemoveNexthops returns dest, on-link nexthop, and optional via-GW
+// nexthop for DeleteRoute. On-link is always cleared; via-GW when GwIP was stored.
+func windowsEgressRemoveNexthops(addr ifaceAddress) (dest netip.Prefix, onLink, viaGW netip.Addr, ok bool) {
+	dest, ok = windowsEgressDest(addr)
+	if !ok {
+		return netip.Prefix{}, netip.Addr{}, netip.Addr{}, false
+	}
+	if addr.Network.IP.To4() != nil {
+		onLink = netip.IPv4Unspecified()
+	} else {
+		onLink = netip.IPv6Unspecified()
+	}
+	if addr.GwIP != nil {
+		viaGW, ok = netip.AddrFromSlice(addr.GwIP)
+		if !ok {
+			return dest, onLink, netip.Addr{}, true
+		}
+		viaGW = viaGW.Unmap()
+	}
+	return dest, onLink, viaGW, true
+}
+
+func windowsEgressDest(addr ifaceAddress) (netip.Prefix, bool) {
+	ones, bits := addr.Network.Mask.Size()
+	if bits == 0 {
+		return netip.Prefix{}, false
+	}
+	ip, ok := netip.AddrFromSlice(addr.Network.IP)
+	if !ok {
+		return netip.Prefix{}, false
+	}
+	dest := netip.PrefixFrom(ip.Unmap(), ones)
+	if !dest.IsValid() {
+		return netip.Prefix{}, false
+	}
+	return dest, true
 }
 
 // ensureOverlayNeighbor installs a permanent neighbor for an overlay nexthop so
@@ -305,6 +340,19 @@ func windowsRouteExists(err error) bool {
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "already exists") || strings.Contains(s, "exists")
+}
+
+func windowsRouteGone(err error) bool {
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, windows.ERROR_NOT_FOUND) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "not found") ||
+		strings.Contains(s, "element not found") ||
+		strings.Contains(s, "no such")
 }
 
 func windowsNeighborExists(out string, err error) bool {
