@@ -130,35 +130,82 @@ func (nc *NCIface) setInterfaceMetric(resolvingMetric uint32) error {
 	return err
 }
 
-// NCIface.ApplyAddrs - applies addresses to windows tunnel ifaces, unused currently
+// NCIface.ApplyAddrs syncs overlay node addresses to the connected set.
+// Diff-based (delete stale / add missing) instead of SetIPAddresses flush —
+// a full flush drops on-link exit defaults (0.0.0.0/0). Exit routing stays in
+// SetInternetGw / RestoreInternetGw only.
 func (nc *NCIface) ApplyAddrs() error {
-	prefixAddrs := []netip.Prefix{}
+	wantByAddr := make(map[netip.Addr]netip.Prefix, len(nc.Addresses))
 	for i := range nc.Addresses {
-
+		if nc.Addresses[i].IP == nil || nc.Addresses[i].Network.IP == nil {
+			continue
+		}
 		maskSize, _ := nc.Addresses[i].Network.Mask.Size()
 		slog.Info("appending address", "address", fmt.Sprintf("%s/%d to nm interface", nc.Addresses[i].IP.String(), maskSize))
 		addr, err := netip.ParsePrefix(fmt.Sprintf("%s/%d", nc.Addresses[i].IP.String(), maskSize))
-		if err == nil {
-			prefixAddrs = append(prefixAddrs, addr)
-		} else {
+		if err != nil {
 			slog.Error("failed to append ip to Netclient adapter", "error", err)
+			continue
 		}
+		wantByAddr[addr.Addr()] = addr
 	}
 
+	luid, err := nc.applyAddrsLUID()
+	if err != nil {
+		return err
+	}
+	return syncWindowsIfaceAddrs(luid, wantByAddr)
+}
+
+func (nc *NCIface) applyAddrsLUID() (winipcfg.LUID, error) {
 	if UserspaceWGActive() {
 		iface, err := net.InterfaceByName(nc.Name)
 		if err != nil {
-			return fmt.Errorf("userspace iface %s: %w", nc.Name, err)
+			return 0, fmt.Errorf("userspace iface %s: %w", nc.Name, err)
 		}
 		luid, err := winipcfg.LUIDFromIndex(uint32(iface.Index))
 		if err != nil {
-			return fmt.Errorf("userspace LUID: %w", err)
+			return 0, fmt.Errorf("userspace LUID: %w", err)
 		}
-		return luid.SetIPAddresses(prefixAddrs)
+		return luid, nil
 	}
+	return nc.Iface.(*driver.Adapter).LUID(), nil
+}
 
-	adapter := nc.Iface
-	return adapter.(*driver.Adapter).LUID().SetIPAddresses(prefixAddrs)
+// syncWindowsIfaceAddrs removes stale unicast addrs and adds missing ones without
+// FlushIPAddresses (which tears down exit default routes).
+func syncWindowsIfaceAddrs(luid winipcfg.LUID, wantByAddr map[netip.Addr]netip.Prefix) error {
+	rows, err := winipcfg.GetUnicastIPAddressTable(windows.AF_UNSPEC)
+	if err != nil {
+		return err
+	}
+	have := make(map[netip.Addr]struct{})
+	for i := range rows {
+		if rows[i].InterfaceLUID != luid {
+			continue
+		}
+		ip := rows[i].Address.Addr()
+		if !ip.IsValid() || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
+			continue
+		}
+		pfx := netip.PrefixFrom(ip, int(rows[i].OnLinkPrefixLength))
+		if _, keep := wantByAddr[ip]; keep {
+			have[ip] = struct{}{}
+			continue
+		}
+		if err := luid.DeleteIPAddress(pfx); err != nil {
+			slog.Warn("failed to delete iface address", "addr", pfx.String(), "error", err)
+		}
+	}
+	for ip, pfx := range wantByAddr {
+		if _, ok := have[ip]; ok {
+			continue
+		}
+		if err := luid.AddIPAddress(pfx); err != nil {
+			slog.Warn("failed to add iface address", "addr", pfx.String(), "error", err)
+		}
+	}
+	return nil
 }
 
 // RemoveRoutes removes egress routes using the stored addr shape (not current

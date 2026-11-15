@@ -54,10 +54,17 @@ func (nc *NCIface) Create() error {
 	return nil
 }
 
-// NCIface.ApplyAddrs wipes all global-unicast addresses on the iface, then
-// re-applies the connected-node set (Linux wipe-then-reapply parity). No
-// add/remove diff — connect/disconnect always ends in desired state.
+// NCIface.ApplyAddrs syncs overlay node addresses to the connected set.
+// Diff-based (remove stale, add missing) — closer to develop's add-only path
+// and avoids wiping every address (which can drop exit half-defaults 0.0.0.0/1).
+// Exit routing stays in SetInternetGw / RestoreInternetGw only.
 func (nc *NCIface) ApplyAddrs() error {
+	want := make(map[string]struct{}, len(nc.Addresses))
+	for _, address := range nc.Addresses {
+		if address.IP != nil {
+			want[address.IP.String()] = struct{}{}
+		}
+	}
 	if iface, err := net.InterfaceByName(nc.Name); err == nil {
 		if addrs, err := iface.Addrs(); err == nil {
 			for _, a := range addrs {
@@ -65,11 +72,13 @@ func (nc *NCIface) ApplyAddrs() error {
 				if !ok || ipnet.IP == nil || !ipnet.IP.IsGlobalUnicast() {
 					continue
 				}
+				if _, keep := want[ipnet.IP.String()]; keep {
+					continue
+				}
 				removeDarwinNodeAddr(nc.Name, ipnet.IP, networkRangeForNodeIP(ipnet.IP))
 			}
 		}
 	}
-
 	for _, address := range nc.Addresses {
 		addDarwinNodeAddr(nc.Name, address)
 	}

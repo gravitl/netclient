@@ -211,8 +211,10 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 // an in-process iface rebuild on every connect/disconnect.
 //
 // wantIGW must be false on disconnect: an empty pull + desktop want_igw would
-// burn igwApplyDeadline (~10s) retrying forceApplyInternetGw. Remaining exit
-// routes are reinstalled locally via ReapplyInternetGwAfterIfaceRecreate.
+// burn igwApplyDeadline (~10s) retrying forceApplyInternetGw. ApplyAddrs does
+// not own exit routes (Linux skips table 111; Darwin/Windows diff addrs only).
+// Disconnect of a non-exit network still reinstalls via
+// ReapplyInternetGwAfterIfaceRecreate when CurrGw remains set.
 func applyConnectionChangeInProcess(wantIGW bool) error {
 	// Connect and disconnect block the UI for the whole apply, so keep the phase
 	// costs visible: the expensive parts are network-dependent and only show up
@@ -229,8 +231,10 @@ func applyConnectionChangeInProcess(wantIGW bool) error {
 	if err := applyReconnectInProcess(models.HostPull{}, wantIGW); err != nil {
 		return err
 	}
-	// Iface rebuild drops OS default routes while CurrGwNmIP may still be set
-	// (disconnect of a non-exit network with exit still desired on another).
+	// Safety net for disconnect of a non-exit network: iface rebuild can still
+	// drop OS exit routes while CurrGw stays set. Do not run on connect
+	// (wantIGW=true): Darwin Restore+Set clears OriginalDefaultGatewayIp and
+	// can fail Set with "failed to get current gateway".
 	if !wantIGW && hadIGW && wireguard.IGWRoutingActive() {
 		wireguard.ReapplyInternetGwAfterIfaceRecreate()
 		dns.ScheduleReconfigure()

@@ -155,10 +155,12 @@ func (l *netLink) Close() error {
 }
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
-// ApplyAddrs wipes all iface addresses and routes, then re-applies nc.Addresses.
+// ApplyAddrs wipes iface addresses and non-IGW routes, then re-applies nc.Addresses.
 // No add/remove diff — connect/disconnect always ends in the desired set.
 // AddrDel first: proto-kernel on-link overlay routes drop with the address;
 // RouteDel-first used to abort on "no such process" and leave stale overlays.
+// Internet-exit routes (table 111 + IPv6 leak half-defaults) are never deleted
+// here — exit install/teardown stays in SetInternetGw / RestoreInternetGw.
 func (nc *NCIface) ApplyAddrs() error {
 	l, err := netlink.LinkByName(nc.Name)
 	if err != nil {
@@ -181,6 +183,9 @@ func (nc *NCIface) ApplyAddrs() error {
 		return err
 	}
 	for i := range routes {
+		if isIGWProtectedLinuxRoute(routes[i]) {
+			continue
+		}
 		if err := netlink.RouteDel(&routes[i]); err != nil && !strings.Contains(err.Error(), "no such process") {
 			slog.Warn("failed to delete iface route", "error", err)
 		}
@@ -196,6 +201,23 @@ func (nc *NCIface) ApplyAddrs() error {
 
 	}
 	return nil
+}
+
+// isIGWProtectedLinuxRoute reports routes ApplyAddrs must not delete while an
+// internet exit is active: policy-table defaults/egress and IPv6 leak diverts.
+func isIGWProtectedLinuxRoute(r netlink.Route) bool {
+	if r.Table == RouteTableName {
+		return true
+	}
+	if r.Dst == nil {
+		return false
+	}
+	switch r.Dst.String() {
+	case ipv6HalfDefaultLow, ipv6HalfDefaultHigh, "0.0.0.0/1", "128.0.0.0/1", IPv4Network, IPv6Network:
+		return true
+	default:
+		return false
+	}
 }
 
 // RemoveRoutes removes egress routes using the stored addr shape (not current
