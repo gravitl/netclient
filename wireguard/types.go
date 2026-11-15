@@ -119,12 +119,7 @@ func EnsureNodeAddrs() bool {
 			missing = append(missing, ip.String())
 		}
 	}
-	var stale []string
-	for _, l := range live {
-		if _, ok := wantSet[l.String()]; !ok {
-			stale = append(stale, l.String())
-		}
-	}
+	stale := staleOverlayAddrs(live, wantSet)
 	if len(missing) == 0 && len(stale) == 0 {
 		return false
 	}
@@ -134,6 +129,22 @@ func EnsureNodeAddrs() bool {
 		return false
 	}
 	return true
+}
+
+// staleOverlayAddrs returns live global-unicast IPs not in wantSet. Skips
+// kernel-managed link-local/loopback (e.g. Darwin utun fe80::) — treating those
+// as stale caused Configure() on every peer update; the OS puts fe80:: back.
+func staleOverlayAddrs(live []net.IP, wantSet map[string]struct{}) []string {
+	var stale []string
+	for _, l := range live {
+		if !l.IsGlobalUnicast() {
+			continue
+		}
+		if _, ok := wantSet[l.String()]; !ok {
+			stale = append(stale, l.String())
+		}
+	}
+	return stale
 }
 
 // ifaceHasSourceAddr reports whether the netmaker interface carries an address

@@ -63,8 +63,11 @@ func GetDomainAnsFromCache(egressDomain models.EgressDomain) (ips []string) {
 
 func SetEgressRoutesInCache(egressRoutesInfo []models.EgressNetworkRoutes) {
 	egressRoutesCacheMutex.Lock()
-	defer egressRoutesCacheMutex.Unlock()
 	egressRoutes = egressRoutesInfo
+	egressRoutesCacheMutex.Unlock()
+	// Egress CIDRs make private VPC IPs reachable via the tunnel; drop any
+	// cached LAN "better" endpoints that now fall inside those ranges.
+	ScrubEndpointCacheForMeshRoutes(HostPeerAllowedIPs())
 }
 
 // GetEgressRoutesFromCache returns the last server-provided egress route list.

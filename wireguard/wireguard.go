@@ -446,6 +446,9 @@ func SetPeers(replace bool) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
+	// Drop sticky LAN detections inside AllowedIPs/egress before reapplying
+	// cache; this apply uses server-published HostPeers endpoints instead.
+	DropMeshRoutedEndpointCache(HostPeerAllowedIPs())
 	data := getHAEgressDataForProcessing(server.MetricsPort)
 	// Relayed/auto-relayed peers are published with a nil endpoint so WireGuard
 	// can learn the NAT mapping from the first handshake. Incremental peer
@@ -543,10 +546,18 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok && endpoint != nil {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
-		if ok {
-			peer.Endpoint = cacheEndpoint.Endpoint
+		if !ok {
+			return false
 		}
-		return ok
+		// Drop sticky false-positives: VPC/LAN IPs reachable only via egress
+		// must not replace the server-published underlay.
+		if cacheEndpoint.Endpoint != nil &&
+			IsMeshRoutedEndpointIP(cacheEndpoint.Endpoint.IP, HostPeerAllowedIPs()) {
+			cache.EndpointCache.Delete(peer.PublicKey.String())
+			return false
+		}
+		peer.Endpoint = cacheEndpoint.Endpoint
+		return true
 	}
 	return false
 }

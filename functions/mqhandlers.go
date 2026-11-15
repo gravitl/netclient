@@ -737,7 +737,11 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 		slog.Debug("skipping private LAN endpoint detection: internet exit active")
 		return
 	}
-	currentCidrs := getAllAllowedIPs(peers[:])
+	// Skip IPs covered by peer AllowedIPs OR cached egress CIDRs. Egress OS
+	// routes are installed before this runs; without egress CIDRs here, TCP
+	// metrics probes succeed through the tunnel and rewrite underlays to VPC
+	// LAN IPs (sticky via EndpointCache).
+	currentCidrs := wireguard.EndpointDetectionSkipCIDRs(getAllAllowedIPs(peers[:]))
 	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
@@ -774,7 +778,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
-					isAddressInPeers(peerIP, currentCidrs) {
+					wireguard.IPCoveredByCIDRs(peerIP, currentCidrs) {
 					continue
 				}
 				if peerIP.IsPrivate() {
@@ -825,18 +829,6 @@ func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
 		cidrs = []net.IPNet{}
 	}
 	return
-}
-
-func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
-	if len(cidrs) > 0 {
-		for i := range cidrs {
-			currCidr := cidrs[i]
-			if currCidr.Contains(ip) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func handleFwUpdate(server string, payload *models.FwUpdate) {
