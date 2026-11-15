@@ -376,11 +376,15 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	setStatus(Restoring)
 	restoreGen := beginSessionRestore()
 	resetting := registrationResetPending()
-	if resetting {
+	// "Setting up… / Registering this device" only for a real RegisterDevice
+	// enroll. Server-context rebuilds still reset the daemon but keep the
+	// normal restore UI (existing devices were wrongly labeled every login).
+	enrolling := resetting && registrationEnrollmentPending()
+	if enrolling {
 		SetRestorePhase(RestorePhaseRegister)
 	}
 	username, tenantID := req.Username, req.TenantID
-	fmt.Println("uiapi: session configured user=", req.Username, "tenant=", req.TenantID, "server=", server, "restore_pending=", resetting)
+	fmt.Println("uiapi: session configured user=", req.Username, "tenant=", req.TenantID, "server=", server, "restore_pending=", resetting, "enrolling=", enrolling)
 	w.WriteHeader(http.StatusOK)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -404,10 +408,11 @@ func releaseSession(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("uiapi: DELETE /session clear_token=", clearToken)
 	cancelSessionRestore()
 	setStatus(Closing)
-	// Explicit logout (clear_token): unregister the host while the current
-	// user's JWT is still valid so User Y / Tenant Y can enroll next.
+	// Logout tears down tunnels and clears the JWT when clear_token is set.
+	// Do not DELETE the host: same-user re-login must keep enrollment and
+	// network membership. Unregister only on user/tenant handoff (PUT /session).
 	// App-quit keep-token must not unregister or session restore breaks.
-	if err := releaseSessionFn(false, clearToken); err != nil {
+	if err := releaseSessionFn(false, false); err != nil {
 		fmt.Println("uiapi: error releasing session:", err.Error())
 	}
 	if err := clearSession(clearToken); err != nil {

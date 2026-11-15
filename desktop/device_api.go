@@ -813,12 +813,13 @@ func putDeviceExitNodeTimeout(network, token, egressID string, force bool, timeo
 func ConnectNetwork(network, server, token string) error {
 	fmt.Println("connect debug: ConnectNetwork start",
 		"network=", network, "server=", server, "token_set=", strings.TrimSpace(token) != "",
-		"nodes=", len(config.GetNodes()))
+		"local=", connectDebugLocalNodes())
 	if token != "" {
 		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
 			logger.Log(0, "connect", network, "access check failed:", err.Error())
 			return err
 		}
+		fmt.Println("connect debug: access check ok", "network=", network)
 	}
 	nodes := config.GetNodes()
 	if _, ok := nodes[network]; !ok {
@@ -833,34 +834,55 @@ func ConnectNetwork(network, server, token string) error {
 			logger.Log(0, "connect", network, "join failed:", err.Error())
 			return err
 		}
-		fmt.Println("connect debug: join result", "network=", network, "status=", status)
+		fmt.Println("connect debug: join result", "network=", network, "status=", status,
+			"local_after_join_api=", connectDebugLocalNodes())
 		if status != "joined" && status != "" {
 			err := fmt.Errorf("unexpected join status: %s", status)
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
 		}
-		if _, _, _, err := functions.Pull(false, true, false); err != nil {
+		pull, _, _, err := functions.Pull(false, true, false)
+		if err != nil {
 			err = fmt.Errorf("failed to sync after join: %w", err)
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
 		}
+		fmt.Println("connect debug: after join pull #1",
+			"network=", network,
+			"pull.Nodes=", connectDebugPullNodes(pull.Nodes),
+			"host.Nodes=", pull.Host.Nodes,
+			"local=", connectDebugLocalNodes(),
+			"peers=", len(config.Netclient().HostPeers))
 		// Fresh join can return before the server peer cache is warm.
 		if len(config.Netclient().HostPeers) == 0 {
 			fmt.Println("connect debug: join pull had 0 peers; refresh pull", "network=", network)
-			if _, _, _, err := functions.Pull(false, true, true); err != nil {
+			pull, _, _, err = functions.Pull(false, true, true)
+			if err != nil {
 				logger.Log(0, "connect", network, "refresh pull after join:", err.Error())
+			} else {
+				fmt.Println("connect debug: after join pull #2 (refresh)",
+					"network=", network,
+					"pull.Nodes=", connectDebugPullNodes(pull.Nodes),
+					"host.Nodes=", pull.Host.Nodes,
+					"local=", connectDebugLocalNodes(),
+					"peers=", len(config.Netclient().HostPeers))
 			}
 		}
 		if n, ok := config.GetNodes()[network]; ok {
-			fmt.Println("connect debug: after join pull",
-				"network=", network, "connected=", n.Connected, "nodes=", len(config.GetNodes()),
+			fmt.Println("connect debug: after join pull node present",
+				"network=", network, "connected=", n.Connected, "node_id=", n.ID.String(),
+				"local=", connectDebugLocalNodes(),
 				"peers=", len(config.Netclient().HostPeers))
 		} else {
-			fmt.Println("connect debug: after join pull node still missing", "network=", network)
+			fmt.Println("connect debug: after join pull node still missing",
+				"network=", network,
+				"local=", connectDebugLocalNodes(),
+				"hint=server join returned ok but HostPull.Nodes/host.Nodes lack this network")
 		}
 	} else {
 		fmt.Println("connect debug: network already in local map",
 			"network=", network, "connected=", nodes[network].Connected,
+			"node_id=", nodes[network].ID.String(),
 			"peers=", len(config.Netclient().HostPeers))
 	}
 	if err := functions.Connect(network); err != nil {
@@ -900,4 +922,21 @@ func checkDeviceNetworkAccess(network, server, token string) error {
 		return nil
 	}
 	return nil
+}
+
+func connectDebugLocalNodes() string {
+	nodes := config.GetNodes()
+	parts := make([]string, 0, len(nodes))
+	for name, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", name, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
+}
+
+func connectDebugPullNodes(nodes []models.Node) string {
+	parts := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", n.Network, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
 }

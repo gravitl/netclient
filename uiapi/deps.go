@@ -8,13 +8,15 @@ import (
 
 type HandlerDeps struct {
 	RegisterSession           func(server, username, authToken, password, tenantID string) error
-	// ReleaseSession tears down tunnels. When unregisterHost is true (explicit
-	// logout / user-tenant handoff), also DELETE the host under the current
-	// session JWT so the next Desktop login can enroll a different user/tenant.
+	// ReleaseSession tears down tunnels. When unregisterHost is true (user/tenant
+	// handoff on PUT /session), also DELETE the host under the current session
+	// JWT so the next Desktop login can enroll a different user/tenant.
+	// Normal logout passes unregisterHost=false so enrollment survives re-login.
 	ReleaseSession func(clearServer bool, unregisterHost bool) error
-	ApplyRegistrationReset    func() <-chan struct{}
-	RegistrationResetPending  func() bool
-	Connect                   func(network string) error
+	ApplyRegistrationReset       func() <-chan struct{}
+	RegistrationResetPending     func() bool
+	RegistrationEnrollmentPending func() bool
+	Connect                      func(network string) error
 	Disconnect                func(network string) error
 	IsRegistered              func(server string) bool
 	FetchNetworks             func(server, token string) ([]models.DeviceNetwork, error)
@@ -64,6 +66,13 @@ func registrationResetPending() bool {
 		return false
 	}
 	return deps.RegistrationResetPending()
+}
+
+func registrationEnrollmentPending() bool {
+	if deps.RegistrationEnrollmentPending == nil {
+		return false
+	}
+	return deps.RegistrationEnrollmentPending()
 }
 
 func connectNetwork(network string) error {

@@ -204,6 +204,8 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	// process and still restarts the service.
 	if daemon.IsDaemonProcess() {
 		registrationResetPending.Store(true)
+		// Real enroll — GUI may show "Setting up… / Registering this device".
+		registrationEnrollmentPending.Store(true)
 		logger.Log(3, "device registration: reset deferred until login response")
 	} else {
 		logger.Log(3, "restart trigger: device registration")
@@ -214,10 +216,14 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 	fmt.Printf("registered with server %s\n", serverKey)
 }
 
-var registrationResetPending atomic.Bool
+var (
+	registrationResetPending      atomic.Bool
+	registrationEnrollmentPending atomic.Bool
+)
 
 // MarkRegistrationResetPending asks the daemon to rebuild against the server
-// context written by a desktop login.
+// context written by a desktop login (e.g. CurrServer change). This is not a
+// new device enroll — do not set registrationEnrollmentPending.
 func MarkRegistrationResetPending() {
 	registrationResetPending.Store(true)
 }
@@ -229,6 +235,12 @@ func RegistrationResetPending() bool {
 	return registrationResetPending.Load()
 }
 
+// RegistrationEnrollmentPending reports a real RegisterDevice enroll in this
+// login (not merely a server-context rebuild). GUI "Setting up…" uses this.
+func RegistrationEnrollmentPending() bool {
+	return registrationEnrollmentPending.Load()
+}
+
 // ApplyPendingRegistrationReset rebuilds the daemon in place after the login
 // response has been written. The returned channel is closed when that rebuild
 // finishes. Nil means nothing was pending.
@@ -236,6 +248,7 @@ func ApplyPendingRegistrationReset() <-chan struct{} {
 	if !registrationResetPending.CompareAndSwap(true, false) {
 		return nil
 	}
+	registrationEnrollmentPending.Store(false)
 	fmt.Println("device registration: resetting in-process")
 	done := daemon.RequestInProcessReset()
 	if done == nil {

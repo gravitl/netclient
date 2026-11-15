@@ -81,7 +81,10 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	// MSP tenant switch: server rejects the same host UUID under a new tenant
 	// ("host already registered to another tenant"). Leave the previous tenant
 	// before re-registering. Capture prevTenant before applySessionTenant.
-	if alreadyRegistered && !tenantMatches && prevTenant != "" && prevTenant != tenantID {
+	// Classic non-MSP login uses tenantID="" — do not DELETE the host just to
+	// clear a stale local TenantID stamp (that re-enrolled every login and
+	// showed "Setting up… / Registering this device" for existing devices).
+	if alreadyRegistered && !tenantMatches && tenantID != "" && prevTenant != "" && prevTenant != tenantID {
 		slog.Info("session: leaving previous tenant before register",
 			"server", server, "from", prevTenant, "to", tenantID)
 		// Arm before leave HTTP: server may publish DELETE_HOST immediately, and
@@ -101,6 +104,8 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	}
 
 	applySessionTenant(server, tenantID)
+	// Re-check after stamping: classic "" clears a leftover UUID without re-enroll.
+	tenantMatches = sessionTenantMatches(server, tenantID)
 
 	needRegister := !alreadyRegistered || !tenantMatches || !ownerMatches
 	fmt.Println("session debug: RegisterSession",
@@ -194,16 +199,26 @@ func applySessionTenant(server, tenantID string) {
 }
 
 func sessionTenantMatches(server, tenantID string) bool {
-	hostTenant := config.Netclient().TenantID
+	tenantID = strings.TrimSpace(tenantID)
+	hostTenant := ""
+	if host := config.Netclient(); host != nil {
+		hostTenant = strings.TrimSpace(host.TenantID)
+	}
 	if hostTenant != tenantID {
 		return false
 	}
 	if srv := config.GetServer(server); srv != nil {
+		srvTenant := strings.TrimSpace(srv.TenantID)
 		// Not enrolled yet (no server TenantID): host match is enough.
-		if strings.TrimSpace(srv.TenantID) == "" {
+		if srvTenant == "" {
 			return true
 		}
-		return srv.TenantID == tenantID
+		// Classic Desktop login omits tenant_id; servers.json may still hold the
+		// server default tenant from enroll — do not force re-register.
+		if tenantID == "" {
+			return true
+		}
+		return srvTenant == tenantID
 	}
 	return tenantID == ""
 }
@@ -334,12 +349,15 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 // can restore them. Local default routes are restored before disconnect so
 // logout does not wait on a daemon restart for internet to return.
 //
-// When unregisterHost is true (explicit Desktop logout / user handoff), DELETE
-// the host under the current session JWT before clearing credentials. That lets
-// a different user or MSP tenant enroll this machine next; the new user cannot
-// leave the previous owner's host themselves (unauthorized).
+// When unregisterHost is true (user/tenant handoff on PUT /session only), DELETE
+// the host under the current session JWT after local disconnect. That lets a
+// different user or MSP tenant enroll this machine next. Normal logout must
+// pass unregisterHost=false so the same user can re-login without re-enrolling.
 func ReleaseSession(clearServer bool, unregisterHost bool) error {
 	defer functions.LogElapsed("logout")()
+	fmt.Println("session debug: ReleaseSession",
+		"clear_server=", clearServer, "unregister_host=", unregisterHost,
+		"local=", connectDebugLocalNodes())
 	// Latch before any teardown so peer updates that land mid-logout cannot
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
@@ -386,10 +404,6 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 		functions.RestoreInternetGwAndDNS()
 	}
 
-	if unregisterHost {
-		unregisterHostBeforeLogout()
-	}
-
 	if len(networks) > 0 {
 		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
@@ -419,15 +433,27 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 		_ = wireguard.SetPeers(true)
 		if disconnectErr != nil {
 			clearDNSOnLogout()
+			// Still unregister on handoff so the next user is not stuck on a
+			// previous owner's host, even if one network failed to disconnect.
+			if unregisterHost {
+				unregisterHostBeforeLogout()
+			}
 			return disconnectErr
 		}
 	}
 	clearDNSOnLogout()
+	// Unregister after disconnect so local nodes still exist for teardown, and
+	// only on user/tenant handoff (not normal logout).
+	if unregisterHost {
+		unregisterHostBeforeLogout()
+	}
 	if clearServer {
 		config.CurrServer = ""
 		_ = config.SetCurrServerCtxInFile("")
 	}
 	auth.CleanJwtToken()
+	fmt.Println("session debug: ReleaseSession done",
+		"unregister_host=", unregisterHost, "local=", connectDebugLocalNodes())
 	return nil
 }
 
