@@ -335,18 +335,31 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 	_, prevUser, _ := sessionToken()
 	prevTenant := sessionTenantID()
+	reqTenantIn := req.TenantID
 	handoff := isSessionHandoff(prevUser, prevTenant, req.Username, req.TenantID)
 	// Classic Desktop / wake re-auth often omits tenant_id. Keep the session
 	// tenant so desired-state restore and device headers stay keyed correctly.
 	if !handoff && req.TenantID == "" && prevTenant != "" && prevUser == req.Username {
 		req.TenantID = prevTenant
 	}
+	fmt.Println("uiapi: PUT /session begin",
+		"server=", server,
+		"user=", req.Username,
+		"prev_user=", prevUser,
+		"tenant_in=", reqTenantIn,
+		"prev_tenant=", prevTenant,
+		"tenant_effective=", req.TenantID,
+		"handoff=", handoff,
+		"token_len=", len(req.AuthToken),
+	)
 
 	// Verify server version before registering the host so an old controller
 	// never receives a Desktop enrollment. Do this before handoff unregister:
 	// a failed check must not DELETE the host (sleep/wake re-PUT used to).
 	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
 	if err != nil {
+		fmt.Println("uiapi: PUT /session compatibility check failed:", err.Error(),
+			"server=", server, "user=", req.Username, "tenant=", req.TenantID)
 		uiLog(0, "uiapi: failed to fetch server config for compatibility check:", err.Error())
 		setStatus(Idle)
 		w.WriteHeader(http.StatusServiceUnavailable)
