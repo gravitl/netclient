@@ -128,6 +128,9 @@ func EnsureNodeAddrs() bool {
 		slog.Error("failed to re-apply netmaker interface addresses", "error", err)
 		return false
 	}
+	// ApplyAddrs wiped OS egress routes; drop iface-address cache so the next
+	// SetEgressRoutes cannot early-return as "unchanged".
+	InvalidateEgressRouteCache()
 	return true
 }
 
@@ -255,11 +258,30 @@ func (n *NCIface) Configure() error {
 }
 
 func RemoveEgressRoutes() {
-	if addrs, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	key := config.Netclient().Host.ID.String()
+	if addrs, ok := cache.EgressRouteCache.Load(key); ok {
 		RemoveRoutes(addrs.([]ifaceAddress))
 	}
+	cache.EgressRouteCache.Delete(key)
+}
 
-	cache.EgressRouteCache = sync.Map{}
+// InvalidateEgressRouteCache clears iface-address egress entries so
+// SetEgressRoutes cannot no-op after ApplyAddrs wiped OS routes. Does not
+// touch models egress cache or internet-exit routes. Never reassigns the
+// package-level sync.Map.
+func InvalidateEgressRouteCache() {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	invalidateEgressRouteCacheLocked()
+}
+
+func invalidateEgressRouteCacheLocked() {
+	cache.EgressRouteCache.Range(func(key, _ any) bool {
+		cache.EgressRouteCache.Delete(key)
+		return true
+	})
 }
 
 // IsNetworkPresentOnLocalInterface checks whether the given network overlaps
@@ -313,6 +335,11 @@ func filterConflictingRoutes(addrs []ifaceAddress) []ifaceAddress {
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	setEgressRoutesLocked(egressRoutes)
+}
+
+// setEgressRoutesLocked installs egress routes. Caller must hold wgMutex.
+func setEgressRoutesLocked(egressRoutes []models.EgressNetworkRoutes) {
 	addrs := filterConflictingRoutes(buildEgressIfaceAddresses(egressRoutes, len(config.GetNodes())))
 	key := config.Netclient().Host.ID.String()
 
@@ -397,9 +424,12 @@ func SetRoutesFromCache() {
 	// GetNodes() (single-network linux entries omit IP/GwIP and are skipped once
 	// a second network is joined). Clear the iface-address cache first: after
 	// ApplyAddrs wiped OS routes, same computed addrs would no-op in SetEgressRoutes.
+	// Never reassign the package-level sync.Map — keyed Delete under wgMutex.
 	if routes := GetEgressRoutesFromCache(); len(routes) > 0 {
-		cache.EgressRouteCache = sync.Map{}
-		SetEgressRoutes(routes)
+		wgMutex.Lock()
+		invalidateEgressRouteCacheLocked()
+		setEgressRoutesLocked(routes)
+		wgMutex.Unlock()
 	} else if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}

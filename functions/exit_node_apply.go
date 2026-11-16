@@ -166,6 +166,9 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 			return err
 		}
 	}
+	// ApplyAddrs wiped OS egress; force the next SetEgressRoutes/SetRoutesFromCache
+	// to reinstall instead of early-returning on a stale iface-address cache.
+	wireguard.InvalidateEgressRouteCache()
 	if len(pull.Peers) > 0 {
 		config.UpdateHostPeers(pull.Peers)
 	}

@@ -184,7 +184,10 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	networking.ClearPeerInfoCache()
 	cache.EndpointCache = sync.Map{}
 	cache.SkipEndpointCache = sync.Map{}
-	cache.EgressRouteCache = sync.Map{}
+	cache.EgressRouteCache.Range(func(key, _ any) bool {
+		cache.EgressRouteCache.Delete(key)
+		return true
+	})
 	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	listenPort := 0

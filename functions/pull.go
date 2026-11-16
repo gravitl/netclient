@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -93,13 +94,13 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		logger.Log(0, "pull failed:", err.Error())
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
-	fmt.Println("pull debug: host pull response",
-		"server=", serverName,
-		"host_id=", pullResponse.Host.ID.String(),
-		"host.Nodes=", pullResponse.Host.Nodes,
-		"pull.Nodes=", debugServerNodeSummary(pullResponse.Nodes),
-		"peers=", len(pullResponse.Peers),
-		"local_before_sync=", debugLocalNodeSummary())
+	slog.Debug("host pull response",
+		"server", serverName,
+		"host_id", pullResponse.Host.ID.String(),
+		"host.Nodes", pullResponse.Host.Nodes,
+		"pull.Nodes", debugServerNodeSummary(pullResponse.Nodes),
+		"peers", len(pullResponse.Peers),
+		"local_before_sync", debugLocalNodeSummary())
 
 	// MQTT Fallback Reset Interface
 	for _, pullNode := range pullResponse.Nodes {
@@ -163,10 +164,10 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	fmt.Println("pull debug: after sync",
-		"server=", serverName,
-		"local=", debugLocalNodeSummary(),
-		"peers=", len(config.Netclient().HostPeers))
+	slog.Debug("host pull sync complete",
+		"server", serverName,
+		"local", debugLocalNodeSummary(),
+		"peers", len(config.Netclient().HostPeers))
 	logger.Log(0, "completed pull for server", serverName)
 	config.UpdateServer(server.Name, *server)
 	if err := config.WriteServerConfig(); err != nil {

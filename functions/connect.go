@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -34,9 +35,9 @@ func connectNetwork(network string, restart bool) error {
 	// runs. Treat that as "ensure applied" when restart is requested so peers
 	// hit the WireGuard device (tenant switch / first join after reset).
 	if node.Connected {
-		fmt.Println("connect debug: connectNetwork already connected",
-			"network=", network, "restart=", restart,
-			"peers_cached=", len(config.Netclient().HostPeers))
+		slog.Debug("connectNetwork already connected",
+			"network", network, "restart", restart,
+			"peers_cached", len(config.Netclient().HostPeers))
 		callRememberDesiredConnection(network)
 		if !restart {
 			return errors.New("node already connected")
@@ -45,8 +46,8 @@ func connectNetwork(network string, restart bool) error {
 			logger.Log(0, "connect", network, "publish while already connected:", err.Error())
 		}
 		token := callPrepareDesktopConnect(network)
-		fmt.Println("connect debug: already connected; applying peers/iface",
-			"network=", network, "peers_cached=", len(config.Netclient().HostPeers))
+		slog.Debug("connectNetwork already connected; applying peers/iface",
+			"network", network, "peers_cached", len(config.Netclient().HostPeers))
 		if err := ApplyConnectionChange("connect"); err != nil {
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
@@ -55,9 +56,9 @@ func connectNetwork(network string, restart bool) error {
 		go callFinishDesktopConnect(network, token)
 		return nil
 	}
-	fmt.Println("connect debug: connectNetwork marking connected",
-		"network=", network, "restart=", restart,
-		"peers_cached=", len(config.Netclient().HostPeers))
+	slog.Debug("connectNetwork marking connected",
+		"network", network, "restart", restart,
+		"peers_cached", len(config.Netclient().HostPeers))
 	token := callPrepareDesktopConnect(network)
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
@@ -74,12 +75,11 @@ func connectNetwork(network string, restart bool) error {
 	}
 	if !restart {
 		// Auto-exit ranking probes the overlay; do not hold connect on that.
-		fmt.Println("connect debug: connectNetwork skipping apply (restart=false)",
-			"network=", network)
+		slog.Debug("connectNetwork skipping apply (restart=false)", "network", network)
 		go callFinishDesktopConnect(network, token)
 		return nil
 	}
-	fmt.Println("connect debug: connectNetwork applying connection change", "network=", network)
+	slog.Debug("connectNetwork applying connection change", "network", network)
 	if err := ApplyConnectionChange("connect"); err != nil {
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
@@ -177,7 +177,9 @@ func flushIfaceAfterDisconnect() {
 	wireguard.SetEgressRoutesInCache(nil)
 	if err := wireguard.NewNCIface(config.Netclient(), config.GetNodes()).Configure(); err != nil {
 		logger.Log(0, "disconnect: failed to flush netmaker iface addrs:", err.Error())
+		return
 	}
+	wireguard.InvalidateEgressRouteCache()
 }
 
 // ConnectWithoutRestart marks the network connected and publishes the update

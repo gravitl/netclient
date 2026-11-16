@@ -250,22 +250,21 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	if len(peerUpdate.Nodes) > 0 {
-		fmt.Println("peer update debug: syncing nodes",
-			"server=", serverName,
-			"peer_nodes=", debugServerNodeSummary(peerUpdate.Nodes),
-			"peers=", len(peerUpdate.Peers),
-			"replace_peers=", peerUpdate.ReplacePeers,
-			"local_before=", debugLocalNodeSummary())
+		slog.Debug("peer update syncing nodes",
+			"server", serverName,
+			"peer_nodes", debugServerNodeSummary(peerUpdate.Nodes),
+			"peers", len(peerUpdate.Peers),
+			"replace_peers", peerUpdate.ReplacePeers,
+			"local_before", debugLocalNodeSummary())
 		PreserveConnectionsAfterSync(peerUpdate.Nodes)
 		_ = config.WriteNodeConfig()
-		fmt.Println("peer update debug: after node sync",
-			"local=", debugLocalNodeSummary())
+		slog.Debug("peer update after node sync", "local", debugLocalNodeSummary())
 	} else {
-		fmt.Println("peer update debug: skipping node sync (empty Nodes)",
-			"server=", serverName,
-			"peers=", len(peerUpdate.Peers),
-			"replace_peers=", peerUpdate.ReplacePeers,
-			"local=", debugLocalNodeSummary())
+		slog.Debug("peer update skipping node sync (empty Nodes)",
+			"server", serverName,
+			"peers", len(peerUpdate.Peers),
+			"replace_peers", peerUpdate.ReplacePeers,
+			"local", debugLocalNodeSummary())
 	}
 	// Nodes can land here after the interface was already built without them,
 	// leaving it unaddressed. Repair before peers and exit routes go on.
@@ -369,6 +368,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if config.AnyNodeConnected() {
 		if len(peerUpdate.EgressRoutes) > 0 {
+			if ifaceRepaired {
+				wireguard.InvalidateEgressRouteCache()
+			}
 			wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 			wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
 		} else {
@@ -1075,6 +1077,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	if config.AnyNodeConnected() {
 		if len(pullResponse.EgressRoutes) > 0 {
+			if ifaceRepaired {
+				wireguard.InvalidateEgressRouteCache()
+			}
 			wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 			wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
 		} else {

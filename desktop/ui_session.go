@@ -108,13 +108,13 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	tenantMatches = sessionTenantMatches(server, tenantID)
 
 	needRegister := !alreadyRegistered || !tenantMatches || !ownerMatches
-	fmt.Println("session debug: RegisterSession",
-		"server=", server, "user=", username, "tenant=", tenantID,
-		"already_registered=", alreadyRegistered, "tenant_matches=", tenantMatches,
-		"owner=", owner, "owner_matches=", ownerMatches, "need_register=", needRegister,
-		"prev_tenant=", prevTenant)
+	slog.Debug("RegisterSession",
+		"server", server, "user", username, "tenant", tenantID,
+		"already_registered", alreadyRegistered, "tenant_matches", tenantMatches,
+		"owner", owner, "owner_matches", ownerMatches, "need_register", needRegister,
+		"prev_tenant", prevTenant)
 	if needRegister {
-		fmt.Println("session debug: calling RegisterDeviceOnServer", "server=", server, "tenant=", tenantID)
+		slog.Debug("RegisterSession calling RegisterDeviceOnServer", "server", server, "tenant", tenantID)
 		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
 			// Host may still exist under the previous tenant if leave failed or
 			// local enrollment tenant was stale. Retry leave+register once.
@@ -135,21 +135,23 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 					return err2
 				}
 			} else {
-				fmt.Println("session debug: RegisterDeviceOnServer failed", "err=", err)
+				slog.Debug("RegisterSession RegisterDeviceOnServer failed", "error", err)
 				return err
 			}
 		}
 		if nc := config.Netclient(); nc != nil {
-			fmt.Println("session debug: after register",
-				"host=", nc.ID.String(), "owner=", nc.OwnerUsername, "tenant=", nc.TenantID)
+			slog.Debug("RegisterSession after register",
+				"host", nc.ID.String(), "owner", nc.OwnerUsername, "tenant", nc.TenantID)
 		}
 	} else {
-		fmt.Println("session debug: skipping register (already enrolled for this tenant/owner)")
+		slog.Debug("RegisterSession skipping register (already enrolled for this tenant/owner)")
 	}
 
 	if IsRegisteredToServer(server) {
-		fmt.Println("session debug: pulling after session register/login", "server=", server)
-		if _, _, _, err := pullForSession(false, true, false); err != nil {
+		slog.Debug("RegisterSession pulling after session register/login", "server", server)
+		// reset_failovered=false: same-user re-login must keep auto-relay peers
+		// (explicit clear is Sync / pull --reset-connections / join).
+		if _, _, _, err := pullForSession(false, false, false); err != nil {
 			// Host row gone on server (reinstall / admin delete) while local
 			// enrollment remains. Re-register without wiping local config first —
 			// a failed register must not leave the device permanently unenrolled.
@@ -162,7 +164,7 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 				if regErr := registerDeviceOnServerForSession(server, authToken); regErr != nil {
 					return regErr
 				}
-				if _, _, _, err := pullForSession(false, true, false); err != nil {
+				if _, _, _, err := pullForSession(false, false, false); err != nil {
 					return fmt.Errorf("failed to sync with server: %w", err)
 				}
 			} else {
@@ -307,9 +309,9 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 		ownerBefore = host.OwnerUsername
 		tenantBefore = host.TenantID
 	}
-	fmt.Println("session debug: clearLocalEnrollmentAfterTenantLeave",
-		"server=", server, "owner_before=", ownerBefore, "tenant_before=", tenantBefore,
-		"nodes_before=", len(config.GetNodes()))
+	slog.Debug("clearLocalEnrollmentAfterTenantLeave",
+		"server", server, "owner_before", ownerBefore, "tenant_before", tenantBefore,
+		"nodes_before", len(config.GetNodes()))
 	config.DeleteServerHostPeerCfg()
 	for k, node := range config.GetNodes() {
 		if node.Server == server || config.ResolveServerKey(node.Server) == config.ResolveServerKey(server) {
@@ -339,9 +341,9 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 		ownerAfter = host.OwnerUsername
 		tenantAfter = host.TenantID
 	}
-	fmt.Println("session debug: clearLocalEnrollment done",
-		"owner_after=", ownerAfter, "tenant_after=", tenantAfter,
-		"registered=", IsRegisteredToServer(server), "nodes_after=", len(config.GetNodes()))
+	slog.Debug("clearLocalEnrollment done",
+		"owner_after", ownerAfter, "tenant_after", tenantAfter,
+		"registered", IsRegisteredToServer(server), "nodes_after", len(config.GetNodes()))
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.
@@ -355,9 +357,9 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 // pass unregisterHost=false so the same user can re-login without re-enrolling.
 func ReleaseSession(clearServer bool, unregisterHost bool) error {
 	defer functions.LogElapsed("logout")()
-	fmt.Println("session debug: ReleaseSession",
-		"clear_server=", clearServer, "unregister_host=", unregisterHost,
-		"local=", connectDebugLocalNodes())
+	slog.Debug("release session",
+		"clear_server", clearServer, "unregister_host", unregisterHost,
+		"local", connectDebugLocalNodes())
 	// Latch before any teardown so peer updates that land mid-logout cannot
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
@@ -452,8 +454,8 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 		_ = config.SetCurrServerCtxInFile("")
 	}
 	auth.CleanJwtToken()
-	fmt.Println("session debug: ReleaseSession done",
-		"unregister_host=", unregisterHost, "local=", connectDebugLocalNodes())
+	slog.Debug("release session done",
+		"unregister_host", unregisterHost, "local", connectDebugLocalNodes())
 	return nil
 }
 
