@@ -104,7 +104,14 @@ func List(net string, long bool) {
 // syncNodesFromServerList replaces the local node map with the host-pull set
 // (includes disconnected). Preserves local Connected flags across the replace
 // but does not call ReassertDesired — listing must not force reconnects.
+//
+// Mirrors the MQTT empty-Nodes guard: never wipe a non-empty nodes.json from a
+// transient empty host-pull. Server remains source of truth for non-empty lists.
 func syncNodesFromServerList(nodes []models.Node) {
+	if len(nodes) == 0 && len(config.GetNodes()) > 0 {
+		logger.Log(0, "list: skipping node sync; server returned empty Nodes while local nodes exist")
+		return
+	}
 	keepDisconnected := locallyDisconnectedNetworks()
 	keepConnected := locallyConnectedNetworks()
 	config.SetNodes(nodes)
