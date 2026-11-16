@@ -98,6 +98,14 @@ func finishDesktopConnect(network, token string) {
 	if token == "" {
 		return
 	}
+	// Session restore applies exit in its own phase after all networks are
+	// marked connected. Per-network finish during restore races the sequential
+	// reconnect and can flap an already-restored tunnel.
+	if phase := uiapi.GetRestorePhase(); phase != "" {
+		slog.Debug("skip finishDesktopConnect during session restore",
+			"network", network, "phase", phase)
+		return
+	}
 	// List API skips probes during grace; wait so nearest pick sees real RTT.
 	functions.WaitExitOverlayProbeGrace(network)
 	applyDesiredExitAfterConnect(network, token)
@@ -206,13 +214,15 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		nodes := config.GetNodes()
 		node, ok := nodes[network]
 		if !ok {
-			fmt.Println("restore debug: not_joined; ConnectNetwork join+connect",
+			fmt.Println("restore debug: not_joined; join+ConnectWithoutRestart",
 				"network=", network)
 			if token == "" {
 				continue
 			}
-			if err := ConnectNetwork(network, server, token); err != nil {
-				fmt.Println("restore debug: ConnectNetwork failed", "network=", network, "err=", err)
+			// Avoid ConnectNetwork here: it ApplyConnectionChange per network and
+			// flaps peers for nets already marked connected earlier in this loop.
+			if err := joinAndMarkConnectedForRestore(network, server, token); err != nil {
+				fmt.Println("restore debug: join+mark failed", "network=", network, "err=", err)
 				slog.Warn("failed to restore connection (join)",
 					"network", network, "error", err)
 				continue
@@ -243,12 +253,10 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		changed = true
 	}
 	if needApply && restart {
-		fmt.Println("restore debug: applying peers for already-connected desired nets")
-		if err := functions.ApplyConnectionChange("connect"); err != nil {
-			slog.Warn("failed to apply peers during restore", "error", err)
-		} else {
-			changed = true
-		}
+		// Defer iface apply to ApplyReconnectInProcess below. Applying here and
+		// again after exit re-select flaps tunnels the GUI already showed as up.
+		fmt.Println("restore debug: deferring peer apply for already-connected desired nets")
+		changed = true
 	}
 	if !restart {
 		return nil

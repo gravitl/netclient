@@ -564,3 +564,27 @@ func TestGetServerIncludesTenantID(t *testing.T) {
 	assert.Equal(t, "tenant-xyz", resp.TenantID)
 	assert.Equal(t, "alice", resp.Username)
 }
+
+func TestGetServerIncludesDesiredNetworks(t *testing.T) {
+	clearSessionForTest()
+	tmp := t.TempDir()
+	config.SetDesiredConnectionsDirForTest(tmp)
+	t.Cleanup(func() { config.SetDesiredConnectionsDirForTest("") })
+
+	require.NoError(t, config.SetDesiredNetworks("alice", "tenant-xyz", []string{"net-b", "net-a"}))
+
+	setupTestSession("api.example.com", "alice", "token-123")
+	session.mu.Lock()
+	session.tenantID = "tenant-xyz"
+	session.status = Restoring
+	session.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/server", nil)
+	rec := httptest.NewRecorder()
+	getServer(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp GetServerResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, []string{"net-b", "net-a"}, resp.DesiredNetworks)
+}

@@ -850,6 +850,45 @@ func putDeviceExitNodeTimeout(network, token, egressID string, force bool, timeo
 	}, true, timeout)
 }
 
+// joinAndMarkConnectedForRestore joins the network if needed and marks it
+// connected without an in-process iface apply. Session restore batches the
+// apply once after every desired network is marked.
+func joinAndMarkConnectedForRestore(network, server, token string) error {
+	if token != "" {
+		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+			return err
+		}
+	}
+	nodes := config.GetNodes()
+	if _, ok := nodes[network]; !ok {
+		if token == "" {
+			return fmt.Errorf("network %s is not joined", network)
+		}
+		status, err := JoinDeviceNetworkOnServer(network, token)
+		if err != nil {
+			return err
+		}
+		if status != "joined" && status != "" {
+			return fmt.Errorf("unexpected join status: %s", status)
+		}
+		if _, _, _, err = functions.Pull(false, true, false); err != nil {
+			return fmt.Errorf("failed to sync after join: %w", err)
+		}
+		if len(config.Netclient().HostPeers) == 0 {
+			if _, _, _, err = functions.Pull(false, true, true); err != nil {
+				logger.Log(0, "restore join", network, "refresh pull:", err.Error())
+			}
+		}
+	}
+	if err := functions.ConnectWithoutRestart(network); err != nil {
+		if err.Error() == "node already connected" {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 // ConnectNetwork joins (if needed) then connects locally.
 func ConnectNetwork(network, server, token string) error {
 	slog.Debug("ConnectNetwork start",
