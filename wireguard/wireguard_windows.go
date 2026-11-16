@@ -698,6 +698,16 @@ func setInternetGwV4(publicKey string, networkIP net.IP) error {
 	return config.WriteNetclientConfig()
 }
 
+func connectedNodeCount() int {
+	n := 0
+	for _, node := range config.GetNodes() {
+		if node.Connected {
+			n++
+		}
+	}
+	return n
+}
+
 // addWindowsIGWDefaultRoute installs IPv4 or IPv6 default via the netmaker iface.
 // multi-net uses nexthop=exit overlay IP so source selection stays on that net.
 func addWindowsIGWDefaultRoute(ipv6 bool, networkIP net.IP) error {

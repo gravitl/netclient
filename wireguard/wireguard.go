@@ -69,16 +69,6 @@ func IGWInstalledWithin(d time.Duration) bool {
 	return time.Since(time.Unix(0, ts)) <= d
 }
 
-func connectedNodeCount() int {
-	n := 0
-	for _, node := range config.GetNodes() {
-		if node.Connected {
-			n++
-		}
-	}
-	return n
-}
-
 // igwSourceIP returns this host's overlay address on the network that owns the
 // exit nexthop. With multiple networks on one utun, Darwin otherwise picks an
 // arbitrary iface address as src (often the wrong network) and exit routing fails.
