@@ -47,6 +47,10 @@ type GetServerResponse struct {
 	AutoExit           bool                  `json:"auto_exit,omitempty"`
 	DesiredEgressID    string                `json:"desired_egress_id,omitempty"`
 	DesiredExitNetwork string                `json:"desired_exit_network,omitempty"`
+	// DesiredNetworks is the desktop user's auto-reconnect set (session restore).
+	// Desktop multi-net UI uses this to mark per-network "Reconnecting…" instead
+	// of blocking the whole screen behind a restore panel.
+	DesiredNetworks []string `json:"desired_networks,omitempty"`
 	// Notice is a one-shot message for the GUI, such as a manual exit that
 	// failed its post-connect VPN health check.
 	Notice *SessionNotice `json:"notice,omitempty"`
