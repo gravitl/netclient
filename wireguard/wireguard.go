@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -44,6 +46,60 @@ func IGWRoutingActive() bool {
 		return false
 	}
 	return len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0
+}
+
+// lastIGWInstallUnixNano is set when SetInternetGw succeeds. Used to ignore
+// racing ChangeDefaultGw=false peer updates that arrive in the same second as
+// a re-select install (disconnect→reconnect convergence).
+var lastIGWInstallUnixNano atomic.Int64
+
+func noteIGWInstalled() {
+	lastIGWInstallUnixNano.Store(time.Now().UnixNano())
+}
+
+// IGWInstalledWithin reports whether an internet gateway was installed within d.
+func IGWInstalledWithin(d time.Duration) bool {
+	if d <= 0 {
+		return false
+	}
+	ts := lastIGWInstallUnixNano.Load()
+	if ts == 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, ts)) <= d
+}
+
+func connectedNodeCount() int {
+	n := 0
+	for _, node := range config.GetNodes() {
+		if node.Connected {
+			n++
+		}
+	}
+	return n
+}
+
+// igwSourceIP returns this host's overlay address on the network that owns the
+// exit nexthop. With multiple networks on one utun, Darwin otherwise picks an
+// arbitrary iface address as src (often the wrong network) and exit routing fails.
+func igwSourceIP(gw net.IP) net.IP {
+	if gw == nil {
+		return nil
+	}
+	is4 := gw.To4() != nil
+	for _, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		if is4 {
+			if node.Address.IP != nil && node.NetworkRange.IP != nil && node.NetworkRange.Contains(gw) {
+				return node.Address.IP
+			}
+		} else if node.Address6.IP != nil && node.NetworkRange6.IP != nil && node.NetworkRange6.Contains(gw) {
+			return node.Address6.IP
+		}
+	}
+	return nil
 }
 
 // reapplyCachedEgressRoutes reinstalls specific egress CIDRs after IGW default

@@ -44,6 +44,10 @@ func prepareDesktopConnect(network string) string {
 			slog.Warn("failed to clear exit so network can connect without one",
 				"network", network, "active_exit_network", other, "error", err)
 		}
+	} else if uiapi.ShouldDeferAutoExitClaim(network) {
+		// Installed IGW belongs elsewhere (or multi-net ambiguous). Do not
+		// auto-claim here — and do not clear this network's exit: it may be
+		// the owner (clearing after select tore down routing).
 	} else if err := applyEnforcedAutoExit(network, token); err != nil {
 		slog.Warn("auto exit arm on connect failed", "network", network, "error", err)
 	}
@@ -84,9 +88,11 @@ func forgetDesiredNetworkOnLeave(network string) {
 	_ = config.ForgetDesiredNetwork(user, tenant, network)
 }
 
-// finishDesktopConnect selects an auto-exit once the mesh is up so ranking
-// uses overlay VPN probes. Connect already invokes this on a goroutine so the
-// grace wait + latency probes do not block POST /connections.
+// finishDesktopConnect re-applies desired exit once the mesh is up. Disconnect
+// keeps local selection but the server often clears ChangeDefaultGw; without a
+// re-PUT here (especially for manual exits) CurrGw can look active while
+// traffic is not actually routed. Connect already invokes this on a goroutine
+// so the grace wait + latency probes do not block POST /connections.
 // Headless passes an empty token.
 func finishDesktopConnect(network, token string) {
 	if token == "" {
@@ -94,7 +100,7 @@ func finishDesktopConnect(network, token string) {
 	}
 	// List API skips probes during grace; wait so nearest pick sees real RTT.
 	functions.WaitExitOverlayProbeGrace(network)
-	applyDeferredAutoExitAfterConnect(network, token)
+	applyDesiredExitAfterConnect(network, token)
 }
 
 // desktopSessionIdentity returns the desktop session identity and whether

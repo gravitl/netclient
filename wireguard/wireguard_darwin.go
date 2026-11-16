@@ -478,21 +478,48 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 	syncDarwinUnderlayPins(publicKey)
 
 	iface := ncutils.GetInterfaceName()
+	// Drop any previous half-defaults so we can re-add with the correct -ifa
+	// (multi-net: kernel otherwise keeps an old src from the other network).
+	exec.Command("route", "delete", "-net", "-inet", "0.0.0.0/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet", "128.0.0.0/1", "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface).Run()
+	exec.Command("route", "delete", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface).Run()
+
 	run := func(args ...string) {
 		if out, err := exec.Command("route", args...).CombinedOutput(); err != nil {
 			slog.Error("failed to add route", "command", fmt.Sprint(args), "output", string(out), "error", err)
 		}
 	}
+	// Bind src to the exit network's overlay address. Without -ifa, macOS picks
+	// any utun address (often the second connected network) and exit traffic fails.
+	addHalfDefault := func(inet, cidr string, src net.IP) {
+		args := []string{"add", "-net", inet, cidr}
+		if src != nil {
+			args = append(args, "-ifa", src.String())
+		}
+		args = append(args, "-interface", iface)
+		run(args...)
+	}
 
 	if len(gw4) > 0 {
-		run("add", "-net", "-inet", "0.0.0.0/1", "-interface", iface)
-		run("add", "-net", "-inet", "128.0.0.0/1", "-interface", iface)
+		src4 := igwSourceIP(gw4)
+		if src4 != nil {
+			logger.Log(0, "exit IPv4 route source bound to", src4.String(), "(exit network)")
+		} else {
+			logger.Log(0, "exit IPv4 route: no exit-network source found; kernel will pick an iface address")
+		}
+		addHalfDefault("-inet", "0.0.0.0/1", src4)
+		addHalfDefault("-inet", "128.0.0.0/1", src4)
 		config.Netclient().CurrGwNmIP = gw4
 	}
 
 	if len(gw6) > 0 {
-		run("add", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface)
-		run("add", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface)
+		src6 := igwSourceIP(gw6)
+		if src6 != nil {
+			logger.Log(0, "exit IPv6 route source bound to", src6.String(), "(exit network)")
+		}
+		addHalfDefault("-inet6", ipv6HalfDefaultLow, src6)
+		addHalfDefault("-inet6", ipv6HalfDefaultHigh, src6)
 		config.Netclient().CurrGwNmIP6 = gw6
 		if len(config.Netclient().CurrGwNmIP) == 0 {
 			config.Netclient().CurrGwNmIP = gw6
@@ -502,8 +529,8 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 		// Eyeballs cannot leak. No CurrGwNmIP6 and no peer ::/0 — packets hit
 		// the iface and drop via cryptokey routing; apps fall back to IPv4.
 		logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
-		run("add", "-net", "-inet6", ipv6HalfDefaultLow, "-interface", iface)
-		run("add", "-net", "-inet6", ipv6HalfDefaultHigh, "-interface", iface)
+		addHalfDefault("-inet6", ipv6HalfDefaultLow, nil)
+		addHalfDefault("-inet6", ipv6HalfDefaultHigh, nil)
 	}
 
 	// Reinstall more-specific egress CIDRs so they win over 0.0.0.0/1 after IGW

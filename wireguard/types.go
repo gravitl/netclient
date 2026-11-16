@@ -426,6 +426,28 @@ func ReapplyInternetGwAfterIfaceRecreate() {
 	ReapplyInternetGw(gw4, gw6)
 }
 
+// EnsureInternetGwRoutesAfterIfaceChange re-adds OS exit half-defaults when
+// CurrGw is still set after an iface rebuild (e.g. connecting a second network).
+// Unlike ReapplyInternetGwAfterIfaceRecreate it does not Restore first — on
+// Darwin, Restore clears OriginalDefaultGatewayIp and Set can fail mid-connect
+// with "failed to get current gateway", leaving CurrGw set but no routes.
+func EnsureInternetGwRoutesAfterIfaceChange() {
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 == nil && gw6 == nil {
+		return
+	}
+	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+	if !ok {
+		slog.Warn("exit peer not found; OS default routes not ensured after iface change",
+			"gw4", gw4, "gw6", gw6)
+		return
+	}
+	if err := SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
+		slog.Warn("soft exit route ensure failed; falling back to full reapply", "error", err)
+		ReapplyInternetGw(gw4, gw6)
+	}
+}
+
 // ReapplyInternetGw restores then sets the host default route via the exit peer.
 func ReapplyInternetGw(gw4, gw6 net.IP) {
 	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)

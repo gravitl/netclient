@@ -401,6 +401,17 @@ func TestConfigureSessionRestoresDesiredConnections(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func TestIsSessionHandoff(t *testing.T) {
+	assert.False(t, isSessionHandoff("", "", "alice", ""))
+	assert.False(t, isSessionHandoff("alice", "tenant-a", "alice", "tenant-a"))
+	assert.False(t, isSessionHandoff("alice", "tenant-a", "alice", ""),
+		"same user omitting tenant_id is wake/re-auth, not handoff")
+	assert.False(t, isSessionHandoff("alice", "", "alice", "tenant-a"),
+		"same user filling tenant_id is not handoff")
+	assert.True(t, isSessionHandoff("alice", "", "bob", ""))
+	assert.True(t, isSessionHandoff("alice", "tenant-a", "alice", "tenant-b"))
+}
+
 func TestConfigureSessionHandoffDisconnectsPriorUser(t *testing.T) {
 	clearSessionForTest()
 	setupTestSession("api.example.com", "alice", "alice-token")
@@ -464,6 +475,75 @@ func TestConfigureSessionHandoffOnTenantChange(t *testing.T) {
 	assert.True(t, released, "expected disconnect when tenant changes")
 	assert.Equal(t, "tenant-b", gotTenant)
 	assert.Equal(t, "tenant-b", sessionTenantID())
+}
+
+func TestConfigureSessionSameUserOmitsTenantDoesNotUnregister(t *testing.T) {
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "alice-token")
+	stubCompatibleServerConfig(t, "v1.8.0")
+	session.mu.Lock()
+	session.tenantID = "tenant-a"
+	session.mu.Unlock()
+
+	released := false
+	gotTenant := ""
+	SetHandlers(HandlerDeps{
+		ReleaseSession: func(clearServer bool, unregisterHost bool) error {
+			released = true
+			return nil
+		},
+		RegisterSession: func(server, username, authToken, password, tenantID string) error {
+			gotTenant = tenantID
+			return nil
+		},
+	})
+
+	// Wake / token refresh often re-PUTs without tenant_id.
+	body := `{"username":"alice","auth_token":"alice-token-refreshed"}`
+	req := httptest.NewRequest(http.MethodPut, "/session", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureSession(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.False(t, released, "same-user re-auth must not DELETE the host")
+	assert.Equal(t, "tenant-a", gotTenant, "omitted tenant_id should keep prior session tenant")
+	assert.Equal(t, "tenant-a", sessionTenantID())
+}
+
+func TestConfigureSessionHandoffSkippedWhenConfigFetchFails(t *testing.T) {
+	clearSessionForTest()
+	setupTestSession("api.example.com", "alice", "alice-token")
+	session.mu.Lock()
+	session.tenantID = "tenant-a"
+	session.mu.Unlock()
+
+	prev := fetchServerConfig
+	t.Cleanup(func() { fetchServerConfig = prev })
+	fetchServerConfig = func(ctx context.Context, server, username, authToken, tenantID string) (nmConfig.ServerConfig, error) {
+		return nmConfig.ServerConfig{}, errors.New("failed to fetch server config: 400 Bad Request")
+	}
+
+	released := false
+	SetHandlers(HandlerDeps{
+		ReleaseSession: func(clearServer bool, unregisterHost bool) error {
+			released = true
+			return nil
+		},
+		RegisterSession: func(server, username, authToken, password, tenantID string) error {
+			t.Fatal("register must not run when config fetch fails")
+			return nil
+		},
+	})
+
+	body := `{"username":"bob","auth_token":"bob-token","tenant_id":"tenant-b"}`
+	req := httptest.NewRequest(http.MethodPut, "/session", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	configureSession(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.False(t, released, "failed compatibility check must not unregister the prior host")
+	assert.Equal(t, "alice", session.username)
+	assert.Equal(t, "tenant-a", sessionTenantID())
 }
 
 func TestGetServerIncludesTenantID(t *testing.T) {

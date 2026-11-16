@@ -656,13 +656,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		syncWindowsUnderlayPins(true, publicKey, lan)
 	}
 
-	//add new gateway route with metric 0 for setting to top priority, on-link so
-	//Windows does not wait for neighbour discovery on the overlay nexthop
-	addGwCmd := fmt.Sprintf("netsh int ipv6 add route %s interface=%s store=active metric=0", IPv6Network, ncutils.GetInterfaceName())
-
-	out, err := ncutils.RunCmd(addGwCmd, false)
-	if err != nil && !isNetshAlreadyExists(out) {
-		slog.Error("Failed to add route table", "error", err.Error(), "out", strings.TrimSpace(out))
+	if err := addWindowsIGWDefaultRoute(true, networkIP); err != nil {
 		return err
 	}
 
@@ -692,19 +686,114 @@ func setInternetGwV4(publicKey string, networkIP net.IP) error {
 			"public_key_prefix", publicKey[:min(8, len(publicKey))])
 	}
 
-	// On-link (no nexthop), like WireGuard for Windows installs its AllowedIPs
-	// routes. An overlay nexthop puts the route in Probe state forever — the
-	// WireGuard adapter never answers neighbour discovery — and Windows then
-	// ignores the route and keeps using the LAN default no matter its metric.
-	addGwCmd := fmt.Sprintf("netsh int ipv4 add route %s interface=%s store=active metric=0", IPv4Network, ncutils.GetInterfaceName())
-	out, err := ncutils.RunCmd(addGwCmd, false)
-	if err != nil && !isNetshAlreadyExists(out) {
-		slog.Error("Failed to add route table", "error", err.Error(), "out", strings.TrimSpace(out))
+	// Single-net: on-link 0.0.0.0/0 (WG never answers ND for an overlay nexthop).
+	// Multi-net: via exit overlay nexthop + permanent neighbor (same as site
+	// egress). That makes Windows pick src on the exit network without marking
+	// other networks SkipAsSource (which would break their egress routes).
+	if err := addWindowsIGWDefaultRoute(false, networkIP); err != nil {
 		return err
 	}
 
 	config.Netclient().CurrGwNmIP = networkIP
 	return config.WriteNetclientConfig()
+}
+
+// addWindowsIGWDefaultRoute installs IPv4 or IPv6 default via the netmaker iface.
+// multi-net uses nexthop=exit overlay IP so source selection stays on that net.
+func addWindowsIGWDefaultRoute(ipv6 bool, networkIP net.IP) error {
+	fam := "ipv4"
+	dest := IPv4Network
+	if ipv6 {
+		fam = "ipv6"
+		dest = IPv6Network
+	}
+	iface := ncutils.GetInterfaceName()
+	// Prefer via-nexthop only when multiple networks are actually up — that is
+	// when Windows would otherwise pick the wrong iface address as src.
+	multi := connectedNodeCount() > 1 && networkIP != nil
+	if multi {
+		if err := ensureOverlayNeighbor(networkIP); err != nil {
+			slog.Warn("failed to seed overlay neighbor for exit gw",
+				"gw", networkIP.String(), "error", err)
+		}
+		// Drop on-link + any prior via so the new via-gw row is unambiguous.
+		_ = deleteWindowsIGWDefaultRoute(ipv6, networkIP, igwNexthopForFamily(ipv6))
+		addGwCmd := fmt.Sprintf("netsh int %s add route %s interface=%s nexthop=%s store=active metric=0",
+			fam, dest, iface, networkIP.String())
+		out, err := ncutils.RunCmd(addGwCmd, false)
+		if err != nil && !isNetshAlreadyExists(out) {
+			slog.Error("Failed to add multi-net exit route", "error", err.Error(), "out", strings.TrimSpace(out))
+			return err
+		}
+		if src := igwSourceIP(networkIP); src != nil {
+			logger.Log(0, "exit", fam, "route via", networkIP.String(), "src prefers", src.String())
+		}
+		return nil
+	}
+	_ = deleteWindowsIGWDefaultRoute(ipv6, igwNexthopForFamily(ipv6))
+	addGwCmd := fmt.Sprintf("netsh int %s add route %s interface=%s store=active metric=0", fam, dest, iface)
+	out, err := ncutils.RunCmd(addGwCmd, false)
+	if err != nil && !isNetshAlreadyExists(out) {
+		slog.Error("Failed to add route table", "error", err.Error(), "out", strings.TrimSpace(out))
+		return err
+	}
+	return nil
+}
+
+// deleteWindowsIGWDefaultRoute removes the on-link default and any via-nexthop
+// forms listed in vias (multi-net exit uses nexthop=exit overlay IP).
+func deleteWindowsIGWDefaultRoute(ipv6 bool, vias ...net.IP) error {
+	fam := "ipv4"
+	dest := IPv4Network
+	if ipv6 {
+		fam = "ipv6"
+		dest = IPv6Network
+	}
+	iface := ncutils.GetInterfaceName()
+	var firstErr error
+	delCmd := fmt.Sprintf("netsh int %s delete route %s interface=%s store=active", fam, dest, iface)
+	out, err := ncutils.RunCmd(delCmd, false)
+	if err != nil && !isNetshNotFound(err, out) {
+		firstErr = err
+	}
+	seen := map[string]struct{}{}
+	for _, via := range vias {
+		if via == nil {
+			continue
+		}
+		key := via.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		delVia := fmt.Sprintf("netsh int %s delete route %s interface=%s nexthop=%s store=active",
+			fam, dest, iface, key)
+		out, err := ncutils.RunCmd(delVia, false)
+		if err != nil && !isNetshNotFound(err, out) && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func igwNexthopForFamily(ipv6 bool) net.IP {
+	nc := config.Netclient()
+	if nc == nil {
+		return nil
+	}
+	if ipv6 {
+		if len(nc.CurrGwNmIP6) > 0 {
+			return nc.CurrGwNmIP6
+		}
+		if len(nc.CurrGwNmIP) > 0 && nc.CurrGwNmIP.To4() == nil {
+			return nc.CurrGwNmIP
+		}
+		return nil
+	}
+	if len(nc.CurrGwNmIP) > 0 && nc.CurrGwNmIP.To4() != nil {
+		return nc.CurrGwNmIP
+	}
+	return nil
 }
 
 // lanRouteV4 describes the pre-exit (underlay) default route of one family.
@@ -890,12 +979,8 @@ func resetDefaultRoutesOnHost() error {
 
 // restoreInternetGwV6 - restore the old default gateway and delte the route to the Internet Gw's ip address
 func restoreInternetGwV6() (err error) {
-
-	delCmd := fmt.Sprintf("netsh int ipv6 delete route %s interface=%s store=active", IPv6Network, ncutils.GetInterfaceName())
-
-	_, err = ncutils.RunCmd(delCmd, true)
-	if err != nil {
-		slog.Error("Failed to delete route, please delete it manually", "error", err.Error())
+	if err := deleteWindowsIGWDefaultRoute(true, igwNexthopForFamily(true)); err != nil {
+		slog.Error("Failed to delete IPv6 exit route, please delete it manually", "error", err.Error())
 		return err
 	}
 
@@ -931,12 +1016,8 @@ func restoreInternetGwV6() (err error) {
 
 // restoreInternetGwV4 - restore the old default gateway and delte the route to the Internet Gw's ip address
 func restoreInternetGwV4() (err error) {
-
-	delCmd := fmt.Sprintf("netsh int ipv4 delete route %s interface=%s store=active", IPv4Network, ncutils.GetInterfaceName())
-
-	out, err := ncutils.RunCmd(delCmd, false)
-	if err != nil && !isNetshNotFound(err, out) {
-		slog.Error("Failed to delete route, please delete it manually", "error", err.Error(), "out", strings.TrimSpace(out))
+	if err := deleteWindowsIGWDefaultRoute(false, igwNexthopForFamily(false)); err != nil {
+		slog.Error("Failed to delete IPv4 exit route, please delete it manually", "error", err.Error())
 		return err
 	}
 

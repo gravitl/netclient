@@ -231,12 +231,20 @@ func applyConnectionChangeInProcess(wantIGW bool) error {
 	if err := applyReconnectInProcess(models.HostPull{}, wantIGW); err != nil {
 		return err
 	}
-	// Safety net for disconnect of a non-exit network: iface rebuild can still
-	// drop OS exit routes while CurrGw stays set. Do not run on connect
-	// (wantIGW=true): Darwin Restore+Set clears OriginalDefaultGatewayIp and
-	// can fail Set with "failed to get current gateway".
-	if !wantIGW && hadIGW && wireguard.IGWRoutingActive() {
-		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+	// Iface rebuild (address add on join/connect) can drop OS exit half-defaults
+	// while CurrGw stays set. Empty cached pull has change_default_gw=false so
+	// applyInternetGwAfterReconnect skips; reconcile also no-ops while
+	// IGWRoutingActive. Reinstall routes here or traffic stops until a later
+	// MQTT ChangeDefaultGw=true (often never, if nexthop unchanged).
+	if hadIGW && wireguard.IGWRoutingActive() {
+		if wantIGW {
+			// Soft Set only — Darwin full Restore+Set mid-connect can clear
+			// OriginalDefaultGatewayIp and fail with "failed to get current gateway".
+			logger.Log(0, "connection change: ensuring exit routes after iface rebuild")
+			wireguard.EnsureInternetGwRoutesAfterIfaceChange()
+		} else {
+			wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		}
 		dns.ScheduleReconfigure()
 	}
 	return nil

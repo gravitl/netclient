@@ -443,6 +443,28 @@ func sessionTenantID() string {
 	return session.tenantID
 }
 
+// isSessionHandoff reports whether PUT /session is switching user or MSP tenant
+// and must DELETE the prior host enrollment. Same-user re-auth (sleep/wake,
+// token refresh) often omits tenant_id while the in-memory session still has
+// one — that must not unregister the device.
+func isSessionHandoff(prevUser, prevTenant, newUser, newTenant string) bool {
+	prevUser = strings.TrimSpace(prevUser)
+	newUser = strings.TrimSpace(newUser)
+	prevTenant = strings.TrimSpace(prevTenant)
+	newTenant = strings.TrimSpace(newTenant)
+	if prevUser == "" {
+		return false
+	}
+	if prevUser != newUser {
+		return true
+	}
+	// Same user: only a real tenant switch when both sides name a tenant.
+	if prevTenant != "" && newTenant != "" && prevTenant != newTenant {
+		return true
+	}
+	return false
+}
+
 // SessionCredentials returns the active server and user token for device API calls.
 func SessionCredentials() (server, authToken string) {
 	session.mu.RLock()

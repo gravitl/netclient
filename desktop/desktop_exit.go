@@ -120,7 +120,13 @@ func holdIGWTeardown() bool {
 	if exitSelectInFlight.Load() {
 		return true
 	}
-	return restorePhaseWithinHoldDeadline()
+	if restorePhaseWithinHoldDeadline() {
+		return true
+	}
+	// Re-select install and a stale ChangeDefaultGw=false often arrive in the
+	// same second on reconnect; tearing down the just-installed exit leaves
+	// CurrGw flapping and multi-net routes with the wrong src.
+	return wireguard.IGWInstalledWithin(8 * time.Second)
 }
 
 // restorePhaseWithinHoldDeadline is true only while Networks/Exit/Routes is
@@ -177,11 +183,13 @@ func reconcileDesiredExit() {
 	reconcileDesiredExitOpts(false)
 }
 
-// reconcileDesiredExitOpts re-drives exit selection. When allowActiveIGW is true
-// (hold just released), skip the IGWRoutingActive guard so a deferred CurrGw
-// with server advertising no exit still re-PUTs. Never skip exitSelectInFlight —
-// that would race clear→assign.
+// reconcileDesiredExitOpts re-drives exit selection. Callers invoke this when
+// the server is not advertising an exit (ChangeDefaultGw=false) or after a
+// hold release — so do not skip just because CurrGw is still set. That stale
+// CurrGw + no server exit is the disconnect→reconnect blackhole. Never skip
+// exitSelectInFlight — that would race clear→assign.
 func reconcileDesiredExitOpts(allowActiveIGW bool) {
+	_ = allowActiveIGW // kept for call-site compatibility (hold release / tests)
 	// Logout snapshots want_igw for the next login, so desired state still asks
 	// for an exit while the teardown runs. Re-selecting here would undo the
 	// server-side clear that logout just issued.
@@ -197,9 +205,6 @@ func reconcileDesiredExitOpts(allowActiveIGW bool) {
 	if !ok {
 		return
 	}
-	if !allowActiveIGW && wireguard.IGWRoutingActive() {
-		return
-	}
 	token := uiapi.SessionAuthToken()
 	network := resolveAutoExitNetwork(user, tenant, token)
 	autoExit := autoExitModeActive(user, tenant, network, token)
@@ -210,6 +215,11 @@ func reconcileDesiredExitOpts(allowActiveIGW bool) {
 		return
 	}
 	if token == "" || network == "" || (egressID == "" && !autoExit) {
+		return
+	}
+	// Exit network must be connected — disconnect keeps desire but clears the
+	// server selection; wait until the user reconnects that network.
+	if node, ok := config.GetNodes()[network]; !ok || !node.Connected {
 		return
 	}
 

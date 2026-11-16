@@ -315,6 +315,45 @@ func armEnforcedAutoExitDesired(network, egressID string) {
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, egressID)
 }
 
+// applyDesiredExitAfterConnect re-PUTs the stored exit after connect/join.
+// Manual selections used to be skipped here (auto-only), so disconnect→reconnect
+// with an exit still selected in the UI left the server without ChangeDefaultGw.
+func applyDesiredExitAfterConnect(network, token string) {
+	if strings.TrimSpace(token) == "" || strings.TrimSpace(network) == "" {
+		return
+	}
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok || !desiredWantsIGW(user, tenant) {
+		return
+	}
+	exitNet := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if exitNet != "" && exitNet != network {
+		return
+	}
+	if uiapi.ShouldDeferAutoExitClaim(network) {
+		return
+	}
+	if config.GetDesiredAutoExit(user, tenant) {
+		applyDeferredAutoExitAfterConnect(network, token)
+		return
+	}
+	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	if egressID == "" {
+		return
+	}
+	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) == egressID {
+		// Server already has this exit; keep desire keyed to this network.
+		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
+		return
+	}
+	if _, err := SelectDeviceExitNode(network, token, egressID); err != nil {
+		slog.Warn("re-apply desired exit after connect failed",
+			"network", network, "egress_id", egressID, "error", err)
+		return
+	}
+	slog.Info("re-applied desired exit after connect", "network", network, "egress_id", egressID)
+}
+
 // applyDeferredAutoExitAfterConnect selects nearest once the mesh is up when
 // auto_exit is desired (user Auto, or a network that enforces it).
 func applyDeferredAutoExitAfterConnect(network, token string) {
@@ -329,7 +368,7 @@ func applyDeferredAutoExitAfterConnect(network, token string) {
 	if exitNet != "" && exitNet != network {
 		return
 	}
-	if other := uiapi.ActiveExitNetwork(network); other != "" {
+	if uiapi.ShouldDeferAutoExitClaim(network) {
 		return
 	}
 	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) != "" {
@@ -360,14 +399,16 @@ func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) 
 		if !ok || !node.Connected {
 			continue
 		}
-		// Always arm local AUTO so failover works even when the server already
+		// Never arm desire on this network before conflict checks — arming
+		// SetDesiredAutoExitNode would overwrite the first network's exit.
+		if uiapi.ShouldDeferAutoExitClaim(n.NetworkID) {
+			autoExitEnforced.Store(n.NetworkID, struct{}{})
+			continue
+		}
+		// Arm local AUTO so failover works even when the server already
 		// assigned an exit (EnsureAutoExitNode) without a client select.
 		armEnforcedAutoExitDesired(n.NetworkID, "")
 		if _, done := autoExitEnforced.Load(n.NetworkID); done {
-			continue
-		}
-		if uiapi.ActiveExitNetwork(n.NetworkID) != "" {
-			autoExitEnforced.Store(n.NetworkID, struct{}{})
 			continue
 		}
 		autoExitEnforced.Store(n.NetworkID, struct{}{})

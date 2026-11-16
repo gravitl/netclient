@@ -126,6 +126,7 @@ func GetIGWMonitor() *IGWMonitor {
 
 // Monitor starts the monitor for dual-stack (or single-family) internet gateway nexthops.
 func (m *IGWMonitor) Monitor(publicKey string, gw4, gw6 net.IP) {
+	noteIGWInstalled()
 	m.mu.Lock()
 	// ideally, it should never happen that we have multiple
 	// internet gateways, but just in case it happens, we need to

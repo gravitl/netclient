@@ -335,18 +335,16 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 	_, prevUser, _ := sessionToken()
 	prevTenant := sessionTenantID()
-	if prevUser != "" && (prevUser != req.Username || prevTenant != req.TenantID) {
-		// Unregister under the previous user's JWT so the next user/tenant can enroll.
-		if err := releaseSessionFn(false, true); err != nil {
-			uiLog(1, "uiapi: failed to disconnect prior session before handoff:", err.Error())
-		}
-		if err := clearSession(true); err != nil {
-			uiLog(1, "uiapi: failed to clear prior session before handoff:", err.Error())
-		}
+	handoff := isSessionHandoff(prevUser, prevTenant, req.Username, req.TenantID)
+	// Classic Desktop / wake re-auth often omits tenant_id. Keep the session
+	// tenant so desired-state restore and device headers stay keyed correctly.
+	if !handoff && req.TenantID == "" && prevTenant != "" && prevUser == req.Username {
+		req.TenantID = prevTenant
 	}
 
 	// Verify server version before registering the host so an old controller
-	// never receives a Desktop enrollment.
+	// never receives a Desktop enrollment. Do this before handoff unregister:
+	// a failed check must not DELETE the host (sleep/wake re-PUT used to).
 	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
 	if err != nil {
 		uiLog(0, "uiapi: failed to fetch server config for compatibility check:", err.Error())
@@ -359,6 +357,16 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		setStatus(Idle)
 		respondServerIncompatible(w, cfg.Version)
 		return
+	}
+
+	if handoff {
+		// Unregister under the previous user's JWT so the next user/tenant can enroll.
+		if err := releaseSessionFn(false, true); err != nil {
+			uiLog(1, "uiapi: failed to disconnect prior session before handoff:", err.Error())
+		}
+		if err := clearSession(true); err != nil {
+			uiLog(1, "uiapi: failed to clear prior session before handoff:", err.Error())
+		}
 	}
 
 	if err := registerSession(server, req.Username, req.AuthToken, req.Password, req.TenantID); err != nil {
