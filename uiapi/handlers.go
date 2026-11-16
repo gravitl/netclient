@@ -242,7 +242,6 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 		resp.AutoExit = config.GetDesiredAutoExit(username, tenantID)
 		resp.DesiredEgressID = config.GetDesiredEgressID(username, tenantID)
 		resp.DesiredExitNetwork = config.GetDesiredExitNetwork(username, tenantID)
-		resp.DesiredNetworks = desiredNetworksForSession(username, tenantID)
 		if notice := GetSessionNotice(); notice.Code != "" {
 			resp.Notice = &notice
 		}
@@ -251,19 +250,6 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		uiLog(0, "uiapi: failed to encode server/session response:", err.Error())
 	}
-}
-
-// desiredNetworksForSession returns the user's auto-reconnect set, truncated
-// the same way restoreDesiredConnections does when RAC is single-network.
-func desiredNetworksForSession(username, tenantID string) []string {
-	desired := config.GetDesiredNetworks(username, tenantID)
-	if RestrictToSingleNetwork() && len(desired) > 1 {
-		desired = append([]string(nil), desired[len(desired)-1:]...)
-	}
-	if len(desired) == 0 {
-		return nil
-	}
-	return desired
 }
 
 // currentServerAPI returns the API host:port from servers.json (Server.API).
