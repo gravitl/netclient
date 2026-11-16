@@ -269,6 +269,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	// Nodes can land here after the interface was already built without them,
 	// leaving it unaddressed. Repair before peers and exit routes go on.
 	ifaceRepaired := wireguard.EnsureNodeAddrs()
+	wireguard.ClearEndpointCachesForRemovedPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	// Start auto-relay handshake grace as soon as peers hit the device — not
 	// after later setAutoRelayNodes / IGW / DNS work, which can add seconds.
@@ -995,6 +996,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	ifaceRepaired := wireguard.EnsureNodeAddrs()
+	wireguard.ClearEndpointCachesForRemovedPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
 	setAutoRelayNodes(pullResponse.AutoRelayNodes, pullResponse.GwNodes, pullResponse.Nodes)
 	if IsDesktopBuild() {

@@ -10,6 +10,19 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// ClearEndpointCachesForRemovedPeers drops sticky endpoint-detection state for
+// peers marked Remove in a peer update (deleted/left peers).
+func ClearEndpointCachesForRemovedPeers(peers []wgtypes.PeerConfig) {
+	for _, p := range peers {
+		if !p.Remove {
+			continue
+		}
+		pk := p.PublicKey.String()
+		cache.EndpointCache.Delete(pk)
+		cache.SkipEndpointCache.Delete(pk)
+	}
+}
+
 // HostPeerAllowedIPs returns AllowedIPs from non-removed host peers.
 func HostPeerAllowedIPs() []net.IPNet {
 	host := config.Netclient()

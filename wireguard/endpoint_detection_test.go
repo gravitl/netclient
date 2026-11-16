@@ -9,6 +9,7 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func clearEndpointCache() {
@@ -93,4 +94,42 @@ func TestDropMeshRoutedEndpointCache_clearsStickyLAN(t *testing.T) {
 	assert.False(t, badStill)
 	_, lanStill := cache.EndpointCache.Load("lan-peer")
 	assert.True(t, lanStill)
+}
+
+func TestClearEndpointCachesForRemovedPeers(t *testing.T) {
+	t.Cleanup(func() {
+		clearEndpointCache()
+		cache.SkipEndpointCache.Range(func(k, _ any) bool {
+			cache.SkipEndpointCache.Delete(k)
+			return true
+		})
+	})
+	clearEndpointCache()
+
+	priv, err := wgtypes.GeneratePrivateKey()
+	require.NoError(t, err)
+	keepPriv, err := wgtypes.GeneratePrivateKey()
+	require.NoError(t, err)
+	removedPK := priv.PublicKey()
+	keepPK := keepPriv.PublicKey()
+
+	ep := &net.UDPAddr{IP: net.ParseIP("192.168.1.10"), Port: 51821}
+	cache.EndpointCache.Store(removedPK.String(), cache.EndpointCacheValue{Endpoint: ep})
+	cache.EndpointCache.Store(keepPK.String(), cache.EndpointCacheValue{Endpoint: ep})
+	cache.SkipEndpointCache.Store(removedPK.String(), 2)
+	cache.SkipEndpointCache.Store(keepPK.String(), 1)
+
+	ClearEndpointCachesForRemovedPeers([]wgtypes.PeerConfig{
+		{PublicKey: removedPK, Remove: true},
+		{PublicKey: keepPK, Remove: false},
+	})
+
+	_, removedEP := cache.EndpointCache.Load(removedPK.String())
+	_, keepEP := cache.EndpointCache.Load(keepPK.String())
+	_, removedSkip := cache.SkipEndpointCache.Load(removedPK.String())
+	_, keepSkip := cache.SkipEndpointCache.Load(keepPK.String())
+	assert.False(t, removedEP)
+	assert.True(t, keepEP)
+	assert.False(t, removedSkip)
+	assert.True(t, keepSkip)
 }
