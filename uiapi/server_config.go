@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -57,7 +58,8 @@ var fetchServerConfig = fetchServerConfigHTTP
 func fetchServerConfigHTTP(ctx context.Context, server, username, authToken, tenantID string) (nmConfig.ServerConfig, error) {
 	var cfg nmConfig.ServerConfig
 	if server == "" || authToken == "" {
-		fmt.Println("uiapi: getconfig skip server=", server, "token_set=", authToken != "", "user=", username)
+		slog.Debug("uiapi getconfig skip",
+			"server", server, "token_set", authToken != "", "user", username)
 		return cfg, fmt.Errorf("server or auth token not configured")
 	}
 	apiRaw := ""
@@ -72,25 +74,26 @@ func fetchServerConfigHTTP(ctx context.Context, server, username, authToken, ten
 	}
 	api = config.NormalizeServerAPI(api)
 	if api == "" {
-		fmt.Println("uiapi: getconfig empty api after normalize server=", server, "api_raw=", apiRaw, "api_host=", apiHost)
+		slog.Debug("uiapi getconfig empty api after normalize",
+			"server", server, "api_raw", apiRaw, "api_host", apiHost)
 		return cfg, fmt.Errorf("server or auth token not configured")
 	}
 	url := config.APIBaseURL(api) + "/api/server/getconfig"
 	tenant := strings.TrimSpace(tenantID)
-	fmt.Println("uiapi: getconfig request",
-		"server=", server,
-		"api_raw=", apiRaw,
-		"api_host=", apiHost,
-		"api=", api,
-		"url=", url,
-		"user=", username,
-		"tenant=", tenant,
-		"tenant_header=", tenant != "",
-		"token_len=", len(authToken),
+	slog.Debug("uiapi getconfig request",
+		"server", server,
+		"api_raw", apiRaw,
+		"api_host", apiHost,
+		"api", api,
+		"url", url,
+		"user", username,
+		"tenant", tenant,
+		"tenant_header", tenant != "",
+		"token_len", len(authToken),
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		fmt.Println("uiapi: getconfig build request error:", err.Error())
+		slog.Debug("uiapi getconfig build request error", "error", err)
 		return cfg, err
 	}
 	req.Header.Set("Authorization", "Bearer "+authToken)
@@ -100,32 +103,33 @@ func fetchServerConfigHTTP(ctx context.Context, server, username, authToken, ten
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("uiapi: getconfig dial error url=", url, "err=", err.Error())
+		slog.Debug("uiapi getconfig dial error", "url", url, "error", err)
 		return cfg, err
 	}
 	defer resp.Body.Close()
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		fmt.Println("uiapi: getconfig read body error:", readErr.Error(), "status=", resp.Status)
+		slog.Debug("uiapi getconfig read body error", "error", readErr, "status", resp.Status)
 	}
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println("uiapi: getconfig failed",
-			"status=", resp.StatusCode,
-			"status_text=", resp.Status,
-			"url=", url,
-			"tenant=", tenant,
-			"body=", strings.TrimSpace(truncateForLog(body, 2048)),
+		slog.Debug("uiapi getconfig failed",
+			"status", resp.StatusCode,
+			"status_text", resp.Status,
+			"url", url,
+			"tenant", tenant,
+			"body", strings.TrimSpace(truncateForLog(body, 2048)),
 		)
 		return cfg, fmt.Errorf("failed to fetch server config: %s", resp.Status)
 	}
 	if err := json.Unmarshal(body, &cfg); err != nil {
-		fmt.Println("uiapi: getconfig decode error:", err.Error(), "body=", strings.TrimSpace(truncateForLog(body, 2048)))
+		slog.Debug("uiapi getconfig decode error",
+			"error", err, "body", strings.TrimSpace(truncateForLog(body, 2048)))
 		return cfg, err
 	}
-	fmt.Println("uiapi: getconfig ok",
-		"url=", url,
-		"tenant=", tenant,
-		"version=", cfg.Version,
+	slog.Debug("uiapi getconfig ok",
+		"url", url,
+		"tenant", tenant,
+		"version", cfg.Version,
 	)
 	_ = username
 	return cfg, nil

@@ -31,8 +31,8 @@ func connectNetwork(network string, restart bool) error {
 		for k := range nodes {
 			keys = append(keys, k)
 		}
-		fmt.Println("connect debug: connectNetwork no such network",
-			"network=", network, "local_count=", len(nodes), "local_networks=", keys)
+		slog.Debug("connectNetwork no such network",
+			"network", network, "local_count", len(nodes), "local_networks", keys)
 		err := errors.New("no such network")
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
@@ -99,7 +99,7 @@ func connectNetwork(network string, restart bool) error {
 func ApplyConnectionChange(op string) error {
 	wantIGW := op != "disconnect" && callDesktopWantsIGW()
 	if err := applyConnectionChangeInProcess(wantIGW); err != nil {
-		fmt.Println("in-process", op, "apply failed; falling back to daemon soft restart:", err)
+		slog.Debug("in-process apply failed; falling back to daemon soft restart", "op", op, "error", err)
 		if err := daemon.Restart(); err != nil {
 			if err := daemon.Start(); err != nil {
 				return fmt.Errorf("daemon restart failed %w", err)

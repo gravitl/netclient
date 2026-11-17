@@ -3,6 +3,7 @@ package uiapi
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"runtime"
@@ -366,15 +367,15 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	if !handoff && req.TenantID == "" && prevTenant != "" && prevUser == req.Username {
 		req.TenantID = prevTenant
 	}
-	fmt.Println("uiapi: PUT /session begin",
-		"server=", server,
-		"user=", req.Username,
-		"prev_user=", prevUser,
-		"tenant_in=", reqTenantIn,
-		"prev_tenant=", prevTenant,
-		"tenant_effective=", req.TenantID,
-		"handoff=", handoff,
-		"token_len=", len(req.AuthToken),
+	slog.Debug("uiapi PUT /session begin",
+		"server", server,
+		"user", req.Username,
+		"prev_user", prevUser,
+		"tenant_in", reqTenantIn,
+		"prev_tenant", prevTenant,
+		"tenant_effective", req.TenantID,
+		"handoff", handoff,
+		"token_len", len(req.AuthToken),
 	)
 
 	// Verify server version before registering the host so an old controller
@@ -382,8 +383,8 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	// a failed check must not DELETE the host (sleep/wake re-PUT used to).
 	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
 	if err != nil {
-		fmt.Println("uiapi: PUT /session compatibility check failed:", err.Error(),
-			"server=", server, "user=", req.Username, "tenant=", req.TenantID)
+		slog.Debug("uiapi PUT /session compatibility check failed",
+			"error", err, "server", server, "user", req.Username, "tenant", req.TenantID)
 		uiLog(0, "uiapi: failed to fetch server config for compatibility check:", err.Error())
 		setStatus(Idle)
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -456,7 +457,9 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		SetRestorePhase(RestorePhaseRegister)
 	}
 	username, tenantID := req.Username, req.TenantID
-	fmt.Println("uiapi: session configured user=", req.Username, "tenant=", req.TenantID, "server=", server, "restore_pending=", resetting, "enrolling=", enrolling)
+	slog.Debug("uiapi session configured",
+		"user", req.Username, "tenant", req.TenantID, "server", server,
+		"restore_pending", resetting, "enrolling", enrolling)
 	w.WriteHeader(http.StatusOK)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -464,12 +467,12 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	resetDone := applyRegistrationReset()
 	go func(gen uint64, username, tenantID string, resetDone <-chan struct{}) {
 		if resetDone != nil {
-			fmt.Println("uiapi: waiting for registration in-process reset before restore")
+			slog.Debug("uiapi waiting for registration in-process reset before restore")
 			<-resetDone
-			fmt.Println("uiapi: registration in-process reset done; starting restore")
+			slog.Debug("uiapi registration in-process reset done; starting restore")
 		}
 		if err := restoreDesiredConnections(username, tenantID); err != nil {
-			fmt.Println("uiapi: failed to restore previous connections:", err.Error())
+			slog.Warn("uiapi failed to restore previous connections", "error", err)
 		}
 		finishSessionRestore(gen)
 	}(restoreGen, username, tenantID, resetDone)
@@ -477,7 +480,7 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
-	fmt.Println("uiapi: DELETE /session clear_token=", clearToken)
+	slog.Debug("uiapi DELETE /session", "clear_token", clearToken)
 	cancelSessionRestore()
 	setStatus(Closing)
 	// Logout tears down tunnels and clears the JWT when clear_token is set.
@@ -485,13 +488,13 @@ func releaseSession(w http.ResponseWriter, r *http.Request) {
 	// network membership. Unregister only on user/tenant handoff (PUT /session).
 	// App-quit keep-token must not unregister or session restore breaks.
 	if err := releaseSessionFn(false, false); err != nil {
-		fmt.Println("uiapi: error releasing session:", err.Error())
+		slog.Warn("uiapi error releasing session", "error", err)
 	}
 	if err := clearSession(clearToken); err != nil {
-		fmt.Println("uiapi: error clearing session:", err.Error())
+		slog.Warn("uiapi error clearing session", "error", err)
 	}
 	setStatus(Idle)
-	fmt.Println("uiapi: logout complete")
+	slog.Debug("uiapi logout complete")
 	w.WriteHeader(http.StatusOK)
 }
 

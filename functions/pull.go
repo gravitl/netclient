@@ -153,12 +153,12 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 			}
 		}
 	}
-	fmt.Println("pull debug: before SetNodes",
-		"server=", serverName,
-		"pull.Nodes=", debugServerNodeSummary(pullResponse.Nodes),
-		"host.Nodes=", pullResponse.Host.Nodes,
-		"empty=", len(pullResponse.Nodes) == 0,
-		"local_before=", debugLocalNodeSummary())
+	slog.Debug("pull before SetNodes",
+		"server", serverName,
+		"pull.Nodes", debugServerNodeSummary(pullResponse.Nodes),
+		"host.Nodes", pullResponse.Host.Nodes,
+		"empty", len(pullResponse.Nodes) == 0,
+		"local_before", debugLocalNodeSummary())
 	PreserveConnectionsAfterSync(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)
@@ -170,10 +170,6 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	fmt.Println("pull debug: after sync",
-		"server=", serverName,
-		"local=", debugLocalNodeSummary(),
-		"peers=", len(config.Netclient().HostPeers))
 	slog.Debug("host pull sync complete",
 		"server", serverName,
 		"local", debugLocalNodeSummary(),

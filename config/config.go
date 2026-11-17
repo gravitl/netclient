@@ -227,10 +227,10 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 	prevTenant := strings.TrimSpace(hostCfg.TenantID)
 	nextTenant := strings.TrimSpace(host.TenantID)
 	if prevOwner != nextOwner || prevTenant != nextTenant {
-		fmt.Println("config debug: UpdateHost identity change",
-			"owner=", prevOwner, "->", nextOwner,
-			"tenant=", prevTenant, "->", nextTenant,
-			"owner_wiped=", prevOwner != "" && nextOwner == "")
+		slog.Debug("UpdateHost identity change",
+			"owner_from", prevOwner, "owner_to", nextOwner,
+			"tenant_from", prevTenant, "tenant_to", nextTenant,
+			"owner_wiped", prevOwner != "" && nextOwner == "")
 	}
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)

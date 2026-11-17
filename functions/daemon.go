@@ -63,7 +63,7 @@ type cachedMessage struct {
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
 	// Distinct marker so a copied Windows binary can be verified in winsw/console logs.
-	fmt.Println("build marker: connect-disconnect skips host pull (NM-356)")
+	slog.Debug("build marker: connect-disconnect skips host pull (NM-356)")
 	daemon.SetDaemonMode()
 	if daemon.MigrateWindowsService() {
 		logger.Log(0, "windows service retargeted; exiting so Program Files can start")

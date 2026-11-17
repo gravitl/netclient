@@ -172,11 +172,6 @@ func shouldApplyExitAfterReconnect(pull models.HostPull, pullErr error) bool {
 func PreserveConnectionsAfterSync(nodes []models.Node) {
 	keepDisconnected := locallyDisconnectedNetworks()
 	keepConnected := locallyConnectedNetworks()
-	fmt.Println("preserve debug: before",
-		"local=", debugLocalNodeSummary(),
-		"server_in=", debugServerNodeSummary(nodes),
-		"keep_disc=", debugNetSet(keepDisconnected),
-		"keep_conn=", debugNetSet(keepConnected))
 	slog.Debug("preserve connections after sync: before",
 		"local", debugLocalNodeSummary(),
 		"server_in", debugServerNodeSummary(nodes),
@@ -187,8 +182,6 @@ func PreserveConnectionsAfterSync(nodes []models.Node) {
 	if GUI.FilterPreserved != nil {
 		beforeFilter := debugNetSet(keepConnected)
 		keepConnected = GUI.FilterPreserved(keepConnected)
-		fmt.Println("preserve debug: filter preserved",
-			"before=", beforeFilter, "after=", debugNetSet(keepConnected))
 		slog.Debug("preserve connections after sync: filter preserved",
 			"before", beforeFilter, "after", debugNetSet(keepConnected))
 	}
@@ -198,7 +191,6 @@ func PreserveConnectionsAfterSync(nodes []models.Node) {
 			"local_before_reassert", debugLocalNodeSummary())
 		GUI.ReassertDesired()
 	}
-	fmt.Println("preserve debug: after", "local=", debugLocalNodeSummary())
 	slog.Debug("preserve connections after sync: after",
 		"local", debugLocalNodeSummary())
 }

@@ -3,6 +3,7 @@ package uiapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -100,7 +101,7 @@ func stopLocked() error {
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	fmt.Println("uiapi: stopping desktop API on", listenAddr)
+	slog.Debug("uiapi stopping desktop API", "addr", listenAddr)
 	err := httpSrv.Shutdown(shutdownCtx)
 	if listenDone != nil {
 		<-listenDone
@@ -108,9 +109,9 @@ func stopLocked() error {
 	}
 	httpSrv = nil
 	if err != nil {
-		fmt.Println("uiapi: shutdown error:", err.Error())
+		slog.Warn("uiapi shutdown error", "error", err)
 	} else {
-		fmt.Println("uiapi: stopped (Desktop will see ECONNREFUSED until listen returns)")
+		slog.Debug("uiapi stopped (Desktop will see ECONNREFUSED until listen returns)")
 	}
 	return err
 }

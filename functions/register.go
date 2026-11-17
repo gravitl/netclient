@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -193,11 +194,11 @@ func handleRegisterResponse(registerResponse *models.RegisterResponse) {
 		tenant = strings.TrimSpace(nc.TenantID)
 		hostID = nc.ID.String()
 	}
-	fmt.Println("register debug: HandleRegisterResponse applied",
-		"server=", serverKey, "host=", hostID, "owner=", owner, "tenant=", tenant,
-		"resp_owner=", strings.TrimSpace(registerResponse.RequestedHost.OwnerUsername),
-		"resp_tenant=", strings.TrimSpace(registerResponse.ServerConf.TenantID),
-		"owner_set=", owner != "")
+	slog.Debug("HandleRegisterResponse applied",
+		"server", serverKey, "host", hostID, "owner", owner, "tenant", tenant,
+		"resp_owner", strings.TrimSpace(registerResponse.RequestedHost.OwnerUsername),
+		"resp_tenant", strings.TrimSpace(registerResponse.ServerConf.TenantID),
+		"owner_set", owner != "")
 	// First desktop login registers before PUT /session can answer. Restarting
 	// the Windows service here kills that request. Defer an in-process reset
 	// until the login response is written. A CLI registration is another
@@ -249,12 +250,12 @@ func ApplyPendingRegistrationReset() <-chan struct{} {
 		return nil
 	}
 	registrationEnrollmentPending.Store(false)
-	fmt.Println("device registration: resetting in-process")
+	slog.Debug("device registration: resetting in-process")
 	done := daemon.RequestInProcessReset()
 	if done == nil {
-		fmt.Println("registration reset: in-process unavailable; falling back to daemon soft restart")
+		slog.Debug("registration reset: in-process unavailable; falling back to daemon soft restart")
 		if err := daemon.Restart(); err != nil {
-			fmt.Println("daemon restart failed:", err.Error())
+			slog.Warn("daemon restart failed", "error", err)
 		}
 	}
 	return done
