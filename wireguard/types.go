@@ -140,7 +140,9 @@ func EnsureNodeAddrs() bool {
 func staleOverlayAddrs(live []net.IP, wantSet map[string]struct{}) []string {
 	var stale []string
 	for _, l := range live {
-		if !l.IsGlobalUnicast() {
+		// Explicit link-local/loopback skip: some Go builds treat fe80:: as
+		// IsGlobalUnicast, which forced Configure() on every EnsureNodeAddrs.
+		if !l.IsGlobalUnicast() || l.IsLinkLocalUnicast() || l.IsLoopback() {
 			continue
 		}
 		if _, ok := wantSet[l.String()]; !ok {

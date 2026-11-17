@@ -23,6 +23,8 @@ var (
 	registerDeviceOnServerForSession = RegisterDeviceOnServer
 	leaveHostOnTenantForSession      = leaveHostOnTenant
 	pullForSession                   = functions.Pull
+	sessionAuthTokenForUnregister    = uiapi.SessionAuthToken
+	sessionIdentityForUnregister     = uiapi.SessionIdentity
 )
 
 // IsRegisteredToServer reports whether netclient is fully registered to the given server.
@@ -482,8 +484,8 @@ func clearDNSOnLogout() {
 // unregisterHostBeforeLogout deletes this device from the current tenant while
 // the Desktop JWT is still valid, then demotes local enrollment.
 func unregisterHostBeforeLogout() {
-	token := strings.TrimSpace(uiapi.SessionAuthToken())
-	_, tenant := uiapi.SessionIdentity()
+	token := strings.TrimSpace(sessionAuthTokenForUnregister())
+	_, tenant := sessionIdentityForUnregister()
 	tenant = strings.TrimSpace(tenant)
 	if tenant == "" {
 		tenant = previousEnrollmentTenant(config.CurrServer)
@@ -510,10 +512,15 @@ func unregisterHostBeforeLogout() {
 	}
 	functions.ArmIgnoreStaleDeleteHost(tenant, leftHostID)
 	if err := leaveHostOnTenantForSession(server, tenant, token); err != nil {
-		// Dead / unreachable previous server is common when saving a new host in
-		// Settings — still demote local enrollment so the next login is not stuck.
-		slog.Warn("session: unregister before logout failed; clearing local enrollment",
+		// leaveHostOnTenant already treats missing-host as success (nil). Any
+		// remaining error is transient (unreachable API, 5xx, auth mismatch, etc.).
+		// Clearing local enrollment blanks TenantID / demotes servers.json, so the
+		// next login's previousEnrollmentTenant is empty and the leave+register
+		// retry cannot recover — host stays stranded under the old tenant.
+		// Keep stamps so RegisterSession can leave then re-enroll.
+		slog.Warn("session: unregister before logout failed; keeping local enrollment for leave retry",
 			"tenant", tenant, "error", err)
+		return
 	}
 	clearLocalEnrollmentAfterTenantLeave(server)
 }

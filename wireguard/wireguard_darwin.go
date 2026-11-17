@@ -69,7 +69,12 @@ func (nc *NCIface) ApplyAddrs() error {
 		if addrs, err := iface.Addrs(); err == nil {
 			for _, a := range addrs {
 				ipnet, ok := a.(*net.IPNet)
-				if !ok || ipnet.IP == nil || !ipnet.IP.IsGlobalUnicast() {
+				if !ok || ipnet.IP == nil {
+					continue
+				}
+				// Same as staleOverlayAddrs: never remove kernel utun fe80:: /
+				// loopback — IsGlobalUnicast alone is not enough on all Go builds.
+				if !ipnet.IP.IsGlobalUnicast() || ipnet.IP.IsLinkLocalUnicast() || ipnet.IP.IsLoopback() {
 					continue
 				}
 				if _, keep := want[ipnet.IP.String()]; keep {

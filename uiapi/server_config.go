@@ -104,7 +104,7 @@ func fetchServerConfigHTTP(ctx context.Context, server, username, authToken, ten
 		return cfg, err
 	}
 	defer resp.Body.Close()
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		fmt.Println("uiapi: getconfig read body error:", readErr.Error(), "status=", resp.Status)
 	}
@@ -114,12 +114,12 @@ func fetchServerConfigHTTP(ctx context.Context, server, username, authToken, ten
 			"status_text=", resp.Status,
 			"url=", url,
 			"tenant=", tenant,
-			"body=", strings.TrimSpace(string(body)),
+			"body=", strings.TrimSpace(truncateForLog(body, 2048)),
 		)
 		return cfg, fmt.Errorf("failed to fetch server config: %s", resp.Status)
 	}
 	if err := json.Unmarshal(body, &cfg); err != nil {
-		fmt.Println("uiapi: getconfig decode error:", err.Error(), "body=", strings.TrimSpace(string(body)))
+		fmt.Println("uiapi: getconfig decode error:", err.Error(), "body=", strings.TrimSpace(truncateForLog(body, 2048)))
 		return cfg, err
 	}
 	fmt.Println("uiapi: getconfig ok",
@@ -137,4 +137,12 @@ func activeServerAddress() string {
 
 func serverAddress() string {
 	return activeServerAddress()
+}
+
+// truncateForLog limits error-log body dumps without affecting decode.
+func truncateForLog(b []byte, max int) string {
+	if max <= 0 || len(b) <= max {
+		return string(b)
+	}
+	return string(b[:max]) + "…"
 }
