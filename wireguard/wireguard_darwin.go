@@ -103,10 +103,7 @@ func removeDarwinNodeAddr(iface string, ip net.IP, network net.IPNet) {
 	}
 	if ip.To4() != nil {
 		if network.IP != nil {
-			cmd := exec.Command("route", "delete", "-net", "-inet", network.String(), ip.String())
-			if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
-				slog.Warn("failed to delete overlay route", "command", cmd.String(), "error", string(out))
-			}
+			darwinDeleteNetRoute("-inet", network.String(), iface, ip)
 		}
 		cmd := exec.Command("ifconfig", iface, "inet", ip.String(), "delete")
 		if out, err := cmd.CombinedOutput(); err != nil && !darwinAddrGone(out) {
@@ -115,10 +112,7 @@ func removeDarwinNodeAddr(iface string, ip net.IP, network net.IPNet) {
 		return
 	}
 	if network.IP != nil {
-		cmd := exec.Command("route", "delete", "-net", "-inet6", network.String(), ip.String())
-		if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
-			slog.Warn("failed to delete overlay route", "command", cmd.String(), "error", string(out))
-		}
+		darwinDeleteNetRoute("-inet6", network.String(), iface, ip)
 	}
 	cmd := exec.Command("ifconfig", iface, "inet6", ip.String(), "-alias")
 	if out, err := cmd.CombinedOutput(); err != nil && !darwinAddrGone(out) {
@@ -136,10 +130,10 @@ func addDarwinNodeAddr(iface string, address ifaceAddress) {
 			slog.Error("error adding address", "command", cmd.String(), "error", string(out))
 		}
 		if address.Network.IP != nil {
-			cmd := exec.Command("route", "add", "-net", "-inet", address.Network.String(), address.IP.String())
-			if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
-				slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
-			}
+			// Pin to utun + bind -ifa to this network's node IP so multi-net
+			// does not pick another utun address as src (e.g. test IP for
+			// netmaker destinations).
+			darwinAddNetRoute("-inet", address.Network.String(), iface, address.IP)
 		}
 		return
 	}
@@ -148,10 +142,46 @@ func addDarwinNodeAddr(iface string, address ifaceAddress) {
 		slog.Error("error adding address", "command", cmd.String(), "error", string(out))
 	}
 	if address.Network.IP != nil {
-		cmd := exec.Command("route", "add", "-net", "-inet6", address.Network.String(), address.IP.String())
-		if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
-			slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
+		darwinAddNetRoute("-inet6", address.Network.String(), iface, address.IP)
+	}
+}
+
+// darwinAddNetRoute installs a prefix on the WireGuard iface. src (when set)
+// is passed as -ifa so Darwin uses that overlay address as the packet source
+// under multi-net; without it macOS may pick any utun address. Also clears
+// legacy via-IP / unscoped iface routes that may sit on en0 or lack -ifa.
+func darwinAddNetRoute(family, network, iface string, src net.IP) {
+	darwinDeleteNetRoute(family, network, iface, src)
+	args := []string{"add", "-net", family, network}
+	if src != nil {
+		args = append(args, "-ifa", src.String())
+	}
+	args = append(args, "-interface", iface)
+	cmd := exec.Command("route", args...)
+	if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
+		slog.Error("failed to add route", "command", cmd.String(), "error", string(out))
+	}
+}
+
+// darwinDeleteNetRoute removes iface-pinned routes (with and without -ifa) and
+// any legacy via-nexthop entry (pre-fix routes that may sit on en0).
+func darwinDeleteNetRoute(family, network, iface string, src net.IP) {
+	if src != nil {
+		cmd := exec.Command("route", "delete", "-net", family, network, "-ifa", src.String(), "-interface", iface)
+		if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
+			slog.Debug("ifa overlay route delete", "command", cmd.String(), "output", string(out))
 		}
+	}
+	cmd := exec.Command("route", "delete", "-net", family, network, "-interface", iface)
+	if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
+		slog.Debug("overlay route delete", "command", cmd.String(), "output", string(out))
+	}
+	if src == nil {
+		return
+	}
+	cmd = exec.Command("route", "delete", "-net", family, network, src.String())
+	if out, err := cmd.CombinedOutput(); err != nil && !darwinRouteGone(out) {
+		slog.Debug("legacy via-route delete", "command", cmd.String(), "output", string(out))
 	}
 }
 
@@ -174,44 +204,26 @@ func darwinRouteGone(out []byte) bool {
 		strings.Contains(s, "not found")
 }
 
-// RemoveRoutes removes egress routes using the stored addr shape (IP nil →
-// interface route; IP set → via that nexthop). Does not skip on-link entries
-// when multiple networks are connected.
+// RemoveRoutes removes egress routes. Always pins delete to the WireGuard iface
+// and also clears any legacy via-nexthop entry that may have landed on en0.
 func RemoveRoutes(addrs []ifaceAddress) {
-	var cmd *exec.Cmd
+	iface := ncutils.GetInterfaceName()
 	for _, addr := range addrs {
 		if addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
 			addr.Network.String() == IPv6Network {
 			continue
 		}
+		family := "-inet6"
 		if addr.Network.IP.To4() != nil {
-			if addr.IP == nil {
-				cmd = exec.Command("route", "delete", "-net", "-interface", addr.Network.String(), ncutils.GetInterfaceName())
-			} else {
-				cmd = exec.Command("route", "delete", "-net", "-inet", addr.Network.String(), addr.IP.String())
-			}
-			if out, err := cmd.CombinedOutput(); err != nil {
-				slog.Error("failed to delete route with", "command", cmd.String(), "error", string(out))
-				continue
-			}
-		} else {
-			if addr.IP == nil {
-				cmd = exec.Command("route", "delete", "-net", "-interface", addr.Network.String(), ncutils.GetInterfaceName())
-			} else {
-				cmd = exec.Command("route", "delete", "-net", "-inet6", addr.Network.String(), addr.IP.String())
-			}
-			if out, err := cmd.CombinedOutput(); err != nil {
-				slog.Error("failed to delete route with", "command", cmd.String(), "error", string(out))
-				continue
-			}
+			family = "-inet"
 		}
-
+		darwinDeleteNetRoute(family, addr.Network.String(), iface, addr.IP)
 	}
 }
 
 // SetRoutes - sets additional routes to the interface
 func SetRoutes(addrs []ifaceAddress) error {
-	var cmd *exec.Cmd
+	iface := ncutils.GetInterfaceName()
 	for _, addr := range addrs {
 		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
 			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
@@ -220,29 +232,12 @@ func SetRoutes(addrs []ifaceAddress) error {
 		if addr.Network.IP == nil {
 			continue
 		}
+		family := "-inet6"
 		if addr.Network.IP.To4() != nil {
-			if addr.IP == nil {
-				cmd = exec.Command("route", "add", "-net", "-interface", addr.Network.String(), ncutils.GetInterfaceName())
-			} else {
-				cmd = exec.Command("route", "add", "-net", "-inet", addr.Network.String(), addr.IP.String())
-			}
-
-			if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
-				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
-				continue
-			}
-		} else {
-			if addr.IP == nil {
-				cmd = exec.Command("route", "add", "-net", "-interface", addr.Network.String(), ncutils.GetInterfaceName())
-			} else {
-				cmd = exec.Command("route", "add", "-net", "-inet6", addr.Network.String(), addr.IP.String())
-			}
-			if out, err := cmd.CombinedOutput(); err != nil && !routeAlreadyExists(out) {
-				slog.Error("failed to add route with", "command", cmd.String(), "error", string(out))
-				continue
-			}
+			family = "-inet"
 		}
-
+		// -interface <utun> + -ifa <NodeAddr> when known (multi-net egress).
+		darwinAddNetRoute(family, addr.Network.String(), iface, addr.IP)
 	}
 	return nil
 }
