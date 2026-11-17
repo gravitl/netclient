@@ -286,7 +286,9 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 
 	// Peers from the initial host pull are already applied — scan once after grace
 	// instead of waiting a full ticker interval.
-	scheduleAutoRelayPeerScan()
+	if IsDesktopBuild() {
+		scheduleAutoRelayPeerScan()
+	}
 
 	for {
 		select {
