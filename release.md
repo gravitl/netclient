@@ -1,59 +1,76 @@
-# Netclient v1.7.0 Release Notes 🚀
+# Netclient v1.8.0 Release Notes 🚀
 
 ## 🚀 What’s New
 
-### 🏢 Multi-Tenancy Support
+### 💻 All-New Desktop Apps
 
-Netclient is tenant-aware for Netmaker MSP / multi-tenant deployments.
+Completely redesigned **Netmaker Desktop Apps** powered by netclient for a faster, stable connection experience.
 
-- Sends `X-Tenant-ID` on API requests so host actions are scoped to the correct tenant.
-- Prevents registering into a different tenant on a server the host is already joined to.
-- Uninstall, leave, and host cleanup use the correct token and tenant context; switching servers updates tenant state cleanly.
+- Now available to **CE users** as well (previously limited to Pro/EE).
+- **Peer-to-peer by default** — desktop devices join the mesh with direct WireGuard peering (not gateway-only), for lower latency and better connectivity.
+- Separate **desktop** and **headless** builds (`-tags desktop`) so GUI session, tray, and device APIs stay isolated from server/daemon installs.
+- Fresh UI and connection flow for connecting to networks and exit nodes.
+- Improved status visibility for tunnel state and exit modes.
+- **Auto Exit** — when enabled on a network (`auto_select_exit_node`), desktop/user devices are automatically assigned an allowed internet exit (nearest available) when they connect; users can still switch exits when permitted.
 
-### 🔌 TCP Proxy / WSS Uplink
+### 🔐 Managed Access with Netmaker SSH
 
-Reach the mesh when UDP is blocked by tunneling WireGuard over a **TCP/WSS uplink** to a gateway.
+Secure, managed SSH access via netclient’s embedded SSH/SCP/SFTP server — without opening inbound SSH on the public internet.
 
-- Gateways can enable a TCP proxy listener (`tcp_proxy_enabled`, listen port/addr, TLS mode).
-- Relayed clients dial the gateway over WSS (`wss://…/uplink/v1`) and authenticate with WireGuard key proofs.
-- Supports **self-signed** and **reverse-proxy / externally terminated TLS** modes.
-- Userspace WireGuard bind routes uplink peers through the proxy; disabling TCP uplink returns to kernel WireGuard without hanging.
+- When the host has **Manage SSH** enabled, netclient starts the embedded SSH server and listens on the mesh.
+- Access is limited to peers that can reach the host over Netmaker.
+- Useful for admin access, file transfer, and operational workflows on enrolled devices.
 
-### 📱 MDM Posture Collection
+### 🪟 Windows Egress Support
 
-Netclient collects device identity for **MDM posture checks** and reports compliance status.
+Windows hosts can now act as **egress gateways**.
 
-- Gathers hostname, serial, hardware UUID, and Entra device ID (platform-specific collectors for Linux, macOS, and Windows).
-- Sets MDM posture fields on registration and publishes identity for server-side Intune / Jamf / JumpCloud / Iru evaluation.
-- New CLI: `netclient posture status` (server-evaluated results) and `netclient posture identity` (local identity snapshot).
+- Advertise egress ranges and route mesh traffic to attached LAN/site networks on Windows.
+- Uses **Hyper-V NetNat** for egress NAT and **WFP** for peer/host and egress ACL enforcement.
+- Improved multi-network egress routing (correct nexthop / on-link handling on Windows).
 
-### 🌐 Dual-Stack Exit Node Routing
+### 🔀 Bypass Egress Routes
 
-Internet / exit-node routing now supports **IPv4 and IPv6** together.
+Honors the server **`bypass_egress_routes`** option on internet egress so traffic to other (site) egress destinations does not hairpin through the internet exit.
 
-- Dual-stack default routes and per-family gateway detection (including Windows default-gateway lookup by IP family).
-- Exit-node UI/API fields wired through for dual-stack internet gateways.
-- IPv6 NAT / masquerade rules for iptables and nftables egress endpoints.
+- **Why:** Without bypass, clients using an internet exit often send site-egress traffic up to the exit node and back out again (hairpin), adding latency and load.
+- When bypass is enabled, allowed site egress stays as **direct WireGuard peers** so traffic to those sites flows peer-to-peer instead of bending through the exit.
+
 
 
 ---
 
 ## 🧰 Improvements & Fixes
 
-### **Internet Gateways / Exit Routes**
-- Reapply exit routes after IGW monitor goes unhealthy and on `ReplacePeers` peer updates.
-- Improved IGW monitor status management and thread safety; don’t start the monitor with an empty gateway peer.
+### **Desktop / Exit Nodes**
+- Stop Desktop exit flap on `ChangeDefaultGw=false` races; finish deferred IGW teardown when select/restore ends.
+- Preserve internet-exit routes across connect/disconnect and iface rebuilds; correct multi-net exit source selection on Darwin/Windows.
+- Defer exit latency probes until after connect so listing stays non-blocking; allow UI exit list while disconnected for restore.
+- Keep host enrollment on Desktop logout; transfer ownership on re-login; recover orphaned `:53` listeners after login/logout.
+
+### **Auto-Relay**
+- Lower CPU use for auto-relay; keep auto-relay on pull by default.
+- `netclient pull --reset-connections` for a one-shot peer/auto-relay reset; one-shot auto-relay scan after peers land (handshake grace).
 
 ### **Egress / Firewall**
-- Fixed nftables port rules and restored egress MASQUERADE on the default interface (keep primary masquerade; skip only LAN-to-VPN SNAT when egress uses the WAN iface).
-- IPv6 NAT handling for iptables and nftables.
+- Reinstall egress after iface rebuild; skip unchanged egress on peer update; clear leftover Windows on-link routes.
+- Windows multi-net egress via GW nexthop (parity with Linux Src/Gw behavior).
+- nftables metrics port encoded in network order; IPv6 NAT handling for iptables and nftables.
+- Default-deny inbound on Desktop (Darwin pf); skip server FW rules where appropriate.
+
+
+### **Auth / Session**
+- Re-register once when session pull returns unauthorized.
+- Use user JWT for owned-device control-plane auth; deprecate join-with-user-auth flows.
+- ECDH-derived AES keys for decrypting server messages.
 
 ### **Endpoint / Listen Port**
 - Refresh the public listen port independently of a static endpoint (STUN for dynamic port even when the endpoint is static, and vice versa).
 - Skip hole punch only when both endpoint and port are static.
+- Skip STUN and IP detection for relayed devices.
 
 ### **Build**
-- Go toolchain updated to **1.26.0**.
+- Separate desktop and headless build tags; Go toolchain updated to **1.26.0**.
 
 
 ---
