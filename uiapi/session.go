@@ -2,7 +2,7 @@ package uiapi
 
 import (
 	"encoding/json"
-	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,12 +34,12 @@ func beginSessionRestore() uint64 {
 // current and the session is still in Restoring.
 func finishSessionRestore(gen uint64) {
 	if sessionRestoreGen.Load() != gen {
-		fmt.Println("uiapi: session restore finished but generation stale; leaving status unchanged")
+		slog.Debug("uiapi session restore finished but generation stale; leaving status unchanged")
 		return
 	}
 	SetRestorePhase("")
 	if getStatus() == Restoring {
-		fmt.Println("uiapi: session restore complete")
+		slog.Debug("uiapi session restore complete")
 		setStatus(Running)
 	}
 }
@@ -49,7 +49,7 @@ func cancelSessionRestore() {
 	sessionRestoreAbort.Store(true)
 	sessionRestoreGen.Add(1)
 	SetRestorePhase("")
-	fmt.Println("uiapi: session restore cancelled")
+	slog.Debug("uiapi session restore cancelled")
 }
 
 // Restore phase values exposed on GET /server while status=restoring.
@@ -373,7 +373,7 @@ func setStatus(status Status) {
 	session.status = status
 	session.mu.Unlock()
 	if prev != status {
-		fmt.Println("uiapi: session status", prev, "->", status)
+		slog.Debug("uiapi session status", "from", prev, "to", status)
 	}
 }
 
@@ -441,6 +441,28 @@ func sessionTenantID() string {
 	session.mu.RLock()
 	defer session.mu.RUnlock()
 	return session.tenantID
+}
+
+// isSessionHandoff reports whether PUT /session is switching user or MSP tenant
+// and must DELETE the prior host enrollment. Same-user re-auth (sleep/wake,
+// token refresh) often omits tenant_id while the in-memory session still has
+// one — that must not unregister the device.
+func isSessionHandoff(prevUser, prevTenant, newUser, newTenant string) bool {
+	prevUser = strings.TrimSpace(prevUser)
+	newUser = strings.TrimSpace(newUser)
+	prevTenant = strings.TrimSpace(prevTenant)
+	newTenant = strings.TrimSpace(newTenant)
+	if prevUser == "" {
+		return false
+	}
+	if prevUser != newUser {
+		return true
+	}
+	// Same user: only a real tenant switch when both sides name a tenant.
+	if prevTenant != "" && newTenant != "" && prevTenant != newTenant {
+		return true
+	}
+	return false
 }
 
 // SessionCredentials returns the active server and user token for device API calls.

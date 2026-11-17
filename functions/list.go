@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/config"
@@ -30,31 +31,42 @@ type peerOut struct {
 	AllowedIps []string `json:"allowed_ips"`
 }
 
-// List - list network details for specified networks
-// long flag passed passed to cmd line will list additional details about network including peers
+// List displays this host's networks from the server (GET /api/v1/host).
+// Unlike the old local-only path, disconnected nodes still appear so connect
+// can target them. A successful list also refreshes nodes.json (without
+// reasserting desktop desired connections).
+//
+// long fetches per-network peers via GET /api/nodes/{network}/{nodeID}.
 func List(net string, long bool) {
+	pull, err := fetchHostPull(false, false)
+	if err != nil {
+		fmt.Println("\nlist failed:", err)
+		return
+	}
+	syncNodesFromServerList(pull.Nodes)
+
 	listOutput := []output{}
 	found := false
-	nodes := config.GetNodes()
-	for _, node := range nodes {
-		if node.Network != net && net != "" {
+	for _, node := range pull.Nodes {
+		if net != "" && node.Network != net {
 			continue
 		}
 		found = true
-		output := output{
+		row := output{
 			Network:   node.Network,
 			Connected: node.Connected,
 			NodeID:    node.ID.String(),
 			Peers:     []peerOut{},
 		}
 		if node.Address.IP != nil {
-			output.Ipv4Addr = node.Address.String()
+			row.Ipv4Addr = node.Address.String()
 		}
 		if node.Address6.IP != nil {
-			output.Ipv6Addr = node.Address6.String()
+			row.Ipv6Addr = node.Address6.String()
 		}
 		if long {
-			peers, err := GetNodePeers(node)
+			cfgNode := listNodeConfig(node)
+			peers, err := GetNodePeers(cfgNode)
 			if err != nil {
 				logger.Log(1, "failed to get peers for node: ", node.ID.String(), " Err: ", err.Error())
 			}
@@ -65,29 +77,69 @@ func List(net string, long bool) {
 				if peer.Endpoint != nil {
 					p.Endpoint = peer.Endpoint.String()
 				}
-
 				for _, cidr := range peer.AllowedIPs {
 					p.AllowedIps = append(p.AllowedIps, cidr.String())
 				}
-				output.Peers = append(output.Peers, p)
+				row.Peers = append(row.Peers, p)
 			}
 		}
-		listOutput = append(listOutput, output)
+		listOutput = append(listOutput, row)
 	}
 	if !found {
-		fmt.Println("\nno such network")
-	} else {
-		out, err := json.MarshalIndent(listOutput, "", " ")
-		if err != nil {
-			logger.Log(0, "failed to marshal list output: ", err.Error())
+		if net != "" {
+			fmt.Println("\nno such network")
+		} else {
+			fmt.Println("\nno networks")
 		}
-		fmt.Println(string(out))
+		return
 	}
+	out, err := json.MarshalIndent(listOutput, "", " ")
+	if err != nil {
+		logger.Log(0, "failed to marshal list output: ", err.Error())
+		return
+	}
+	fmt.Println(string(out))
+}
+
+// syncNodesFromServerList replaces the local node map with the host-pull set
+// (includes disconnected). Preserves local Connected flags across the replace
+// but does not call ReassertDesired — listing must not force reconnects.
+//
+// Mirrors the MQTT empty-Nodes guard: never wipe a non-empty nodes.json from a
+// transient empty host-pull. Server remains source of truth for non-empty lists.
+func syncNodesFromServerList(nodes []models.Node) {
+	if len(nodes) == 0 && len(config.GetNodes()) > 0 {
+		logger.Log(0, "list: skipping node sync; server returned empty Nodes while local nodes exist")
+		return
+	}
+	keepDisconnected := locallyDisconnectedNetworks()
+	keepConnected := locallyConnectedNetworks()
+	config.SetNodes(nodes)
+	keepLocallyDisconnected(keepDisconnected)
+	if GUI.FilterPreserved != nil {
+		keepConnected = GUI.FilterPreserved(keepConnected)
+	}
+	keepLocallyConnected(keepConnected)
+	if err := config.WriteNodeConfig(); err != nil {
+		logger.Log(0, "list: failed to write node config:", err.Error())
+	}
+}
+
+func listNodeConfig(node models.Node) config.Node {
+	cfg := config.Node{CommonNode: node.CommonNode}
+	if strings.TrimSpace(cfg.Server) == "" {
+		cfg.Server = config.CurrServer
+	}
+	return cfg
 }
 
 // GetNodePeers returns the peers for a given node
 func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
-	server := config.GetServer(node.Server)
+	serverName := node.Server
+	if strings.TrimSpace(serverName) == "" {
+		serverName = config.CurrServer
+	}
+	server := config.GetServer(serverName)
 	if server == nil {
 		return []wgtypes.PeerConfig{}, errors.New("server config not found")
 	}
@@ -100,7 +152,8 @@ func GetNodePeers(node config.Node) ([]wgtypes.PeerConfig, error) {
 		return nil, err
 	}
 
-	url := fmt.Sprintf("https://%s/api/nodes/%s/%s", server.API, node.Network, node.ID.String())
+	url := fmt.Sprintf("%s/api/nodes/%s/%s",
+		config.APIBaseURL(config.NormalizeServerAPI(server.API)), node.Network, node.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	auth.ApplyAPIHeaders(headers, token, host)

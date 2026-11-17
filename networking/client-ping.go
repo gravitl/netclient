@@ -80,6 +80,9 @@ func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int
 	if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
 		return
 	}
+	if ip := net.ParseIP(peerIp); wireguard.IsMeshRoutedEndpointIP(ip, wireguard.HostPeerAllowedIPs()) {
+		return
+	}
 	connected := tryLocalConnect(peerIp, peerPubKey, metricsPort)
 	if connected {
 		addr := net.JoinHostPort(peerIp, fmt.Sprintf("%d", peerListenPort))

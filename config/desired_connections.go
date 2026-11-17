@@ -220,6 +220,54 @@ func ClearDesiredExitNode(username, tenantID string) error {
 	return writeDesiredConnectionsLocked(store)
 }
 
+// ClearAllDesiredConnections drops every user's restore snapshot.
+// Call when CurrServer changes so login on the new host does not reconnect
+// networks/exit nodes that belonged to the previous server (desired state is
+// keyed only by username+tenant, not by server).
+func ClearAllDesiredConnections() error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	return writeDesiredConnectionsLocked(desiredConnectionsStore{})
+}
+
+// ClearUserDesiredConnections drops every tenant restore snapshot for username.
+// Used when switching Desktop accounts so the next login does not reconnect
+// networks that belonged to the previous user on this device.
+func ClearUserDesiredConnections(username string) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil
+	}
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	if _, ok := store[username]; !ok {
+		return nil
+	}
+	delete(store, username)
+	return writeDesiredConnectionsLocked(store)
+}
+
+// ClearDesiredState drops networks + exit restore intent for one user+tenant.
+func ClearDesiredState(username, tenantID string) error {
+	desiredConnectionsMu.Lock()
+	defer desiredConnectionsMu.Unlock()
+	store := readDesiredConnectionsLocked()
+	username, tenantID, ok := sessionUserTenant(username, tenantID)
+	if !ok {
+		return nil
+	}
+	tenants := store[username]
+	if tenants == nil {
+		return nil
+	}
+	delete(tenants, tenantID)
+	if len(tenants) == 0 {
+		delete(store, username)
+	}
+	return writeDesiredConnectionsLocked(store)
+}
+
 // SetDesiredWantIGW updates only the exit-restore flag for a user+tenant.
 // Clearing want_igw also drops auto_exit and a stored egress id.
 func SetDesiredWantIGW(username, tenantID string, wantIGW bool) error {

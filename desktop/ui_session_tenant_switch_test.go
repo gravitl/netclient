@@ -184,3 +184,199 @@ func TestRegisterSessionRetriesLeaveWhenRegisterBlocked(t *testing.T) {
 	assert.Equal(t, 2, leaveCalls)
 	assert.Equal(t, 2, registerCalls)
 }
+
+func TestRegisterSessionPullUnauthorizedKeepsEnrollment(t *testing.T) {
+	hostID := uuid.New()
+	nc := config.Netclient()
+	require.NotNil(t, nc)
+	prev := *nc
+	nc.ID = hostID
+	nc.TenantID = "tenant-a"
+	nc.OwnerUsername = "alice"
+	config.UpdateNetclient(*nc)
+	config.CurrServer = "example.com"
+	config.Servers = map[string]config.Server{
+		"example.com": {
+			Name: "example.com",
+			ServerConfig: models.ServerConfig{
+				Server:   "example.com",
+				API:      "api.example.com:443",
+				TenantID: "tenant-a",
+			},
+		},
+	}
+
+	prevRegister := registerDeviceOnServerForSession
+	prevPull := pullForSession
+	registerCalls := 0
+	registerDeviceOnServerForSession = func(server, token string) error {
+		registerCalls++
+		return nil
+	}
+	pullForSession = func(restart, resetIfFailedOvered, refresh bool) (models.HostPull, bool, bool, error) {
+		return models.HostPull{}, false, false, errors.New("unauthorized")
+	}
+	t.Cleanup(func() {
+		registerDeviceOnServerForSession = prevRegister
+		pullForSession = prevPull
+		config.UpdateNetclient(prev)
+		config.Servers = make(map[string]config.Server)
+		config.CurrServer = ""
+	})
+
+	err := RegisterSession("example.com", "alice", "jwt", "", "tenant-a")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to sync with server")
+	assert.Equal(t, 0, registerCalls, "401 must not trigger re-register")
+	assert.True(t, IsRegisteredToServer("example.com"), "401 must not demote local enrollment")
+	assert.Equal(t, "tenant-a", config.GetServer("example.com").TenantID)
+}
+
+func TestRegisterSessionMissingHostReregistersWithoutClearingFirst(t *testing.T) {
+	hostID := uuid.New()
+	nc := config.Netclient()
+	require.NotNil(t, nc)
+	prev := *nc
+	nc.ID = hostID
+	nc.TenantID = "tenant-a"
+	nc.OwnerUsername = "alice"
+	config.UpdateNetclient(*nc)
+	config.CurrServer = "example.com"
+	config.Servers = map[string]config.Server{
+		"example.com": {
+			Name: "example.com",
+			ServerConfig: models.ServerConfig{
+				Server:   "example.com",
+				API:      "api.example.com:443",
+				TenantID: "tenant-a",
+			},
+		},
+	}
+
+	prevRegister := registerDeviceOnServerForSession
+	prevPull := pullForSession
+	registerCalls := 0
+	pullCalls := 0
+	registerDeviceOnServerForSession = func(server, token string) error {
+		registerCalls++
+		// Enrollment must still be intact when register runs (no prior clear).
+		require.True(t, IsRegisteredToServer("example.com"))
+		require.Equal(t, "tenant-a", config.GetServer("example.com").TenantID)
+		return errors.New("register temporarily unavailable")
+	}
+	pullForSession = func(restart, resetIfFailedOvered, refresh bool) (models.HostPull, bool, bool, error) {
+		pullCalls++
+		return models.HostPull{}, false, false, errors.New("failed to authenticate 400 record not found")
+	}
+	t.Cleanup(func() {
+		registerDeviceOnServerForSession = prevRegister
+		pullForSession = prevPull
+		config.UpdateNetclient(prev)
+		config.Servers = make(map[string]config.Server)
+		config.CurrServer = ""
+	})
+
+	err := RegisterSession("example.com", "alice", "jwt", "", "tenant-a")
+	require.Error(t, err)
+	assert.Equal(t, "register temporarily unavailable", err.Error())
+	assert.Equal(t, 1, pullCalls)
+	assert.Equal(t, 1, registerCalls)
+	assert.True(t, IsRegisteredToServer("example.com"), "failed re-register must keep local enrollment")
+	assert.Equal(t, "tenant-a", config.GetServer("example.com").TenantID)
+}
+
+func TestUnregisterHostBeforeLogoutKeepsEnrollmentOnLeaveFailure(t *testing.T) {
+	hostID := uuid.New()
+	nc := config.Netclient()
+	require.NotNil(t, nc)
+	prev := *nc
+	nc.ID = hostID
+	nc.TenantID = "tenant-a"
+	nc.OwnerUsername = "alice"
+	config.UpdateNetclient(*nc)
+	config.CurrServer = "example.com"
+	config.Servers = map[string]config.Server{
+		"example.com": {
+			Name: "example.com",
+			ServerConfig: models.ServerConfig{
+				Server:   "example.com",
+				API:      "api.example.com:443",
+				TenantID: "tenant-a",
+			},
+		},
+	}
+
+	prevLeave := leaveHostOnTenantForSession
+	prevToken := sessionAuthTokenForUnregister
+	prevIdent := sessionIdentityForUnregister
+	leaveCalls := 0
+	leaveHostOnTenantForSession = func(server, tenantID, userToken string) error {
+		leaveCalls++
+		assert.Equal(t, "tenant-a", tenantID)
+		assert.Equal(t, "jwt", userToken)
+		return errors.New("connection refused")
+	}
+	sessionAuthTokenForUnregister = func() string { return "jwt" }
+	sessionIdentityForUnregister = func() (string, string) { return "alice", "tenant-a" }
+	t.Cleanup(func() {
+		leaveHostOnTenantForSession = prevLeave
+		sessionAuthTokenForUnregister = prevToken
+		sessionIdentityForUnregister = prevIdent
+		config.UpdateNetclient(prev)
+		config.Servers = make(map[string]config.Server)
+		config.CurrServer = ""
+	})
+
+	unregisterHostBeforeLogout()
+
+	assert.Equal(t, 1, leaveCalls)
+	assert.True(t, IsRegisteredToServer("example.com"), "transient leave failure must keep enrollment")
+	assert.Equal(t, "tenant-a", config.GetServer("example.com").TenantID)
+	assert.Equal(t, "tenant-a", config.Netclient().TenantID)
+	assert.Equal(t, "tenant-a", previousEnrollmentTenant("example.com"))
+}
+
+func TestUnregisterHostBeforeLogoutClearsEnrollmentOnLeaveSuccess(t *testing.T) {
+	hostID := uuid.New()
+	nc := config.Netclient()
+	require.NotNil(t, nc)
+	prev := *nc
+	nc.ID = hostID
+	nc.TenantID = "tenant-a"
+	nc.OwnerUsername = "alice"
+	config.UpdateNetclient(*nc)
+	config.CurrServer = "example.com"
+	config.Servers = map[string]config.Server{
+		"example.com": {
+			Name: "example.com",
+			ServerConfig: models.ServerConfig{
+				Server:   "example.com",
+				API:      "api.example.com:443",
+				TenantID: "tenant-a",
+			},
+		},
+	}
+
+	prevLeave := leaveHostOnTenantForSession
+	prevToken := sessionAuthTokenForUnregister
+	prevIdent := sessionIdentityForUnregister
+	leaveHostOnTenantForSession = func(server, tenantID, userToken string) error {
+		return nil
+	}
+	sessionAuthTokenForUnregister = func() string { return "jwt" }
+	sessionIdentityForUnregister = func() (string, string) { return "alice", "tenant-a" }
+	t.Cleanup(func() {
+		leaveHostOnTenantForSession = prevLeave
+		sessionAuthTokenForUnregister = prevToken
+		sessionIdentityForUnregister = prevIdent
+		config.UpdateNetclient(prev)
+		config.Servers = make(map[string]config.Server)
+		config.CurrServer = ""
+	})
+
+	unregisterHostBeforeLogout()
+
+	assert.False(t, IsRegisteredToServer("example.com"), "successful leave must demote enrollment")
+	assert.Empty(t, config.Netclient().TenantID)
+	assert.Empty(t, previousEnrollmentTenant("example.com"))
+}

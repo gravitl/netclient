@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -55,39 +58,79 @@ var fetchServerConfig = fetchServerConfigHTTP
 func fetchServerConfigHTTP(ctx context.Context, server, username, authToken, tenantID string) (nmConfig.ServerConfig, error) {
 	var cfg nmConfig.ServerConfig
 	if server == "" || authToken == "" {
+		slog.Debug("uiapi getconfig skip",
+			"server", server, "token_set", authToken != "", "user", username)
 		return cfg, fmt.Errorf("server or auth token not configured")
 	}
-	api := ""
+	apiRaw := ""
+	apiHost := ""
 	if srv := config.GetServer(server); srv != nil {
-		api = srv.API
+		apiRaw = srv.API
+		apiHost = srv.APIHost
 	}
+	api := apiRaw
 	if api == "" {
 		api = server
 	}
 	api = config.NormalizeServerAPI(api)
 	if api == "" {
+		slog.Debug("uiapi getconfig empty api after normalize",
+			"server", server, "api_raw", apiRaw, "api_host", apiHost)
 		return cfg, fmt.Errorf("server or auth token not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, config.APIBaseURL(api)+"/api/server/getconfig", nil)
+	url := config.APIBaseURL(api) + "/api/server/getconfig"
+	tenant := strings.TrimSpace(tenantID)
+	slog.Debug("uiapi getconfig request",
+		"server", server,
+		"api_raw", apiRaw,
+		"api_host", apiHost,
+		"api", api,
+		"url", url,
+		"user", username,
+		"tenant", tenant,
+		"tenant_header", tenant != "",
+		"token_len", len(authToken),
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		slog.Debug("uiapi getconfig build request error", "error", err)
 		return cfg, err
 	}
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	req.Header.Set("X-Application-Name", "netmaker-desktop")
-	if tenantID != "" {
-		req.Header.Set(scope.HeaderTenantID, tenantID)
+	if tenant != "" {
+		req.Header.Set(scope.HeaderTenantID, tenant)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		slog.Debug("uiapi getconfig dial error", "url", url, "error", err)
 		return cfg, err
 	}
 	defer resp.Body.Close()
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		slog.Debug("uiapi getconfig read body error", "error", readErr, "status", resp.Status)
+	}
 	if resp.StatusCode != http.StatusOK {
+		slog.Debug("uiapi getconfig failed",
+			"status", resp.StatusCode,
+			"status_text", resp.Status,
+			"url", url,
+			"tenant", tenant,
+			"body", strings.TrimSpace(truncateForLog(body, 2048)),
+		)
 		return cfg, fmt.Errorf("failed to fetch server config: %s", resp.Status)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		slog.Debug("uiapi getconfig decode error",
+			"error", err, "body", strings.TrimSpace(truncateForLog(body, 2048)))
 		return cfg, err
 	}
+	slog.Debug("uiapi getconfig ok",
+		"url", url,
+		"tenant", tenant,
+		"version", cfg.Version,
+	)
 	_ = username
 	return cfg, nil
 }
@@ -98,4 +141,12 @@ func activeServerAddress() string {
 
 func serverAddress() string {
 	return activeServerAddress()
+}
+
+// truncateForLog limits error-log body dumps without affecting decode.
+func truncateForLog(b []byte, max int) string {
+	if max <= 0 || len(b) <= max {
+		return string(b)
+	}
+	return string(b[:max]) + "…"
 }

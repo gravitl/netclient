@@ -172,15 +172,52 @@ func shouldApplyExitAfterReconnect(pull models.HostPull, pullErr error) bool {
 func PreserveConnectionsAfterSync(nodes []models.Node) {
 	keepDisconnected := locallyDisconnectedNetworks()
 	keepConnected := locallyConnectedNetworks()
+	slog.Debug("preserve connections after sync: before",
+		"local", debugLocalNodeSummary(),
+		"server_in", debugServerNodeSummary(nodes),
+		"keep_disc", debugNetSet(keepDisconnected),
+		"keep_conn", debugNetSet(keepConnected))
 	config.SetNodes(nodes)
 	keepLocallyDisconnected(keepDisconnected)
 	if GUI.FilterPreserved != nil {
+		beforeFilter := debugNetSet(keepConnected)
 		keepConnected = GUI.FilterPreserved(keepConnected)
+		slog.Debug("preserve connections after sync: filter preserved",
+			"before", beforeFilter, "after", debugNetSet(keepConnected))
 	}
 	keepLocallyConnected(keepConnected)
 	if GUI.ReassertDesired != nil {
+		slog.Debug("preserve connections after sync: reassert desired",
+			"local_before_reassert", debugLocalNodeSummary())
 		GUI.ReassertDesired()
 	}
+	slog.Debug("preserve connections after sync: after",
+		"local", debugLocalNodeSummary())
+}
+
+func debugLocalNodeSummary() string {
+	nodes := config.GetNodes()
+	parts := make([]string, 0, len(nodes))
+	for name, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v)", name, n.Connected))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
+}
+
+func debugServerNodeSummary(nodes []models.Node) string {
+	parts := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", n.Network, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
+}
+
+func debugNetSet(networks map[string]struct{}) string {
+	parts := make([]string, 0, len(networks))
+	for name := range networks {
+		parts = append(parts, name)
+	}
+	return fmt.Sprintf("%d%v", len(networks), parts)
 }
 
 func locallyDisconnectedNetworks() map[string]struct{} {

@@ -14,12 +14,12 @@ var listCmd = &cobra.Command{
 	Use:   "list [network]",
 	Args:  cobra.RangeArgs(0, 1),
 	Short: "display list of netmaker networks",
-	Long: `display details of netmaker networks
-long flag provide additional details For example:
+	Long: `display this host's networks from the server (includes disconnected).
+long flag adds peer details. For example:
 netclient list mynet    //display details of mynet network
 netclient list mynet -l //display extended details of mynet network
 netclient list          //display details of all networks
-netclient list  -l      //display extented details of all networks
+netclient list  -l      //display extended details of all networks
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {

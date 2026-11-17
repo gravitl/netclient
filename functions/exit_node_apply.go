@@ -166,6 +166,9 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 			return err
 		}
 	}
+	// ApplyAddrs wiped OS egress; force the next SetEgressRoutes/SetRoutesFromCache
+	// to reinstall instead of early-returning on a stale iface-address cache.
+	wireguard.InvalidateEgressRouteCache()
 	if len(pull.Peers) > 0 {
 		config.UpdateHostPeers(pull.Peers)
 	}
@@ -181,6 +184,11 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 	} else if len(pull.Nodes) > 0 {
 		wireguard.RemoveEgressRoutes()
 		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	} else {
+		// Empty HostPull (connect/disconnect): Configure/ApplyAddrs already
+		// deleted OS egress routes. Reinstall from cache so network A's routes
+		// survive joining network B before the next MQTT peer update.
+		wireguard.SetRoutesFromCache()
 	}
 	if wantIGW || pull.ChangeDefaultGw {
 		done := logElapsed("exit route apply")
@@ -206,8 +214,10 @@ func applyReconnectInProcess(pull models.HostPull, wantIGW bool) error {
 // an in-process iface rebuild on every connect/disconnect.
 //
 // wantIGW must be false on disconnect: an empty pull + desktop want_igw would
-// burn igwApplyDeadline (~10s) retrying forceApplyInternetGw. Remaining exit
-// routes are reinstalled locally via ReapplyInternetGwAfterIfaceRecreate.
+// burn igwApplyDeadline (~10s) retrying forceApplyInternetGw. ApplyAddrs does
+// not own exit routes (Linux skips table 111; Darwin/Windows diff addrs only).
+// Disconnect of a non-exit network still reinstalls via
+// ReapplyInternetGwAfterIfaceRecreate when CurrGw remains set.
 func applyConnectionChangeInProcess(wantIGW bool) error {
 	// Connect and disconnect block the UI for the whole apply, so keep the phase
 	// costs visible: the expensive parts are network-dependent and only show up
@@ -224,10 +234,20 @@ func applyConnectionChangeInProcess(wantIGW bool) error {
 	if err := applyReconnectInProcess(models.HostPull{}, wantIGW); err != nil {
 		return err
 	}
-	// Iface rebuild drops OS default routes while CurrGwNmIP may still be set
-	// (disconnect of a non-exit network with exit still desired on another).
-	if !wantIGW && hadIGW && wireguard.IGWRoutingActive() {
-		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+	// Iface rebuild (address add on join/connect) can drop OS exit half-defaults
+	// while CurrGw stays set. Empty cached pull has change_default_gw=false so
+	// applyInternetGwAfterReconnect skips; reconcile also no-ops while
+	// IGWRoutingActive. Reinstall routes here or traffic stops until a later
+	// MQTT ChangeDefaultGw=true (often never, if nexthop unchanged).
+	if hadIGW && wireguard.IGWRoutingActive() {
+		if wantIGW {
+			// Soft Set only — Darwin full Restore+Set mid-connect can clear
+			// OriginalDefaultGatewayIp and fail with "failed to get current gateway".
+			logger.Log(0, "connection change: ensuring exit routes after iface rebuild")
+			wireguard.EnsureInternetGwRoutesAfterIfaceChange()
+		} else {
+			wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		}
 		dns.ScheduleReconfigure()
 	}
 	return nil

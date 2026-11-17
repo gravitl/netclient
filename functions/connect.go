@@ -3,6 +3,7 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gravitl/netclient/config"
@@ -26,6 +27,12 @@ func connectNetwork(network string, restart bool) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
+		keys := make([]string, 0, len(nodes))
+		for k := range nodes {
+			keys = append(keys, k)
+		}
+		slog.Debug("connectNetwork no such network",
+			"network", network, "local_count", len(nodes), "local_networks", keys)
 		err := errors.New("no such network")
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
@@ -34,9 +41,9 @@ func connectNetwork(network string, restart bool) error {
 	// runs. Treat that as "ensure applied" when restart is requested so peers
 	// hit the WireGuard device (tenant switch / first join after reset).
 	if node.Connected {
-		fmt.Println("connect debug: connectNetwork already connected",
-			"network=", network, "restart=", restart,
-			"peers_cached=", len(config.Netclient().HostPeers))
+		slog.Debug("connectNetwork already connected",
+			"network", network, "restart", restart,
+			"peers_cached", len(config.Netclient().HostPeers))
 		callRememberDesiredConnection(network)
 		if !restart {
 			return errors.New("node already connected")
@@ -45,8 +52,8 @@ func connectNetwork(network string, restart bool) error {
 			logger.Log(0, "connect", network, "publish while already connected:", err.Error())
 		}
 		token := callPrepareDesktopConnect(network)
-		fmt.Println("connect debug: already connected; applying peers/iface",
-			"network=", network, "peers_cached=", len(config.Netclient().HostPeers))
+		slog.Debug("connectNetwork already connected; applying peers/iface",
+			"network", network, "peers_cached", len(config.Netclient().HostPeers))
 		if err := ApplyConnectionChange("connect"); err != nil {
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
@@ -55,9 +62,9 @@ func connectNetwork(network string, restart bool) error {
 		go callFinishDesktopConnect(network, token)
 		return nil
 	}
-	fmt.Println("connect debug: connectNetwork marking connected",
-		"network=", network, "restart=", restart,
-		"peers_cached=", len(config.Netclient().HostPeers))
+	slog.Debug("connectNetwork marking connected",
+		"network", network, "restart", restart,
+		"peers_cached", len(config.Netclient().HostPeers))
 	token := callPrepareDesktopConnect(network)
 	node.Connected = true
 	config.UpdateNodeMap(node.Network, node)
@@ -74,12 +81,11 @@ func connectNetwork(network string, restart bool) error {
 	}
 	if !restart {
 		// Auto-exit ranking probes the overlay; do not hold connect on that.
-		fmt.Println("connect debug: connectNetwork skipping apply (restart=false)",
-			"network=", network)
+		slog.Debug("connectNetwork skipping apply (restart=false)", "network", network)
 		go callFinishDesktopConnect(network, token)
 		return nil
 	}
-	fmt.Println("connect debug: connectNetwork applying connection change", "network=", network)
+	slog.Debug("connectNetwork applying connection change", "network", network)
 	if err := ApplyConnectionChange("connect"); err != nil {
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
@@ -93,7 +99,7 @@ func connectNetwork(network string, restart bool) error {
 func ApplyConnectionChange(op string) error {
 	wantIGW := op != "disconnect" && callDesktopWantsIGW()
 	if err := applyConnectionChangeInProcess(wantIGW); err != nil {
-		fmt.Println("in-process", op, "apply failed; falling back to daemon soft restart:", err)
+		slog.Debug("in-process apply failed; falling back to daemon soft restart", "op", op, "error", err)
 		if err := daemon.Restart(); err != nil {
 			if err := daemon.Start(); err != nil {
 				return fmt.Errorf("daemon restart failed %w", err)
@@ -151,9 +157,11 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		if !restart {
 			return nil
 		}
-		// Peers/IGW/DNS already handled above. A full reconnect rebuild would
-		// also try want_igw exit re-apply against an empty pull (~10s).
-		logger.Log(0, "disconnect: last network; skipping connection-change rebuild")
+		// Peers/IGW/DNS already handled above. Skip full connection-change
+		// (would re-drive want_igw against an empty pull ~10s), but still flush
+		// iface addresses so proto-kernel overlay routes drop with the addr.
+		logger.Log(0, "disconnect: last network; flushing iface addrs, skipping full connection-change rebuild")
+		flushIfaceAfterDisconnect()
 		dns.SyncForNodeChange()
 		dns.ScheduleReconfigure()
 		return nil
@@ -166,6 +174,18 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		return nil
 	}
 	return ApplyConnectionChange("disconnect")
+}
+
+// flushIfaceAfterDisconnect removes addresses/routes for networks that are no
+// longer connected (including clearing the iface when none remain).
+func flushIfaceAfterDisconnect() {
+	wireguard.RemoveEgressRoutes()
+	wireguard.SetEgressRoutesInCache(nil)
+	if err := wireguard.NewNCIface(config.Netclient(), config.GetNodes()).Configure(); err != nil {
+		logger.Log(0, "disconnect: failed to flush netmaker iface addrs:", err.Error())
+		return
+	}
+	wireguard.InvalidateEgressRouteCache()
 }
 
 // ConnectWithoutRestart marks the network connected and publishes the update

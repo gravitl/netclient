@@ -315,6 +315,45 @@ func armEnforcedAutoExitDesired(network, egressID string) {
 	_ = config.SetDesiredAutoExitNode(user, tenant, network, egressID)
 }
 
+// applyDesiredExitAfterConnect re-PUTs the stored exit after connect/join.
+// Manual selections used to be skipped here (auto-only), so disconnect→reconnect
+// with an exit still selected in the UI left the server without ChangeDefaultGw.
+func applyDesiredExitAfterConnect(network, token string) {
+	if strings.TrimSpace(token) == "" || strings.TrimSpace(network) == "" {
+		return
+	}
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok || !desiredWantsIGW(user, tenant) {
+		return
+	}
+	exitNet := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if exitNet != "" && exitNet != network {
+		return
+	}
+	if uiapi.ShouldDeferAutoExitClaim(network) {
+		return
+	}
+	if config.GetDesiredAutoExit(user, tenant) {
+		applyDeferredAutoExitAfterConnect(network, token)
+		return
+	}
+	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	if egressID == "" {
+		return
+	}
+	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) == egressID {
+		// Server already has this exit; keep desire keyed to this network.
+		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
+		return
+	}
+	if _, err := SelectDeviceExitNode(network, token, egressID); err != nil {
+		slog.Warn("re-apply desired exit after connect failed",
+			"network", network, "egress_id", egressID, "error", err)
+		return
+	}
+	slog.Info("re-applied desired exit after connect", "network", network, "egress_id", egressID)
+}
+
 // applyDeferredAutoExitAfterConnect selects nearest once the mesh is up when
 // auto_exit is desired (user Auto, or a network that enforces it).
 func applyDeferredAutoExitAfterConnect(network, token string) {
@@ -329,7 +368,7 @@ func applyDeferredAutoExitAfterConnect(network, token string) {
 	if exitNet != "" && exitNet != network {
 		return
 	}
-	if other := uiapi.ActiveExitNetwork(network); other != "" {
+	if uiapi.ShouldDeferAutoExitClaim(network) {
 		return
 	}
 	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) != "" {
@@ -360,14 +399,16 @@ func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) 
 		if !ok || !node.Connected {
 			continue
 		}
-		// Always arm local AUTO so failover works even when the server already
+		// Never arm desire on this network before conflict checks — arming
+		// SetDesiredAutoExitNode would overwrite the first network's exit.
+		if uiapi.ShouldDeferAutoExitClaim(n.NetworkID) {
+			autoExitEnforced.Store(n.NetworkID, struct{}{})
+			continue
+		}
+		// Arm local AUTO so failover works even when the server already
 		// assigned an exit (EnsureAutoExitNode) without a client select.
 		armEnforcedAutoExitDesired(n.NetworkID, "")
 		if _, done := autoExitEnforced.Load(n.NetworkID); done {
-			continue
-		}
-		if uiapi.ActiveExitNetwork(n.NetworkID) != "" {
-			autoExitEnforced.Store(n.NetworkID, struct{}{})
 			continue
 		}
 		autoExitEnforced.Store(n.NetworkID, struct{}{})
@@ -809,20 +850,62 @@ func putDeviceExitNodeTimeout(network, token, egressID string, force bool, timeo
 	}, true, timeout)
 }
 
-// ConnectNetwork joins (if needed) then connects locally.
-func ConnectNetwork(network, server, token string) error {
-	fmt.Println("connect debug: ConnectNetwork start",
-		"network=", network, "server=", server, "token_set=", strings.TrimSpace(token) != "",
-		"nodes=", len(config.GetNodes()))
+// joinAndMarkConnectedForRestore joins the network if needed and marks it
+// connected without an in-process iface apply. Session restore batches the
+// apply once after every desired network is marked.
+func joinAndMarkConnectedForRestore(network, server, token string) error {
 	if token != "" {
 		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
-			logger.Log(0, "connect", network, "access check failed:", err.Error())
 			return err
 		}
 	}
 	nodes := config.GetNodes()
 	if _, ok := nodes[network]; !ok {
-		fmt.Println("connect debug: network not in local map; joining", "network=", network)
+		if token == "" {
+			return fmt.Errorf("network %s is not joined", network)
+		}
+		status, err := JoinDeviceNetworkOnServer(network, token)
+		if err != nil {
+			return err
+		}
+		if status != "joined" && status != "" {
+			return fmt.Errorf("unexpected join status: %s", status)
+		}
+		if _, _, _, err = functions.Pull(false, true, false); err != nil {
+			return fmt.Errorf("failed to sync after join: %w", err)
+		}
+		if len(config.Netclient().HostPeers) == 0 {
+			if _, _, _, err = functions.Pull(false, true, true); err != nil {
+				logger.Log(0, "restore join", network, "refresh pull:", err.Error())
+			}
+		}
+	}
+	if err := functions.ConnectWithoutRestart(network); err != nil {
+		if err.Error() == "node already connected" {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ConnectNetwork joins (if needed) then connects locally.
+func ConnectNetwork(network, server, token string) error {
+	slog.Debug("ConnectNetwork start",
+		"network", network, "server", server, "token_set", strings.TrimSpace(token) != "",
+		"local", connectDebugLocalNodes())
+	if token != "" {
+		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+			slog.Debug("ConnectNetwork access check failed", "network", network, "error", err)
+			logger.Log(0, "connect", network, "access check failed:", err.Error())
+			return err
+		}
+		slog.Debug("ConnectNetwork access check ok", "network", network)
+	}
+	nodes := config.GetNodes()
+	if _, ok := nodes[network]; !ok {
+		slog.Debug("ConnectNetwork network not in local map; joining",
+			"network", network, "local", connectDebugLocalNodes())
 		if token == "" {
 			err := fmt.Errorf("network %s is not joined", network)
 			logger.Log(0, "connect", network, "failed:", err.Error())
@@ -830,55 +913,83 @@ func ConnectNetwork(network, server, token string) error {
 		}
 		status, err := JoinDeviceNetworkOnServer(network, token)
 		if err != nil {
+			slog.Debug("ConnectNetwork join failed", "network", network, "error", err)
 			logger.Log(0, "connect", network, "join failed:", err.Error())
 			return err
 		}
-		fmt.Println("connect debug: join result", "network=", network, "status=", status)
+		slog.Debug("ConnectNetwork join result",
+			"network", network, "status", status, "local_after_join_api", connectDebugLocalNodes())
 		if status != "joined" && status != "" {
 			err := fmt.Errorf("unexpected join status: %s", status)
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
 		}
-		if _, _, _, err := functions.Pull(false, true, false); err != nil {
+		pull, _, _, err := functions.Pull(false, true, false)
+		if err != nil {
 			err = fmt.Errorf("failed to sync after join: %w", err)
+			slog.Debug("ConnectNetwork join pull failed", "network", network, "error", err)
 			logger.Log(0, "connect", network, "failed:", err.Error())
 			return err
 		}
+		slog.Debug("ConnectNetwork after join pull",
+			"network", network,
+			"pull.Nodes", connectDebugPullNodes(pull.Nodes),
+			"host.Nodes", pull.Host.Nodes,
+			"local", connectDebugLocalNodes(),
+			"peers", len(config.Netclient().HostPeers))
 		// Fresh join can return before the server peer cache is warm.
 		if len(config.Netclient().HostPeers) == 0 {
-			fmt.Println("connect debug: join pull had 0 peers; refresh pull", "network=", network)
-			if _, _, _, err := functions.Pull(false, true, true); err != nil {
+			slog.Debug("ConnectNetwork join pull had 0 peers; refresh pull", "network", network)
+			pull, _, _, err = functions.Pull(false, true, true)
+			if err != nil {
 				logger.Log(0, "connect", network, "refresh pull after join:", err.Error())
+			} else {
+				slog.Debug("ConnectNetwork after join pull refresh",
+					"network", network,
+					"pull.Nodes", connectDebugPullNodes(pull.Nodes),
+					"host.Nodes", pull.Host.Nodes,
+					"local", connectDebugLocalNodes(),
+					"peers", len(config.Netclient().HostPeers))
 			}
 		}
 		if n, ok := config.GetNodes()[network]; ok {
-			fmt.Println("connect debug: after join pull",
-				"network=", network, "connected=", n.Connected, "nodes=", len(config.GetNodes()),
-				"peers=", len(config.Netclient().HostPeers))
+			slog.Debug("ConnectNetwork after join pull node present",
+				"network", network, "connected", n.Connected, "node_id", n.ID.String(),
+				"local", connectDebugLocalNodes(),
+				"peers", len(config.Netclient().HostPeers))
 		} else {
-			fmt.Println("connect debug: after join pull node still missing", "network=", network)
+			slog.Debug("ConnectNetwork after join pull node still missing",
+				"network", network,
+				"local", connectDebugLocalNodes(),
+				"pull.Nodes", connectDebugPullNodes(pull.Nodes),
+				"host.Nodes", pull.Host.Nodes)
 		}
 	} else {
-		fmt.Println("connect debug: network already in local map",
-			"network=", network, "connected=", nodes[network].Connected,
-			"peers=", len(config.Netclient().HostPeers))
+		slog.Debug("ConnectNetwork network already in local map",
+			"network", network, "connected", nodes[network].Connected,
+			"node_id", nodes[network].ID.String(),
+			"peers", len(config.Netclient().HostPeers))
 	}
+	_, inLocal := config.GetNodes()[network]
+	slog.Debug("ConnectNetwork calling Connect",
+		"network", network, "in_local", inLocal, "local", connectDebugLocalNodes())
 	if err := functions.Connect(network); err != nil {
 		// Connect(restart=true) now applies peers when already connected; this
 		// branch is only for ConnectWithoutRestart-style callers / races.
 		if err.Error() == "node already connected" {
-			fmt.Println("connect debug: Connect already-connected fallback apply",
-				"network=", network, "peers=", len(config.Netclient().HostPeers))
+			slog.Debug("ConnectNetwork already-connected fallback apply",
+				"network", network, "peers", len(config.Netclient().HostPeers))
 			if applyErr := functions.ApplyConnectionChange("connect"); applyErr != nil {
 				return applyErr
 			}
 			return nil
 		}
-		fmt.Println("connect debug: Connect failed", "network=", network, "err=", err)
+		slog.Debug("ConnectNetwork Connect failed",
+			"network", network, "error", err, "local", connectDebugLocalNodes())
 		return err
 	}
-	fmt.Println("connect debug: Connect ok (apply ran)",
-		"network=", network, "peers=", len(config.Netclient().HostPeers))
+	slog.Debug("ConnectNetwork Connect ok",
+		"network", network, "peers", len(config.Netclient().HostPeers))
 	return nil
 }
 
@@ -900,4 +1011,21 @@ func checkDeviceNetworkAccess(network, server, token string) error {
 		return nil
 	}
 	return nil
+}
+
+func connectDebugLocalNodes() string {
+	nodes := config.GetNodes()
+	parts := make([]string, 0, len(nodes))
+	for name, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", name, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
+}
+
+func connectDebugPullNodes(nodes []models.Node) string {
+	parts := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", n.Network, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
 }

@@ -23,6 +23,8 @@ var (
 	registerDeviceOnServerForSession = RegisterDeviceOnServer
 	leaveHostOnTenantForSession      = leaveHostOnTenant
 	pullForSession                   = functions.Pull
+	sessionAuthTokenForUnregister    = uiapi.SessionAuthToken
+	sessionIdentityForUnregister     = uiapi.SessionIdentity
 )
 
 // IsRegisteredToServer reports whether netclient is fully registered to the given server.
@@ -81,7 +83,10 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	// MSP tenant switch: server rejects the same host UUID under a new tenant
 	// ("host already registered to another tenant"). Leave the previous tenant
 	// before re-registering. Capture prevTenant before applySessionTenant.
-	if alreadyRegistered && !tenantMatches && prevTenant != "" && prevTenant != tenantID {
+	// Classic non-MSP login uses tenantID="" — do not DELETE the host just to
+	// clear a stale local TenantID stamp (that re-enrolled every login and
+	// showed "Setting up… / Registering this device" for existing devices).
+	if alreadyRegistered && !tenantMatches && tenantID != "" && prevTenant != "" && prevTenant != tenantID {
 		slog.Info("session: leaving previous tenant before register",
 			"server", server, "from", prevTenant, "to", tenantID)
 		// Arm before leave HTTP: server may publish DELETE_HOST immediately, and
@@ -101,15 +106,17 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 	}
 
 	applySessionTenant(server, tenantID)
+	// Re-check after stamping: classic "" clears a leftover UUID without re-enroll.
+	tenantMatches = sessionTenantMatches(server, tenantID)
 
 	needRegister := !alreadyRegistered || !tenantMatches || !ownerMatches
-	fmt.Println("session debug: RegisterSession",
-		"server=", server, "user=", username, "tenant=", tenantID,
-		"already_registered=", alreadyRegistered, "tenant_matches=", tenantMatches,
-		"owner=", owner, "owner_matches=", ownerMatches, "need_register=", needRegister,
-		"prev_tenant=", prevTenant)
+	slog.Debug("RegisterSession",
+		"server", server, "user", username, "tenant", tenantID,
+		"already_registered", alreadyRegistered, "tenant_matches", tenantMatches,
+		"owner", owner, "owner_matches", ownerMatches, "need_register", needRegister,
+		"prev_tenant", prevTenant)
 	if needRegister {
-		fmt.Println("session debug: calling RegisterDeviceOnServer", "server=", server, "tenant=", tenantID)
+		slog.Debug("RegisterSession calling RegisterDeviceOnServer", "server", server, "tenant", tenantID)
 		if err := registerDeviceOnServerForSession(server, authToken); err != nil {
 			// Host may still exist under the previous tenant if leave failed or
 			// local enrollment tenant was stale. Retry leave+register once.
@@ -130,29 +137,36 @@ func RegisterSession(server, username, authToken, password, tenantID string) err
 					return err2
 				}
 			} else {
-				fmt.Println("session debug: RegisterDeviceOnServer failed", "err=", err)
+				slog.Debug("RegisterSession RegisterDeviceOnServer failed", "error", err)
 				return err
 			}
 		}
 		if nc := config.Netclient(); nc != nil {
-			fmt.Println("session debug: after register",
-				"host=", nc.ID.String(), "owner=", nc.OwnerUsername, "tenant=", nc.TenantID)
+			slog.Debug("RegisterSession after register",
+				"host", nc.ID.String(), "owner", nc.OwnerUsername, "tenant", nc.TenantID)
 		}
 	} else {
-		fmt.Println("session debug: skipping register (already enrolled for this tenant/owner)")
+		slog.Debug("RegisterSession skipping register (already enrolled for this tenant/owner)")
 	}
 
 	if IsRegisteredToServer(server) {
-		fmt.Println("session debug: pulling after session register/login", "server=", server)
-		if _, _, _, err := pullForSession(false, true, false); err != nil {
-			// Local servers.json can outlive the host row (reinstall, admin
-			// delete). Re-enroll once instead of failing login forever.
+		slog.Debug("RegisterSession pulling after session register/login", "server", server)
+		// reset_failovered=false: same-user re-login must keep auto-relay peers
+		// (explicit clear is Sync / pull --reset-connections / join).
+		if _, _, _, err := pullForSession(false, false, false); err != nil {
+			// Host row gone on server (reinstall / admin delete) while local
+			// enrollment remains. Re-register without wiping local config first —
+			// a failed register must not leave the device permanently unenrolled.
+			// 401 / expired JWT is a session problem: return to the UI for logout;
+			// do not clear enrollment or re-register.
 			if isMissingHostOnServer(err) && !needRegister {
-				slog.Warn("session pull: host missing on server, re-registering", "server", server, "error", err)
+				slog.Warn("session pull: host missing on server, re-registering",
+					"server", server, "error", err)
+				applySessionTenant(server, tenantID)
 				if regErr := registerDeviceOnServerForSession(server, authToken); regErr != nil {
 					return regErr
 				}
-				if _, _, _, err := pullForSession(false, true, false); err != nil {
+				if _, _, _, err := pullForSession(false, false, false); err != nil {
 					return fmt.Errorf("failed to sync with server: %w", err)
 				}
 			} else {
@@ -189,16 +203,26 @@ func applySessionTenant(server, tenantID string) {
 }
 
 func sessionTenantMatches(server, tenantID string) bool {
-	hostTenant := config.Netclient().TenantID
+	tenantID = strings.TrimSpace(tenantID)
+	hostTenant := ""
+	if host := config.Netclient(); host != nil {
+		hostTenant = strings.TrimSpace(host.TenantID)
+	}
 	if hostTenant != tenantID {
 		return false
 	}
 	if srv := config.GetServer(server); srv != nil {
+		srvTenant := strings.TrimSpace(srv.TenantID)
 		// Not enrolled yet (no server TenantID): host match is enough.
-		if strings.TrimSpace(srv.TenantID) == "" {
+		if srvTenant == "" {
 			return true
 		}
-		return srv.TenantID == tenantID
+		// Classic Desktop login omits tenant_id; servers.json may still hold the
+		// server default tenant from enroll — do not force re-register.
+		if tenantID == "" {
+			return true
+		}
+		return srvTenant == tenantID
 	}
 	return tenantID == ""
 }
@@ -257,7 +281,9 @@ func leaveHostOnTenant(server, tenantID, userToken string) error {
 	auth.ApplyAPIHeaders(headers, userToken, host)
 	headers.Set(scope.HeaderTenantID, tenantID)
 
-	_, err := ncutils.SendRequest(http.MethodDelete, url, headers, nil)
+	// One short attempt. Logout / "save new server while old is dead" must not
+	// wait on SendRequest's ~minute retry budget against an unreachable API.
+	_, err := ncutils.SendRequestOnce(http.MethodDelete, url, headers, nil, 5*time.Second)
 	if err == nil {
 		return nil
 	}
@@ -285,9 +311,9 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 		ownerBefore = host.OwnerUsername
 		tenantBefore = host.TenantID
 	}
-	fmt.Println("session debug: clearLocalEnrollmentAfterTenantLeave",
-		"server=", server, "owner_before=", ownerBefore, "tenant_before=", tenantBefore,
-		"nodes_before=", len(config.GetNodes()))
+	slog.Debug("clearLocalEnrollmentAfterTenantLeave",
+		"server", server, "owner_before", ownerBefore, "tenant_before", tenantBefore,
+		"nodes_before", len(config.GetNodes()))
 	config.DeleteServerHostPeerCfg()
 	for k, node := range config.GetNodes() {
 		if node.Server == server || config.ResolveServerKey(node.Server) == config.ResolveServerKey(server) {
@@ -317,9 +343,9 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 		ownerAfter = host.OwnerUsername
 		tenantAfter = host.TenantID
 	}
-	fmt.Println("session debug: clearLocalEnrollment done",
-		"owner_after=", ownerAfter, "tenant_after=", tenantAfter,
-		"registered=", IsRegisteredToServer(server), "nodes_after=", len(config.GetNodes()))
+	slog.Debug("clearLocalEnrollment done",
+		"owner_after", ownerAfter, "tenant_after", tenantAfter,
+		"registered", IsRegisteredToServer(server), "nodes_after", len(config.GetNodes()))
 }
 
 // ReleaseSession disconnects all networks and optionally clears server context.
@@ -327,19 +353,18 @@ func clearLocalEnrollmentAfterTenantLeave(server string) {
 // can restore them. Local default routes are restored before disconnect so
 // logout does not wait on a daemon restart for internet to return.
 //
-// When unregisterHost is true (explicit Desktop logout / user handoff), DELETE
-// the host under the current session JWT before clearing credentials. That lets
-// a different user or MSP tenant enroll this machine next; the new user cannot
-// leave the previous owner's host themselves (unauthorized).
+// When unregisterHost is true (user/tenant handoff on PUT /session only), DELETE
+// the host under the current session JWT after local disconnect. That lets a
+// different user or MSP tenant enroll this machine next. Normal logout must
+// pass unregisterHost=false so the same user can re-login without re-enrolling.
 func ReleaseSession(clearServer bool, unregisterHost bool) error {
 	defer functions.LogElapsed("logout")()
+	slog.Debug("release session",
+		"clear_server", clearServer, "unregister_host", unregisterHost,
+		"local", connectDebugLocalNodes())
 	// Latch before any teardown so peer updates that land mid-logout cannot
 	// revive Connected or re-select the exit we are about to clear.
 	beginSessionRelease()
-
-	if unregisterHost {
-		unregisterHostBeforeLogout()
-	}
 
 	networks := make([]string, 0, len(config.GetNodes()))
 	for network, node := range config.GetNodes() {
@@ -347,51 +372,56 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 			networks = append(networks, network)
 		}
 	}
+
+	user, tenant := uiapi.SessionIdentity()
+	// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
+	// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
+	wantIGW := config.GetDesiredWantIGW(user, tenant)
+	autoExit := config.GetDesiredAutoExit(user, tenant)
+	egressID := config.GetDesiredEgressID(user, tenant)
+	exitNetwork := config.GetDesiredExitNetwork(user, tenant)
+	hasCurrGw := false
+	if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
+		wantIGW = true
+		hasCurrGw = true
+	}
+	token := uiapi.SessionAuthToken()
+
+	// Snapshot + restore LAN before any control-plane HTTP. Saving a new server
+	// while the old one is dead used to block logout on SendRequest retries
+	// (unregister / exit lookup) for ~15–60s.
 	if len(networks) > 0 {
-		user, tenant := uiapi.SessionIdentity()
-		// Prefer the persisted want_igw flag: CurrGwNmIP may already be cleared
-		// (IGW monitor unhealthy / prior RestoreInternetGw) while exit is still desired.
-		wantIGW := config.GetDesiredWantIGW(user, tenant)
-		autoExit := config.GetDesiredAutoExit(user, tenant)
-		egressID := config.GetDesiredEgressID(user, tenant)
-		exitNetwork := config.GetDesiredExitNetwork(user, tenant)
-		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
-			wantIGW = true
-		}
-		token := uiapi.SessionAuthToken()
-		if wantIGW && egressID == "" && !autoExit && token != "" {
-			func() {
-				defer functions.LogElapsed("logout exit selection lookup")()
-				for _, network := range networks {
-					sel, err := GetDeviceSelectedExitNode(network, token)
-					if err != nil || sel == nil || strings.TrimSpace(sel.EgressID) == "" {
-						continue
-					}
-					egressID = sel.EgressID
-					exitNetwork = network
-					break
-				}
-			}()
-		}
 		if egressID != "" || autoExit {
 			wantIGW = true
 			if exitNetwork == "" {
 				exitNetwork = networks[len(networks)-1]
 			}
 		}
-		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, autoExit, egressID, exitNetwork); err != nil {
-			slog.Warn("failed to persist connected networks before logout", "error", err)
+		if unregisterHost {
+			// User/tenant handoff (or server-change unregister): do not keep
+			// reconnect intent for the departing account on this device.
+			if err := config.ClearDesiredState(user, tenant); err != nil {
+				slog.Warn("failed to clear desired state on session handoff", "error", err)
+			}
+		} else {
+			// Normal logout: persist so the same user can restore on next login.
+			// Do not GET exit selection from a possibly-dead API during logout.
+			if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, autoExit, egressID, exitNetwork); err != nil {
+				slog.Warn("failed to persist connected networks before logout", "error", err)
+			}
 		}
 		skipNextDesiredRestore()
-
-		// Bring LAN + OS DNS back immediately; do not wait for disconnect + daemon restart.
+	}
+	if len(networks) > 0 || hasCurrGw {
 		functions.RestoreInternetGwAndDNS()
+	}
+
+	if len(networks) > 0 {
 		// Clear server exit when we persisted exit intent (fixed or auto) to put back later.
 		// Otherwise leave server selection intact so restore can still recover it.
 		if (egressID != "" || autoExit) && exitNetwork != "" && token != "" {
 			done := functions.LogElapsed("logout server exit clear")
-			// One attempt. The shared client would otherwise retry a blackholed
-			// API for about a minute after local routes are already restored.
+			// One attempt — dead previous server must not hold Settings save.
 			_, err := putDeviceExitNodeTimeout(exitNetwork, token, "", false, 5*time.Second)
 			done()
 			if err != nil {
@@ -415,15 +445,27 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 		_ = wireguard.SetPeers(true)
 		if disconnectErr != nil {
 			clearDNSOnLogout()
+			// Still unregister on handoff so the next user is not stuck on a
+			// previous owner's host, even if one network failed to disconnect.
+			if unregisterHost {
+				unregisterHostBeforeLogout()
+			}
 			return disconnectErr
 		}
 	}
 	clearDNSOnLogout()
+	// Unregister after disconnect so local nodes still exist for teardown, and
+	// only on user/tenant handoff (not normal logout).
+	if unregisterHost {
+		unregisterHostBeforeLogout()
+	}
 	if clearServer {
 		config.CurrServer = ""
 		_ = config.SetCurrServerCtxInFile("")
 	}
 	auth.CleanJwtToken()
+	slog.Debug("release session done",
+		"unregister_host", unregisterHost, "local", connectDebugLocalNodes())
 	return nil
 }
 
@@ -442,8 +484,8 @@ func clearDNSOnLogout() {
 // unregisterHostBeforeLogout deletes this device from the current tenant while
 // the Desktop JWT is still valid, then demotes local enrollment.
 func unregisterHostBeforeLogout() {
-	token := strings.TrimSpace(uiapi.SessionAuthToken())
-	_, tenant := uiapi.SessionIdentity()
+	token := strings.TrimSpace(sessionAuthTokenForUnregister())
+	_, tenant := sessionIdentityForUnregister()
 	tenant = strings.TrimSpace(tenant)
 	if tenant == "" {
 		tenant = previousEnrollmentTenant(config.CurrServer)
@@ -470,7 +512,13 @@ func unregisterHostBeforeLogout() {
 	}
 	functions.ArmIgnoreStaleDeleteHost(tenant, leftHostID)
 	if err := leaveHostOnTenantForSession(server, tenant, token); err != nil {
-		slog.Warn("session: unregister before logout failed",
+		// leaveHostOnTenant already treats missing-host as success (nil). Any
+		// remaining error is transient (unreachable API, 5xx, auth mismatch, etc.).
+		// Clearing local enrollment blanks TenantID / demotes servers.json, so the
+		// next login's previousEnrollmentTenant is empty and the leave+register
+		// retry cannot recover — host stays stranded under the old tenant.
+		// Keep stamps so RegisterSession can leave then re-enroll.
+		slog.Warn("session: unregister before logout failed; keeping local enrollment for leave retry",
 			"tenant", tenant, "error", err)
 		return
 	}

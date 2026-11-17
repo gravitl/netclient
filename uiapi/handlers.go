@@ -3,6 +3,7 @@ package uiapi
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"runtime"
@@ -166,7 +167,17 @@ func respondConfigureServerError(w http.ResponseWriter, message string) {
 
 // releaseSessionForServerChange drops an active UI session so POST /server can
 // proceed when the Desktop login/settings UI is out of sync with the daemon.
+// Always clears desired reconnect state (even when already logged out): that
+// file is keyed by username+tenant only, so a leftover snapshot from the old
+// server would restore foreign networks on the next login.
 func releaseSessionForServerChange(reason string) error {
+	defer func() {
+		if err := config.ClearAllDesiredConnections(); err != nil {
+			uiLog(1, "uiapi: failed to clear desired connections before", reason+":", err.Error())
+		} else {
+			uiLog(0, "uiapi: cleared desired connections before", reason)
+		}
+	}()
 	if !isSessionActive() {
 		return nil
 	}
@@ -242,6 +253,7 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 		resp.AutoExit = config.GetDesiredAutoExit(username, tenantID)
 		resp.DesiredEgressID = config.GetDesiredEgressID(username, tenantID)
 		resp.DesiredExitNetwork = config.GetDesiredExitNetwork(username, tenantID)
+		resp.DesiredNetworks = desiredNetworksForSession(username, tenantID)
 		if notice := GetSessionNotice(); notice.Code != "" {
 			resp.Notice = &notice
 		}
@@ -250,6 +262,19 @@ func writeCurrentServerResponse(w http.ResponseWriter) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		uiLog(0, "uiapi: failed to encode server/session response:", err.Error())
 	}
+}
+
+// desiredNetworksForSession returns the user's auto-reconnect set, truncated
+// the same way restoreDesiredConnections does when RAC is single-network.
+func desiredNetworksForSession(username, tenantID string) []string {
+	desired := config.GetDesiredNetworks(username, tenantID)
+	if RestrictToSingleNetwork() && len(desired) > 1 {
+		desired = append([]string(nil), desired[len(desired)-1:]...)
+	}
+	if len(desired) == 0 {
+		return nil
+	}
+	return desired
 }
 
 // currentServerAPI returns the API host:port from servers.json (Server.API).
@@ -335,20 +360,31 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 	_, prevUser, _ := sessionToken()
 	prevTenant := sessionTenantID()
-	if prevUser != "" && (prevUser != req.Username || prevTenant != req.TenantID) {
-		// Unregister under the previous user's JWT so the next user/tenant can enroll.
-		if err := releaseSessionFn(false, true); err != nil {
-			uiLog(1, "uiapi: failed to disconnect prior session before handoff:", err.Error())
-		}
-		if err := clearSession(true); err != nil {
-			uiLog(1, "uiapi: failed to clear prior session before handoff:", err.Error())
-		}
+	reqTenantIn := req.TenantID
+	handoff := isSessionHandoff(prevUser, prevTenant, req.Username, req.TenantID)
+	// Classic Desktop / wake re-auth often omits tenant_id. Keep the session
+	// tenant so desired-state restore and device headers stay keyed correctly.
+	if !handoff && req.TenantID == "" && prevTenant != "" && prevUser == req.Username {
+		req.TenantID = prevTenant
 	}
+	slog.Debug("uiapi PUT /session begin",
+		"server", server,
+		"user", req.Username,
+		"prev_user", prevUser,
+		"tenant_in", reqTenantIn,
+		"prev_tenant", prevTenant,
+		"tenant_effective", req.TenantID,
+		"handoff", handoff,
+		"token_len", len(req.AuthToken),
+	)
 
 	// Verify server version before registering the host so an old controller
-	// never receives a Desktop enrollment.
+	// never receives a Desktop enrollment. Do this before handoff unregister:
+	// a failed check must not DELETE the host (sleep/wake re-PUT used to).
 	cfg, err := fetchServerConfig(r.Context(), server, req.Username, req.AuthToken, req.TenantID)
 	if err != nil {
+		slog.Debug("uiapi PUT /session compatibility check failed",
+			"error", err, "server", server, "user", req.Username, "tenant", req.TenantID)
 		uiLog(0, "uiapi: failed to fetch server config for compatibility check:", err.Error())
 		setStatus(Idle)
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -359,6 +395,43 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		setStatus(Idle)
 		respondServerIncompatible(w, cfg.Version)
 		return
+	}
+
+	if handoff {
+		// Unregister under the previous user's JWT so the next user/tenant can enroll.
+		if err := releaseSessionFn(false, true); err != nil {
+			uiLog(1, "uiapi: failed to disconnect prior session before handoff:", err.Error())
+		}
+		if err := clearSession(true); err != nil {
+			uiLog(1, "uiapi: failed to clear prior session before handoff:", err.Error())
+		}
+		// Drop restore snapshots for the departing account/tenant so the next
+		// login does not reconnect their networks (desired state is not server-
+		// scoped, and ReleaseSession only clears when tunnels were up).
+		if prevUser != "" && prevUser != req.Username {
+			if err := config.ClearUserDesiredConnections(prevUser); err != nil {
+				uiLog(1, "uiapi: failed to clear prior user desired connections:", err.Error())
+			} else {
+				uiLog(0, "uiapi: cleared desired connections for prior user", prevUser)
+			}
+		} else if prevUser != "" {
+			if err := config.ClearDesiredState(prevUser, prevTenant); err != nil {
+				uiLog(1, "uiapi: failed to clear prior tenant desired connections:", err.Error())
+			} else {
+				uiLog(0, "uiapi: cleared desired connections for prior tenant", prevTenant)
+			}
+		}
+	} else if host := config.Netclient(); host != nil {
+		if owner := strings.TrimSpace(host.OwnerUsername); owner != "" && owner != req.Username {
+			// Prior user already logged out (no in-memory handoff) but this host
+			// is still enrolled under them — drop their restore snapshot so
+			// login as a different account does not reconnect their networks.
+			if err := config.ClearUserDesiredConnections(owner); err != nil {
+				uiLog(1, "uiapi: failed to clear owner desired connections:", err.Error())
+			} else {
+				uiLog(0, "uiapi: cleared desired connections for previous host owner", owner)
+			}
+		}
 	}
 
 	if err := registerSession(server, req.Username, req.AuthToken, req.Password, req.TenantID); err != nil {
@@ -376,11 +449,17 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	setStatus(Restoring)
 	restoreGen := beginSessionRestore()
 	resetting := registrationResetPending()
-	if resetting {
+	// "Setting up… / Registering this device" only for a real RegisterDevice
+	// enroll. Server-context rebuilds still reset the daemon but keep the
+	// normal restore UI (existing devices were wrongly labeled every login).
+	enrolling := resetting && registrationEnrollmentPending()
+	if enrolling {
 		SetRestorePhase(RestorePhaseRegister)
 	}
 	username, tenantID := req.Username, req.TenantID
-	fmt.Println("uiapi: session configured user=", req.Username, "tenant=", req.TenantID, "server=", server, "restore_pending=", resetting)
+	slog.Debug("uiapi session configured",
+		"user", req.Username, "tenant", req.TenantID, "server", server,
+		"restore_pending", resetting, "enrolling", enrolling)
 	w.WriteHeader(http.StatusOK)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -388,12 +467,12 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 	resetDone := applyRegistrationReset()
 	go func(gen uint64, username, tenantID string, resetDone <-chan struct{}) {
 		if resetDone != nil {
-			fmt.Println("uiapi: waiting for registration in-process reset before restore")
+			slog.Debug("uiapi waiting for registration in-process reset before restore")
 			<-resetDone
-			fmt.Println("uiapi: registration in-process reset done; starting restore")
+			slog.Debug("uiapi registration in-process reset done; starting restore")
 		}
 		if err := restoreDesiredConnections(username, tenantID); err != nil {
-			fmt.Println("uiapi: failed to restore previous connections:", err.Error())
+			slog.Warn("uiapi failed to restore previous connections", "error", err)
 		}
 		finishSessionRestore(gen)
 	}(restoreGen, username, tenantID, resetDone)
@@ -401,20 +480,21 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 
 func releaseSession(w http.ResponseWriter, r *http.Request) {
 	clearToken := r.URL.Query().Get("clear_token") == "true"
-	fmt.Println("uiapi: DELETE /session clear_token=", clearToken)
+	slog.Debug("uiapi DELETE /session", "clear_token", clearToken)
 	cancelSessionRestore()
 	setStatus(Closing)
-	// Explicit logout (clear_token): unregister the host while the current
-	// user's JWT is still valid so User Y / Tenant Y can enroll next.
+	// Logout tears down tunnels and clears the JWT when clear_token is set.
+	// Do not DELETE the host: same-user re-login must keep enrollment and
+	// network membership. Unregister only on user/tenant handoff (PUT /session).
 	// App-quit keep-token must not unregister or session restore breaks.
-	if err := releaseSessionFn(false, clearToken); err != nil {
-		fmt.Println("uiapi: error releasing session:", err.Error())
+	if err := releaseSessionFn(false, false); err != nil {
+		slog.Warn("uiapi error releasing session", "error", err)
 	}
 	if err := clearSession(clearToken); err != nil {
-		fmt.Println("uiapi: error clearing session:", err.Error())
+		slog.Warn("uiapi error clearing session", "error", err)
 	}
 	setStatus(Idle)
-	fmt.Println("uiapi: logout complete")
+	slog.Debug("uiapi logout complete")
 	w.WriteHeader(http.StatusOK)
 }
 

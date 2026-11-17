@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
@@ -44,6 +46,50 @@ func IGWRoutingActive() bool {
 		return false
 	}
 	return len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0
+}
+
+// lastIGWInstallUnixNano is set when SetInternetGw succeeds. Used to ignore
+// racing ChangeDefaultGw=false peer updates that arrive in the same second as
+// a re-select install (disconnect→reconnect convergence).
+var lastIGWInstallUnixNano atomic.Int64
+
+func noteIGWInstalled() {
+	lastIGWInstallUnixNano.Store(time.Now().UnixNano())
+}
+
+// IGWInstalledWithin reports whether an internet gateway was installed within d.
+func IGWInstalledWithin(d time.Duration) bool {
+	if d <= 0 {
+		return false
+	}
+	ts := lastIGWInstallUnixNano.Load()
+	if ts == 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, ts)) <= d
+}
+
+// igwSourceIP returns this host's overlay address on the network that owns the
+// exit nexthop. With multiple networks on one utun, Darwin otherwise picks an
+// arbitrary iface address as src (often the wrong network) and exit routing fails.
+func igwSourceIP(gw net.IP) net.IP {
+	if gw == nil {
+		return nil
+	}
+	is4 := gw.To4() != nil
+	for _, node := range config.GetNodes() {
+		if !node.Connected {
+			continue
+		}
+		if is4 {
+			if node.Address.IP != nil && node.NetworkRange.IP != nil && node.NetworkRange.Contains(gw) {
+				return node.Address.IP
+			}
+		} else if node.Address6.IP != nil && node.NetworkRange6.IP != nil && node.NetworkRange6.Contains(gw) {
+			return node.Address6.IP
+		}
+	}
+	return nil
 }
 
 // reapplyCachedEgressRoutes reinstalls specific egress CIDRs after IGW default
@@ -446,6 +492,9 @@ func SetPeers(replace bool) error {
 	if server == nil {
 		return errors.New("server config not found")
 	}
+	// Drop sticky LAN detections inside AllowedIPs/egress before reapplying
+	// cache; this apply uses server-published HostPeers endpoints instead.
+	DropMeshRoutedEndpointCache(HostPeerAllowedIPs())
 	data := getHAEgressDataForProcessing(server.MetricsPort)
 	// Relayed/auto-relayed peers are published with a nil endpoint so WireGuard
 	// can learn the NAT mapping from the first handshake. Incremental peer
@@ -543,10 +592,18 @@ func checkForBetterEndpoint(peer *wgtypes.PeerConfig) bool {
 	if endpoint, ok := cache.EndpointCache.Load(peer.PublicKey.String()); ok && endpoint != nil {
 		var cacheEndpoint cache.EndpointCacheValue
 		cacheEndpoint, ok = endpoint.(cache.EndpointCacheValue)
-		if ok {
-			peer.Endpoint = cacheEndpoint.Endpoint
+		if !ok {
+			return false
 		}
-		return ok
+		// Drop sticky false-positives: VPC/LAN IPs reachable only via egress
+		// must not replace the server-published underlay.
+		if cacheEndpoint.Endpoint != nil &&
+			IsMeshRoutedEndpointIP(cacheEndpoint.Endpoint.IP, HostPeerAllowedIPs()) {
+			cache.EndpointCache.Delete(peer.PublicKey.String())
+			return false
+		}
+		peer.Endpoint = cacheEndpoint.Endpoint
+		return true
 	}
 	return false
 }

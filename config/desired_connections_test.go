@@ -29,6 +29,50 @@ func TestDesiredNetworksRememberForgetAndIsolation(t *testing.T) {
 	require.FileExists(t, filepath.Join(desiredConnectionsDir, desiredConnectionsFile))
 }
 
+func TestClearAllDesiredConnections(t *testing.T) {
+	desiredConnectionsDir = t.TempDir()
+	t.Cleanup(func() { desiredConnectionsDir = "" })
+
+	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"netmaker-1"}, true, false, "eg-1", "netmaker-1"))
+	require.NoError(t, RememberDesiredNetwork("bob", "", "other-net"))
+	assert.Equal(t, []string{"netmaker-1"}, GetDesiredNetworks("alice", "t1"))
+	assert.Equal(t, []string{"other-net"}, GetDesiredNetworks("bob", ""))
+
+	require.NoError(t, ClearAllDesiredConnections())
+	assert.Empty(t, GetDesiredNetworks("alice", "t1"))
+	assert.False(t, GetDesiredWantIGW("alice", "t1"))
+	assert.Empty(t, GetDesiredEgressID("alice", "t1"))
+	assert.Empty(t, GetDesiredNetworks("bob", ""))
+}
+
+func TestClearUserDesiredConnections(t *testing.T) {
+	desiredConnectionsDir = t.TempDir()
+	t.Cleanup(func() { desiredConnectionsDir = "" })
+
+	require.NoError(t, RememberDesiredNetwork("alice", "t1", "net1"))
+	require.NoError(t, RememberDesiredNetwork("alice", "t2", "net2"))
+	require.NoError(t, RememberDesiredNetwork("bob", "", "net3"))
+
+	require.NoError(t, ClearUserDesiredConnections("alice"))
+	assert.Empty(t, GetDesiredNetworks("alice", "t1"))
+	assert.Empty(t, GetDesiredNetworks("alice", "t2"))
+	assert.Equal(t, []string{"net3"}, GetDesiredNetworks("bob", ""))
+}
+
+func TestClearDesiredState(t *testing.T) {
+	desiredConnectionsDir = t.TempDir()
+	t.Cleanup(func() { desiredConnectionsDir = "" })
+
+	require.NoError(t, SnapshotDesiredState("alice", "t1", []string{"net1"}, true, true, "eg-1", "net1"))
+	require.NoError(t, RememberDesiredNetwork("alice", "t2", "net2"))
+
+	require.NoError(t, ClearDesiredState("alice", "t1"))
+	assert.Empty(t, GetDesiredNetworks("alice", "t1"))
+	assert.False(t, GetDesiredWantIGW("alice", "t1"))
+	assert.Empty(t, GetDesiredEgressID("alice", "t1"))
+	assert.Equal(t, []string{"net2"}, GetDesiredNetworks("alice", "t2"))
+}
+
 func TestSnapshotDesiredStateRecordsWantIGW(t *testing.T) {
 	desiredConnectionsDir = t.TempDir()
 	t.Cleanup(func() { desiredConnectionsDir = "" })

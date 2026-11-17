@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,21 +24,12 @@ import (
 
 var pMutex = sync.Mutex{} // used to mutex functions for pull
 
-// Pull pulls the latest config from the server.
-// refresh asks the server to recompute host peer cache on demand (startup only).
-// A 401 does not delete local server registration (servers.json).
-func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
-	pMutex.Lock()
-	defer pMutex.Unlock()
-	logger.Log(0, "host pull starting:", pullCaller(),
-		fmt.Sprintf("restart=%v reset_failover=%v refresh=%v", restart, resetIfFailedOvered, refresh))
-	resetInterface := false
-	replacePeers := false
+// fetchHostPull GETs /api/v1/host without applying the response to local config.
+// Used by list (server-backed) and by Pull (which then writes config).
+func fetchHostPull(resetIfFailedOvered, refresh bool) (models.HostPull, error) {
 	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
-		err := errors.New("server config not found")
-		logger.Log(0, "pull failed:", err.Error())
-		return models.HostPull{}, resetInterface, replacePeers, err
+		return models.HostPull{}, errors.New("server config not found")
 	}
 	if serverName != config.CurrServer {
 		config.CurrServer = serverName
@@ -46,8 +38,7 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	// Partial servers.json entries (Desktop Settings) are not enrolled — do not
 	// hammer authenticate / spam ERROR logs from mqFallback.
 	if strings.TrimSpace(server.Server) == "" {
-		err := errors.New("not registered to server")
-		return models.HostPull{}, resetInterface, replacePeers, err
+		return models.HostPull{}, errors.New("not registered to server")
 	}
 	token, err := auth.AuthenticateWithOptions(server, config.Netclient(), auth.AuthenticateOptions{
 		CleanupOnUnauthorized: false,
@@ -55,10 +46,8 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	if err != nil {
 		if ClearEnrollmentIfHostMissing(serverName, err) {
 			logger.Log(0, "pull failed for server", serverName, "host missing on server; enrollment cleared")
-		} else {
-			logger.Log(0, "pull failed for server", serverName, "authenticate:", err.Error())
 		}
-		return models.HostPull{}, resetInterface, replacePeers, err
+		return models.HostPull{}, err
 	}
 
 	url := fmt.Sprintf("%s/api/v1/host?reset_failovered=%v&refresh=%v",
@@ -71,19 +60,47 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
 			fmt.Fprintln(os.Stderr, MDMDeniedMessage)
-			logger.Log(0, "pull failed for server", serverName, "mdm:", denyErr.Error())
-			return models.HostPull{}, resetInterface, replacePeers, denyErr
+			return models.HostPull{}, denyErr
 		}
-		logger.Log(0, "pull failed for server", serverName, "request:", err.Error())
-		return models.HostPull{}, resetInterface, replacePeers, err
+		return models.HostPull{}, err
 	}
 
 	var pullResponse models.HostPull
-	err = json.Unmarshal(respBytes.Bytes(), &pullResponse)
+	if err := json.Unmarshal(respBytes.Bytes(), &pullResponse); err != nil {
+		return models.HostPull{}, err
+	}
+	return pullResponse, nil
+}
+
+// Pull pulls the latest config from the server.
+// refresh asks the server to recompute host peer cache on demand (startup only).
+// A 401 does not delete local server registration (servers.json).
+func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
+	pMutex.Lock()
+	defer pMutex.Unlock()
+	logger.Log(0, "host pull starting:", pullCaller(),
+		fmt.Sprintf("restart=%v reset_failover=%v refresh=%v", restart, resetIfFailedOvered, refresh))
+	resetInterface := false
+	replacePeers := false
+	pullResponse, err := fetchHostPull(resetIfFailedOvered, refresh)
 	if err != nil {
-		logger.Log(0, "pull failed for server", serverName, "decode:", err.Error())
+		logger.Log(0, "pull failed:", err.Error())
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
+	serverName := config.CurrServer
+	server := config.GetServer(serverName)
+	if server == nil {
+		err := errors.New("server config not found")
+		logger.Log(0, "pull failed:", err.Error())
+		return models.HostPull{}, resetInterface, replacePeers, err
+	}
+	slog.Debug("host pull response",
+		"server", serverName,
+		"host_id", pullResponse.Host.ID.String(),
+		"host.Nodes", pullResponse.Host.Nodes,
+		"pull.Nodes", debugServerNodeSummary(pullResponse.Nodes),
+		"peers", len(pullResponse.Peers),
+		"local_before_sync", debugLocalNodeSummary())
 
 	// MQTT Fallback Reset Interface
 	for _, pullNode := range pullResponse.Nodes {
@@ -136,6 +153,12 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 			}
 		}
 	}
+	slog.Debug("pull before SetNodes",
+		"server", serverName,
+		"pull.Nodes", debugServerNodeSummary(pullResponse.Nodes),
+		"host.Nodes", pullResponse.Host.Nodes,
+		"empty", len(pullResponse.Nodes) == 0,
+		"local_before", debugLocalNodeSummary())
 	PreserveConnectionsAfterSync(pullResponse.Nodes)
 	config.UpdateHost(&pullResponse.Host)
 	server, serverName = config.ResolveServer(serverName)
@@ -147,6 +170,10 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 	UpdateHostFromServer(&pullResponse.Host)
 	server = config.GetServer(serverName)
 	server.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
+	slog.Debug("host pull sync complete",
+		"server", serverName,
+		"local", debugLocalNodeSummary(),
+		"peers", len(config.Netclient().HostPeers))
 	logger.Log(0, "completed pull for server", serverName)
 	config.UpdateServer(server.Name, *server)
 	if err := config.WriteServerConfig(); err != nil {

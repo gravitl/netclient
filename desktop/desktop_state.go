@@ -44,6 +44,10 @@ func prepareDesktopConnect(network string) string {
 			slog.Warn("failed to clear exit so network can connect without one",
 				"network", network, "active_exit_network", other, "error", err)
 		}
+	} else if uiapi.ShouldDeferAutoExitClaim(network) {
+		// Installed IGW belongs elsewhere (or multi-net ambiguous). Do not
+		// auto-claim here — and do not clear this network's exit: it may be
+		// the owner (clearing after select tore down routing).
 	} else if err := applyEnforcedAutoExit(network, token); err != nil {
 		slog.Warn("auto exit arm on connect failed", "network", network, "error", err)
 	}
@@ -84,17 +88,27 @@ func forgetDesiredNetworkOnLeave(network string) {
 	_ = config.ForgetDesiredNetwork(user, tenant, network)
 }
 
-// finishDesktopConnect selects an auto-exit once the mesh is up so ranking
-// uses overlay VPN probes. Connect already invokes this on a goroutine so the
-// grace wait + latency probes do not block POST /connections.
+// finishDesktopConnect re-applies desired exit once the mesh is up. Disconnect
+// keeps local selection but the server often clears ChangeDefaultGw; without a
+// re-PUT here (especially for manual exits) CurrGw can look active while
+// traffic is not actually routed. Connect already invokes this on a goroutine
+// so the grace wait + latency probes do not block POST /connections.
 // Headless passes an empty token.
 func finishDesktopConnect(network, token string) {
 	if token == "" {
 		return
 	}
+	// Session restore applies exit in its own phase after all networks are
+	// marked connected. Per-network finish during restore races the sequential
+	// reconnect and can flap an already-restored tunnel.
+	if phase := uiapi.GetRestorePhase(); phase != "" {
+		slog.Debug("skip finishDesktopConnect during session restore",
+			"network", network, "phase", phase)
+		return
+	}
 	// List API skips probes during grace; wait so nearest pick sees real RTT.
 	functions.WaitExitOverlayProbeGrace(network)
-	applyDeferredAutoExitAfterConnect(network, token)
+	applyDesiredExitAfterConnect(network, token)
 }
 
 // desktopSessionIdentity returns the desktop session identity and whether
@@ -176,16 +190,16 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	if restrictSingle && len(desired) > 1 {
 		desired = desired[len(desired)-1:]
 	}
-	fmt.Println("restore debug: restoreDesiredConnections",
-		"user=", username, "tenant=", tenantID, "desired=", desired,
-		"restrict_single=", restrictSingle, "restart=", restart,
-		"local_nodes=", len(config.GetNodes()))
+	slog.Debug("restoreDesiredConnections",
+		"user", username, "tenant", tenantID, "desired", desired,
+		"restrict_single", restrictSingle, "restart", restart,
+		"local_nodes", len(config.GetNodes()))
 	if len(desired) == 0 {
-		fmt.Println("restore debug: no desired networks after filter")
+		slog.Debug("restore: no desired networks after filter")
 		return nil
 	}
 	if uiapi.ShouldAbortSessionRestore() {
-		fmt.Println("restore debug: aborted before network phase")
+		slog.Debug("restore: aborted before network phase")
 		return nil
 	}
 	uiapi.SetRestorePhase(uiapi.RestorePhaseNetworks)
@@ -200,13 +214,13 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 		nodes := config.GetNodes()
 		node, ok := nodes[network]
 		if !ok {
-			fmt.Println("restore debug: not_joined; ConnectNetwork join+connect",
-				"network=", network)
+			slog.Debug("restore: not_joined; join+ConnectWithoutRestart", "network", network)
 			if token == "" {
 				continue
 			}
-			if err := ConnectNetwork(network, server, token); err != nil {
-				fmt.Println("restore debug: ConnectNetwork failed", "network=", network, "err=", err)
+			// Avoid ConnectNetwork here: it ApplyConnectionChange per network and
+			// flaps peers for nets already marked connected earlier in this loop.
+			if err := joinAndMarkConnectedForRestore(network, server, token); err != nil {
 				slog.Warn("failed to restore connection (join)",
 					"network", network, "error", err)
 				continue
@@ -215,34 +229,30 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 			continue
 		}
 		if node.Connected {
-			fmt.Println("restore debug: already_connected; will apply peers", "network=", network)
+			slog.Debug("restore: already_connected; will apply peers", "network", network)
 			needApply = true
 			continue
 		}
 		// Same posture/JIT gate as ConnectNetwork — restore must not bypass it.
 		if token != "" {
 			if err := checkDeviceNetworkAccess(network, server, token); err != nil {
-				fmt.Println("restore debug: skip access_blocked", "network=", network, "err=", err)
 				slog.Warn("skipping restore: network access blocked",
 					"network", network, "error", err)
 				continue
 			}
 		}
 		if err := functions.ConnectWithoutRestart(network); err != nil {
-			fmt.Println("restore debug: ConnectWithoutRestart failed", "network=", network, "err=", err)
 			slog.Warn("failed to restore connection", "network", network, "error", err)
 			continue
 		}
-		fmt.Println("restore debug: ConnectWithoutRestart ok (no iface apply)", "network=", network)
+		slog.Debug("restore: ConnectWithoutRestart ok (no iface apply)", "network", network)
 		changed = true
 	}
 	if needApply && restart {
-		fmt.Println("restore debug: applying peers for already-connected desired nets")
-		if err := functions.ApplyConnectionChange("connect"); err != nil {
-			slog.Warn("failed to apply peers during restore", "error", err)
-		} else {
-			changed = true
-		}
+		// Defer iface apply to ApplyReconnectInProcess below. Applying here and
+		// again after exit re-select flaps tunnels the GUI already showed as up.
+		slog.Debug("restore: deferring peer apply for already-connected desired nets")
+		changed = true
 	}
 	if !restart {
 		return nil
@@ -402,7 +412,7 @@ func restoreDesiredConnections(username, tenantID string, restrictSingle, restar
 	// before IGW can be reinstalled, which is the login delay users see.
 	if err := functions.ApplyReconnectInProcess(pull, wantIGW); err != nil {
 		// Soft Restart keeps uiapi up on Windows (in-process reset).
-		fmt.Println("login restore: in-process reconnect apply failed; falling back to daemon soft restart:", err.Error())
+		slog.Debug("login restore: in-process reconnect apply failed; falling back to daemon soft restart", "error", err)
 		if uiapi.ShouldAbortSessionRestore() {
 			return nil
 		}

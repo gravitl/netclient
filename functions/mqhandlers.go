@@ -250,12 +250,26 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
 	if len(peerUpdate.Nodes) > 0 {
+		slog.Debug("peer update syncing nodes",
+			"server", serverName,
+			"peer_nodes", debugServerNodeSummary(peerUpdate.Nodes),
+			"peers", len(peerUpdate.Peers),
+			"replace_peers", peerUpdate.ReplacePeers,
+			"local_before", debugLocalNodeSummary())
 		PreserveConnectionsAfterSync(peerUpdate.Nodes)
 		_ = config.WriteNodeConfig()
+		slog.Debug("peer update after node sync", "local", debugLocalNodeSummary())
+	} else {
+		slog.Debug("peer update skipping node sync (empty Nodes)",
+			"server", serverName,
+			"peers", len(peerUpdate.Peers),
+			"replace_peers", peerUpdate.ReplacePeers,
+			"local", debugLocalNodeSummary())
 	}
 	// Nodes can land here after the interface was already built without them,
 	// leaving it unaddressed. Repair before peers and exit routes go on.
 	ifaceRepaired := wireguard.EnsureNodeAddrs()
+	wireguard.ClearEndpointCachesForRemovedPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
 	// Start auto-relay handshake grace as soon as peers hit the device — not
 	// after later setAutoRelayNodes / IGW / DNS work, which can add seconds.
@@ -355,6 +369,9 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	}
 	if config.AnyNodeConnected() {
 		if len(peerUpdate.EgressRoutes) > 0 {
+			if ifaceRepaired {
+				wireguard.InvalidateEgressRouteCache()
+			}
 			wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
 			wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
 		} else {
@@ -723,7 +740,11 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 		slog.Debug("skipping private LAN endpoint detection: internet exit active")
 		return
 	}
-	currentCidrs := getAllAllowedIPs(peers[:])
+	// Skip IPs covered by peer AllowedIPs OR cached egress CIDRs. Egress OS
+	// routes are installed before this runs; without egress CIDRs here, TCP
+	// metrics probes succeed through the tunnel and rewrite underlays to VPC
+	// LAN IPs (sticky via EndpointCache).
+	currentCidrs := wireguard.EndpointDetectionSkipCIDRs(getAllAllowedIPs(peers[:]))
 	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
@@ -760,7 +781,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
-					isAddressInPeers(peerIP, currentCidrs) {
+					wireguard.IPCoveredByCIDRs(peerIP, currentCidrs) {
 					continue
 				}
 				if peerIP.IsPrivate() {
@@ -811,18 +832,6 @@ func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
 		cidrs = []net.IPNet{}
 	}
 	return
-}
-
-func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
-	if len(cidrs) > 0 {
-		for i := range cidrs {
-			currCidr := cidrs[i]
-			if currCidr.Contains(ip) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func handleFwUpdate(server string, payload *models.FwUpdate) {
@@ -987,6 +996,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
 	ifaceRepaired := wireguard.EnsureNodeAddrs()
+	wireguard.ClearEndpointCachesForRemovedPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
 	setAutoRelayNodes(pullResponse.AutoRelayNodes, pullResponse.GwNodes, pullResponse.Nodes)
 	if IsDesktopBuild() {
@@ -1069,6 +1079,9 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	}
 	if config.AnyNodeConnected() {
 		if len(pullResponse.EgressRoutes) > 0 {
+			if ifaceRepaired {
+				wireguard.InvalidateEgressRouteCache()
+			}
 			wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
 			wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
 		} else {

@@ -77,6 +77,11 @@ func storeNewPeerIface(peerPubKey string, endpoint *net.UDPAddr) error {
 		logger.Log(0, "skipping endpoint detection for exit/tcp-relay peer", peerPubKey)
 		return nil
 	}
+	if endpoint != nil && wireguard.IsMeshRoutedEndpointIP(endpoint.IP, wireguard.HostPeerAllowedIPs()) {
+		logger.Log(0, "skipping detected endpoint inside egress/allowed CIDR",
+			endpoint.String(), "peer", peerPubKey)
+		return nil
+	}
 	newIfaceValue := cache.EndpointCacheValue{ // make new entry to replace old and apply to WG peer
 		Endpoint: endpoint,
 	}
