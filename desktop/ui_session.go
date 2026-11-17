@@ -431,11 +431,10 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 
 		var disconnectErr error
 		for _, network := range networks {
-			// Skip daemon restart per network — iface cleanup below is enough and
+			// Skip daemon restart per network — iface flush below is enough and
 			// avoids the long SIGHUP path that made logout with exit feel stuck.
 			if err := functions.DisconnectWithoutRestart(network, false); err != nil {
-				// Do not return: one failed network must not skip the peer flush
-				// below, which is what actually takes the tunnel down.
+				// Do not return: one failed network must not skip iface teardown.
 				slog.Warn("failed to disconnect network on logout", "network", network, "error", err)
 				if disconnectErr == nil {
 					disconnectErr = err
@@ -443,6 +442,9 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 			}
 		}
 		_ = wireguard.SetPeers(true)
+		// Belt-and-suspenders: ensure addrs/routes are gone even if a per-network
+		// disconnect returned early (quit must not leave the tunnel up).
+		functions.FlushIfaceAfterDisconnect()
 		if disconnectErr != nil {
 			clearDNSOnLogout()
 			// Still unregister on handoff so the next user is not stuck on a
@@ -452,6 +454,10 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 			}
 			return disconnectErr
 		}
+	} else {
+		// No Connected nodes in config, but quit/logout should still clear a
+		// stale WireGuard iface if one is present.
+		functions.FlushIfaceAfterDisconnect()
 	}
 	clearDNSOnLogout()
 	// Unregister after disconnect so local nodes still exist for teardown, and

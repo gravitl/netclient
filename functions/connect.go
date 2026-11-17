@@ -154,12 +154,10 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		if !hadIGW {
 			dns.ScheduleReconfigure()
 		}
-		if !restart {
-			return nil
-		}
-		// Peers/IGW/DNS already handled above. Skip full connection-change
-		// (would re-drive want_igw against an empty pull ~10s), but still flush
-		// iface addresses so proto-kernel overlay routes drop with the addr.
+		// Always flush iface addrs/routes when nothing remains connected.
+		// Desktop quit/logout uses DisconnectWithoutRestart (restart=false);
+		// skipping the flush left the WireGuard iface up (esp. visible on Linux).
+		// Still avoid ApplyConnectionChange/SIGHUP here — that path is slow.
 		logger.Log(0, "disconnect: last network; flushing iface addrs, skipping full connection-change rebuild")
 		flushIfaceAfterDisconnect()
 		dns.SyncForNodeChange()
@@ -174,6 +172,13 @@ func disconnectNetwork(network string, restart, forgetDesired bool) error {
 		return nil
 	}
 	return ApplyConnectionChange("disconnect")
+}
+
+// FlushIfaceAfterDisconnect removes addresses/routes for networks that are no
+// longer connected (including clearing the iface when none remain).
+// Safe to call after session release / logout when tunnels must be fully down.
+func FlushIfaceAfterDisconnect() {
+	flushIfaceAfterDisconnect()
 }
 
 // flushIfaceAfterDisconnect removes addresses/routes for networks that are no
