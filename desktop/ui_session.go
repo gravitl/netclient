@@ -395,10 +395,18 @@ func ReleaseSession(clearServer bool, unregisterHost bool) error {
 				exitNetwork = networks[len(networks)-1]
 			}
 		}
-		// Local desire is enough for next-login restore — do not GET exit
-		// selection from a possibly-dead API during logout.
-		if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, autoExit, egressID, exitNetwork); err != nil {
-			slog.Warn("failed to persist connected networks before logout", "error", err)
+		if unregisterHost {
+			// User/tenant handoff (or server-change unregister): do not keep
+			// reconnect intent for the departing account on this device.
+			if err := config.ClearDesiredState(user, tenant); err != nil {
+				slog.Warn("failed to clear desired state on session handoff", "error", err)
+			}
+		} else {
+			// Normal logout: persist so the same user can restore on next login.
+			// Do not GET exit selection from a possibly-dead API during logout.
+			if err := config.SnapshotDesiredState(user, tenant, networks, wantIGW, autoExit, egressID, exitNetwork); err != nil {
+				slog.Warn("failed to persist connected networks before logout", "error", err)
+			}
 		}
 		skipNextDesiredRestore()
 	}

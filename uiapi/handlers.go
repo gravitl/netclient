@@ -166,7 +166,17 @@ func respondConfigureServerError(w http.ResponseWriter, message string) {
 
 // releaseSessionForServerChange drops an active UI session so POST /server can
 // proceed when the Desktop login/settings UI is out of sync with the daemon.
+// Always clears desired reconnect state (even when already logged out): that
+// file is keyed by username+tenant only, so a leftover snapshot from the old
+// server would restore foreign networks on the next login.
 func releaseSessionForServerChange(reason string) error {
+	defer func() {
+		if err := config.ClearAllDesiredConnections(); err != nil {
+			uiLog(1, "uiapi: failed to clear desired connections before", reason+":", err.Error())
+		} else {
+			uiLog(0, "uiapi: cleared desired connections before", reason)
+		}
+	}()
 	if !isSessionActive() {
 		return nil
 	}
@@ -393,6 +403,33 @@ func configureSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := clearSession(true); err != nil {
 			uiLog(1, "uiapi: failed to clear prior session before handoff:", err.Error())
+		}
+		// Drop restore snapshots for the departing account/tenant so the next
+		// login does not reconnect their networks (desired state is not server-
+		// scoped, and ReleaseSession only clears when tunnels were up).
+		if prevUser != "" && prevUser != req.Username {
+			if err := config.ClearUserDesiredConnections(prevUser); err != nil {
+				uiLog(1, "uiapi: failed to clear prior user desired connections:", err.Error())
+			} else {
+				uiLog(0, "uiapi: cleared desired connections for prior user", prevUser)
+			}
+		} else if prevUser != "" {
+			if err := config.ClearDesiredState(prevUser, prevTenant); err != nil {
+				uiLog(1, "uiapi: failed to clear prior tenant desired connections:", err.Error())
+			} else {
+				uiLog(0, "uiapi: cleared desired connections for prior tenant", prevTenant)
+			}
+		}
+	} else if host := config.Netclient(); host != nil {
+		if owner := strings.TrimSpace(host.OwnerUsername); owner != "" && owner != req.Username {
+			// Prior user already logged out (no in-memory handoff) but this host
+			// is still enrolled under them — drop their restore snapshot so
+			// login as a different account does not reconnect their networks.
+			if err := config.ClearUserDesiredConnections(owner); err != nil {
+				uiLog(1, "uiapi: failed to clear owner desired connections:", err.Error())
+			} else {
+				uiLog(0, "uiapi: cleared desired connections for previous host owner", owner)
+			}
 		}
 	}
 

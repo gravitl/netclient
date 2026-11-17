@@ -27,6 +27,12 @@ func connectNetwork(network string, restart bool) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
+		keys := make([]string, 0, len(nodes))
+		for k := range nodes {
+			keys = append(keys, k)
+		}
+		fmt.Println("connect debug: connectNetwork no such network",
+			"network=", network, "local_count=", len(nodes), "local_networks=", keys)
 		err := errors.New("no such network")
 		logger.Log(0, "connect", network, "failed:", err.Error())
 		return err
