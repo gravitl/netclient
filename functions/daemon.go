@@ -188,7 +188,7 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 		cache.EgressRouteCache.Delete(key)
 		return true
 	})
-	signalThrottleCache = sync.Map{}
+	clearAutoRelaySignalThrottle()
 	slog.Info("closing netmaker interface")
 	listenPort := 0
 	userspace := wireguard.UserspaceWGActive()

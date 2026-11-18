@@ -87,6 +87,9 @@ func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull
 		logger.Log(0, "pull failed:", err.Error())
 		return models.HostPull{}, resetInterface, replacePeers, err
 	}
+	if resetIfFailedOvered || pullResponse.ClearAutoRelayThrottle {
+		clearAutoRelaySignalThrottle()
+	}
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	if server == nil {

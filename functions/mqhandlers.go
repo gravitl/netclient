@@ -430,6 +430,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if reloadStun {
 		_ = daemon.Restart()
 	}
+	applyAutoRelayThrottleClear(peerUpdate.ClearAutoRelayThrottle, peerUpdate.ClearAutoRelayThrottleHostID)
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
@@ -998,7 +999,11 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	ifaceRepaired := wireguard.EnsureNodeAddrs()
 	wireguard.ClearEndpointCachesForRemovedPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	if pullResponse.ClearAutoRelayThrottle {
+		clearAutoRelaySignalThrottle()
+	}
 	setAutoRelayNodes(pullResponse.AutoRelayNodes, pullResponse.GwNodes, pullResponse.Nodes)
+
 	if IsDesktopBuild() {
 		scheduleAutoRelayPeerScan()
 	}

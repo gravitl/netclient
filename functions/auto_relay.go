@@ -45,6 +45,29 @@ var (
 	autoRelayScheduleGen atomic.Uint64
 )
 
+// clearAutoRelaySignalThrottle wipes the ConnNegotiation throttle so peers can
+// be re-signaled after an admin reset or reset_failovered pull.
+func clearAutoRelaySignalThrottle() {
+	// Wipe in place — do not reassign the package var (races with concurrent Load/Store/Delete).
+	signalThrottleCache.Range(func(key, _ any) bool {
+		signalThrottleCache.Delete(key)
+		return true
+	})
+}
+
+// applyAutoRelayThrottleClear applies peer-update throttle clear instructions:
+// ClearAutoRelayThrottle wipes the whole cache; ClearAutoRelayThrottleHostID
+// deletes that one peer host from the cache.
+func applyAutoRelayThrottleClear(clearAll bool, hostID string) {
+	if clearAll {
+		clearAutoRelaySignalThrottle()
+		return
+	}
+	if hostID != "" {
+		signalThrottleCache.Delete(hostID)
+	}
+}
+
 func getAutoRelayNodes(network schema.NetworkID) []models.Node {
 	autoRelayCacheMutex.Lock()
 	defer autoRelayCacheMutex.Unlock()
