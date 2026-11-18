@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -124,6 +123,7 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 		slog.Warn("skipping auto-upgrade on desktop build; Desktop manages updates", "version", version)
 		return true, nil
 	}
+	restoreInternetGwAndDNS()
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
 		// Stop the daemon before updating to avoid file locking issues
@@ -156,10 +156,9 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 		return false, err
 	}
 	filePath = filepath.Join(binPath, "netclient-"+version)
-	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
-		if err := downloadVersion(version); err != nil {
-			return false, err
-		}
+	defer os.Remove(filePath)
+	if err := downloadVersion(version); err != nil {
+		return false, err
 	}
 	if rebootDaemon {
 		daemon.Stop()
