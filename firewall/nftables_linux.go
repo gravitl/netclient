@@ -2269,7 +2269,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 					if dstI.IP == nil {
 						continue
 					}
-					ruleSpec := []string{"-s", ip.String()}
+					ruleSpec := []string{"-s", ip.String(), "-d", dstI.String()}
 					if aclRule.AllowedProtocol.String() != "" && aclRule.AllowedProtocol != models.ALL {
 						ruleSpec = append(ruleSpec, "-p", aclRule.AllowedProtocol.String())
 					}

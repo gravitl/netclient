@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"bytes"
+	"net"
 	"testing"
 
 	"github.com/google/nftables"
@@ -56,4 +57,45 @@ func TestAddJumpRulesEncodesMetricsPortInNetworkByteOrder(t *testing.T) {
 		}
 	}
 	t.Fatalf("metrics port %d was not encoded in network byte order in %s", metricsPort, aclInputRulesChain)
+}
+
+// TestUpsertAclRuleKeepsEveryIPv6Destination checks that an ACL with several
+// IPv6 destinations keeps a rule for each of them.
+func TestUpsertAclRuleKeepsEveryIPv6Destination(t *testing.T) {
+	conn, err := nftables.New(nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
+		return req, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &nftablesManager{
+		conn:         conn,
+		ingRules:     make(serverrulestable),
+		engressRules: make(serverrulestable),
+		aclRules:     make(serverrulestable),
+	}
+
+	manager.UpsertAclRule("server", models.AclRule{
+		ID:      "acl",
+		IP6List: []net.IPNet{cidr(t, "2001:db8::2/128")},
+		Dst6:    []net.IPNet{cidr(t, "2001:db8::1/128"), cidr(t, "2001:db8::3/128")},
+		Allowed: true,
+	})
+
+	rules := manager.aclRules["server"]["acl"].rulesMap["acl"]
+	if len(rules) != 2 {
+		t.Fatalf("%s has %d rules after UpsertAclRule with two destinations, want 2", aclInputRulesChain, len(rules))
+	}
+	if genRuleKey(rules[0].rule...) == genRuleKey(rules[1].rule...) {
+		t.Fatalf("both destinations use rule key %q", genRuleKey(rules[0].rule...))
+	}
+}
+
+func cidr(t *testing.T, s string) net.IPNet {
+	t.Helper()
+	_, ipNet, err := net.ParseCIDR(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return *ipNet
 }
