@@ -1082,14 +1082,31 @@ func (nc *NCIface) Close() {
 
 // NCIface.SetMTU - sets the MTU of the windows WireGuard Iface adapter
 func (nc *NCIface) SetMTU() error {
-	if !UserspaceWGActive() || nc.MTU <= 0 {
-		// TODO figure out how to change MTU of WireGuardNT adapter
+	if nc.MTU <= 0 {
 		return nil
 	}
-	for _, family := range []string{"ipv4", "ipv6"} {
-		cmd := fmt.Sprintf(`netsh interface %s set subinterface "%s" mtu=%d store=active`, family, nc.Name, nc.MTU)
-		if _, err := ncutils.RunCmd(cmd, false); err != nil {
-			slog.Warn("failed to set userspace iface MTU", "family", family, "error", err)
+	if UserspaceWGActive() {
+		for _, family := range []string{"ipv4", "ipv6"} {
+			cmd := fmt.Sprintf(`netsh interface %s set subinterface "%s" mtu=%d store=active`, family, nc.Name, nc.MTU)
+			if _, err := ncutils.RunCmd(cmd, false); err != nil {
+				slog.Warn("failed to set userspace iface MTU", "family", family, "error", err)
+			}
+		}
+		return nil
+	}
+	luid := nc.Iface.(*driver.Adapter).LUID()
+	for _, family := range []winipcfg.AddressFamily{windows.AF_INET, windows.AF_INET6} {
+		row, err := luid.IPInterface(family)
+		if errors.Is(err, windows.ERROR_NOT_FOUND) {
+			continue
+		}
+		if err != nil {
+			slog.Warn("failed to read WireGuardNT iface", "family", family, "error", err)
+			continue
+		}
+		row.NLMTU = uint32(nc.MTU)
+		if err := row.Set(); err != nil {
+			slog.Warn("failed to set WireGuardNT iface MTU", "family", family, "error", err)
 		}
 	}
 	return nil
