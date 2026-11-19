@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netmaker/logger"
 	"golang.org/x/exp/slog"
@@ -36,9 +35,9 @@ func SetIPForwardingWindows() error {
 // EnableForwardingOnInterfaces enables forwarding on the given interface aliases.
 // For the netmaker adapter it also enables WeakHostSend/Receive so same-interface
 // (gateway/relay hairpin) forwarding works on Windows.
-// Skips when unregistered or user-owned (same rules as SetIPForwarding).
+// Desktop builds never enable forwarding (they are not gateways/relays/egress).
 func EnableForwardingOnInterfaces(aliases ...string) error {
-	if !config.IsRegistered() || config.IsUserOwnedDevice() {
+	if IsDesktopBuild() {
 		return nil
 	}
 	return setForwardingOnInterfaces(true, aliases...)
