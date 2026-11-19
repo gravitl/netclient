@@ -15,11 +15,26 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/minio/selfupdate"
 	"golang.org/x/exp/slog"
 )
 
 var binPath, filePath string
+
+func getReleaseAsset(url string) (*http.Response, error) {
+	req, err := retryablehttp.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	client := ncutils.GetClient(ncutils.ClientConfig{
+		RetryMax:     3,
+		Timeout:      30 * time.Second,
+		RetryWaitMin: 2 * time.Second,
+		RetryWaitMax: 10 * time.Second,
+	})
+	return client.Do(req)
+}
 
 func createDirIfNotExists() error {
 
@@ -60,7 +75,7 @@ func downloadVersion(version string) error {
 		}
 		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
 	}
-	res, err := http.Get(url)
+	res, err := getReleaseAsset(url)
 	if err != nil {
 		return err
 	}
@@ -194,7 +209,7 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 
 // windowsUpdate uses a different package and process to upgrade netclient binary on windows
 func windowsUpdate(url string) error {
-	resp, err := http.Get(url)
+	resp, err := getReleaseAsset(url)
 	if err != nil {
 		return err
 	}
