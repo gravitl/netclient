@@ -76,7 +76,7 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 			continue
 		}
 
-		if peer.UserName != "" {
+		if peer.UserName != "" && !peer.IsExtClient {
 			logger.Log(0, "skipping metrics for user-owned device", peer.ID, peer.Address)
 			continue
 		}
@@ -154,7 +154,7 @@ func probeConcurrency() int {
 // == used to fill zero value data for non connected peers ==
 func fillUnconnectedData(metrics *models.Metrics, peerMap models.PeerMap, mi int) {
 	for r := range peerMap {
-		if peerMap[r].UserName != "" {
+		if peerMap[r].UserName != "" && !peerMap[r].IsExtClient {
 			continue
 		}
 		id := peerMap[r].ID
