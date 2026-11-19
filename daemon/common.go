@@ -3,12 +3,14 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 
 	"github.com/gravitl/netclient/config"
-	"github.com/gravitl/netclient/ncutils"
 	"golang.org/x/exp/slog"
 )
 
@@ -23,6 +25,39 @@ func SetDaemonMode() {
 	isDaemonProcess = true
 }
 
+// IsDaemonProcess reports whether this process is the long-running daemon.
+func IsDaemonProcess() bool {
+	return isDaemonProcess
+}
+
+var (
+	inProcessResetMu sync.Mutex
+	inProcessResetFn func(done chan struct{})
+)
+
+// SetInProcessReset registers the function the daemon uses to rebuild its
+// goroutines without exiting. The callback receives a channel to close when
+// the rebuild has finished. A Windows service restart drops the desktop API.
+func SetInProcessReset(fn func(done chan struct{})) {
+	inProcessResetMu.Lock()
+	inProcessResetFn = fn
+	inProcessResetMu.Unlock()
+}
+
+// RequestInProcessReset asks the daemon to rebuild in place and reports when
+// that rebuild has finished. Nil means no daemon is listening.
+func RequestInProcessReset() <-chan struct{} {
+	inProcessResetMu.Lock()
+	fn := inProcessResetFn
+	inProcessResetMu.Unlock()
+	if fn == nil {
+		return nil
+	}
+	done := make(chan struct{})
+	fn(done)
+	return done
+}
+
 // Install - Calls the correct function to install the netclient as a daemon service on the given operating system.
 func Install() error {
 	return install()
@@ -30,7 +65,7 @@ func Install() error {
 
 // Restart - restarts a system daemon
 func Restart() error {
-	ncutils.TraceCaller()
+	logRestartRequest("restart")
 	return restart()
 }
 
@@ -41,8 +76,30 @@ func Start() error {
 
 // HardRestart - restarts system daemon using init system
 func HardRestart() error {
-	ncutils.TraceCaller()
+	logRestartRequest("hard restart")
 	return hardRestart()
+}
+
+// logRestartRequest names the caller. On Windows, soft Restart keeps uiapi up;
+// HardRestart / CLI Restart still bounce WinSW and drop :61820.
+func logRestartRequest(kind string) {
+	caller := "unknown"
+	if pc, file, line, ok := runtime.Caller(2); ok {
+		name := "unknown"
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			name = fn.Name()
+		}
+		caller = fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
+	}
+	note := ""
+	if runtime.GOOS == "windows" {
+		if kind == "hard restart" || !IsDaemonProcess() {
+			note = " (Windows: WinSW stop/start; uiapi :61820 will drop)"
+		} else {
+			note = " (Windows: soft in-process reset; uiapi stays up)"
+		}
+	}
+	fmt.Println("daemon", kind, "requested by", caller+note)
 }
 
 // Stop - stops a system daemon

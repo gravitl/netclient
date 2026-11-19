@@ -68,6 +68,7 @@ jobs:
       run: |
         go version
         go mod tidy
+        # Headless only. Desktop GUI daemons are built by Netmaker-Desktop.
         if [ -n "$GOARM" ]; then
           OUTPUT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"
           ARTIFACT_NAME="netclient-${{ matrix.goos }}-armv$GOARM"

@@ -49,13 +49,13 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	var removeErr error
 	if config.Remove {
 		delete(w.configs, iface)
 
-		err := w.resetInterfaceSearchList(iface)
-		if err != nil {
-			return err
-		}
+		// Keep going on failure: returning here skipped the NRPT reset below and
+		// left the rule pointing at a listener that is gone.
+		removeErr = w.resetInterfaceSearchList(iface)
 	} else {
 		w.configs[iface] = config
 
@@ -120,26 +120,22 @@ func (w *windowsManager) Configure(iface string, config Config) error {
 			return err
 		}
 
-		return w.setNrptRule(namespaces, nameservers)
+		return errors.Join(removeErr, w.setNrptRule(namespaces, nameservers))
 	}
 
-	return w.resetConfig()
+	return errors.Join(removeErr, w.resetConfig())
 }
 
+// resetConfig always attempts the NRPT reset, even when a search-list reset
+// fails, so a registry hiccup cannot leave the rule installed.
 func (w *windowsManager) resetConfig() error {
+	var errs []error
 	for iface := range w.configs {
-		err := w.resetInterfaceSearchList(iface)
-		if err != nil {
-			return err
-		}
+		errs = append(errs, w.resetInterfaceSearchList(iface))
 	}
-
-	err := w.resetGlobalSearchList()
-	if err != nil {
-		return err
-	}
-
-	return w.resetNrptRule()
+	errs = append(errs, w.resetGlobalSearchList())
+	errs = append(errs, w.resetNrptRule())
+	return errors.Join(errs...)
 }
 
 func (w *windowsManager) setInterfaceSearchList(iface string, searchList, dnsIPs []string) error {
@@ -494,60 +490,46 @@ func (w *windowsManager) setNrptRule(namespaces, nameservers []string) error {
 	return nrptRuleKey.SetDWordValue("Version", 2)
 }
 
+// resetNrptRule deletes the rule this process created and then sweeps for any
+// other rule carrying the netmaker marker. The sweep matters on logout: a rule
+// left by an earlier daemon generation has a different name than nrptRuleName.
 func (w *windowsManager) resetNrptRule() error {
-	if w.nrptRuleName == "" {
-		globalKey, err := w.getGlobalNrptRuleRegistryKey()
-		if err == nil {
-			_ = w.findAndResetNrptRule(globalKey)
-			_ = globalKey.Close()
+	for _, open := range []func() (registry.Key, error){
+		w.getGlobalNrptRuleRegistryKey,
+		w.getLocalNrptRuleRegistryKey,
+	} {
+		key, err := open()
+		if err != nil {
+			continue
 		}
-
-		localKey, err := w.getLocalNrptRuleRegistryKey()
-		if err == nil {
-			_ = w.findAndResetNrptRule(localKey)
-			_ = localKey.Close()
+		if w.nrptRuleName != "" {
+			_ = registry.DeleteKey(key, w.nrptRuleName)
 		}
-	} else {
-		globalKey, err := w.getGlobalNrptRuleRegistryKey()
-		if err == nil {
-			_ = registry.DeleteKey(globalKey, w.nrptRuleName)
-			_ = globalKey.Close()
-		}
-
-		localKey, err := w.getLocalNrptRuleRegistryKey()
-		if err == nil {
-			_ = registry.DeleteKey(localKey, w.nrptRuleName)
-			_ = localKey.Close()
-		}
+		_ = w.findAndResetNrptRule(key)
+		_ = key.Close()
 	}
+	w.nrptRuleName = ""
 
 	return nil
 }
 
+// findAndResetNrptRule deletes every subkey marked as netmaker's. Names are
+// read in full before deleting: deleting mid-enumeration shifts indices and
+// skips rules.
 func (w *windowsManager) findAndResetNrptRule(key registry.Key) error {
-	keepLooking := true
-	for keepLooking {
-		subKeyNames, err := key.ReadSubKeyNames(10)
+	subKeyNames, err := key.ReadSubKeyNames(-1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	for _, subKeyName := range subKeyNames {
+		subKey, err := registry.OpenKey(key, subKeyName, registry.QUERY_VALUE)
 		if err != nil {
-			if err == io.EOF {
-				keepLooking = false
-			} else {
-				return err
-			}
+			continue
 		}
-		for _, subKeyName := range subKeyNames {
-			subKey, err := registry.OpenKey(key, subKeyName, registry.ALL_ACCESS)
-			if err != nil {
-				return err
-			}
-
-			comment, _, err := subKey.GetStringValue("Comment")
-			if err == nil {
-				if comment == nrptRuleMarker {
-					_ = registry.DeleteKey(key, subKeyName)
-				}
-			}
-			_ = subKey.Close()
+		comment, _, err := subKey.GetStringValue("Comment")
+		_ = subKey.Close()
+		if err == nil && comment == nrptRuleMarker {
+			_ = registry.DeleteKey(key, subKeyName)
 		}
 	}
 

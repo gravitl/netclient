@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	RouteTableName    = 111
-	EgressRouteMetric = 256
+	RouteTableName = 111
 )
 
 // useKernelWireGuard prefers kernel WG unless TCP uplink needs userspace conn.Bind.
@@ -156,6 +155,12 @@ func (l *netLink) Close() error {
 }
 
 // netLink.ApplyAddrs - applies the assigned node addresses to given interface (netLink)
+// ApplyAddrs wipes iface addresses and non-IGW routes, then re-applies nc.Addresses.
+// No add/remove diff — connect/disconnect always ends in the desired set.
+// AddrDel first: proto-kernel on-link overlay routes drop with the address;
+// RouteDel-first used to abort on "no such process" and leave stale overlays.
+// Internet-exit routes (table 111 + IPv6 leak half-defaults) are never deleted
+// here — exit install/teardown stays in SetInternetGw / RestoreInternetGw.
 func (nc *NCIface) ApplyAddrs() error {
 	l, err := netlink.LinkByName(nc.Name)
 	if err != nil {
@@ -166,24 +171,23 @@ func (nc *NCIface) ApplyAddrs() error {
 	if err != nil {
 		return err
 	}
+
+	for i := range currentAddrs {
+		if err := netlink.AddrDel(l, &currentAddrs[i]); err != nil {
+			slog.Warn("failed to delete iface address", "addr", currentAddrs[i].IPNet.String(), "error", err)
+		}
+	}
+
 	routes, err := netlink.RouteList(l, 0)
 	if err != nil {
 		return err
 	}
-
 	for i := range routes {
-		err = netlink.RouteDel(&routes[i])
-		if err != nil {
-			return fmt.Errorf("failed to list routes %w", err)
+		if isIGWProtectedLinuxRoute(routes[i]) {
+			continue
 		}
-	}
-
-	if len(currentAddrs) > 0 {
-		for i := range currentAddrs {
-			err = netlink.AddrDel(l, &currentAddrs[i])
-			if err != nil {
-				return fmt.Errorf("failed to delete route %w", err)
-			}
+		if err := netlink.RouteDel(&routes[i]); err != nil && !strings.Contains(err.Error(), "no such process") {
+			slog.Warn("failed to delete iface route", "error", err)
 		}
 	}
 
@@ -199,7 +203,26 @@ func (nc *NCIface) ApplyAddrs() error {
 	return nil
 }
 
-// RemoveRoutes - Remove routes to the interface
+// isIGWProtectedLinuxRoute reports routes ApplyAddrs must not delete while an
+// internet exit is active: policy-table defaults/egress and IPv6 leak diverts.
+func isIGWProtectedLinuxRoute(r netlink.Route) bool {
+	if r.Table == RouteTableName {
+		return true
+	}
+	if r.Dst == nil {
+		return false
+	}
+	switch r.Dst.String() {
+	case ipv6HalfDefaultLow, ipv6HalfDefaultHigh, "0.0.0.0/1", "128.0.0.0/1", IPv4Network, IPv6Network:
+		return true
+	default:
+		return false
+	}
+}
+
+// RemoveRoutes removes egress routes using the stored addr shape (not current
+// node count), so single-net on-link entries are still deleted after a second
+// network is joined.
 func RemoveRoutes(addrs []ifaceAddress) {
 	l, err := netlink.LinkByName(ncutils.GetInterfaceName())
 	if err != nil {
@@ -208,20 +231,21 @@ func RemoveRoutes(addrs []ifaceAddress) {
 	}
 
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
+		src, gw, metric, ok := linuxEgressRouteParamsForStored(addr)
+		if !ok {
 			continue
 		}
-		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
+		slog.Info("removing route to interface", "route", fmt.Sprintf("%s -> %s ->%s", src.String(), addr.Network.String(), gw.String()))
 		if err := netlink.RouteDel(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
-			Gw:        addr.GwIP,
-			Src:       addr.IP,
+			Gw:        gw,
+			Src:       src,
 			Dst:       &addr.Network,
-			Priority:  int(addr.Metric),
+			Priority:  metric,
 		}); err != nil {
 			slog.Warn("error removing route", "error", err.Error())
 		}
+		removeSpecificRouteFromIGWTable(l, addr)
 	}
 }
 
@@ -233,27 +257,84 @@ func SetRoutes(addrs []ifaceAddress) error {
 		return err
 	}
 
+	multi := len(config.GetNodes()) > 1
 	for _, addr := range addrs {
-		if (len(config.GetNodes()) > 1 && addr.IP == nil) || addr.Network.IP == nil || addr.Network.String() == IPv4Network ||
-			addr.Network.String() == IPv6Network || (len(config.GetNodes()) > 1 && addr.GwIP == nil) {
+		src, gw, metric, ok := linuxEgressRouteParams(addr, multi)
+		if !ok {
 			continue
 		}
-		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", addr.IP.String(), addr.Network.String(), addr.GwIP.String()))
-		metric := EgressRouteMetric
-		if addr.Metric > 0 && addr.Metric < 999 {
-			metric = int(addr.Metric)
-		}
+		slog.Info("adding route to interface", "route", fmt.Sprintf("%s -> %s ->%s", src.String(), addr.Network.String(), gw.String()))
 		if err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: l.Attrs().Index,
-			Gw:        addr.GwIP,
-			Src:       addr.IP,
+			Gw:        gw,
+			Src:       src,
 			Dst:       &addr.Network,
 			Priority:  metric,
 		}); err != nil && !strings.Contains(err.Error(), "file exists") {
 			slog.Warn("error adding route", "error", err.Error())
 		}
+		addSpecificRouteToIGWTable(l, addr, metric)
 	}
 	return nil
+}
+
+// linuxEgressRouteParams returns Src/Gw/metric for a netlink egress route.
+// Single-net: Src and Gw may be nil (on-link). Multi-net: both required.
+func linuxEgressRouteParams(addr ifaceAddress, multi bool) (src, gw net.IP, metric int, ok bool) {
+	if addr.Network.IP == nil || addr.Network.String() == IPv4Network || addr.Network.String() == IPv6Network {
+		return nil, nil, 0, false
+	}
+	if multi && (addr.IP == nil || addr.GwIP == nil) {
+		return nil, nil, 0, false
+	}
+	return addr.IP, addr.GwIP, int(egressMetric(addr.Metric)), true
+}
+
+// linuxEgressRouteParamsForStored returns params for deleting a previously
+// installed route from cache. Uses the stored shape: both IP+Gw set → via-GW;
+// otherwise on-link (nil Src/Gw). Does not consult current node count.
+func linuxEgressRouteParamsForStored(addr ifaceAddress) (src, gw net.IP, metric int, ok bool) {
+	if addr.Network.IP == nil || addr.Network.String() == IPv4Network || addr.Network.String() == IPv6Network {
+		return nil, nil, 0, false
+	}
+	metric = int(egressMetric(addr.Metric))
+	if addr.IP != nil && addr.GwIP != nil {
+		return addr.IP, addr.GwIP, metric, true
+	}
+	return nil, nil, metric, true
+}
+
+// addSpecificRouteToIGWTable installs a more-specific egress CIDR in table 111 so
+// it wins over the IGW default (0.0.0.0/0) when policy routing looks up that table.
+func addSpecificRouteToIGWTable(l netlink.Link, addr ifaceAddress, metric int) {
+	if l == nil || !IGWRoutingActive() || addr.Network.IP == nil {
+		return
+	}
+	dst := addr.Network
+	r := netlink.Route{
+		LinkIndex: l.Attrs().Index,
+		Dst:       &dst,
+		Table:     RouteTableName,
+		Priority:  metric,
+	}
+	if err := netlink.RouteAdd(&r); err != nil && !strings.Contains(err.Error(), "file exists") {
+		slog.Warn("error adding IGW-table egress route", "network", addr.Network.String(), "error", err.Error())
+	}
+}
+
+func removeSpecificRouteFromIGWTable(l netlink.Link, addr ifaceAddress) {
+	if l == nil || addr.Network.IP == nil {
+		return
+	}
+	dst := addr.Network
+	r := netlink.Route{
+		LinkIndex: l.Attrs().Index,
+		Dst:       &dst,
+		Table:     RouteTableName,
+	}
+	if err := netlink.RouteDel(&r); err != nil && !strings.Contains(err.Error(), "no such process") {
+		slog.Debug("remove IGW-table egress route", "network", addr.Network.String(), "error", err.Error())
+	}
 }
 
 // GetDefaultGatewayIp - get current default gateway
@@ -421,6 +502,8 @@ func SetInternetGw(publicKey string, gw4, gw6 net.IP) (err error) {
 	if IsZeroWGPublicKey(publicKey) {
 		return fmt.Errorf("internet gateway peer public key is empty")
 	}
+	// Resolve+pin API/broker on LAN before 0.0.0.0/0 moves onto the exit.
+	SyncControlPlaneUnderlayPins()
 	err = setDefaultRoutesOnHost(publicKey, gw4, gw6)
 	if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
 		GetIGWMonitor().Monitor(publicKey, gw4, gw6)
@@ -447,8 +530,53 @@ func setDefaultRoutesOnHost(publicKey string, gw4, gw6 net.IP) error {
 				firstErr = err
 			}
 		}
+	} else if shouldBlockIPv6Leak(gw4, gw6) {
+		if err := blockIPv6LeakOnIGW(); err != nil {
+			slog.Error("failed to divert IPv6 off ISP for IPv4-only exit", "error", err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
+	reapplyCachedEgressRoutes()
 	return firstErr
+}
+
+// blockIPv6LeakOnIGW pulls IPv6 off the ISP when the exit is IPv4-only.
+// Half-default routes via the netmaker device win over LAN ::/0; without peer
+// ::/0 AllowedIPs the packets fail closed and Happy Eyeballs falls back to IPv4.
+func blockIPv6LeakOnIGW() error {
+	link, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return err
+	}
+	logger.Log(0, "IPv4-only exit: diverting IPv6 off ISP to prevent leak")
+	for _, cidr := range []string{ipv6HalfDefaultLow, ipv6HalfDefaultHigh} {
+		_, dst, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return err
+		}
+		r := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+		if err := netlink.RouteReplace(&r); err != nil {
+			return fmt.Errorf("add %s via %s: %w", cidr, link.Attrs().Name, err)
+		}
+	}
+	return nil
+}
+
+func clearIPv6LeakOnIGW() {
+	link, err := netlink.LinkByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return
+	}
+	for _, cidr := range []string{ipv6HalfDefaultLow, ipv6HalfDefaultHigh} {
+		_, dst, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		r := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+		_ = netlink.RouteDel(&r)
+	}
 }
 
 // setInternetGwV6 - set a new default gateway and add rules to activate it
@@ -526,7 +654,7 @@ func setInternetGwV6(publicKey string, networkIP net.IP) (err error) {
 		}
 	}
 
-	igwHostIPs := InternetGwHostIPs(publicKey)
+	igwHostIPs := IGWUnderlayPinIPs(publicKey)
 	for _, hostIP := range igwHostIPs {
 		if hostIP.To4() != nil {
 			continue
@@ -609,6 +737,9 @@ func setInternetGwV4(publicKey string, networkIP net.IP) (err error) {
 		}
 		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
 	}
+	// Site-egress (and other direct) peer underlays must also stay on main;
+	// otherwise UDP to those hosts matches table-111 0.0.0.0/0 and trombones.
+	pinInternetGwHostRoutes(publicKey)
 
 	//set new default gateway
 	if err := netlink.RouteAdd(&defaultRoute); err != nil {
@@ -689,6 +820,8 @@ func resetDefaultRoutesOnHost() error {
 		if err := restoreInternetGwV4(); err != nil {
 			firstErr = err
 		}
+		// IPv4-only exit may have installed IPv6 divert routes with no CurrGwNmIP6.
+		clearIPv6LeakOnIGW()
 	}
 	if needV6 {
 		if err := restoreInternetGwV6(); err != nil && firstErr == nil {
@@ -871,10 +1004,16 @@ func restoreInternetGwV4() (err error) {
 	return config.WriteNetclientConfig()
 }
 
-// pinInternetGwHostRoutes adds main-table rules for exit underlay IPs without
-// changing the IGW table default. Safe when exit routing is already active.
+// pinInternetGwHostRoutes adds main-table rules for exit and non-exit peer
+// underlay IPs without changing the IGW table default, and drops rules for
+// IPs that are no longer peers. Safe when exit routing is already active.
+// Rules defer to the main table, so they follow a LAN gateway change as is.
 func pinInternetGwHostRoutes(publicKey string) {
-	for _, hostIP := range InternetGwHostIPs(publicKey) {
+	desired := IGWUnderlayPinIPs(publicKey)
+	if canPruneUnderlayPins(publicKey) {
+		pruneUnderlayPinRules(desired)
+	}
+	for _, hostIP := range desired {
 		var cidr string
 		family := netlink.FAMILY_V4
 		if hostIP.To4() != nil {
@@ -900,6 +1039,38 @@ func pinInternetGwHostRoutes(publicKey string) {
 			continue
 		}
 		slog.Info("pinning exit-node underlay via main table", "dst", destination.String())
+	}
+}
+
+// pruneUnderlayPinRules deletes priority-2999 main-table host rules whose
+// destination is not in desired.
+func pruneUnderlayPinRules(desired []net.IP) {
+	want := make(map[string]struct{}, len(desired))
+	for _, ip := range desired {
+		want[ip.String()] = struct{}{}
+	}
+	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+		rules, err := netlink.RuleList(family)
+		if err != nil {
+			continue
+		}
+		for _, r := range rules {
+			if r.Priority != 2999 || r.Table != unix.RT_TABLE_MAIN || r.Dst == nil {
+				continue
+			}
+			if ones, bits := r.Dst.Mask.Size(); ones != bits {
+				continue
+			}
+			if _, ok := want[r.Dst.IP.String()]; ok {
+				continue
+			}
+			rule := r
+			if err := netlink.RuleDel(&rule); err != nil {
+				slog.Warn("delete stale underlay pin rule failed", "rule", rule.String(), "error", err.Error())
+				continue
+			}
+			slog.Info("removed stale underlay pin rule", "dst", r.Dst.String())
+		}
 	}
 }
 

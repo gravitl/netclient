@@ -30,8 +30,10 @@ const (
 	LinuxAppDataPath = "/etc/netclient/"
 	// MacAppDataPath - mac path
 	MacAppDataPath = "/Applications/Netclient/"
-	// WindowsAppDataPath - windows path
-	WindowsAppDataPath = "C:\\Program Files (x86)\\Netclient\\"
+	// WindowsInstallDir holds the 64-bit binary, WinSW, config, and logs.
+	WindowsInstallDir = `C:\Program Files\Netclient\`
+	// WindowsLegacyDir is the previous install under Program Files (x86).
+	WindowsLegacyDir = `C:\Program Files (x86)\Netclient\`
 	// Timeout timelimit for obtaining/releasing lockfile
 	Timeout = time.Second * 5
 	// ConfigLockfile lockfile to control access to config file
@@ -97,12 +99,22 @@ type Config struct {
 	OriginalDefaultGatewayIp6 net.IP `json:"original_default_gateway_ip6_old" yaml:"original_default_gateway_ip6_old"`
 	CurrGwNmIP                net.IP `json:"curr_gw_nm_ip" yaml:"curr_gw_nm_ip"`
 	CurrGwNmIP6               net.IP `json:"curr_gw_nm_ip6" yaml:"curr_gw_nm_ip6"`
+	// UnderlayPins - host routes installed via the LAN gateway while an exit is
+	// active; persisted so teardown removes exactly these even after a restart.
+	UnderlayPins []UnderlayPin `json:"underlay_pins,omitempty" yaml:"underlay_pins,omitempty"`
 	//for manage DNS
 	DNSManagerType string   `json:"dns_manager_type" yaml:"dns_manager_type"`
 	NameServers    []string `json:"name_servers" yaml:"name_servers"`
 	DNSSearch      string   `json:"dns_search" yaml:"dns_search"`
 	DNSOptions     string   `json:"dns_options" yaml:"dns_options"`
 	FwMark         int      `json:"fwmark" yaml:"fwmark"`
+}
+
+// UnderlayPin is one host route installed via the LAN. Via is the
+// platform-specific next hop the route was installed with.
+type UnderlayPin struct {
+	IP  string `json:"ip" yaml:"ip"`
+	Via string `json:"via" yaml:"via"`
 }
 
 func init() {
@@ -210,6 +222,16 @@ func UpdateHost(host *schema.Host) (resetInterface, restart, sendHostUpdate bool
 	if host.TcpProxyCertFingerprint == "" {
 		host.TcpProxyCertFingerprint = hostCfg.TcpProxyCertFingerprint
 	}
+	prevOwner := strings.TrimSpace(hostCfg.OwnerUsername)
+	nextOwner := strings.TrimSpace(host.OwnerUsername)
+	prevTenant := strings.TrimSpace(hostCfg.TenantID)
+	nextTenant := strings.TrimSpace(host.TenantID)
+	if prevOwner != nextOwner || prevTenant != nextTenant {
+		slog.Debug("UpdateHost identity change",
+			"owner_from", prevOwner, "owner_to", nextOwner,
+			"tenant_from", prevTenant, "tenant_to", nextTenant,
+			"owner_wiped", prevOwner != "" && nextOwner == "")
+	}
 	hostCfg.Host = *host
 	UpdateNetclient(*hostCfg)
 	WriteNetclientConfig()
@@ -221,6 +243,13 @@ func Netclient() *Config {
 	netclientCfgMutex.RLock()
 	defer netclientCfgMutex.RUnlock()
 	return &netclient
+}
+
+// IsUserOwnedDevice reports whether this host was registered by an end user
+// (Desktop/device flow). User devices are not gateways/relays/egress routers.
+func IsUserOwnedDevice() bool {
+	nc := Netclient()
+	return nc != nil && strings.TrimSpace(nc.OwnerUsername) != ""
 }
 
 // UpdateHostPeers - updates host peer map in the netclient config
@@ -358,7 +387,7 @@ func WriteNetclientConfig() error {
 // GetNetclientPath - returns path to netclient config directory
 func GetNetclientPath() string {
 	if runtime.GOOS == "windows" {
-		return WindowsAppDataPath
+		return WindowsInstallDir
 	} else if runtime.GOOS == "darwin" {
 		return MacAppDataPath
 	} else {
@@ -366,11 +395,20 @@ func GetNetclientPath() string {
 	}
 }
 
+// GetNetclientInstallDir returns the directory that holds the Windows binary
+// and WinSW files. It is empty on other platforms.
+func GetNetclientInstallDir() string {
+	if runtime.GOOS == "windows" {
+		return WindowsInstallDir
+	}
+	return ""
+}
+
 // GetNetclientInstallPath returns the full path where netclient should be installed based on OS
 func GetNetclientInstallPath() string {
 	switch runtime.GOOS {
 	case "windows":
-		return GetNetclientPath() + "netclient.exe"
+		return WindowsInstallDir + "netclient.exe"
 	case "macos":
 		return "/usr/local/bin/netclient"
 	default:
@@ -552,6 +590,10 @@ func Convert(h *Config, n *Node) (models.Host, models.Node) {
 // Respects user's explicit choice if that firewall is still available;
 // only auto-detects when no valid firewall has been configured.
 func SetFirewall() {
+	if ncutils.IsWindows() {
+		netclient.FirewallInUse = schema.FIREWALL_NETNAT
+		return
+	}
 	if !ncutils.IsLinux() {
 		netclient.FirewallInUse = schema.FIREWALL_NONE
 		return
@@ -580,6 +622,9 @@ func SetFirewall() {
 // FirewallHasChanged - checks if the configured firewall still matches
 // what is available on the system.
 func FirewallHasChanged() bool {
+	if ncutils.IsWindows() {
+		return netclient.FirewallInUse != schema.FIREWALL_NETNAT
+	}
 	if !ncutils.IsLinux() {
 		// non-Linux should always be FIREWALL_NONE; flag if not set
 		return netclient.FirewallInUse != schema.FIREWALL_NONE

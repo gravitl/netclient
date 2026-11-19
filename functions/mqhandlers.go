@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gravitl/netclient/auth"
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
@@ -25,6 +25,7 @@ import (
 	"github.com/gravitl/netclient/metrics"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
@@ -57,20 +58,10 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 	if server == nil {
 		return
 	}
-	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
+	data, err := decryptServerMsg(server.Name, msg.Payload())
 	if err != nil {
-		slog.Warn("error decrypting message", "warn", err)
-		data, err = decryptMsg(server.Name, msg.Payload())
-		if err != nil {
-			slog.Error("error decrypting message", "error", err)
-			return
-		}
-	} else {
-		data, err = unzipPayload(data)
-		if err != nil {
-			slog.Error("error unzipping message", "error", err)
-			return
-		}
+		slog.Error("error decrypting message", "error", err)
+		return
 	}
 
 	serverNode := models.Node{}
@@ -123,10 +114,8 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		wireguard.SetRoutesFromCache()
 		time.Sleep(time.Second)
-		if server.ManageDNS {
-			dns.GetDNSServerInstance().Stop()
-			dns.GetDNSServerInstance().Start()
-		}
+		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		dns.ReconfigureNow(server)
 
 		doneErr := publishSignal(&newNode, DONE)
 		if doneErr != nil {
@@ -161,6 +150,7 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	slog.Debug("received host peer update", "topic", msg.Topic())
 	var peerUpdate models.HostPeerUpdate
 	var err error
 	if len(msg.Payload()) == 0 {
@@ -177,20 +167,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 	slog.Info("processing peer update for server", "server", serverName)
-	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
+	data, err := decryptServerMsg(server.Name, msg.Payload())
 	if err != nil {
-		slog.Warn("error decrypting message", "warn", err)
-		data, err = decryptMsg(server.Name, msg.Payload())
-		if err != nil {
-			slog.Error("error decrypting message", "error", err)
-			return
-		}
-	} else {
-		data, err = unzipPayload(data)
-		if err != nil {
-			slog.Error("error unzipping message", "error", err)
-			return
-		}
+		slog.Error("error decrypting message", "error", err)
+		return
 	}
 
 	err = json.Unmarshal([]byte(data), &peerUpdate)
@@ -205,16 +185,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 			networking.PeerConnectionCheckInterval = time.Duration(sec) * time.Second
 		}
 	}
-	if server.IsPro {
-		if autoRelayConnTicker != nil {
-			autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
-		}
-		if networking.PeerLocalEndpointConnTicker != nil {
-			networking.PeerLocalEndpointConnTicker.Reset(networking.PeerConnectionCheckInterval)
-		}
-		if wireguard.HaEgressTicker != nil {
-			wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
-		}
+	if autoRelayConnTicker != nil {
+		autoRelayConnTicker.Reset(networking.PeerConnectionCheckInterval)
+	}
+	if wireguard.HaEgressTicker != nil {
+		wireguard.HaEgressTicker.Reset(wireguard.HaEgressCheckInterval)
 	}
 	if peerUpdate.ServerVersion != config.Version {
 		slog.Warn("server/client version mismatch", "server", peerUpdate.ServerVersion, "client", config.Version)
@@ -252,7 +227,7 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 	}
 	if peerUpdate.MetricsPort != 0 && peerUpdate.MetricsPort != server.MetricsPort {
-		slog.Info("metrics has changed", "from", server.MetricsPort, "to", peerUpdate.MetricsPort)
+		logger.Log(0, fmt.Sprintf("restart trigger: peer update metrics port %d -> %d", server.MetricsPort, peerUpdate.MetricsPort))
 		server.MetricsPort = peerUpdate.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
@@ -274,13 +249,35 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(peerUpdate.Peers)
+	if len(peerUpdate.Nodes) > 0 {
+		slog.Debug("peer update syncing nodes",
+			"server", serverName,
+			"peer_nodes", debugServerNodeSummary(peerUpdate.Nodes),
+			"peers", len(peerUpdate.Peers),
+			"replace_peers", peerUpdate.ReplacePeers,
+			"local_before", debugLocalNodeSummary())
+		PreserveConnectionsAfterSync(peerUpdate.Nodes)
+		_ = config.WriteNodeConfig()
+		slog.Debug("peer update after node sync", "local", debugLocalNodeSummary())
+	} else {
+		slog.Debug("peer update skipping node sync (empty Nodes)",
+			"server", serverName,
+			"peers", len(peerUpdate.Peers),
+			"replace_peers", peerUpdate.ReplacePeers,
+			"local", debugLocalNodeSummary())
+	}
+	// Nodes can land here after the interface was already built without them,
+	// leaving it unaddressed. Repair before peers and exit routes go on.
+	ifaceRepaired := wireguard.EnsureNodeAddrs()
+	wireguard.ClearEndpointCachesForRemovedPeers(peerUpdate.Peers)
 	_ = wireguard.SetPeers(peerUpdate.ReplacePeers)
+	// Start auto-relay handshake grace as soon as peers hit the device — not
+	// after later setAutoRelayNodes / IGW / DNS work, which can add seconds.
+	if IsDesktopBuild() {
+		scheduleAutoRelayPeerScan()
+	}
 	if proxyuplink.ActiveServer() != nil {
 		proxyuplink.RefreshTCPPeerRoutes()
-	}
-	if len(peerUpdate.Nodes) > 0 {
-		config.SetNodes(peerUpdate.Nodes)
-		_ = config.WriteNodeConfig()
 	}
 	// Host carries TCP proxy listen settings; apply before uplink reconcile.
 	UpdateHostFromServer(&peerUpdate.Host)
@@ -293,84 +290,114 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	//are on the interface so IGW monitor can resolve the exit peer).
 	// ReplacePeers (e.g. ACL policy changes) forces a reinstall so OS exit routes
 	// are restored even if the IGW monitor still reports the same nexthop.
-	if peerUpdate.ChangeDefaultGw {
+	logIGWDecision("peer-update", peerUpdate.ChangeDefaultGw)
+	// Set when this update installs, reinstalls, or removes exit routes.
+	// A same-nexthop reinstall still counts: Restore clears CurrGw before Set
+	// puts it back, and an in-flight DNS apply can observe that gap (connect
+	// does this — it installs the exit, then the follow-up peer update
+	// reinstalls it). Pin refresh of an already-current exit does not.
+	exitRoutingChanged := false
+	if !config.AnyNodeConnected() {
+		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+			logger.Log(0, "tearing down internet gateway (peer-update, no node connected)")
+			exitRoutingChanged = true
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
+		}
+		wireguard.RemoveEgressRoutes()
+		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	} else if peerUpdate.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(peerUpdate.DefaultGwIp, peerUpdate.DefaultGwIp6)
-		if peerUpdate.ReplacePeers || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		// Forced refresh (ReplacePeers / iface repair) must reinstall even if the
+		// monitor rejected this nexthop — that restarts grace with a clean slate.
+		// RejectedIGW only blocks the plain same-nexthop path so periodic peer
+		// updates cannot undo a health clear.
+		forceIGW := peerUpdate.ReplacePeers || ifaceRepaired
+		if !forceIGW && wireguard.GetIGWMonitor().RejectedIGW(gw4, gw6) {
+			logger.Log(0, "skipping internet gateway install: monitor rejected this nexthop")
+		} else if forceIGW || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+			// A repaired interface invalidates the monitor's nexthop bookkeeping:
+			// exit routes added over an unaddressed interface never took effect.
 			igw, ok := wireguard.FindInternetGwPeer(peerUpdate.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
 			} else {
-				_ = wireguard.RestoreInternetGw()
+				// Only tear down an existing exit before reinstall; a blank
+				// Restore here races concurrent DNS Configure (SplitDNS wipe).
+				if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+					exitRoutingChanged = true
+					_ = wireguard.RestoreInternetGw()
+				}
 				err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
 				if err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					// Continue applying peers even if IGW setup failed.
+				} else {
+					exitRoutingChanged = true
+					callRememberDesiredWantIGW()
 				}
 			}
-		} else if tcpModeFlipped {
-			// Exit routes are already installed for this nexthop (mode flip
-			// reapplied them); re-running Restore+Set flaps the health monitor
-			// and briefly drops the underlay. Only top up host pins.
+		} else {
+			// Exit routes already installed for this nexthop. Refresh LAN pins so
+			// newly advertised site-egress and alternate internet-exit peer
+			// underlays are not swallowed by 0.0.0.0/0.
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
-		// Server cleared exit-node routing; remove any installed IGW routes.
-		err = wireguard.RestoreInternetGw()
-		if err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
+		// Server cleared exit-node routing. Normally restore the LAN default —
+		// holding a dead exit black-holes traffic. During desktop exit select or
+		// session restore, desire still wants an exit and MQTT often publishes
+		// ChangeDefaultGw=false mid-window; tearing down there opens a long gap
+		// until reconcile re-selects. Defer restore and re-drive selection.
+		if callHoldIGWTeardown() {
+			logger.Log(0, "deferring internet gateway teardown (peer-update, desktop still wants exit)")
+			// Mid-hold reconcile is a no-op; mark so endExitSelect / restore-idle re-drives.
+			callNotePendingExitReconcile()
+		} else {
+			logger.Log(0, "tearing down internet gateway (peer-update, change_default_gw=false)")
+			exitRoutingChanged = true
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
 		}
 	}
-	if len(peerUpdate.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
-	} else {
-		wireguard.RemoveEgressRoutes()
-		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	if config.AnyNodeConnected() && !peerUpdate.ChangeDefaultGw {
+		// Desired state may still want an exit the server is not advertising
+		// (a re-select lost during session restore). Ask again, rate-limited.
+		callReconcileExitIfDesired()
+	}
+	if config.AnyNodeConnected() {
+		if len(peerUpdate.EgressRoutes) > 0 {
+			if ifaceRepaired {
+				wireguard.InvalidateEgressRouteCache()
+			}
+			wireguard.SetEgressRoutes(peerUpdate.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(peerUpdate.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+			wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+		}
 	}
 	if peerUpdate.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(peerUpdate.Peers, peerUpdate.HostNetworkInfo)
 	}
 	syncEgressDomains(peerUpdate.EgressWithDomains)
 	peerUpdate.DnsNameservers = FilterDnsNameservers(peerUpdate.DnsNameservers)
-	var dnsOp string
-	const start string = "start"
-	const stop string = "stop"
-	const update string = "update"
-	if server.ManageDNS {
-		if !peerUpdate.ManageDNS {
-			server.ManageDNS = false
-			server.DefaultDomain = ""
-			server.NameServers = nil
-			server.DnsNameservers = nil
-			saveServerConfig = true
-			dnsOp = stop
-		} else if server.DefaultDomain != peerUpdate.DefaultDomain ||
-			len(server.DnsNameservers) != len(peerUpdate.DnsNameservers) ||
-			!reflect.DeepEqual(server.DnsNameservers, peerUpdate.DnsNameservers) {
-			server.DefaultDomain = peerUpdate.DefaultDomain
-			server.NameServers = peerUpdate.NameServers
-			server.DnsNameservers = peerUpdate.DnsNameservers
-			saveServerConfig = true
-			dnsOp = update
-		}
-	} else {
-		if peerUpdate.ManageDNS {
-			server.ManageDNS = true
-			server.DefaultDomain = peerUpdate.DefaultDomain
-			server.NameServers = peerUpdate.NameServers
-			server.DnsNameservers = peerUpdate.DnsNameservers
-			saveServerConfig = true
-			dnsOp = start
-		}
+	dnsChange, dnsChanged := dns.DiffServer(server, peerUpdate.ManageDNS, peerUpdate.DefaultDomain, peerUpdate.NameServers, peerUpdate.DnsNameservers)
+	if dnsChanged {
+		saveServerConfig = true
 	}
 
 	reloadStun := false
 	if peerUpdate.Stun != server.Stun {
+		logger.Log(0, fmt.Sprintf("restart trigger: peer update stun %t -> %t", server.Stun, peerUpdate.Stun))
 		server.Stun = peerUpdate.Stun
 		saveServerConfig = true
 		reloadStun = true
 	}
 	if peerUpdate.StunServers != server.StunServers {
+		logger.Log(0, fmt.Sprintf("restart trigger: peer update stun servers %q -> %q", server.StunServers, peerUpdate.StunServers))
 		server.StunServers = peerUpdate.StunServers
 		saveServerConfig = true
 		reloadStun = true
@@ -383,22 +410,21 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
-		switch dnsOp {
-		case start:
-			dns.GetDNSServerInstance().Start()
-		case stop:
-			dns.GetDNSServerInstance().Stop()
-		case update:
-			if dns.GetDNSServerInstance().AddrStr != "" {
-				_ = dns.Configure()
-			}
-		}
 	}
+	dns.ApplyForUpdate(server, dnsChange, exitRoutingChanged)
 
 	if peerUpdate.Host.EnableFlowLogs {
 		_ = flow.GetManager().Start(peerUpdate.AddressIdentityMap)
 	} else {
 		_ = flow.GetManager().Stop()
+	}
+
+	if peerUpdate.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(peerUpdate.AddressIdentityMap, peerUpdate.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 
 	if reloadStun {
@@ -407,13 +433,11 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 	setAutoRelayNodes(peerUpdate.AutoRelayNodes, peerUpdate.GwNodes, peerUpdate.Nodes)
 	handleFwUpdate(serverName, &peerUpdate.FwUpdate)
 
-	if server.IsPro {
-		go func() {
-			networking.RefreshPeerInfoCache()
-			time.Sleep(time.Second * 6)
-			callPublishMetrics(true)
-		}()
-	}
+	go func() {
+		networking.RefreshPeerInfoCache()
+		time.Sleep(time.Second * 6)
+		callPublishMetrics(true)
+	}()
 }
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
@@ -430,20 +454,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 	if len(msg.Payload()) == 0 {
 		return
 	}
-	data, err := decryptAESGCM(config.Netclient().TrafficKeyPublic[0:32], msg.Payload())
+	data, err := decryptServerMsg(server.Name, msg.Payload())
 	if err != nil {
-		slog.Warn("error decrypting message", "warn", err)
-		data, err = decryptMsg(server.Name, msg.Payload())
-		if err != nil {
-			slog.Error("error decrypting message", "error", err)
-			return
-		}
-	} else {
-		data, err = unzipPayload(data)
-		if err != nil {
-			slog.Error("error unzipping message", "error", err)
-			return
-		}
+		slog.Error("error decrypting message", "error", err)
+		return
 	}
 	err = json.Unmarshal([]byte(data), &hostUpdate)
 	if err != nil {
@@ -511,6 +525,10 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.UpdateServer(serverName, *server)
 		config.WriteNodeConfig()
 		config.WriteServerConfig()
+		Pull(false, false, true)
+		if err != nil {
+			slog.Error("failed to pull", "error", err)
+		}
 		slog.Info("added node to network", "network", hostUpdate.Node.Network, "server", serverName)
 		clearRetainedMsg(client, msg.Topic()) // clear message before ACK
 		if err = PublishHostUpdate(serverName, models.Acknowledgement); err != nil {
@@ -521,6 +539,31 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterface = true
 	case models.DeleteHost:
 		clearRetainedMsg(client, msg.Topic())
+		// Tenant switch / explicit unregister DELETE the host, then MQTT
+		// DELETE_HOST can land after the next tenant session is already up.
+		// Treating that as a live eviction ForceLogout + wipes the new enrollment.
+		if ShouldIgnoreStaleDeleteHost(hostUpdate.Host) {
+			slog.Info("ignoring DELETE_HOST after intentional leave/tenant switch",
+				"server", serverName,
+				"tenant", hostUpdate.Host.TenantID,
+				"host", hostUpdate.Host.ID.String())
+			writeToDisk = false
+			break
+		}
+		// Different tenant than the active enrollment — stale leave from a prior MSP tenant.
+		if nc := config.Netclient(); nc != nil && callIsSessionActive() {
+			curTenant := strings.TrimSpace(nc.TenantID)
+			msgTenant := strings.TrimSpace(hostUpdate.Host.TenantID)
+			if curTenant != "" && msgTenant != "" && curTenant != msgTenant {
+				slog.Info("ignoring DELETE_HOST for other tenant",
+					"server", serverName, "current", curTenant, "deleted", msgTenant)
+				writeToDisk = false
+				break
+			}
+		}
+		// Drop Desktop UI login before tearing down host state so the app
+		// returns to the login screen. Desktop demotes; headless deletes.
+		callForceLogout()
 		unsubscribeHost(client, serverName)
 		deleteHostCfg(client, serverName)
 		config.WriteNetclientConfig()
@@ -528,6 +571,13 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		config.WriteServerConfig()
 		config.DeleteClientNodes()
 		restartDaemon = true
+	case models.HostMqAction("FORCE_LOGOUT"):
+		// Account disabled (or admin logout): clear Desktop JWT and disconnect
+		// networks. Host stays enrolled so re-enable / re-login can reconnect.
+		// Constant is models.ForceLogout once netclient's netmaker dep is bumped.
+		clearRetainedMsg(client, msg.Topic())
+		callForceLogout()
+		writeToDisk = false
 	case models.UpdateHost:
 		resetInterface, restartDaemon, sendHostUpdate = UpdateHostFromServer(&hostUpdate.Host)
 		if sendHostUpdate {
@@ -561,16 +611,43 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		UpdateKeys()
 		writeToDisk = false
 	case models.RequestPull:
+		// Login publishes REQ_PULL. Restarting the daemon to perform that pull
+		// stops the Windows service and drops the desktop API out from under
+		// the GUI. A logged-in desktop session pulls in-process instead.
+		// Headless clients keep the restart.
+		if callIsSessionActive() {
+			logger.Log(0, "host update REQ_PULL: pulling in-process (desktop session)")
+			clearRetainedMsg(client, msg.Topic())
+			var replacePeers bool
+			var err error
+			var response models.HostPull
+			// Assign into the outer resetInterface — := would shadow it and skip
+			// resetInterfaceFunc() after the switch.
+			response, resetInterface, replacePeers, err = Pull(false, false, false)
+			if err != nil {
+				slog.Error("pull failed", "error", err)
+			} else {
+				mqFallbackPull(response, resetInterface, replacePeers)
+				// mqFallbackPull already applied resetInterface.
+				resetInterface = false
+			}
+			writeToDisk = false
+			break
+		}
 		clearMsg = true
 		restartDaemon = true
 		writeToDisk = false
 	case models.SignalPull:
 		clearRetainedMsg(client, msg.Topic())
-		response, resetInterface, replacePeers, err := Pull(false, false)
+		var replacePeers bool
+		var err error
+		var response models.HostPull
+		response, resetInterface, replacePeers, err = Pull(false, false, false)
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
 			mqFallbackPull(response, resetInterface, replacePeers)
+			resetInterface = false
 		}
 		writeToDisk = false
 	case models.EgressUpdate:
@@ -592,6 +669,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if restartDaemon {
+		logger.Log(0, fmt.Sprintf("restart trigger: host update action %v", hostUpdate.Action))
 		if clearMsg {
 			clearRetainedMsg(client, msg.Topic())
 		}
@@ -604,6 +682,8 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		resetInterfaceFunc()
 	}
 }
+
+func ResetInterface() { resetInterfaceFunc() }
 
 func resetInterfaceFunc() {
 	mNMutex.Lock()
@@ -633,24 +713,39 @@ func resetInterfaceFunc() {
 		slog.Error("failed to set peers", err)
 	}
 	wireguard.SetRoutesFromCache()
+	// Closing the iface drops OS exit routes while CurrGw is still set.
+	// Put them back before DNS, so the apply sees full vs split correctly.
+	wireguard.ReapplyInternetGwAfterIfaceRecreate()
 
+	// No single network owns an iface reset; CurrServer is only the fallback.
 	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return
+	if server != nil {
+		// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
+		reconcileTCPUplink(server, nil)
 	}
-	// Close/Create clears SetTCPUplinkServer via PrepareUserspaceTeardown; re-hook and refresh.
-	reconcileTCPUplink(server, nil)
-	if server.ManageDNS {
-		dns.GetDNSServerInstance().Stop()
-		dns.GetDNSServerInstance().Start()
-	}
+	dns.ReconfigureNow(server)
 	wireguard.EgressResetCh <- struct{}{}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
 func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInfoMap) {
-	currentCidrs := getAllAllowedIPs(peers[:])
-	metricPort := config.GetServer(config.CurrServer).MetricsPort
+	server := config.GetServer(config.CurrServer)
+	if server == nil {
+		slog.Warn("skipping endpoint detection: server config not found")
+		return
+	}
+	// Exit selected: private LAN probes false-positive peers co-located with the
+	// exit (same VPC). Keep server-published underlays for everyone.
+	if wireguard.ShouldSkipAllEndpointDetection() {
+		slog.Debug("skipping private LAN endpoint detection: internet exit active")
+		return
+	}
+	// Skip IPs covered by peer AllowedIPs OR cached egress CIDRs. Egress OS
+	// routes are installed before this runs; without egress CIDRs here, TCP
+	// metrics probes succeed through the tunnel and rewrite underlays to VPC
+	// LAN IPs (sticky via EndpointCache).
+	currentCidrs := wireguard.EndpointDetectionSkipCIDRs(getAllAllowedIPs(peers[:]))
+	metricPort := server.MetricsPort
 	if metricPort == 0 {
 		metricPort = 51821
 	}
@@ -686,7 +781,7 @@ func handleEndpointDetection(peers []wgtypes.PeerConfig, peerInfo models.HostInf
 				if strings.Contains(peerIP.String(), "127.0.0.") ||
 					peerIP.IsMulticast() ||
 					(peerIP.IsLinkLocalUnicast() && strings.Count(peerIP.String(), ":") >= 2) ||
-					isAddressInPeers(peerIP, currentCidrs) {
+					wireguard.IPCoveredByCIDRs(peerIP, currentCidrs) {
 					continue
 				}
 				if peerIP.IsPrivate() {
@@ -715,11 +810,7 @@ func deleteHostCfg(client mqtt.Client, server string) {
 			config.DeleteNode(k)
 		}
 	}
-	wasActive := config.CurrServer == server
-	config.DeleteServer(server)
-	if wasActive {
-		config.SwitchToRemainingServer()
-	}
+	DisposeServerEnrollment(server)
 }
 
 func parseNetworkFromTopic(topic string) string {
@@ -743,19 +834,16 @@ func getAllAllowedIPs(peers []wgtypes.PeerConfig) (cidrs []net.IPNet) {
 	return
 }
 
-func isAddressInPeers(ip net.IP, cidrs []net.IPNet) bool {
-	if len(cidrs) > 0 {
-		for i := range cidrs {
-			currCidr := cidrs[i]
-			if currCidr.Contains(ip) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func handleFwUpdate(server string, payload *models.FwUpdate) {
+	// Rebind WFP after iface up (Init often runs too early for default deny).
+	firewall.RefreshACLInterface()
+
+	// Desktop: only default-deny inbound on the mesh iface. ACL allows, egress,
+	// and ingress are enforced server-side — ignore FwUpdate payload locally.
+	if IsDesktopBuild() {
+		firewall.ApplyDesktopACLDefaults()
+		return
+	}
 
 	if payload.IsEgressGw {
 		firewall.SetEgressRoutes(server, payload.EgressInfo)
@@ -768,7 +856,6 @@ func handleFwUpdate(server string, payload *models.FwUpdate) {
 		firewall.RemoveIngressRoutingRules(server)
 	}
 	firewall.ProcessAclRules(server, payload)
-
 }
 
 func getServerBrokerStatus() (bool, error) {
@@ -818,12 +905,20 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 			if skip && ((Mqclient != nil && Mqclient.IsConnectionOpen() && Mqclient.IsConnected()) || config.CurrServer == "") {
 				continue
 			}
+			// Partial / demoted enrollment — nothing to pull until Desktop re-registers.
+			if !IsServerFullyRegistered("") {
+				continue
+			}
 			// Call netclient http config pull
 			slog.Info("### mqfallback routine execute")
 			//auth.CleanJwtToken()
-			response, resetInterface, replacePeers, err := Pull(false, false)
+			response, resetInterface, replacePeers, err := Pull(false, false, false)
 			if err != nil {
-				slog.Error("pull failed", "error", err)
+				if auth.IsMissingHostError(err) {
+					slog.Warn("pull failed; host missing on server", "error", err)
+				} else {
+					slog.Error("pull failed", "error", err)
+				}
 			} else {
 				mqFallbackPull(response, resetInterface, replacePeers)
 				server := config.GetServer(config.CurrServer)
@@ -841,6 +936,11 @@ func mqFallback(ctx context.Context, wg *sync.WaitGroup) {
 
 		}
 	}
+}
+
+// MQFallbackPull applies a host pull when MQTT is down. Desktop sync uses this.
+func MQFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
+	mqFallbackPull(pullResponse, resetInterface, replacePeers)
 }
 
 // MQTT Fallback Config Pull
@@ -880,7 +980,7 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		config.WriteServerConfig()
 	}
 	if pullResponse.ServerConfig.MetricsPort != 0 && pullResponse.ServerConfig.MetricsPort != server.MetricsPort {
-		slog.Info("metrics has changed", "from", server.MetricsPort, "to", pullResponse.ServerConfig.MetricsPort)
+		logger.Log(0, fmt.Sprintf("restart trigger: mq fallback metrics port %d -> %d", server.MetricsPort, pullResponse.ServerConfig.MetricsPort))
 		server.MetricsPort = pullResponse.ServerConfig.MetricsPort
 		config.WriteServerConfig()
 		daemon.Restart()
@@ -895,7 +995,13 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		cache.SkipEndpointCache.Clear()
 	}
 	config.UpdateHostPeers(pullResponse.Peers)
+	ifaceRepaired := wireguard.EnsureNodeAddrs()
+	wireguard.ClearEndpointCachesForRemovedPeers(pullResponse.Peers)
 	_ = wireguard.SetPeers(pullResponse.ReplacePeers)
+	setAutoRelayNodes(pullResponse.AutoRelayNodes, pullResponse.GwNodes, pullResponse.Nodes)
+	if IsDesktopBuild() {
+		scheduleAutoRelayPeerScan()
+	}
 	if proxyuplink.ActiveServer() != nil {
 		proxyuplink.RefreshTCPPeerRoutes()
 	}
@@ -907,80 +1013,101 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	//setup the default gateway when change_default_gw set to true (after peers).
 	// ReplacePeers forces a reinstall so OS exit routes are restored after ACL
 	// (or other full-replace) updates even if the IGW monitor nexthop is unchanged.
-	if pullResponse.ChangeDefaultGw {
+	logIGWDecision("host-update", pullResponse.ChangeDefaultGw)
+	exitRoutingChanged := false
+	if !config.AnyNodeConnected() {
+		if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+			logger.Log(0, "tearing down internet gateway (host-update, no node connected)")
+			exitRoutingChanged = true
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
+		}
+		wireguard.RemoveEgressRoutes()
+		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	} else if pullResponse.ChangeDefaultGw {
 		gw4, gw6 := wireguard.NormalizeIGWNexthops(pullResponse.DefaultGwIp, pullResponse.DefaultGwIp6)
-		if replacePeers || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
+		// Forced refresh (replacePeers / iface repair) must reinstall even if the
+		// monitor rejected this nexthop — that restarts grace with a clean slate.
+		// RejectedIGW only blocks the plain same-nexthop path so periodic pulls
+		// cannot undo a health clear.
+		forceIGW := replacePeers || ifaceRepaired
+		if !forceIGW && wireguard.GetIGWMonitor().RejectedIGW(gw4, gw6) {
+			logger.Log(0, "skipping internet gateway install: monitor rejected this nexthop")
+		} else if forceIGW || !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
 			igw, ok := wireguard.FindInternetGwPeer(pullResponse.Peers, gw4, gw6)
 			if !ok {
 				slog.Error("internet gateway peer not found in peer update; skipping default gateway setup")
 			} else {
-				_ = wireguard.RestoreInternetGw()
+				if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
+					exitRoutingChanged = true
+					_ = wireguard.RestoreInternetGw()
+				}
 				if err := wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
 					slog.Error("error setting default gateway", "error", err.Error())
 					// Continue applying peers even if IGW setup failed.
+				} else {
+					exitRoutingChanged = true
+					callRememberDesiredWantIGW()
 				}
 			}
-		} else if tcpModeFlipped {
-			// Already installed by the mode flip; avoid a Restore/Set flap.
+		} else {
+			// Already installed; avoid a Restore/Set flap. Refresh LAN pins so
+			// site-egress and alternate internet-exit peer underlays stay off
+			// the exit default route.
 			wireguard.RefreshInternetGwHostPins()
 		}
 	} else if len(config.Netclient().CurrGwNmIP) > 0 || len(config.Netclient().CurrGwNmIP6) > 0 {
-		// Server cleared exit-node routing; remove any installed IGW routes.
-		if err := wireguard.RestoreInternetGw(); err != nil {
-			slog.Error("error restoring default gateway", "error", err.Error())
+		// Same as peer-update: restore LAN unless desktop is mid-select/restore
+		// and still wants an exit (defer + reconcile below).
+		if callHoldIGWTeardown() {
+			logger.Log(0, "deferring internet gateway teardown (host-update, desktop still wants exit)")
+			callNotePendingExitReconcile()
+		} else {
+			logger.Log(0, "tearing down internet gateway (host-update, change_default_gw=false)")
+			exitRoutingChanged = true
+			if err := wireguard.RestoreInternetGw(); err != nil {
+				slog.Error("error restoring default gateway", "error", err.Error())
+			}
 		}
 	}
-	if len(pullResponse.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
-	} else {
-		wireguard.RemoveEgressRoutes()
-		wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+	if config.AnyNodeConnected() && !pullResponse.ChangeDefaultGw {
+		// Host-update used to tear down without re-driving selection; peer-update
+		// already reconciled here. Without this, a ChangeDefaultGw=false pull
+		// could leave Desktop without exit until an unrelated peer update.
+		callReconcileExitIfDesired()
+	}
+	if config.AnyNodeConnected() {
+		if len(pullResponse.EgressRoutes) > 0 {
+			if ifaceRepaired {
+				wireguard.InvalidateEgressRouteCache()
+			}
+			wireguard.SetEgressRoutes(pullResponse.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(pullResponse.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+			wireguard.SetEgressRoutesInCache([]models.EgressNetworkRoutes{})
+		}
 	}
 	if pullResponse.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullResponse.Peers, pullResponse.HostNetworkInfo)
 	}
 	syncEgressDomains(pullResponse.EgressWithDomains)
 	pullResponse.DnsNameservers = FilterDnsNameservers(pullResponse.DnsNameservers)
-	var dnsOp string
-	const start string = "start"
-	const stop string = "stop"
-	const update string = "update"
-	if server.ManageDNS {
-		if !pullResponse.ServerConfig.ManageDNS {
-			server.ManageDNS = false
-			server.DefaultDomain = ""
-			server.NameServers = nil
-			server.DnsNameservers = nil
-			saveServerConfig = true
-			dnsOp = stop
-		} else if server.DefaultDomain != pullResponse.ServerConfig.DefaultDomain ||
-			len(server.DnsNameservers) != len(pullResponse.DnsNameservers) ||
-			!reflect.DeepEqual(server.DnsNameservers, pullResponse.DnsNameservers) {
-			server.DefaultDomain = pullResponse.ServerConfig.DefaultDomain
-			server.NameServers = pullResponse.NameServers
-			server.DnsNameservers = pullResponse.DnsNameservers
-			saveServerConfig = true
-			dnsOp = update
-		}
-	} else {
-		if pullResponse.ServerConfig.ManageDNS {
-			server.ManageDNS = true
-			server.DefaultDomain = pullResponse.ServerConfig.DefaultDomain
-			server.NameServers = pullResponse.NameServers
-			server.DnsNameservers = pullResponse.DnsNameservers
-			saveServerConfig = true
-			dnsOp = start
-		}
+	dnsChange, dnsChanged := dns.DiffServer(server, pullResponse.ServerConfig.ManageDNS, pullResponse.ServerConfig.DefaultDomain, pullResponse.NameServers, pullResponse.DnsNameservers)
+	if dnsChanged {
+		saveServerConfig = true
 	}
 
 	reloadStun := false
 	if pullResponse.ServerConfig.Stun != server.Stun {
+		logger.Log(0, fmt.Sprintf("restart trigger: mq fallback stun %t -> %t", server.Stun, pullResponse.ServerConfig.Stun))
 		server.Stun = pullResponse.ServerConfig.Stun
 		saveServerConfig = true
 		reloadStun = true
 	}
 	if pullResponse.ServerConfig.StunServers != server.StunServers {
+		logger.Log(0, fmt.Sprintf("restart trigger: mq fallback stun servers %q -> %q", server.StunServers, pullResponse.ServerConfig.StunServers))
 		server.StunServers = pullResponse.ServerConfig.StunServers
 		saveServerConfig = true
 		reloadStun = true
@@ -993,22 +1120,21 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 	if saveServerConfig {
 		config.UpdateServer(serverName, *server)
 		_ = config.WriteServerConfig()
-		switch dnsOp {
-		case start:
-			dns.GetDNSServerInstance().Start()
-		case stop:
-			dns.GetDNSServerInstance().Stop()
-		case update:
-			if dns.GetDNSServerInstance().AddrStr != "" {
-				_ = dns.Configure()
-			}
-		}
 	}
+	dns.ApplyForUpdate(server, dnsChange, exitRoutingChanged)
 
 	if pullResponse.Host.EnableFlowLogs {
 		_ = flow.GetManager().Start(pullResponse.AddressIdentityMap)
 	} else {
 		_ = flow.GetManager().Stop()
+	}
+
+	if pullResponse.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(pullResponse.AddressIdentityMap, pullResponse.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 
 	if reloadStun {
@@ -1017,8 +1143,14 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 
 	handleFwUpdate(serverName, &pullResponse.FwUpdate)
 
-	if server.IsPro {
-		go networking.RefreshPeerInfoCache()
+	go networking.RefreshPeerInfoCache()
+
+	// Pull may report that the WireGuard iface needs a rebuild (address/peer
+	// drift). Host-update MQTT paths apply this after mqFallbackPull via the
+	// outer resetInterface flag; the mq-fallback ticker and MQFallbackPull
+	// callers must honor it here or the iface stays stale until a daemon restart.
+	if resetInterface {
+		resetInterfaceFunc()
 	}
 }
 
