@@ -29,7 +29,6 @@ func getReleaseAsset(url string) (*http.Response, error) {
 	}
 	client := ncutils.GetClient(ncutils.ClientConfig{
 		RetryMax:     3,
-		Timeout:      30 * time.Second,
 		RetryWaitMin: 2 * time.Second,
 		RetryWaitMax: 10 * time.Second,
 	})
