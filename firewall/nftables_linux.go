@@ -1326,6 +1326,14 @@ func genRuleKey(rule ...string) string {
 	return strings.Join(rule, ":")
 }
 
+// appendAclOwnerToRule adds the owning ACL to an ACL rule spec as a rule comment.
+// Rules are found by UserData == genRuleKey(ruleSpec), so without the owner, ACLs that
+// produce the same match share one nftables rule, and deleting any of them deletes the
+// rule for all.
+func appendAclOwnerToRule(ruleSpec []string, aclID string) []string {
+	return append(ruleSpec, "-m", "comment", "--comment", aclID)
+}
+
 func (n *nftablesManager) getExprForProto(proto models.Protocol, isv4 bool) []expr.Any {
 
 	ipNetHeaderExpr := &expr.Payload{
@@ -1952,7 +1960,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 								strings.Join(aclRule.AllowedPorts, ","))
 						}
 						ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-						ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+						ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 						n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 						e := []expr.Any{}
 						e = append(e, n.GetIpExpr(ip, dstI)...)
@@ -1997,7 +2005,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 							strings.Join(aclRule.AllowedPorts, ","))
 					}
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 					n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 					e := []expr.Any{}
 					e = append(e, n.GetIpExpr(ip, net.IPNet{})...)
@@ -2052,7 +2060,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 								strings.Join(aclRule.AllowedPorts, ","))
 						}
 						ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-						ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+						ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 						n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 						e := []expr.Any{}
 						e = append(e, n.GetIpExpr(ip, dstI)...)
@@ -2097,7 +2105,7 @@ func (n *nftablesManager) AddAclRules(server string, aclRules map[string]models.
 							strings.Join(aclRule.AllowedPorts, ","))
 					}
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 					n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 					e := []expr.Any{}
 					e = append(e, n.GetIpExpr(ip, net.IPNet{})...)
@@ -2177,7 +2185,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 							strings.Join(aclRule.AllowedPorts, ","))
 					}
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 					n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 					e := []expr.Any{}
 					e = append(e, n.GetIpExpr(ip, dstI)...)
@@ -2222,7 +2230,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 						strings.Join(aclRule.AllowedPorts, ","))
 				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 				n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 				e := []expr.Any{}
 				e = append(e, n.GetIpExpr(ip, net.IPNet{})...)
@@ -2278,7 +2286,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 							strings.Join(aclRule.AllowedPorts, ","))
 					}
 					ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 					n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 					e := []expr.Any{}
 					e = append(e, n.GetIpExpr(ip, dstI)...)
@@ -2323,7 +2331,7 @@ func (n *nftablesManager) UpsertAclRule(server string, aclRule models.AclRule) {
 						strings.Join(aclRule.AllowedPorts, ","))
 				}
 				ruleSpec = append(ruleSpec, "-j", "ACCEPT")
-				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+				ruleSpec = appendAclOwnerToRule(appendNetmakerCommentToRule(ruleSpec), aclRule.ID)
 				n.deleteRule(defaultIpTable, aclInputRulesChain, genRuleKey(ruleSpec...))
 				e := []expr.Any{}
 				e = append(e, n.GetIpExpr(ip, net.IPNet{})...)
