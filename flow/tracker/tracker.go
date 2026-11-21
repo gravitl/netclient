@@ -252,6 +252,20 @@ func (c *FlowTracker) inferNetworkAndDirection(flow *ct.Flow) (string, pbflow.Di
 		return false
 	})
 
+	if networkID == "" {
+		// a flow forwarded by this host and source-NATed onto one of its node addresses
+		replyDstIP := net.ParseIP(flow.TupleReply.IP.DestinationAddress.String())
+		c.nodeIter(func(node *models.CommonNode) bool {
+			if !node.Address.IP.Equal(replyDstIP) && !node.Address6.IP.Equal(replyDstIP) {
+				return true
+			}
+
+			networkID = node.Network
+			direction = pbflow.Direction_DIR_EGRESS
+			return false
+		})
+	}
+
 	return networkID, direction
 }
 
