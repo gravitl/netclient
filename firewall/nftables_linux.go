@@ -1258,13 +1258,8 @@ func (n *nftablesManager) addJumpRules() {
 					Register: 1,
 					Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 				},
-				// [ payload load 1b @ network header + 9 => reg 1 ]  (proto)
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       9, // Protocol field in IPv4
-					Len:          1,
-				},
+				// [ meta load l4proto => reg 1 ]  (same match for IPv4 and IPv6)
+				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
 				// [ cmp eq reg 1 0x11 ]  (UDP)
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
