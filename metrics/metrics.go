@@ -27,6 +27,21 @@ import (
 // hosts with many peers. Override via NETCLIENT_METRICS_CONCURRENCY.
 const defaultProbeConcurrency = 32
 
+// handshakeFallbackWindow is how old a peer's last handshake may be while the
+// fallback still counts it as connected. WireGuard stops using a session after
+// Reject-After-Time (180 s), so an older handshake means the session is gone.
+// Same value as networking.LastHandShakeThreshold, kept local to avoid an
+// import cycle.
+const handshakeFallbackWindow = 180 * time.Second
+
+// recentHandshakeFallback reports whether the last handshake is recent enough
+// to count the peer as connected even though the active probe failed.
+func recentHandshakeFallback(peer wgtypes.Peer) bool {
+	return peer.ReceiveBytes > 0 &&
+		peer.TransmitBytes > 0 &&
+		time.Now().Before(peer.LastHandshakeTime.Add(handshakeFallbackWindow))
+}
+
 // Collect - collects metrics. Per-peer probes run in parallel (bounded by
 // probeConcurrency()) so a slow or unreachable peer does not delay the rest.
 func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Metrics, error) {
@@ -101,13 +116,9 @@ func Collect(network string, peerMap models.PeerMap, metricPort int) (*models.Me
 				newMetric.Uptime = int64(mi)
 			}
 			// fall back to recent-handshake heuristic if the active probe failed
-			if !newMetric.Connected {
-				if wgPeer.ReceiveBytes > 0 &&
-					wgPeer.TransmitBytes > 0 &&
-					time.Now().Before(wgPeer.LastHandshakeTime.Add(time.Minute<<1)) {
-					newMetric.Connected = true
-					newMetric.Uptime = int64(mi)
-				}
+			if !newMetric.Connected && recentHandshakeFallback(wgPeer) {
+				newMetric.Connected = true
+				newMetric.Uptime = int64(mi)
 			}
 			newMetric.TotalTime = int64(mi)
 
