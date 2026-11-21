@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -476,6 +477,51 @@ func ShouldReplace(incomingPeers []wgtypes.PeerConfig) bool {
 	return false
 }
 
+// peersConfigAsDiff returns cfg adjusted so that wgctrl does not replace all
+// peers of the device at once. WGDEVICE_F_REPLACE_PEERS removes every peer
+// first, which drops all sessions until a new handshake completes. When
+// cfg.ReplacePeers is set, the peers on the device that are not in cfg.Peers are removed
+// individually and the remaining peers get ReplaceAllowedIPs, so the device
+// ends up as with a replace while current sessions survive, like wg syncconf.
+// When cfg.ReplacePeers is not set, the peers are passed through unchanged.
+// A nil device means the read failed; cfg is then passed through as well, so a
+// replace still clears the list the way it does without the diff.
+// cfg is not modified.
+func peersConfigAsDiff(cfg wgtypes.Config, device map[string]wgtypes.Peer) wgtypes.Config {
+	if device == nil {
+		return cfg
+	}
+	replace := cfg.ReplacePeers
+	cfg.ReplacePeers = false
+	if !replace {
+		return cfg
+	}
+	peers := make([]wgtypes.PeerConfig, 0, len(cfg.Peers))
+	listed := make(map[string]struct{}, len(cfg.Peers))
+	for _, peer := range cfg.Peers {
+		listed[peer.PublicKey.String()] = struct{}{}
+		if !peer.Remove {
+			peer.ReplaceAllowedIPs = true
+		}
+		peers = append(peers, peer)
+	}
+	stale := make([]wgtypes.Key, 0, len(device))
+	for key, dev := range device {
+		if _, ok := listed[key]; !ok {
+			stale = append(stale, dev.PublicKey)
+		}
+	}
+	sort.Slice(stale, func(i, j int) bool { return stale[i].String() < stale[j].String() })
+	for _, key := range stale {
+		peers = append(peers, wgtypes.PeerConfig{PublicKey: key, Remove: true})
+	}
+	if len(peers) == 0 {
+		peers = nil
+	}
+	cfg.Peers = peers
+	return cfg
+}
+
 // SetPeers - sets peers on netmaker WireGuard interface
 func SetPeers(replace bool) error {
 	wgMutex.Lock()
@@ -498,11 +544,10 @@ func SetPeers(replace bool) error {
 	data := getHAEgressDataForProcessing(server.MetricsPort)
 	// Relayed/auto-relayed peers are published with a nil endpoint so WireGuard
 	// can learn the NAT mapping from the first handshake. Incremental peer
-	// updates must not clear that learned address; ReplacePeers intentionally
-	// rebuilds the peer table and may disrupt (caller expects that).
-	var livePeers map[string]wgtypes.Peer
-	if !replace {
-		livePeers, _ = GetPeersFromDevice(ncutils.GetInterfaceName())
+	// updates must not clear that learned address.
+	devicePeers, err := GetPeersFromDevice(ncutils.GetInterfaceName())
+	if err != nil {
+		slog.Warn("could not read WireGuard peers, applying without the diff", "error", err)
 	}
 	for i := range peers {
 		peer := peers[i]
@@ -510,7 +555,7 @@ func SetPeers(replace bool) error {
 			peer.Endpoint = nil
 		}
 		if !replace && !peer.Remove {
-			preserveLearnedEndpoint(&peer, livePeers)
+			preserveLearnedEndpoint(&peer, devicePeers)
 		}
 		if !peer.Remove {
 			_ = checkForBetterEndpoint(&peer)
@@ -525,10 +570,10 @@ func SetPeers(replace bool) error {
 	if len(peers) == 0 {
 		peers = nil
 	}
-	config := wgtypes.Config{
+	config := peersConfigAsDiff(wgtypes.Config{
 		ReplacePeers: replace,
 		Peers:        peers,
-	}
+	}, devicePeers)
 	return apply(&config)
 }
 

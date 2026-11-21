@@ -252,8 +252,12 @@ func (n *NCIface) Configure() error {
 	if err := n.SetMTU(); err != nil {
 		return fmt.Errorf("Configure set MTU %w", err)
 	}
-	err := apply(&n.Config)
+	devicePeers, err := GetPeersFromDevice(ncutils.GetInterfaceName())
 	if err != nil {
+		slog.Warn("could not read WireGuard peers, applying without the diff", "error", err)
+	}
+	cfg := peersConfigAsDiff(n.Config, devicePeers)
+	if err := apply(&cfg); err != nil {
 		return err
 	}
 	return nil
