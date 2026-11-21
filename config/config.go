@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -644,9 +645,6 @@ func FirewallHasChanged() bool {
 }
 
 func WriteJSONAtomic(filePath string, data any, lockfile string, perm os.FileMode) error {
-	tmpFile := filePath + ".tmp"
-	backupFile := filePath + ".bak"
-
 	// Ensure parent directory exists
 	configDir := filepath.Dir(filePath)
 	if _, err := os.Stat(configDir); os.IsNotExist(err) {
@@ -666,49 +664,56 @@ func WriteJSONAtomic(filePath string, data any, lockfile string, perm os.FileMod
 	}
 	defer Unlock(lockfile)
 
-	// Write to temp file
+	var buf bytes.Buffer
+	j := json.NewEncoder(&buf)
+	j.SetIndent("", "    ")
+	if err := j.Encode(data); err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+	return writeFileAtomic(filePath, buf.Bytes(), perm)
+}
+
+// writeFileAtomic replaces filePath with data: it writes and syncs filePath.tmp,
+// keeps the current file as filePath.bak and renames the tmp file over filePath
+// in one step (on Windows os.Rename is MoveFileEx with MOVEFILE_REPLACE_EXISTING).
+// Callers hold the file's lockfile.
+func writeFileAtomic(filePath string, data []byte, perm os.FileMode) error {
+	tmpFile := filePath + ".tmp"
+	replaced := false
+	defer func() {
+		if !replaced {
+			_ = os.Remove(tmpFile)
+		}
+	}()
 	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		return fmt.Errorf("failed to create temp config file: %w", err)
 	}
-
-	j := json.NewEncoder(f)
-	j.SetIndent("", "    ")
-	if err := j.Encode(data); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to encode JSON: %w", err)
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
 	}
-	if err := f.Sync(); err != nil {
+	if err != nil {
 		f.Close()
-		return fmt.Errorf("failed to sync file: %w", err)
+		return fmt.Errorf("failed to write temp config file: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("failed to close temp file: %w", err)
 	}
-
-	// Remove old backup if it exists
-	_ = os.Remove(backupFile)
-
-	// Backup existing file
-	if _, err := os.Stat(filePath); err == nil {
-		if err := os.Rename(filePath, backupFile); err != nil {
-			return fmt.Errorf("failed to backup file: %w", err)
+	current, err := os.ReadFile(filePath)
+	if err == nil {
+		if err := os.WriteFile(filePath+".bak", current, perm); err != nil {
+			slog.Warn("failed to update the backup of a config file", "file", filePath, "error", err)
 		}
-	} else if !os.IsNotExist(err) {
+	} else if os.IsNotExist(err) {
+		_ = os.Remove(filePath + ".bak")
+	} else {
 		return fmt.Errorf("error checking existing file: %w", err)
 	}
-
-	// Windows-specific rename handling
-	if runtime.GOOS == "windows" {
-		time.Sleep(50 * time.Millisecond)
-		_ = os.Remove(filePath)
-	}
-
-	// Rename temp → final
 	if err := os.Rename(tmpFile, filePath); err != nil {
 		return fmt.Errorf("failed to rename temp file to final: %w", err)
 	}
-
+	replaced = true
 	return nil
 }
 
