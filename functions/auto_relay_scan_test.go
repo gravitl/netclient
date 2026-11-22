@@ -2,6 +2,7 @@ package functions
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 )
@@ -78,5 +79,24 @@ func TestShouldRunScheduledScan_afterGraceGate(t *testing.T) {
 	case <-done:
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("expected scheduled scan gate to fire after grace")
+	}
+}
+
+func TestPeerNeedsCachedEndpoint(t *testing.T) {
+	addr := func(ip string, port int) *net.UDPAddr { return &net.UDPAddr{IP: net.ParseIP(ip), Port: port} }
+	cached := addr("192.0.2.44", 51820)
+	for _, tt := range []struct {
+		name     string
+		endpoint *net.UDPAddr
+		want     bool
+	}{
+		{"peer without endpoint", nil, true},
+		{"peer with another address", addr("198.51.100.9", 51820), true},
+		{"peer with another port", addr("192.0.2.44", 51821), false},
+		{"peer with the cached endpoint", cached, false},
+	} {
+		if got := peerNeedsCachedEndpoint(tt.endpoint, cached); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
