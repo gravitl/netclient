@@ -1733,18 +1733,31 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Register: 1,
 					Data:     rule.SrcIP.IP.To4(), // IPv4 source address
 				},
-				// Match packets to destination IP 100.59.157.250/32
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       16, // IPv4 Destination IP offset
-					Len:          4,  // IPv4 address size
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     rule.DstIP.IP.To4(), // IPv4 destination address
-				},
+			}
+			// A destination mask without an address or a destination of another address family cannot match: skip the rule.
+			// A rule without a destination matches every destination: install the source match only.
+			switch {
+			case rule.DstIP.IP == nil && rule.DstIP.Mask != nil:
+				logger.Log(0, fmt.Sprintf("skipping ingress rule %v: a destination mask without a destination address cannot match", ruleSpec))
+				continue
+			case rule.DstIP.IP != nil && rule.DstIP.IP.To4() == nil:
+				logger.Log(0, fmt.Sprintf("skipping ingress rule %v: destination of another address family", ruleSpec))
+				continue
+			case rule.DstIP.IP != nil:
+				e = append(e,
+					// Match packets to destination IP 100.59.157.250/32
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       16, // IPv4 Destination IP offset
+						Len:          4,  // IPv4 address size
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     rule.DstIP.IP.To4(), // IPv4 destination address
+					},
+				)
 			}
 			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(rule.AllowedProtocol, true)...)
@@ -1777,18 +1790,31 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Register: 1,
 					Data:     rule.SrcIP.IP.To16(), // IPv6 source address
 				},
-				// Match packets to destination IP 2001:db8::2/128
-				&expr.Payload{
-					DestRegister: 1,
-					Base:         expr.PayloadBaseNetworkHeader,
-					Offset:       24, // IPv6 Destination IP offset
-					Len:          16, // IPv6 address length
-				},
-				&expr.Cmp{
-					Op:       expr.CmpOpEq,
-					Register: 1,
-					Data:     rule.DstIP.IP.To16(), // IPv6 destination address
-				},
+			}
+			// A destination mask without an address or a destination of another address family cannot match: skip the rule.
+			// A rule without a destination matches every destination: install the source match only.
+			switch {
+			case rule.DstIP.IP == nil && rule.DstIP.Mask != nil:
+				logger.Log(0, fmt.Sprintf("skipping ingress rule %v: a destination mask without a destination address cannot match", ruleSpec))
+				continue
+			case rule.DstIP.IP != nil && rule.DstIP.IP.To4() != nil:
+				logger.Log(0, fmt.Sprintf("skipping ingress rule %v: destination of another address family", ruleSpec))
+				continue
+			case rule.DstIP.IP != nil:
+				e = append(e,
+					// Match packets to destination IP 2001:db8::2/128
+					&expr.Payload{
+						DestRegister: 1,
+						Base:         expr.PayloadBaseNetworkHeader,
+						Offset:       24, // IPv6 Destination IP offset
+						Len:          16, // IPv6 address length
+					},
+					&expr.Cmp{
+						Op:       expr.CmpOpEq,
+						Register: 1,
+						Data:     rule.DstIP.IP.To16(), // IPv6 destination address
+					},
+				)
 			}
 			if rule.AllowedProtocol.String() != "" && rule.AllowedProtocol != models.ALL {
 				e = append(e, n.getExprForProto(rule.AllowedProtocol, false)...)
