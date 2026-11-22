@@ -2,7 +2,10 @@ package firewall
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,6 +15,12 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"github.com/mdlayher/netlink"
 )
+
+// aclOwnerKey is the owner digest the ACL chains key their rules by.
+func aclOwnerKey(aclID string) string {
+	sum := sha256.Sum256([]byte(aclID))
+	return hex.EncodeToString(sum[:4])
+}
 
 // TestInboundAclRulesKeyedByOwner covers ACL changes where another ACL produces the same
 // match: each ACL must keep its own rule key, or it replaces the other's rule and
@@ -59,10 +68,62 @@ func TestInboundAclRulesKeyedByOwner(t *testing.T) {
 	}
 	all := strings.Join(keys, "\n")
 	for _, id := range []string{"acl-a", "acl-b", "acl-c"} {
-		if !strings.Contains(all, id) {
-			t.Errorf("no %s rule key names its ACL ID %s", aclInputRulesChain, id)
+		if !strings.Contains(all, aclOwnerKey(id)) {
+			t.Errorf("no %s rule key carries the owner key of ACL %s", aclInputRulesChain, id)
 		}
 	}
+}
+
+// TestInboundAclRulesLongRuleFitsUserDataLimit covers the 256 byte limit the kernel puts
+// on NFTA_RULE_USERDATA. The key of this 33 port rule is 253 bytes with the owner digest,
+// the length it has on develop, and 311 bytes when the netmaker signature and the full
+// ACL ID both go into it, so the rule has to be installed with the digest as its only
+// comment.
+func TestInboundAclRulesLongRuleFitsUserDataLimit(t *testing.T) {
+	const server = "acl-long-rule-key-test"
+	const aclID = "3f2b8c1e-3f4a-4c5b-8d6e-7a8b9c0d1e2f"
+	ports := make([]string, 0, 33)
+	for port := 1001; port <= 1033; port++ {
+		ports = append(ports, strconv.Itoa(port))
+	}
+	var messages []netlink.Message
+	conn, err := nftables.New(nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
+		messages = append(messages, req...)
+		return req, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := fwCrtl
+	fwCrtl = &nftablesManager{conn: conn, ingRules: make(serverrulestable), engressRules: make(serverrulestable), aclRules: make(serverrulestable)}
+	t.Cleanup(func() { fwCrtl = previous })
+
+	ProcessAclRules(server, &models.FwUpdate{AclRules: map[string]models.AclRule{aclID: {
+		ID:              aclID,
+		IPList:          []net.IPNet{{IP: net.ParseIP("192.0.2.10"), Mask: net.CIDRMask(32, 32)}},
+		Dst:             []net.IPNet{{IP: net.ParseIP("192.0.2.20"), Mask: net.CIDRMask(32, 32)}},
+		AllowedProtocol: models.TCP,
+		AllowedPorts:    ports,
+		Allowed:         true,
+	}}})
+
+	rules := fwCrtl.(*nftablesManager).aclRules[server][aclID].rulesMap[aclID]
+	if len(rules) != 1 {
+		t.Fatalf("%s got %d ACL rules for the long rule, want 1", aclInputRulesChain, len(rules))
+	}
+	key := genRuleKey(rules[0].rule...)
+	if len(key) > 256 {
+		t.Fatalf("%s rule key is %d bytes, want at most 256: %s", aclInputRulesChain, len(key), key)
+	}
+	if strings.Contains(key, netmakerSignature) {
+		t.Fatalf("%s rule key still carries the %s comment: %s", aclInputRulesChain, netmakerSignature, key)
+	}
+	for _, message := range messages {
+		if bytes.Contains(message.Data, []byte(key)) {
+			return
+		}
+	}
+	t.Fatalf("%s long ACL rule with a %d byte key was not installed", aclInputRulesChain, len(key))
 }
 
 func TestAddJumpRulesEncodesMetricsPortInNetworkByteOrder(t *testing.T) {
