@@ -775,23 +775,27 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				}
 			}
 
-			n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
-			rule = &nftables.Rule{
-				Table:    natTable,
-				Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
-				UserData: []byte(genRuleKey(ruleSpec...)),
-				Exprs:    exp,
-			}
-			n.conn.InsertRule(rule)
-			if err := n.conn.Flush(); err != nil {
-				logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+			if !isLoopbackInterface(egressRangeIface) {
+				n.deleteRule(defaultNatTable, nattablePRTChain, genRuleKey(ruleSpec...))
+				rule = &nftables.Rule{
+					Table:    natTable,
+					Chain:    &nftables.Chain{Name: nattablePRTChain, Table: natTable},
+					UserData: []byte(genRuleKey(ruleSpec...)),
+					Exprs:    exp,
+				}
+				n.conn.InsertRule(rule)
+				if err := n.conn.Flush(); err != nil {
+					logger.Log(0, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				} else {
+					egressGwRoutes = append(egressGwRoutes, ruleInfo{
+						nfRule: rule,
+						table:  defaultNatTable,
+						chain:  nattablePRTChain,
+						rule:   ruleSpec,
+					})
+				}
 			} else {
-				egressGwRoutes = append(egressGwRoutes, ruleInfo{
-					nfRule: rule,
-					table:  defaultNatTable,
-					chain:  nattablePRTChain,
-					rule:   ruleSpec,
-				})
+				logger.Log(0, fmt.Sprintf("skipping MASQUERADE for egress range %s: it is an address of this host, reached via %s", egressGwRange.Network, egressRangeIface))
 			}
 			// Add additional egress NAT rule for LAN CIDR traffic exiting via VPN interface.
 			// Skip when egress is via the default/WAN interface (same as iptables).
