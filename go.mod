@@ -13,7 +13,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/nftables v0.3.0
 	github.com/google/uuid v1.6.0
-	github.com/gravitl/netmaker v1.7.1-0.20261113123604-2edbb6abd242
+	github.com/gravitl/netmaker v1.8.0
 	github.com/gravitl/proxy v1.0.0
 	github.com/gravitl/tcping v0.1.2-0.20230801110928-546055ebde06
 	github.com/hashicorp/go-retryablehttp v0.7.8

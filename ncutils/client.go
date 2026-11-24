@@ -44,9 +44,12 @@ func SendRequestOnce(method, endpoint string, headers http.Header, data any, tim
 	return sendRequest(method, endpoint, headers, data, 0, timeout, 0, 0)
 }
 
-type clientConfig struct {
-	retryMax                            int
-	timeout, retryWaitMin, retryWaitMax time.Duration
+// ClientConfig selects a cached retryable HTTP client by its retry/timeout
+// settings. Pass it to GetClient for a client SendRequest's JSON
+// request/response shape doesn't fit, e.g. streaming a download to disk.
+type ClientConfig struct {
+	RetryMax                            int
+	Timeout, RetryWaitMin, RetryWaitMax time.Duration
 }
 
 // clients holds one client per config. Requests reuse its connections:
@@ -54,19 +57,23 @@ type clientConfig struct {
 // server's proxy held thousands of them and did a TLS handshake per request.
 var clients sync.Map
 
-func getClient(cfg clientConfig) *retryablehttp.Client {
+// GetClient returns the cached retryable HTTP client for cfg, creating it on
+// first use. It retries transport-level failures (connection resets,
+// timeouts) on a fresh connection; a non-2xx response is returned as-is,
+// unretried.
+func GetClient(cfg ClientConfig) *retryablehttp.Client {
 	if c, ok := clients.Load(cfg); ok {
 		return c.(*retryablehttp.Client)
 	}
 	client := retryablehttp.NewClient()
-	client.RetryMax = cfg.retryMax
-	client.RetryWaitMin = cfg.retryWaitMin
-	client.RetryWaitMax = cfg.retryWaitMax
-	client.HTTPClient.Timeout = cfg.timeout
+	client.RetryMax = cfg.RetryMax
+	client.RetryWaitMin = cfg.RetryWaitMin
+	client.RetryWaitMax = cfg.RetryWaitMax
+	client.HTTPClient.Timeout = cfg.Timeout
 	var transport *http.Transport
 	if t, ok := http.DefaultTransport.(*http.Transport); ok {
 		transport = t.Clone()
-		transport.TLSHandshakeTimeout = cfg.timeout
+		transport.TLSHandshakeTimeout = cfg.Timeout
 		// A reused connection can die silently, e.g. when a NAT drops its
 		// mapping. HTTP/2 keeps sending every request on it until a ping
 		// goes unanswered, so ping when the connection is quiet.
@@ -119,11 +126,11 @@ func sendRequest(method, endpoint string, headers http.Header, data any, retryMa
 		request.Header.Set(key, value[0])
 	}
 
-	client := getClient(clientConfig{
-		retryMax:     retryMax,
-		timeout:      timeout,
-		retryWaitMin: retryWaitMin,
-		retryWaitMax: retryWaitMax,
+	client := GetClient(ClientConfig{
+		RetryMax:     retryMax,
+		Timeout:      timeout,
+		RetryWaitMin: retryWaitMin,
+		RetryWaitMax: retryWaitMax,
 	})
 	resp, err := client.Do(request)
 	if err != nil {
