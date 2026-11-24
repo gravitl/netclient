@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
+	"strings"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/auth"
@@ -123,17 +126,137 @@ func doubleCheck(host *config.Config) (shouldUpdate bool, err error) {
 	return
 }
 
+func canonicalServerID(id string) string {
+	return config.NormalizeServerHost(id)
+}
+
+// HandleRegisterResponse applies a device or CLI register response to local config.
+func HandleRegisterResponse(registerResponse *models.RegisterResponse) {
+	handleRegisterResponse(registerResponse)
+}
+
 func handleRegisterResponse(registerResponse *models.RegisterResponse) {
+	if registerResponse == nil {
+		return
+	}
+	// Identity is bare domain; API stays host:port for HTTPS.
+	serverKey := canonicalServerID(registerResponse.ServerConf.Server)
+	if serverKey == "" {
+		serverKey = canonicalServerID(registerResponse.ServerConf.API)
+	}
+	if serverKey == "" {
+		serverKey = canonicalServerID(config.CurrServer)
+	}
+	if serverKey == "" {
+		logger.Log(0, "register response missing server identity")
+		return
+	}
+
+	preservedAPI := ""
+	if existing := config.GetServer(serverKey); existing != nil {
+		if config.IsUsableServerAPI(existing.API, serverKey) {
+			preservedAPI = config.NormalizeServerAPI(existing.API)
+		}
+	}
+	api := config.PreferExistingServerAPI(preservedAPI, registerResponse.ServerConf.API)
+	if !config.IsUsableServerAPI(api, serverKey) {
+		logger.Log(0, "register response missing usable server API host")
+		return
+	}
+	registerResponse.ServerConf.API = api
+	registerResponse.ServerConf.Server = serverKey
+
+	config.CurrServer = serverKey
 	config.UpdateServerConfig(&registerResponse.ServerConf)
 	config.SyncTenantID(registerResponse.RequestedHost.ID, registerResponse.ServerConf.TenantID)
-	server := config.GetServer(registerResponse.ServerConf.Server)
-	if err := config.SaveServer(registerResponse.ServerConf.Server, *server); err != nil {
+	server := config.GetServer(serverKey)
+	if server == nil {
+		logger.Log(0, "failed to save server: config not updated")
+		return
+	}
+	if err := config.SaveServer(serverKey, *server); err != nil {
 		logger.Log(0, "failed to save server", err.Error())
 	}
-	UpdateHostFromServer(&registerResponse.RequestedHost)
-	config.SetCurrServerCtxInFile(server.Server)
-	if err := daemon.Restart(); err != nil {
-		logger.Log(3, "daemon restart failed:", err.Error())
+	config.UpdateHost(&registerResponse.RequestedHost)
+	if err := config.WriteNetclientConfig(); err != nil {
+		logger.Log(0, "failed to save netclient config after register", err.Error())
 	}
-	fmt.Printf("registered with server %s\n", registerResponse.ServerConf.Server)
+	if err := config.SetCurrServerCtxInFile(serverKey); err != nil {
+		logger.Log(0, "failed to save server context", err.Error())
+	}
+	UpdateHostFromServer(&registerResponse.RequestedHost)
+	nc := config.Netclient()
+	owner := ""
+	tenant := ""
+	hostID := ""
+	if nc != nil {
+		owner = strings.TrimSpace(nc.OwnerUsername)
+		tenant = strings.TrimSpace(nc.TenantID)
+		hostID = nc.ID.String()
+	}
+	slog.Debug("HandleRegisterResponse applied",
+		"server", serverKey, "host", hostID, "owner", owner, "tenant", tenant,
+		"resp_owner", strings.TrimSpace(registerResponse.RequestedHost.OwnerUsername),
+		"resp_tenant", strings.TrimSpace(registerResponse.ServerConf.TenantID),
+		"owner_set", owner != "")
+	// First desktop login registers before PUT /session can answer. Restarting
+	// the Windows service here kills that request. Defer an in-process reset
+	// until the login response is written. A CLI registration is another
+	// process and still restarts the service.
+	if daemon.IsDaemonProcess() {
+		registrationResetPending.Store(true)
+		// Real enroll — GUI may show "Setting up… / Registering this device".
+		registrationEnrollmentPending.Store(true)
+		logger.Log(3, "device registration: reset deferred until login response")
+	} else {
+		logger.Log(3, "restart trigger: device registration")
+		if err := daemon.Restart(); err != nil {
+			logger.Log(3, "daemon restart failed:", err.Error())
+		}
+	}
+	fmt.Printf("registered with server %s\n", serverKey)
+}
+
+var (
+	registrationResetPending      atomic.Bool
+	registrationEnrollmentPending atomic.Bool
+)
+
+// MarkRegistrationResetPending asks the daemon to rebuild against the server
+// context written by a desktop login (e.g. CurrServer change). This is not a
+// new device enroll — do not set registrationEnrollmentPending.
+func MarkRegistrationResetPending() {
+	registrationResetPending.Store(true)
+}
+
+// RegistrationResetPending reports that a desktop registration finished and
+// the daemon still needs to pick up the new server. The GUI uses this window
+// to show a registration transition instead of treating login as failed.
+func RegistrationResetPending() bool {
+	return registrationResetPending.Load()
+}
+
+// RegistrationEnrollmentPending reports a real RegisterDevice enroll in this
+// login (not merely a server-context rebuild). GUI "Setting up…" uses this.
+func RegistrationEnrollmentPending() bool {
+	return registrationEnrollmentPending.Load()
+}
+
+// ApplyPendingRegistrationReset rebuilds the daemon in place after the login
+// response has been written. The returned channel is closed when that rebuild
+// finishes. Nil means nothing was pending.
+func ApplyPendingRegistrationReset() <-chan struct{} {
+	if !registrationResetPending.CompareAndSwap(true, false) {
+		return nil
+	}
+	registrationEnrollmentPending.Store(false)
+	slog.Debug("device registration: resetting in-process")
+	done := daemon.RequestInProcessReset()
+	if done == nil {
+		slog.Debug("registration reset: in-process unavailable; falling back to daemon soft restart")
+		if err := daemon.Restart(); err != nil {
+			slog.Warn("daemon restart failed", "error", err)
+		}
+	}
+	return done
 }

@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,11 +15,25 @@ import (
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/ncutils"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/minio/selfupdate"
 	"golang.org/x/exp/slog"
 )
 
 var binPath, filePath string
+
+func getReleaseAsset(url string) (*http.Response, error) {
+	req, err := retryablehttp.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	client := ncutils.GetClient(ncutils.ClientConfig{
+		RetryMax:     3,
+		RetryWaitMin: 2 * time.Second,
+		RetryWaitMax: 10 * time.Second,
+	})
+	return client.Do(req)
+}
 
 func createDirIfNotExists() error {
 
@@ -61,7 +74,7 @@ func downloadVersion(version string) error {
 		}
 		url = fmt.Sprintf("https://github.com/gravitl/netclient/releases/download/%s/netclient-%s-%sv%s", version, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(out))
 	}
-	res, err := http.Get(url)
+	res, err := getReleaseAsset(url)
 	if err != nil {
 		return err
 	}
@@ -118,6 +131,13 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 		slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", version)
 		return true, nil
 	}
+	// Desktop GUI daemons (-tags desktop) never self-update from headless
+	// GitHub release assets; the Desktop app/installer owns upgrades.
+	if IsDesktopBuild() {
+		slog.Warn("skipping auto-upgrade on desktop build; Desktop manages updates", "version", version)
+		return true, nil
+	}
+	restoreInternetGwAndDNS()
 	// Use Windows specific version change process
 	if runtime.GOOS == "windows" {
 		// Stop the daemon before updating to avoid file locking issues
@@ -150,10 +170,9 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 		return false, err
 	}
 	filePath = filepath.Join(binPath, "netclient-"+version)
-	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
-		if err := downloadVersion(version); err != nil {
-			return false, err
-		}
+	defer os.Remove(filePath)
+	if err := downloadVersion(version); err != nil {
+		return false, err
 	}
 	if rebootDaemon {
 		daemon.Stop()
@@ -189,11 +208,18 @@ func UseVersion(version string, rebootDaemon bool) (skip bool, err error) {
 
 // windowsUpdate uses a different package and process to upgrade netclient binary on windows
 func windowsUpdate(url string) error {
-	resp, err := http.Get(url)
+	resp, err := getReleaseAsset(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("specified version of netclient doesn't exist %s", url)
+		}
+		return fmt.Errorf("error making HTTP request Code: %d", resp.StatusCode)
+	}
+
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
 	if err != nil {
 		return err

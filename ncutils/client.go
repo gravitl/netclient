@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gravitl/netmaker/models"
@@ -26,7 +27,80 @@ func (e ErrStatusNotOk) Error() string {
 	return fmt.Sprintf("http request failed with status %d (%s)", e.Status, http.StatusText(e.Status))
 }
 
+// SendRequest retries network errors. Four attempts at the 15s client timeout
+// plus the 5s backoff is over a minute, which is what background sync wants
+// and what an interactive logout must not wait on.
 func SendRequest(method, endpoint string, headers http.Header, data any) (*bytes.Buffer, error) {
+	return sendRequest(method, endpoint, headers, data, 3, 15*time.Second, 5*time.Second, 10*time.Second)
+}
+
+// SendRequestOnce performs a single attempt. Logout and disconnect use it so a
+// control-plane path that is still blackholed by exit routes cannot hold the
+// user for a full retry budget.
+func SendRequestOnce(method, endpoint string, headers http.Header, data any, timeout time.Duration) (*bytes.Buffer, error) {
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	return sendRequest(method, endpoint, headers, data, 0, timeout, 0, 0)
+}
+
+// ClientConfig selects a cached retryable HTTP client by its retry/timeout
+// settings. Pass it to GetClient for a client SendRequest's JSON
+// request/response shape doesn't fit, e.g. streaming a download to disk.
+type ClientConfig struct {
+	RetryMax                            int
+	Timeout, RetryWaitMin, RetryWaitMax time.Duration
+}
+
+// clients holds one client per config. Requests reuse its connections:
+// a client per request left every connection idle until it timed out, so the
+// server's proxy held thousands of them and did a TLS handshake per request.
+var clients sync.Map
+
+// GetClient returns the cached retryable HTTP client for cfg, creating it on
+// first use. It retries transport-level failures (connection resets,
+// timeouts) on a fresh connection; a non-2xx response is returned as-is,
+// unretried.
+func GetClient(cfg ClientConfig) *retryablehttp.Client {
+	if c, ok := clients.Load(cfg); ok {
+		return c.(*retryablehttp.Client)
+	}
+	client := retryablehttp.NewClient()
+	client.RetryMax = cfg.RetryMax
+	client.RetryWaitMin = cfg.RetryWaitMin
+	client.RetryWaitMax = cfg.RetryWaitMax
+	client.HTTPClient.Timeout = cfg.Timeout
+	var transport *http.Transport
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = t.Clone()
+		transport.TLSHandshakeTimeout = cfg.Timeout
+		// A reused connection can die silently, e.g. when a NAT drops its
+		// mapping. HTTP/2 keeps sending every request on it until a ping
+		// goes unanswered, so ping when the connection is quiet.
+		transport.HTTP2 = &http.HTTP2Config{
+			SendPingTimeout: 15 * time.Second,
+			PingTimeout:     5 * time.Second,
+		}
+		client.HTTPClient.Transport = transport
+	}
+	client.Logger = nil
+	client.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
+		if err != nil {
+			// retry network errors, on a fresh connection: the failed
+			// one may be dead and would be reused otherwise
+			if transport != nil {
+				transport.CloseIdleConnections()
+			}
+			return true, nil
+		}
+
+		return false, nil
+	}
+	c, _ := clients.LoadOrStore(cfg, client)
+	return c.(*retryablehttp.Client)
+}
+
+func sendRequest(method, endpoint string, headers http.Header, data any, retryMax int, timeout, retryWaitMin, retryWaitMax time.Duration) (*bytes.Buffer, error) {
 	var request *retryablehttp.Request
 	var err error
 
@@ -52,20 +126,12 @@ func SendRequest(method, endpoint string, headers http.Header, data any) (*bytes
 		request.Header.Set(key, value[0])
 	}
 
-	client := retryablehttp.NewClient()
-	client.RetryMax = 3
-	client.RetryWaitMax = 10 * time.Second
-	client.HTTPClient.Timeout = 15 * time.Second
-	client.Logger = nil
-	client.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
-		if err != nil {
-			// retry network errors
-			return true, nil
-		}
-
-		return false, nil
-	}
-	client.RetryWaitMin = 5 * time.Second
+	client := GetClient(ClientConfig{
+		RetryMax:     retryMax,
+		Timeout:      timeout,
+		RetryWaitMin: retryWaitMin,
+		RetryWaitMax: retryWaitMax,
+	})
 	resp, err := client.Do(request)
 	if err != nil {
 		return nil, err

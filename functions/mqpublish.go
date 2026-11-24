@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
 	"github.com/gravitl/netclient/posture"
+	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
@@ -135,44 +137,76 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 			// Detect underlay IP changes via STUN on an ephemeral port. Do not STUN on
 			// ListenPort here — WireGuard already owns it, so binding would fail.
 			// Public listen port is only discovered at iface create (startGoRoutines).
-			if config.Netclient().IsStatic || config.Netclient().CurrGwNmIP != nil {
+			if config.Netclient().IsStatic || wireguard.IGWRoutingActive() || isRelayedOnSingleNetwork() {
 				continue
 			}
-			restart := false
 			ip4, _, _ := holePunchWgPort(4, 0)
 			ip6, _, _ := holePunchWgPort(6, 0)
 			if ip4 == nil && ip6 == nil {
 				continue
 			}
+			// Re-check: an exit node can be selected while the STUN above is in
+			// flight, in which case the reply egressed through the exit and
+			// reports its public IP. Adopting it publishes the exit as this
+			// host's endpoint and triggers a spurious HardRestart.
+			if wireguard.IGWRoutingActive() {
+				logger.Log(0, fmt.Sprintf(
+					"discarding STUN result; exit routing came up mid-detection (ipv4=%v ipv6=%v)", ip4, ip6))
+				continue
+			}
+			ipv4Changed := false
+			ipv6Changed := false
+			ipv6PrefixChanged := false
+			prevIP6 := config.HostPublicIP6
 			if ip4 != nil && ip4.To4() != nil && !ip4.IsUnspecified() && !config.HostPublicIP.Equal(ip4) {
 				slog.Debug("IP CHECKIN 1", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 				config.HostPublicIP = ip4
-				restart = true
+				ipv4Changed = true
 			} else if ip4 == nil && config.HostPublicIP != nil {
 				slog.Debug("IP CHECKIN 2", "ipv4", ip4, "HostPublicIP", config.HostPublicIP)
 				config.HostPublicIP = nil
-				restart = true
+				ipv4Changed = true
 			}
 
 			if ip6 != nil && ip6.To4() == nil && !ip6.IsUnspecified() && !config.HostPublicIP6.Equal(ip6) {
 				slog.Debug("IP CHECKIN 1", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
+				ipv6PrefixChanged = !ipv6SameNetworkPrefix(prevIP6, ip6)
 				config.HostPublicIP6 = ip6
-				restart = true
+				ipv6Changed = true
 			} else if ip6 == nil && config.HostPublicIP6 != nil {
 				slog.Debug("IP CHECKIN 2", "ipv6", ip6, "HostPublicIP6", config.HostPublicIP6)
 				config.HostPublicIP6 = nil
-				restart = true
+				ipv6Changed = true
+				ipv6PrefixChanged = true // lost IPv6 entirely
 			}
-			if restart {
-				if err := UpdateHostSettings(true); err != nil {
-					slog.Warn("failed to update host settings", err.Error())
-				}
-				logger.Log(0, "restarting netclient due to network changes...")
-				if ip4 != nil {
-					logger.Log(0, "new IPv4 detected: ", ip4.String())
-				}
+			if !ipv4Changed && !ipv6Changed {
+				continue
+			}
+			// Always publish endpoint updates. HardRestart only for underlay
+			// network changes: IPv4 change, or IPv6 /64 prefix change. Same-/64
+			// IPv6 flips are privacy/temporary address rotation — publish only.
+			if err := UpdateHostSettings(true); err != nil {
+				slog.Warn("failed to update host settings", err.Error())
+			}
+			if ipv6Changed {
 				if ip6 != nil && ip6.To4() == nil {
-					logger.Log(0, "new IPv6 detected: ", ip6.String())
+					if ipv6PrefixChanged {
+						logger.Log(0, "IPv6 network prefix changed: ", ip6.String())
+					} else {
+						logger.Log(0, "IPv6 privacy address rotated (same /64): ", ip6.String())
+					}
+				} else {
+					logger.Log(0, "IPv6 endpoint cleared")
+				}
+			}
+			if ipv4Changed || ipv6PrefixChanged {
+				logger.Log(0, "restarting netclient due to network change...")
+				if ipv4Changed {
+					if ip4 != nil {
+						logger.Log(0, "new IPv4 detected: ", ip4.String())
+					} else {
+						logger.Log(0, "IPv4 endpoint cleared")
+					}
 				}
 				daemon.HardRestart()
 			}
@@ -181,13 +215,25 @@ func Checkin(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-// hostUpdateWithServer - used to send host updates to server via restful api
+// hostUpdateWithServer - used to send host updates to server via restful api.
+// timeout > 0 is a single attempt; logout and disconnect pass it so a dead
+// control-plane path cannot block the user on the default retry budget.
 func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
+	return hostUpdateWithServerTimeout(server, hu, 0)
+}
+
+func hostUpdateWithServerTimeout(server *config.Server, hu models.HostUpdate, timeout time.Duration) error {
 	host := config.Netclient()
 	if host == nil {
 		return fmt.Errorf("no configured host found")
 	}
-	token, err := auth.Authenticate(server, host)
+	var token string
+	var err error
+	if timeout > 0 {
+		token, err = auth.AuthenticateOnce(server, host, timeout)
+	} else {
+		token, err = auth.Authenticate(server, host)
+	}
 	if err != nil {
 		return err
 	}
@@ -196,9 +242,14 @@ func hostUpdateWithServer(server *config.Server, hu models.HostUpdate) error {
 	url := fmt.Sprintf("https://%s/api/v1/fallback/host/%s", server.API, host.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
+	auth.ApplyAPIHeaders(headers, token, host)
 	headers.Set(scope.HeaderTenantID, host.TenantID)
-	_, err = ncutils.SendRequest(http.MethodPut, url, headers, buildHostUpdatePayload(hu))
+	payload := buildHostUpdatePayload(hu)
+	if timeout > 0 {
+		_, err = ncutils.SendRequestOnce(http.MethodPut, url, headers, payload, timeout)
+	} else {
+		_, err = ncutils.SendRequest(http.MethodPut, url, headers, payload)
+	}
 	if err != nil {
 		if denyErr := auth.AsMDMDenied(err); errors.Is(denyErr, auth.ErrMDMDenied) {
 			logMDMDenialOnce()
@@ -241,10 +292,36 @@ func checkin() {
 
 // PublishNodeUpdate -- pushes node to broker
 func PublishNodeUpdate(node *config.Node) error {
-	hostServerUpdate(models.HostUpdate{
+	return publishNodeUpdate(node, 0)
+}
+
+// PublishNodeUpdateOnce pushes a node update with one short attempt.
+// Interactive disconnect uses this; a failure is logged and ignored by the
+// caller so local teardown still finishes.
+func PublishNodeUpdateOnce(node *config.Node, timeout time.Duration) error {
+	return publishNodeUpdate(node, timeout)
+}
+
+func publishNodeUpdate(node *config.Node, timeout time.Duration) error {
+	hu := models.HostUpdate{
 		Action: models.UpdateNode,
 		Node:   models.Node{CommonNode: node.CommonNode},
-	})
+	}
+	var err error
+	if timeout > 0 {
+		server := config.GetServer(config.CurrServer)
+		if server == nil {
+			err = errors.New("server config not found")
+		} else {
+			err = hostUpdateWithServerTimeout(server, hu, timeout)
+		}
+	} else {
+		err = hostServerUpdate(hu)
+	}
+	if err != nil {
+		logger.Log(0, "network:", node.Network, "node update was not published:", err.Error())
+		return nil
+	}
 	logger.Log(0, "network:", node.Network, "sent a node update to server for node", config.Netclient().Name, ", ", node.ID.String())
 	return nil
 }
@@ -465,8 +542,11 @@ func UpdateHostSettings(fallback bool) error {
 		config.SetFirewall()
 		publishMsg = true
 	}
-	if config.Netclient().Location == "" ||
-		config.Netclient().CountryCode == "" || endpointHasChanged {
+	// Skip geo while exit routing is up — GetGeoInfo egresses through the exit
+	// and would overwrite this host's location with the exit node's.
+	if !wireguard.IGWRoutingActive() &&
+		(config.Netclient().Location == "" ||
+			config.Netclient().CountryCode == "" || endpointHasChanged) {
 		geoInfo, err := utils.GetGeoInfo()
 		if err == nil {
 			if config.Netclient().Location != geoInfo.Location {
@@ -521,4 +601,20 @@ func clearRetainedMsg(client mqtt.Client, topic string) {
 	if token := client.Publish(topic, 0, true, []byte{}); token.Error() != nil {
 		logger.Log(0, "failed to clear retained message: ", topic, token.Error().Error())
 	}
+}
+
+// ipv6SameNetworkPrefix reports whether a and b share the same /64 network
+// prefix (typical SLAAC/privacy temporary address rotation). Missing or
+// non-IPv6 values are not considered the same network.
+func ipv6SameNetworkPrefix(a, b net.IP) bool {
+	a = a.To16()
+	b = b.To16()
+	if a == nil || b == nil || a.To4() != nil || b.To4() != nil {
+		return false
+	}
+	if a.IsUnspecified() || b.IsUnspecified() {
+		return false
+	}
+	mask := net.CIDRMask(64, 128)
+	return a.Mask(mask).Equal(b.Mask(mask))
 }

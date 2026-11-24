@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/functions"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/posture"
 	"github.com/gravitl/netclient/wireguard"
@@ -65,7 +67,18 @@ func init() {
 func initConfig() {
 	flags := viper.New()
 	flags.BindPFlags(rootCmd.Flags())
+	// version / build-info are safe for non-root and need no host config or WG iface.
+	if isReadOnlyInfoCommand() {
+		return
+	}
+	// Desktop builds refuse `use` in PreRunE; skip root/config so that message shows.
+	if functions.IsDesktopBuild() && matchedRootCommand("use") {
+		return
+	}
 	InitConfig(flags)
+	if isUninstallCommand() {
+		return
+	}
 	nc := wireguard.NewNCIface(config.Netclient(), config.GetNodes())
 	nc.Name = "netmaker-test"
 	port := 0
@@ -209,6 +222,11 @@ func migrateConfigFiles() error {
 
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(viper *viper.Viper) {
+	// Before the first read: a missing Program Files netclient.json is created
+	// empty, which would hide the legacy Program Files (x86) host.
+	if err := config.CopyWindowsLegacyState(); err != nil {
+		logger.Log(0, "failed to copy legacy windows config:", err.Error())
+	}
 	config.CheckUID()
 	daemon.RemoveAllLockFiles()
 	err := migrateConfigFiles()
@@ -281,6 +299,7 @@ func setupLogging(flags *viper.Viper) {
 func checkConfig() {
 	fail := false
 	saveRequired := false
+	skipServerValidation := isUninstallCommand()
 	sysInfo := logic.GetOSInfo()
 	netclient := config.Netclient()
 	if netclient.OS != sysInfo.OS {
@@ -330,7 +349,9 @@ func checkConfig() {
 		netclient.Name = config.FormatName(netclient.Name)
 		saveRequired = true
 	}
-	if netclient.Location == "" || netclient.CountryCode == "" {
+	// Skip geo while exit routing is up — GetGeoInfo would report the exit node.
+	if !wireguard.IGWRoutingActive() &&
+		(netclient.Location == "" || netclient.CountryCode == "") {
 		geoInfo, err := utils.GetGeoInfo()
 		if err == nil {
 			if netclient.Location != geoInfo.Location {
@@ -428,20 +449,76 @@ func checkConfig() {
 	}
 	_ = config.ReadServerConf()
 	_ = config.ReadNodeConfig()
-	if config.CurrServer != "" {
+	if config.CurrServer != "" && !skipServerValidation {
 		server := config.GetServer(config.CurrServer)
 		if server == nil {
 			fail = true
 			logger.Log(0, "configuration for", config.CurrServer, "is missing")
-		} else {
-			if server.MQID != netclient.ID {
-				fail = true
-				logger.Log(0, server.Name, "is misconfigured: MQID/Password does not match hostid/password")
-			}
+		} else if server.MQID != uuid.Nil && server.MQID != netclient.ID {
+			// The broker identity is the host id. A leftover server record from
+			// another host (or a regenerated host id) can never authenticate, and
+			// failing here blocks install and every later command. Drop the
+			// enrollment and keep the server address so the host can register again.
+			logger.Log(0, server.Name, "is misconfigured: MQID does not match host id; clearing enrollment")
+			clearMismatchedServer(server.Name)
 		}
 	}
 
 	if fail {
 		logger.FatalLog("configuration is invalid, fix before proceeding")
 	}
+}
+
+// clearMismatchedServer removes an enrollment whose broker id is not this host.
+// Desktop demotes to a Settings partial; headless deletes the server entry.
+func clearMismatchedServer(server string) {
+	for name, node := range config.GetNodes() {
+		if node.Server == server {
+			config.DeleteNode(name)
+		}
+	}
+	if err := config.WriteNodeConfig(); err != nil {
+		logger.Log(0, "failed to write node config after clearing", server, err.Error())
+	}
+	functions.DisposeServerEnrollment(server)
+}
+
+// isUninstallCommand reports whether the CLI was invoked as `netclient uninstall`.
+func isUninstallCommand() bool {
+	return matchedRootCommand("uninstall")
+}
+
+// isReadOnlyInfoCommand reports version / build-info (and alias "info").
+func isReadOnlyInfoCommand() bool {
+	return matchedRootCommand("version", "build-info")
+}
+
+func matchedRootCommand(names ...string) bool {
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[n] = struct{}{}
+	}
+	cmd, _, err := rootCmd.Find(os.Args[1:])
+	if err != nil {
+		for _, arg := range os.Args[1:] {
+			if _, ok := want[arg]; ok {
+				return true
+			}
+			// "info" is an alias of build-info.
+			if arg == "info" {
+				if _, ok := want["build-info"]; ok {
+					return true
+				}
+			}
+			if !strings.HasPrefix(arg, "-") {
+				break
+			}
+		}
+		return false
+	}
+	if cmd == nil {
+		return false
+	}
+	_, ok := want[cmd.Name()]
+	return ok
 }

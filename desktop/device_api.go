@@ -1,0 +1,1031 @@
+package desktop
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/gravitl/netclient/config"
+	"github.com/gravitl/netclient/functions"
+	"github.com/gravitl/netclient/ncutils"
+	"github.com/gravitl/netclient/uiapi"
+	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
+	"github.com/gravitl/netmaker/scope"
+)
+
+const deviceHostIDHeader = "X-Host-ID"
+const desktopAppHeader = "netmaker-desktop"
+
+// ErrJITAccessRequired is returned when connect/join is blocked pending JIT approval.
+var ErrJITAccessRequired = errors.New("JIT access required: please request access from network admin")
+
+// ErrApprovalPending is returned when a join request is awaiting admin approval.
+var ErrApprovalPending = errors.New("host approval pending for network")
+
+// ErrApprovalRequired is returned when the user must request join before connecting.
+var ErrApprovalRequired = errors.New("host approval required for network")
+
+// ErrDeviceBlocked is returned when posture checks block network access.
+var ErrDeviceBlocked = errors.New("access blocked: this device doesn't meet security requirements")
+
+// deviceSuccessResponse mirrors models.SuccessResponse JSON (capitalized keys, no tags).
+type deviceSuccessResponse struct {
+	Code     int
+	Message  string
+	Response json.RawMessage
+}
+
+func deviceServerURL() (string, error) {
+	srv := config.GetServer(config.CurrServer)
+	api := ""
+	if srv != nil {
+		api = srv.API
+		if !config.IsUsableServerAPI(api, config.CurrServer) && srv.APIHost != "" {
+			api = srv.APIHost
+		}
+	}
+	api = config.NormalizeServerAPI(api)
+	if !config.IsUsableServerAPI(api, config.CurrServer) {
+		return "", fmt.Errorf("server API host not configured")
+	}
+	return config.APIBaseURL(api), nil
+}
+
+func deviceRequest(method, path, token string, data any) ([]byte, error) {
+	return deviceRequestWithHost(method, path, token, data, true)
+}
+
+func deviceRequestWithHost(method, path, token string, data any, includeHost bool) ([]byte, error) {
+	return doDeviceRequest(method, path, token, data, includeHost, 0)
+}
+
+// timeout > 0 is a single attempt. Logout uses it for the exit clear.
+func doDeviceRequest(method, path, token string, data any, includeHost bool, timeout time.Duration) ([]byte, error) {
+	base, err := deviceServerURL()
+	if err != nil {
+		return nil, err
+	}
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+token)
+	headers.Set("X-Application-Name", desktopAppHeader)
+	if includeHost {
+		headers.Set(deviceHostIDHeader, config.Netclient().ID.String())
+	}
+	if tenantID := config.Netclient().TenantID; tenantID != "" {
+		headers.Set(scope.HeaderTenantID, tenantID)
+	}
+	var body []byte
+	if timeout > 0 {
+		buf, err := ncutils.SendRequestOnce(method, base+path, headers, data, timeout)
+		if err != nil {
+			return nil, err
+		}
+		body = buf.Bytes()
+	} else {
+		buf, err := ncutils.SendRequest(method, base+path, headers, data)
+		if err != nil {
+			return nil, err
+		}
+		body = buf.Bytes()
+	}
+	return body, nil
+}
+
+func decodeDeviceResponse(data []byte, dest any) error {
+	if dest == nil {
+		return nil
+	}
+	var wrapped deviceSuccessResponse
+	if err := json.Unmarshal(data, &wrapped); err == nil && len(wrapped.Response) > 0 {
+		if err := json.Unmarshal(wrapped.Response, dest); err != nil {
+			logger.Log(0, "device api: failed to decode wrapped response:", err.Error())
+			return err
+		}
+		return nil
+	}
+	if err := json.Unmarshal(data, dest); err != nil {
+		logger.Log(0, "device api: failed to decode response:", err.Error())
+		return err
+	}
+	return nil
+}
+
+type deviceRegisterPayload struct {
+	ServerConf    models.ServerConfig `json:"server_config"`
+	RequestedHost schema.Host         `json:"requested_host"`
+	Host          schema.Host         `json:"host"`
+}
+
+func decodeDeviceRegisterResponse(data []byte) (models.RegisterResponse, error) {
+	var payload deviceRegisterPayload
+	var wrapped deviceSuccessResponse
+	if err := json.Unmarshal(data, &wrapped); err == nil && len(wrapped.Response) > 0 {
+		if err := json.Unmarshal(wrapped.Response, &payload); err != nil {
+			return models.RegisterResponse{}, err
+		}
+	} else if err := json.Unmarshal(data, &payload); err != nil {
+		return models.RegisterResponse{}, err
+	}
+
+	registerResponse := models.RegisterResponse{
+		ServerConf:    payload.ServerConf,
+		RequestedHost: payload.RequestedHost,
+	}
+	if registerResponse.RequestedHost.ID == uuid.Nil && payload.Host.ID != uuid.Nil {
+		registerResponse.RequestedHost = payload.Host
+	}
+	return registerResponse, nil
+}
+
+func fetchModelsServerConfig(server, token string) (models.ServerConfig, error) {
+	api := ""
+	if srv := config.GetServer(server); srv != nil {
+		api = srv.API
+		if !config.IsUsableServerAPI(api, server) && srv.APIHost != "" {
+			api = srv.APIHost
+		}
+	}
+	api = config.NormalizeServerAPI(api)
+	if !config.IsUsableServerAPI(api, server) {
+		return models.ServerConfig{}, fmt.Errorf("server API host not configured")
+	}
+	url := fmt.Sprintf("%s/api/server/getserverinfo", config.APIBaseURL(api))
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+token)
+	headers.Set("X-Application-Name", desktopAppHeader)
+	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
+	if err != nil {
+		return models.ServerConfig{}, err
+	}
+	var cfg models.ServerConfig
+	if err := json.Unmarshal(respBytes.Bytes(), &cfg); err != nil {
+		return models.ServerConfig{}, err
+	}
+	return cfg, nil
+}
+
+func ensureRegisterServerConf(resp *models.RegisterResponse, server, token string) error {
+	if resp == nil {
+		return fmt.Errorf("empty register response")
+	}
+	domain := config.NormalizeServerHost(server)
+	if domain == "" {
+		domain = config.NormalizeServerHost(resp.ServerConf.API)
+	}
+	if domain == "" {
+		domain = config.NormalizeServerHost(resp.ServerConf.Server)
+	}
+	if domain == "" {
+		return fmt.Errorf("server not configured")
+	}
+
+	preservedAPI := ""
+	if existing := config.GetServer(domain); existing != nil {
+		if config.IsUsableServerAPI(existing.API, domain) {
+			preservedAPI = config.NormalizeServerAPI(existing.API)
+		}
+	}
+
+	if resp.ServerConf.API == "" || resp.ServerConf.Broker == "" {
+		fetched, err := fetchModelsServerConfig(domain, token)
+		if err != nil {
+			return fmt.Errorf("failed to fetch server config: %w", err)
+		}
+		if resp.ServerConf.Broker == "" {
+			resp.ServerConf.Broker = fetched.Broker
+		}
+		if resp.ServerConf.API == "" {
+			resp.ServerConf.API = fetched.API
+		}
+		// Keep other useful fields if missing.
+		if resp.ServerConf.Server == "" {
+			resp.ServerConf.Server = fetched.Server
+		}
+	}
+
+	api := config.PreferExistingServerAPI(preservedAPI, resp.ServerConf.API)
+	if !config.IsUsableServerAPI(api, domain) {
+		return fmt.Errorf("server API host not configured")
+	}
+	resp.ServerConf.API = api
+	resp.ServerConf.Server = domain
+	return nil
+}
+
+// RegisterDeviceOnServer registers the host via the device REST API using a user JWT.
+func RegisterDeviceOnServer(server, token string) error {
+	server = config.NormalizeServerHost(server)
+	if server != "" && config.CurrServer != server {
+		_ = config.SetCurrServerCtxInFile(server)
+		config.CurrServer = server
+	}
+	host, err := functions.PrepareRegistrationHost()
+	if err != nil {
+		return fmt.Errorf("error when checking host values - %w", err)
+	}
+	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/register", token, host)
+	if err != nil {
+		return err
+	}
+	registerResponse, err := decodeDeviceRegisterResponse(resp)
+	if err != nil {
+		return err
+	}
+	if err := ensureRegisterServerConf(&registerResponse, server, token); err != nil {
+		return err
+	}
+	config.CurrServer = registerResponse.ServerConf.Server
+	_ = config.SetCurrServerCtxInFile(config.CurrServer)
+	functions.HandleRegisterResponse(&registerResponse)
+	return nil
+}
+
+// FetchDeviceNetworks returns networks visible to the user from the server device API.
+func FetchDeviceNetworks(server, token string) ([]models.DeviceNetwork, error) {
+	networks, err := fetchDeviceNetworksImpl(server, token)
+	if err != nil {
+		return nil, err
+	}
+	enforceAutoExitForConnected(networks, token)
+	return networks, nil
+}
+
+var autoExitEnforced sync.Map
+
+// networkAutoSelectExit reports whether the server requires auto exit selection.
+// Tests replace this.
+var networkAutoSelectExit = func(network, server, token string) (bool, error) {
+	networks, err := fetchDeviceNetworksImpl(server, token)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range networks {
+		if n.NetworkID == network {
+			return n.AutoSelectExitNode, nil
+		}
+	}
+	return false, nil
+}
+
+// selectNearestExitNode selects the nearest exit. Tests replace this.
+var selectNearestExitNode = SelectNearestDeviceExitNode
+
+// NetworkRequiresAutoExit reports whether the network forces auto exit selection.
+func NetworkRequiresAutoExit(network, server, token string) (bool, error) {
+	if strings.TrimSpace(token) == "" || network == "" {
+		return false, nil
+	}
+	return networkAutoSelectExit(network, server, token)
+}
+
+// applyEnforcedAutoExit arms auto_exit desired state when the network requires
+// it. The actual nearest pick runs after connect (finishDesktopConnect) so
+// ranking can use overlay VPN probes.
+func applyEnforcedAutoExit(network, token string) error {
+	if strings.TrimSpace(token) == "" {
+		return nil
+	}
+	required, err := networkAutoSelectExit(network, config.CurrServer, token)
+	if err != nil || !required {
+		return err
+	}
+	armEnforcedAutoExitDesired(network, "")
+	autoExitEnforced.Store(network, struct{}{})
+	return nil
+}
+
+func armEnforcedAutoExitDesired(network, egressID string) {
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok {
+		return
+	}
+	egressID = strings.TrimSpace(egressID)
+	if egressID == "" {
+		egressID = strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	}
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, egressID)
+}
+
+// applyDesiredExitAfterConnect re-PUTs the stored exit after connect/join.
+// Manual selections used to be skipped here (auto-only), so disconnect→reconnect
+// with an exit still selected in the UI left the server without ChangeDefaultGw.
+func applyDesiredExitAfterConnect(network, token string) {
+	if strings.TrimSpace(token) == "" || strings.TrimSpace(network) == "" {
+		return
+	}
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok || !desiredWantsIGW(user, tenant) {
+		return
+	}
+	exitNet := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if exitNet != "" && exitNet != network {
+		return
+	}
+	if uiapi.ShouldDeferAutoExitClaim(network) {
+		return
+	}
+	if config.GetDesiredAutoExit(user, tenant) {
+		applyDeferredAutoExitAfterConnect(network, token)
+		return
+	}
+	egressID := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	if egressID == "" {
+		return
+	}
+	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) == egressID {
+		// Server already has this exit; keep desire keyed to this network.
+		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
+		return
+	}
+	if _, err := SelectDeviceExitNode(network, token, egressID); err != nil {
+		slog.Warn("re-apply desired exit after connect failed",
+			"network", network, "egress_id", egressID, "error", err)
+		return
+	}
+	slog.Info("re-applied desired exit after connect", "network", network, "egress_id", egressID)
+}
+
+// applyDeferredAutoExitAfterConnect selects nearest once the mesh is up when
+// auto_exit is desired (user Auto, or a network that enforces it).
+func applyDeferredAutoExitAfterConnect(network, token string) {
+	if strings.TrimSpace(token) == "" || strings.TrimSpace(network) == "" {
+		return
+	}
+	user, tenant, ok := desktopSessionIdentity()
+	if !ok || !config.GetDesiredAutoExit(user, tenant) {
+		return
+	}
+	exitNet := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if exitNet != "" && exitNet != network {
+		return
+	}
+	if uiapi.ShouldDeferAutoExitClaim(network) {
+		return
+	}
+	if cur, err := GetDeviceSelectedExitNode(network, token); err == nil && cur != nil && strings.TrimSpace(cur.EgressID) != "" {
+		_ = config.SetDesiredAutoExitNode(user, tenant, network, cur.EgressID)
+		return
+	}
+	node, err := selectNearestExitNode(network, token)
+	if err != nil {
+		slog.Warn("deferred auto exit select after connect failed", "network", network, "error", err)
+		return
+	}
+	if node != nil {
+		_ = config.SetDesiredAutoExitNode(user, tenant, network, node.EgressID)
+	}
+}
+
+func enforceAutoExitForConnected(networks []models.DeviceNetwork, token string) {
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	nodes := config.GetNodes()
+	for _, n := range networks {
+		if !n.AutoSelectExitNode {
+			autoExitEnforced.Delete(n.NetworkID)
+			continue
+		}
+		node, ok := nodes[n.NetworkID]
+		if !ok || !node.Connected {
+			continue
+		}
+		// Never arm desire on this network before conflict checks — arming
+		// SetDesiredAutoExitNode would overwrite the first network's exit.
+		if uiapi.ShouldDeferAutoExitClaim(n.NetworkID) {
+			autoExitEnforced.Store(n.NetworkID, struct{}{})
+			continue
+		}
+		// Arm local AUTO so failover works even when the server already
+		// assigned an exit (EnsureAutoExitNode) without a client select.
+		armEnforcedAutoExitDesired(n.NetworkID, "")
+		if _, done := autoExitEnforced.Load(n.NetworkID); done {
+			continue
+		}
+		autoExitEnforced.Store(n.NetworkID, struct{}{})
+		picked, err := selectNearestExitNode(n.NetworkID, token)
+		if err != nil {
+			autoExitEnforced.Delete(n.NetworkID)
+			slog.Warn("auto exit select for connected network failed", "network", n.NetworkID, "error", err)
+			continue
+		}
+		if picked != nil {
+			armEnforcedAutoExitDesired(n.NetworkID, picked.EgressID)
+		}
+	}
+}
+
+var fetchDeviceNetworksImpl = func(server, token string) ([]models.DeviceNetwork, error) {
+	if server != "" && config.CurrServer != server {
+		_ = config.SetCurrServerCtxInFile(server)
+		config.CurrServer = server
+	}
+	// Include host so joined/pending/connected state is returned for this device.
+	resp, err := deviceRequestWithHost(http.MethodGet, "/api/v1/device/networks", token, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	var networks []models.DeviceNetwork
+	if err := decodeDeviceResponse(resp, &networks); err != nil {
+		return nil, err
+	}
+	return networks, nil
+}
+
+// JoinDeviceNetworkOnServer registers the host on a network via the device API.
+// Returns join status: "joined".
+func JoinDeviceNetworkOnServer(network, token string) (string, error) {
+	resp, err := deviceRequest(http.MethodPost, "/api/v1/device/networks/"+network+"/join", token, nil)
+	if err != nil {
+		// Device approval answers with 202 and "host approval pending". That is
+		// the request succeeding, not a failed join.
+		var statusErr ncutils.ErrStatusNotOk
+		if errors.As(err, &statusErr) && statusErr.Status == http.StatusAccepted {
+			return models.DeviceJoinStatusPending, nil
+		}
+		return "", err
+	}
+	var result models.DeviceJoinResult
+	if err := decodeDeviceResponse(resp, &result); err != nil {
+		return "", err
+	}
+	if result.Status == "" {
+		return "joined", nil
+	}
+	return result.Status, nil
+}
+
+// LeaveDeviceNetworkOnServer removes the host from a network via the device API.
+func LeaveDeviceNetworkOnServer(network, token string) error {
+	resp, err := deviceRequest(http.MethodDelete, "/api/v1/device/networks/"+network+"/leave", token, nil)
+	if err != nil {
+		return err
+	}
+	return decodeDeviceResponse(resp, nil)
+}
+
+// CancelDeviceNetworkJoinOnServer cancels a pending join approval request.
+func CancelDeviceNetworkJoinOnServer(network, token string) error {
+	resp, err := deviceRequest(http.MethodDelete, "/api/v1/device/networks/"+network+"/cancel", token, nil)
+	if err != nil {
+		return err
+	}
+	return decodeDeviceResponse(resp, nil)
+}
+
+// RequestJITOnServer submits a JIT access request via the server user JIT API.
+func RequestJITOnServer(network, token, reason string) error {
+	path := "/api/v1/jit_user/request?network=" + url.QueryEscape(network)
+	_, err := deviceRequestWithHost(http.MethodPost, path, token, struct {
+		Reason string `json:"reason"`
+	}{Reason: reason}, false)
+	return err
+}
+
+// SyncDeviceWithServer pulls host config (reset auto-relay + refresh peer cache)
+// and applies it in-process. Peers are always replaced so tray Sync fully
+// reconfigures WireGuard without a daemon restart.
+func SyncDeviceWithServer(token string) error {
+	_ = token // session JWT is read via auth.UserTokenProvider during Pull
+	pullResponse, resetInterface, _, err := functions.Pull(false, true, true)
+	if err != nil {
+		return err
+	}
+	pullResponse.ReplacePeers = true
+	// MQFallbackPull applies resetInterface itself; do not ResetInterface again.
+	functions.MQFallbackPull(pullResponse, resetInterface, true)
+	return nil
+}
+
+// ErrNetworkNotConnected is returned when exit list/select runs before the
+// network is connected. Overlay VPN probes are the only ranking signal, so the
+// mesh has to be up first.
+var ErrNetworkNotConnected = errors.New("connect to the network before choosing an exit node")
+
+// ListDeviceExitNodes returns internet egress exit nodes available to this device on the network.
+// The network must be connected so exits can be ranked by overlay VPN probes.
+func ListDeviceExitNodes(network, token string) ([]models.DeviceExitNode, error) {
+	return listDeviceExitNodes(network, token, true)
+}
+
+// ListDeviceExitNodesForUI returns exit nodes for the desktop selector.
+// With an active session it may run while disconnected so the GUI can show the
+// restored exit name after logout/login; overlay latency probes still require
+// a live mesh.
+func ListDeviceExitNodesForUI(network, token string) ([]models.DeviceExitNode, error) {
+	return listDeviceExitNodes(network, token, false)
+}
+
+func listDeviceExitNodes(network, token string, requireConnected bool) ([]models.DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	connected := networkLocallyConnected(network)
+	if !connected {
+		if requireConnected || !uiapi.IsSessionActive() {
+			return nil, ErrNetworkNotConnected
+		}
+		slog.Warn("exit list: network not connected; returning names without overlay probes",
+			"network", network)
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_nodes"
+	resp, err := deviceRequest(http.MethodGet, path, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var nodes []models.DeviceExitNode
+	if err := decodeDeviceResponse(resp, &nodes); err != nil {
+		return nil, err
+	}
+	if nodes == nil {
+		nodes = []models.DeviceExitNode{}
+	}
+	// The server can keep Selected set until the clear PUT converges. Report the
+	// local clear immediately, and skip probes so this refresh is not held up.
+	nodes, skipProbes := hideClearedExitSelection(network, nodes)
+	if !skipProbes && connected {
+		attachExitNodeLatencies(network, nodes)
+	}
+	return nodes, nil
+}
+
+var (
+	clearedExitMu sync.Mutex
+	clearedExit   = map[string]struct{}{} // network whose exit the GUI should show as off
+)
+
+func markExitClearedLocally(network string) {
+	network = strings.TrimSpace(network)
+	if network == "" {
+		return
+	}
+	clearedExitMu.Lock()
+	clearedExit[network] = struct{}{}
+	clearedExitMu.Unlock()
+}
+
+func forgetExitClearedLocally(network string) {
+	network = strings.TrimSpace(network)
+	clearedExitMu.Lock()
+	delete(clearedExit, network)
+	clearedExitMu.Unlock()
+}
+
+func exitClearedLocally(network string) bool {
+	clearedExitMu.Lock()
+	_, ok := clearedExit[network]
+	clearedExitMu.Unlock()
+	return ok
+}
+
+// hideClearedExitSelection forces Selected off while a local clear is ahead of
+// the server. skipProbes is true when the server still reports a selection, so
+// the GUI refresh that shows the disconnect does not wait on latency probes.
+// Once the server agrees nothing is selected, the mark is dropped.
+func hideClearedExitSelection(network string, nodes []models.DeviceExitNode) ([]models.DeviceExitNode, bool) {
+	if !exitClearedLocally(network) {
+		return nodes, false
+	}
+	serverSelected := false
+	for i := range nodes {
+		if nodes[i].Selected {
+			serverSelected = true
+			nodes[i].Selected = false
+		}
+	}
+	if !serverSelected {
+		forgetExitClearedLocally(network)
+		return nodes, false
+	}
+	return nodes, true
+}
+
+// attachExitNodeLatencies ranks exits by overlay metrics-port probes over the VPN.
+func attachExitNodeLatencies(network string, nodes []models.DeviceExitNode) {
+	functions.AttachExitNodeOverlayLatencies(network, nodes)
+}
+
+// GetDeviceSelectedExitNode returns the currently selected exit node, or nil if none.
+// The network must be connected so health/latency come from the overlay probe.
+func GetDeviceSelectedExitNode(network, token string) (*models.DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	if !networkLocallyConnected(network) {
+		return nil, ErrNetworkNotConnected
+	}
+	if exitClearedLocally(network) {
+		return nil, nil
+	}
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	resp, err := deviceRequest(http.MethodGet, path, token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var node models.DeviceExitNode
+	if err := decodeDeviceResponse(resp, &node); err != nil {
+		return nil, err
+	}
+	if node.EgressID == "" {
+		return nil, nil
+	}
+	nodes := []models.DeviceExitNode{node}
+	attachExitNodeLatencies(network, nodes)
+	return &nodes[0], nil
+}
+
+// SelectDeviceExitNode selects or clears (empty egressID) the exit node for the device.
+// Switching A→B is not done in one step: clear first (None), then assign. The server
+// rejects a direct switch while RelayedBy still points at the current gateway.
+// Peer/IGW routes are applied by the MQTT peer update; we do not pull here.
+// Selecting an exit requires the network to be connected. Clearing is always allowed.
+func SelectDeviceExitNode(network, token, egressID string) (*models.DeviceExitNode, error) {
+	return selectDeviceExitNode(network, token, egressID, false)
+}
+
+// selectDeviceExitNodeForReconcile re-drives server exit selection from desired
+// state. It allows a brief Connected=false race while a desktop session is
+// active so peer-update flaps cannot permanently block re-select.
+func selectDeviceExitNodeForReconcile(network, token, egressID string) (*models.DeviceExitNode, error) {
+	return selectDeviceExitNode(network, token, egressID, true)
+}
+
+func selectDeviceExitNode(network, token, egressID string, forReconcile bool) (*models.DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	user, tenant := uiapi.SessionIdentity()
+	egressID = strings.TrimSpace(egressID)
+	if egressID != "" && !networkLocallyConnected(network) {
+		if !forReconcile || !uiapi.IsSessionActive() {
+			return nil, ErrNetworkNotConnected
+		}
+		slog.Warn("exit reconcile: network not marked connected; still re-selecting",
+			"network", network)
+	}
+
+	// Persist desired intent BEFORE the server PUT. MQTT peer updates can arrive
+	// immediately; if want_igw is still false a ChangeDefaultGw=false update will
+	// RestoreInternetGw and wipe CurrGw/DNS right after SetInternetGw.
+	if egressID == "" {
+		// Mark before the server PUT so the next GUI poll does not keep showing
+		// the exit the server has not cleared yet.
+		markExitClearedLocally(network)
+		_ = config.ClearDesiredExitNode(user, tenant)
+	} else {
+		forgetExitClearedLocally(network)
+		_ = config.SetDesiredExitNode(user, tenant, network, egressID)
+	}
+
+	beginExitSelect()
+	defer endExitSelect()
+
+	resp, err := putDeviceExitNode(network, token, egressID, false)
+	if err != nil {
+		if egressID != "" {
+			_ = config.ClearDesiredExitNode(user, tenant)
+		}
+		return nil, err
+	}
+	var node models.DeviceExitNode
+	if err := decodeDeviceResponse(resp, &node); err != nil {
+		if egressID != "" {
+			_ = config.ClearDesiredExitNode(user, tenant)
+		}
+		return nil, err
+	}
+	// A non-empty request that comes back empty is a failed assign, not a clear.
+	// Clearing desire + RestoreInternetGwAndDNS here is what tore exit down while
+	// the user still wanted it (reconcile then had to put it back minutes later).
+	if exitAssignUnconfirmed(egressID, node.EgressID) {
+		return nil, fmt.Errorf("server did not assign exit node %s", egressID)
+	}
+	if egressID == "" || strings.TrimSpace(node.EgressID) == "" {
+		_ = config.ClearDesiredExitNode(user, tenant)
+		// Restore LAN routes and OS DNS immediately; MQTT will converge peers next.
+		functions.RestoreInternetGwAndDNS()
+		return nil, nil
+	}
+	_ = config.SetDesiredExitNode(user, tenant, network, node.EgressID)
+	return &node, nil
+}
+
+// exitAssignUnconfirmed is true when we asked for an exit and the server
+// returned none. That must not be treated as a successful clear.
+func exitAssignUnconfirmed(requested, returned string) bool {
+	return strings.TrimSpace(requested) != "" && strings.TrimSpace(returned) == ""
+}
+
+func networkLocallyConnected(network string) bool {
+	if network == "" {
+		return false
+	}
+	node, ok := config.GetNodes()[network]
+	return ok && node.Connected
+}
+
+// SelectNearestDeviceExitNode lists exits, picks the nearest available one, and selects it.
+// Persists auto_exit so session restore re-picks nearest rather than a fixed egress id.
+// Switching A→B clears the current selection first (server rejects direct switch).
+// Requires the network to be connected so ranking uses overlay VPN probes.
+//
+// Waits for ExitOverlayProbeGrace after connect so latency samples are stable.
+// Without this, UI Auto / enforced auto right after tunnel setup ranks on
+// deferred or inflated RTTs and picks the wrong exit.
+func SelectNearestDeviceExitNode(network, token string) (*models.DeviceExitNode, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network is required")
+	}
+	if !networkLocallyConnected(network) {
+		return nil, ErrNetworkNotConnected
+	}
+	functions.WaitExitOverlayProbeGrace(network)
+	nodes, err := ListDeviceExitNodes(network, token)
+	if err != nil {
+		return nil, err
+	}
+	return selectNearestDeviceExitNodeExcluding(network, token, nodes, nil, false)
+}
+
+// selectNearestDeviceExitNodeExcluding picks the nearest exit not in exclude and
+// selects it (clear-first when switching). Callers that already listed nodes
+// pass them in; otherwise pass nil to list.
+//
+// Never ClearDesiredExitNode here: that drops auto_exit/want_igw and races with
+// peer updates / reconcile into "manual + dead exit + ISP routing".
+// forReconcile skips the Connected gate when a desktop session is active.
+func selectNearestDeviceExitNodeExcluding(network, token string, nodes []models.DeviceExitNode, exclude map[string]struct{}, forReconcile bool) (*models.DeviceExitNode, error) {
+	var err error
+	if nodes == nil {
+		nodes, err = listDeviceExitNodes(network, token, !forReconcile)
+		if err != nil {
+			return nil, err
+		}
+	}
+	pick, ok := functions.PickNearestAvailableExitNode(nodes, exclude)
+	if !ok || strings.TrimSpace(pick.EgressID) == "" {
+		return nil, fmt.Errorf("no available exit nodes on network %s", network)
+	}
+	user, tenant := uiapi.SessionIdentity()
+	prevEgress := strings.TrimSpace(config.GetDesiredEgressID(user, tenant))
+	prevNetwork := strings.TrimSpace(config.GetDesiredExitNetwork(user, tenant))
+	if prevNetwork == "" {
+		prevNetwork = network
+	}
+	restoreAutoDesired := func() {
+		_ = config.SetDesiredAutoExitNode(user, tenant, prevNetwork, prevEgress)
+	}
+
+	// Keep auto intent for the whole clear→assign window so MQTT/reconcile do
+	// not treat this as a manual fixed egress (or as exit-off).
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
+
+	// Suppress reconcileDesiredExit for the clear→assign window: the clear
+	// publishes ChangeDefaultGw=false and would otherwise race to re-pick
+	// (historically excluding this desired id and snapping back to the previous exit).
+	beginExitSelect()
+	defer endExitSelect()
+
+	current, err := GetDeviceSelectedExitNode(network, token)
+	if err != nil {
+		slog.Warn("failed to read current exit before auto-select", "network", network, "error", err)
+	}
+	if current != nil && strings.TrimSpace(current.EgressID) != "" && current.EgressID != pick.EgressID {
+		// force=true bypasses auto_select_exit_node's ban on clearing so the
+		// usual clear→assign switch can drop RelayedBy before selecting B.
+		if _, err := putDeviceExitNode(network, token, "", true); err != nil {
+			restoreAutoDesired()
+			return nil, err
+		}
+	}
+	if current == nil || current.EgressID != pick.EgressID {
+		resp, err := putDeviceExitNode(network, token, pick.EgressID, false)
+		if err != nil {
+			restoreAutoDesired()
+			return nil, err
+		}
+		var node models.DeviceExitNode
+		if err := decodeDeviceResponse(resp, &node); err != nil {
+			restoreAutoDesired()
+			return nil, err
+		}
+		if node.EgressID == "" {
+			restoreAutoDesired()
+			return nil, fmt.Errorf("server did not select exit node %s", pick.EgressID)
+		}
+		pick = node
+	}
+	_ = config.SetDesiredAutoExitNode(user, tenant, network, pick.EgressID)
+	return &pick, nil
+}
+
+// DropNetworkExitSelection clears the server exit on one network and leaves the
+// saved exit for any other network in place.
+func DropNetworkExitSelection(network, token string) error {
+	if strings.TrimSpace(network) == "" || strings.TrimSpace(token) == "" {
+		return nil
+	}
+	_, err := putDeviceExitNode(network, token, "", false)
+	return err
+}
+
+func putDeviceExitNode(network, token, egressID string, force bool) ([]byte, error) {
+	return putDeviceExitNodeTimeout(network, token, egressID, force, 0)
+}
+
+func putDeviceExitNodeTimeout(network, token, egressID string, force bool, timeout time.Duration) ([]byte, error) {
+	path := "/api/v1/device/networks/" + url.PathEscape(network) + "/exit_node"
+	return doDeviceRequest(http.MethodPut, path, token, models.DeviceExitNodeSelectionReq{
+		EgressID: egressID,
+		Force:    force,
+	}, true, timeout)
+}
+
+// joinAndMarkConnectedForRestore joins the network if needed and marks it
+// connected without an in-process iface apply. Session restore batches the
+// apply once after every desired network is marked.
+func joinAndMarkConnectedForRestore(network, server, token string) error {
+	if token != "" {
+		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+			return err
+		}
+	}
+	nodes := config.GetNodes()
+	if _, ok := nodes[network]; !ok {
+		if token == "" {
+			return fmt.Errorf("network %s is not joined", network)
+		}
+		status, err := JoinDeviceNetworkOnServer(network, token)
+		if err != nil {
+			return err
+		}
+		if status != "joined" && status != "" {
+			return fmt.Errorf("unexpected join status: %s", status)
+		}
+		if _, _, _, err = functions.Pull(false, true, false); err != nil {
+			return fmt.Errorf("failed to sync after join: %w", err)
+		}
+		if len(config.Netclient().HostPeers) == 0 {
+			if _, _, _, err = functions.Pull(false, true, true); err != nil {
+				logger.Log(0, "restore join", network, "refresh pull:", err.Error())
+			}
+		}
+	}
+	if err := functions.ConnectWithoutRestart(network); err != nil {
+		if err.Error() == "node already connected" {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ConnectNetwork joins (if needed) then connects locally.
+func ConnectNetwork(network, server, token string) error {
+	slog.Debug("ConnectNetwork start",
+		"network", network, "server", server, "token_set", strings.TrimSpace(token) != "",
+		"local", connectDebugLocalNodes())
+	if token != "" {
+		if err := checkDeviceNetworkAccess(network, server, token); err != nil {
+			slog.Debug("ConnectNetwork access check failed", "network", network, "error", err)
+			logger.Log(0, "connect", network, "access check failed:", err.Error())
+			return err
+		}
+		slog.Debug("ConnectNetwork access check ok", "network", network)
+	}
+	nodes := config.GetNodes()
+	if _, ok := nodes[network]; !ok {
+		slog.Debug("ConnectNetwork network not in local map; joining",
+			"network", network, "local", connectDebugLocalNodes())
+		if token == "" {
+			err := fmt.Errorf("network %s is not joined", network)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
+		}
+		status, err := JoinDeviceNetworkOnServer(network, token)
+		if err != nil {
+			slog.Debug("ConnectNetwork join failed", "network", network, "error", err)
+			logger.Log(0, "connect", network, "join failed:", err.Error())
+			return err
+		}
+		slog.Debug("ConnectNetwork join result",
+			"network", network, "status", status, "local_after_join_api", connectDebugLocalNodes())
+		if status != "joined" && status != "" {
+			err := fmt.Errorf("unexpected join status: %s", status)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
+		}
+		pull, _, _, err := functions.Pull(false, true, false)
+		if err != nil {
+			err = fmt.Errorf("failed to sync after join: %w", err)
+			slog.Debug("ConnectNetwork join pull failed", "network", network, "error", err)
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
+		}
+		slog.Debug("ConnectNetwork after join pull",
+			"network", network,
+			"pull.Nodes", connectDebugPullNodes(pull.Nodes),
+			"host.Nodes", pull.Host.Nodes,
+			"local", connectDebugLocalNodes(),
+			"peers", len(config.Netclient().HostPeers))
+		// Fresh join can return before the server peer cache is warm.
+		if len(config.Netclient().HostPeers) == 0 {
+			slog.Debug("ConnectNetwork join pull had 0 peers; refresh pull", "network", network)
+			pull, _, _, err = functions.Pull(false, true, true)
+			if err != nil {
+				logger.Log(0, "connect", network, "refresh pull after join:", err.Error())
+			} else {
+				slog.Debug("ConnectNetwork after join pull refresh",
+					"network", network,
+					"pull.Nodes", connectDebugPullNodes(pull.Nodes),
+					"host.Nodes", pull.Host.Nodes,
+					"local", connectDebugLocalNodes(),
+					"peers", len(config.Netclient().HostPeers))
+			}
+		}
+		if n, ok := config.GetNodes()[network]; ok {
+			slog.Debug("ConnectNetwork after join pull node present",
+				"network", network, "connected", n.Connected, "node_id", n.ID.String(),
+				"local", connectDebugLocalNodes(),
+				"peers", len(config.Netclient().HostPeers))
+		} else {
+			slog.Debug("ConnectNetwork after join pull node still missing",
+				"network", network,
+				"local", connectDebugLocalNodes(),
+				"pull.Nodes", connectDebugPullNodes(pull.Nodes),
+				"host.Nodes", pull.Host.Nodes)
+		}
+	} else {
+		slog.Debug("ConnectNetwork network already in local map",
+			"network", network, "connected", nodes[network].Connected,
+			"node_id", nodes[network].ID.String(),
+			"peers", len(config.Netclient().HostPeers))
+	}
+	_, inLocal := config.GetNodes()[network]
+	slog.Debug("ConnectNetwork calling Connect",
+		"network", network, "in_local", inLocal, "local", connectDebugLocalNodes())
+	if err := functions.Connect(network); err != nil {
+		// Connect(restart=true) now applies peers when already connected; this
+		// branch is only for ConnectWithoutRestart-style callers / races.
+		if err.Error() == "node already connected" {
+			slog.Debug("ConnectNetwork already-connected fallback apply",
+				"network", network, "peers", len(config.Netclient().HostPeers))
+			if applyErr := functions.ApplyConnectionChange("connect"); applyErr != nil {
+				return applyErr
+			}
+			return nil
+		}
+		slog.Debug("ConnectNetwork Connect failed",
+			"network", network, "error", err, "local", connectDebugLocalNodes())
+		return err
+	}
+	slog.Debug("ConnectNetwork Connect ok",
+		"network", network, "peers", len(config.Netclient().HostPeers))
+	return nil
+}
+
+func checkDeviceNetworkAccess(network, server, token string) error {
+	nets, err := FetchDeviceNetworks(server, token)
+	if err != nil {
+		return err
+	}
+	for _, n := range nets {
+		if n.NetworkID != network {
+			continue
+		}
+		if n.Status == "blocked" {
+			return ErrDeviceBlocked
+		}
+		if n.Status == "jit_required" || (n.JITAppliesToUser && !n.HasJITAccess) {
+			return ErrJITAccessRequired
+		}
+		return nil
+	}
+	return nil
+}
+
+func connectDebugLocalNodes() string {
+	nodes := config.GetNodes()
+	parts := make([]string, 0, len(nodes))
+	for name, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", name, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
+}
+
+func connectDebugPullNodes(nodes []models.Node) string {
+	parts := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		parts = append(parts, fmt.Sprintf("%s(conn=%v,id=%s)", n.Network, n.Connected, n.ID.String()))
+	}
+	return fmt.Sprintf("%d%v", len(nodes), parts)
+}

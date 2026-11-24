@@ -19,6 +19,7 @@ var connectCmd = &cobra.Command{
 For example:
 
 netclient connect my-network-name`,
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			fmt.Println("\nPlease specify the network name as the argument. For example: netclient connect my-network-name")

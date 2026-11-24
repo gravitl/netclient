@@ -390,8 +390,8 @@ func stopTCPServerLocked() {
 
 // maybeRestartForTCPUplink flips userspace↔kernel/NT WireGuard when TCP uplink
 // enablement changes. Does an in-process iface recreate (not daemon.Restart):
-// on Windows, Restart() is a full WinSW service stop/start and commonly costs
-// ~1 minute before peers can handshake again.
+// a full daemon soft reset is heavier than an iface flip, and HardRestart on
+// Windows still costs a WinSW cycle before peers can handshake again.
 // TcpProxyListenPort-only changes return false so callers reconcile the TCP
 // server without recreating the WireGuard iface.
 func maybeRestartForTCPUplink() bool {
@@ -448,14 +448,10 @@ func flipTCPUplinkWireGuardMode() {
 	wireguard.ReapplyInternetGwAfterIfaceRecreate()
 
 	server := config.GetServer(config.CurrServer)
-	if server == nil {
-		return
+	if server != nil {
+		reconcileTCPUplink(server, nil)
 	}
-	reconcileTCPUplink(server, nil)
-	if server.ManageDNS {
-		dns.GetDNSServerInstance().Stop()
-		dns.GetDNSServerInstance().Start()
-	}
+	dns.ReconfigureNow(server)
 	select {
 	case wireguard.EgressResetCh <- struct{}{}:
 	default:

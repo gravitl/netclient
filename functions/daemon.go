@@ -30,6 +30,7 @@ import (
 	"github.com/gravitl/netclient/local"
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/networking"
+	"github.com/gravitl/netclient/sshserver"
 	"github.com/gravitl/netclient/stun"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/logger"
@@ -61,20 +62,46 @@ type cachedMessage struct {
 // Daemon runs netclient daemon
 func Daemon() {
 	slog.Info("starting netclient daemon", "version", config.Version)
+	// Distinct marker so a copied Windows binary can be verified in winsw/console logs.
+	slog.Debug("build marker: connect-disconnect skips host pull (NM-356)")
 	daemon.SetDaemonMode()
+	if daemon.MigrateWindowsService() {
+		logger.Log(0, "windows service retargeted; exiting so Program Files can start")
+		return
+	}
 	daemon.RemoveAllLockFiles()
 	if err := ncutils.SavePID(); err != nil {
 		slog.Error("unable to save PID on daemon startup", "error", err)
 		os.Exit(1)
 	}
-	if err := local.SetIPForwarding(); err != nil {
-		slog.Warn("unable to set IPForwarding", "error", err)
+	if !IsDesktopBuild() {
+		if err := local.SetIPForwarding(); err != nil {
+			slog.Warn("unable to set IPForwarding", "error", err)
+		}
 	}
 	wg := sync.WaitGroup{}
 	quit := make(chan os.Signal, 1)
 	reset := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
 	signal.Notify(reset, syscall.SIGHUP)
+
+	uiapiCtx, uiapiCancel := context.WithCancel(context.Background())
+	defer uiapiCancel()
+	// Desktop builds register StartUIAPI; headless leaves it nil (no :61820).
+	if GUI.StartUIAPI != nil {
+		GUI.StartUIAPI(uiapiCtx)
+	}
+
+	inProcessReset := make(chan chan struct{}, 1)
+	daemon.SetInProcessReset(func(done chan struct{}) {
+		select {
+		case inProcessReset <- done:
+		default:
+			if done != nil {
+				close(done)
+			}
+		}
+	})
 
 	cancel := startGoRoutines(&wg)
 
@@ -89,29 +116,43 @@ func Daemon() {
 			closeRoutines([]context.CancelFunc{
 				cancel,
 			}, &wg)
+			if GUI.StopUIAPI != nil {
+				if err := GUI.StopUIAPI(); err != nil {
+					slog.Warn("uiapi: error stopping desktop API", "error", err)
+				}
+			}
 			config.FwClose()
 			slog.Info("shutdown complete")
 			return
 		case <-reset:
 			slog.Debug("daemon received RESET (SIGHUP)")
-			slog.Info("received reset")
-			dns.GetDNSServerInstance().Stop()
-			_ = flow.GetManager().Stop()
-			config.FwClose()
-			//check if it needs to restore the default gateway
-			checkAndRestoreDefaultGateway()
-			// checkAndRestoreDefaultGateway only stops the IGW monitor when the
-			// restore succeeds; keep health checks off across the whole rebuild.
-			rebuilt := wireguard.BeginIfaceRebuild()
-			closeRoutines([]context.CancelFunc{
-				cancel,
-			}, &wg)
-			slog.Info("resetting daemon")
-			slog.Debug("daemon starting startGoRoutines after reset")
-			cancel = startGoRoutines(&wg)
-			rebuilt()
+			cancel = resetDaemonInProcess(cancel, &wg)
+		case done := <-inProcessReset:
+			logger.Log(0, "daemon in-process reset")
+			cancel = resetDaemonInProcess(cancel, &wg)
+			if done != nil {
+				close(done)
+			}
 		}
 	}
+}
+
+// resetDaemonInProcess rebuilds daemon goroutines without exiting, so the
+// desktop API keeps serving the GUI during first-time registration.
+func resetDaemonInProcess(cancel context.CancelFunc, wg *sync.WaitGroup) context.CancelFunc {
+	slog.Info("received reset")
+	dns.GetDNSServerInstance().Stop()
+	_ = flow.GetManager().Stop()
+	config.FwClose()
+	checkAndRestoreDefaultGateway()
+	rebuilt := wireguard.BeginIfaceRebuild()
+	closeRoutines([]context.CancelFunc{
+		cancel,
+	}, wg)
+	slog.Info("resetting daemon")
+	cancel = startGoRoutines(wg)
+	rebuilt()
+	return cancel
 }
 
 // checkAndRestoreDefaultGateway - tear down IGW routes before a daemon reset.
@@ -119,6 +160,7 @@ func checkAndRestoreDefaultGateway() {
 	if len(config.Netclient().CurrGwNmIP) == 0 && len(config.Netclient().CurrGwNmIP6) == 0 {
 		return
 	}
+	logger.Log(0, "tearing down internet gateway (daemon reset)")
 	if err := wireguard.RestoreInternetGw(); err != nil {
 		slog.Error("error restoring default gateway", "error", err.Error())
 	}
@@ -142,7 +184,10 @@ func closeRoutines(closers []context.CancelFunc, wg *sync.WaitGroup) {
 	networking.ClearPeerInfoCache()
 	cache.EndpointCache = sync.Map{}
 	cache.SkipEndpointCache = sync.Map{}
-	cache.EgressRouteCache = sync.Map{}
+	cache.EgressRouteCache.Range(func(key, _ any) bool {
+		cache.EgressRouteCache.Delete(key)
+		return true
+	})
 	signalThrottleCache = sync.Map{}
 	slog.Info("closing netmaker interface")
 	listenPort := 0
@@ -182,6 +227,8 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if err := config.ReadServerConf(); err != nil {
 		slog.Warn("error reading server map from disk", "error", err)
 	}
+	// Seed last-known API/broker IPs for underlay pins + scoped DNS fallback.
+	config.SeedControlPlaneEndpointsFromServers()
 	// initialize firewall manager
 	var err error
 	config.FwClose, err = firewall.Init()
@@ -191,17 +238,29 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	updateConfig := false
 
 	config.SetServerCtx()
-	server := config.GetServer(config.CurrServer)
+	if GUI.RefreshUIAPI != nil {
+		GUI.RefreshUIAPI()
+	}
+	server, serverName := config.ResolveServer(config.CurrServer)
 	if server == nil {
 		server = &config.Server{}
 		server.Stun = true
 		server.StunServers = ""
+	} else if serverName != config.CurrServer {
+		config.CurrServer = serverName
+		_ = config.SetCurrServerCtxInFile(serverName)
 	}
 
 	if server.Stun && server.StunServers != "" {
 		stun.LoadStunServers(server.StunServers)
 	} else {
 		stun.SetDefaultStunServers()
+	}
+	// Resolve control-plane IPs while system DNS still works (before exit).
+	if server != nil && (server.API != "" || server.Broker != "") {
+		if config.RefreshControlPlaneEndpoints(server) {
+			_ = config.WriteServerConfig()
+		}
 	}
 	netclientCfg := config.Netclient()
 
@@ -212,8 +271,13 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	slog.Info("configuring netmaker wireguard interface")
 	var pullresp models.HostPull
 	var pullErr error
-	if server != nil && server.API != "" {
-		pullresp, _, _, pullErr = Pull(false, true)
+	// Partial Desktop entries (POST /server) have API but are not enrolled —
+	// skip Pull until register/login sets Server and/or TenantID.
+	if config.IsRegistered() && server != nil && server.API != "" {
+		// refresh=true: recompute host peer cache on startup.
+		// reset_failovered=false: keep existing auto-relay peer connections
+		// (explicit clear via pull --reset-connections / tray Sync).
+		pullresp, _, _, pullErr = Pull(false, false, true)
 		if pullErr != nil {
 			slog.Error("fail to pull config from server", "error", pullErr.Error())
 		}
@@ -250,8 +314,20 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	// Hole punch only when at least one of endpoint/port is dynamic. Apply STUN
 	// results independently: static endpoint keeps configured IPs; static port
 	// keeps ListenPort as the public port (already set above).
-	needEndpointUpdate := !netclientCfg.IsStatic
-	needPortUpdate := !netclientCfg.IsStaticPort
+	// Relayed hosts reach peers through the relay, so their own public
+	// endpoint is unused: skip STUN and public IP detection.
+	relayed := isRelayedOnSingleNetwork()
+	needEndpointUpdate := !netclientCfg.IsStatic && !relayed
+	needPortUpdate := !netclientCfg.IsStaticPort && !relayed
+	if relayed {
+		slog.Info("host is relayed, skipping stun and public ip detection")
+		if netclientCfg.EndpointIP != nil {
+			config.HostPublicIP = netclientCfg.EndpointIP
+		}
+		if netclientCfg.EndpointIPv6 != nil {
+			config.HostPublicIP6 = netclientCfg.EndpointIPv6
+		}
+	}
 	if needEndpointUpdate || needPortUpdate {
 		pubIP4, pubPort4, natType4 := holePunchWgPort(4, netclientCfg.ListenPort)
 		pubIP6, pubPort6, natType6 := holePunchWgPort(6, netclientCfg.ListenPort)
@@ -347,6 +423,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 	_ = prepareTCPUplinkWireGuard(false)
 
+	// Re-apply last connected networks after Pull so logout-cleared server
+	// state does not keep the iface down across reboot / daemon reset.
+	// Headless startup has no desktop session and does nothing here.
+	callApplyStartupConnections()
+	if server != nil && server.API != "" {
+		pullresp, pullErr = callRefreshHostPullAfterReconnect(pullresp, pullErr)
+		if pullErr != nil {
+			slog.Error("fail to refresh config after reconnect", "error", pullErr.Error())
+		}
+	}
+
 	nc := wireguard.NewNCIface(netclientCfg, config.GetNodes())
 	if err := nc.Create(); err != nil {
 		slog.Error("error creating netclient interface", "error", err)
@@ -355,21 +442,34 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		slog.Error("error configuring netclient interface", "error", err)
 	}
 	wireguard.SetPeers(true)
-	if len(pullresp.EgressRoutes) > 0 {
-		wireguard.SetEgressRoutes(pullresp.EgressRoutes)
-		wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
+	if config.AnyNodeConnected() {
+		if len(pullresp.EgressRoutes) > 0 {
+			wireguard.SetEgressRoutes(pullresp.EgressRoutes)
+			wireguard.SetEgressRoutesInCache(pullresp.EgressRoutes)
+		} else {
+			wireguard.RemoveEgressRoutes()
+		}
+		applyInternetGwAfterReconnect(pullresp, pullErr)
 	} else {
 		wireguard.RemoveEgressRoutes()
+		restoreInternetGwAndDNS()
 	}
 	setAutoRelayNodes(pullresp.AutoRelayNodes, pullresp.GwNodes, pullresp.Nodes)
-	if pullErr == nil && pullresp.EndpointDetection {
+	if pullErr == nil && pullresp.ServerConfig.EndpointDetection {
 		go handleEndpointDetection(pullresp.Peers, pullresp.HostNetworkInfo)
 	} else {
 		cache.EndpointCache = sync.Map{}
 		cache.SkipEndpointCache = sync.Map{}
 	}
 	server = config.GetServer(config.CurrServer)
-	if server == nil {
+	// GetServer is non-nil for Desktop partial Settings entries; require
+	// enrollment (Server and/or TenantID) before MQTT/check-in/mqFallback.
+	if server == nil || !config.IsRegisteredToServer(config.CurrServer) {
+		if server == nil {
+			slog.Info("no server configured; skipping daemon network routines")
+		} else {
+			slog.Info("server not enrolled; skipping daemon network routines", "server", config.CurrServer)
+		}
 		return cancel
 	}
 	logger.Log(1, "started daemon for server ", server.Name)
@@ -382,43 +482,17 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	if proxyuplink.ActiveServer() != nil {
 		proxyuplink.RefreshTCPPeerRoutes()
 	}
-	// set original default gw info
-
-	// check if default gw needs to be set
-	if pullErr == nil {
-		if pullresp.ChangeDefaultGw {
-			gw4, gw6 := wireguard.NormalizeIGWNexthops(pullresp.DefaultGwIp, pullresp.DefaultGwIp6)
-			if !wireguard.GetIGWMonitor().IsCurrentIGW(gw4, gw6) {
-				igw, ok := wireguard.FindInternetGwPeer(pullresp.Peers, gw4, gw6)
-				if !ok {
-					slog.Warn("internet gateway peer not found in peer update; skipping default gateway setup")
-				} else {
-					// unlikely that the gwIP is netmaker IP, but still
-					// reset the igw.
-					_ = wireguard.RestoreInternetGw()
-
-					err = wireguard.SetInternetGw(igw.PublicKey.String(), gw4, gw6)
-					if err != nil {
-						slog.Warn("failed to set inet gw", "error", err)
-					}
-				}
-			}
-		}
-	}
 
 	wg.Add(1)
 	go messageQueue(ctx, wg, server)
 	wg.Add(1)
 	go Checkin(ctx, wg)
 	networking.InitialiseIfaceMetricsServer(ctx, wg)
+	wg.Add(1)
+	go watchPeerConnections(ctx, wg)
 	if server.IsPro {
 		wg.Add(1)
-		go watchPeerConnections(ctx, wg)
-		wg.Add(1)
 		go wireguard.StartEgressHAFailOverThread(ctx, wg)
-	} else {
-		wg.Add(1)
-		go networking.CheckPeerEndpoints(ctx, wg)
 	}
 	wg.Add(1)
 	go mqFallback(ctx, wg)
@@ -429,11 +503,18 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 	}
 
 	if server.ManageDNS {
-		if dns.GetDNSServerInstance().AddrStr == "" {
+		if dns.GetDNSServerInstance().ListenerAddr() == "" {
 			dns.GetDNSServerInstance().Start()
 		}
 	} else {
 		dns.GetDNSServerInstance().Stop()
+	}
+	if pullresp.Host.ManageSSH {
+		if err := sshserver.GetManager().Start(pullresp.AddressIdentityMap, pullresp.SshAuthorizedIdentities); err != nil {
+			slog.Error("[sshserver] failed to start", "error", err)
+		}
+	} else {
+		_ = sshserver.GetManager().Stop()
 	}
 	go func() {
 		time.Sleep(time.Second * 45)
@@ -526,13 +607,14 @@ func setupMQTT(server *config.Server) error {
 // should be called for each server host is registered on.
 func setHostSubscription(client mqtt.Client, server string) {
 	hostID := config.Netclient().ID
+	server = config.NormalizeServerHost(server)
+	peerTopic := fmt.Sprintf("peers/host/%s/%s", hostID.String(), server)
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
-	//clearRetainedMsg(client, fmt.Sprintf("peers/host/%s/%s", hostID.String(), server))
-	if token := client.Subscribe(fmt.Sprintf("peers/host/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
+	slog.Debug("subscribing to host peer updates", "host", hostID, "server", server, "topic", peerTopic)
+	if token := client.Subscribe(peerTopic, 0, mqtt.MessageHandler(HostPeerUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host peer updates", "host", hostID, "server", server, "error", token.Error())
 		return
 	}
-	//clearRetainedMsg(client, fmt.Sprintf("host/update/%s/%s", hostID.String(), server))
 	slog.Info("subscribing to host updates for", "host", hostID, "server", server)
 	if token := client.Subscribe(fmt.Sprintf("host/update/%s/%s", hostID.String(), server), 0, mqtt.MessageHandler(HostUpdate)); token.Wait() && token.Error() != nil {
 		slog.Error("unable to subscribe to host updates", "host", hostID, "server", server, "error", token.Error())
@@ -558,6 +640,7 @@ func setSubscriptions(client mqtt.Client, node *config.Node) {
 // setDNSSubscriptions sets MQ client subscriptions for a specific node config
 // should be called for each node belonging to a given server
 func setDNSSubscriptions(client mqtt.Client, node *config.Node, server string) {
+	server = config.NormalizeServerHost(server)
 	if token := client.Subscribe(fmt.Sprintf("host/dns/sync/%s/%s", node.Network, server), 0, mqtt.MessageHandler(DNSSync)); token.WaitTimeout(MQ_TIMEOUT*time.Second) && token.Error() != nil {
 		if token.Error() == nil {
 			slog.Error("unable to subscribe to DNS sync for node ", "node", node.ID, "error", "connection timeout")
@@ -626,6 +709,9 @@ func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
 
 	// Separate nonce and ciphertext
 	nonceSize := aesGCM.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short: %d bytes", len(ciphertext))
+	}
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
 
 	// Decrypt the data
@@ -635,6 +721,55 @@ func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
 	}
 
 	return plaintext, nil
+}
+
+// deriveTrafficKey computes the AES-256 key shared with server, derived via
+// ECDH between this host's private traffic key and the server's public one.
+func deriveTrafficKey(server *config.Server) ([]byte, error) {
+	hostPrivKey, err := ncutils.ConvertBytesToKey(config.Netclient().TrafficKeyPrivate)
+	if err != nil {
+		return nil, err
+	}
+	serverPubKey, err := ncutils.ConvertBytesToKey(server.TrafficKey)
+	if err != nil {
+		return nil, err
+	}
+	return DeriveSharedKey(hostPrivKey, serverPubKey)
+}
+
+// decryptServerMsg decrypts a message published by serverName, trying each
+// scheme the server may have used to encrypt it, newest first:
+//  1. AES-GCM with a key derived via ECDH (current servers).
+//  2. AES-GCM with the host's raw public key as the key (servers on
+//     v0.30.0-v1.7.x -- kept only until such servers are upgraded; this
+//     legacy scheme provides no real confidentiality, since the "key" is
+//     public).
+//  3. The original nacl-box/chunk scheme (servers older than v0.30.0).
+//
+// AES-GCM's authentication tag makes a wrong-key attempt fail cleanly rather
+// than returning garbage, so trying schemes in order is safe.
+func decryptServerMsg(serverName string, payload []byte) ([]byte, error) {
+	server := config.GetServer(serverName)
+	if server == nil {
+		return nil, fmt.Errorf("server config is nil for %s", serverName)
+	}
+
+	key, keyErr := deriveTrafficKey(server)
+	if keyErr != nil {
+		slog.Warn("could not derive ECDH traffic key, falling back to legacy decrypt schemes", "server", serverName, "error", keyErr)
+	} else if data, err := decryptAESGCM(key, payload); err == nil {
+		return unzipPayload(data)
+	}
+
+	trafficKeyPublic := config.Netclient().TrafficKeyPublic
+	if len(trafficKeyPublic) < 32 {
+		slog.Warn("traffic public key is too short to use for legacy decrypt", "length", len(trafficKeyPublic))
+	} else if data, err := decryptAESGCM(trafficKeyPublic[0:32], payload); err == nil {
+		slog.Debug("decrypted server message with legacy public-key-as-AES-key scheme; server has not upgraded past the vulnerable v0.30.0-v1.7.x scheme", "server", serverName)
+		return unzipPayload(data)
+	}
+
+	return decryptMsg(serverName, payload)
 }
 
 func read(network, which string) string {
@@ -736,6 +871,13 @@ func publicIPForProto(ip net.IP, proto int) net.IP {
 		return nil
 	}
 	return ip
+}
+
+// isRelayedOnSingleNetwork returns true when the host is connected to exactly one network
+// and its node in that network is relayed.
+func isRelayedOnSingleNetwork() bool {
+	active := config.GetConnectedNodes()
+	return len(active) == 1 && active[0].IsRelayed && active[0].RelayedBy != ""
 }
 
 func holePunchWgPort(proto, portToStun int) (pubIP net.IP, pubPort int, natType string) {

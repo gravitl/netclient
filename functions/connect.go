@@ -3,13 +3,113 @@ package functions
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
+	"github.com/gravitl/netclient/dns"
+	"github.com/gravitl/netclient/wireguard"
+	"github.com/gravitl/netmaker/logger"
 )
 
 // Disconnect disconnects a node from the given network
 func Disconnect(network string) error {
+	return disconnectNetwork(network, true, true)
+}
+
+// Connect will attempt to connect a node on given network
+func Connect(network string) error {
+	return connectNetwork(network, true)
+}
+
+func connectNetwork(network string, restart bool) error {
+	nodes := config.GetNodes()
+	node, ok := nodes[network]
+	if !ok {
+		keys := make([]string, 0, len(nodes))
+		for k := range nodes {
+			keys = append(keys, k)
+		}
+		slog.Debug("connectNetwork no such network",
+			"network", network, "local_count", len(nodes), "local_networks", keys)
+		err := errors.New("no such network")
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
+	}
+	// Join Pull + reassertDesired often marks Connected=true before Connect
+	// runs. Treat that as "ensure applied" when restart is requested so peers
+	// hit the WireGuard device (tenant switch / first join after reset).
+	if node.Connected {
+		slog.Debug("connectNetwork already connected",
+			"network", network, "restart", restart,
+			"peers_cached", len(config.Netclient().HostPeers))
+		callRememberDesiredConnection(network)
+		if !restart {
+			return errors.New("node already connected")
+		}
+		if err := PublishNodeUpdate(&node); err != nil {
+			logger.Log(0, "connect", network, "publish while already connected:", err.Error())
+		}
+		token := callPrepareDesktopConnect(network)
+		slog.Debug("connectNetwork already connected; applying peers/iface",
+			"network", network, "peers_cached", len(config.Netclient().HostPeers))
+		if err := ApplyConnectionChange("connect"); err != nil {
+			logger.Log(0, "connect", network, "failed:", err.Error())
+			return err
+		}
+		NoteExitOverlayConnected(network)
+		go callFinishDesktopConnect(network, token)
+		return nil
+	}
+	slog.Debug("connectNetwork marking connected",
+		"network", network, "restart", restart,
+		"peers_cached", len(config.Netclient().HostPeers))
+	token := callPrepareDesktopConnect(network)
+	node.Connected = true
+	config.UpdateNodeMap(node.Network, node)
+	NoteExitOverlayConnected(network)
+	if err := config.WriteNodeConfig(); err != nil {
+		err = fmt.Errorf("error writing node config %w", err)
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
+	}
+	callRememberDesiredConnection(network)
+	if err := PublishNodeUpdate(&node); err != nil {
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
+	}
+	if !restart {
+		// Auto-exit ranking probes the overlay; do not hold connect on that.
+		slog.Debug("connectNetwork skipping apply (restart=false)", "network", network)
+		go callFinishDesktopConnect(network, token)
+		return nil
+	}
+	slog.Debug("connectNetwork applying connection change", "network", network)
+	if err := ApplyConnectionChange("connect"); err != nil {
+		logger.Log(0, "connect", network, "failed:", err.Error())
+		return err
+	}
+	go callFinishDesktopConnect(network, token)
+	return nil
+}
+
+// ApplyConnectionChange brings the live interface in line with the new node set
+// without bouncing the daemon, falling back to a restart only if that fails.
+func ApplyConnectionChange(op string) error {
+	wantIGW := op != "disconnect" && callDesktopWantsIGW()
+	if err := applyConnectionChangeInProcess(wantIGW); err != nil {
+		slog.Debug("in-process apply failed; falling back to daemon soft restart", "op", op, "error", err)
+		if err := daemon.Restart(); err != nil {
+			if err := daemon.Start(); err != nil {
+				return fmt.Errorf("daemon restart failed %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func disconnectNetwork(network string, restart, forgetDesired bool) error {
 	nodes := config.GetNodes()
 	node, ok := nodes[network]
 	if !ok {
@@ -23,40 +123,80 @@ func Disconnect(network string) error {
 	if err := config.WriteNodeConfig(); err != nil {
 		return fmt.Errorf("error writing node config %w", err)
 	}
-	if err := PublishNodeUpdate(&node); err != nil {
-		return err
+	if forgetDesired {
+		callForgetDesiredConnection(network)
+		// Keep exit-node selection (desired + server). Disconnect only drops local
+		// IGW routes/DNS below; reconnect/session restore re-applies exit.
 	}
-	if err := daemon.Restart(); err != nil {
-		fmt.Println("daemon restart failed", err)
-		if err := daemon.Start(); err != nil {
-			fmt.Println("daemon failed to start", err)
+
+	lastNetwork := !config.AnyNodeConnected()
+	hadIGW := wireguard.IGWRoutingActive()
+
+	// Tear down exit routes before publish. With 0.0.0.0/1 still diverting
+	// through the exit, the host-update HTTP call often stalls until the 5s
+	// PublishNodeUpdateOnce budget — most of the "disconnect with exit is
+	// slow" complaint on Windows.
+	if lastNetwork {
+		_ = wireguard.SetPeers(true)
+		if hadIGW {
+			restoreInternetGwAndDNS()
 		}
 	}
-	return nil
+
+	done := logElapsed("disconnect node update publish")
+	// One short attempt. The default client retries for about a minute, and
+	// that wait is what made logout with an exit selected feel stuck after
+	// the routes were already restored.
+	_ = PublishNodeUpdateOnce(&node, 5*time.Second)
+	done()
+
+	if lastNetwork {
+		if !hadIGW {
+			dns.ScheduleReconfigure()
+		}
+		if !restart {
+			return nil
+		}
+		// Peers/IGW/DNS already handled above. Skip full connection-change
+		// (would re-drive want_igw against an empty pull ~10s), but still flush
+		// iface addresses so proto-kernel overlay routes drop with the addr.
+		logger.Log(0, "disconnect: last network; flushing iface addrs, skipping full connection-change rebuild")
+		flushIfaceAfterDisconnect()
+		dns.SyncForNodeChange()
+		dns.ScheduleReconfigure()
+		return nil
+	}
+
+	if !restart {
+		// Other networks are still up, so the iface is not rebuilt below.
+		// Drop this network's listener and refresh OS DNS anyway.
+		dns.ReconfigureNow(config.GetServer(node.Server))
+		return nil
+	}
+	return ApplyConnectionChange("disconnect")
 }
 
-// Connect will attempt to connect a node on given network
-func Connect(network string) error {
-	nodes := config.GetNodes()
-	node, ok := nodes[network]
-	if !ok {
-		return errors.New("no such network")
+// flushIfaceAfterDisconnect removes addresses/routes for networks that are no
+// longer connected (including clearing the iface when none remain).
+func flushIfaceAfterDisconnect() {
+	wireguard.RemoveEgressRoutes()
+	wireguard.SetEgressRoutesInCache(nil)
+	if err := wireguard.NewNCIface(config.Netclient(), config.GetNodes()).Configure(); err != nil {
+		logger.Log(0, "disconnect: failed to flush netmaker iface addrs:", err.Error())
+		return
 	}
-	if node.Connected {
-		return errors.New("node already connected")
-	}
-	node.Connected = true
-	config.UpdateNodeMap(node.Network, node)
-	if err := config.WriteNodeConfig(); err != nil {
-		return fmt.Errorf("error writing node config %w", err)
-	}
-	if err := PublishNodeUpdate(&node); err != nil {
-		return err
-	}
-	if err := daemon.Restart(); err != nil {
-		if err := daemon.Start(); err != nil {
-			return fmt.Errorf("daemon restart failed %w", err)
-		}
-	}
-	return nil
+	wireguard.InvalidateEgressRouteCache()
+}
+
+// ConnectWithoutRestart marks the network connected and publishes the update
+// without rebuilding the daemon. Desktop session restore uses this.
+func ConnectWithoutRestart(network string) error {
+	return connectNetwork(network, false)
+}
+
+// DisconnectWithoutRestart marks the network disconnected without a daemon
+// restart. forgetDesired clears the desktop user's desired-connection record
+// when that hook is registered.
+func DisconnectWithoutRestart(network string, forgetDesired bool) error {
+	return disconnectNetwork(network, false, forgetDesired)
 }

@@ -63,7 +63,7 @@ func CheckUID() {
 	// Install directory — LOAD_LIBRARY_SEARCH_APPLICATION_DIR finds it here for the
 	// installed binary. Keyed to the install path rather than the running
 	// executable so ad-hoc runs do not drop a DLL wherever they happen to start.
-	ensureDLL(filepath.Join(GetNetclientPath(), "wintun.dll"), wintunData, "Wintun driver")
+	ensureDLL(filepath.Join(GetNetclientInstallDir(), "wintun.dll"), wintunData, "Wintun driver")
 
 	logger.Log(1, "finished checking for WireGuard / Wintun drivers!")
 }

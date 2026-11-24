@@ -51,10 +51,11 @@ func init() {
 
 // leaveServerCmd represents the serverleave command
 var leaveServerCmd = &cobra.Command{
-	Use:   "leave [servername]",
-	Short: "leave a server",
-	Long:  `leave the specified server`,
-	Args:  cobra.ExactArgs(1),
+	Use:     "leave [servername]",
+	Short:   "leave a server",
+	Long:    `leave the specified server`,
+	Args:    cobra.ExactArgs(1),
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := functions.LeaveServer(args[0]); err != nil {
 			fmt.Println(err.Error())
@@ -76,10 +77,11 @@ var listServersCmd = &cobra.Command{
 
 // switchServerCmd represents the serverswitch command
 var switchServerCmd = &cobra.Command{
-	Use:   "switch [servername]",
-	Short: "switch to a server",
-	Long:  `switch to the named server`,
-	Args:  cobra.ExactArgs(1),
+	Use:     "switch [servername]",
+	Short:   "switch to a server",
+	Long:    `switch to the named server`,
+	Args:    cobra.ExactArgs(1),
+	PreRunE: refuseIfDesktopSession,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := functions.SwitchServer(args[0]); err != nil {
 			fmt.Println(err.Error())

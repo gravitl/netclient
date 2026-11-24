@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/gravitl/netmaker/releases">
-    <img src="https://img.shields.io/badge/Version-1.7.0-informational?style=flat-square" />
+    <img src="https://img.shields.io/badge/Version-1.8.0-informational?style=flat-square" />
   </a>
   <a href="https://hub.docker.com/r/gravitl/netclient/tags">
     <img src="https://img.shields.io/docker/pulls/gravitl/netclient?label=downloads" />
@@ -32,12 +32,6 @@ This is the client for Netmaker networks. To learn more about Netmaker, [see her
 
 With Token:
 `netclient join -t <token>`
-
-With User (Basic Auth):
-`netclient join -n <net name> -u <username> -s api.<netmaker domain>`
-
-With User (SSO):
-`netclient join -n <net name> -s api.<netmaker domain>`
 
 ## Interface Exclusion
 

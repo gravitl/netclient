@@ -2,7 +2,6 @@ package networking
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"github.com/gravitl/netclient/ncutils"
 	"github.com/gravitl/netclient/wireguard"
 	"github.com/gravitl/netmaker/models"
-	"github.com/gravitl/netmaker/schema"
 	"github.com/gravitl/netmaker/scope"
 	"golang.org/x/exp/slog"
 )
@@ -28,8 +26,6 @@ var (
 	PeerConnectionCheckInterval = time.Second * 15
 	// LastHandShakeThreshold - threshold for considering inactive connection
 	LastHandShakeThreshold = time.Minute * 3
-	//
-	PeerLocalEndpointConnTicker *time.Ticker
 
 	peerInfoCache   models.HostPeerInfo
 	peerInfoCacheMu sync.RWMutex
@@ -84,6 +80,9 @@ func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int
 	if wireguard.ShouldSkipEndpointDetection(peerPubKey) {
 		return
 	}
+	if ip := net.ParseIP(peerIp); wireguard.IsMeshRoutedEndpointIP(ip, wireguard.HostPeerAllowedIPs()) {
+		return
+	}
 	connected := tryLocalConnect(peerIp, peerPubKey, metricsPort)
 	if connected {
 		addr := net.JoinHostPort(peerIp, fmt.Sprintf("%d", peerListenPort))
@@ -106,61 +105,6 @@ func FindBestEndpoint(peerIp, peerPubKey string, peerListenPort, metricsPort int
 	}
 }
 
-func CheckPeerEndpoints(ctx context.Context, waitg *sync.WaitGroup) {
-	defer waitg.Done()
-	PeerLocalEndpointConnTicker = time.NewTicker(PeerConnectionCheckInterval)
-	defer PeerLocalEndpointConnTicker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("exiting peer connection watcher")
-			return
-		case <-PeerLocalEndpointConnTicker.C:
-			go func() {
-				nodes := config.GetNodes()
-				if len(nodes) == 0 {
-					return
-				}
-				peerInfo, err := GetPeerInfo()
-				if err != nil {
-					slog.Error("failed to get peer info", "error", err)
-					return
-				}
-				devicePeerMap, err := wireguard.GetPeersFromDevice(ncutils.GetInterfaceName())
-				if err != nil {
-					slog.Debug("failed to get peers from device: ", "error", err)
-					return
-				}
-				for _, node := range nodes {
-					if node.Server != config.CurrServer {
-						continue
-					}
-					peers, ok := peerInfo.NetworkPeerIDs[schema.NetworkID(node.Network)]
-					if !ok {
-						continue
-					}
-
-					for pubKey, peer := range peers {
-						if peer.IsExtClient {
-							continue
-						}
-						devicePeer, ok := devicePeerMap[pubKey]
-						if !ok {
-							continue
-						}
-						// check if local endpoint is present
-						localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey)
-						if ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
-							SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
-						}
-					}
-				}
-			}()
-
-		}
-	}
-}
-
 // GetPeerInfo returns cached HostPeerInfo. If cache is empty, fetches from server and populates it.
 func GetPeerInfo() (models.HostPeerInfo, error) {
 	peerInfoCacheMu.RLock()
@@ -170,7 +114,9 @@ func GetPeerInfo() (models.HostPeerInfo, error) {
 	}
 	peerInfoCacheMu.RUnlock()
 
-	RefreshPeerInfoCache()
+	if err := RefreshPeerInfoCache(); err != nil {
+		return models.HostPeerInfo{}, fmt.Errorf("failed to fetch peer info: %w", err)
+	}
 
 	peerInfoCacheMu.RLock()
 	defer peerInfoCacheMu.RUnlock()
@@ -182,19 +128,20 @@ func GetPeerInfo() (models.HostPeerInfo, error) {
 
 // RefreshPeerInfoCache fetches fresh peer info from the server and updates the cache.
 // Uses a dedicated mutex to serialize callers and enforce a minimum interval between attempts.
-func RefreshPeerInfoCache() {
+func RefreshPeerInfoCache() error {
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
 
 	info, err := fetchPeerInfo()
 	if err != nil {
 		slog.Warn("failed to refresh peer info cache", "error", err)
-		return
+		return err
 	}
 	peerInfoCacheMu.Lock()
 	peerInfoCache = info
 	peerInfoCacheMu.Unlock()
 	slog.Debug("peer info cache refreshed")
+	return nil
 }
 
 func fetchPeerInfo() (models.HostPeerInfo, error) {
@@ -207,11 +154,12 @@ func fetchPeerInfo() (models.HostPeerInfo, error) {
 		return models.HostPeerInfo{}, fmt.Errorf("auth failed: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, config.Netclient().ID.String())
+	host := config.Netclient()
+	url := fmt.Sprintf("https://%s/api/v1/host/%s/peer_info", server.API, host.ID.String())
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
-	headers.Set("Authorization", "Bearer "+token)
-	headers.Set(scope.HeaderTenantID, config.Netclient().TenantID)
+	auth.ApplyAPIHeaders(headers, token, host)
+	headers.Set(scope.HeaderTenantID, host.TenantID)
 	respBytes, err := ncutils.SendRequest(http.MethodGet, url, headers, nil)
 	if err != nil {
 		var notOkErr ncutils.ErrStatusNotOk

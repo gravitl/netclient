@@ -3,7 +3,6 @@ package wireguard
 import (
 	"fmt"
 	"net"
-	"runtime"
 	"sort"
 	"sync"
 
@@ -33,7 +32,10 @@ var wgMutex = sync.Mutex{} // used to mutex functions of the interface
 // NewNCIFace - creates a new Netclient interface in memory
 func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	firewallMark := host.FwMark
-	peers := config.Netclient().HostPeers
+	var peers []wgtypes.PeerConfig
+	if anyNodeConnected(nodes) {
+		peers = config.Netclient().HostPeers
+	}
 	// on freebsd, calling wgcltl.Client.ConfigureDevice() with []Peers{} causes an ioctl error --> ioctl: bad address
 	if len(peers) == 0 {
 		peers = nil
@@ -74,6 +76,134 @@ func NewNCIface(host *config.Config, nodes config.NodeMap) *NCIface {
 	return &netmaker
 }
 
+// EnsureNodeAddrs re-applies interface addresses when the live set does not
+// match connected nodes (missing or stale). NewNCIface only takes addresses
+// from connected nodes, so a startup where the node map is still empty (failed
+// Pull) leaves the interface unaddressed; nodes then arrive over MQ with
+// nothing to re-configure the interface. An unaddressed interface drops every
+// packet while routes and DNS still read as correctly configured, which is
+// indistinguishable from a dead exit node. Stale addresses after disconnect
+// leave proto-kernel overlay routes (e.g. 100.x.0.0/24 scope link) behind.
+func EnsureNodeAddrs() bool {
+	nodes := config.GetNodes()
+	want := make([]net.IP, 0)
+	wantSet := make(map[string]struct{})
+	for _, node := range nodes {
+		if !node.Connected {
+			continue
+		}
+		if node.Address.IP != nil {
+			want = append(want, node.Address.IP)
+			wantSet[node.Address.IP.String()] = struct{}{}
+		}
+		if node.Address6.IP != nil {
+			want = append(want, node.Address6.IP)
+			wantSet[node.Address6.IP.String()] = struct{}{}
+		}
+	}
+	live, err := liveIfaceIPs()
+	if err != nil {
+		slog.Warn("could not read netmaker interface addresses", "error", err)
+		return false
+	}
+	var missing []string
+	for _, ip := range want {
+		found := false
+		for _, l := range live {
+			if l.Equal(ip) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, ip.String())
+		}
+	}
+	stale := staleOverlayAddrs(live, wantSet)
+	if len(missing) == 0 && len(stale) == 0 {
+		return false
+	}
+	logger.Log(0, fmt.Sprintf("netmaker interface address sync missing=%v stale=%v; re-applying", missing, stale))
+	if err := NewNCIface(config.Netclient(), nodes).Configure(); err != nil {
+		slog.Error("failed to re-apply netmaker interface addresses", "error", err)
+		return false
+	}
+	// ApplyAddrs wiped OS egress routes; drop iface-address cache so the next
+	// SetEgressRoutes cannot early-return as "unchanged".
+	InvalidateEgressRouteCache()
+	return true
+}
+
+// staleOverlayAddrs returns live global-unicast IPs not in wantSet. Skips
+// kernel-managed link-local/loopback (e.g. Darwin utun fe80::) — treating those
+// as stale caused Configure() on every peer update; the OS puts fe80:: back.
+func staleOverlayAddrs(live []net.IP, wantSet map[string]struct{}) []string {
+	var stale []string
+	for _, l := range live {
+		// Explicit link-local/loopback skip: some Go builds treat fe80:: as
+		// IsGlobalUnicast, which forced Configure() on every EnsureNodeAddrs.
+		if !l.IsGlobalUnicast() || l.IsLinkLocalUnicast() || l.IsLoopback() {
+			continue
+		}
+		if _, ok := wantSet[l.String()]; !ok {
+			stale = append(stale, l.String())
+		}
+	}
+	return stale
+}
+
+// ifaceHasSourceAddr reports whether the netmaker interface carries an address
+// that tunnel traffic can be sourced from. Link-local and loopback addresses do
+// not count: they cannot originate overlay packets.
+func ifaceHasSourceAddr() bool {
+	ips, err := liveIfaceIPs()
+	if err != nil {
+		// Cannot tell — never manufacture a verdict out of a failed lookup.
+		return true
+	}
+	return anySourceAddr(ips)
+}
+
+// anySourceAddr reports whether any address can originate overlay traffic.
+func anySourceAddr(ips []net.IP) bool {
+	for _, ip := range ips {
+		if ip.IsGlobalUnicast() {
+			return true
+		}
+	}
+	return false
+}
+
+func liveIfaceIPs() ([]net.IP, error) {
+	iface, err := net.InterfaceByName(ncutils.GetInterfaceName())
+	if err != nil {
+		return nil, err
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		switch v := a.(type) {
+		case *net.IPNet:
+			ips = append(ips, v.IP)
+		case *net.IPAddr:
+			ips = append(ips, v.IP)
+		}
+	}
+	return ips, nil
+}
+
+func anyNodeConnected(nodes config.NodeMap) bool {
+	for _, node := range nodes {
+		if node.Connected {
+			return true
+		}
+	}
+	return false
+}
+
 func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	for i, peer := range peers {
 		if peer.Endpoint != nil && peer.Endpoint.IP == nil {
@@ -83,6 +213,10 @@ func cleanUpPeers(peers []wgtypes.PeerConfig) []wgtypes.PeerConfig {
 	return peers
 }
 
+// EgressRouteMetric is the default OS route metric for egress CIDRs when the
+// server does not supply one (matches historical Linux behavior).
+const EgressRouteMetric = 256
+
 // ifaceAddress - interface parsed address
 type ifaceAddress struct {
 	GwIP     net.IP
@@ -90,6 +224,14 @@ type ifaceAddress struct {
 	Network  net.IPNet
 	AddRoute bool
 	Metric   uint32
+}
+
+// egressMetric returns a usable route metric (1–998 from server, else default).
+func egressMetric(m uint32) uint32 {
+	if m > 0 && m < 999 {
+		return m
+	}
+	return EgressRouteMetric
 }
 
 // Close closes a netclient interface
@@ -118,11 +260,30 @@ func (n *NCIface) Configure() error {
 }
 
 func RemoveEgressRoutes() {
-	if addrs, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	key := config.Netclient().Host.ID.String()
+	if addrs, ok := cache.EgressRouteCache.Load(key); ok {
 		RemoveRoutes(addrs.([]ifaceAddress))
 	}
+	cache.EgressRouteCache.Delete(key)
+}
 
-	cache.EgressRouteCache = sync.Map{}
+// InvalidateEgressRouteCache clears iface-address egress entries so
+// SetEgressRoutes cannot no-op after ApplyAddrs wiped OS routes. Does not
+// touch models egress cache or internet-exit routes. Never reassigns the
+// package-level sync.Map.
+func InvalidateEgressRouteCache() {
+	wgMutex.Lock()
+	defer wgMutex.Unlock()
+	invalidateEgressRouteCacheLocked()
+}
+
+func invalidateEgressRouteCacheLocked() {
+	cache.EgressRouteCache.Range(func(key, _ any) bool {
+		cache.EgressRouteCache.Delete(key)
+		return true
+	})
 }
 
 // IsNetworkPresentOnLocalInterface checks whether the given network overlaps
@@ -176,6 +337,30 @@ func filterConflictingRoutes(addrs []ifaceAddress) []ifaceAddress {
 func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 	wgMutex.Lock()
 	defer wgMutex.Unlock()
+	setEgressRoutesLocked(egressRoutes)
+}
+
+// setEgressRoutesLocked installs egress routes. Caller must hold wgMutex.
+func setEgressRoutesLocked(egressRoutes []models.EgressNetworkRoutes) {
+	addrs := filterConflictingRoutes(buildEgressIfaceAddresses(egressRoutes, len(config.GetNodes())))
+	key := config.Netclient().Host.ID.String()
+
+	// Skip remove+re-add when unchanged — peer updates must not churn OS
+	// routes (brief egress gap) if the set is identical.
+	if prev, ok := cache.EgressRouteCache.Load(key); ok {
+		if checkEgressRoutes(addrs, prev.([]ifaceAddress)) {
+			return
+		}
+		RemoveRoutes(prev.([]ifaceAddress))
+	}
+	if err := SetRoutes(addrs); err == nil {
+		cache.EgressRouteCache.Store(key, addrs)
+	}
+}
+
+// buildEgressIfaceAddresses maps server egress routes into iface addresses.
+// nodeCount==1 → on-link (Network+Metric only). nodeCount>1 → Src=NodeAddr, Gw=EgressGwAddr.
+func buildEgressIfaceAddresses(egressRoutes []models.EgressNetworkRoutes, nodeCount int) []ifaceAddress {
 	addrs := []ifaceAddress{}
 	for _, egressRoute := range egressRoutes {
 		for _, egressRange := range egressRoute.EgressRangesWithMetric {
@@ -183,72 +368,48 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			if egressRange.Nat && egressRange.Mode == schema.VirtualNAT && egressRange.VirtualNetwork != "" {
 				egressRangeIPNet = config.ToIPNet(egressRange.VirtualNetwork)
 			}
-			if egressRangeIPNet.IP != nil {
-				if len(config.GetNodes()) == 1 {
-					if runtime.GOOS == "linux" {
-						addrs = append(addrs, ifaceAddress{
-							Network: egressRangeIPNet,
-							Metric:  egressRange.RouteMetric,
-						})
-					} else {
-						if egressRoute.EgressGwAddr.IP != nil {
-							addrs = append(addrs, ifaceAddress{
-								Network: egressRangeIPNet,
-								GwIP:    egressRoute.EgressGwAddr.IP,
-								Metric:  egressRange.RouteMetric,
-							})
-						}
-						if egressRoute.EgressGwAddr6.IP != nil {
-							addrs = append(addrs, ifaceAddress{
-								Network: egressRangeIPNet,
-								GwIP:    egressRoute.EgressGwAddr6.IP,
-								Metric:  egressRange.RouteMetric,
-							})
-						}
-					}
-
-					continue
-				}
-				if egressRangeIPNet.IP.To4() != nil && egressRoute.NodeAddr.IP != nil {
-					addrs = append(addrs, ifaceAddress{
-						GwIP:    egressRoute.EgressGwAddr.IP,
-						IP:      egressRoute.NodeAddr.IP,
-						Network: egressRangeIPNet,
-						Metric:  egressRange.RouteMetric,
-					})
-				}
-				if egressRangeIPNet.IP.To4() == nil && egressRoute.NodeAddr6.IP != nil {
-					addrs = append(addrs, ifaceAddress{
-						GwIP:    egressRoute.EgressGwAddr6.IP,
-						IP:      egressRoute.NodeAddr6.IP,
-						Network: egressRangeIPNet,
-						Metric:  egressRange.RouteMetric,
-					})
-				}
-
+			if egressRangeIPNet.IP == nil {
+				continue
 			}
-
+			if nodeCount == 1 {
+				addrs = append(addrs, ifaceAddress{
+					Network: egressRangeIPNet,
+					Metric:  egressRange.RouteMetric,
+				})
+				continue
+			}
+			if egressRangeIPNet.IP.To4() != nil && egressRoute.NodeAddr.IP != nil {
+				addrs = append(addrs, ifaceAddress{
+					GwIP:    egressRoute.EgressGwAddr.IP,
+					IP:      egressRoute.NodeAddr.IP,
+					Network: egressRangeIPNet,
+					Metric:  egressRange.RouteMetric,
+				})
+			}
+			if egressRangeIPNet.IP.To4() == nil && egressRoute.NodeAddr6.IP != nil {
+				addrs = append(addrs, ifaceAddress{
+					GwIP:    egressRoute.EgressGwAddr6.IP,
+					IP:      egressRoute.NodeAddr6.IP,
+					Network: egressRangeIPNet,
+					Metric:  egressRange.RouteMetric,
+				})
+			}
 		}
-
 	}
 
 	// Ensure unique metrics for routes with the same network
-	networkGroups := make(map[string][]int) // map network -> indices in addrs slice
+	networkGroups := make(map[string][]int)
 	for i, addr := range addrs {
 		networkKey := addr.Network.String()
 		networkGroups[networkKey] = append(networkGroups[networkKey], i)
 	}
-
 	for _, indices := range networkGroups {
 		if len(indices) <= 1 {
 			continue
 		}
-		// Sort indices by metric
 		sort.Slice(indices, func(i, j int) bool {
 			return addrs[indices[i]].Metric < addrs[indices[j]].Metric
 		})
-
-		// Ensure unique metrics by incrementing duplicates
 		for i := 1; i < len(indices); i++ {
 			prevIdx := indices[i-1]
 			currIdx := indices[i]
@@ -257,29 +418,21 @@ func SetEgressRoutes(egressRoutes []models.EgressNetworkRoutes) {
 			}
 		}
 	}
-
-	addrs = filterConflictingRoutes(addrs)
-
-	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
-		isSame := checkEgressRoutes(addrs, addrs1.([]ifaceAddress))
-
-		if !isSame {
-			RemoveRoutes(addrs1.([]ifaceAddress))
-			err := SetRoutes(addrs)
-			if err == nil {
-				cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
-			}
-		}
-	} else {
-		err := SetRoutes(addrs)
-		if err == nil {
-			cache.EgressRouteCache.Store(config.Netclient().Host.ID.String(), addrs)
-		}
-	}
+	return addrs
 }
 
 func SetRoutesFromCache() {
-	if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
+	// Prefer rebuilding from the models cache so route shape matches current
+	// GetNodes() (single-network linux entries omit IP/GwIP and are skipped once
+	// a second network is joined). Clear the iface-address cache first: after
+	// ApplyAddrs wiped OS routes, same computed addrs would no-op in SetEgressRoutes.
+	// Never reassign the package-level sync.Map — keyed Delete under wgMutex.
+	if routes := GetEgressRoutesFromCache(); len(routes) > 0 {
+		wgMutex.Lock()
+		invalidateEgressRouteCacheLocked()
+		setEgressRoutesLocked(routes)
+		wgMutex.Unlock()
+	} else if addrs1, ok := cache.EgressRouteCache.Load(config.Netclient().Host.ID.String()); ok {
 		SetRoutes(filterConflictingRoutes(addrs1.([]ifaceAddress)))
 	}
 	//inetGW route — only when monitor thinks routes are missing (iface recreate
@@ -305,6 +458,28 @@ func ReapplyInternetGwAfterIfaceRecreate() {
 	ReapplyInternetGw(gw4, gw6)
 }
 
+// EnsureInternetGwRoutesAfterIfaceChange re-adds OS exit half-defaults when
+// CurrGw is still set after an iface rebuild (e.g. connecting a second network).
+// Unlike ReapplyInternetGwAfterIfaceRecreate it does not Restore first — on
+// Darwin, Restore clears OriginalDefaultGatewayIp and Set can fail mid-connect
+// with "failed to get current gateway", leaving CurrGw set but no routes.
+func EnsureInternetGwRoutesAfterIfaceChange() {
+	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
+	if gw4 == nil && gw6 == nil {
+		return
+	}
+	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
+	if !ok {
+		slog.Warn("exit peer not found; OS default routes not ensured after iface change",
+			"gw4", gw4, "gw6", gw6)
+		return
+	}
+	if err := SetInternetGw(igw.PublicKey.String(), gw4, gw6); err != nil {
+		slog.Warn("soft exit route ensure failed; falling back to full reapply", "error", err)
+		ReapplyInternetGw(gw4, gw6)
+	}
+}
+
 // ReapplyInternetGw restores then sets the host default route via the exit peer.
 func ReapplyInternetGw(gw4, gw6 net.IP) {
 	igw, ok := FindInternetGwPeer(config.Netclient().HostPeers, gw4, gw6)
@@ -319,9 +494,10 @@ func ReapplyInternetGw(gw4, gw6 net.IP) {
 	}
 }
 
-// RefreshInternetGwHostPins adds LAN underlay pins for InternetGwHostIPs when
-// exit-node routing is already active (e.g. TCP proxy IP registered after
-// SetInternetGw). Does not move 0.0.0.0/0.
+// RefreshInternetGwHostPins adds LAN underlay pins for the selected exit and
+// every other direct peer (site egress + alternate internet exits) when
+// internet-exit routing is already active. Needed so newly advertised peer
+// endpoints are not swallowed by 0.0.0.0/0. Does not move 0.0.0.0/0.
 func RefreshInternetGwHostPins() {
 	gw4, gw6 := NormalizeIGWNexthops(config.Netclient().CurrGwNmIP, config.Netclient().CurrGwNmIP6)
 	if gw4 == nil && gw6 == nil {
@@ -331,26 +507,40 @@ func RefreshInternetGwHostPins() {
 	if !ok {
 		return
 	}
+	SyncControlPlaneUnderlayPins()
 	pinInternetGwHostRoutes(igw.PublicKey.String())
 }
 
-// checkEgressRoutes - check if the addr are the same ones
+// checkEgressRoutes reports whether two egress iface-address sets are equal
+// (network, metric, src IP, gateway). Sorts copies so callers' slices are unchanged.
 func checkEgressRoutes(addrs, addrs1 []ifaceAddress) bool {
 	if len(addrs) != len(addrs1) {
 		return false
 	}
-
-	sort.Slice(addrs, func(i, j int) bool { return addrs[i].IP.String() < addrs[j].IP.String() })
-	sort.Slice(addrs1, func(i, j int) bool { return addrs1[i].IP.String() < addrs1[j].IP.String() })
-
-	for i := range addrs {
-		if addrs[i].IP.String() != addrs1[i].IP.String() ||
-			addrs[i].Network.String() != addrs1[i].Network.String() || addrs[i].Metric != addrs1[i].Metric {
+	a := append([]ifaceAddress(nil), addrs...)
+	b := append([]ifaceAddress(nil), addrs1...)
+	sort.Slice(a, func(i, j int) bool { return egressAddrSortKey(a[i]) < egressAddrSortKey(a[j]) })
+	sort.Slice(b, func(i, j int) bool { return egressAddrSortKey(b[i]) < egressAddrSortKey(b[j]) })
+	for i := range a {
+		if a[i].Network.String() != b[i].Network.String() ||
+			a[i].Metric != b[i].Metric ||
+			!ipEqual(a[i].IP, b[i].IP) ||
+			!ipEqual(a[i].GwIP, b[i].GwIP) {
 			return false
 		}
 	}
-
 	return true
+}
+
+func egressAddrSortKey(a ifaceAddress) string {
+	return a.Network.String() + "|" + ipString(a.IP) + "|" + ipString(a.GwIP)
+}
+
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 func GetInterface() *NCIface {

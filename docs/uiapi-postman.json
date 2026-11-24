@@ -1,0 +1,312 @@
+{
+  "info": {
+    "_postman_id": "netclient-uiapi-v1",
+    "name": "Netclient UI API",
+    "description": "Localhost REST API for Netmaker Desktop (netclient uiapi).\n\nBinds to http://127.0.0.1:61820 — no auth header required.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/healthz"
+      }
+    },
+    {
+      "name": "Configure Server",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"server\": \"{{server}}\"\n}"
+        },
+        "url": "{{daemon}}/server",
+        "description": "Save/clear the Netmaker server domain. Returns 409 with code server_incompatible when /api/server/status reports a version <= v1.7.0 (Desktop requires newer than v1.7.0). Unreachable status checks are logged and do not block save; PUT /session re-checks."
+      }
+    },
+    {
+      "name": "Get Server",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/server",
+        "description": "Same payload as GET /session.\n\nWhile a session is active the body also includes:\n- restore_phase (only while status is restoring)\n- want_igw, auto_exit, desired_egress_id, desired_exit_network\n- notice: { code, network, message } when the daemon has a GUI message. code exit_unhealthy means a manual exit failed its post-connect VPN check and was cleared; the network stays connected.\n\nSession-gated routes (e.g. GET /networks) return 401 with code session_required when there is no usable JWT — Desktop should logout, clear local session, and stop polling."
+      }
+    },
+    {
+      "name": "Get Session",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/session",
+        "description": "Same payload as GET /server. Use APIHost for Netmaker HTTP."
+      }
+    },
+    {
+      "name": "Configure Session (SSO)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
+        },
+        "url": "{{daemon}}/session",
+        "description": "Login / start Desktop session. Fetches server getconfig and rejects with 409 code server_incompatible when the server version is <= v1.7.0 (before host register). Returns 503 if the version cannot be verified."
+      }
+    },
+    {
+      "name": "Configure Session (deprecated password field)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"auth_token\": \"{{auth_token}}\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
+        },
+        "url": "{{daemon}}/session",
+        "description": "password field is ignored; use user JWT in auth_token only. tenant_id optional for classic on-prem."
+      }
+    },
+    {
+      "name": "Release Session",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/session?clear_token=false",
+          "host": ["{{daemon}}"],
+          "path": ["session"],
+          "query": [
+            {
+              "key": "clear_token",
+              "value": "false",
+              "description": "true = full logout, delete session file"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Release Session (clear token)",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/session?clear_token=true",
+          "host": ["{{daemon}}"],
+          "path": ["session"],
+          "query": [
+            { "key": "clear_token", "value": "true" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Sync Device",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{daemon}}/sync"
+      }
+    },
+    {
+      "name": "List Networks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/networks"
+      }
+    },
+    {
+      "name": "Join Network",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/join",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "join"]
+        }
+      }
+    },
+    {
+      "name": "Leave Network",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/leave",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "leave"]
+        }
+      }
+    },
+    {
+      "name": "Cancel Join",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/cancel",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "cancel"]
+        },
+        "description": "Cancels a pending join. Requires a session. 200 with an empty body on success. 401 { \"message\": \"session required\" } when logged out."
+      }
+    },
+    {
+      "name": "Request JIT Access",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Need access for troubleshooting\"\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/jit/request",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "jit", "request"]
+        }
+      }
+    },
+    {
+      "name": "List Exit Nodes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_nodes",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_nodes"]
+        },
+        "description": "Requires a session and a connected network. Returns a JSON array of exit nodes.\n\nEach item: egress_id, name, description, network, routing_node_id, routing_host_name, address, address6, allowed_endpoints, country_code, location, tcp_proxy_enabled, tcp_proxy_listen_port, selected, status, latency_ms, nearest.\n\nstatus false means the exit is unhealthy. latency_ms and nearest are filled by overlay VPN probes. 409 when the network is not connected. 401 when logged out."
+      }
+    },
+    {
+      "name": "Get Selected Exit Node",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session and a connected network. Returns the selected exit node object, or null when none is selected. Same fields as List Exit Nodes. 409 when the network is not connected."
+      }
+    },
+    {
+      "name": "Select Exit Node",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"egress_id\": \"{{egress_id}}\"\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session and a connected network. Selects the exit identified by egress_id. Returns the selected exit node.\n\n409 when the network is not connected, or when another connected network already has an exit. 400 for a missing, inactive, or self exit."
+      }
+    },
+    {
+      "name": "Select Nearest Exit Node",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"auto\": true\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session and a connected network. auto true selects the nearest healthy exit using overlay VPN probes. Networks that enforce auto exit also take this path even when auto is omitted. 409 when the network is not connected."
+      }
+    },
+    {
+      "name": "Clear Exit Node",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"egress_id\": \"\"\n}"
+        },
+        "url": {
+          "raw": "{{daemon}}/networks/{{network}}/exit_node",
+          "host": ["{{daemon}}"],
+          "path": ["networks", "{{network}}", "exit_node"]
+        },
+        "description": "Requires a session. An empty egress_id with auto false clears the selected exit. The network stays connected. Response is null when nothing remains selected."
+      }
+    },
+    {
+      "name": "List Connections",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{daemon}}/connections"
+      }
+    },
+    {
+      "name": "Activate Connection",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/connections/{{network}}",
+          "host": ["{{daemon}}"],
+          "path": ["connections", "{{network}}"]
+        }
+      }
+    },
+    {
+      "name": "Deactivate Connection",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{daemon}}/connections/{{network}}",
+          "host": ["{{daemon}}"],
+          "path": ["connections", "{{network}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "daemon", "value": "http://127.0.0.1:61820" },
+    { "key": "server", "value": "api.netmaker.example.com" },
+    { "key": "username", "value": "user@example.com" },
+    { "key": "auth_token", "value": "" },
+    { "key": "tenant_id", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "network", "value": "my-network" },
+    { "key": "egress_id", "value": "" }
+  ]
+}
