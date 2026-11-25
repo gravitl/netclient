@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -301,6 +302,13 @@ func watchPeerConnections(ctx context.Context, waitg *sync.WaitGroup) {
 	}
 }
 
+// peerNeedsCachedEndpoint reports whether a peer's cached endpoint, as returned
+// by wireguard.GetBetterEndpoint and never nil, should be written to the
+// device: the device peer has no endpoint yet, or a different one.
+func peerNeedsCachedEndpoint(deviceEndpoint, cachedEndpoint *net.UDPAddr) bool {
+	return deviceEndpoint == nil || !deviceEndpoint.IP.Equal(cachedEndpoint.IP)
+}
+
 // runAutoRelayPeerScan signals peers that lack a WireGuard handshake / metrics
 // path so they can negotiate auto-relay. Serialized so ticker and one-shot scans
 // do not pile up.
@@ -385,7 +393,7 @@ func runAutoRelayPeerScan(ctx context.Context) {
 				continue
 			}
 
-			if localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey); ok && !devicePeer.Endpoint.IP.Equal(localEndpoint.IP) {
+			if localEndpoint, ok := wireguard.GetBetterEndpoint(pubKey); ok && peerNeedsCachedEndpoint(devicePeer.Endpoint, localEndpoint) {
 				networking.SetPeerEndpoint(pubKey, cache.EndpointCacheValue{Endpoint: localEndpoint})
 			}
 
