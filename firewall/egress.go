@@ -12,59 +12,61 @@ import (
 
 func processEgressFwRules(server string, egressUpdate map[string]models.EgressInfo) {
 	ruleTable := fwCrtl.FetchRuleTable(server, egressTable)
-	for _, egressInfoI := range egressUpdate {
-		aclRules := egressInfoI.EgressFwRules
-		egressAclID := fmt.Sprintf("acl#%s", egressInfoI.EgressID)
-		egressRules, ok := ruleTable[egressAclID]
-		if !ok {
-			fwCrtl.AddAclEgressRules(server, egressInfoI)
-			continue
-		}
-		ruleCfg := ruleTable[egressAclID]
-		// check if there is a update
-		localAclRules := make(map[string]models.AclRule)
-		if ruleCfg.extraInfo != nil {
-			localAclRules = ruleCfg.extraInfo.(map[string]models.AclRule)
-		}
-		// add new acl rules
-		for _, aclRule := range aclRules {
-			if _, ok := ruleTable[egressAclID].rulesMap[aclRule.ID]; !ok {
-				fwCrtl.UpsertAclEgressRule(server, egressAclID, aclRule)
-			} else {
-				localAclRule := localAclRules[aclRule.ID]
-				if (len(localAclRule.IPList) != len(aclRule.IPList)) ||
-					(!reflect.DeepEqual(localAclRule.IPList, aclRule.IPList)) ||
-					(len(localAclRule.IP6List) != len(aclRule.IP6List)) ||
-					(!reflect.DeepEqual(localAclRule.IP6List, aclRule.IP6List)) ||
-					(len(localAclRule.AllowedPorts) != len(aclRule.AllowedPorts)) ||
-					(!reflect.DeepEqual(localAclRule.AllowedPorts, aclRule.AllowedPorts)) ||
-					(aclRule.AllowedProtocol != localAclRule.AllowedProtocol) ||
-					(localAclRule.Direction != aclRule.Direction) ||
-					(!reflect.DeepEqual(localAclRule.Dst, aclRule.Dst)) ||
-					(len(localAclRule.Dst6) != len(aclRule.Dst6)) {
-					fwCrtl.DeleteAclEgressRule(server, egressAclID, aclRule.ID)
-					fwCrtl.UpsertAclEgressRule(server, egressAclID, aclRule)
-				}
-			}
-		}
-		// check if any rules needs to be deleted
-		for aclID := range egressRules.rulesMap {
-			if _, ok := aclRules[aclID]; !ok {
-				fwCrtl.DeleteAclEgressRule(server, egressAclID, aclID)
-			}
-		}
+	if isEgressAclRulesEqual(ruleTable, egressUpdate) {
+		return
 	}
-	ruleTable = fwCrtl.FetchRuleTable(server, egressTable)
+	// Anything changed: reinstall the ACL entries like a fresh install does. nftables keeps
+	// one kernel rule per generated spec, shared by every ACL rule with the same source,
+	// protocol, port and destination, so reconciling single rules in place can remove a rule
+	// another entry still needs. That sharing is #1419; once every egress ACL has its own rule
+	// (#1437), changed rules can be reconciled one by one again.
 	for egressID := range ruleTable {
-		if !strings.Contains(egressID, "acl#") {
-			continue
-		}
-		id := strings.Split(egressID, "#")[1]
-		if _, ok := egressUpdate[id]; !ok {
+		if strings.HasPrefix(egressID, "acl#") {
 			fwCrtl.DeleteAllAclEgressRules(server, egressID)
 		}
 	}
+	for _, egressInfo := range egressUpdate {
+		fwCrtl.AddAclEgressRules(server, egressInfo)
+	}
+}
 
+// isEgressAclRulesEqual reports whether the stored egress ACL entries already match the update.
+func isEgressAclRulesEqual(ruleTable ruletable, egressUpdate map[string]models.EgressInfo) bool {
+	aclEntries := make(map[string]bool, len(egressUpdate))
+	for _, egressInfo := range egressUpdate {
+		egressAclID := fmt.Sprintf("acl#%s", egressInfo.EgressID)
+		aclEntries[egressAclID] = true
+		ruleCfg, ok := ruleTable[egressAclID]
+		if !ok {
+			return false
+		}
+		localAclRules, _ := ruleCfg.extraInfo.(map[string]models.AclRule)
+		if len(localAclRules) != len(egressInfo.EgressFwRules) {
+			return false
+		}
+		for aclID, aclRule := range egressInfo.EgressFwRules {
+			localAclRule, ok := localAclRules[aclID]
+			if !ok || !isAclRuleEqual(localAclRule, aclRule) {
+				return false
+			}
+		}
+	}
+	for egressAclID := range ruleTable {
+		if strings.HasPrefix(egressAclID, "acl#") && !aclEntries[egressAclID] {
+			return false
+		}
+	}
+	return true
+}
+
+func isAclRuleEqual(a, b models.AclRule) bool {
+	return reflect.DeepEqual(a.IPList, b.IPList) &&
+		reflect.DeepEqual(a.IP6List, b.IP6List) &&
+		reflect.DeepEqual(a.AllowedPorts, b.AllowedPorts) &&
+		a.AllowedProtocol == b.AllowedProtocol &&
+		a.Direction == b.Direction &&
+		reflect.DeepEqual(a.Dst, b.Dst) &&
+		reflect.DeepEqual(a.Dst6, b.Dst6)
 }
 
 // SetEgressRoutes - sets the egress route for the gateway
@@ -76,6 +78,10 @@ func SetEgressRoutes(server string, egressUpdate map[string]models.EgressInfo) e
 	}
 	ruleTable := fwCrtl.FetchRuleTable(server, egressTable)
 	for egressNodeID := range ruleTable {
+		// egress ACL entries are keyed "acl#<egress ID>" and are reconciled by processEgressFwRules
+		if strings.HasPrefix(egressNodeID, "acl#") {
+			continue
+		}
 		if _, ok := egressUpdate[egressNodeID]; !ok {
 			// egress GW is deleted, flush out all rules
 			slog.Info("removing egress routes for deleted node", "node", egressNodeID)
