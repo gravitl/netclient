@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os/exec"
 	"strings"
 	"sync"
@@ -484,30 +485,23 @@ func (i *iptablesManager) removeJumpRules() {
 
 }
 
-// insertEgressForwardAclJumpIfNeeded adds FORWARD -i <egress> -o <netmaker> -j NETMAKER-ACL-FWD for egress ACL (appended).
-// dedupe ensures one rule per interface per address family when multiple ranges share an iface.
+// insertEgressForwardAclJumpIfNeeded adds FORWARD -s <egress range> -i <egress> -o <netmaker> -j NETMAKER-ACL-FWD for egress ACL (appended).
+// dedupe ensures one rule per range and interface when a range is listed more than once.
 func (i *iptablesManager) insertEgressForwardAclJumpIfNeeded(
 	client *iptables.IPTables,
+	egressRange net.IPNet,
 	egressIface string,
-	isIPv4 bool,
 	dedupe map[string]struct{},
 	egressGwRoutes *[]ruleInfo,
 ) {
-	if egressIface == "" {
+	ruleSpec, key := egressForwardAclJump(egressRange, egressIface)
+	if ruleSpec == nil {
 		return
 	}
-	ver := "v6"
-	if isIPv4 {
-		ver = "v4"
-	}
-	key := egressIface + "#" + ver
 	if _, ok := dedupe[key]; ok {
 		return
 	}
 	dedupe[key] = struct{}{}
-	nmIf := ncutils.GetInterfaceName()
-	ruleSpec := []string{"-i", egressIface, "-o", nmIf, "-j", aclFwdRulesChain}
-	ruleSpec = appendNetmakerCommentToRule(ruleSpec)
 	client.DeleteIfExists(defaultIpTable, iptableFWDChain, ruleSpec...)
 	if err := client.AppendUnique(defaultIpTable, iptableFWDChain, ruleSpec...); err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add egress FORWARD ACL jump: %v Err: %v ", ruleSpec, err.Error()))
@@ -549,7 +543,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				} else {
 					egressGwRoutes = append(egressGwRoutes, vnatRules...)
 					logger.Log(0, fmt.Sprintf("Applied virtual NAT rules for egress %s", egressInfo.EgressID))
-					i.insertEgressForwardAclJumpIfNeeded(i.ipv4Client, egressRangeIface, true, fwdJumpDedupe, &egressGwRoutes)
+					i.insertEgressForwardAclJumpIfNeeded(i.ipv4Client, vnatInfo.realRange, egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 					continue
 				}
 			}
@@ -605,7 +599,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 						}
 					}
 				}
-				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, egressRangeIface, isAddrIpv4(egressGwRange.Network), fwdJumpDedupe, &egressGwRoutes)
+				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, config.ToIPNet(egressGwRange.Network), egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 				defaultIface := config.Netclient().DefaultInterface
 				if egressRangeIface == defaultIface || egressRangeIface == "eth0" {
 					logger.Log(0, fmt.Sprintf("skipping destination-specific egress SNAT rule for %s via default interface %s", egressGwRange.Network, egressRangeIface))
@@ -642,7 +636,7 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 				if !isAddrIpv4(egressGwRange.Network) {
 					iptablesClient = i.ipv6Client
 				}
-				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, egressRangeIface, isAddrIpv4(egressGwRange.Network), fwdJumpDedupe, &egressGwRoutes)
+				i.insertEgressForwardAclJumpIfNeeded(iptablesClient, config.ToIPNet(egressGwRange.Network), egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 			}
 		}
 	}
@@ -1749,6 +1743,16 @@ func iptablesProtoToString(proto iptables.Protocol) string {
 func appendNetmakerCommentToRule(ruleSpec []string) []string {
 	ruleSpec = append(ruleSpec, "-m", "comment", "--comment", netmakerSignature)
 	return ruleSpec
+}
+
+// egressForwardAclJump returns the FORWARD rule for an egress range and the key rules are deduped
+// by. The ACL chain drops towards netmaker what it does not allow, so only the range may jump.
+func egressForwardAclJump(egressRange net.IPNet, egressIface string) ([]string, string) {
+	if egressIface == "" || egressRange.IP == nil {
+		return nil, ""
+	}
+	ruleSpec := []string{"-s", egressRange.String(), "-i", egressIface, "-o", ncutils.GetInterfaceName(), "-j", aclFwdRulesChain}
+	return appendNetmakerCommentToRule(ruleSpec), egressIface + "#" + egressRange.String()
 }
 
 // Virtual NAT implementation for iptables

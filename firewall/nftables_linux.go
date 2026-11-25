@@ -565,26 +565,33 @@ func (n *nftablesManager) DeleteRuleTable(server, ruleTableName string) {
 	}
 }
 
-// insertEgressForwardAclJumpNft adds inet FORWARD iif <egress> oif <netmaker> jump NETMAKER-ACL-FWD (appended via AddRule).
-// dedupe is keyed by egress interface (inet filter matches both IPv4 and IPv6).
-func (n *nftablesManager) insertEgressForwardAclJumpNft(egressIface string, dedupe map[string]struct{}, egressGwRoutes *[]ruleInfo) {
-	if egressIface == "" {
+// insertEgressForwardAclJumpNft adds inet FORWARD ip saddr <egress range> iif <egress> oif <netmaker> jump NETMAKER-ACL-FWD (appended via AddRule).
+// dedupe is keyed by egress interface and range.
+func (n *nftablesManager) insertEgressForwardAclJumpNft(egressRange net.IPNet, egressIface string, dedupe map[string]struct{}, egressGwRoutes *[]ruleInfo) {
+	ruleSpec, key := egressForwardAclJump(egressRange, egressIface)
+	if ruleSpec == nil {
 		return
 	}
-	if _, ok := dedupe[egressIface]; ok {
+	if _, ok := dedupe[key]; ok {
 		return
 	}
-	dedupe[egressIface] = struct{}{}
-	nmIf := ncutils.GetInterfaceName()
-	ruleSpec := []string{"-i", egressIface, "-o", nmIf, "-j", aclFwdRulesChain,
-		"-m", "comment", "--comment", netmakerSignature}
+	dedupe[key] = struct{}{}
 	ruleKey := genRuleKey(ruleSpec...)
 	n.deleteRule(defaultIpTable, iptableFWDChain, ruleKey)
+	nfproto := byte(unix.NFPROTO_IPV4)
+	if egressRange.IP.To4() == nil {
+		nfproto = unix.NFPROTO_IPV6
+	}
+	exprs := []expr.Any{
+		&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{nfproto}},
+	}
+	exprs = append(exprs, n.GetIpExpr(egressRange, net.IPNet{})...)
 	fwdRule := &nftables.Rule{
 		Table:    filterTable,
 		Chain:    &nftables.Chain{Name: iptableFWDChain, Table: filterTable},
 		UserData: []byte(ruleKey),
-		Exprs: []expr.Any{
+		Exprs: append(exprs,
 			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
@@ -595,18 +602,18 @@ func (n *nftablesManager) insertEgressForwardAclJumpNft(egressIface string, dedu
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
 				Register: 1,
-				Data:     nullTerminatedString(nmIf),
+				Data:     nullTerminatedString(ncutils.GetInterfaceName()),
 			},
 			&expr.Verdict{
 				Kind:  expr.VerdictJump,
 				Chain: aclFwdRulesChain,
 			},
-		},
+		),
 	}
 	n.conn.AddRule(fwdRule)
 	if err := n.conn.Flush(); err != nil {
 		logger.Log(1, fmt.Sprintf("failed to add egress FORWARD ACL jump (nft): %v Err: %v", ruleSpec, err.Error()))
-		delete(dedupe, egressIface)
+		delete(dedupe, key)
 		return
 	}
 	*egressGwRoutes = append(*egressGwRoutes, ruleInfo{
@@ -669,7 +676,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if egressRangeIface, err := getInterfaceName(config.ToIPNet(egressGwRange.Network)); err != nil {
 				logger.Log(0, "failed to get interface name for non-NAT egress: ", egressRangeIface, err.Error())
 			} else {
-				n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
+				n.insertEgressForwardAclJumpNft(config.ToIPNet(egressGwRange.Network), egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 			}
 			continue
 		}
@@ -682,7 +689,7 @@ func (n *nftablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 		} else {
 			logger.Log(0, fmt.Sprintf("Egress range %s uses interface: %s", egressGwRange.Network, egressRangeIface))
-			n.insertEgressForwardAclJumpNft(egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
+			n.insertEgressForwardAclJumpNft(config.ToIPNet(egressGwRange.Network), egressRangeIface, fwdJumpDedupe, &egressGwRoutes)
 			ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
 			// to avoid duplicate iface route rule,delete if exists
 			var exp []expr.Any
