@@ -19,9 +19,17 @@ import (
 
 	"github.com/gravitl/netmaker/logger"
 	"github.com/gravitl/netmaker/schema"
+	expslog "golang.org/x/exp/slog"
 )
 
 var ifaceName string
+
+var (
+	// verbosityLevel is shared with the handler installed at startup so verbosity changes apply to all loggers
+	verbosityLevel = &expslog.LevelVar{}
+	// verbosityFloor is the -v flag's level at runtime, which runtime changes do not go below
+	verbosityFloor = expslog.LevelError
+)
 
 // NetclientDefaultPort - default port
 const NetclientDefaultPort = 51821
@@ -387,29 +395,40 @@ func InterfaceExists(ifaceName string) (bool, error) {
 	return false, nil
 }
 
+// LogLevel returns the level of the loggers installed at startup
+func LogLevel() *expslog.LevelVar {
+	return verbosityLevel
+}
+
+// SetVerbosityFloor keeps the -v flag as a floor for runtime verbosity changes
+func SetVerbosityFloor(verbosity int) {
+	verbosityFloor = runtimeLevel(verbosity)
+}
+
+// SetVerbosity applies a runtime verbosity change to every logger, not below the -v floor
 func SetVerbosity(logLevel int) {
-	var level slog.Level
-	switch logLevel {
-
-	case 0:
-		level = slog.LevelError
-	case 1:
-		level = slog.LevelInfo
-	case 2:
-		level = slog.LevelWarn
-	case 3, 4:
-		level = slog.LevelDebug
-
-	default:
-		level = slog.LevelError
-	}
+	level := min(runtimeLevel(logLevel), verbosityFloor)
+	verbosityLevel.Set(level)
 	// Create the logger with the chosen level
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
+		Level: slog.Level(level),
 	})
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
+}
 
+// runtimeLevel maps a verbosity to its level at runtime
+func runtimeLevel(verbosity int) expslog.Level {
+	switch verbosity {
+	case 1:
+		return expslog.LevelInfo
+	case 2:
+		return expslog.LevelWarn
+	case 3, 4:
+		return expslog.LevelDebug
+	default:
+		return expslog.LevelError
+	}
 }
 
 func TraceCaller() {

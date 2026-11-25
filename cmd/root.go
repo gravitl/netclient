@@ -262,7 +262,7 @@ func InitConfig(viper *viper.Viper) {
 }
 
 func setupLogging(flags *viper.Viper) {
-	logLevel := &slog.LevelVar{}
+	logLevel := ncutils.LogLevel()
 	replace := func(groups []string, a slog.Attr) slog.Attr {
 		if a.Key == slog.SourceKey {
 			a.Value = slog.StringValue(filepath.Base(a.Value.String()))
@@ -293,6 +293,7 @@ func setupLogging(flags *viper.Viper) {
 	default:
 		logLevel.Set(slog.LevelError)
 	}
+	ncutils.SetVerbosityFloor(verbosity)
 }
 
 // checkConfig - verifies and updates configuration settings
