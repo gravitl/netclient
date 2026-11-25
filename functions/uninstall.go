@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"github.com/gravitl/netclient/auth"
+	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netclient/daemon"
 	"github.com/gravitl/netclient/dns"
@@ -61,7 +62,6 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	}
 	// re-configure interface if daemon is calling leave
 	if isDaemon {
-		faults = resetInterfaceUninstall(faults)
 		// Leave never clears host-level CurrGw. Reapply would put 0.0.0.0/0
 		// back through the deleted network's exit peer and black-hole traffic.
 		if nc := config.Netclient(); nc != nil && (len(nc.CurrGwNmIP) > 0 || len(nc.CurrGwNmIP6) > 0) {
@@ -70,7 +70,15 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 				slog.Warn("failed to restore default gateway", "error", err)
 			}
 		}
-		wireguard.ReapplyInternetGwAfterIfaceRecreate()
+		// The interface is rebuilt from the host-wide egress cache, which still
+		// holds the leaving network's entries; drop them so its ranges are not
+		// put back on the interface.
+		cached := wireguard.GetEgressRoutesFromCache()
+		if kept := dropNetworkRoutes(cached, node.Network); len(kept) != len(cached) {
+			wireguard.SetEgressRoutesInCache(kept)
+			cache.EgressRouteCache.Delete(config.Netclient().Host.ID.String())
+		}
+		resetInterfaceFunc()
 		dns.ReconfigureNow(config.GetServer(node.Server))
 	} else { // was called from CLI so restart daemon
 		if err := daemon.Restart(); err != nil {
@@ -84,23 +92,15 @@ func LeaveNetwork(network string, isDaemon bool) ([]error, error) {
 	return faults, nil
 }
 
-func resetInterfaceUninstall(faults []error) []error {
-	mNMutex.Lock()
-	defer mNMutex.Unlock()
-	// Hold off IGW health checks while the iface has no peers.
-	defer wireguard.BeginIfaceRebuild()()
-	nc := wireguard.GetInterface()
-	nc.Close()
-	nc = wireguard.NewNCIface(config.Netclient(), config.GetNodes())
-	nc.Create()
-	if err := nc.Configure(); err != nil {
-		faults = append(faults, fmt.Errorf("failed to configure interface during node removal - %v", err.Error()))
-	} else {
-		if err = wireguard.SetPeers(true); err != nil {
-			faults = append(faults, fmt.Errorf("issue setting peers after node removal - %v", err.Error()))
+// dropNetworkRoutes returns the egress routes of every network but network.
+func dropNetworkRoutes(routes []models.EgressNetworkRoutes, network string) []models.EgressNetworkRoutes {
+	kept := make([]models.EgressNetworkRoutes, 0, len(routes))
+	for _, route := range routes {
+		if route.Network != network {
+			kept = append(kept, route)
 		}
 	}
-	return faults
+	return kept
 }
 
 func deleteNodeFromServer(node *config.Node) error {
