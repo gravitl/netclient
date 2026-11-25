@@ -46,8 +46,13 @@ var All mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 var mNMutex = sync.Mutex{}  // used to mutex functions of the interface
 var upgMutex = sync.Mutex{} // used to mutex functions of upgrade
 
+var useVersion = UseVersion
+var hardRestart = daemon.HardRestart
+
 // NodeUpdate -- mqtt message handler for /update/<NodeID> topic
 func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
+	resetMu.RLock()
+	defer resetMu.RUnlock()
 	if len(msg.Payload()) == 0 {
 		return
 	}
@@ -128,6 +133,8 @@ func NodeUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // DNSSync -- mqtt message handler for host/dns/sync/<network id> topic
 func DNSSync(client mqtt.Client, msg mqtt.Message) {
+	resetMu.RLock()
+	defer resetMu.RUnlock()
 	if len(msg.Payload()) == 0 {
 		return
 	}
@@ -150,6 +157,10 @@ func DNSSync(client mqtt.Client, msg mqtt.Message) {
 
 // HostPeerUpdate - mq handler for host peer update peers/host/<HOSTID>/<SERVERNAME>
 func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
+	resetMu.RLock()
+	// A hard restart stops the daemon through the service manager, which a reset waiting for the write lock would hold off, so the read lock is given up first; under OpenRC it is a SIGHUP to this process and the handler returns right after it.
+	releaseResetLock := sync.OnceFunc(resetMu.RUnlock)
+	defer releaseResetLock()
 	slog.Debug("received host peer update", "topic", msg.Topic())
 	var peerUpdate models.HostPeerUpdate
 	var err error
@@ -201,14 +212,18 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 		if vlt && peerUpdate.Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", peerUpdate.ServerVersion)
 			upgMutex.Lock()
-			skip, err := UseVersion(peerUpdate.ServerVersion, false)
+			skip, err := useVersion(peerUpdate.ServerVersion, false)
 			if skip {
 				slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", peerUpdate.ServerVersion)
 			} else if err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", peerUpdate.ServerVersion)
-				daemon.HardRestart()
+				releaseResetLock()
+				if err := hardRestart(); err == nil {
+					upgMutex.Unlock()
+					return
+				}
 			}
 			upgMutex.Unlock()
 		}
@@ -442,6 +457,10 @@ func HostPeerUpdate(client mqtt.Client, msg mqtt.Message) {
 
 // HostUpdate - mq handler for host update host/update/<HOSTID>/<SERVERNAME>
 func HostUpdate(client mqtt.Client, msg mqtt.Message) {
+	resetMu.RLock()
+	// A hard restart stops the daemon through the service manager, which a reset waiting for the write lock would hold off, so the read lock is given up first.
+	releaseResetLock := sync.OnceFunc(resetMu.RUnlock)
+	defer releaseResetLock()
 	var hostUpdate models.HostUpdate
 	var err error
 	writeToDisk := true
@@ -486,28 +505,30 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		}
 		slog.Info("upgrading client to server's version", "version", sv)
 		upgMutex.Lock()
-		skip, err := UseVersion(sv, false)
+		skip, err := useVersion(sv, false)
 		if skip {
 			slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", sv)
 		} else if err != nil {
 			slog.Error("error updating client to server's version", "error", err)
 		} else {
 			slog.Info("updated client to server's version", "version", sv)
-			daemon.HardRestart()
+			releaseResetLock()
+			hardRestart()
 		}
 		upgMutex.Unlock()
 	case models.ForceUpgrade:
 		clearRetainedMsg(client, msg.Topic())
 		slog.Info("force upgrading client to server's version", "version", server.Version)
 		upgMutex.Lock()
-		skip, err := UseVersion(server.Version, false)
+		skip, err := useVersion(server.Version, false)
 		if skip {
 			slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", server.Version)
 		} else if err != nil {
 			slog.Error("error updating client to server's version", "error", err)
 		} else {
 			slog.Info("updated client to server's version", "version", server.Version)
-			daemon.HardRestart()
+			releaseResetLock()
+			hardRestart()
 		}
 		upgMutex.Unlock()
 	case models.JoinHostToNetwork:
@@ -627,7 +648,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 			if err != nil {
 				slog.Error("pull failed", "error", err)
 			} else {
-				mqFallbackPull(response, resetInterface, replacePeers)
+				mqFallbackPull(response, resetInterface, replacePeers, releaseResetLock)
 				// mqFallbackPull already applied resetInterface.
 				resetInterface = false
 			}
@@ -646,7 +667,7 @@ func HostUpdate(client mqtt.Client, msg mqtt.Message) {
 		if err != nil {
 			slog.Error("pull failed", "error", err)
 		} else {
-			mqFallbackPull(response, resetInterface, replacePeers)
+			mqFallbackPull(response, resetInterface, replacePeers, releaseResetLock)
 			resetInterface = false
 		}
 		writeToDisk = false
@@ -724,7 +745,16 @@ func resetInterfaceFunc() {
 		reconcileTCPUplink(server, nil)
 	}
 	dns.ReconfigureNow(server)
-	wireguard.EgressResetCh <- struct{}{}
+	notifyEgressReset()
+}
+
+// notifyEgressReset wakes the egress HA failover loop without waiting for it: the
+// channel buffers two values and only Pro servers run the loop.
+func notifyEgressReset() {
+	select {
+	case wireguard.EgressResetCh <- struct{}{}:
+	default:
+	}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
@@ -944,7 +974,7 @@ func MQFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 }
 
 // MQTT Fallback Config Pull
-func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool) {
+func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers bool, release ...func()) {
 	serverName := config.CurrServer
 	server := config.GetServer(serverName)
 	var saveServerConfig bool
@@ -962,14 +992,20 @@ func mqFallbackPull(pullResponse models.HostPull, resetInterface, replacePeers b
 		if vlt && config.Netclient().Host.AutoUpdate {
 			slog.Info("updating client to server's version", "version", pullResponse.ServerConfig.Version)
 			upgMutex.Lock()
-			skip, err := UseVersion(pullResponse.ServerConfig.Version, false)
+			skip, err := useVersion(pullResponse.ServerConfig.Version, false)
 			if skip {
 				slog.Warn("skipping auto-upgrade inside container, update the container image instead", "version", pullResponse.ServerConfig.Version)
 			} else if err != nil {
 				slog.Error("error updating client to server's version", "error", err)
 			} else {
 				slog.Info("updated client to server's version", "version", pullResponse.ServerConfig.Version)
-				daemon.HardRestart()
+				if len(release) > 0 {
+					release[0]()
+				}
+				if err := hardRestart(); err == nil {
+					upgMutex.Unlock()
+					return
+				}
 			}
 			upgMutex.Unlock()
 		}

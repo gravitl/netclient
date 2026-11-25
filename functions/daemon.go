@@ -137,9 +137,13 @@ func Daemon() {
 	}
 }
 
+var resetMu sync.RWMutex
+
 // resetDaemonInProcess rebuilds daemon goroutines without exiting, so the
 // desktop API keeps serving the GUI during first-time registration.
 func resetDaemonInProcess(cancel context.CancelFunc, wg *sync.WaitGroup) context.CancelFunc {
+	resetMu.Lock()
+	defer resetMu.Unlock()
 	slog.Info("received reset")
 	dns.GetDNSServerInstance().Stop()
 	_ = flow.GetManager().Stop()
@@ -520,7 +524,11 @@ func startGoRoutines(wg *sync.WaitGroup) context.CancelFunc {
 		time.Sleep(time.Second * 45)
 		callPublishMetrics(true)
 	}()
-	go handleFwUpdate(server.Server, &pullresp.FwUpdate)
+	go func() {
+		resetMu.RLock()
+		defer resetMu.RUnlock()
+		handleFwUpdate(server.Server, &pullresp.FwUpdate)
+	}()
 	return cancel
 }
 
