@@ -34,6 +34,15 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
+// Flush forwards to the underlying ResponseWriter when it supports http.Flusher.
+// Required so handlers that assert w.(http.Flusher) still work through loggingMiddleware
+// (e.g. configureSession early-flush before applyRegistrationReset).
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

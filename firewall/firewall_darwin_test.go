@@ -4,6 +4,7 @@
 package firewall
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

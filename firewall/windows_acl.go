@@ -6,6 +6,7 @@ package firewall
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,16 @@ import (
 	"github.com/gravitl/netmaker/models"
 	"golang.org/x/exp/slog"
 )
+
+// aclEgressTableKey is the egress-table key for ACL filters. processEgressFwRules
+// and Linux backends use "acl#"+EgressID; normalize so Add/Upsert/Delete agree
+// whether the caller passes a bare or already-prefixed id.
+func aclEgressTableKey(egressID string) string {
+	if strings.HasPrefix(egressID, "acl#") {
+		return egressID
+	}
+	return fmt.Sprintf("acl#%s", egressID)
+}
 
 // wfpEngine is the process-wide WFP ACL engine (NetNat remains separate).
 // wfpMu serializes open/close/use: soft-restart FlushAll races MQTT peer
@@ -248,7 +259,7 @@ func (w *windowsManager) AddAclEgressRules(server string, egressInfo models.Egre
 			kept[aclRule.ID] = aclRule
 		}
 		rCfg.extraInfo = kept
-		ruleTable[fmt.Sprintf("acl#%s", egressInfo.EgressID)] = rCfg
+		ruleTable[aclEgressTableKey(egressInfo.EgressID)] = rCfg
 		return nil
 	})
 	if err != nil {
@@ -261,7 +272,8 @@ func (w *windowsManager) UpsertAclEgressRule(server, egressID string, aclRule mo
 	defer w.SaveRules(server, egressTable, ruleTable)
 	w.mux.Lock()
 	defer w.mux.Unlock()
-	rCfg := ruleTable[egressID]
+	key := aclEgressTableKey(egressID)
+	rCfg := ruleTable[key]
 	if rCfg.rulesMap == nil {
 		rCfg.rulesMap = make(map[string][]ruleInfo)
 	}
@@ -291,7 +303,7 @@ func (w *windowsManager) UpsertAclEgressRule(server, egressID string, aclRule mo
 		return
 	}
 	rCfg.extraInfo = extraInfo
-	ruleTable[egressID] = rCfg
+	ruleTable[key] = rCfg
 }
 
 func (w *windowsManager) DeleteAclEgressRule(server, egressID, aclID string) {
@@ -299,7 +311,8 @@ func (w *windowsManager) DeleteAclEgressRule(server, egressID, aclID string) {
 	defer w.SaveRules(server, egressTable, ruleTable)
 	w.mux.Lock()
 	defer w.mux.Unlock()
-	rCfg, ok := ruleTable[egressID]
+	key := aclEgressTableKey(egressID)
+	rCfg, ok := ruleTable[key]
 	if !ok {
 		return
 	}
@@ -314,7 +327,7 @@ func (w *windowsManager) DeleteAclEgressRule(server, egressID, aclID string) {
 			rCfg.extraInfo = m
 		}
 	}
-	ruleTable[egressID] = rCfg
+	ruleTable[key] = rCfg
 }
 
 func (w *windowsManager) DeleteAllAclEgressRules(server, egressID string) {
@@ -322,7 +335,8 @@ func (w *windowsManager) DeleteAllAclEgressRules(server, egressID string) {
 	defer w.SaveRules(server, egressTable, ruleTable)
 	w.mux.Lock()
 	defer w.mux.Unlock()
-	rCfg, ok := ruleTable[egressID]
+	key := aclEgressTableKey(egressID)
+	rCfg, ok := ruleTable[key]
 	if !ok {
 		return
 	}
@@ -332,7 +346,7 @@ func (w *windowsManager) DeleteAllAclEgressRules(server, egressID string) {
 		}
 		return nil
 	})
-	delete(ruleTable, egressID)
+	delete(ruleTable, key)
 }
 
 // installWFPAclRules must be called under wfpMu (via withWFPEngine).
