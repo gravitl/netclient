@@ -724,7 +724,16 @@ func resetInterfaceFunc() {
 		reconcileTCPUplink(server, nil)
 	}
 	dns.ReconfigureNow(server)
-	wireguard.EgressResetCh <- struct{}{}
+	notifyEgressReset()
+}
+
+// notifyEgressReset wakes the egress HA failover loop without waiting for it: the
+// channel buffers two values and only Pro servers run the loop.
+func notifyEgressReset() {
+	select {
+	case wireguard.EgressResetCh <- struct{}{}:
+	default:
+	}
 }
 
 // handleEndpointDetection - select best interface for each peer and set it as endpoint
