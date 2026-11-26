@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os/exec"
 	"strings"
 	"sync"
@@ -520,6 +521,12 @@ func (i *iptablesManager) insertEgressForwardAclJumpIfNeeded(
 	})
 }
 
+// isLoopbackInterface reports whether name is a loopback interface.
+func isLoopbackInterface(name string) bool {
+	iface, err := net.InterfaceByName(name)
+	return err == nil && iface.Flags&net.FlagLoopback != 0
+}
+
 // iptablesManager.InsertEgressRoutingRules - inserts egress routes for the GW peers
 func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo models.EgressInfo) error {
 	ruleTable := i.FetchRuleTable(server, egressTable)
@@ -565,23 +572,26 @@ func (i *iptablesManager) InsertEgressRoutingRules(server string, egressInfo mod
 			if err != nil {
 				logger.Log(0, "failed to get interface name: ", egressRangeIface, err.Error())
 			} else {
-
-				ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
-				if len(config.GetNodes()) == 1 {
-					ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
-				}
-				ruleSpec = appendNetmakerCommentToRule(ruleSpec)
-				// to avoid duplicate iface route rule,delete if exists
-				iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
-				err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
-				if err != nil {
-					logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+				if !isLoopbackInterface(egressRangeIface) {
+					ruleSpec := []string{"-s", source, "-o", egressRangeIface, "-j", "MASQUERADE"}
+					if len(config.GetNodes()) == 1 {
+						ruleSpec = []string{"-o", egressRangeIface, "-j", "MASQUERADE"}
+					}
+					ruleSpec = appendNetmakerCommentToRule(ruleSpec)
+					// to avoid duplicate iface route rule,delete if exists
+					iptablesClient.DeleteIfExists(defaultNatTable, nattablePRTChain, ruleSpec...)
+					err := iptablesClient.Insert(defaultNatTable, nattablePRTChain, 1, ruleSpec...)
+					if err != nil {
+						logger.Log(1, fmt.Sprintf("failed to add rule: %v, Err: %v ", ruleSpec, err.Error()))
+					} else {
+						egressGwRoutes = append(egressGwRoutes, ruleInfo{
+							table: defaultNatTable,
+							chain: nattablePRTChain,
+							rule:  ruleSpec,
+						})
+					}
 				} else {
-					egressGwRoutes = append(egressGwRoutes, ruleInfo{
-						table: defaultNatTable,
-						chain: nattablePRTChain,
-						rule:  ruleSpec,
-					})
+					logger.Log(0, fmt.Sprintf("skipping MASQUERADE for egress range %s: it is an address of this host, reached via %s", egressGwRange.Network, egressRangeIface))
 				}
 				// Add Docker-specific rule if egress interface is a Docker network
 				if isDockerInterface(egressRangeIface) {
