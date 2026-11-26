@@ -1224,6 +1224,7 @@ func (n *nftablesManager) addJumpRules() {
 		if nfRule.Chain.Name == iptableFWDChain {
 			nfRule.Position = 0
 			n.conn.InsertRule(nfRule)
+			continue
 		}
 		n.conn.AddRule(nfRule)
 	}
