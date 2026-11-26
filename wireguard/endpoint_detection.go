@@ -2,25 +2,90 @@ package wireguard
 
 import (
 	"net"
+	"sync"
 
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/logger"
+	"github.com/gravitl/netmaker/models"
 	"github.com/gravitl/netmaker/schema"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// ClearEndpointCachesForRemovedPeers drops sticky endpoint-detection state for
-// peers marked Remove in a peer update (deleted/left peers).
-func ClearEndpointCachesForRemovedPeers(peers []wgtypes.PeerConfig) {
+// endpointCacheSnapshotMutex guards lastPeerHostInfo.
+var endpointCacheSnapshotMutex sync.Mutex
+
+// lastPeerHostInfo - HostNetworkInfo of the peers in the previous peer update.
+// Endpoint-detection cache entries are only valid for the peer state they were
+// detected under.
+var lastPeerHostInfo models.HostInfoMap
+
+// DropStaleEndpointCaches drops both endpoint-detection cache entries of every
+// peer whose state changed since the previous peer update: peers missing from
+// or removed by the update, and peers whose HostNetworkInfo ListenPort or
+// Interfaces set differs. A cached endpoint was derived from exactly that
+// info, so it must not outlive it; dropping lets checkForBetterEndpoint fall
+// back to the server endpoint and detection run again.
+func DropStaleEndpointCaches(peers []wgtypes.PeerConfig, info models.HostInfoMap) {
+	endpointCacheSnapshotMutex.Lock()
+	defer endpointCacheSnapshotMutex.Unlock()
+	live := make(models.HostInfoMap, len(peers))
 	for _, p := range peers {
-		if !p.Remove {
+		if p.Remove {
 			continue
 		}
 		pk := p.PublicKey.String()
+		live[pk] = info[pk]
+	}
+	drop := func(pk string) {
 		cache.EndpointCache.Delete(pk)
 		cache.SkipEndpointCache.Delete(pk)
 	}
+	for pk, prev := range lastPeerHostInfo {
+		cur, ok := live[pk]
+		if !ok || hostNetworkInfoChanged(prev, cur) {
+			drop(pk)
+		}
+	}
+	for _, c := range []*sync.Map{&cache.EndpointCache, &cache.SkipEndpointCache} {
+		c.Range(func(k, _ any) bool {
+			pk, ok := k.(string)
+			if !ok {
+				return true
+			}
+			if _, ok := live[pk]; !ok {
+				drop(pk)
+			}
+			return true
+		})
+	}
+	lastPeerHostInfo = live
+}
+
+// hostNetworkInfoChanged reports whether the endpoint-relevant peer state
+// changed: ListenPort or the Interfaces set, independent of their order.
+func hostNetworkInfoChanged(prev, cur models.HostNetworkInfo) bool {
+	if prev.ListenPort != cur.ListenPort {
+		return true
+	}
+	return !sameHostInterfaces(prev.Interfaces, cur.Interfaces)
+}
+
+// sameHostInterfaces reports whether a and b hold the same interface set.
+func sameHostInterfaces(a, b []schema.Iface) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := make(map[string]struct{}, len(a))
+	for _, i := range a {
+		set[i.Name+" "+i.Address.String()] = struct{}{}
+	}
+	for _, i := range b {
+		if _, ok := set[i.Name+" "+i.Address.String()]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // HostPeerAllowedIPs returns AllowedIPs from non-removed host peers.
