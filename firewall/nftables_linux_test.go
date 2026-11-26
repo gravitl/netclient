@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/google/nftables"
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
 	"github.com/mdlayher/netlink"
+	"golang.org/x/sys/unix"
 )
 
 func TestAddJumpRulesEncodesMetricsPortInNetworkByteOrder(t *testing.T) {
@@ -123,6 +125,39 @@ func TestEgressAclRulesKeyedByOwner(t *testing.T) {
 	}
 }
 
+// egressAclTestDial answers a rule batch the way the kernel does: a rule create that
+// asks for an echo (newer google/nftables sets NLM_F_ECHO) gets its message back
+// with a rule handle, then the first message of the batch is acknowledged. A
+// receive with nothing pending gets a bare acknowledgement, which is what older
+// library versions read once per message.
+func egressAclTestDial(req []netlink.Message) ([]netlink.Message, error) {
+	if len(req) == 1 && req[0].Header.Flags&netlink.Dump != 0 {
+		return nil, nil
+	}
+	var replies []netlink.Message
+	for _, m := range req {
+		if m.Header.Flags&netlink.Echo == 0 {
+			continue
+		}
+		handle, err := netlink.MarshalAttributes([]netlink.Attribute{{
+			Type: unix.NFTA_RULE_HANDLE,
+			Data: binaryutil.BigEndian.PutUint64(uint64(m.Header.Sequence)),
+		}})
+		if err != nil {
+			return nil, err
+		}
+		replies = append(replies, netlink.Message{
+			Header: netlink.Header{Type: m.Header.Type, Sequence: m.Header.Sequence},
+			Data:   append(append([]byte{}, m.Data[:4]...), handle...),
+		})
+	}
+	ack := netlink.Message{Header: netlink.Header{Type: netlink.Error}, Data: []byte{0, 0, 0, 0}}
+	if len(req) > 1 {
+		ack.Header.Sequence = req[1].Header.Sequence
+	}
+	return append(replies, ack), nil
+}
+
 // TestEgressAclRulesLongRuleFitsUserDataLimit covers the 256 byte limit the kernel puts
 // on NFTA_RULE_USERDATA. The key of this 33 port rule is 253 bytes with the owner digest,
 // the length it has on develop, and 311 bytes when the netmaker signature and the full
@@ -138,7 +173,7 @@ func TestEgressAclRulesLongRuleFitsUserDataLimit(t *testing.T) {
 	var messages []netlink.Message
 	conn, err := nftables.New(nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
 		messages = append(messages, req...)
-		return req, nil
+		return egressAclTestDial(req)
 	}))
 	if err != nil {
 		t.Fatal(err)
