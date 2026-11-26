@@ -1728,6 +1728,13 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Offset:       12, // IPv4 Source IP offset
 					Len:          4,  // IPv4 address size
 				},
+				&expr.Bitwise{
+					SourceRegister: 1,
+					DestRegister:   1,
+					Len:            4,
+					Mask:           rule.SrcIP.Mask,
+					Xor:            []byte{0, 0, 0, 0},
+				},
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
@@ -1739,6 +1746,13 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Base:         expr.PayloadBaseNetworkHeader,
 					Offset:       16, // IPv4 Destination IP offset
 					Len:          4,  // IPv4 address size
+				},
+				&expr.Bitwise{
+					SourceRegister: 1,
+					DestRegister:   1,
+					Len:            4,
+					Mask:           rule.DstIP.Mask,
+					Xor:            []byte{0, 0, 0, 0},
 				},
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
@@ -1772,6 +1786,13 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Offset:       8,  // IPv6 Source IP offset
 					Len:          16, // IPv6 address length
 				},
+				&expr.Bitwise{
+					SourceRegister: 1,
+					DestRegister:   1,
+					Len:            16,
+					Mask:           rule.SrcIP.Mask,
+					Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
 					Register: 1,
@@ -1783,6 +1804,13 @@ func (n *nftablesManager) InsertIngressRoutingRules(server string, ingressInfo m
 					Base:         expr.PayloadBaseNetworkHeader,
 					Offset:       24, // IPv6 Destination IP offset
 					Len:          16, // IPv6 address length
+				},
+				&expr.Bitwise{
+					SourceRegister: 1,
+					DestRegister:   1,
+					Len:            16,
+					Mask:           rule.DstIP.Mask,
+					Xor:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 				},
 				&expr.Cmp{
 					Op:       expr.CmpOpEq,
