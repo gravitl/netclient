@@ -7,6 +7,7 @@ import (
 	"github.com/gravitl/netclient/cache"
 	"github.com/gravitl/netclient/config"
 	"github.com/gravitl/netmaker/models"
+	"github.com/gravitl/netmaker/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -96,40 +97,64 @@ func TestDropMeshRoutedEndpointCache_clearsStickyLAN(t *testing.T) {
 	assert.True(t, lanStill)
 }
 
-func TestClearEndpointCachesForRemovedPeers(t *testing.T) {
-	t.Cleanup(func() {
-		clearEndpointCache()
-		cache.SkipEndpointCache.Range(func(k, _ any) bool {
-			cache.SkipEndpointCache.Delete(k)
-			return true
-		})
-	})
+func clearEndpointDetectionState() {
 	clearEndpointCache()
+	cache.SkipEndpointCache.Range(func(k, _ any) bool {
+		cache.SkipEndpointCache.Delete(k)
+		return true
+	})
+	lastPeerHostInfo = nil
+}
 
+func testIface(t *testing.T, name, cidr string) schema.Iface {
+	t.Helper()
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	require.NoError(t, err)
+	ipnet.IP = ip
+	return schema.Iface{Name: name, Address: *ipnet}
+}
+
+func TestDropStaleEndpointCaches(t *testing.T) {
 	priv, err := wgtypes.GeneratePrivateKey()
 	require.NoError(t, err)
-	keepPriv, err := wgtypes.GeneratePrivateKey()
+	pk := priv.PublicKey()
+	otherPriv, err := wgtypes.GeneratePrivateKey()
 	require.NoError(t, err)
-	removedPK := priv.PublicKey()
-	keepPK := keepPriv.PublicKey()
+	otherPK := otherPriv.PublicKey()
 
-	ep := &net.UDPAddr{IP: net.ParseIP("192.168.1.10"), Port: 51821}
-	cache.EndpointCache.Store(removedPK.String(), cache.EndpointCacheValue{Endpoint: ep})
-	cache.EndpointCache.Store(keepPK.String(), cache.EndpointCacheValue{Endpoint: ep})
-	cache.SkipEndpointCache.Store(removedPK.String(), 2)
-	cache.SkipEndpointCache.Store(keepPK.String(), 1)
+	eth0 := testIface(t, "eth0", "192.0.2.10/24")
+	eth1 := testIface(t, "eth1", "198.51.100.20/24")
+	prev := models.HostNetworkInfo{ListenPort: 51821, Interfaces: []schema.Iface{eth0, eth1}}
 
-	ClearEndpointCachesForRemovedPeers([]wgtypes.PeerConfig{
-		{PublicKey: removedPK, Remove: true},
-		{PublicKey: keepPK, Remove: false},
-	})
-
-	_, removedEP := cache.EndpointCache.Load(removedPK.String())
-	_, keepEP := cache.EndpointCache.Load(keepPK.String())
-	_, removedSkip := cache.SkipEndpointCache.Load(removedPK.String())
-	_, keepSkip := cache.SkipEndpointCache.Load(keepPK.String())
-	assert.False(t, removedEP)
-	assert.True(t, keepEP)
-	assert.False(t, removedSkip)
-	assert.True(t, keepSkip)
+	cases := []struct {
+		name     string
+		peers    []wgtypes.PeerConfig
+		info     models.HostInfoMap
+		wantKept bool
+	}{
+		{"unchanged state keeps", []wgtypes.PeerConfig{{PublicKey: pk}, {PublicKey: otherPK}}, models.HostInfoMap{pk.String(): prev}, true},
+		{"interfaces reordered keep", []wgtypes.PeerConfig{{PublicKey: pk}, {PublicKey: otherPK}}, models.HostInfoMap{pk.String(): {ListenPort: 51821, Interfaces: []schema.Iface{eth1, eth0}}}, true},
+		{"listen port change drops", []wgtypes.PeerConfig{{PublicKey: pk}, {PublicKey: otherPK}}, models.HostInfoMap{pk.String(): {ListenPort: 14026, Interfaces: []schema.Iface{eth0, eth1}}}, false},
+		{"interfaces change drops", []wgtypes.PeerConfig{{PublicKey: pk}, {PublicKey: otherPK}}, models.HostInfoMap{pk.String(): {ListenPort: 51821, Interfaces: []schema.Iface{eth0}}}, false},
+		{"absent from update drops", []wgtypes.PeerConfig{{PublicKey: otherPK}}, models.HostInfoMap{pk.String(): prev}, false},
+		{"removed peer drops", []wgtypes.PeerConfig{{PublicKey: pk, Remove: true}, {PublicKey: otherPK}}, models.HostInfoMap{pk.String(): prev}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(clearEndpointDetectionState)
+			clearEndpointDetectionState()
+			ep := &net.UDPAddr{IP: net.ParseIP("192.0.2.10"), Port: 51821}
+			cache.EndpointCache.Store(pk.String(), cache.EndpointCacheValue{Endpoint: ep})
+			cache.EndpointCache.Store(otherPK.String(), cache.EndpointCacheValue{Endpoint: ep})
+			cache.SkipEndpointCache.Store(pk.String(), 2)
+			lastPeerHostInfo = models.HostInfoMap{pk.String(): prev}
+			DropStaleEndpointCaches(tc.peers, tc.info)
+			_, cachedEP := cache.EndpointCache.Load(pk.String())
+			_, cachedSkip := cache.SkipEndpointCache.Load(pk.String())
+			_, otherEP := cache.EndpointCache.Load(otherPK.String())
+			assert.Equal(t, tc.wantKept, cachedEP, "cached endpoint")
+			assert.Equal(t, tc.wantKept, cachedSkip, "skip counter")
+			assert.True(t, otherEP, "unchanged peer entry must stay")
+		})
+	}
 }
