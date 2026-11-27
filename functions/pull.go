@@ -78,8 +78,11 @@ func fetchHostPull(resetIfFailedOvered, refresh bool) (models.HostPull, error) {
 func Pull(restart bool, resetIfFailedOvered bool, refresh bool) (models.HostPull, bool, bool, error) {
 	pMutex.Lock()
 	defer pMutex.Unlock()
-	logger.Log(0, "host pull starting:", pullCaller(),
-		fmt.Sprintf("restart=%v reset_failover=%v refresh=%v", restart, resetIfFailedOvered, refresh))
+	slog.Debug("host pull starting",
+		"caller", pullCaller(),
+		"restart", restart,
+		"reset_failover", resetIfFailedOvered,
+		"refresh", refresh)
 	resetInterface := false
 	replacePeers := false
 	pullResponse, err := fetchHostPull(resetIfFailedOvered, refresh)

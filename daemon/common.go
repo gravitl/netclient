@@ -99,7 +99,7 @@ func logRestartRequest(kind string) {
 			note = " (Windows: soft in-process reset; uiapi stays up)"
 		}
 	}
-	fmt.Println("daemon", kind, "requested by", caller+note)
+	slog.Debug("daemon", "kind", kind, "requested by", caller+note)
 }
 
 // Stop - stops a system daemon
